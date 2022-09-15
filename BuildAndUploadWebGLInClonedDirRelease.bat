@@ -1,0 +1,2 @@
+SET BUILDMODE=RELEASE
+call BuildAndUploadWebGLInClonedDir.bat

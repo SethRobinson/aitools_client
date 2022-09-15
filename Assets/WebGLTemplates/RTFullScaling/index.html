@@ -1,0 +1,203 @@
+<!-- This unity webgl template is based on "A better Unity WebGL template" by greggman: https://github.com/greggman/better-unity-webgl-template -->
+<!-- Tweaks by Seth A. Robinson (codedojo.com) -->
+
+<!DOCTYPE html>
+<html lang="en-us">
+
+  <head>
+    <meta charset="utf-8">
+    <title>%UNITY_WEB_NAME%</title>
+    <style>
+      html {
+        box-sizing: border-box;
+      }
+      *, *:before, *:after {
+        box-sizing: inherit;
+      }
+      body {
+        margin: 0;
+        background: #444;
+      }
+      #gameContainer {
+        width: 100vw;
+        height: 100vh;
+      }
+      canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+
+      .logo {
+          display: block;
+          width: max-width: 100vw;
+          height: max-height: 70vh;
+          z-index: -1;
+      }
+
+      .progress {
+          margin: 1.5em;
+          border: 1px solid white;
+          width: 50vw;
+          display: none;
+      }
+      .progress .full {
+          margin: 2px;
+          background: white;
+          height: 1em;
+          transform-origin: top left;
+      }
+
+      #loader {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100vw;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        pointer-events:none;
+        
+      }
+
+			.loadingtext {
+ 				 color: white;
+        align-items: center;
+        justify-content: center;
+      }
+      
+      .spinner,
+      .spinner:after {
+        border-radius: 50%;
+        width: 5em;
+        height: 5em;
+      }
+      .spinner {
+        margin: 10px;
+        font-size: 10px;
+        position: relative;
+        text-indent: -9999em;
+        border-top: 1.1em solid rgba(255, 255, 255, 0.2);
+        border-right: 1.1em solid rgba(255, 255, 255, 0.2);
+        border-bottom: 1.1em solid rgba(255, 255, 255, 0.2);
+        border-left: 1.1em solid #ffffff;
+        transform: translateZ(0);
+        animation: spinner-spin 1.1s infinite linear;
+        
+      }
+      @keyframes spinner-spin 
+      {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+      
+    </style>
+  </head>
+
+  <body>
+    <div id="gameContainer"></div>
+    <div id="loader">
+      <img class="logo" src="logo.png">
+      <div class="spinner"></div>
+       <div class="loadingtext">Setting up loader...</div>
+     
+      <div class="progress"><div class="full"></div></div>
+    </div>
+  </body>
+
+<script src="%UNITY_WEBGL_LOADER_URL%"></script>
+  <script>
+  	var textNum = 0;
+  
+  //Uncomment below to disable webassembly loading
+  //UnityLoader.SystemInfo.hasWasm = false;
+  var gameInstance = UnityLoader.instantiate("gameContainer", "%UNITY_WEBGL_BUILD_URL%", {onProgress: UnityProgress});
+
+  var textIntervalHandle;
+  var textTimerIntervalMS = 5000; //how fast the text updates after the initial two
+  
+  var textCommentArray = [
+   "Downloading data...",
+   "Starting the game...",
+   "This can really take a while.",
+   "Webgl apps like this are still relatively new, they will get faster to initialize in time.",
+   "While slow to initialize, this is safer to run and always up to date as compared to a downloadable that you would need to install.",
+   "Make sure you're using a 64 bit browser.  Chrome or Firefox are good choices.",
+   "Did you know RTsoft has been making weird games since 1989?  It's true, Seth is just that old.",
+   "It's looking like you'll be old too before this game starts.",
+   "You've gotta be bored out of your gourd by now.  Sorry about the wait.",
+   "This doesn't work great on mobile.  Chrome on Android *might* work, if you wait long enough.",
+   "It's possible this could take like 5 minutes.  Wait if you want, or go try it on a powerful desktop machine maybe."
+   ];
+  
+  
+	function UpdateText() 
+	{
+   if (textCommentArray.length > textNum)
+   {
+   	  //we have more to show
+      const loader = document.querySelector("#loader");
+  
+     	loader.querySelector(".loadingtext").innerHTML = textCommentArray[textNum];
+    
+      textNum++;
+   
+	    if (textNum > 1)
+	    {
+	    	//keep rescheduling them after the first two messages
+	     textIntervalHandle = window.setTimeout(UpdateText, textTimerIntervalMS);
+	    }
+    }
+	}
+
+  function UnityProgress(gameInstance, progress)
+   {
+    if (!gameInstance.Module) 
+    {
+      return;
+    }
+    const loader = document.querySelector("#loader");
+   
+   if (!gameInstance.progress)
+    {
+    	//ok, we can start the real loader
+      const progress = document.querySelector("#loader .progress");
+      progress.style.display = "block";
+      gameInstance.progress = progress.querySelector(".full");
+      UpdateText(); //will show index 0
+      loader.querySelector(".spinner").style.display = "none";
+    }
+    
+    gameInstance.progress.style.transform = `scaleX(${progress})`;
+   
+   if (progress > 0.8)
+   {
+   	   	  loader.querySelector(".spinner").style.display = "block";
+   	   	  
+   	   	  //Well, this is about when the app freezes up for an intolerable amount of time as it initializes stuff.  Let's update text, then kickstart
+   	   	  //the text to keep updating to the user doesn't get bored.
+   	   	  UpdateText();
+  			  textIntervalHandle = window.setTimeout(UpdateText, textTimerIntervalMS);
+  			   
+   }
+  
+    if (progress === 1 && !gameInstance.removeTimeout) 
+    {
+      gameInstance.removeTimeout = setTimeout(function() 
+      {
+      	  loader.querySelector(".spinner").style.display = "none";
+          loader.style.display = "none";
+          //Stop updating text!
+          window.clearTimeout(textIntervalHandle);
+      }, 100);
+    }
+  }
+  </script>
+
+</html>
