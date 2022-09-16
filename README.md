@@ -11,6 +11,11 @@ Normal users just need to download the pre-built [Windows build](https://www.rts
 
 However, this source might be useful to generate a build for other platforms, or fork or steal pieces to use for yourself.  Go ahead!
 
+### How to use
+
+* Requires Unity 2022.1.16+
+* Open the scene "Main" and click play to run
+
 ---
 
 Credits and links
