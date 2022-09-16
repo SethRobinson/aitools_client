@@ -3,15 +3,14 @@
 
 License:  BSD style attribution, see LICENSE.md
 
-There are two github respositories, one for the server, and one for the Unity client:
+There are two github respositories, one for the server, and one for the Unity client.
 
-[aitools_server](https://github.com/SethRobinson/aitools_server) (lightweight server using uvicorn/fastapi, can run under Windows (via wsl), ubuntu, google colab, etc)
+The docs/screenshots are in the [server repository](https://github.com/SethRobinson/aitools_server), not here!
 
-[aitools_client](https://github.com/SethRobinson/aitools_client) (you don't need this, you can just [download the client (Windows, 22 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip))
+Normal users just need to download the pre-built [Windows build](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) anyway. 
 
-## The docs/screenshots are in the [server repository](https://github.com/SethRobinson/aitools_server), not here!
+However, this source might be useful to generate a build for other platforms, or fork or steal pieces to use for yourself.  Go ahead!
 
-Normal users just need to download the pre-built [Windows build](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) anyway. The source might be useful to generate a build for other platforms, or fork or steal pieces to use for yourself.  Go ahead!
 ---
 
 Credits and links
