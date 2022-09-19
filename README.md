@@ -1,6 +1,8 @@
 
 # Seth's AI Tools: An interactive Unity3D based Stable Diffusion front-end and testbed
 
+(pardon the dust, these docs will be updated soon)
+
 License:  BSD style attribution, see LICENSE.md
 
 There are two github respositories, one for the server, and one for the Unity client.
@@ -21,5 +23,6 @@ However, this source might be useful to generate a build for other platforms, or
 Credits and links
 
 - Written by Seth A. Robinson (seth@rtsoft.com) twitter: @rtsoft - [Codedojo](https://www.codedojo.com), Seth's blog
+- Server is forked from the awesome [stable-diffusion-webui](https://github.com/AUTOMATIC1111/stable-diffusion-webui) project
 - Uses [Stable Diffusion](https://github.com/CompVis/stable-diffusion) via [huggingface's diffusers](https://github.com/huggingface/diffusers).
 - Uses [GFPGAN](https://github.com/TencentARC/GFPGAN) and [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN)

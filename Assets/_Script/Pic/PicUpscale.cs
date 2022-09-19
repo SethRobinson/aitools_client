@@ -8,14 +8,11 @@ using MiniJSON;
 using System.IO;
 using UnityEngine.ProBuilder.Shapes;
 using System.Security.Policy;
+using SimpleJSON;
 
 public class PicUpscale : MonoBehaviour
 {
     float startTime;
-    string m_prompt;
-    int m_steps;
-    float m_prompt_strength;
-    int m_seed;
     public GameObject m_sprite;
     bool m_bIsGenerating;
     int m_gpu;
@@ -83,24 +80,20 @@ public class PicUpscale : MonoBehaviour
     {
         var gpuInfo = Config.Get().GetGPUInfo(m_gpu);
 
-        string url = gpuInfo.remoteURL+"/process_image";
+        string url = gpuInfo.remoteURL+ "/api/predict";
        
-        m_seed = UnityEngine.Random.Range(1, 20000000);
-        m_prompt = GameLogic.Get().GetPrompt();
-        m_steps = GameLogic.Get().GetSteps();
-        m_prompt_strength = 7.5f;
         if (!bFromButton)
         {
             m_upscale = GameLogic.Get().GetUpscale();
             m_fixFaces = GameLogic.Get().GetFixFaces();
 
-            if (m_fixFaces)
+            if (m_upscale > 1.0f)
             {
                 gameObject.GetComponent<PicMask>().SetMaskVisible(false);
             }
         }
         
-        if (!m_fixFaces)
+        if (m_upscale <= 1.0f)
         {
             return; //we are done
         }
@@ -114,11 +107,10 @@ public class PicUpscale : MonoBehaviour
         m_bIsGenerating = true;
         startTime = Time.realtimeSinceStartup;
 
-        StartCoroutine(GetRequest(m_prompt, m_prompt_strength, url, m_steps, m_seed));
-
+        StartCoroutine(GetRequest( url));
     }
 
-    IEnumerator GetRequest(String context, double prompt_strength, string url, int steps, int seed)
+    IEnumerator GetRequest( string url)
     {
         //yield return new WaitForEndOfFrame();
 
@@ -134,16 +126,21 @@ public class PicUpscale : MonoBehaviour
         //String finalURL = url + "?prompt=" + context + "&prompt_strength=" + prompt_strength;
         String finalURL = url;
         Debug.Log("Upscaling with " + finalURL + " local GPU ID " + m_gpu);
+        string imgBase64 = Convert.ToBase64String(picPng);
 
-        //form.AddField("prompt", context);
-        form.AddField("fixfaces", m_fixFaces.ToString());
-        form.AddField("gpu", Config.Get().GetGPUInfo(m_gpu).remoteGPUID.ToString());
-        form.AddField("upscale", m_upscale.ToString());
-        form.AddBinaryData("file", picPng);
+        var gpuInf = Config.Get().GetGPUInfo(m_gpu);
 
-        using (var postRequest = UnityWebRequest.Post(finalURL, form))
+
+        string json = "{ \"fn_index\":" + gpuInf.fn_indexDict["upscale"] +",\"data\":[\"data:image/png;base64," + imgBase64 +
+              "\",null, 0.231, 0.233, 0, 2, \"Real-ESRGAN 2x plus\", \"None\", 1], \"session_hash\":\"d0v2057qsd\"}";
+
+        //File.WriteAllText("json_to_send.json", json); //for debugging
+        using (var postRequest = UnityWebRequest.Post(finalURL, "POST"))
         {
             //Start the request with a method instead of the object itself
+            byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
+            postRequest.uploadHandler = (UploadHandler)new UploadHandlerRaw(bodyRaw);
+            postRequest.SetRequestHeader("Content-Type", "application/json");
             yield return postRequest.SendWebRequest();
 
             if (postRequest.result != UnityWebRequest.Result.Success)
@@ -157,9 +154,44 @@ public class PicUpscale : MonoBehaviour
             {
                 //Debug.Log("Form upload complete! Downloaded " + postRequest.downloadedBytes); // + postRequest.downloadHandler.text
 
+                JSONNode rootNode = JSON.Parse(postRequest.downloadHandler.text);
+
+                Debug.Assert(rootNode.Tag == JSONNodeType.Object);
+                var dataNode = rootNode["data"];
+                Debug.Assert(dataNode.Tag == JSONNodeType.Array);
+
+                var images = dataNode[0];
+                //Debug.Log("images is of type " + images.Tag);
+                //Debug.Log("there are " + images.Count + " images");
+
+                Debug.Assert(images.Count == 1); //You better convert the extra images to new pics!
+
+                byte[] imgDataBytes = null;
+                if (images != null)
+                {
+                    for (int i = 0; i < images.Count; i++)
+                    {
+                        //convert each to be a pic object?
+                        string temp = images[i].ToString();
+
+                        //First get rid of the "data:image/png;base64," part
+
+                        string picChars = images[i].ToString().Substring(images[i].ToString().IndexOf(",") + 1);
+                        //this is dumb, why is there a single " at the end?  Is there a better way to get rid of it? //OPTIMIZE
+                        picChars = picChars.Substring(0, picChars.LastIndexOf('"'));
+                        //Debug.Log("image: " + picChars);
+                        imgDataBytes = Convert.FromBase64String(picChars);
+                    }
+                }
+                else
+                {
+                    Debug.Log("image data is missing");
+                }
+
+
                 Texture2D texture = new Texture2D(0, 0, TextureFormat.RGBA32, false);
 
-                if (texture.LoadImage(postRequest.downloadHandler.data, false))
+                if (texture.LoadImage(imgDataBytes, false))
                 {
                     //Debug.Log("Read texture, setting to new image");
                     this.gameObject.GetComponent<PicMain>().AddImageUndo();
@@ -167,7 +199,10 @@ public class PicUpscale : MonoBehaviour
                     float biggestSize = Math.Max(texture.width, texture.height);
                     UnityEngine.Sprite newSprite = UnityEngine.Sprite.Create(texture, new Rect(0,0, texture.width, texture.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f);
                     renderer.sprite = newSprite;
-                    this.gameObject.GetComponent<PicMain>().OnImageReplaced();
+                    m_picScript.OnImageReplaced();
+                    m_picScript.GetMaskScript().SetMaskVisible(false); //we don't want to see a rect
+                    //or whatever
+
                 }
                 else
                 {

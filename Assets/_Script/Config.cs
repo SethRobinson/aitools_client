@@ -9,13 +9,14 @@ public class GPUInfo
     public int remoteGPUID;
     public string remoteURL;
     public bool IsGPUBusy;
+    public bool bUseHack;
+    public Dictionary<string, int> fn_indexDict = new Dictionary<string, int>();
 }
 
 public class Config : MonoBehaviour
 {  
     public static bool _isTestMode = false; //could do anything, _testMode is checked by random functions
-    public const float _clientVersion = 0.1f;
-
+  
     List<GPUInfo> m_gpuInfo = new List<GPUInfo>();
     
     static Config _this;
@@ -23,7 +24,7 @@ public class Config : MonoBehaviour
     const string m_configFileName = "config.txt";
     bool m_safetyFilter = true;
    
-    float m_version = 0.1f;
+    float m_version = 0.4f;
     string m_imageEditorPathAndExe = "none set";
 
     public string GetVersionString() { return m_version.ToString("0.0"); }
@@ -45,10 +46,10 @@ public class Config : MonoBehaviour
         if (m_configText == "")
         {
             //default
-            m_configText += "#add as many servers as you want, just replace the localhost:8000 part with the";
+            m_configText += "#add as many servers as you want, just replace the localhost:7860 part with the";
             m_configText += "#server name/ip and port.\n";
             m_configText += "\n";
-            m_configText += "add_server|http://localhost:8000\n\n";
+            m_configText += "add_server|http://localhost:7860\n\n";
             m_configText += "#Set the below path and .exe to an image editor to use the Edit option. Changed files will auto\n";
             m_configText += "#update in here.\n\n";
             m_configText += "set_image_editor|C:\\Program Files\\Adobe\\Adobe Photoshop 2022\\Photoshop.exe\n";
@@ -176,7 +177,16 @@ public class Config : MonoBehaviour
                     GameObject go = new GameObject("ServerRequest");
                     go.transform.parent = transform;
                     WebRequestServerInfo webScript = (WebRequestServerInfo) go.AddComponent<WebRequestServerInfo>();
-                    webScript.StartWebRequest(words[1]);
+                    
+                    string extra = "";
+
+                    if (words.Length > 2)
+                    {
+                        extra = words[2];
+                    }
+                    webScript.StartWebRequest(words[1], extra);
+                    
+                    
 
                 }
                 else

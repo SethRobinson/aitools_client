@@ -372,7 +372,17 @@ public class RTUtil
     public static bool[] g_boolArray = new bool[3];
     public static byte[] g_byteArray = new byte[3];
 
-
+    static public bool DeleteFileIfItExists(string file)
+    {
+        if (File.Exists(file))
+        {
+            File.Delete(file);
+            return true;
+        } else
+        {
+            return false;
+        }
+    }
 
     //thanks to sol_hsa at http://sol.gfxile.net/interpolation/index.html
     //#define SMOOTHSTEP(x) ((x) * (x) * (3 - 2 * (x))) 

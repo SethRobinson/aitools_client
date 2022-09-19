@@ -21,7 +21,7 @@ public class FeatherPowerSlider : MonoBehaviour
 
     public void UpdateValue()
     {
-        m_text.text = "Strict mask blending: " + m_slider.value.ToString("0.0#");
+        m_text.text = "Mask blending: " + m_slider.value.ToString("0.0#");
         GameLogic.Get().SetAlphaMaskFeatheringPower(m_slider.value);
     }
 }

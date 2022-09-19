@@ -4,7 +4,7 @@ using UnityEngine;
 using UnityEngine.Networking;
 using System;
 using System.Text;
-using MiniJSON;
+using SimpleJSON;
 using System.IO;
 using UnityEngine.ProBuilder.Shapes;
 using System.Security.Policy;
@@ -87,7 +87,7 @@ public class PicInpaint : MonoBehaviour
 
         var gpuInfo = Config.Get().GetGPUInfo(m_gpu);
 
-        string url =gpuInfo.remoteURL + "/inpaint";
+        string url =gpuInfo.remoteURL + "/api/predict";
        
         m_seed = UnityEngine.Random.Range(1, 20000000);
         m_prompt = GameLogic.Get().GetPrompt();
@@ -99,10 +99,10 @@ public class PicInpaint : MonoBehaviour
         m_bIsGenerating = true;
         startTime = Time.realtimeSinceStartup;
 
-        StartCoroutine(GetRequest(m_prompt, m_prompt_strength, url, m_steps, m_seed));
+        StartCoroutine(GetRequest(m_prompt, m_prompt_strength, url));
     }
 
-    IEnumerator GetRequest(String context, double prompt_strength, string url, int steps, int seed)
+    IEnumerator GetRequest(String context, double prompt_strength, string url)
     {
         //yield return new WaitForEndOfFrame();
 
@@ -115,7 +115,6 @@ public class PicInpaint : MonoBehaviour
         pic512.Blit(0, 0, picSprite.texture, m_targetRect.GetOffsetX(), m_targetRect.GetOffsetY(), m_targetRect.GetWidth(), m_targetRect.GetHeight());
         mask512.Blit(0, 0, m_spriteMask.sprite.texture, m_targetRect.GetOffsetX(), m_targetRect.GetOffsetY(), m_targetRect.GetWidth(), m_targetRect.GetHeight());
 
-        
         //apply latent noise if needed
         if (GameLogic.Get().GetNoiseStrength() > 0)
         {
@@ -131,7 +130,6 @@ public class PicInpaint : MonoBehaviour
 
         //File.WriteAllBytes(Application.dataPath + "/../SavedScreen.png", picPng);
 
-
         //remove alpha from texture
         //clumisly change a full alpha png to just RGB and replace transparent with black, as that'picSprite how our API wants it
         var newtex = mask512.ConvertTextureToBlackAndWhiteRGBMask();
@@ -142,29 +140,40 @@ public class PicInpaint : MonoBehaviour
         //For testing purposes, we could also write to a file in the project folder
        //File.WriteAllBytes(Application.dataPath + "/../SavedScreenMask.png",picMaskPng);
 
-        WWWForm form = new WWWForm();
-        //Create the request using a static method instead of a constructor
-
-        //String finalURL = url + "?prompt=" + context + "&prompt_strength=" + prompt_strength;
         String finalURL = url;
         Debug.Log("Inpainting with " + finalURL+" local GPU ID "+m_gpu);
-        form.AddField("prompt", context);
-        form.AddField("prompt_strength", prompt_strength.ToString());
-        form.AddField("gpu", Config.Get().GetGPUInfo(m_gpu).remoteGPUID.ToString());
-        form.AddField("seed", seed.ToString());
-        form.AddField("steps", steps.ToString());
-        form.AddField("noise_strength", m_noise_strength.ToString());
-        form.AddField("safetyfilter", Config.Get().GetSafetyFilter().ToString());
 
-        form.AddBinaryData("pic", picPng);
-        form.AddBinaryData("mask", picMaskPng);
-        //hack to use a png from disk as mask for testing
-        //var maskPng = File.ReadAllBytes("Assets/Resources/mask.png");
-        //form.AddBinaryData("mask", maskPng);
+        string imgBase64 = Convert.ToBase64String(picPng);
+        string maskBase64 = Convert.ToBase64String(picMaskPng);
 
-        using (var postRequest = UnityWebRequest.Post(finalURL, form))
+        string maskedContent = GameLogic.Get().GetMaskContent();
+        int maskBlur = (int) GameLogic.Get().GetAlphaMaskFeatheringPower(); //0 to 64
+
+        bool bFixFace = GameLogic.Get().GetFixFaces();
+
+        bool bTiled = GameLogic.Get().GetTiling();
+
+        var gpuInf = Config.Get().GetGPUInfo(m_gpu);
+ 
+        string json = "{ \"fn_index\":\"" + gpuInf.fn_indexDict["img2img"] +"\",\"data\":[\"" + GameLogic.Get().GetPrompt() + "\",\"\",\"None\",\"None\",null,{ \"image\":\"data:image/png;base64," + imgBase64 +
+            "\",\"mask\":\"data:image/png;base64," + maskBase64 +
+            "\"},null,\"Draw mask\","+GameLogic.Get().GetSteps() +",\"Euler a\","+ maskBlur+",\""+ maskedContent+"\","+ bFixFace.ToString().ToLower()+","+bTiled.ToString().ToLower() + 
+            ",\"Inpaint a part of image\",1,1," + GameLogic.Get().GetTextStrength() +","+GameLogic.Get().GetInpaintStrength()+
+            ",-1,-1,0,0,0,512,512,\"Just resize\",\"None\",64,false,\"Inpaint masked\",\"None\",null,\"\",\"\"],\"session_hash\":\"d0v2057qsd\"}";
+
+        string thingToUse = json;
+
+        if (Config.Get().GetGPUInfo(m_gpu).bUseHack)
+        {
+            //thingToUse = jsonHacked;
+        }
+        File.WriteAllText("json_to_send.json", json);
+        using (var postRequest = UnityWebRequest.Post(finalURL, "POST"))
         {
             //Start the request with a method instead of the object itself
+            byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(thingToUse);
+            postRequest.uploadHandler = (UploadHandler)new UploadHandlerRaw(bodyRaw);
+            postRequest.SetRequestHeader("Content-Type", "application/json");
             yield return postRequest.SendWebRequest();
 
             if (postRequest.result != UnityWebRequest.Result.Success)
@@ -178,9 +187,52 @@ public class PicInpaint : MonoBehaviour
             {
                 //Debug.Log("Form upload complete! Downloaded " + postRequest.downloadedBytes); // + postRequest.downloadHandler.text
 
+                JSONNode rootNode = JSON.Parse(postRequest.downloadHandler.text);
+
+                Debug.Assert(rootNode.Tag == JSONNodeType.Object);
+
+               /*
+                foreach (KeyValuePair<string, JSONNode> kvp in (JSONObject)rootNode)
+                {
+                    Debug.Log("Key: " + kvp.Key + " Val: " + kvp.Value);
+                }
+               */
+
+                var dataNode = rootNode["data"];
+                Debug.Assert(dataNode.Tag == JSONNodeType.Array);
+
+                var images = dataNode[0];
+               // Debug.Log("images is of type " + images.Tag);
+                //Debug.Log("there are " + images.Count + " images");
+
+                Debug.Assert(images.Count == 1); //You better convert the extra images to new pics!
+
+                byte[] imgDataBytes = null;
+
+                if (images != null)
+                {
+                    for (int i = 0; i < images.Count; i++)
+                    {
+                        //convert each to be a pic object?
+                        string temp = images[i].ToString();
+
+                        //First get rid of the "data:image/png;base64," part
+
+                        string picChars = images[i].ToString().Substring(images[i].ToString().IndexOf(",") + 1);
+                        //this is dumb, why is there a single " at the end?  Is there a better way to get rid of it? //OPTIMIZE
+                        picChars = picChars.Substring(0, picChars.LastIndexOf('"'));
+                        //Debug.Log("image: " + picChars);
+                        imgDataBytes = Convert.FromBase64String(picChars);
+                    }
+                }
+                else
+                {
+                    Debug.Log("image data is missing");
+                }
+
                 Texture2D texture = new Texture2D(0, 0, TextureFormat.RGBA32, false);
 
-                if (texture.LoadImage(postRequest.downloadHandler.data, false))
+                if (texture.LoadImage(imgDataBytes, false))
                 {
 
                     //debug: write texture out

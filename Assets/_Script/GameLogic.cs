@@ -16,13 +16,12 @@ using UnityEngine.EventSystems;
 
 public class GameLogic : MonoBehaviour
 {
-
     public GameObject m_notepadTemplatePrefab;
     static GameLogic _this = null;
     string m_prompt = "";
     int m_steps = 50;
     float m_upscale = 2.0f; //1 means noc hange
-    bool m_fixFaces = false;
+    bool m_fixFaces = true;
     float m_textStrength = 7.5f;
     float m_inpaintStrength = 0.80f;
     float m_noiseStrength = 0;
@@ -33,14 +32,35 @@ public class GameLogic : MonoBehaviour
     bool m_bLoopSource = false;
     bool m_inpaintMaskActive = false;
     int m_picsPerRow = 20;
+    bool m_bTiling = false;
+    int m_genWidth = 512;
+    int m_genHeight = 512;
+
     public ImageGenerator m_AIimageGenerator;
   
     public Slider m_penSlider;
+    public TMP_Dropdown m_maskedContentDropdown;
+    public TMP_Dropdown m_widthDropdown;
+    public TMP_Dropdown m_heightDropdown;
+
     public static string GetName()
     {
         return Get().name;
     }
   
+    public int GetGenWidth() { return m_genWidth; }
+    public int GetGenHeight() { return m_genHeight; }
+    public void OnGenWidthDropdownChanged()
+    {
+       int.TryParse(m_widthDropdown.options[m_widthDropdown.value].text, out m_genWidth);
+    }
+
+    public void OnGenHeightDropdownChanged()
+    {
+        int.TryParse(m_heightDropdown.options[m_heightDropdown.value].text, out m_genHeight);
+
+    }
+
     private void Awake()
     {
         _this = this;
@@ -80,6 +100,17 @@ public class GameLogic : MonoBehaviour
     {
         m_AIimageGenerator.CreateNewPic();
     }
+    public void OnAddPicFromClipboard()
+    {
+        var go = m_AIimageGenerator.CreateNewPic();
+        var picScript = go.GetComponent<PicMain>();
+        if (picScript.LoadImageFromClipboard())
+        {
+            
+            //success
+        }
+
+    }
 
     public bool GetInpaintMaskEnabled()
     {
@@ -111,6 +142,16 @@ public class GameLogic : MonoBehaviour
     public bool GetLoopSource()
     {
         return m_bLoopSource;
+    }
+
+    public void OnTilingButton(bool bNew)
+    {
+        m_bTiling = bNew;
+    }
+
+    public bool GetTiling()
+    {
+        return m_bTiling;
     }
 
     public void OnClearButton()
@@ -222,6 +263,10 @@ public class GameLogic : MonoBehaviour
     }
     public float GetTextStrength() { return m_textStrength; }
 
+    public string GetMaskContent()
+    {
+        return m_maskedContentDropdown.options[m_maskedContentDropdown.value].text;
+    }
     public void OnUpscaleChanged(bool upscale)
     {
        if (upscale)

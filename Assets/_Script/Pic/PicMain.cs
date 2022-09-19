@@ -1,5 +1,5 @@
 using System.Collections;
-using System.Collections.Generic;
+
 using UnityEngine;
 using System.IO;
 using System;
@@ -132,7 +132,93 @@ public class PicMain : MonoBehaviour
         m_pic.gameObject.transform.localPosition = vPos;
 
     }
-    public void LoadImageByFilename(string filename, bool bResize = false)
+
+   public PicMask GetMaskScript() { return m_picMaskScript; }
+
+    public bool LoadImageFromClipboard()
+    {
+
+        //delete any existing image
+
+        string tempDir = Application.dataPath;
+        tempDir = tempDir.Replace('/', '\\');
+        tempDir = tempDir.Substring(0, tempDir.LastIndexOf('\\'));
+        string targetExe = tempDir+"\\utils\\RTClip.exe";
+        string tempPngFile = tempDir + "\\winclip_image.png";
+        RTUtil.DeleteFileIfItExists(tempPngFile);
+
+        var processInfo = new System.Diagnostics.ProcessStartInfo(targetExe, "");
+        processInfo.CreateNoWindow = true;
+        processInfo.UseShellExecute = false;
+
+        var process = System.Diagnostics.Process.Start(processInfo);
+
+        process.WaitForExit();
+        process.Close();
+
+        if (File.Exists(tempPngFile))
+        {
+            Debug.Log("Importing from clipboard...");
+            LoadImageByFilename(tempPngFile, false);
+            RTUtil.DeleteFileIfItExists(tempPngFile);
+
+        }
+        else
+        {
+            Debug.Log("No image found on clipboard");
+        }
+       
+        return false;
+    }
+
+        //crashes when accessing image data on clipboard, no idea why.  Have tried in and out of threads
+
+        /*
+        public bool LoadImageFromClipboard()
+        {
+            Debug.Log("Trying to load image from clipboard...");
+
+            Texture2D texture = null;
+
+            System.Threading.Thread t = new System.Threading.Thread(() =>
+            {
+
+                if (System.Windows.Forms.Clipboard.ContainsImage())
+                {
+                    Debug.Log("Found image on clipboard...");
+
+                    var dataObject = System.Windows.Forms.Clipboard.GetDataObject();
+
+                    var formats = dataObject.GetFormats(true);
+                    if (formats == null || formats.Length == 0)
+                    {
+
+                    }
+                    else
+                    {
+
+
+                        foreach (var f in formats)
+                            Debug.Log(" - " + f.ToString());
+                    }
+
+                }
+
+
+            });
+
+            t.Start();
+            t.Join();
+
+
+            return true;
+        }
+
+        */
+
+
+
+        public void LoadImageByFilename(string filename, bool bResize = false)
     {
         try
         {
@@ -574,6 +660,7 @@ public class PicMain : MonoBehaviour
         SetStatusMessage("Waiting for GPU...");
     }
 
+    
     private void OnDestroy()
     {
        InvalidateExportedEditFile();

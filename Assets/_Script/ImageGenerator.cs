@@ -67,6 +67,7 @@ public class ImageGenerator : MonoBehaviour
         m_oldCamPos = m_camera.transform.position;
         m_oldCamSize = m_camera.orthographicSize;
         //test area
+        //AddImageByFileName("test_pic_512.png");
 
         //CreateNewPic(); //add a blank pic at startup
         //AddImageByFileName("large_pic.png");

@@ -22,7 +22,14 @@ start notepad.exe log.txt
 pause
 )
 
+:Add a few more files we need
+mkdir build\win\utils
+xcopy /c utils build\win\utils\ /E /F /Y
+del build\win\utils\RTClip.zip
+
 call %RT_PROJECTS%\Signing\sign.bat "build/win/%APP_NAME%.exe" "Seth's AI Tools"
+call %RT_PROJECTS%\Signing\sign.bat "build/win/utils/RTClip.exe" "RTClip"
+
 
 :create the archive
 set ZIP_FNAME=SethsAIToolsWindows.zip
