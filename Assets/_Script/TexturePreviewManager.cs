@@ -5,8 +5,6 @@ using UnityEngine.EventSystems;
 
 public class TexturePreviewManager : MonoBehaviour
 {
-    public TMPro.TMP_InputField m_inputField;
-
     bool m_bActive;
     Vector3 m_oldCamPos;
     float m_oldCamSize;
@@ -48,6 +46,12 @@ public class TexturePreviewManager : MonoBehaviour
         m_oldCamPos = m_camera.transform.position;
         m_oldCamSize = m_camera.orthographicSize;
 
+        //also, lets move the preview texture to where they actually are
+        var vTemp = m_tilePreviewObj.transform.position;
+        vTemp.x = go.transform.position.x;
+        vTemp.y = go.transform.position.y;
+
+        m_tilePreviewObj.transform.position = vTemp;
     }
 
     void SetPreviewActive(bool bNew)

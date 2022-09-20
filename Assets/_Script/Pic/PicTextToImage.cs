@@ -115,8 +115,8 @@ public class PicTextToImage : MonoBehaviour
         var gpuInf = Config.Get().GetGPUInfo(m_gpu);
 
         string json = "{\"fn_index\":"+ gpuInf.fn_indexDict["text2image"]+",\"data\":[\"" + GameLogic.Get().GetPrompt() +
-          "\",\"\",\"None\",\"None\"," + GameLogic.Get().GetSteps() +
-          ",\"Euler a\"," + bFixFace.ToString().ToLower() + "," + bTiled.ToString().ToLower() + ",1,1," + GameLogic.Get().GetTextStrength() + ","
+          "\",\""+GameLogic.Get().GetNegativePrompt()+ "\",\"None\",\"None\"," + GameLogic.Get().GetSteps() +
+          ",\""+GameLogic.Get().GetSamplerName()+"\"," + bFixFace.ToString().ToLower() + "," + bTiled.ToString().ToLower() + ",1,1," + GameLogic.Get().GetTextStrength() + ","
           + m_seed + ",-1,0,0,0," + genHeight + "," + genWidth + ",\"" +
           "None\", null],\"session_hash\":\"craphash\"}";
      

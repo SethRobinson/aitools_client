@@ -8,7 +8,6 @@
  class LinuxHeadlessBuilder 
 {
 
-
 	static string[] GetScenes()
 	{
 		List<EditorBuildSettingsScene> scenes = new List<EditorBuildSettingsScene>(EditorBuildSettings.scenes);
@@ -27,27 +26,27 @@
 
      static void BuildBeta() 
     {
-	 RTBuildTools.AddDefine(BuildTargetGroup.Standalone, "RT_BETA");
+	     RTBuildTools.AddDefine(BuildTargetGroup.Standalone, "RT_BETA");
 	     BuildPipeline.BuildPlayer(GetScenes(), "build\\linux\\Linux64Server", BuildTarget.StandaloneLinux64, BuildOptions.EnableHeadlessMode);
-   	 RTBuildTools.RemoveDefine(BuildTargetGroup.Standalone, "RT_BETA");
+   	     RTBuildTools.RemoveDefine(BuildTargetGroup.Standalone, "RT_BETA");
      }
 
 	static void BuildBetaDebug() 
     {
-	 RTBuildTools.AddDefine(BuildTargetGroup.Standalone, "RT_BETA");
+	     RTBuildTools.AddDefine(BuildTargetGroup.Standalone, "RT_BETA");
 	     BuildPipeline.BuildPlayer(GetScenes(), "build\\linux\\Linux64Server", BuildTarget.StandaloneLinux64, BuildOptions.Development | BuildOptions.EnableHeadlessMode);
-   	 RTBuildTools.RemoveDefine(BuildTargetGroup.Standalone, "RT_BETA");
-     }
+   	     RTBuildTools.RemoveDefine(BuildTargetGroup.Standalone, "RT_BETA");
+    }
 
 	static void BuildDebug() 
     {
 	     BuildPipeline.BuildPlayer(GetScenes(), "build\\linux\\Linux64Server", BuildTarget.StandaloneLinux64, BuildOptions.Development | BuildOptions.EnableHeadlessMode);
-     }
+    }
 
 	static void BuildRelease() 
     {
-     	   BuildPipeline.BuildPlayer(GetScenes(), "build\\linux\\Linux64Server", BuildTarget.StandaloneLinux64, BuildOptions.EnableHeadlessMode);
-     }
+     	 BuildPipeline.BuildPlayer(GetScenes(), "build\\linux\\Linux64Server", BuildTarget.StandaloneLinux64, BuildOptions.EnableHeadlessMode);
+    }
 
 
  }

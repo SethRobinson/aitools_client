@@ -26,6 +26,7 @@ public class PicMain : MonoBehaviour
     public PicInpaint m_picInpaintScript;
     public PicUpscale m_picUpscaleScript;
     public PicGenerator m_picGeneratorScript;
+    public PicInterrogate m_picInterrogateScript;
     public Camera m_camera;
 
     UndoEvent m_undoevent = new UndoEvent();
@@ -218,7 +219,7 @@ public class PicMain : MonoBehaviour
 
 
 
-        public void LoadImageByFilename(string filename, bool bResize = false)
+    public void LoadImageByFilename(string filename, bool bResize = false)
     {
         try
         {
@@ -258,6 +259,7 @@ public class PicMain : MonoBehaviour
         }
     }
 
+   
     public void OnTileButton()
     {
 
@@ -478,57 +480,67 @@ public class PicMain : MonoBehaviour
         SaveFile();
     }
 
-        //a method I tried that crashed all the time, don't know why
+    //a method I tried that crashed all the time, don't know why
 
-        /*
-        public void OpenFile()
+    /*
+    public void OpenFile()
+    {
+
+        var fileContent = string.Empty;
+        var filePath = string.Empty;
+        Debug.Log("opening file");
+        OpenFileDialog openFileDialog = new OpenFileDialog();
+
+        openFileDialog.InitialDirectory = Directory.GetCurrentDirectory();
+        openFileDialog.Filter = "images files (*.png)|*.png|All files (*.*)|*.*";
+        openFileDialog.FilterIndex = 2;
+        openFileDialog.RestoreDirectory = true;
+        Debug.Log("opening file dialog");
+
+        var results = openFileDialog.ShowDialog();
+
+        if (results == DialogResult.OK)
         {
 
-            var fileContent = string.Empty;
-            var filePath = string.Empty;
-            Debug.Log("opening file");
-            OpenFileDialog openFileDialog = new OpenFileDialog();
+            filePath = openFileDialog.FileName;
+            Debug.Log("Chose " + filePath);
 
-            openFileDialog.InitialDirectory = Directory.GetCurrentDirectory();
-            openFileDialog.Filter = "images files (*.png)|*.png|All files (*.*)|*.*";
-            openFileDialog.FilterIndex = 2;
-            openFileDialog.RestoreDirectory = true;
-            Debug.Log("opening file dialog");
+            //Get the path of specified file
+            var png = File.ReadAllBytes(filePath);
 
-            var results = openFileDialog.ShowDialog();
-
-            if (results == DialogResult.OK)
+            try
             {
-
-                filePath = openFileDialog.FileName;
-                Debug.Log("Chose " + filePath);
-
-                //Get the path of specified file
-                var png = File.ReadAllBytes(filePath);
-
-                try
-                {
-                    var buffer = File.ReadAllBytes(filePath);
-                    Texture2D texture = new Texture2D(0, 0, TextureFormat.RGBA32, false);
-                    texture.LoadImage(buffer);
-                    AddImageUndo();
-                    Sprite newSprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f), texture.width / 5.12f);
-                    m_pic.sprite = newSprite;
-
-                }
-                catch (Exception e)
-                {
-                    System.Console.WriteLine(e.StackTrace);
-                }
-
+                var buffer = File.ReadAllBytes(filePath);
+                Texture2D texture = new Texture2D(0, 0, TextureFormat.RGBA32, false);
+                texture.LoadImage(buffer);
+                AddImageUndo();
+                Sprite newSprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f), texture.width / 5.12f);
+                m_pic.sprite = newSprite;
 
             }
-            else
+            catch (Exception e)
             {
-                Debug.LogError("Error loading file " + filePath);
+                System.Console.WriteLine(e.StackTrace);
             }
+
+
         }
-        */
+        else
+        {
+            Debug.LogError("Error loading file " + filePath);
+        }
+    }
+    */
+
+
+    public void OnInterrogateButton()
+    {
+         var e = new ScheduledGPUEvent();
+        e.mode = "interrogate";
+        e.targetObj = this.gameObject;
+        ImageGenerator.Get().ScheduleGPURequest(e);
+        SetStatusMessage("Waiting for GPU...");
+    }
 
     public void OnUpscaleButton()
     {

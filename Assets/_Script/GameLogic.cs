@@ -19,6 +19,7 @@ public class GameLogic : MonoBehaviour
     public GameObject m_notepadTemplatePrefab;
     static GameLogic _this = null;
     string m_prompt = "";
+    string m_negativePrompt = "";
     int m_steps = 50;
     float m_upscale = 2.0f; //1 means noc hange
     bool m_fixFaces = true;
@@ -27,6 +28,7 @@ public class GameLogic : MonoBehaviour
     float m_noiseStrength = 0;
     float m_penSize = 20;
     public TMP_InputField m_inputField;
+    public TMP_InputField m_negativeInputField;
     public Button m_generateButton;
     float m_alphaMaskFeatheringPower = 2;
     bool m_bLoopSource = false;
@@ -37,11 +39,12 @@ public class GameLogic : MonoBehaviour
     int m_genHeight = 512;
 
     public ImageGenerator m_AIimageGenerator;
-  
+ 
     public Slider m_penSlider;
     public TMP_Dropdown m_maskedContentDropdown;
     public TMP_Dropdown m_widthDropdown;
     public TMP_Dropdown m_heightDropdown;
+    public TMP_Dropdown m_samplerDropdown;
 
     public static string GetName()
     {
@@ -50,6 +53,14 @@ public class GameLogic : MonoBehaviour
   
     public int GetGenWidth() { return m_genWidth; }
     public int GetGenHeight() { return m_genHeight; }
+
+    public string GetSamplerName() { return m_samplerDropdown.options[m_samplerDropdown.value].text; }
+    public void SetPrompt(string p)
+    {
+        m_inputField.text = p;
+        
+    }
+
     public void OnGenWidthDropdownChanged()
     {
        int.TryParse(m_widthDropdown.options[m_widthDropdown.value].text, out m_genWidth);
@@ -132,7 +143,14 @@ public class GameLogic : MonoBehaviour
 
     public bool GUIIsBeingUsed()
     {
-      return EventSystem.current.IsPointerOverGameObject() || m_inputField.isFocused;
+        if (EventSystem.current.IsPointerOverGameObject()) return true;
+
+        if (m_inputField.isFocused) return true;
+        if (m_negativeInputField.isFocused) return true;
+
+
+        return false;
+      
     }
     public void OnLoopSourceButton(bool bNew)
     {
@@ -175,6 +193,7 @@ public class GameLogic : MonoBehaviour
     }
 
     public string GetPrompt() { return m_prompt; }
+    public string GetNegativePrompt() { return m_negativePrompt; }
     public int GetSteps() { return m_steps; }
     public bool GetFixFaces() { return m_fixFaces; }
     public float GetUpscale() { return m_upscale; }
@@ -289,6 +308,12 @@ public class GameLogic : MonoBehaviour
         m_prompt = str;
         //Debug.Log("Prompt changed: " + str);
     }
+    public void OnNegativePromptChanged(String str)
+    {
+        m_negativePrompt = str;
+        Debug.Log("Negative prompt changed: " + str);
+    }
+
 
     void Start()
     {

@@ -191,7 +191,6 @@ public class SimpleCameraMoverWithPinch : MonoBehaviour
         {
             ProcessScrollWheelPerspective();
         }
-
     }
 
     private void Awake()

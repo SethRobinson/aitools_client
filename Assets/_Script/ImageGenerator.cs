@@ -67,7 +67,7 @@ public class ImageGenerator : MonoBehaviour
         m_oldCamPos = m_camera.transform.position;
         m_oldCamSize = m_camera.orthographicSize;
         //test area
-        //AddImageByFileName("test_pic_512.png");
+        //AddImageByFileName("test_image_cosmo_512.png");
 
         //CreateNewPic(); //add a blank pic at startup
         //AddImageByFileName("large_pic.png");
@@ -256,6 +256,12 @@ public class ImageGenerator : MonoBehaviour
                     var script = e.targetObj.GetComponent<PicTextToImage>();
                     script.SetGPU(gpuToUse);
                     script.StartGenerate();
+                }
+                else if (e.mode == "interrogate")
+                {
+                    var script = e.targetObj.GetComponent<PicInterrogate>();
+                    script.SetGPU(gpuToUse);
+                    script.OnForceInterrogate(gpuToUse);
                 }
                 else
                 {

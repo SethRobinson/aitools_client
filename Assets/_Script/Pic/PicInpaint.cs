@@ -10,8 +10,6 @@ using UnityEngine.ProBuilder.Shapes;
 using System.Security.Policy;
 using System.Net;
 
-
-
 public class PicInpaint : MonoBehaviour
 {
     public PicTargetRect m_targetRect;
@@ -155,9 +153,9 @@ public class PicInpaint : MonoBehaviour
 
         var gpuInf = Config.Get().GetGPUInfo(m_gpu);
  
-        string json = "{ \"fn_index\":\"" + gpuInf.fn_indexDict["img2img"] +"\",\"data\":[\"" + GameLogic.Get().GetPrompt() + "\",\"\",\"None\",\"None\",null,{ \"image\":\"data:image/png;base64," + imgBase64 +
+        string json = "{ \"fn_index\":\"" + gpuInf.fn_indexDict["img2img"] +"\",\"data\":[\"" + GameLogic.Get().GetPrompt() + "\",\""+GameLogic.Get().GetNegativePrompt()+"\",\"None\",\"None\",null,{ \"image\":\"data:image/png;base64," + imgBase64 +
             "\",\"mask\":\"data:image/png;base64," + maskBase64 +
-            "\"},null,\"Draw mask\","+GameLogic.Get().GetSteps() +",\"Euler a\","+ maskBlur+",\""+ maskedContent+"\","+ bFixFace.ToString().ToLower()+","+bTiled.ToString().ToLower() + 
+            "\"},null,\"Draw mask\","+GameLogic.Get().GetSteps() +",\""+GameLogic.Get().GetSamplerName()+"\","+ maskBlur+",\""+ maskedContent+"\","+ bFixFace.ToString().ToLower()+","+bTiled.ToString().ToLower() + 
             ",\"Inpaint a part of image\",1,1," + GameLogic.Get().GetTextStrength() +","+GameLogic.Get().GetInpaintStrength()+
             ",-1,-1,0,0,0,512,512,\"Just resize\",\"None\",64,false,\"Inpaint masked\",\"None\",null,\"\",\"\"],\"session_hash\":\"d0v2057qsd\"}";
 
