@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEditor;
@@ -6,17 +7,27 @@ using static UnityEngine.UI.AspectRatioFitter;
 
 public class PicTargetRect : MonoBehaviour
 {
-    Rect m_targetRectInPixels = new Rect(0,0,512,512);
+    Rect m_targetRectInPixels = new Rect(0, 0, 512, 512);
     public SpriteRenderer m_picRenderer;
     public LineRenderer m_lineRen;
     public SpriteRenderer m_picMaskRenderer;
+    public GameObject m_sizeDragIcon;
+    public GameObject m_posDragIcon;
 
+    bool m_bMovingRect = false;
+    bool m_bMovingPosition = false;
+    static float iconOffset = 0.045f;
+    int iconOffsetPixels = 15;
 
     // Start is called before the first frame update
     void Start()
     {
         UpdatePoints();
+
     }
+
+    public bool IsMovingRect() { return m_bMovingRect; }
+
     public int GetWidth()
     {
         return (int)m_targetRectInPixels.width;
@@ -34,6 +45,13 @@ public class PicTargetRect : MonoBehaviour
         return (int)m_targetRectInPixels.y;
     }
 
+    public void SetOffsetRect(Rect rect)
+    {
+        m_targetRectInPixels = rect;
+        UpdatePoints();
+        OnMoveToPixelLocation(m_targetRectInPixels.position);
+
+    }
     public Rect GetOffsetRect()
     {
         return m_targetRectInPixels;
@@ -97,6 +115,24 @@ public class PicTargetRect : MonoBehaviour
         var points = new Vector3[lengthOfLineRenderer];
         m_lineRen.positionCount = lengthOfLineRenderer;
 
+        var color = Color.yellow;
+
+
+        if (m_targetRectInPixels.width % 256 != 0)
+        {
+            color.g -= 0.25f;
+            color.r -= 0.25f;
+        }
+
+        if (m_targetRectInPixels.height % 256 != 0)
+        {
+            color.g -= 0.25f;
+            color.r -= 0.25f;
+        }
+
+        m_lineRen.startColor = color;
+        m_lineRen.endColor = color;
+
         points[0] = new Vector3(picRect.xMin, -picRect.yMax, 0);
         points[1] = new Vector3(picRect.xMax, -picRect.yMax, 0);
         points[2] = new Vector3(picRect.xMax, -picRect.yMin, 0);
@@ -113,11 +149,103 @@ public class PicTargetRect : MonoBehaviour
         */
 
         m_lineRen.SetPositions(points);
+
+        //update icon positions
+
+      
+        m_posDragIcon.transform.localPosition = new Vector3(picRect.position.x+ iconOffset, -(picRect.position.y+ iconOffset), m_sizeDragIcon.transform.localPosition.z);
+
+        m_sizeDragIcon.transform.localPosition = new Vector3(picRect.xMax- iconOffset, -(picRect.yMax- iconOffset), m_sizeDragIcon.transform.localPosition.z);
+
     }
 
-// Update is called once per frame
-void Update()
+    // Update is called once per frame
+    public void OnClickedPos(Vector2 clickedPos)
+   {
+        float distanceFromRectNeeded = 24; //bigger makes the corners easier to click
+
+       
+        //did they click one of the corners?
+        Vector2 vBottomRightOfRect = new Vector2(m_targetRectInPixels.xMax- iconOffsetPixels, m_targetRectInPixels.yMax- iconOffsetPixels);
+        float distFromCorner = (vBottomRightOfRect - clickedPos).magnitude;
+        if (distFromCorner < distanceFromRectNeeded)
+        {
+            m_bMovingRect = true;
+            m_bMovingPosition = false;
+            return; //they are dragging the bottom right
+        }
+
+        //check for top left too
+        Vector2 vTopLeftOfRect = new Vector2(m_targetRectInPixels.xMin+ iconOffsetPixels, m_targetRectInPixels.yMin+ iconOffsetPixels);
+
+        distFromCorner = (vTopLeftOfRect - clickedPos).magnitude;
+        if (distFromCorner < distanceFromRectNeeded)
+        {
+            m_bMovingRect = true;
+            m_bMovingPosition = true;
+            return; //they are dragging the bottom right
+        }
+
+    }
+
+    public void OnMovedPos(Vector2 movedPos)
     {
-        m_lineRen.enabled = !m_picMaskRenderer.forceRenderingOff;
+
+        if (!m_bMovingRect) return;
+
+        if (m_bMovingPosition)
+        {
+            movedPos.x -= iconOffsetPixels;
+            movedPos.y -= iconOffsetPixels;
+
+            OnMoveToPixelLocation(movedPos);
+            return;
+        }
+
+        //else, they are dragging out the size here
+        movedPos.x += iconOffsetPixels;
+        movedPos.y += iconOffsetPixels;
+
+        Rect newRect = new Rect(m_targetRectInPixels.position, movedPos - m_targetRectInPixels.position);
+       // Debug.Log("updating rect: " + movedPos);
+
+        newRect.width = RTUtil.ConvertNumToNearestMultiple((int)newRect.width, 64);
+        newRect.height = RTUtil.ConvertNumToNearestMultiple((int)newRect.height, 64);
+
+        if (newRect.width >= 64 && newRect.height >= 64 && (newRect.width != m_targetRectInPixels.width || newRect.height != m_targetRectInPixels.height))
+        {
+            RTQuickMessageManager.Get().ShowMessage("Size: " + newRect.size);
+            m_targetRectInPixels = newRect;
+            UpdatePoints();
+            OnMoveToPixelLocation(m_targetRectInPixels.position);
+        }
+
+    }
+    public void OnClickRelease()
+    {
+        m_bMovingRect = false;
+    }
+
+    void Update()
+    {
+       
+        /*
+        if (GameLogic.Get().GetMaskWidth() != m_targetRectInPixels.width || GameLogic.Get().GetMaskHeight() != m_targetRectInPixels.height)
+        {
+            m_targetRectInPixels.width = GameLogic.Get().GetMaskWidth();
+            m_targetRectInPixels.height = GameLogic.Get().GetMaskHeight();
+            UpdatePoints();
+            OnMoveToPixelLocation(m_targetRectInPixels.position);
+        }
+
+        */
+        if (m_bMovingRect)
+        {
+            if (Input.GetMouseButtonUp(0))
+            {
+                OnClickRelease();
+            }
+        }
+       
     }
 }

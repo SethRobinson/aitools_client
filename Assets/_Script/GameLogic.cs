@@ -21,6 +21,8 @@ public class GameLogic : MonoBehaviour
     string m_prompt = "";
     string m_negativePrompt = "";
     int m_steps = 50;
+    long m_seed = -1;
+
     float m_upscale = 2.0f; //1 means noc hange
     bool m_fixFaces = true;
     float m_textStrength = 7.5f;
@@ -52,25 +54,25 @@ public class GameLogic : MonoBehaviour
     }
   
     public int GetGenWidth() { return m_genWidth; }
+
     public int GetGenHeight() { return m_genHeight; }
 
-    public string GetSamplerName() { return m_samplerDropdown.options[m_samplerDropdown.value].text; }
-    public void SetPrompt(string p)
+      public void OnGenWidthDropdownChanged()
     {
-        m_inputField.text = p;
-        
-    }
-
-    public void OnGenWidthDropdownChanged()
-    {
-       int.TryParse(m_widthDropdown.options[m_widthDropdown.value].text, out m_genWidth);
+        int.TryParse(m_widthDropdown.options[m_widthDropdown.value].text, out m_genWidth);
     }
 
     public void OnGenHeightDropdownChanged()
     {
         int.TryParse(m_heightDropdown.options[m_heightDropdown.value].text, out m_genHeight);
-
     }
+
+    public string GetSamplerName() { return m_samplerDropdown.options[m_samplerDropdown.value].text; }
+    public void SetPrompt(string p)
+    {
+        m_inputField.text = p;
+    }
+
 
     private void Awake()
     {
@@ -195,12 +197,18 @@ public class GameLogic : MonoBehaviour
     public string GetPrompt() { return m_prompt; }
     public string GetNegativePrompt() { return m_negativePrompt; }
     public int GetSteps() { return m_steps; }
+    public long GetSeed() { return m_seed; }
     public bool GetFixFaces() { return m_fixFaces; }
     public float GetUpscale() { return m_upscale; }
     public void OnStepsChanged(string steps)
     {
         //Debug.Log("Steps changed to " + steps);
         int.TryParse(steps, out m_steps);
+    }
+    public void OnSeedChanged(string seed)
+    {
+        //Debug.Log("Steps changed to " + steps);
+        long.TryParse(seed, out m_seed);
     }
 
     public int GetPicsPerRow() { return m_picsPerRow; }

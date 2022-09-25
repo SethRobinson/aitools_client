@@ -17,7 +17,7 @@ public class PicInpaint : MonoBehaviour
     string m_prompt;
     int m_steps;
     float m_prompt_strength;
-    int m_seed;
+    long m_seed = -1;
     public GameObject m_sprite;
     bool m_bIsGenerating;
     int m_gpu;
@@ -26,6 +26,7 @@ public class PicInpaint : MonoBehaviour
     public Action<GameObject> m_onFinishedRenderingCallback;
     public PicMain m_picScript;
     public Texture2D m_latentNoise; //a texture we'll use for the noise instead of generating it ourself
+    public PicTextToImage m_picTextToImageScript;
 
     // Start is called before the first frame update
     void Start()
@@ -86,8 +87,21 @@ public class PicInpaint : MonoBehaviour
         var gpuInfo = Config.Get().GetGPUInfo(m_gpu);
 
         string url =gpuInfo.remoteURL + "/api/predict";
-       
-        m_seed = UnityEngine.Random.Range(1, 20000000);
+
+        
+        
+        m_seed = GameLogic.Get().GetSeed();
+        
+        //non-random seeds are actually kind of bad
+
+        /*
+        if (m_picTextToImageScript.WasCustomSeedSet())
+        {
+            m_seed = m_picTextToImageScript.GetSeed();
+        }
+        */
+        
+        
         m_prompt = GameLogic.Get().GetPrompt();
         m_steps = GameLogic.Get().GetSteps();
         m_prompt_strength = GameLogic.Get().GetTextStrength();
@@ -111,32 +125,39 @@ public class PicInpaint : MonoBehaviour
         Texture2D mask512 = new Texture2D(m_targetRect.GetWidth(), m_targetRect.GetHeight(), TextureFormat.RGBA32, false);
 
         pic512.Blit(0, 0, picSprite.texture, m_targetRect.GetOffsetX(), m_targetRect.GetOffsetY(), m_targetRect.GetWidth(), m_targetRect.GetHeight());
+        yield return null; //wait a free to lesson the jerkiness
+
         mask512.Blit(0, 0, m_spriteMask.sprite.texture, m_targetRect.GetOffsetX(), m_targetRect.GetOffsetY(), m_targetRect.GetWidth(), m_targetRect.GetHeight());
+        yield return null; //wait a free to lesson the jerkiness
 
         //apply latent noise if needed
         if (GameLogic.Get().GetNoiseStrength() > 0)
         {
             pic512.SetPixelsFromTextureWithAlphaMask(m_latentNoise, mask512, GameLogic.Get().GetNoiseStrength());
+            yield return null; //wait a free to lesson the jerkiness
 
-           // picSprite.texture.Blit(m_targetRect.GetOffsetX(), m_targetRect.GetOffsetY(), pic512, 0, 0, m_targetRect.GetWidth(), m_targetRect.GetHeight());
-           // picSprite.texture.Apply();
+            // picSprite.texture.Blit(m_targetRect.GetOffsetX(), m_targetRect.GetOffsetY(), pic512, 0, 0, m_targetRect.GetWidth(), m_targetRect.GetHeight());
+            // picSprite.texture.Apply();
             //byte[] noisedPic = pic512.EncodeToPNG();
             //File.WriteAllBytes(Application.dataPath + "/../SavedScreenWithNoise.png", noisedPic);
         }
 
         byte[] picPng = pic512.EncodeToPNG();
+        yield return null; //wait a free to lesson the jerkiness
 
         //File.WriteAllBytes(Application.dataPath + "/../SavedScreen.png", picPng);
 
         //remove alpha from texture
         //clumisly change a full alpha png to just RGB and replace transparent with black, as that'picSprite how our API wants it
         var newtex = mask512.ConvertTextureToBlackAndWhiteRGBMask();
+        yield return null; //wait a free to lesson the jerkiness
 
         //if we wanted the true full alpha, we'd just use this instead:   byte[] picMaskPng = alphatex.EncodeToPNG();
         byte[] picMaskPng = newtex.EncodeToPNG();
+        yield return null; //wait a free to lesson the jerkiness
 
         //For testing purposes, we could also write to a file in the project folder
-       //File.WriteAllBytes(Application.dataPath + "/../SavedScreenMask.png",picMaskPng);
+        //File.WriteAllBytes(Application.dataPath + "/../SavedScreenMask.png",picMaskPng);
 
         String finalURL = url;
         Debug.Log("Inpainting with " + finalURL+" local GPU ID "+m_gpu);
@@ -157,7 +178,7 @@ public class PicInpaint : MonoBehaviour
             "\",\"mask\":\"data:image/png;base64," + maskBase64 +
             "\"},null,\"Draw mask\","+GameLogic.Get().GetSteps() +",\""+GameLogic.Get().GetSamplerName()+"\","+ maskBlur+",\""+ maskedContent+"\","+ bFixFace.ToString().ToLower()+","+bTiled.ToString().ToLower() + 
             ",\"Inpaint a part of image\",1,1," + GameLogic.Get().GetTextStrength() +","+GameLogic.Get().GetInpaintStrength()+
-            ",-1,-1,0,0,0,512,512,\"Just resize\",\"None\",64,false,\"Inpaint masked\",\"None\",null,\"\",\"\"],\"session_hash\":\"d0v2057qsd\"}";
+            ","+m_seed+",-1,0,0,0,"+ m_targetRect.GetHeight()+ ","+ m_targetRect.GetWidth()+",\"Just resize\",\"None\",64,false,\"Inpaint masked\",\"None\",null,\"\",\"\"],\"session_hash\":\"d0v2057qsd\"}";
 
         string thingToUse = json;
 
@@ -165,7 +186,7 @@ public class PicInpaint : MonoBehaviour
         {
             //thingToUse = jsonHacked;
         }
-        File.WriteAllText("json_to_send.json", json);
+        //File.WriteAllText("json_to_send.json", json);
         using (var postRequest = UnityWebRequest.Post(finalURL, "POST"))
         {
             //Start the request with a method instead of the object itself
@@ -186,6 +207,7 @@ public class PicInpaint : MonoBehaviour
                 //Debug.Log("Form upload complete! Downloaded " + postRequest.downloadedBytes); // + postRequest.downloadHandler.text
 
                 JSONNode rootNode = JSON.Parse(postRequest.downloadHandler.text);
+                yield return null; //wait a free to lesson the jerkiness
 
                 Debug.Assert(rootNode.Tag == JSONNodeType.Object);
 
@@ -211,16 +233,22 @@ public class PicInpaint : MonoBehaviour
                 {
                     for (int i = 0; i < images.Count; i++)
                     {
-                        //convert each to be a pic object?
-                        string temp = images[i].ToString();
-
+                      
                         //First get rid of the "data:image/png;base64," part
+                        string str = images[i].ToString();
+                        yield return null; //wait a free to lesson the jerkiness
 
-                        string picChars = images[i].ToString().Substring(images[i].ToString().IndexOf(",") + 1);
-                        //this is dumb, why is there a single " at the end?  Is there a better way to get rid of it? //OPTIMIZE
-                        picChars = picChars.Substring(0, picChars.LastIndexOf('"'));
+                        int startIndex = str.IndexOf(",") + 1;
+                        int endIndex = str.LastIndexOf('"');
+
+                        string picChars = str.Substring(startIndex, endIndex- startIndex);
+                        yield return null; //wait a free to lesson the jerkiness
+                      
                         //Debug.Log("image: " + picChars);
                         imgDataBytes = Convert.FromBase64String(picChars);
+                        yield return null; //wait a free to lesson the jerkiness
+
+
                     }
                 }
                 else
@@ -232,17 +260,21 @@ public class PicInpaint : MonoBehaviour
 
                 if (texture.LoadImage(imgDataBytes, false))
                 {
+                    yield return null; //wait a free to lesson the jerkiness
 
                     //debug: write texture out
-                    //byte[] testReturnedText = texture.EncodeToPNG();
-                    //File.WriteAllBytes(Application.dataPath + "/../SavedReturnedTex.png", testReturnedText);
+                    byte[] testReturnedTex = texture.EncodeToPNG();
+                    File.WriteAllBytes(Application.dataPath + "/../SavedReturnedTex.png", testReturnedTex);
 
 
                     //Debug.Log("Read texture, setting to new image");
                     this.gameObject.GetComponent<PicMain>().AddImageUndo(true);
+                    yield return null; //wait a free to lesson the jerkiness
+
                     int maskFeatheringRevolutions = (int)GameLogic.Get().GetAlphaMaskFeatheringPower();
                     Texture2D finalTexture = null;
 
+                    /*
                     if (GameLogic.Get().GetInpaintMaskEnabled())
                     {
                         //actually, we could just set it to this image, but let's only copy the parts our original mask wanted changed, this is Seth's
@@ -264,7 +296,7 @@ public class PicInpaint : MonoBehaviour
 
 
                         finalTexture.SetPixelsFromTextureWithAlphaMask(texture, processor.m_originalMap, 1.0f, true);
-                    } else
+                    } else */
                     {
                         //simple way, no feathered alpha masking
                         finalTexture = texture;
@@ -273,6 +305,8 @@ public class PicInpaint : MonoBehaviour
 
                     //now copy block over the real image
                     picSprite.texture.Blit(m_targetRect.GetOffsetX(), m_targetRect.GetOffsetY(), finalTexture, 0, 0, m_targetRect.GetWidth(), m_targetRect.GetHeight());
+                    yield return null; //wait a free to lesson the jerkiness
+
                     picSprite.texture.Apply();
                     if (m_onFinishedRenderingCallback != null)
                         m_onFinishedRenderingCallback.Invoke(gameObject);

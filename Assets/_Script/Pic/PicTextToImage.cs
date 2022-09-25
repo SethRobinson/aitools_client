@@ -10,7 +10,7 @@ public class PicTextToImage : MonoBehaviour
     string m_prompt;
     int m_steps;
     float m_prompt_strength;
-    int m_seed;
+    long m_seed = -1;
     public GameObject m_sprite;
     bool m_bIsGenerating;
     int m_gpu;
@@ -27,11 +27,32 @@ public class PicTextToImage : MonoBehaviour
         }
         
     }
+    public void SetSeed(long seed)
+    {
+        m_seed = seed;
+    }
+    public bool WasCustomSeedSet()
+    {
+        return m_seed != -1;
+    }
+
+    public long GetSeed() { return m_seed; }
     public bool IsBusy()
     {
         return m_bIsGenerating;
     }
+    public string GetPrompt()
+    {
+        return m_prompt;
+    }
 
+    public void SetPrompt(string prompt)
+    {
+        m_prompt = prompt;
+    }
+
+    public float GetTextStrength() { return m_prompt_strength; }
+    public void SetTextStrength(float strength) { m_prompt_strength = strength; }
     // Start is called before the first frame update
     void Start()
     {
@@ -72,12 +93,18 @@ public class PicTextToImage : MonoBehaviour
         m_steps = GameLogic.Get().GetSteps();
 
         if (!rerender || m_prompt == null || m_prompt == "")
-            {
-            m_seed = UnityEngine.Random.Range(1, 20000000);
+        {
+            m_seed = GameLogic.Get().GetSeed();
             m_prompt = GameLogic.Get().GetPrompt();
             m_prompt_strength = GameLogic.Get().GetTextStrength();
         }
 
+        if (m_seed == -1)
+        {
+            var rand = new System.Random();
+            //let's set it to our own random so we know what it is later
+            m_seed = rand.NextLong();
+        }
         if (Config.Get().IsGPUBusy(m_gpu))
         {
             Debug.LogError("Why is GPU busy?!");
@@ -114,7 +141,7 @@ public class PicTextToImage : MonoBehaviour
         int genHeight = GameLogic.Get().GetGenHeight();
         var gpuInf = Config.Get().GetGPUInfo(m_gpu);
 
-        string json = "{\"fn_index\":"+ gpuInf.fn_indexDict["text2image"]+",\"data\":[\"" + GameLogic.Get().GetPrompt() +
+        string json = "{\"fn_index\":"+ gpuInf.fn_indexDict["text2image"]+",\"data\":[\"" + m_prompt +
           "\",\""+GameLogic.Get().GetNegativePrompt()+ "\",\"None\",\"None\"," + GameLogic.Get().GetSteps() +
           ",\""+GameLogic.Get().GetSamplerName()+"\"," + bFixFace.ToString().ToLower() + "," + bTiled.ToString().ToLower() + ",1,1," + GameLogic.Get().GetTextStrength() + ","
           + m_seed + ",-1,0,0,0," + genHeight + "," + genWidth + ",\"" +
@@ -151,6 +178,7 @@ public class PicTextToImage : MonoBehaviour
                 //Ok, we now have to dig into the response and pull out the json image
 
                 JSONNode rootNode = JSON.Parse(postRequest.downloadHandler.text);
+                yield return null; //wait a free to lesson the jerkiness
 
                 Debug.Assert(rootNode.Tag == JSONNodeType.Object);
 
@@ -183,13 +211,13 @@ public class PicTextToImage : MonoBehaviour
                         string temp = images[i].ToString();
 
                         //First get rid of the "data:image/png;base64," part
-
-
                         string picChars = images[i].ToString().Substring(images[i].ToString().IndexOf(",")+1);
                         //this is dumb, why is there a single " at the end?  Is there a better way to get rid of it? //OPTIMIZE
                         picChars = picChars.Substring(0, picChars.LastIndexOf('"'));
                         //Debug.Log("image: " + picChars);
                         imgDataBytes = Convert.FromBase64String(picChars);
+                        yield return null; //wait a free to lesson the jerkiness
+
                     }
                 }
                 else
@@ -202,9 +230,11 @@ public class PicTextToImage : MonoBehaviour
 
                 Texture2D texture = new Texture2D(0, 0, TextureFormat.RGBA32, false);
                 bool bSuccess = false;
-               
+                yield return null; //wait a free to lesson the jerkiness
+
                 if (texture.LoadImage(imgDataBytes, false))
                 {
+                    yield return null; //wait a free to lesson the jerkiness
                     m_picScript.AddImageUndo();
                     //Debug.Log("Read texture");
                     float biggestSize = Math.Max(texture.width, texture.height);
@@ -212,6 +242,9 @@ public class PicTextToImage : MonoBehaviour
                     Sprite newSprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f);
                     renderer.sprite = newSprite;
                     bSuccess = true;
+
+
+                    m_picScript.OnImageReplaced();
                 }
                 else
                 {

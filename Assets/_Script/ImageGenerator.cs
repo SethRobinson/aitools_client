@@ -74,7 +74,7 @@ public class ImageGenerator : MonoBehaviour
         //AddImageByFileName("black_and_white.png");
 
         //AddImageByFileName("tall_pic_test.png");
-        //AddImageByFileName("wide_pic_test.jpg");
+        AddImageByFileName("wide_pic_test.jpg");
         //AddImageByFileName("square_pic_test.png");
         //m_generateActive = false;
     }

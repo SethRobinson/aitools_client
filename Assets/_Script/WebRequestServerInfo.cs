@@ -10,6 +10,8 @@ using SimpleJSON;
 public class WebRequestServerInfo : MonoBehaviour
 {
     bool _bUseHack = false;
+    const int m_timesToTry = 2;
+    int m_timesTried = 0;
 
     // Start is called before the first frame update
     void Start()
@@ -32,13 +34,14 @@ public class WebRequestServerInfo : MonoBehaviour
 
     IEnumerator GetRequest(String server)
     {
+     
         WWWForm form = new WWWForm();
         var finalURL = server + "/file/aitools/get_info.json";
 
         Debug.Log("Checking server "+ server+ "...");
-        
+    again:
         //Create the request using a static method instead of a constructor
-        
+
         using (var postRequest = UnityWebRequest.Get(finalURL))
         {
             //Start the request with a method instead of the object itself
@@ -46,6 +49,13 @@ public class WebRequestServerInfo : MonoBehaviour
 
             if (postRequest.result != UnityWebRequest.Result.Success)
             {
+                m_timesTried++;
+                if (m_timesTried < m_timesToTry)
+                {
+                    //well, let's try again before we say we failed.
+                    Debug.Log("Checking server " + server + "... (try "+m_timesTried+")");
+                    goto again;
+                }
                 Debug.Log("Error connecting to server " + finalURL + ". ("+ postRequest.error+")  Are you sure it's up and this address/port is right?");
                 Debug.Log("Click Configuration, then Save & Apply to try again.");
                 GameLogic.Get().ShowConsole(true);

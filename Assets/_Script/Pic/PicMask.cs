@@ -13,7 +13,7 @@ public class PicMask : MonoBehaviour
     public SpriteRenderer m_pic;
     bool m_boolMaskHasBeenSet = false;
     bool m_bMaskModified;
-
+    public PicTargetRect m_targetRectScript;
 
     // Start is called before the first frame update
     void Start()
@@ -26,6 +26,7 @@ public class PicMask : MonoBehaviour
             RecreateMask();
         }
 
+        SetMaskVisible(false); //start with it off
     }
 
     private void Awake()
@@ -102,11 +103,13 @@ public class PicMask : MonoBehaviour
 
     public void SetMaskVisible(bool bNew)
     {
-        m_spriteMask.forceRenderingOff = !bNew;
+        m_spriteMask.gameObject.SetActive(bNew);
+
+        //m_spriteMask.forceRenderingOff = !bNew;
     }
     public bool IsMaskVisible()
     {
-        return !m_spriteMask.forceRenderingOff;
+        return m_spriteMask.gameObject.activeSelf;
     }
     public void OnToggleMaskViewButton()
     {
@@ -145,14 +148,15 @@ public class PicMask : MonoBehaviour
             RecreateMask();
             //Debug.Log("Mask resized to " + m_spriteMask.sprite.texture.width);
         }
+
     }
 
     void Update()
     {
 
         ResizeMaskIfNeeded();
-      
-        if (Input.GetMouseButton(0) && !EventSystem.current.IsPointerOverGameObject())
+
+        if ((Input.GetMouseButton(0) || Input.GetMouseButtonUp(0)) && !EventSystem.current.IsPointerOverGameObject())
         {
             GameObject go = GameLogic.Get().GetPicWereHoveringOver();
             if (go != gameObject) return;
@@ -162,7 +166,7 @@ public class PicMask : MonoBehaviour
             Vector2 vWorldClickPos = new Vector2(vClickWorldPos.x, vClickWorldPos.y);
             Color color;
 
-            if (GetSpritePixelColorUnderMousePointer(m_spriteMask,  out color, out vTexPos))
+            if (GetSpritePixelColorUnderMousePointer(m_spriteMask, out color, out vTexPos))
             {
                 //Debug.Log("HIT: " +color+" at vTexPos: "+vTexPos);
 
@@ -174,21 +178,40 @@ public class PicMask : MonoBehaviour
 
                 int brushSize = (int)GameLogic.Get().GetPenSize();
                 Color drawColor = new Color(1, 1, 1, 1);
-                
-                if (Input.GetKey(KeyCode.LeftControl)  || Input.GetKey(KeyCode.RightControl))
+
+
+                Vector2 clickedPos = new Vector2(vTexPos.x, m_spriteMask.sprite.texture.height - vTexPos.y);
+
+                if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
                 {
                     //move target rect if possible
-                    PicTargetRect targetRectScript = gameObject.GetComponent<PicTargetRect>();
-                    targetRectScript.OnMoveToPixelLocation(
-                        new Vector2(vTexPos.x, m_spriteMask.sprite.texture.height- vTexPos.y));
+                    var vCenteredRectPos = new Vector2(vTexPos.x - (m_targetRectScript.GetWidth() / 2), (m_spriteMask.sprite.texture.height - vTexPos.y) - (m_targetRectScript.GetHeight() / 2));
+                    
+                    m_targetRectScript.OnMoveToPixelLocation(vCenteredRectPos);
                     return;
                 }
+
+
 
                 if (Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt))
                 {
                     //hold alt for erase mask
                     drawColor = new Color(0, 0, 0, 0);
                 }
+                if (Input.GetMouseButtonDown(0))
+                {
+                    m_targetRectScript.OnClickedPos(clickedPos);
+                } else
+                {
+                    m_targetRectScript.OnMovedPos(clickedPos);
+                }
+
+                if (m_targetRectScript.IsMovingRect())
+                {
+                    //moving the rect around, don't screw with the actual mask
+                    return;
+                }
+            
                 m_bMaskModified = true;
                 copyTexture.SetPixelsWithinRadius((int)vTexPos.x, (int)vTexPos.y, brushSize, drawColor);
                 copyTexture.Apply();

@@ -223,8 +223,6 @@ public class PicMain : MonoBehaviour
     {
         try
         {
-
-            
             Debug.Log("Loading "+filename+" from disk");
             var buffer = File.ReadAllBytes(filename);
             Texture2D texture = new Texture2D(0, 0, TextureFormat.RGBA32, false);
@@ -288,13 +286,18 @@ public class PicMain : MonoBehaviour
         //make a copy of this entire object
 
         GameObject go = ImageGenerator.Get().CreateNewPic();
-        PicMain picScript = go.GetComponent<PicMain>();
+        PicMain targetPicScript = go.GetComponent<PicMain>();
         PicTargetRect targetRectScript = go.GetComponent<PicTargetRect>();
+        PicTextToImage targetTextToImageScript = go.GetComponent<PicTextToImage>();
 
-        picScript.SetImage(m_pic.sprite.texture, true);
-        picScript.SetMask(m_mask.sprite.texture, true);
-        targetRectScript.OnMoveToPixelLocation(m_targetRectScript.GetOffsetRect().position);
-        
+        targetPicScript.SetImage(m_pic.sprite.texture, true);
+        targetPicScript.SetMask(m_mask.sprite.texture, true);
+        targetTextToImageScript.SetSeed(m_picTextToImageScript.GetSeed()); //if we've set it, it will carry to the duplicate as well
+        targetTextToImageScript.SetTextStrength(m_picTextToImageScript.GetTextStrength()); //if we've set it, it will carry to the duplicate as well
+        targetTextToImageScript.SetPrompt(m_picTextToImageScript.GetPrompt()); //if we've set it, it will carry to the duplicate as well
+
+        targetRectScript.SetOffsetRect(m_targetRectScript.GetOffsetRect());
+
         return go;
     }
 
@@ -441,6 +444,8 @@ public class PicMain : MonoBehaviour
 
     public void OnImageReplaced()
     {
+        MovePicUpIfNeeded();
+        m_picMaskScript.ResizeMaskIfNeeded();
         m_targetRectScript.UpdatePoints();
     }
 

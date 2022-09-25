@@ -83,7 +83,8 @@ public class PicUpscale : MonoBehaviour
 
             if (m_upscale > 1.0f)
             {
-                gameObject.GetComponent<PicMask>().SetMaskVisible(false);
+                m_picScript.GetMaskScript().SetMaskVisible(false); //we don't want to see a rect
+
             }
         }
         
@@ -116,6 +117,7 @@ public class PicUpscale : MonoBehaviour
         String finalURL = url;
         Debug.Log("Upscaling with " + finalURL + " local GPU ID " + m_gpu);
         string imgBase64 = Convert.ToBase64String(picPng);
+        yield return null; //wait a free to lesson the jerkiness
 
         var gpuInf = Config.Get().GetGPUInfo(m_gpu);
 
@@ -143,6 +145,7 @@ public class PicUpscale : MonoBehaviour
                 //Debug.Log("Form upload complete! Downloaded " + postRequest.downloadedBytes); // + postRequest.downloadHandler.text
 
                 JSONNode rootNode = JSON.Parse(postRequest.downloadHandler.text);
+                yield return null; //wait a free to lesson the jerkiness
 
                 Debug.Assert(rootNode.Tag == JSONNodeType.Object);
                 var dataNode = rootNode["data"];
@@ -159,16 +162,20 @@ public class PicUpscale : MonoBehaviour
                 {
                     for (int i = 0; i < images.Count; i++)
                     {
-                        //convert each to be a pic object?
-                        string temp = images[i].ToString();
-
                         //First get rid of the "data:image/png;base64," part
+                        string str = images[i].ToString();
+                        yield return null; //wait a free to lesson the jerkiness
 
-                        string picChars = images[i].ToString().Substring(images[i].ToString().IndexOf(",") + 1);
-                        //this is dumb, why is there a single " at the end?  Is there a better way to get rid of it? //OPTIMIZE
-                        picChars = picChars.Substring(0, picChars.LastIndexOf('"'));
+                        int startIndex = str.IndexOf(",") + 1;
+                        int endIndex = str.LastIndexOf('"');
+
+                        string picChars = str.Substring(startIndex, endIndex- startIndex);
+                        yield return null; //wait a free to lesson the jerkiness
+
                         //Debug.Log("image: " + picChars);
                         imgDataBytes = Convert.FromBase64String(picChars);
+                        yield return null; //wait a free to lesson the jerkiness
+
                     }
                 }
                 else
@@ -181,14 +188,19 @@ public class PicUpscale : MonoBehaviour
 
                 if (texture.LoadImage(imgDataBytes, false))
                 {
+                    yield return null; //wait a free to lesson the jerkiness
+
                     //Debug.Log("Read texture, setting to new image");
                     this.gameObject.GetComponent<PicMain>().AddImageUndo();
+                    yield return null; //wait a free to lesson the jerkiness
 
                     float biggestSize = Math.Max(texture.width, texture.height);
                     UnityEngine.Sprite newSprite = UnityEngine.Sprite.Create(texture, new Rect(0,0, texture.width, texture.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f);
                     renderer.sprite = newSprite;
                     m_picScript.OnImageReplaced();
-                    m_picScript.GetMaskScript().SetMaskVisible(false); //we don't want to see a rect
+                    
+                    
+                    //m_picScript.GetMaskScript().SetMaskVisible(false); //we don't want to see a rect
                     //or whatever
 
                 }

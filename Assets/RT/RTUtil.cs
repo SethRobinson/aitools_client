@@ -7,7 +7,8 @@ using UnityEngine.SceneManagement;
 using System.Runtime.InteropServices;
 using System.IO;
 using UnityEngine.Rendering;
-using System.Security.Cryptography;
+
+
 
 //Adapted from https://stackoverflow.com/questions/46237984/how-to-emulate-statically-the-c-bitfields-in-c
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -38,6 +39,97 @@ public struct RTBitField
             _data = (byte)((_data | v) ^ v);
     }
 
+}
+
+//based on code from https://stackoverflow.com/questions/6651554/random-number-in-long-range-is-this-the-way
+public static class Extensions
+{
+    //returns a uniformly random ulong between ulong.Min inclusive and ulong.Max inclusive
+    public static ulong NextULong(this System.Random rng)
+    {
+        byte[] buf = new byte[8];
+        rng.NextBytes(buf);
+        return System.BitConverter.ToUInt64(buf, 0);
+    }
+
+    //returns a uniformly random ulong between ulong.Min and Max without modulo bias
+    public static ulong NextULong(this System.Random rng, ulong max, bool inclusiveUpperBound = false)
+    {
+        return rng.NextULong(ulong.MinValue, max, inclusiveUpperBound);
+    }
+
+    //returns a uniformly random ulong between Min and Max without modulo bias
+    public static ulong NextULong(this System.Random rng, ulong min, ulong max, bool inclusiveUpperBound = false)
+    {
+        ulong range = max - min;
+
+        if (inclusiveUpperBound)
+        {
+            if (range == ulong.MaxValue)
+            {
+                return rng.NextULong();
+            }
+
+            range++;
+        }
+
+        if (range <= 0)
+        {
+            throw new System.ArgumentOutOfRangeException("Max must be greater than min when inclusiveUpperBound is false, and greater than or equal to when true", "max");
+        }
+
+        ulong limit = ulong.MaxValue - ulong.MaxValue % range;
+        ulong r;
+        do
+        {
+            r = rng.NextULong();
+        } while (r > limit);
+
+        return r % range + min;
+    }
+
+    //returns a uniformly random long between long.Min inclusive and long.Max inclusive
+    public static long NextLong(this System.Random rng)
+    {
+        byte[] buf = new byte[8];
+        rng.NextBytes(buf);
+        return System.BitConverter.ToInt64(buf, 0);
+    }
+
+    //returns a uniformly random long between long.Min and Max without modulo bias
+    public static long NextLong(this System.Random rng, long max, bool inclusiveUpperBound = false)
+    {
+        return rng.NextLong(long.MinValue, max, inclusiveUpperBound);
+    }
+
+    //returns a uniformly random long between Min and Max without modulo bias
+    public static long NextLong(this System.Random rng, long min, long max, bool inclusiveUpperBound = false)
+    {
+        ulong range = (ulong)(max - min);
+
+        if (inclusiveUpperBound)
+        {
+            if (range == ulong.MaxValue)
+            {
+                return rng.NextLong();
+            }
+
+            range++;
+        }
+
+        if (range <= 0)
+        {
+            throw new System.ArgumentOutOfRangeException("Max must be greater than min when inclusiveUpperBound is false, and greater than or equal to when true", "max");
+        }
+
+        ulong limit = ulong.MaxValue - ulong.MaxValue % range;
+        ulong r;
+        do
+        {
+            r = rng.NextULong();
+        } while (r > limit);
+        return (long)(r % range + (ulong)min);
+    }
 }
 
 //based on code from https://forum.unity.com/threads/how-to-edit-texture-pixels-at-run-time-through-c-code.1127939/
@@ -158,7 +250,6 @@ public static class Tex2DExtension
         }
 
     }
-
 
     public static void Fill(this Texture2D tex, Color color)
     {
@@ -408,8 +499,16 @@ public class RTUtil
         }
         return text.Substring(i + 1);
     }
-   
 
+
+    //want a texture size to be a multiple of 16 or something?  Use this
+    static public int ConvertNumToNearestMultiple(int value, int factor)
+    {
+        return (int)System.Math.Round(
+                (value / (double)factor),
+                System.MidpointRounding.AwayFromZero
+            ) * factor;
+    }
 
     //Note, these swaps don't work on a LOT of stuff in C#... don't trust at all unless you're doing an int or something
     static public void Swap<T>(ref T lhs, ref T rhs)
