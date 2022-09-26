@@ -1,9 +1,4 @@
-using System;
-using System.Collections;
-using System.Collections.Generic;
-using UnityEditor;
 using UnityEngine;
-using static UnityEngine.UI.AspectRatioFitter;
 
 public class PicTargetRect : MonoBehaviour
 {
@@ -23,7 +18,6 @@ public class PicTargetRect : MonoBehaviour
     void Start()
     {
         UpdatePoints();
-
     }
 
     public bool IsMovingRect() { return m_bMovingRect; }
@@ -70,12 +64,12 @@ public class PicTargetRect : MonoBehaviour
 
         if (m_targetRectInPixels.x +GetWidth() > m_picRenderer.sprite.texture.width)
         {
-            m_targetRectInPixels.x = m_picRenderer.sprite.texture.width - GetWidth();
+            m_targetRectInPixels.x = RTUtil.ConvertNumToNearestMultiple((int)(m_picRenderer.sprite.texture.width - GetWidth()), 64);
         }
 
         if (m_targetRectInPixels.y + GetHeight() > m_picRenderer.sprite.texture.height)
         {
-            m_targetRectInPixels.y = m_picRenderer.sprite.texture.height - GetHeight();
+            m_targetRectInPixels.y = RTUtil.ConvertNumToNearestMultiple( (int)(m_picRenderer.sprite.texture.height - GetHeight()), 64);
         }
         UpdatePoints();
     }
@@ -117,7 +111,6 @@ public class PicTargetRect : MonoBehaviour
 
         var color = Color.yellow;
 
-
         if (m_targetRectInPixels.width % 256 != 0)
         {
             color.g -= 0.25f;
@@ -151,18 +144,25 @@ public class PicTargetRect : MonoBehaviour
         m_lineRen.SetPositions(points);
 
         //update icon positions
-
-      
+  
         m_posDragIcon.transform.localPosition = new Vector3(picRect.position.x+ iconOffset, -(picRect.position.y+ iconOffset), m_sizeDragIcon.transform.localPosition.z);
-
         m_sizeDragIcon.transform.localPosition = new Vector3(picRect.xMax- iconOffset, -(picRect.yMax- iconOffset), m_sizeDragIcon.transform.localPosition.z);
-
     }
 
     // Update is called once per frame
     public void OnClickedPos(Vector2 clickedPos)
    {
-        float distanceFromRectNeeded = 24; //bigger makes the corners easier to click
+        float distanceFromRectNeeded = 24; //bigger makes the corners easier to click, but the bigger the image the
+                                           //more pixels we need or it's too hard to click
+        var picRect = m_picRenderer.sprite.textureRect;
+
+        float scaleRatio = picRect.width / 512;
+        if (scaleRatio > 1.1f)
+        {
+            scaleRatio -= 1.0f;
+
+            distanceFromRectNeeded *= 1+ (scaleRatio*0.25f);
+        }
 
        
         //did they click one of the corners?
@@ -214,7 +214,7 @@ public class PicTargetRect : MonoBehaviour
 
         if (newRect.width >= 64 && newRect.height >= 64 && (newRect.width != m_targetRectInPixels.width || newRect.height != m_targetRectInPixels.height))
         {
-            RTQuickMessageManager.Get().ShowMessage("Size: " + newRect.size);
+            RTQuickMessageManager.Get().ShowMessage("Inpaint size: " + newRect.size);
             m_targetRectInPixels = newRect;
             UpdatePoints();
             OnMoveToPixelLocation(m_targetRectInPixels.position);

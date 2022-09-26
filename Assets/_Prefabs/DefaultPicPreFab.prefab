@@ -3309,7 +3309,7 @@ GameObject:
   - component: {fileID: 8309251073526531411}
   - component: {fileID: 6791748818497109218}
   m_Layer: 5
-  m_Name: SaveButton (1)
+  m_Name: SaveButton
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -3442,7 +3442,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: edd328fb144e819498d395172c8823a0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _text: Saves this image out as png
+  _text: Saves this image out as bmp (will include any mask as an alpha channel)
 --- !u!1 &5452831084607668466
 GameObject:
   m_ObjectHideFlags: 0
@@ -5201,8 +5201,8 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7592574692101798387}
-        m_TargetAssemblyTypeName: Pic, Assembly-CSharp
-        m_MethodName: OnFileEdit
+        m_TargetAssemblyTypeName: PicMain, Assembly-CSharp
+        m_MethodName: OnFileEditButton
         m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}

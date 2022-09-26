@@ -129,6 +129,64 @@ public class PicMask : MonoBehaviour
         m_boolMaskHasBeenSet = true;
         m_bMaskModified = true; //it's possible it's still blank, but has been modified from default
     }
+    public void SetMaskFromTexture(Texture2D copyTexture)
+    {
+        float biggestSize = Math.Max(copyTexture.width, copyTexture.height);
+        m_spriteMask.sprite = Sprite.Create(copyTexture, new Rect(0, 0, copyTexture.width, copyTexture.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f);
+        m_boolMaskHasBeenSet = true;
+        m_bMaskModified = true;
+
+        //Debug.Log("Recreated mask");
+    }
+
+    public void ForceMaskRectToBeWithinImageBounds()
+    {
+
+        var maskRect = m_targetRectScript.GetOffsetRect();
+
+        if (maskRect.x < 0)
+        {
+            maskRect.x = 0;
+        }
+        if (maskRect.y < 0)
+        {
+            maskRect.y = 0;
+        }
+
+
+        while (maskRect.width > m_spriteMask.sprite.texture.width && m_spriteMask.sprite.texture.width > 64)
+        {
+            //still?  Fine
+
+            maskRect.width -= 1;
+            int temp = (int)maskRect.width;
+            maskRect.width = RTUtil.ConvertNumToNearestMultiple((int)maskRect.width, 64);
+
+            if (maskRect.width > m_spriteMask.sprite.texture.width)
+            {
+                maskRect.width = temp;
+            }
+        }
+
+        while (maskRect.height > m_spriteMask.sprite.texture.height && m_spriteMask.sprite.texture.height > 64)
+        {
+            //still?  Fine
+
+            maskRect.height -= 1;
+            int temp = (int)maskRect.height;
+            maskRect.height = RTUtil.ConvertNumToNearestMultiple((int)maskRect.height, 64);
+
+            if (maskRect.height > m_spriteMask.sprite.texture.height)
+            {
+                maskRect.height = temp;
+            }
+        }
+
+        if (maskRect != m_targetRectScript.GetOffsetRect())
+        {
+            m_targetRectScript.SetOffsetRect(maskRect);
+        }
+    }
     public void RecreateMask()
     {
         Texture2D copyTexture = new Texture2D(m_pic.sprite.texture.width, m_pic.sprite.texture.height, TextureFormat.RGBA32, false);
@@ -148,7 +206,8 @@ public class PicMask : MonoBehaviour
             RecreateMask();
             //Debug.Log("Mask resized to " + m_spriteMask.sprite.texture.width);
         }
-
+        
+        ForceMaskRectToBeWithinImageBounds();
     }
 
     void Update()

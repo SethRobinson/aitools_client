@@ -45,15 +45,16 @@ using System.Collections.Generic;
 	static void BuildBeta() 
     {
   	 EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.Standalone, BuildTarget.StandaloneWindows64);
-	 RTBuildTools.AddDefine(BuildTargetGroup.Standalone, "RT_BETA");
-              BuildPipeline.BuildPlayer(GetScenes(), "build\\win\\"+ GetProjectName() + ".exe", BuildTarget.StandaloneWindows64, BuildOptions.None);
+	   RTBuildTools.AddDefine(BuildTargetGroup.Standalone, "RT_BETA");
+             BuildPipeline.BuildPlayer(GetScenes(), "build\\win\\"+ GetProjectName() + ".exe", BuildTarget.StandaloneWindows64, BuildOptions.None);
    	 RTBuildTools.RemoveDefine(BuildTargetGroup.Standalone, "RT_BETA");
      }
 
 	static void BuildRelease() 
     {
-  	EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.Standalone, BuildTarget.StandaloneWindows64);
-  
+  	    EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.Standalone, BuildTarget.StandaloneWindows64);
+        RTBuildTools.AddDefine(BuildTargetGroup.Standalone, "RT_RELEASE");
      	BuildPipeline.BuildPlayer(GetScenes(), "build\\win\\"+ GetProjectName() + ".exe", BuildTarget.StandaloneWindows64, BuildOptions.None);
+		RTBuildTools.RemoveDefine(BuildTargetGroup.Standalone, "RT_RELEASE");
      }
  }

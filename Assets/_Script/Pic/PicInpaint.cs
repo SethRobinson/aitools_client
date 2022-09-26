@@ -263,8 +263,8 @@ public class PicInpaint : MonoBehaviour
                     yield return null; //wait a free to lesson the jerkiness
 
                     //debug: write texture out
-                    byte[] testReturnedTex = texture.EncodeToPNG();
-                    File.WriteAllBytes(Application.dataPath + "/../SavedReturnedTex.png", testReturnedTex);
+                    //byte[] testReturnedTex = texture.EncodeToPNG();
+                    //File.WriteAllBytes(Application.dataPath + "/../SavedReturnedTex.png", testReturnedTex);
 
 
                     //Debug.Log("Read texture, setting to new image");

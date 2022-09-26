@@ -8,8 +8,6 @@ using System.Runtime.InteropServices;
 using System.IO;
 using UnityEngine.Rendering;
 
-
-
 //Adapted from https://stackoverflow.com/questions/46237984/how-to-emulate-statically-the-c-bitfields-in-c
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct RTBitField
@@ -215,6 +213,24 @@ public static class Tex2DExtension
 
         return newtex;
     }
+    //Don't forget to .Apply() after doing this!
+    public static Texture2D FillAlpha(this Texture2D newtex, float alphaZeroToOne)
+    {
+       
+        for (int x = 0; x < newtex.width; x++)
+        {
+            for (int y = 0; y < newtex.height; y++)
+            {
+
+                Color c = newtex.GetPixel(x, y);
+                c.a = alphaZeroToOne;
+                newtex.SetPixel(x, y, c); 
+            }
+        }
+
+        return newtex;
+    }
+
     public static Texture2D Duplicate (this Texture2D tex)
     {
         Texture2D copyTexture = new Texture2D(tex.width, tex.height, tex.format, false);
@@ -251,6 +267,8 @@ public static class Tex2DExtension
 
     }
 
+
+    //Don't forget to .Apply() after doing this!
     public static void Fill(this Texture2D tex, Color color)
     {
         for (int x = 0; x < tex.width; x++)
@@ -263,7 +281,7 @@ public static class Tex2DExtension
 
     }
 
-    //inverts both color and alpha
+    //inverts both color and alpha  //Don't forget to .Apply() after doing this!
     public static void Invert(this Texture2D tex)
     {
         for (int x = 0; x < tex.width; x++)
@@ -459,7 +477,8 @@ public class RTUtil
 	public static int[] g_intArray = new int[3];
     public static uint[] g_uintArray = new uint[3];
     public static short[] g_shortArray = new short[3];
-	public static float[] g_floatArray = new float[4];
+    public static System.UInt16[] g_ushortArray = new System.UInt16[3];
+    public static float[] g_floatArray = new float[4];
     public static bool[] g_boolArray = new bool[3];
     public static byte[] g_byteArray = new byte[3];
 
@@ -473,6 +492,16 @@ public class RTUtil
         {
             return false;
         }
+    }
+
+    public static uint Color32ToUInt(Color32 color)
+    {
+        return (uint)((color.a << 24) | (color.r << 16) | (color.g << 8) | (color.b << 0));
+    }
+
+    public static Color32 UIntToColor32(uint color)
+    {
+        return new Color32((byte)(color >> 16), (byte)(color >> 8), (byte)(color >> 0), (byte)(color >> 24));
     }
 
     //thanks to sol_hsa at http://sol.gfxile.net/interpolation/index.html
@@ -831,17 +860,32 @@ public class RTUtil
     public static void SerializeInt16(short value, byte[] byteBuff, ref int index)
 	{
 		g_shortArray[0] = value;
-		System.Buffer.BlockCopy(g_shortArray, 0, byteBuff, index, 2); //raw copy over 4 bytes
+		System.Buffer.BlockCopy(g_shortArray, 0, byteBuff, index, 2); //raw copy over 2 bytes
 		index += 2;
 	}
 	
 	//read
 	public static void SerializeInt16(ref short value, byte[] byteBuff, ref int index)
 	{
-		System.Buffer.BlockCopy(byteBuff, index, g_shortArray, 0, 2); //raw copy over 4 bytes
+		System.Buffer.BlockCopy(byteBuff, index, g_shortArray, 0, 2); //raw copy over 2 bytes
 		value = g_shortArray[0];
 		index += 2;
 	}
+
+    public static void SerializeUInt16(System.UInt16 value, byte[] byteBuff, ref int index)
+    {
+        g_ushortArray[0] = value;
+        System.Buffer.BlockCopy(g_ushortArray, 0, byteBuff, index, 2); //raw copy over 2 bytes
+        index += 2;
+    }
+
+    //read
+    public static void SerializeUInt16(ref System.UInt16 value, byte[] byteBuff, ref int index)
+    {
+        System.Buffer.BlockCopy(byteBuff, index, g_ushortArray, 0, 2); //raw copy over 2 bytes
+        value = g_ushortArray[0];
+        index += 2;
+    }
 
 
     //write

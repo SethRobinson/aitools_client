@@ -38,7 +38,8 @@ public class RTQuickMessageManager : MonoBehaviour
         Vector3 vFinalPos = new Vector3(vPos.x, vPos.y, 1);
 
         //create it
-        GameObject go = Instantiate(RTQuickMessageManager.Get().m_quickMessagePrefab);
+        GameObject go = Instantiate(RTQuickMessageManager.Get().m_quickMessagePrefab, null);
+        
         if (m_bOnlyAllowOne && m_lastObjCreated != null)
         {
             GameObject.Destroy(m_lastObjCreated);
@@ -52,7 +53,7 @@ public class RTQuickMessageManager : MonoBehaviour
         textComp.text = msg;
         //can't position the canvas itself, so we'll grab its child
         RawImage rawImage = bg.GetComponent<RawImage>();
-        go.transform.position = vFinalPos;
+        bg.transform.position = vFinalPos;
         var myCanvas = gameObject.GetComponentInParent<Canvas>();
 
         /*

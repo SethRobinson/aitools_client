@@ -6,7 +6,6 @@
 //disable warnings about UNET being depreciated
 #pragma warning disable 0618
 
-
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;

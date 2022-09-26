@@ -1993,6 +1993,7 @@ MonoBehaviour:
   _text: Samplers affect the image and how many steps are needed to look good.<br><br>Euler
     A(ncestral) - very creative, each can get a completely different picture depending
     on step count<br>DDIM - Denoising Diffusion Implicit Models - best at inpainting
+    (use 50+ steps)
 --- !u!1 &281673831
 GameObject:
   m_ObjectHideFlags: 0
@@ -17729,12 +17730,12 @@ PrefabInstance:
     - target: {fileID: 8335936608596666549, guid: f13496bcc6225004ebb72d41e2bd85b8,
         type: 3}
       propertyPath: m_text
-      value: "Controls:\n\n\u2022 (Inpainting) Mask - Left mouse button to add, hold
-        Alt to remove\n\u2022 (Inpainting) Hold Ctrl + Left mouse button to set 512x512
-        rect when working with bigger pics\n\u2022 (Inpainting) Show/hide mask -
-        M, Ctrl-I to inverse it\n\u2022 Pan around -  Hold down middle mouse button\n\u2022
-        Zoom - Mouse wheel\n\u2022 Undo last image change - U\n\nNote: This requires
-        that you setup an  <link=\"https://github.com/SethRobinson/aitools_server\"><u>AI
+      value: "Some shortcuts/controls to know:\n\n\u2022 (Inpainting) Mask - Left
+        mouse button to add, hold Alt to remove\n\u2022 (Inpainting) Ctrl + Left
+        mouse is a shortcut to set position of rectangle\n\u2022 (Inpainting) Show/hide
+        mask - M, Ctrl-I to inverse it\n\u2022 Pan around -  Hold down middle mouse
+        button\n\u2022 Zoom - Mouse wheel\n\u2022 Undo last image change - U\n\nNote:
+        This requires that you setup an  <link=\"https://github.com/SethRobinson/aitools_server\"><u>AI
         Tools Server</u></link>.   Click the Configuration button to set the server
         address to connect to.\n\nYou can also set the path to your Photoshop/image
         editor there.\n\nSeth's source code to this Unity project is <link=\"https://github.com/SethRobinson/aitools_client\"><u>on
@@ -17743,7 +17744,7 @@ PrefabInstance:
     - target: {fileID: 8335936608596666549, guid: f13496bcc6225004ebb72d41e2bd85b8,
         type: 3}
       propertyPath: m_fontSize
-      value: 26.55
+      value: 31
       objectReference: {fileID: 0}
     - target: {fileID: 8335936608596666549, guid: f13496bcc6225004ebb72d41e2bd85b8,
         type: 3}

@@ -1,5 +1,3 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
 public class RTQuickMessagePrefabScript : MonoBehaviour
@@ -29,10 +27,11 @@ public class RTQuickMessagePrefabScript : MonoBehaviour
         _textObj.enabled = true;
       
         var vPos = _originalPos;
+       
         var rt = _backGround.GetComponent<RectTransform>();
         rt.ForceUpdateRectTransforms();
         //move up
-        vPos.y += 48;
+        //vPos.y += 48;
      
         float offscreenX = vPos.x + rt.offsetMin.x;
         float offscreenY = vPos.y - rt.offsetMin.y;
@@ -52,7 +51,7 @@ public class RTQuickMessagePrefabScript : MonoBehaviour
         if (offscreenY > Screen.height)
         {
             //move it below us, there is no room above
-            vPos.y -= (48+24+ (rt.offsetMax.y*2));
+            vPos.y -= (24+ (rt.offsetMax.y*2));
         }
 
         _backGround.transform.position = vPos;

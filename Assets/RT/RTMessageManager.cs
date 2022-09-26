@@ -20,6 +20,8 @@ using System.Linq;
     - RTMessageManager creates itself on first use if needed
      
 
+    NOTE:  It only works with functions that don't have return arguements!
+
     Usage:
 
     Calling a global:

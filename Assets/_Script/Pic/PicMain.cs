@@ -1,9 +1,9 @@
 using System.Collections;
-
 using UnityEngine;
 using System.IO;
 using System;
 using TMPro;
+using B83.Image.BMP;
 
 public class UndoEvent
 {
@@ -74,7 +74,6 @@ public class PicMain : MonoBehaviour
         if (m_picInpaintScript.IsBusy()) m_picInpaintScript.SetForceFinish(true);
         if (m_picUpscaleScript.IsBusy()) m_picUpscaleScript.SetForceFinish(true);
     }
-
 
     public bool GetLocked() { return m_bLocked; }
     public void SetLocked(bool bNew) { m_bLocked = bNew; }
@@ -225,8 +224,29 @@ public class PicMain : MonoBehaviour
         {
             Debug.Log("Loading "+filename+" from disk");
             var buffer = File.ReadAllBytes(filename);
-            Texture2D texture = new Texture2D(0, 0, TextureFormat.RGBA32, false);
-            texture.LoadImage(buffer);
+            Texture2D texture = null;
+            
+            string fExt = Path.GetExtension(filename).ToLower();
+            bool bNeedToProcessAlpha = false;
+
+            if (fExt == ".bmp")
+            {
+                //RTQuickMessageManager.Get().ShowMessage("Detected bmp");
+
+                BMPLoader bmp = new BMPLoader();
+                BMPImage im = bmp.LoadBMP(filename);
+                texture = im.ToTexture2D();
+
+                if (im.HasAlphaChannel())
+                {
+                    bNeedToProcessAlpha = true;
+                }
+            }
+            else
+            {
+                texture = new Texture2D(0, 0, TextureFormat.RGBA32, false);
+                texture.LoadImage(buffer);
+            }
 
             if (bResize)
             {
@@ -240,15 +260,28 @@ public class PicMain : MonoBehaviour
 
             AddImageUndo();
             float biggestSize = Math.Max(texture.width, texture.height);
-            
-            Sprite newSprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f);
+            Sprite newSprite = null;
+            Texture2D alphaTex = null;
+
+
+            if (bNeedToProcessAlpha)
+            {
+                alphaTex = texture.Duplicate();
+                alphaTex.ConvertTextureToBlackAndWhiteRGBMask();
+                m_picMaskScript.SetMaskFromTexture(alphaTex);
+                texture.FillAlpha(1.0f);
+                texture.Apply();
+            }
+          
+            newSprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f);
+
             m_pic.sprite = newSprite;
             MovePicUpIfNeeded();
-           
-
+          
             SetStatusMessage("");
             m_picMaskScript.ResizeMaskIfNeeded();
             m_targetRectScript.UpdatePoints();
+
         }
         catch (Exception e)
         {
@@ -345,8 +378,14 @@ public class PicMain : MonoBehaviour
         Duplicate();
     }
 
+    public void OnFileEditButton()
+    {
+        RTQuickMessageManager.Get().ShowMessage("Opening 32 bit bmp with alpha mask in image editor...");
+        RTMessageManager.Get().Schedule(0.1f, OnFileEdit);
+    }
     public void OnFileEdit()
     {
+     
         //if we previously had a watch going, kill it
         StopFileWatchingIfNeeded();
         
@@ -357,13 +396,13 @@ public class PicMain : MonoBehaviour
             tempDir = tempDir.Substring(0, tempDir.LastIndexOf('\\'));
             tempDir += "\\tempCache";
             Directory.CreateDirectory(tempDir);
-            m_editFilename = tempDir + "\\pic_" + System.Guid.NewGuid() + ".png";
+            m_editFilename = tempDir + "\\pic_" + System.Guid.NewGuid() + ".bmp";
         }
 
+       
         SaveFile(m_editFilename); //if m_editFilename is blank, it will create a random one
-        
+      
         RunProcess(Config.Get().GetImageEditorPathAndExe(), false, m_editFilename);
-
 
         m_editFileWatcher = new FileSystemWatcher();
         m_editFileWatcher.Path = Path.GetDirectoryName(m_editFilename);
@@ -466,6 +505,24 @@ public class PicMain : MonoBehaviour
         //default filename if none is sent in
         tempDir = tempDir.Replace('/', '\\');
         tempDir = tempDir.Substring(0, tempDir.LastIndexOf('\\'));
+
+
+        string fileName = tempDir + "\\pic_" + System.Guid.NewGuid() + ".bmp";
+
+        if (fname != null && fname != "")
+        {
+            fileName = fname;
+        }
+
+        Debug.Log("Saving file to " + fileName);
+
+        var pngBytes = m_pic.sprite.texture.EncodeToBMP(m_mask.sprite.texture);
+        File.WriteAllBytes(fileName, pngBytes);
+
+
+        /*
+         if we wanted png saving 
+         
         string fileName = tempDir+"\\pic_"+ System.Guid.NewGuid()+".png";
        
         if (fname != null && fname != "")
@@ -477,12 +534,22 @@ public class PicMain : MonoBehaviour
 
         var pngBytes = m_pic.sprite.texture.EncodeToPNG();
         File.WriteAllBytes(fileName, pngBytes);
+        */
         return fileName;
+
+
     }
 
-    public void SaveFileNoReturn()
+    public void SaveFileNoReturn2()
     {
         SaveFile();
+
+    }
+
+        public void SaveFileNoReturn()
+    {
+        RTQuickMessageManager.Get().ShowMessage("Saving image...");
+        RTMessageManager.Get().Schedule(0.01f, this.SaveFileNoReturn2);
     }
 
     //a method I tried that crashed all the time, don't know why

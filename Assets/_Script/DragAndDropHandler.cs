@@ -3,7 +3,6 @@ using UnityEngine;
 using System.Linq;
 using B83.Win32;
 
-
 public class DragAndDropHandler : MonoBehaviour
 {
      
@@ -26,17 +25,23 @@ public class DragAndDropHandler : MonoBehaviour
         {
             var fi = new System.IO.FileInfo(f);
             var ext = fi.Extension.ToLower();
-            if (ext == ".png" || ext == ".jpg" || ext == ".jpeg")
+            if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp")
             {
                 file = f;
                 break;
+            } else
+            {
+                RTQuickMessageManager.Get().ShowMessage("Unknown image format: " + fi.Name);
             }
         }
         // If the user dropped a supported file, create a DropInfo
         if (file != "")
         {
             Debug.Log("Dropped " + file + " at " + new Vector2(aPos.x, aPos.y));
-            ImageGenerator.Get().AddImageByFileName(file);
+            RTQuickMessageManager.Get().ShowMessage("Opening "+file);
+
+            RTMessageManager.Get().Schedule(0.1f, ImageGenerator.Get().AddImageByFileName, file);
+            //ImageGenerator.Get().AddImageByFileName(file);
         }
     }
 

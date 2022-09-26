@@ -322,9 +322,9 @@ public class GameLogic : MonoBehaviour
         Debug.Log("Negative prompt changed: " + str);
     }
 
-
     void Start()
     {
+
         DOTween.Init(true, true, LogBehaviour.Verbose).SetCapacity(200, 20);
         // RTAudioManager.Get().SetDefaultMusicVol(0.4f);
 

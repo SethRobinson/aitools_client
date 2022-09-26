@@ -67,6 +67,8 @@ public class ImageGenerator : MonoBehaviour
         m_oldCamPos = m_camera.transform.position;
         m_oldCamSize = m_camera.orthographicSize;
         //test area
+
+#if !RT_RELEASE
         //AddImageByFileName("test_image_cosmo_512.png");
 
         //CreateNewPic(); //add a blank pic at startup
@@ -74,9 +76,10 @@ public class ImageGenerator : MonoBehaviour
         //AddImageByFileName("black_and_white.png");
 
         //AddImageByFileName("tall_pic_test.png");
-        AddImageByFileName("wide_pic_test.jpg");
+       // AddImageByFileName("cosmo_tiny.bmp");
         //AddImageByFileName("square_pic_test.png");
         //m_generateActive = false;
+#endif
     }
 
     public void SetButtonColor(Button but, Color col)
