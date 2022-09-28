@@ -174,11 +174,11 @@ public class PicInpaint : MonoBehaviour
 
         var gpuInf = Config.Get().GetGPUInfo(m_gpu);
  
-        string json = "{ \"fn_index\":\"" + gpuInf.fn_indexDict["img2img"] +"\",\"data\":[\"" + GameLogic.Get().GetPrompt() + "\",\""+GameLogic.Get().GetNegativePrompt()+"\",\"None\",\"None\",null,{ \"image\":\"data:image/png;base64," + imgBase64 +
+        string json = "{ \"fn_index\":\"" + gpuInf.fn_indexDict["img2img"] +"\",\"data\":[1,\"" + GameLogic.Get().GetPrompt() + "\",\""+GameLogic.Get().GetNegativePrompt()+ "\",\"None\",\"None\",null,{ \"image\":\"data:image/png;base64," + imgBase64 +
             "\",\"mask\":\"data:image/png;base64," + maskBase64 +
-            "\"},null,\"Draw mask\","+GameLogic.Get().GetSteps() +",\""+GameLogic.Get().GetSamplerName()+"\","+ maskBlur+",\""+ maskedContent+"\","+ bFixFace.ToString().ToLower()+","+bTiled.ToString().ToLower() + 
-            ",\"Inpaint a part of image\",1,1," + GameLogic.Get().GetTextStrength() +","+GameLogic.Get().GetInpaintStrength()+
-            ","+m_seed+",-1,0,0,0,"+ m_targetRect.GetHeight()+ ","+ m_targetRect.GetWidth()+",\"Just resize\",\"None\",64,false,\"Inpaint masked\",\"None\",null,\"\",\"\"],\"session_hash\":\"d0v2057qsd\"}";
+            "\"},null,null,\"Draw mask\","+GameLogic.Get().GetSteps() +",\""+GameLogic.Get().GetSamplerName()+"\","+ maskBlur+",\""+ maskedContent+"\","+ bFixFace.ToString().ToLower()+","+bTiled.ToString().ToLower() + 
+            ",1,1," + GameLogic.Get().GetTextStrength() +","+GameLogic.Get().GetInpaintStrength()+
+            ","+m_seed+",-1,0,0,0,false,"+ m_targetRect.GetHeight()+ ","+ m_targetRect.GetWidth()+",\"Just resize\",false,32,\"Inpaint masked\",\"\",\"\",\"None\",null],\"session_hash\":\"d0v2057qsd\"}";
 
         string thingToUse = json;
 
@@ -186,7 +186,9 @@ public class PicInpaint : MonoBehaviour
         {
             //thingToUse = jsonHacked;
         }
-        //File.WriteAllText("json_to_send.json", json);
+#if !RT_RELEASE
+//        File.WriteAllText("json_to_send.json", json);
+#endif
         using (var postRequest = UnityWebRequest.Post(finalURL, "POST"))
         {
             //Start the request with a method instead of the object itself

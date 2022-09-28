@@ -23,8 +23,9 @@ public class Config : MonoBehaviour
     string m_configText; //later move this to a config.txt or something
     const string m_configFileName = "config.txt";
     bool m_safetyFilter = true;
-   
-    float m_version = 0.44f;
+    public float m_requiredServerVersion = 0.21f;
+
+    public float m_version = 0.45f;
     string m_imageEditorPathAndExe = "none set";
 
     public string GetVersionString() { return m_version.ToString("0.00"); }

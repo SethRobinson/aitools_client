@@ -85,6 +85,28 @@ public class WebRequestServerInfo : MonoBehaviour
                 float version;
 
                 System.Single.TryParse(dict["version"].ToString(), out version);
+
+                float requiredClient = 0;
+
+                if (dict.ContainsKey("required_client_version"))
+                {
+                    System.Single.TryParse(dict["required_client_version"].ToString(), out requiredClient);
+
+                    if (requiredClient > Config.Get().m_version)
+                    {
+                        Debug.Log("ERROR: The server says this client (V" + Config.Get().GetVersionString() + " is oudated and we should upgrade to V" +
+                                requiredClient + " or newer.  Go upgrade! We'll try anyway though.");
+                        GameLogic.Get().ShowConsole(true);
+                    }
+                }
+
+                if (Config.Get().m_requiredServerVersion > version)
+                {
+                    Debug.Log("ERROR: The server version is outdated, we required "+ Config.Get().m_requiredServerVersion+" or newer. GO UPGRADE!  Trying anyway though.");
+                    GameLogic.Get().ShowConsole(true);
+                }
+               
+
                 Debug.Log("CONNECTED: " + server + " (" + serverName + ") V"+version+"");
 
                 //retrieve offsets

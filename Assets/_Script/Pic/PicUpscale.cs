@@ -121,8 +121,8 @@ public class PicUpscale : MonoBehaviour
 
         var gpuInf = Config.Get().GetGPUInfo(m_gpu);
 
-        string json = "{ \"fn_index\":" + gpuInf.fn_indexDict["upscale"] +",\"data\":[\"data:image/png;base64," + imgBase64 +
-              "\",null, 0.231, 0.233, 0, 2, \"Real-ESRGAN 2x plus\", \"None\", 1], \"session_hash\":\"d0v2057qsd\"}";
+        string json = "{ \"fn_index\":" + gpuInf.fn_indexDict["upscale"] +",\"data\":[0,\"data:image/png;base64," + imgBase64 +
+              "\",null, 0.231, 0.233, 0, 2, \"Real-ESRGAN 4x plus\", \"None\", 1], \"session_hash\":\"d0v2057qsd\"}";
 
         //File.WriteAllText("json_to_send.json", json); //for debugging
         using (var postRequest = UnityWebRequest.Post(finalURL, "POST"))

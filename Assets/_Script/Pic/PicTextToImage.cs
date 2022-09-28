@@ -144,8 +144,8 @@ public class PicTextToImage : MonoBehaviour
         string json = "{\"fn_index\":"+ gpuInf.fn_indexDict["text2image"]+",\"data\":[\"" + m_prompt +
           "\",\""+GameLogic.Get().GetNegativePrompt()+ "\",\"None\",\"None\"," + GameLogic.Get().GetSteps() +
           ",\""+GameLogic.Get().GetSamplerName()+"\"," + bFixFace.ToString().ToLower() + "," + bTiled.ToString().ToLower() + ",1,1," + GameLogic.Get().GetTextStrength() + ","
-          + m_seed + ",-1,0,0,0," + genHeight + "," + genWidth + ",\"" +
-          "None\", null],\"session_hash\":\"craphash\"}";
+          + m_seed + ",-1,0,0,0,false," + genHeight + "," + genWidth + "," +
+          "false, false, 0.7, \"None\", null],\"session_hash\":\"craphash\"}";
      
         string thingToUse = json;
 
