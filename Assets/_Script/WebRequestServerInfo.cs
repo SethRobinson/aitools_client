@@ -111,8 +111,9 @@ public class WebRequestServerInfo : MonoBehaviour
 
                 //retrieve offsets
                 List<object> gpus = dict["gpu"] as List<object>;
-                List<object> fnDictHolder = dict["fn_index"] as List<object>;
-                Dictionary<string, object> fnDict = fnDictHolder[0] as Dictionary<string,object>;
+               
+                //List<object> fnDictHolder = dict["fn_index"] as List<object>;
+                //Dictionary<string, object> fnDict = fnDictHolder[0] as Dictionary<string,object>;
                 
                 for (int i=0; i < gpus.Count; i++)
                {
@@ -123,6 +124,7 @@ public class WebRequestServerInfo : MonoBehaviour
                    g.remoteGPUID = i;
                    g.bUseHack = _bUseHack;
 
+                    /*
                     //oh, we need the fn_index data to fake the gradio calls
                     if (fnDict != null)
                     {
@@ -138,6 +140,7 @@ public class WebRequestServerInfo : MonoBehaviour
                         }
                     }
                     
+                    */
 
                     Config.Get().AddGPU(g);
                }

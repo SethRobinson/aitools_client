@@ -23,11 +23,10 @@ public class Config : MonoBehaviour
     string m_configText; //later move this to a config.txt or something
     const string m_configFileName = "config.txt";
     bool m_safetyFilter = true;
-    float m_requiredServerVersion = 0.21f;
+    float m_requiredServerVersion = 0.25f;
 
-    float m_version = 0.45f;
+    float m_version = 0.46f;
     string m_imageEditorPathAndExe = "none set";
-
     public string GetVersionString() { return m_version.ToString("0.00"); }
     public float GetVersion() { return m_version; }
     public float GetRequiredServerVersion() { return m_requiredServerVersion; }
@@ -65,6 +64,17 @@ public class Config : MonoBehaviour
     {
         return (gpu < GetGPUCount() && gpu >= 0);
     }
+
+    public string GetGPUName(int gpu)
+    {
+        if (IsValidGPU(gpu))
+        {
+            return "GPUID " + gpu + ": " + m_gpuInfo[gpu].remoteURL;
+        } 
+
+        return "bad GPUID: "+gpu;
+    }
+
 
     public bool GetSafetyFilter() { return m_safetyFilter; }
     public void SetSafetyFilter(bool bNew) 

@@ -86,10 +86,8 @@ public class PicInpaint : MonoBehaviour
 
         var gpuInfo = Config.Get().GetGPUInfo(m_gpu);
 
-        string url =gpuInfo.remoteURL + "/api/predict";
+        string url =gpuInfo.remoteURL + "/v1/img2img";
 
-        
-        
         m_seed = GameLogic.Get().GetSeed();
         
         //non-random seeds are actually kind of bad
@@ -100,7 +98,6 @@ public class PicInpaint : MonoBehaviour
             m_seed = m_picTextToImageScript.GetSeed();
         }
         */
-        
         
         m_prompt = GameLogic.Get().GetPrompt();
         m_steps = GameLogic.Get().GetSteps();
@@ -169,19 +166,46 @@ public class PicInpaint : MonoBehaviour
         int maskBlur = (int) GameLogic.Get().GetAlphaMaskFeatheringPower(); //0 to 64
 
         bool bFixFace = GameLogic.Get().GetFixFaces();
-
         bool bTiled = GameLogic.Get().GetTiling();
 
         var gpuInf = Config.Get().GetGPUInfo(m_gpu);
- 
-        string json = "{ \"fn_index\":\"" + gpuInf.fn_indexDict["img2img"] +"\",\"data\":[1,\"" + GameLogic.Get().GetPrompt() + "\",\""+GameLogic.Get().GetNegativePrompt()+ "\",\"None\",\"None\",null,{ \"image\":\"data:image/png;base64," + imgBase64 +
+        var genHeight = m_targetRect.GetHeight();
+        var genWidth = m_targetRect.GetWidth();
+
+        string json =
+$@"{{
+            ""img2imgreq"":
+            {{
+            ""prompt"": ""{SimpleJSON.JSONNode.Escape(m_prompt)}"",
+            ""negative_prompt"": ""{SimpleJSON.JSONNode.Escape(GameLogic.Get().GetNegativePrompt())}"",
+            ""steps"": {GameLogic.Get().GetSteps()},
+            ""restore_faces"":{bFixFace.ToString().ToLower()},
+            ""tiling"":{bTiled.ToString().ToLower()},
+            ""cfg_scale"":{GameLogic.Get().GetTextStrength()},
+            ""seed"": {m_seed},
+            ""width"": {genWidth},
+            ""height"": {genHeight},
+            ""sampler_name"": ""{GameLogic.Get().GetSamplerName()}"",
+            ""image"": ""{imgBase64}"",
+            ""mask_image"": ""{maskBase64}"",
+            ""denoising_strength"": {GameLogic.Get().GetInpaintStrength()},
+            ""mask_blur"": {maskBlur},
+            ""inpainting_fill"": ""{maskedContent}""
+
+        }}
+
+        }}";
+
+
+        /*
+        string json = "{ + SimpleJSON.JSONNode.Escape(GameLogic.Get().GetPrompt()) + "\",\""+ SimpleJSON.JSONNode.Escape(GameLogic.Get().GetNegativePrompt())
+            + "\",\"None\",\"None\",null,{ \"image\":\"data:image/png;base64," + imgBase64 +
             "\",\"mask\":\"data:image/png;base64," + maskBase64 +
             "\"},null,null,\"Draw mask\","+GameLogic.Get().GetSteps() +",\""+GameLogic.Get().GetSamplerName()+"\","+ maskBlur+",\""+ maskedContent+"\","+ bFixFace.ToString().ToLower()+","+bTiled.ToString().ToLower() + 
             ",1,1," + GameLogic.Get().GetTextStrength() +","+GameLogic.Get().GetInpaintStrength()+
-            ","+m_seed+",-1,0,0,0,false,"+ m_targetRect.GetHeight()+ ","+ m_targetRect.GetWidth()+",\"Just resize\",false,32,\"Inpaint masked\",\"\",\"\",\"None\",null],\"session_hash\":\"d0v2057qsd\"}";
-
-        string thingToUse = json;
-
+            ","+m_seed+",-1,0,0,0,false,"+ height+ ","+ width+",\"Just resize\",false,32,\"Inpaint masked\",\"\",\"\",\"None\",null],\"session_hash\":\"d0v2057qsd\"}";
+        */
+       
         if (Config.Get().GetGPUInfo(m_gpu).bUseHack)
         {
             //thingToUse = jsonHacked;
@@ -192,14 +216,18 @@ public class PicInpaint : MonoBehaviour
         using (var postRequest = UnityWebRequest.Post(finalURL, "POST"))
         {
             //Start the request with a method instead of the object itself
-            byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(thingToUse);
+            byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
             postRequest.uploadHandler = (UploadHandler)new UploadHandlerRaw(bodyRaw);
             postRequest.SetRequestHeader("Content-Type", "application/json");
             yield return postRequest.SendWebRequest();
 
             if (postRequest.result != UnityWebRequest.Result.Success)
             {
-                Debug.Log(postRequest.error);
+                string msg = postRequest.error + " (" + Config.Get().GetGPUName(m_gpu) + ")";
+                Debug.Log(msg);
+                RTQuickMessageManager.Get().ShowMessage(msg);
+                Debug.Log(postRequest.downloadHandler.text);
+
                 Config.Get().SetGPUBusy(m_gpu, false);
                 m_bIsGenerating = false;
                 m_picScript.SetStatusMessage("Processing error");
@@ -220,12 +248,10 @@ public class PicInpaint : MonoBehaviour
                 }
                */
 
-                var dataNode = rootNode["data"];
-                Debug.Assert(dataNode.Tag == JSONNodeType.Array);
-
-                var images = dataNode[0];
-               // Debug.Log("images is of type " + images.Tag);
-                //Debug.Log("there are " + images.Count + " images");
+                var images = rootNode["images"];
+              
+                Debug.Log("images is of type " + images.Tag);
+                Debug.Log("there are " + images.Count + " images");
 
                 Debug.Assert(images.Count == 1); //You better convert the extra images to new pics!
 
@@ -235,8 +261,9 @@ public class PicInpaint : MonoBehaviour
                 {
                     for (int i = 0; i < images.Count; i++)
                     {
-                      
+
                         //First get rid of the "data:image/png;base64," part
+                        /*
                         string str = images[i].ToString();
                         yield return null; //wait a free to lesson the jerkiness
 
@@ -248,6 +275,11 @@ public class PicInpaint : MonoBehaviour
                       
                         //Debug.Log("image: " + picChars);
                         imgDataBytes = Convert.FromBase64String(picChars);
+                        */
+
+                        imgDataBytes = Convert.FromBase64String(images[i]);
+
+
                         yield return null; //wait a free to lesson the jerkiness
 
 

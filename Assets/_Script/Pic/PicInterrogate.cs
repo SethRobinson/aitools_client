@@ -70,14 +70,8 @@ public class PicInterrogate : MonoBehaviour
     {
         var gpuInfo = Config.Get().GetGPUInfo(m_gpu);
 
-        string url = gpuInfo.remoteURL+ "/api/predict";
+        string url = gpuInfo.remoteURL+ "/v1/interrogator";
        
-        if (!bFromButton)
-        {
-        
-        }
-        
-      
         if (Config.Get().IsGPUBusy(m_gpu))
         {
             Debug.LogError("Why is GPU busy?!");
@@ -108,8 +102,14 @@ public class PicInterrogate : MonoBehaviour
 
         var gpuInf = Config.Get().GetGPUInfo(m_gpu);
 
-        string json = "{ \"fn_index\":" + gpuInf.fn_indexDict["interrogate"] +",\"data\":[\"data:image/png;base64," + imgBase64 +
-              "\"], \"session_hash\":\"d0v2057qsd\"}";
+        string json =
+        $@"{{
+            ""interrogatorreq"":
+            {{
+            ""image"": ""{imgBase64}""
+        }}
+
+        }}";
 
         //File.WriteAllText("json_to_send.json", json); //for debugging
        
@@ -123,7 +123,11 @@ public class PicInterrogate : MonoBehaviour
 
             if (postRequest.result != UnityWebRequest.Result.Success)
             {
+               
+                
                 Debug.Log(postRequest.error);
+                Debug.Log(postRequest.downloadHandler.text);
+
                 Config.Get().SetGPUBusy(m_gpu, false);
                 m_bIsGenerating = false;
                 m_picScript.SetStatusMessage("Processing error");
@@ -135,10 +139,9 @@ public class PicInterrogate : MonoBehaviour
                 JSONNode rootNode = JSON.Parse(postRequest.downloadHandler.text);
 
                 Debug.Assert(rootNode.Tag == JSONNodeType.Object);
-                var dataNode = rootNode["data"];
-                Debug.Assert(dataNode.Tag == JSONNodeType.Array);
-
-                string text = dataNode[0].Value.ToString();
+                var dataNode = rootNode["description"];
+              
+                string text = dataNode.Value.ToString();
                 //System.IO.File.WriteAllText("interrogation.txt", text); //for debugging
                 GameLogic.Get().SetPrompt(text);
 

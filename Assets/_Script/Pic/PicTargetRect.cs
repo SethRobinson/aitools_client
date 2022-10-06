@@ -209,15 +209,25 @@ public class PicTargetRect : MonoBehaviour
         Rect newRect = new Rect(m_targetRectInPixels.position, movedPos - m_targetRectInPixels.position);
        // Debug.Log("updating rect: " + movedPos);
 
+        
         newRect.width = RTUtil.ConvertNumToNearestMultiple((int)newRect.width, 64);
         newRect.height = RTUtil.ConvertNumToNearestMultiple((int)newRect.height, 64);
+
+        if (m_targetRectInPixels.x + newRect.width > m_picRenderer.sprite.texture.width
+            ||
+            m_targetRectInPixels.y + newRect.height > m_picRenderer.sprite.texture.height
+            )
+        {
+            return; //no good
+        }
+
 
         if (newRect.width >= 64 && newRect.height >= 64 && (newRect.width != m_targetRectInPixels.width || newRect.height != m_targetRectInPixels.height))
         {
             RTQuickMessageManager.Get().ShowMessage("Inpaint size: " + newRect.size);
             m_targetRectInPixels = newRect;
-            UpdatePoints();
             OnMoveToPixelLocation(m_targetRectInPixels.position);
+            UpdatePoints();
         }
 
     }

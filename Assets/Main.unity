@@ -1869,8 +1869,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 104.899994, y: -98.00008}
-  m_SizeDelta: {x: 97.79489, y: 25.347}
+  m_AnchoredPosition: {x: 117.39838, y: -98.00008}
+  m_SizeDelta: {x: 122.7968, y: 25.347}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &265061400
 MonoBehaviour:
@@ -1934,7 +1934,13 @@ MonoBehaviour:
       m_Image: {fileID: 0}
     - m_Text: DPM2 a
       m_Image: {fileID: 0}
+    - m_Text: DPM fast
+      m_Image: {fileID: 0}
+    - m_Text: DPM adaptive
+      m_Image: {fileID: 0}
     - m_Text: DDIM
+      m_Image: {fileID: 0}
+    - m_Text: PLMS
       m_Image: {fileID: 0}
   m_OnValueChanged:
     m_PersistentCalls:
@@ -2815,8 +2821,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d845674649ef18844ba3195912a2a19c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_requiredServerVersion: 0.21
-  m_version: 0.44
 --- !u!114 &311706015
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -4629,7 +4633,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 213.4, y: -98.7}
+  m_AnchoredPosition: {x: 247.20605, y: -98.7}
   m_SizeDelta: {x: 31.0352, y: 18.674}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &566996487
@@ -9140,7 +9144,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 177.99393, y: -97.100075}
+  m_AnchoredPosition: {x: 211.8, y: -97.100075}
   m_SizeDelta: {x: 42.906006, y: 17.589}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1180931226

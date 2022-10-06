@@ -74,7 +74,7 @@ public class PicUpscale : MonoBehaviour
     {
         var gpuInfo = Config.Get().GetGPUInfo(m_gpu);
 
-        string url = gpuInfo.remoteURL+ "/api/predict";
+        string url = gpuInfo.remoteURL+ "/v1/extras";
        
         if (!bFromButton)
         {
@@ -121,8 +121,31 @@ public class PicUpscale : MonoBehaviour
 
         var gpuInf = Config.Get().GetGPUInfo(m_gpu);
 
-        string json = "{ \"fn_index\":" + gpuInf.fn_indexDict["upscale"] +",\"data\":[0,\"data:image/png;base64," + imgBase64 +
-              "\",null, 0.231, 0.233, 0, 2, \"Real-ESRGAN 4x plus\", \"None\", 1], \"session_hash\":\"d0v2057qsd\"}";
+        //A lot of these parms are hardcoded where I like them, maybe add GUI to the client to control them later
+        float gfpgan_visibility = 0;
+        float codeformer_visibility = 0;
+
+        if (GameLogic.Get().GetFixFaces())
+        {
+            gfpgan_visibility = 0.3f;
+            codeformer_visibility = 0.3f;
+        }
+
+        string json =
+$@"{{
+            ""extrasreq"":
+            {{
+            ""image"": ""{imgBase64}"",
+            ""upscaling_resize"": 2,
+            ""upscaler1_name"": ""ESRGAN_4x"",
+            ""upscaler2_name"": ""SwinIR_4x"",
+            ""extras_upscaler_2_visibility:"": 0.5,
+            ""gfpgan_visibility"": {gfpgan_visibility},
+            ""codeformer_visibility"": {codeformer_visibility},
+            ""codeformer_weight"": 0
+        }}
+
+        }}";
 
         //File.WriteAllText("json_to_send.json", json); //for debugging
         using (var postRequest = UnityWebRequest.Post(finalURL, "POST"))
@@ -148,10 +171,7 @@ public class PicUpscale : MonoBehaviour
                 yield return null; //wait a free to lesson the jerkiness
 
                 Debug.Assert(rootNode.Tag == JSONNodeType.Object);
-                var dataNode = rootNode["data"];
-                Debug.Assert(dataNode.Tag == JSONNodeType.Array);
-
-                var images = dataNode[0];
+                var images = rootNode["images"];
                 //Debug.Log("images is of type " + images.Tag);
                 //Debug.Log("there are " + images.Count + " images");
 
@@ -162,20 +182,8 @@ public class PicUpscale : MonoBehaviour
                 {
                     for (int i = 0; i < images.Count; i++)
                     {
-                        //First get rid of the "data:image/png;base64," part
-                        string str = images[i].ToString();
+                        imgDataBytes = Convert.FromBase64String(images[i]);
                         yield return null; //wait a free to lesson the jerkiness
-
-                        int startIndex = str.IndexOf(",") + 1;
-                        int endIndex = str.LastIndexOf('"');
-
-                        string picChars = str.Substring(startIndex, endIndex- startIndex);
-                        yield return null; //wait a free to lesson the jerkiness
-
-                        //Debug.Log("image: " + picChars);
-                        imgDataBytes = Convert.FromBase64String(picChars);
-                        yield return null; //wait a free to lesson the jerkiness
-
                     }
                 }
                 else

@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEngine.Networking;
 using System;
 using SimpleJSON;
+using System.IO;
 
 public class PicTextToImage : MonoBehaviour
 {
@@ -114,7 +115,7 @@ public class PicTextToImage : MonoBehaviour
         m_bIsGenerating = true;
         startTime = Time.realtimeSinceStartup;
         var gpuInfo = Config.Get().GetGPUInfo(m_gpu);
-        string url = gpuInfo.remoteURL+"/api/predict";
+        string url = gpuInfo.remoteURL+ "/v1/txt2img";
 
         
         StartCoroutine(GetRequest(m_prompt, m_prompt_strength,url));
@@ -132,7 +133,7 @@ public class PicTextToImage : MonoBehaviour
 
         //String finalURL = url + "?prompt=" + context + "&prompt_strength=" + prompt_strength;
         String finalURL = url;
-       Debug.Log("Generating text to image with " + finalURL + " local GPU ID " + m_gpu);
+        Debug.Log("Generating text to image with " + finalURL + " local GPU ID " + m_gpu);
 
         bool bFixFace = GameLogic.Get().GetFixFaces();
         bool bTiled = GameLogic.Get().GetTiling();
@@ -141,21 +142,35 @@ public class PicTextToImage : MonoBehaviour
         int genHeight = GameLogic.Get().GetGenHeight();
         var gpuInf = Config.Get().GetGPUInfo(m_gpu);
 
-        string json = "{\"fn_index\":"+ gpuInf.fn_indexDict["text2image"]+",\"data\":[\"" + m_prompt +
-          "\",\""+GameLogic.Get().GetNegativePrompt()+ "\",\"None\",\"None\"," + GameLogic.Get().GetSteps() +
-          ",\""+GameLogic.Get().GetSamplerName()+"\"," + bFixFace.ToString().ToLower() + "," + bTiled.ToString().ToLower() + ",1,1," + GameLogic.Get().GetTextStrength() + ","
-          + m_seed + ",-1,0,0,0,false," + genHeight + "," + genWidth + "," +
-          "false, false, 0.7, \"None\", null],\"session_hash\":\"craphash\"}";
-     
-        string thingToUse = json;
+        //too bad raw interpolated strings are still in preview
+       
+                string json =
+        $@"{{
+            ""txt2imgreq"":
+            {{
+            ""prompt"": ""{SimpleJSON.JSONNode.Escape(m_prompt)}"",
+            ""negative_prompt"": ""{SimpleJSON.JSONNode.Escape(GameLogic.Get().GetNegativePrompt())}"",
+            ""steps"": {GameLogic.Get().GetSteps()},
+            ""restore_faces"":{bFixFace.ToString().ToLower()},
+            ""tiling"":{bTiled.ToString().ToLower()},
+            ""cfg_scale"":{GameLogic.Get().GetTextStrength()},
+            ""seed"": {m_seed},
+            ""width"": {genWidth},
+            ""height"": {genHeight},
+            ""sampler_name"": ""{GameLogic.Get().GetSamplerName()}""
+        }}
 
-        if (Config.Get().GetGPUInfo(m_gpu).bUseHack)
-        {
-           // thingToUse = jsonPi39;
-        }
+        }}";
+      
+        //",\"" + GameLogic.Get().GetSamplerName() + "\","  +  + ","
+
+#if !RT_RELEASE
+        File.WriteAllText("json_to_send.json", json);
+#endif
+
         using (var postRequest = UnityWebRequest.Post(finalURL, "POST"))
         {
-            byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(thingToUse);
+            byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
             
             postRequest.uploadHandler = (UploadHandler)new UploadHandlerRaw(bodyRaw);
 
@@ -166,14 +181,18 @@ public class PicTextToImage : MonoBehaviour
 
             if (postRequest.result != UnityWebRequest.Result.Success)
             {
-                Debug.Log(postRequest.error);
+                string msg = postRequest.error + " (" + Config.Get().GetGPUName(m_gpu) + ")";
+                Debug.Log(msg);
+                RTQuickMessageManager.Get().ShowMessage(msg);
+                Debug.Log(postRequest.downloadHandler.text);
+
                 Config.Get().SetGPUBusy(m_gpu, false);
                 m_bIsGenerating = false;
                 m_picScript.SetStatusMessage("Generate error");
             }
             else
             {
-                Debug.Log("Form upload complete! Downloaded " + postRequest.downloadedBytes); // + postRequest.downloadHandler.text
+                //Debug.Log("Form upload complete! Downloaded " + postRequest.downloadedBytes); // + postRequest.downloadHandler.text
 
                 //Ok, we now have to dig into the response and pull out the json image
 
@@ -189,35 +208,18 @@ public class PicTextToImage : MonoBehaviour
                 }
                 */
 
-                var dataNode = rootNode["data"];
-                Debug.Assert(dataNode.Tag == JSONNodeType.Array);
+                var images = rootNode["images"];
+                Debug.Assert(images.Tag == JSONNodeType.Array);
 
-                var images = dataNode[0];
-                //Debug.Log("images is of type " + images.Tag);
-                //Debug.Log("there are " + images.Count + " images");
-
-                if (images.Count != 1)
-                {
-                    Debug.LogError("PicTextToImage: Something wrong, no image received in json reply. (Breaking change on server?)");
-                }
-                
                 byte[] imgDataBytes = null;
 
                 if (images != null)
                 {
                     for (int i=0; i<images.Count; i++)
                     {
-                        //convert each to be a pic object?
-                        string temp = images[i].ToString();
-
-                        //First get rid of the "data:image/png;base64," part
-                        string picChars = images[i].ToString().Substring(images[i].ToString().IndexOf(",")+1);
-                        //this is dumb, why is there a single " at the end?  Is there a better way to get rid of it? //OPTIMIZE
-                        picChars = picChars.Substring(0, picChars.LastIndexOf('"'));
-                        //Debug.Log("image: " + picChars);
-                        imgDataBytes = Convert.FromBase64String(picChars);
+                        //convert each to be a pic
+                        imgDataBytes = Convert.FromBase64String(images[i]);
                         yield return null; //wait a free to lesson the jerkiness
-
                     }
                 }
                 else

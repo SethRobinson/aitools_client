@@ -71,7 +71,8 @@ public class RTMessage
                 if ((MonoBehaviour)_delegate.Target == null)
                 {
                     //script we were calling back in gone
-                    Debug.Log("RTMessageManager Warning: RTMessage can't call " + _delegate.Method.Name + " - " + _delegate.Method + ", it no longer exists");
+                    //Hmm, maybe we should have an option to turn this warning on...
+                    //Debug.Log("RTMessageManager Warning: RTMessage can't call " + _delegate.Method.Name + " - " + _delegate.Method + ", it no longer exists");
                     return;
                 }
             }
