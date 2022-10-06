@@ -9,9 +9,9 @@ The docs/screenshots are in the [server repository](https://github.com/SethRobin
 
 # Download the [AI Tools Client (Windows, 22 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip)
 
-Current version: **V0.45** (released 9/28/2022)
+Current version: **V0.46** (released Oct 6th 2022)
 
-Note: Requires server V0.21+
+Note: Requires server V0.25+
 
 You only need to download the above file to use this, However, the source might be useful to generate a build for other platforms, or fork or steal pieces to use for yourself.  Go ahead!
 
