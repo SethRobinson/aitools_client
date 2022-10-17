@@ -17,7 +17,6 @@ using UnityEngine.EventSystems;
 public class GameLogic : MonoBehaviour
 {
     public GameObject m_notepadTemplatePrefab;
-    static GameLogic _this = null;
     string m_prompt = "";
     string m_negativePrompt = "";
     int m_steps = 50;
@@ -48,6 +47,11 @@ public class GameLogic : MonoBehaviour
     public TMP_Dropdown m_heightDropdown;
     public TMP_Dropdown m_samplerDropdown;
 
+    static GameLogic _this = null;
+    static public GameLogic Get()
+    {
+        return _this;
+    }
     public static string GetName()
     {
         return Get().name;
@@ -294,6 +298,22 @@ public class GameLogic : MonoBehaviour
     {
         return m_maskedContentDropdown.options[m_maskedContentDropdown.value].text;
     }
+
+    public int SetMaskContentByName(string name)
+    {
+
+        for (int i=0; i < m_maskedContentDropdown.options.Count; i++)
+        {
+            if (name == m_maskedContentDropdown.options[i].text)
+            {
+                //that's it
+                m_maskedContentDropdown.value = i;
+                return i;
+            }
+        }
+        Debug.LogError("Error, no mask fill type named " + name + " found.");
+        return -1;
+    }
     public void OnUpscaleChanged(bool upscale)
     {
        if (upscale)
@@ -381,11 +401,6 @@ public class GameLogic : MonoBehaviour
         }
     }
 
-    static public GameLogic Get()
-	{
-		return _this;
-	}
- 
 	void OnApplicationQuit() 
 	{
         // Make sure prefs are saved before quitting.
@@ -404,6 +419,10 @@ public class GameLogic : MonoBehaviour
         print("Game logic destroyed");
     }
 
+    public void SetToolsVisible(bool bNew)
+    {
+        RTUtil.FindIncludingInactive("ToolsCanvas").SetActive(bNew);
+    }
     // Update is called once per frame
     void Update()
     {

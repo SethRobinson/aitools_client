@@ -65,8 +65,6 @@ public class PicGenerator : MonoBehaviour
                 go.GetComponent<PicInpaint>().m_onFinishedRenderingCallback += OnCallbackFinished;
                 m_bDidTagObjectToBeNewSource = true;
             }
-
-
         }
     }
 

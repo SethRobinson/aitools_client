@@ -9,15 +9,16 @@ The docs/screenshots are in the [server repository](https://github.com/SethRobin
 
 # Download the [AI Tools Client (Windows, 22 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip)
 
-Current version: **V0.46** (released Oct 6th 2022)
+Current version: **V0.47** (released Oct 17th 2022)
 
-Note: Requires server V0.25+
+* BUGFIX: Fixed issue with importing bmp alpha
+* Added "pizza" generation speed test
 
 You only need to download the above file to use this, However, the source might be useful to generate a build for other platforms, or fork or steal pieces to use for yourself.  Go ahead!
 
 ### How to build from source
 
-* Requires Unity 2022.1.16+
+* Requires Unity 2022.1.20+
 * Open the scene "Main" and click play to run
 
 ---

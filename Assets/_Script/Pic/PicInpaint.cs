@@ -15,6 +15,7 @@ public class PicInpaint : MonoBehaviour
     public PicTargetRect m_targetRect;
     float startTime;
     string m_prompt;
+    string m_negativePrompt;
     int m_steps;
     float m_prompt_strength;
     long m_seed = -1;
@@ -27,6 +28,7 @@ public class PicInpaint : MonoBehaviour
     public PicMain m_picScript;
     public Texture2D m_latentNoise; //a texture we'll use for the noise instead of generating it ourself
     public PicTextToImage m_picTextToImageScript;
+    bool m_useExisting = false;
 
     // Start is called before the first frame update
     void Start()
@@ -75,6 +77,20 @@ public class PicInpaint : MonoBehaviour
         m_gpu = gpuID;
     }
 
+    public void SetUseExistingSettingsIfSet(bool bNew)
+    {
+        m_useExisting = bNew;
+    }
+
+    public void SetPrompt(string prompt)
+    {
+        m_prompt = prompt;
+    }
+
+    public void SetNegativePrompt(string negativePrompt)
+    {
+        m_negativePrompt = negativePrompt;
+    }
     public void StartInpaint()
     {
        
@@ -85,7 +101,6 @@ public class PicInpaint : MonoBehaviour
         }
 
         var gpuInfo = Config.Get().GetGPUInfo(m_gpu);
-
         string url =gpuInfo.remoteURL + "/v1/img2img";
 
         m_seed = GameLogic.Get().GetSeed();
@@ -98,8 +113,13 @@ public class PicInpaint : MonoBehaviour
             m_seed = m_picTextToImageScript.GetSeed();
         }
         */
-        
-        m_prompt = GameLogic.Get().GetPrompt();
+       
+        if (!m_useExisting || m_prompt == "")
+            m_prompt = GameLogic.Get().GetPrompt();
+
+        if (!m_useExisting || m_negativePrompt == "")
+            m_negativePrompt = GameLogic.Get().GetNegativePrompt();
+
         m_steps = GameLogic.Get().GetSteps();
         m_prompt_strength = GameLogic.Get().GetTextStrength();
         m_noise_strength = GameLogic.Get().GetInpaintStrength();
@@ -172,12 +192,19 @@ public class PicInpaint : MonoBehaviour
         var genHeight = m_targetRect.GetHeight();
         var genWidth = m_targetRect.GetWidth();
 
+        string safety_filter = "default"; //use whatever the server is set at
+        if (Config.Get().GetSafetyFilter())
+        {
+            safety_filter = "true";
+        }
+
+
         string json =
 $@"{{
             ""img2imgreq"":
             {{
             ""prompt"": ""{SimpleJSON.JSONNode.Escape(m_prompt)}"",
-            ""negative_prompt"": ""{SimpleJSON.JSONNode.Escape(GameLogic.Get().GetNegativePrompt())}"",
+            ""negative_prompt"": ""{SimpleJSON.JSONNode.Escape(m_negativePrompt)}"",
             ""steps"": {GameLogic.Get().GetSteps()},
             ""restore_faces"":{bFixFace.ToString().ToLower()},
             ""tiling"":{bTiled.ToString().ToLower()},
@@ -190,26 +217,14 @@ $@"{{
             ""mask_image"": ""{maskBase64}"",
             ""denoising_strength"": {GameLogic.Get().GetInpaintStrength()},
             ""mask_blur"": {maskBlur},
+            ""safety_filter"": ""{safety_filter}"",
             ""inpainting_fill"": ""{maskedContent}""
 
         }}
 
         }}";
 
-
-        /*
-        string json = "{ + SimpleJSON.JSONNode.Escape(GameLogic.Get().GetPrompt()) + "\",\""+ SimpleJSON.JSONNode.Escape(GameLogic.Get().GetNegativePrompt())
-            + "\",\"None\",\"None\",null,{ \"image\":\"data:image/png;base64," + imgBase64 +
-            "\",\"mask\":\"data:image/png;base64," + maskBase64 +
-            "\"},null,null,\"Draw mask\","+GameLogic.Get().GetSteps() +",\""+GameLogic.Get().GetSamplerName()+"\","+ maskBlur+",\""+ maskedContent+"\","+ bFixFace.ToString().ToLower()+","+bTiled.ToString().ToLower() + 
-            ",1,1," + GameLogic.Get().GetTextStrength() +","+GameLogic.Get().GetInpaintStrength()+
-            ","+m_seed+",-1,0,0,0,false,"+ height+ ","+ width+",\"Just resize\",false,32,\"Inpaint masked\",\"\",\"\",\"None\",null],\"session_hash\":\"d0v2057qsd\"}";
-        */
-       
-        if (Config.Get().GetGPUInfo(m_gpu).bUseHack)
-        {
-            //thingToUse = jsonHacked;
-        }
+      
 #if !RT_RELEASE
 //        File.WriteAllText("json_to_send.json", json);
 #endif
@@ -250,8 +265,8 @@ $@"{{
 
                 var images = rootNode["images"];
               
-                Debug.Log("images is of type " + images.Tag);
-                Debug.Log("there are " + images.Count + " images");
+                //Debug.Log("images is of type " + images.Tag);
+                //Debug.Log("there are " + images.Count + " images");
 
                 Debug.Assert(images.Count == 1); //You better convert the extra images to new pics!
 
@@ -279,10 +294,7 @@ $@"{{
 
                         imgDataBytes = Convert.FromBase64String(images[i]);
 
-
                         yield return null; //wait a free to lesson the jerkiness
-
-
                     }
                 }
                 else
@@ -294,7 +306,7 @@ $@"{{
 
                 if (texture.LoadImage(imgDataBytes, false))
                 {
-                    yield return null; //wait a free to lesson the jerkiness
+                    yield return null; //wait a frame to lesson the jerkiness
 
                     //debug: write texture out
                     //byte[] testReturnedTex = texture.EncodeToPNG();
@@ -303,45 +315,21 @@ $@"{{
 
                     //Debug.Log("Read texture, setting to new image");
                     this.gameObject.GetComponent<PicMain>().AddImageUndo(true);
-                    yield return null; //wait a free to lesson the jerkiness
+                    yield return null; //wait a frame to lesson the jerkiness
 
                     int maskFeatheringRevolutions = (int)GameLogic.Get().GetAlphaMaskFeatheringPower();
                     Texture2D finalTexture = null;
 
-                    /*
-                    if (GameLogic.Get().GetInpaintMaskEnabled())
-                    {
-                        //actually, we could just set it to this image, but let's only copy the parts our original mask wanted changed, this is Seth's
-                        //hack to stop it from slightly changing every damn pixel, which ruins tiling textures
-                        Texture2D maskTexture = mask512.Duplicate();
-                        finalTexture = pic512.Duplicate();
-                        var blurFilter = new ConvFilter.BoxBlurFilter();
-                        var processor = new ConvFilter.ConvolutionProcessor(maskTexture);
-                        m_picScript.SetStatusMessage("Blending...");
-                        for (int i = 0; i < maskFeatheringRevolutions; i++)
-                        {
-                            yield return StartCoroutine(processor.ComputeWith(blurFilter));
-                            processor = new ConvFilter.ConvolutionProcessor(processor.m_originalMap);
-                        }
-
-                        //save out a png for testing of the alpha channel
-                        // byte[] testPng = processor.m_originalMap.EncodeToPNG();
-                        //File.WriteAllBytes(Application.dataPath + "/../SavedBlurredMask.png", testPng);
-
-
-                        finalTexture.SetPixelsFromTextureWithAlphaMask(texture, processor.m_originalMap, 1.0f, true);
-                    } else */
-                    {
-                        //simple way, no feathered alpha masking
-                        finalTexture = texture;
-                    }
+                    //simple way, no feathered alpha masking
+                    finalTexture = texture;
+                  
                     m_picScript.SetStatusMessage("Processing...");
 
                     //now copy block over the real image
                     picSprite.texture.Blit(m_targetRect.GetOffsetX(), m_targetRect.GetOffsetY(), finalTexture, 0, 0, m_targetRect.GetWidth(), m_targetRect.GetHeight());
-                    yield return null; //wait a free to lesson the jerkiness
-
+                    yield return null; //wait a frame to lesson the jerkiness
                     picSprite.texture.Apply();
+
                     if (m_onFinishedRenderingCallback != null)
                         m_onFinishedRenderingCallback.Invoke(gameObject);
                 }
@@ -349,6 +337,7 @@ $@"{{
                 {
                     Debug.Log("Error reading texture");
                 }
+
 
                 if (Config.Get().IsValidGPU(m_gpu))
                 {

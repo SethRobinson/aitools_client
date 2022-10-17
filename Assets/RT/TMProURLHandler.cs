@@ -1,229 +1,186 @@
-﻿#if !RT_NO_TEXMESH_PRO
-using System.Collections;
+﻿//This script credit to Epsilon_Delta - https://forum.unity.com/threads/textmeshpro-hyperlinks.1091296/
+
 using System.Collections.Generic;
-using UnityEngine;
 using TMPro;
+using UnityEngine;
 using UnityEngine.EventSystems;
 
-public class TMProURLHandler : MonoBehaviour, IPointerDownHandler
+/// <summary>
+/// This class handles basic link color behavior for TextMeshProUGUI, supports also underline.
+/// Implementation for TextMeshPro non-UGUI will be probably identical or near-identical.
+/// Does not support strike-through, but can be easily implemented in the same way as the underline
+/// </summary>
+[DisallowMultipleComponent()]
+[RequireComponent(typeof(TextMeshProUGUI))]
+public class TMProURLHandler : MonoBehaviour, IPointerDownHandler, IPointerUpHandler
 {
+    [SerializeField]
+    private Color32 hoveredColor = new Color32(0x00, 0x59, 0xFF, 0xFF);
+    [SerializeField]
+    private Color32 pressedColor = new Color32(0x00, 0x00, 0xB7, 0xFF);
+    [SerializeField]
+    private Color32 usedColor = new Color32(0xFF, 0x00, 0xFF, 0xFF);
+    [SerializeField]
+    private Color32 usedHoveredColor = new Color32(0xFD, 0x5E, 0xFD, 0xFF);
+    [SerializeField]
+    private Color32 usedPressedColor = new Color32(0xCF, 0x00, 0xCF, 0xFF);
 
-    TextMeshProUGUI _TMProText;
-  
-    bool _requiresRefresh = false;
-    private bool hasTextChanged = false;
-    bool _bFastForward = false;
+    private List<Color32[]> startColors = new List<Color32[]>();
+    private TextMeshProUGUI textMeshPro;
+    private Dictionary<int, bool> usedLinks = new Dictionary<int, bool>();
+    private int hoveredLinkIndex = -1;
+    private int pressedLinkIndex = -1;
+    private Camera mainCamera;
 
-    Camera _camera;
-    Canvas _canvas;
-   
-    private void Awake()
+    void Awake()
     {
-        _TMProText = GetComponent<TextMeshProUGUI>();
+        textMeshPro = GetComponent<TextMeshProUGUI>();
 
+        mainCamera = Camera.main;
+        if (textMeshPro.canvas.renderMode == RenderMode.ScreenSpaceOverlay) mainCamera = null;
+        else if (textMeshPro.canvas.worldCamera != null) mainCamera = textMeshPro.canvas.worldCamera;
     }
-   
-    // Use this for initialization
-    void Start()
-    {
-        _canvas = _TMProText.gameObject.GetComponentInParent<Canvas>();
-        if (_canvas.renderMode == RenderMode.ScreenSpaceOverlay)
-        {
-            _camera = null;
-        }
-        else
-        {
-            _camera = _canvas.worldCamera;
-        }
-
-        TrimAndUpdateWidget();
-        //StartCoroutine(RevealCharacters(_TMProText));
-     }
-
-    public void OnPointerUp(PointerEventData eventData)
-    {
-       _bFastForward = false;
-    }
-
 
     public void OnPointerDown(PointerEventData eventData)
     {
-       
-        int linkIndex = TMP_TextUtilities.FindIntersectingLink(_TMProText, Input.mousePosition, _camera);
-        if (linkIndex != -1)
+        int linkIndex = GetLinkIndex();
+        if (linkIndex != -1) // Was pointer intersecting a link?
         {
-            TMP_LinkInfo linkInfo = _TMProText.textInfo.linkInfo[linkIndex];
-            if (linkInfo.GetLinkID().StartsWith("http://") || linkInfo.GetLinkID().StartsWith("https://"))
+            pressedLinkIndex = linkIndex;
+            if (usedLinks.TryGetValue(linkIndex, out bool isUsed) && isUsed) // Has the link been already used?
             {
-                //print("OnPointerClick...");
-
-                //guess it's a URL to open
-                RTUtil.PopupUnblockOpenURL(linkInfo.GetLinkID());
-                return;
+                // Have we hovered before we pressed? Touch input will first press, then hover
+                if (pressedLinkIndex != hoveredLinkIndex) startColors = SetLinkColor(linkIndex, usedPressedColor);
+                else SetLinkColor(linkIndex, usedPressedColor);
             }
             else
             {
-                RTConsole.Log("Unknown link type: " + linkInfo.GetLinkID());
+                // Have we hovered before we pressed? Touch input will first press, then hover
+                if (pressedLinkIndex != hoveredLinkIndex) startColors = SetLinkColor(linkIndex, pressedColor);
+                else SetLinkColor(linkIndex, pressedColor);
             }
-
+            hoveredLinkIndex = pressedLinkIndex; // Changes flow in LateUpdate
         }
-
-        _bFastForward = true;
+        else pressedLinkIndex = -1;
     }
 
-    /// <summary>
-    /// Method revealing the text one character at a time.
-    /// </summary>
-    /// <returns></returns>
-    IEnumerator RevealCharacters(TMP_Text textComponent)
+    public void OnPointerUp(PointerEventData eventData)
     {
-        textComponent.ForceMeshUpdate();
-
-        TMP_TextInfo textInfo = textComponent.textInfo;
-
-        int totalVisibleCharacters = textInfo.characterCount; // Get # of Visible Character in text object
-        int visibleCount = textInfo.characterCount;
-
-        while (true)
+        int linkIndex = GetLinkIndex();
+        if (linkIndex != -1 && linkIndex == pressedLinkIndex) // Was pointer intersecting the same link as OnPointerDown?
         {
-            if (hasTextChanged)
-            {
-                totalVisibleCharacters = textInfo.characterCount; // Update visible character count.
-                hasTextChanged = false;
-            }
+            TMP_LinkInfo linkInfo = textMeshPro.textInfo.linkInfo[linkIndex];
+            SetLinkColor(linkIndex, usedHoveredColor);
+            startColors.ForEach(c => c[0] = c[1] = c[2] = c[3] = usedColor);
+            usedLinks[linkIndex] = true;
+            Application.OpenURL(linkInfo.GetLinkID());
+        }
+        pressedLinkIndex = -1;
+    }
 
-            float delay = 0.01f;
-            //don't restart
-            if (visibleCount >= totalVisibleCharacters)
+    private void LateUpdate()
+    {
+        int linkIndex = GetLinkIndex();
+        if (linkIndex != -1) // Was pointer intersecting a link?
+        {
+            if (linkIndex != hoveredLinkIndex) // We started hovering above link (hover can be set from OnPointerDown!)
             {
-                visibleCount = totalVisibleCharacters;
-                //we're totally caught up, perform trimming
-                textComponent.maxVisibleCharacters = visibleCount; // How many characters should TextMeshPro display?
-            }
-            else
-            {
-
-                textComponent.maxVisibleCharacters = visibleCount; // How many characters should TextMeshPro display?
-
-                for (int i = 0; i < textInfo.linkCount; i++)
+                if (hoveredLinkIndex != -1) ResetLinkColor(hoveredLinkIndex, startColors); // If we hovered above other link before
+                hoveredLinkIndex = linkIndex;
+                if (usedLinks.TryGetValue(linkIndex, out bool isUsed) && isUsed) // Has the link been already used?
                 {
-                    TMP_LinkInfo linkInfo = textInfo.linkInfo[i];
-
-                    //print("Cur: "+visibleCount+" Found link " + linkInfo.GetLinkID() + " and its text: " + linkInfo.GetLinkText() + " and it starts on " + linkInfo.linkTextfirstCharacterIndex+" its leng:"+ linkInfo.linkTextLength);
-
-                    if (visibleCount >= linkInfo.linkTextfirstCharacterIndex && visibleCount < (linkInfo.linkTextfirstCharacterIndex + linkInfo.linkTextLength))
-                    {
-                        const string delayText = "delay ";
-
-                        if (linkInfo.GetLinkID().StartsWith(delayText))
-                        {
-
-                            delay = float.Parse(linkInfo.GetLinkID().Substring(delayText.Length));
-                        }
-
-                        const string playText = "play ";
-
-                        if (linkInfo.GetLinkID().StartsWith(playText))
-                        {
-                            //RTConsole.Log("Playing " + linkInfo.GetLinkID().Substring(playText.Length));
-                            RTAudioManager.Get().PlayEx(linkInfo.GetLinkID().Substring(playText.Length), 1, 1, true);
-
-                        }
-
-                    }
+                    // If we have pressed on link, wandered away and came back, set the pressed color
+                    if (pressedLinkIndex == linkIndex) startColors = SetLinkColor(hoveredLinkIndex, usedPressedColor);
+                    else startColors = SetLinkColor(hoveredLinkIndex, usedHoveredColor);
                 }
-
-                visibleCount += 1;
-
-                //sound of letters advancing
-                //RTAudioManager.Get().PlayEx("click_3", 0.5f, 1.0f, false, 0.1f);
+                else
+                {
+                    // If we have pressed on link, wandered away and came back, set the pressed color
+                    if (pressedLinkIndex == linkIndex) startColors = SetLinkColor(hoveredLinkIndex, pressedColor);
+                    else startColors = SetLinkColor(hoveredLinkIndex, hoveredColor);
+                }
             }
-
-
-            if (_bFastForward)
-            {
-                delay /= 3.0f;
-            }
-            yield return new WaitForSeconds(delay);
         }
-    }
-
-    /// <summary>
-    /// Method revealing the text one word at a time.
-    /// </summary>
-    /// <returns></returns>
-    IEnumerator RevealWords(TMP_Text textComponent)
-    {
-        textComponent.ForceMeshUpdate();
-
-        int totalWordCount = textComponent.textInfo.wordCount;
-        int totalVisibleCharacters = textComponent.textInfo.characterCount; // Get # of Visible Character in text object
-        int counter = 0;
-        int currentWord = 0;
-        int visibleCount = 0;
-
-        while (true)
+        else if (hoveredLinkIndex != -1) // If we hovered above other link before
         {
-            currentWord = counter % (totalWordCount + 1);
-
-            // Get last character index for the current word.
-            if (currentWord == 0) // Display no words.
-                visibleCount = 0;
-            else if (currentWord < totalWordCount) // Display all other words with the exception of the last one.
-                visibleCount = textComponent.textInfo.wordInfo[currentWord - 1].lastCharacterIndex + 1;
-            else if (currentWord == totalWordCount) // Display last word and all remaining characters.
-                visibleCount = totalVisibleCharacters;
-
-            textComponent.maxVisibleCharacters = visibleCount; // How many characters should TextMeshPro display?
-
-            // Once the last character has been revealed, wait 1.0 second and start over.
-            if (visibleCount >= totalVisibleCharacters)
-            {
-                yield return new WaitForSeconds(0.5f);
-            }
-
-            counter += 1;
-
-            yield return new WaitForSeconds(1f);
+            ResetLinkColor(hoveredLinkIndex, startColors);
+            hoveredLinkIndex = -1;
         }
     }
 
-    void TrimAndUpdateWidget()
+    private int GetLinkIndex()
     {
-        _requiresRefresh = false;
-
-       
-//         //if we have too many lines, kill the oldest one.  Unity's Text widget sucks btw, it can't show that many lines
-//         while (_lines.Count > _maxConsoleLines)
-//         {
-//             _lines.Dequeue();
-//         }
-// 
-//         //copy them to the text object
-// 
-//         _consoleText.text = string.Concat(_lines.ToArray());
-//        
-
-        // _consoleText.text = _consoleText.text + RTUtil.ConvertSansiToUnityColors(text);
-        Canvas.ForceUpdateCanvases();
-       // _scrollRect.verticalNormalizedPosition = 0f;
+        return TMP_TextUtilities.FindIntersectingLink(textMeshPro, Input.mousePosition, mainCamera);
     }
 
-    // Update is called once per frame
-    void Update()
+    private List<Color32[]> SetLinkColor(int linkIndex, Color32 color)
     {
-        if (_requiresRefresh)
+        TMP_LinkInfo linkInfo = textMeshPro.textInfo.linkInfo[linkIndex];
+
+        var oldVertexColors = new List<Color32[]>(); // Store the old character colors
+        int underlineIndex = -1;
+        for (int i = 0; i < linkInfo.linkTextLength; i++)
         {
-            TrimAndUpdateWidget();
+            // For each character in the link string
+            int characterIndex = linkInfo.linkTextfirstCharacterIndex + i; // The current character index
+            var charInfo = textMeshPro.textInfo.characterInfo[characterIndex];
+            int meshIndex = charInfo.materialReferenceIndex; // Get the index of the material/subtext object used by this character.
+            int vertexIndex = charInfo.vertexIndex; // Get the index of the first vertex of this character.
+
+            // This array contains colors for all vertices of the mesh (might be multiple chars)
+            Color32[] vertexColors = textMeshPro.textInfo.meshInfo[meshIndex].colors32;
+            oldVertexColors.Add(new Color32[] { vertexColors[vertexIndex + 0], vertexColors[vertexIndex + 1], vertexColors[vertexIndex + 2], vertexColors[vertexIndex + 3] });
+            if (charInfo.isVisible)
+            {
+                vertexColors[vertexIndex + 0] = color;
+                vertexColors[vertexIndex + 1] = color;
+                vertexColors[vertexIndex + 2] = color;
+                vertexColors[vertexIndex + 3] = color;
+            }
+            // Each line will have its own underline mesh with different index, index == 0 means there is no underline
+            if (charInfo.isVisible && charInfo.underlineVertexIndex > 0 && charInfo.underlineVertexIndex != underlineIndex && charInfo.underlineVertexIndex < vertexColors.Length)
+            {
+                underlineIndex = charInfo.underlineVertexIndex;
+                for (int j = 0; j < 12; j++) // Underline seems to be always 3 quads == 12 vertices
+                {
+                    vertexColors[underlineIndex + j] = color;
+                }
+            }
         }
+
+        textMeshPro.UpdateVertexData(TMP_VertexDataUpdateFlags.All);
+        return oldVertexColors;
     }
 
-
-    public void Clear()
+    private void ResetLinkColor(int linkIndex, List<Color32[]> startColors)
     {
-        _requiresRefresh = true;
-        hasTextChanged = true;
-    }
+        TMP_LinkInfo linkInfo = textMeshPro.textInfo.linkInfo[linkIndex];
+        int underlineIndex = -1;
+        for (int i = 0; i < linkInfo.linkTextLength; i++)
+        {
+            int characterIndex = linkInfo.linkTextfirstCharacterIndex + i;
+            var charInfo = textMeshPro.textInfo.characterInfo[characterIndex];
+            int meshIndex = charInfo.materialReferenceIndex;
+            int vertexIndex = charInfo.vertexIndex;
 
+            Color32[] vertexColors = textMeshPro.textInfo.meshInfo[meshIndex].colors32;
+            if (charInfo.isVisible)
+            {
+                vertexColors[vertexIndex + 0] = startColors[i][0];
+                vertexColors[vertexIndex + 1] = startColors[i][1];
+                vertexColors[vertexIndex + 2] = startColors[i][2];
+                vertexColors[vertexIndex + 3] = startColors[i][3];
+            }
+            if (charInfo.isVisible && charInfo.underlineVertexIndex > 0 && charInfo.underlineVertexIndex != underlineIndex && charInfo.underlineVertexIndex < vertexColors.Length)
+            {
+                underlineIndex = charInfo.underlineVertexIndex;
+                for (int j = 0; j < 12; j++)
+                {
+                    vertexColors[underlineIndex + j] = startColors[i][0];
+                }
+            }
+        }
+
+        textMeshPro.UpdateVertexData(TMP_VertexDataUpdateFlags.All);
+    }
 }
-#endif

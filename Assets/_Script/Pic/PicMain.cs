@@ -33,7 +33,7 @@ public class PicMain : MonoBehaviour
     bool m_isDestroyed;
     string m_editFilename = "";
     bool m_bLocked;
-
+    bool m_bDisableUndo;
     // Start is called before the first frame update
     void Start()
     {
@@ -42,7 +42,10 @@ public class PicMain : MonoBehaviour
         m_camera = RTUtil.FindObjectOrCreate("Camera").GetComponent<Camera>();
         m_canvas.worldCamera = m_camera;
     }
-    
+    public void SetDisableUndo(bool bNew)
+    {
+        m_bDisableUndo = bNew;
+    }
     public Camera GetCamera() { return m_camera; }
 
     public Canvas GetCanvas() { return m_canvas; }
@@ -68,6 +71,13 @@ public class PicMain : MonoBehaviour
         return false;
     }
 
+    public void SetVisible(bool bNew)
+    {
+        RTUtil.FindInChildrenIncludingInactive(gameObject, "Canvas").SetActive(bNew);
+        RTUtil.FindInChildrenIncludingInactive(gameObject, "Pic").SetActive(bNew);
+        RTUtil.FindInChildrenIncludingInactive(gameObject, "StatusText").SetActive(bNew);
+
+    }
     public void KillGPUProcesses()
     {
         if (m_picTextToImageScript.IsBusy()) m_picTextToImageScript.SetForceFinish(true);
@@ -82,8 +92,10 @@ public class PicMain : MonoBehaviour
         m_text.text = msg;
     }
 
-    public void AddImageUndo(bool bDoFullCopy = false)
+    public bool AddImageUndo(bool bDoFullCopy = false)
     {
+        if (m_bDisableUndo) return false;
+
         m_undoevent.m_active = true;
         
         if (bDoFullCopy)
@@ -100,10 +112,13 @@ public class PicMain : MonoBehaviour
             m_undoevent.m_sprite = m_pic.sprite;
         }
         //Debug.Log("Image added to undo");
+
+        return true;
     }
 
     public void UndoImage()
     {
+      
         if (m_undoevent.m_active)
         {
             Debug.Log("Undo");
@@ -263,11 +278,12 @@ public class PicMain : MonoBehaviour
             Sprite newSprite = null;
             Texture2D alphaTex = null;
 
-
             if (bNeedToProcessAlpha)
             {
-                alphaTex = texture.Duplicate();
-                alphaTex.ConvertTextureToBlackAndWhiteRGBMask();
+                alphaTex = texture.GetAlphaMask();
+              
+                alphaTex.Apply();
+
                 m_picMaskScript.SetMaskFromTexture(alphaTex);
                 texture.FillAlpha(1.0f);
                 texture.Apply();
@@ -328,7 +344,6 @@ public class PicMain : MonoBehaviour
         targetTextToImageScript.SetSeed(m_picTextToImageScript.GetSeed()); //if we've set it, it will carry to the duplicate as well
         targetTextToImageScript.SetTextStrength(m_picTextToImageScript.GetTextStrength()); //if we've set it, it will carry to the duplicate as well
         targetTextToImageScript.SetPrompt(m_picTextToImageScript.GetPrompt()); //if we've set it, it will carry to the duplicate as well
-
         targetRectScript.SetOffsetRect(m_targetRectScript.GetOffsetRect());
 
         return go;

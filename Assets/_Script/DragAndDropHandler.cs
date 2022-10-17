@@ -40,7 +40,7 @@ public class DragAndDropHandler : MonoBehaviour
             Debug.Log("Dropped " + file + " at " + new Vector2(aPos.x, aPos.y));
             RTQuickMessageManager.Get().ShowMessage("Opening "+file);
 
-            RTMessageManager.Get().Schedule(0.1f, ImageGenerator.Get().AddImageByFileName, file);
+            RTMessageManager.Get().Schedule(0.1f, ImageGenerator.Get().AddImageByFileNameNoReturn, file);
             //ImageGenerator.Get().AddImageByFileName(file);
         }
     }

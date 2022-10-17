@@ -9,8 +9,6 @@ public class GPUInfo
     public int remoteGPUID;
     public string remoteURL;
     public bool IsGPUBusy;
-    public bool bUseHack;
-    public Dictionary<string, int> fn_indexDict = new Dictionary<string, int>();
 }
 
 public class Config : MonoBehaviour
@@ -22,10 +20,10 @@ public class Config : MonoBehaviour
     static Config _this;
     string m_configText; //later move this to a config.txt or something
     const string m_configFileName = "config.txt";
-    bool m_safetyFilter = true;
-    float m_requiredServerVersion = 0.25f;
+    bool m_safetyFilter = false;
+    float m_requiredServerVersion = 0.26f;
 
-    float m_version = 0.46f;
+    float m_version = 0.47f;
     string m_imageEditorPathAndExe = "none set";
     public string GetVersionString() { return m_version.ToString("0.00"); }
     public float GetVersion() { return m_version; }
@@ -51,6 +49,7 @@ public class Config : MonoBehaviour
             m_configText += "#server name/ip and port.\n";
             m_configText += "\n";
             m_configText += "add_server|http://localhost:7860\n\n";
+            m_configText += "#kids around?  Then uncomment below to turn on the content filter. It's way too sensitive though.\r\n#enable_safety_filter\r\n\r\n";
             m_configText += "#Set the below path and .exe to an image editor to use the Edit option. Changed files will auto\n";
             m_configText += "#update in here.\n\n";
             m_configText += "set_image_editor|C:\\Program Files\\Adobe\\Adobe Photoshop 2022\\Photoshop.exe\n";
@@ -58,6 +57,18 @@ public class Config : MonoBehaviour
 
         ProcessConfigString(m_configText);
 
+    }
+
+    public int GetFreeGPU()
+    {
+        for (int i = 0; i < Config.Get().GetGPUCount(); i++)
+        {
+            if (!Config.Get().IsGPUBusy(i))
+            {
+                return i;
+            }
+        }
+        return -1; //none available right now
     }
 
     public bool IsValidGPU(int gpu)
@@ -81,8 +92,8 @@ public class Config : MonoBehaviour
     {
         
         m_safetyFilter = bNew;
-        if (!bNew)
-            Debug.Log("Safety filter disabled due to -disable_filter");
+        if (bNew)
+            Debug.Log("Safety enabled due to -enable_safety_filter");
 
     }
     public bool IsAnyGPUFree()
@@ -162,6 +173,7 @@ public class Config : MonoBehaviour
     {
 
         ImageGenerator.Get().ShutdownAllGPUProcesses();
+        m_safetyFilter = false;
 
         //reset old config. This will likely do bad things if you're using GPUs at the time of loading
         m_gpuInfo = new List<GPUInfo>();
@@ -176,11 +188,11 @@ public class Config : MonoBehaviour
                 
                 // Do something with the line
                 string[] words = line.Trim().Split('|');
-                if (words[0] == "-disable_filter" || words[0] == "disable_filter")
+                if (words[0] == "-enable_safety_filter" || words[0] == "enable_safety_filter")
                 {
                     //another way to disable the safety filter, possibly the only way when it comes to say,
                     //a web build
-                    SetSafetyFilter(false);
+                    SetSafetyFilter(true);
                 } else
                 if (words[0] == "add_server")
                 {

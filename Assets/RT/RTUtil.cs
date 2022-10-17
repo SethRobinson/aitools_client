@@ -128,6 +128,21 @@ public static class Extensions
         } while (r > limit);
         return (long)(r % range + (ulong)min);
     }
+
+
+    //These two funcs below by PeachyPixels: https://forum.unity.com/threads/convert-screen-width-to-distance-in-world-space.1072694/
+    public static Rect GetScreenRect(this Camera value)
+    {
+        Vector3 topRight = value.ViewportToWorldPoint(new Vector3(1f, 1f, 0f));
+        return (new Rect(0f, 0f, topRight.x * 2f, topRight.y * 2f));
+    }
+    public static Rect GetScreenWorldRect(this Camera value)
+    {
+        Vector3 bottomLeft = value.ViewportToWorldPoint(new Vector3(0f, 0f, 0f));
+        Vector3 topRight = value.ViewportToWorldPoint(new Vector3(1f, 1f, 0f));
+        return (new Rect(bottomLeft.x, bottomLeft.y, topRight.x * 2f, topRight.y * 2f));
+    }
+
 }
 
 //based on code from https://forum.unity.com/threads/how-to-edit-texture-pixels-at-run-time-through-c-code.1127939/
@@ -190,6 +205,41 @@ public static class Tex2DExtension
 
     }
 
+    public static Texture2D GetAlphaMask(this Texture2D tex) //grabs the alpha mask, replacing all colors
+    {
+        Texture2D newtex = new Texture2D(tex.width, tex.height, TextureFormat.RGBA32, false);
+
+        for (int x = 0; x < newtex.width; x++)
+        {
+            for (int y = 0; y < newtex.height; y++)
+            {
+                if (tex.GetPixel(x, y).a <= 0.01f) //no real reason I'm doing this, == 0 is probably fine
+                {
+                    newtex.SetPixel(x, y, new Color(1, 1, 1, 0));  //drop the alpha
+                }
+                else
+                {
+                    var color = tex.GetPixel(x, y);
+
+                    /*
+                    if (x % 100 == 0)
+                    {
+                        Debug.Log("Pixel: " + color);
+                    }
+                    */
+
+                    color.r = 1;
+                    color.g = 1;
+                    color.b = 1;
+                  
+                    newtex.SetPixel(x, y, color);
+                }
+            }
+        }
+
+        return newtex;
+
+    }
 
     //seth wrote the functions below here
     public static Texture2D ConvertTextureToBlackAndWhiteRGBMask(this Texture2D tex)
@@ -200,19 +250,36 @@ public static class Tex2DExtension
         {
             for (int y = 0; y < newtex.height; y++)
             {
-                if (tex.GetPixel(x, y).a == 0)
+                if (tex.GetPixel(x, y).a <= 0.1f)
                 {
                     newtex.SetPixel(x, y, new Color(0, 0, 0, 1));  //drop the alpha
                 }
                 else
                 {
-                    newtex.SetPixel(x, y, tex.GetPixel(x, y));  //drop the alpha
+                    var color = tex.GetPixel(x, y);
+
+                    /*
+                    if (x % 100 == 0)
+                    {
+                        Debug.Log("Pixel: " + color);
+                    }
+                    */
+                    
+                    color.r = 1;
+                    color.g = 1;
+                    color.b = 1;
+                    //color.a = 1;
+
+                    newtex.SetPixel(x, y, color);  
                 }
             }
         }
 
         return newtex;
     }
+
+
+
     //Don't forget to .Apply() after doing this!
     public static Texture2D FillAlpha(this Texture2D newtex, float alphaZeroToOne)
     {
@@ -1155,7 +1222,7 @@ public class RTUtil
 
     public static GameObject FindObjectOrCreate(string name)
     {
-        GameObject temp = GameObject.Find(name);
+        GameObject temp = FindIncludingInactive(name);
         if (temp ==  null)
         {
             //create it
@@ -1566,5 +1633,7 @@ public class RTUtil
         Debug.DrawLine(p4, p8, Color.cyan, delay);
     }
 
-   
+  
+
+
 }

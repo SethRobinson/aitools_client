@@ -15,8 +15,6 @@ public class RTToolTipPrefabScript : MonoBehaviour
     {
         _canvasGroup.alpha = 0;  //avoid a flicker while we change its position
         _originalPos = _backGround.transform.position;
-        
-      
     }
 
     void Reposition()
@@ -53,6 +51,24 @@ public class RTToolTipPrefabScript : MonoBehaviour
         _backGround.transform.position = vPos;
         _canvasGroup.alpha = 1;
     }
+
+    void OnBecameInvisible()
+    {
+        Debug.Log("Invisible");
+    }
+
+    void OnDisable()
+    {
+        //Debug.Log("PrintOnDisable: script was disabled");
+        Destroy(gameObject);
+    }
+
+    void OnEnable()
+    {
+        //Debug.Log("PrintOnEnable: script was enabled");
+        
+    }
+
 
     // Update is called once per frame
     void Update()

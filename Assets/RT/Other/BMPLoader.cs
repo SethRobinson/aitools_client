@@ -292,6 +292,7 @@ namespace B83.Image.BMP
                 byte b = (byte)((v & bmp.bMask) >> shiftB);
                 if (bmp.bMask != 0)
                     a = (byte)((v & bmp.aMask) >> shiftA);
+               
                 data[i] = new Color32(r, g, b, a);
             }
         }

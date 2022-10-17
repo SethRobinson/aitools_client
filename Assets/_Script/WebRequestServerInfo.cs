@@ -9,7 +9,6 @@ using SimpleJSON;
 
 public class WebRequestServerInfo : MonoBehaviour
 {
-    bool _bUseHack = false;
     const int m_timesToTry = 2;
     int m_timesTried = 0;
 
@@ -25,10 +24,6 @@ public class WebRequestServerInfo : MonoBehaviour
 
     public void StartWebRequest(string httpDest, string extra)
     {
-        if (extra == "1")
-        {
-            _bUseHack = true;
-        }
         StartCoroutine(GetRequest(httpDest));
     }
 
@@ -105,15 +100,11 @@ public class WebRequestServerInfo : MonoBehaviour
                     Debug.Log("ERROR: The server version is outdated, we required "+ Config.Get().GetRequiredServerVersion()+ " or newer. GO UPGRADE!  Trying anyway though.");
                     GameLogic.Get().ShowConsole(true);
                 }
-               
 
-                Debug.Log("CONNECTED: " + server + " (" + serverName + ") V"+version+"");
+                //Debug.Log("CONNECTED: " + server + " (" + serverName + ") V"+version+"");
+                RTConsole.Log("CONNECTED: <link=\"" + server + "\"><u>"+server+"</u></link> (" + serverName + ") V" + version + "");
 
-                //retrieve offsets
                 List<object> gpus = dict["gpu"] as List<object>;
-               
-                //List<object> fnDictHolder = dict["fn_index"] as List<object>;
-                //Dictionary<string, object> fnDict = fnDictHolder[0] as Dictionary<string,object>;
                 
                 for (int i=0; i < gpus.Count; i++)
                {
@@ -122,31 +113,10 @@ public class WebRequestServerInfo : MonoBehaviour
                    g = new GPUInfo();
                    g.remoteURL = server;
                    g.remoteGPUID = i;
-                   g.bUseHack = _bUseHack;
-
-                    /*
-                    //oh, we need the fn_index data to fake the gradio calls
-                    if (fnDict != null)
-                    {
-                        foreach (KeyValuePair<string, object> kvp in fnDict)
-                        {
-                            if (kvp.Value != null)
-                            {
-                                //Debug.Log("Key: " + kvp.Key + " Value: " + kvp.Value.ToString());
-                                int val;
-                                int.TryParse(kvp.Value.ToString(), out val);
-                                g.fn_indexDict.Add(kvp.Key, val);
-                            }
-                        }
-                    }
-                    
-                    */
-
-                    Config.Get().AddGPU(g);
+        
+                   Config.Get().AddGPU(g);
                }
-              
             }
-
         }
 
         //either way, we're done with us

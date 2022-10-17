@@ -142,9 +142,14 @@ public class PicTextToImage : MonoBehaviour
         int genHeight = GameLogic.Get().GetGenHeight();
         var gpuInf = Config.Get().GetGPUInfo(m_gpu);
 
+        string safety_filter = "default"; //use whatever the server is set at
+        if (Config.Get().GetSafetyFilter())
+        {
+            safety_filter = "true";
+        }
+
         //too bad raw interpolated strings are still in preview
-       
-                string json =
+        string json =
         $@"{{
             ""txt2imgreq"":
             {{
@@ -157,6 +162,7 @@ public class PicTextToImage : MonoBehaviour
             ""seed"": {m_seed},
             ""width"": {genWidth},
             ""height"": {genHeight},
+            ""safety_filter"": ""{safety_filter}"",
             ""sampler_name"": ""{GameLogic.Get().GetSamplerName()}""
         }}
 

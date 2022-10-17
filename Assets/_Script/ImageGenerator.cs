@@ -137,9 +137,7 @@ public class ImageGenerator : MonoBehaviour
     }
     public void OnGenerateButton()
     {
-      
         SetGenerate(!m_generateActive);
-      
     }
     // Update is called once per frame
     public void Reset()
@@ -170,19 +168,25 @@ public class ImageGenerator : MonoBehaviour
         AdvancePositionForNextPic();
         return pic;
     }
-
-    public void AddImageByFileName(string fname)
+    public void AddImageByFileNameNoReturn(string fname)
+    {
+        AddImageByFileName(fname);
+    }
+    public GameObject AddImageByFileName(string fname)
     {
         GameObject pic = CreateNewPic();
         PicMain picScript = pic.GetComponent<PicMain>();
         PicMask picMask = pic.GetComponent<PicMask>();
         picScript.LoadImageByFilename(fname, false);
         picMask.ResizeMaskIfNeeded();
+
+        return pic;
     }
+
 
     public void ReorganizePics()
     {
-    Reset();
+        Reset();
 
         var aiScripts = RTUtil.FindObjectOrCreate("Pics").transform.GetComponentsInChildren<PicMain>();
 
@@ -220,16 +224,7 @@ public class ImageGenerator : MonoBehaviour
     {
         if (m_gpuEventList.Count > 0)
         {
-            int gpuToUse = -1;
-
-            for (int i = 0; i < Config.Get().GetGPUCount(); i++)
-            {
-                if (!Config.Get().IsGPUBusy(i))
-                {
-                    gpuToUse = i;
-                    break;
-                }
-            }
+            int gpuToUse = Config.Get().GetFreeGPU();
 
             if (gpuToUse == -1)
             {
