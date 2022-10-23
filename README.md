@@ -9,10 +9,10 @@ The docs/screenshots are in the [server repository](https://github.com/SethRobin
 
 # Download the [AI Tools Client (Windows, 22 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip)
 
-Current version: **V0.47** (released Oct 17th 2022)
+Current version: **V0.48** (released Oct 24th 2022)
 
-* BUGFIX: Fixed issue with importing bmp alpha
-* Added "pizza" generation speed test
+* GUI now auto-sizes to match window, was basically unusably tiny on 4k previously
+* Default settings tweaked, Fix Faces checkbox no longer defaults to on
 
 You only need to download the above file to use this, However, the source might be useful to generate a build for other platforms, or fork or steal pieces to use for yourself.  Go ahead!
 

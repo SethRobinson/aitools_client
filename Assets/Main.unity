@@ -7576,7 +7576,7 @@ MonoBehaviour:
   m_MinValue: 0
   m_MaxValue: 64
   m_WholeNumbers: 0
-  m_Value: 20
+  m_Value: 4
   m_OnValueChanged:
     m_PersistentCalls:
       m_Calls:
@@ -8538,10 +8538,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0cd44c1031e13a943bb63640046fad76, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_UiScaleMode: 0
+  m_UiScaleMode: 1
   m_ReferencePixelsPerUnit: 100
   m_ScaleFactor: 1
-  m_ReferenceResolution: {x: 800, y: 600}
+  m_ReferenceResolution: {x: 1920, y: 1080}
   m_ScreenMatchMode: 0
   m_MatchWidthOrHeight: 0
   m_PhysicalUnit: 3
@@ -12816,10 +12816,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0cd44c1031e13a943bb63640046fad76, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_UiScaleMode: 0
+  m_UiScaleMode: 1
   m_ReferencePixelsPerUnit: 100
   m_ScaleFactor: 1
-  m_ReferenceResolution: {x: 800, y: 600}
+  m_ReferenceResolution: {x: 1920, y: 1080}
   m_ScreenMatchMode: 0
   m_MatchWidthOrHeight: 0
   m_PhysicalUnit: 3
@@ -14291,7 +14291,7 @@ MonoBehaviour:
   m_MinValue: 0
   m_MaxValue: 1
   m_WholeNumbers: 0
-  m_Value: 0.65
+  m_Value: 1
   m_OnValueChanged:
     m_PersistentCalls:
       m_Calls:
@@ -14431,7 +14431,7 @@ MonoBehaviour:
           m_StringArgument: 
           m_BoolArgument: 0
         m_CallState: 2
-  m_IsOn: 1
+  m_IsOn: 0
 --- !u!114 &1709280532
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -17057,6 +17057,11 @@ PrefabInstance:
       propertyPath: m_AnchorMax.y
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 224676906513475572, guid: d24d1e0a9a798534dbd5865a0679501e,
+        type: 3}
+      propertyPath: m_AnchorMin.x
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 1722993963647401015, guid: d24d1e0a9a798534dbd5865a0679501e,
         type: 3}
       propertyPath: m_AnchorMax.x
@@ -17065,6 +17070,11 @@ PrefabInstance:
     - target: {fileID: 1722993963647401015, guid: d24d1e0a9a798534dbd5865a0679501e,
         type: 3}
       propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1722993963647401015, guid: d24d1e0a9a798534dbd5865a0679501e,
+        type: 3}
+      propertyPath: m_AnchorMin.y
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 9212771992909438849, guid: d24d1e0a9a798534dbd5865a0679501e,
@@ -17076,6 +17086,16 @@ PrefabInstance:
         type: 3}
       propertyPath: m_SizeDelta.y
       value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 9212771992909438849, guid: d24d1e0a9a798534dbd5865a0679501e,
+        type: 3}
+      propertyPath: m_AnchoredPosition.x
+      value: -0.00015304422
+      objectReference: {fileID: 0}
+    - target: {fileID: 9212771992909438849, guid: d24d1e0a9a798534dbd5865a0679501e,
+        type: 3}
+      propertyPath: m_AnchoredPosition.y
+      value: -0.00006866455
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_AddedGameObjects: []
@@ -18388,6 +18408,21 @@ PrefabInstance:
         type: 3}
       propertyPath: m_Alpha
       value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5728149499201824381, guid: f13496bcc6225004ebb72d41e2bd85b8,
+        type: 3}
+      propertyPath: m_UiScaleMode
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 5728149499201824381, guid: f13496bcc6225004ebb72d41e2bd85b8,
+        type: 3}
+      propertyPath: m_ReferenceResolution.x
+      value: 1920
+      objectReference: {fileID: 0}
+    - target: {fileID: 5728149499201824381, guid: f13496bcc6225004ebb72d41e2bd85b8,
+        type: 3}
+      propertyPath: m_ReferenceResolution.y
+      value: 1080
       objectReference: {fileID: 0}
     - target: {fileID: 5728149499225542831, guid: f13496bcc6225004ebb72d41e2bd85b8,
         type: 3}

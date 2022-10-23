@@ -138,7 +138,7 @@ $@"{{
             ""image"": ""{imgBase64}"",
             ""upscaling_resize"": 2,
             ""upscaler1_name"": ""ESRGAN_4x"",
-            ""upscaler2_name"": ""SwinIR_4x"",
+            ""upscaler2_name"": ""SwinIR 4x"",
             ""extras_upscaler_2_visibility:"": 0.5,
             ""gfpgan_visibility"": {gfpgan_visibility},
             ""codeformer_visibility"": {codeformer_visibility},
