@@ -2,6 +2,7 @@ using SimpleJSON;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Security.Policy;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -27,13 +28,19 @@ public class GamePicManager : MonoBehaviour
         return Get().name;
     }
 
-    public string BuildJSonRequestForInpaint(string prompt, string negativePrompt, Texture2D pic512, Texture2D mask512)
+    public string BuildJSonRequestForInpaint(string prompt, string negativePrompt, Texture2D pic512, Texture2D mask512, bool bRemoveBackground)
     {
      
         byte[] picPng = pic512.EncodeToPNG();
-    
         byte[] picMaskPng = mask512.EncodeToPNG();
-     
+
+
+#if !RT_RELEASE
+        //For testing purposes, we can write out what we're going to send
+   //     File.WriteAllBytes(Application.dataPath + "/../GameGenTemplate.png", picPng);
+   //     File.WriteAllBytes(Application.dataPath + "/../GameGenTemplateMask.png", picMaskPng);
+#endif
+
         string imgBase64 = Convert.ToBase64String(picPng);
         string maskBase64 = Convert.ToBase64String(picMaskPng);
 
@@ -67,6 +74,8 @@ $@"{{
             ""height"": {genHeight},
             ""sampler_name"": ""{GameLogic.Get().GetSamplerName()}"",
             ""image"": ""{imgBase64}"",
+            ""alpha_mask_subject"":{bRemoveBackground.ToString().ToLower()},
+                  
             ""mask_image"": ""{maskBase64}"",
             ""denoising_strength"": {GameLogic.Get().GetInpaintStrength()},
             ""mask_blur"": {maskBlur},
@@ -81,14 +90,15 @@ $@"{{
         return json;
     }
 
-    public bool SpawnInpaintRequest(string jsonRequest, Action<Texture2D> myCallback)
+    public bool SpawnInpaintRequest(string jsonRequest, Action<Texture2D, RTDB> myCallback, RTDB db)
     {
+       
         Debug.Assert(Config.Get().GetFreeGPU() != -1);
-        StartCoroutine(GetRequest(jsonRequest, myCallback));
+        StartCoroutine(GetRequest(jsonRequest, myCallback, db));
         return true;
     }
 
-    IEnumerator GetRequest(string json, Action<Texture2D> myCallback)
+    IEnumerator GetRequest(string json, Action<Texture2D, RTDB> myCallback, RTDB db)
     {
 
 #if !RT_RELEASE
@@ -183,12 +193,12 @@ $@"{{
                     yield return null; //wait a frame to lesson the jerkiness
 
                     //debug: write texture out
-                    //byte[] testReturnedTex = texture.EncodeToPNG();
-                    //File.WriteAllBytes(Application.dataPath + "/../SavedReturnedTex.png", testReturnedTex);
+#if !RT_RELEASE
+         //           byte[] testReturnedTex = texture.EncodeToPNG();
+         //           File.WriteAllBytes(Application.dataPath + "/../SavedReturnedTex.png", testReturnedTex);
+#endif
 
-                    // if (m_onFinishedRenderingCallback != null)
-                    //      m_onFinishedRenderingCallback.Invoke(gameObject);
-                    myCallback.Invoke(texture);
+                    myCallback.Invoke(texture, db);
                 }
                 else
                 {

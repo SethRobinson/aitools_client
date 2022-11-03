@@ -112,9 +112,10 @@ public class SimpleCameraMoverWithPinch : MonoBehaviour
     void Update()
     {
 
+        if (!RTUtil.IsMouseOverGameWindow) return;
+
         //ignore clicks if we're over a GUI element
         bool bOverGUI = EventSystem.current.IsPointerOverGameObject();
-        
         
         float zoomSpeed = 0.05f;
 

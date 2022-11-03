@@ -31,7 +31,7 @@ public class PicMask : MonoBehaviour
 
     private void Awake()
     {
-        m_cam = RTUtil.FindObjectOrCreate("Camera").GetComponent<Camera>();
+        m_cam = Camera.allCameras[0];
     }
     // Update is called once per frame
     //based on code from https://answers.unity.com/questions/609629/how-to-get-pixel-color-for-sprite-u43.html
@@ -137,6 +137,15 @@ public class PicMask : MonoBehaviour
         m_bMaskModified = true;
 
         //Debug.Log("Recreated mask");
+    }
+
+    public void SetMaskFromTextureAlpha(Texture2D copyTexture)
+    {
+        float biggestSize = Math.Max(copyTexture.width, copyTexture.height);
+        m_spriteMask.sprite = Sprite.Create(copyTexture, new Rect(0, 0, copyTexture.width, copyTexture.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f);
+        m_boolMaskHasBeenSet = true;
+        m_bMaskModified = true;
+
     }
 
     public void ForceMaskRectToBeWithinImageBounds()

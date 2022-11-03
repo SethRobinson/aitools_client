@@ -14,7 +14,7 @@ public class TexturePreviewManager : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
-       m_camera = RTUtil.FindObjectOrCreate("Camera").GetComponent<Camera>();
+       m_camera = Camera.allCameras[0];
     }
 
     void InitTexturePreview()

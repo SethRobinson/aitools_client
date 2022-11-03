@@ -23,14 +23,20 @@ public class GameLogic : MonoBehaviour
     long m_seed = -1;
 
     float m_upscale = 2.0f; //1 means noc hange
-    bool m_fixFaces = true;
+    bool m_fixFaces = false;
     float m_textStrength = 7.5f;
     float m_inpaintStrength = 0.80f;
     float m_noiseStrength = 0;
     float m_penSize = 20;
     public TMP_InputField m_inputField;
     public TMP_InputField m_negativeInputField;
+    public TMP_InputField m_stepsInputField;
     public Button m_generateButton;
+    public Toggle m_fixFacesToggle;
+    public Toggle m_upscaleToggle;
+    public Toggle m_tilingToggle;
+    public Toggle m_removeBackgroundToggle;
+
     float m_alphaMaskFeatheringPower = 2;
     bool m_bLoopSource = false;
     bool m_inpaintMaskActive = false;
@@ -38,6 +44,7 @@ public class GameLogic : MonoBehaviour
     bool m_bTiling = false;
     int m_genWidth = 512;
     int m_genHeight = 512;
+    bool m_bRemoveBackground = false;
 
     public ImageGenerator m_AIimageGenerator;
  
@@ -46,6 +53,16 @@ public class GameLogic : MonoBehaviour
     public TMP_Dropdown m_widthDropdown;
     public TMP_Dropdown m_heightDropdown;
     public TMP_Dropdown m_samplerDropdown;
+
+    public enum eGameMode
+    {
+        NORMAL,
+        EXPERIMENT
+    }
+
+    eGameMode m_gameMode = eGameMode.NORMAL;
+    public eGameMode GetGameMode() { return m_gameMode; }
+    public void SetGameMode(eGameMode gameMode) { m_gameMode = gameMode; }
 
     static GameLogic _this = null;
     static public GameLogic Get()
@@ -71,12 +88,32 @@ public class GameLogic : MonoBehaviour
         int.TryParse(m_heightDropdown.options[m_heightDropdown.value].text, out m_genHeight);
     }
 
-    public string GetSamplerName() { return m_samplerDropdown.options[m_samplerDropdown.value].text; }
+    public string GetSamplerName() 
+    {
+        return m_samplerDropdown.options[m_samplerDropdown.value].text; 
+    }
+
+    public void SetSamplerByName(string name)
+    {
+        name = name.ToLower();
+
+        for (int i=0; i < m_samplerDropdown.options.Count; i++)
+        {
+            if (name == m_samplerDropdown.options[i].text.ToLower())
+            {
+                m_samplerDropdown.value = i;
+                return;
+            }
+        }
+
+        Debug.Log("Can't set default sampler, don't know: " + name);
+    }
+
+    
     public void SetPrompt(string p)
     {
         m_inputField.text = p;
     }
-
 
     private void Awake()
     {
@@ -103,7 +140,7 @@ public class GameLogic : MonoBehaviour
         var camera = RTUtil.FindObjectOrCreate("Camera").GetComponent<Camera>();
 
         Vector2 ray = new Vector2(camera.ScreenToWorldPoint(Input.mousePosition).x, camera.ScreenToWorldPoint(Input.mousePosition).y);
-        RaycastHit2D hit = Physics2D.Raycast(ray, ray);
+        RaycastHit2D hit = Physics2D.Raycast(ray, Vector2.zero);
         if (hit.collider != null)
         {
             // Debug.Log(hit.collider.gameObject);
@@ -154,10 +191,9 @@ public class GameLogic : MonoBehaviour
         if (m_inputField.isFocused) return true;
         if (m_negativeInputField.isFocused) return true;
 
-
         return false;
-      
     }
+
     public void OnLoopSourceButton(bool bNew)
     {
         m_bLoopSource = bNew;
@@ -171,11 +207,23 @@ public class GameLogic : MonoBehaviour
     public void OnTilingButton(bool bNew)
     {
         m_bTiling = bNew;
+        m_tilingToggle.isOn = bNew;
     }
 
     public bool GetTiling()
     {
         return m_bTiling;
+    }
+
+    public void OnRemoveBackground(bool bNew)
+    {
+        m_bRemoveBackground = bNew;
+        m_removeBackgroundToggle.isOn = bNew;
+    }
+
+    public bool GetRemoveBackground()
+    {
+        return m_bRemoveBackground;
     }
 
     public void OnClearButton()
@@ -209,6 +257,12 @@ public class GameLogic : MonoBehaviour
         //Debug.Log("Steps changed to " + steps);
         int.TryParse(steps, out m_steps);
     }
+    public void SetSteps(int steps)
+    {
+        m_steps = steps;
+        m_stepsInputField.text = steps.ToString();
+    }
+
     public void OnSeedChanged(string seed)
     {
         //Debug.Log("Steps changed to " + steps);
@@ -319,16 +373,24 @@ public class GameLogic : MonoBehaviour
        if (upscale)
         {
             m_upscale = 2.0f;
-        } else
+
+        }
+        else
         {
             m_upscale = 1.0f;
         }
+
+        m_upscaleToggle.isOn = upscale;
+
     }
 
     public void OnFixFacesChanged(bool bNew)
     {
         //Debug.Log("Steps changed to " + steps);
         m_fixFaces = bNew;
+
+        //make sure the GUI button matches
+        m_fixFacesToggle.isOn = bNew;
     }
 
     public void OnPromptChanged(String str)
@@ -399,9 +461,20 @@ public class GameLogic : MonoBehaviour
                 Config.Get().SetSafetyFilter(false);
             }
         }
+
+
+#if !RT_RELEASE
+        RTUtil.KillObjectByName("RTIntroSplash");
+
+        //let's directly start an experiment.  I schedule it to allow 1 frame to pass, if I don't the camera
+        //isn't initted yet
+        //RTMessageManager.Get().Schedule(0, PizzaLogic.Get().OnStartPizza);
+        //RTMessageManager.Get().Schedule(0, BreakoutLogic.Get().OnStartBreakout);
+        RTMessageManager.Get().Schedule(0, ShootingGalleryLogic.Get().OnStartGameMode);
+#endif
     }
 
-	void OnApplicationQuit() 
+    void OnApplicationQuit() 
 	{
         // Make sure prefs are saved before quitting.
         //PlayerPrefs.Save();
@@ -412,6 +485,7 @@ public class GameLogic : MonoBehaviour
         //        NetworkTransport.Shutdown();
         print("QUITTING!");
     }
+    
     
 
     private void OnDestroy()
@@ -426,6 +500,7 @@ public class GameLogic : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
+        if (m_gameMode == eGameMode.EXPERIMENT) return;
 
         const float penAdjustmentSize = 7.0f;
 

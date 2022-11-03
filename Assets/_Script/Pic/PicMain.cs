@@ -38,8 +38,8 @@ public class PicMain : MonoBehaviour
     void Start()
     {
         SetStatusMessage("");
-    
-        m_camera = RTUtil.FindObjectOrCreate("Camera").GetComponent<Camera>();
+
+        m_camera = Camera.allCameras[0];
         m_canvas.worldCamera = m_camera;
     }
     public void SetDisableUndo(bool bNew)
@@ -660,6 +660,12 @@ public class PicMain : MonoBehaviour
 
       
     }
+
+    public void FillAlphaMaskWithImageAlpha()
+    {
+        m_picMaskScript.SetMaskFromTextureAlpha(m_pic.sprite.texture);
+    }
+
 
     public void FillAlphaMaskIfBlank()
     {

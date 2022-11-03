@@ -47,10 +47,6 @@ RTEventManager.Get().Schedule(RTAudioManager.GetName(), "PlayMusicEx", 2, new RT
 			"volume", 1.0f, "pitch", 2.0f,  "loop", false));
 
  
-  //Example of sending multiple parms with RTAudioManager's PlayEx function (you can send as many/few as you want, but they must be in name/value pairs):
-RTEventManager.Get().Schedule(RTAudioManager.GetName(), "PlayEx", 2, new RTDB("fileName", "chalk",
-			"volume", 1.0f, "pitch", 2.0f, "killExisting", false, "ignoreIfRecentlyPlayedSeconds", 0.2f));
-			
 Note: If a parm is missing with PlayEx the default is used instead
 
 Note: .wav or .mp3/ogg etc must be located in the Assets/Resources so unity includes them automatically.

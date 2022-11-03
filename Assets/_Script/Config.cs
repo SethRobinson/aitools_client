@@ -21,13 +21,16 @@ public class Config : MonoBehaviour
     string m_configText; //later move this to a config.txt or something
     const string m_configFileName = "config.txt";
     bool m_safetyFilter = false;
-    float m_requiredServerVersion = 0.26f;
+    float m_requiredServerVersion = 0.27f;
 
-    float m_version = 0.48f;
+    float m_version = 0.49f;
     string m_imageEditorPathAndExe = "none set";
     public string GetVersionString() { return m_version.ToString("0.00"); }
     public float GetVersion() { return m_version; }
     public float GetRequiredServerVersion() { return m_requiredServerVersion; }
+
+    public List<AudioClip> m_audioClips;
+
     void Awake()
     {
 #if RT_BETA
@@ -39,6 +42,7 @@ public class Config : MonoBehaviour
     public string GetImageEditorPathAndExe() { return m_imageEditorPathAndExe; }
     private void Start()
     {
+        RTAudioManager.Get().AddClipsToLibrary(m_audioClips);
 
         m_configText = LoadConfigFromFile();
 
@@ -52,7 +56,9 @@ public class Config : MonoBehaviour
             m_configText += "#kids around?  Then uncomment below to turn on the content filter. It's way too sensitive though.\r\n#enable_safety_filter\r\n\r\n";
             m_configText += "#Set the below path and .exe to an image editor to use the Edit option. Changed files will auto\n";
             m_configText += "#update in here.\n\n";
-            m_configText += "set_image_editor|C:\\Program Files\\Adobe\\Adobe Photoshop 2022\\Photoshop.exe\n";
+            m_configText += "set_image_editor|C:\\Program Files\\Adobe\\Adobe Photoshop 2023\\Photoshop.exe\n";
+            m_configText += "\n#set_default_sampler|DDIM\n";
+            m_configText += "#set_default_steps|50\n";
         }
 
         ProcessConfigString(m_configText);
@@ -209,23 +215,25 @@ public class Config : MonoBehaviour
                         extra = words[2];
                     }
                     webScript.StartWebRequest(words[1], extra);
-                    
-                    
+                } else
+                if (words[0] == "set_default_sampler")
+                {
+                    GameLogic.Get().SetSamplerByName(words[1]);
+                } else
+                if (words[0] == "set_default_steps")
+                {
+                    int steps;
 
-                }
-                else
+                    int.TryParse(words[1], out steps);
+
+                    GameLogic.Get().SetSteps(steps);
+                }  else
                 if (words[0] == "set_image_editor")
                 {
-                    //Debug.Log("Adding server " +words[1]);
-
                     m_imageEditorPathAndExe = words[1];
-
                 }
 
-
-               
-                    
-                    else
+                else
                 {
                     //Debug.Log("Processing " + line);
                 }

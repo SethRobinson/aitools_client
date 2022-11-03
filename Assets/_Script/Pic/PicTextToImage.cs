@@ -137,6 +137,7 @@ public class PicTextToImage : MonoBehaviour
 
         bool bFixFace = GameLogic.Get().GetFixFaces();
         bool bTiled = GameLogic.Get().GetTiling();
+        bool bRemoveBackground = GameLogic.Get().GetRemoveBackground();
 
         int genWidth = GameLogic.Get().GetGenWidth();
         int genHeight = GameLogic.Get().GetGenHeight();
@@ -158,6 +159,7 @@ public class PicTextToImage : MonoBehaviour
             ""steps"": {GameLogic.Get().GetSteps()},
             ""restore_faces"":{bFixFace.ToString().ToLower()},
             ""tiling"":{bTiled.ToString().ToLower()},
+            ""alpha_mask_subject"":{bRemoveBackground.ToString().ToLower()},
             ""cfg_scale"":{GameLogic.Get().GetTextStrength()},
             ""seed"": {m_seed},
             ""width"": {genWidth},
@@ -171,7 +173,7 @@ public class PicTextToImage : MonoBehaviour
         //",\"" + GameLogic.Get().GetSamplerName() + "\","  +  + ","
 
 #if !RT_RELEASE
-        File.WriteAllText("json_to_send.json", json);
+        //File.WriteAllText("json_to_send.json", json);
 #endif
 
         using (var postRequest = UnityWebRequest.Post(finalURL, "POST"))
@@ -238,11 +240,11 @@ public class PicTextToImage : MonoBehaviour
 
                 Texture2D texture = new Texture2D(0, 0, TextureFormat.RGBA32, false);
                 bool bSuccess = false;
-                yield return null; //wait a free to lesson the jerkiness
+                yield return null; //wait a frame to lesson the jerkiness
 
                 if (texture.LoadImage(imgDataBytes, false))
                 {
-                    yield return null; //wait a free to lesson the jerkiness
+                    yield return null; //wait a frame to lesson the jerkiness
                     m_picScript.AddImageUndo();
                     //Debug.Log("Read texture");
                     float biggestSize = Math.Max(texture.width, texture.height);
@@ -251,7 +253,10 @@ public class PicTextToImage : MonoBehaviour
                     renderer.sprite = newSprite;
                     bSuccess = true;
 
-
+                    if (bRemoveBackground)
+                    {
+                        m_picScript.FillAlphaMaskWithImageAlpha();
+                    }
                     m_picScript.OnImageReplaced();
                 }
                 else

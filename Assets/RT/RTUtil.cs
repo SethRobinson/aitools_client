@@ -145,6 +145,45 @@ public static class Extensions
 
 }
 
+
+
+//From comment left by NinjaISV in Unity answer area:  https://answers.unity.com/questions/722748/refreshing-the-polygon-collider-2d-upon-sprite-cha.html
+public static class Collider2DExtensions
+{
+    public static void TryUpdateShapeToAttachedSprite(this PolygonCollider2D collider)
+    {
+        collider.UpdateShapeToSprite(collider.GetComponent<SpriteRenderer>().sprite);
+    }
+
+    public static void UpdateShapeToSprite(this PolygonCollider2D collider, Sprite sprite)
+    {
+        // ensure both valid
+        if (collider != null && sprite != null)
+        {
+            
+         
+            // update count
+            collider.pathCount = sprite.GetPhysicsShapeCount();
+
+
+            // new paths variable
+            List<Vector2> path = new List<Vector2>();
+
+            // loop path count
+            for (int i = 0; i < collider.pathCount; i++)
+            {
+                // clear
+                path.Clear();
+                // get shape
+                sprite.GetPhysicsShape(i, path);
+                // set path
+                collider.SetPath(i, path.ToArray());
+            }
+        }
+    }
+}
+
+
 //based on code from https://forum.unity.com/threads/how-to-edit-texture-pixels-at-run-time-through-c-code.1127939/
 public static class Tex2DExtension
 {
@@ -1195,7 +1234,26 @@ public class RTUtil
 
         return null;  //couldn't find crap
     }
-    
+
+    public static void AddObjectsToListByNameIncludingInactive(GameObject parentObj, string name, bool bIsWildcardString, List<GameObject> objs)
+    {
+
+        for (int i = 0; i < parentObj.transform.childCount; i++)
+        {
+            if (
+                (!bIsWildcardString && parentObj.transform.GetChild(i).gameObject.name == name) ||
+                    (bIsWildcardString && parentObj.transform.GetChild(i).gameObject.name.StartsWith(name))
+                    )
+            {
+                objs.Add(parentObj.transform.GetChild(i).gameObject);
+            }
+
+            AddObjectsToListByNameIncludingInactive(parentObj.transform.GetChild(i).gameObject, name, bIsWildcardString, objs);
+        }
+
+        
+    }
+
     //hideously slow as it iterates all objects, so don't overuse!
     public static GameObject FindIncludingInactive(string name)
     {
@@ -1233,6 +1291,20 @@ public class RTUtil
         return temp;
     }
 
+    public static bool KillObjectByName(string name, float delayTime = 0)
+    {
+        GameObject obj = FindIncludingInactive(name);
+
+        if (obj)
+        {
+            GameObject.Destroy(obj, delayTime);
+            return true;
+        } else
+        {
+            //couldn't find it
+            return false;
+        }
+    }
     //Below snippet taken from https://forum.unity.com/threads/deleting-all-chidlren-of-an-object.92827/, credit to mwk888
     /// <summary>
     /// Calls GameObject.Destroy on all children of transform. and immediately detaches the children
@@ -1593,8 +1665,16 @@ public class RTUtil
         return false;
     }
 
-// detect headless mode (which has graphicsDeviceType Null)
-//From https://noobtuts.com/unity/detect-headless-mode
+    //https://answers.unity.com/questions/973606/how-can-i-tell-if-the-mouse-is-over-the-game-windo.html (LW)
+    static public bool IsMouseOverGameWindow
+    {
+        get { 
+            return !(0 > Input.mousePosition.x || 0 > Input.mousePosition.y || Screen.width < Input.mousePosition.x || Screen.height < Input.mousePosition.y); 
+        }
+    }
+
+    // detect headless mode (which has graphicsDeviceType Null)
+    //From https://noobtuts.com/unity/detect-headless-mode
 
     static public bool IsHeadless()
     {

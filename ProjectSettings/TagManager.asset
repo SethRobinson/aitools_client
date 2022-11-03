@@ -5,6 +5,10 @@ TagManager:
   serializedVersion: 2
   tags:
   - FPS Counter
+  - Opponent
+  - Border
+  - Background
+  - Friend
   layers:
   - Default
   - TransparentFX

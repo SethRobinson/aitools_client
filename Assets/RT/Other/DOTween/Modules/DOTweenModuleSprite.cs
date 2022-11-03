@@ -17,7 +17,7 @@ namespace DG.Tweening
         #region SpriteRenderer
 
         /// <summary>Tweens a SpriteRenderer's color to the given value.
-        /// Also stores the m_picRenderer as the tween's target so it can be used for filtered operations</summary>
+        /// Also stores the spriteRenderer as the tween's target so it can be used for filtered operations</summary>
         /// <param name="endValue">The end value to reach</param><param name="duration">The duration of the tween</param>
         public static TweenerCore<Color, Color, ColorOptions> DOColor(this SpriteRenderer target, Color endValue, float duration)
         {
@@ -27,7 +27,7 @@ namespace DG.Tweening
         }
 
         /// <summary>Tweens a Material's alpha color to the given value.
-        /// Also stores the m_picRenderer as the tween's target so it can be used for filtered operations</summary>
+        /// Also stores the spriteRenderer as the tween's target so it can be used for filtered operations</summary>
         /// <param name="endValue">The end value to reach</param><param name="duration">The duration of the tween</param>
         public static TweenerCore<Color, Color, ColorOptions> DOFade(this SpriteRenderer target, float endValue, float duration)
         {

@@ -124,6 +124,7 @@ public class PicUpscale : MonoBehaviour
         //A lot of these parms are hardcoded where I like them, maybe add GUI to the client to control them later
         float gfpgan_visibility = 0;
         float codeformer_visibility = 0;
+        bool bRemoveBackground = GameLogic.Get().GetRemoveBackground();
 
         if (GameLogic.Get().GetFixFaces())
         {
@@ -138,10 +139,11 @@ $@"{{
             ""image"": ""{imgBase64}"",
             ""upscaling_resize"": 2,
             ""upscaler1_name"": ""ESRGAN_4x"",
-            ""upscaler2_name"": ""SwinIR 4x"",
+            ""upscaler2_name"": ""SwinIR_4x"",
             ""extras_upscaler_2_visibility:"": 0.5,
             ""gfpgan_visibility"": {gfpgan_visibility},
             ""codeformer_visibility"": {codeformer_visibility},
+            ""alpha_mask_subject"":{bRemoveBackground.ToString().ToLower()},
             ""codeformer_weight"": 0
         }}
 

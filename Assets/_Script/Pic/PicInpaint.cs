@@ -16,25 +16,16 @@ public class PicInpaint : MonoBehaviour
     float startTime;
     string m_prompt;
     string m_negativePrompt;
-    int m_steps;
-    float m_prompt_strength;
     long m_seed = -1;
     public GameObject m_sprite;
     bool m_bIsGenerating;
     int m_gpu;
-    float m_noise_strength = 0.78f;
     public SpriteRenderer m_spriteMask;
     public Action<GameObject> m_onFinishedRenderingCallback;
     public PicMain m_picScript;
     public Texture2D m_latentNoise; //a texture we'll use for the noise instead of generating it ourself
     public PicTextToImage m_picTextToImageScript;
     bool m_useExisting = false;
-
-    // Start is called before the first frame update
-    void Start()
-    {
-       
-    }
 
     public void SetForceFinish(bool bNew)
     {
@@ -105,33 +96,22 @@ public class PicInpaint : MonoBehaviour
 
         m_seed = GameLogic.Get().GetSeed();
         
-        //non-random seeds are actually kind of bad
-
-        /*
-        if (m_picTextToImageScript.WasCustomSeedSet())
-        {
-            m_seed = m_picTextToImageScript.GetSeed();
-        }
-        */
-       
+      
         if (!m_useExisting || m_prompt == "")
             m_prompt = GameLogic.Get().GetPrompt();
 
         if (!m_useExisting || m_negativePrompt == "")
             m_negativePrompt = GameLogic.Get().GetNegativePrompt();
 
-        m_steps = GameLogic.Get().GetSteps();
-        m_prompt_strength = GameLogic.Get().GetTextStrength();
-        m_noise_strength = GameLogic.Get().GetInpaintStrength();
-
+     
         Config.Get().SetGPUBusy(m_gpu, true);
         m_bIsGenerating = true;
         startTime = Time.realtimeSinceStartup;
 
-        StartCoroutine(GetRequest(m_prompt, m_prompt_strength, url));
+        StartCoroutine(GetRequest(url));
     }
 
-    IEnumerator GetRequest(String context, double prompt_strength, string url)
+    IEnumerator GetRequest( string url)
     {
         //yield return new WaitForEndOfFrame();
 
@@ -147,23 +127,27 @@ public class PicInpaint : MonoBehaviour
         mask512.Blit(0, 0, m_spriteMask.sprite.texture, m_targetRect.GetOffsetX(), m_targetRect.GetOffsetY(), m_targetRect.GetWidth(), m_targetRect.GetHeight());
         yield return null; //wait a free to lesson the jerkiness
 
+        /*
         //apply latent noise if needed
         if (GameLogic.Get().GetNoiseStrength() > 0)
         {
             pic512.SetPixelsFromTextureWithAlphaMask(m_latentNoise, mask512, GameLogic.Get().GetNoiseStrength());
-            yield return null; //wait a free to lesson the jerkiness
+            yield return null; //wait a frame to lessen the jerkiness
 
             // picSprite.texture.Blit(m_targetRect.GetOffsetX(), m_targetRect.GetOffsetY(), pic512, 0, 0, m_targetRect.GetWidth(), m_targetRect.GetHeight());
             // picSprite.texture.Apply();
             //byte[] noisedPic = pic512.EncodeToPNG();
             //File.WriteAllBytes(Application.dataPath + "/../SavedScreenWithNoise.png", noisedPic);
         }
+        */
 
         byte[] picPng = pic512.EncodeToPNG();
         yield return null; //wait a free to lesson the jerkiness
 
-        //File.WriteAllBytes(Application.dataPath + "/../SavedScreen.png", picPng);
-
+#if !RT_RELEASE
+        //For testing purposes, we can write out what we're going to send
+       // File.WriteAllBytes(Application.dataPath + "/../SavedScreen.png", picPng);
+#endif
         //remove alpha from texture
         //clumisly change a full alpha png to just RGB and replace transparent with black, as that'picSprite how our API wants it
         var newtex = mask512.ConvertTextureToBlackAndWhiteRGBMask();
@@ -173,9 +157,11 @@ public class PicInpaint : MonoBehaviour
         byte[] picMaskPng = newtex.EncodeToPNG();
         yield return null; //wait a free to lesson the jerkiness
 
+#if !RT_RELEASE
+
         //For testing purposes, we could also write to a file in the project folder
         //File.WriteAllBytes(Application.dataPath + "/../SavedScreenMask.png",picMaskPng);
-
+#endif
         String finalURL = url;
         Debug.Log("Inpainting with " + finalURL+" local GPU ID "+m_gpu);
 
@@ -187,6 +173,7 @@ public class PicInpaint : MonoBehaviour
 
         bool bFixFace = GameLogic.Get().GetFixFaces();
         bool bTiled = GameLogic.Get().GetTiling();
+        bool bRemoveBackground = GameLogic.Get().GetRemoveBackground();
 
         var gpuInf = Config.Get().GetGPUInfo(m_gpu);
         var genHeight = m_targetRect.GetHeight();
@@ -218,8 +205,9 @@ $@"{{
             ""denoising_strength"": {GameLogic.Get().GetInpaintStrength()},
             ""mask_blur"": {maskBlur},
             ""safety_filter"": ""{safety_filter}"",
-            ""inpainting_fill"": ""{maskedContent}""
-
+            ""inpainting_fill"": ""{maskedContent}"",
+            ""alpha_mask_subject"":{bRemoveBackground.ToString().ToLower()}
+ 
         }}
 
         }}";
@@ -309,8 +297,11 @@ $@"{{
                     yield return null; //wait a frame to lesson the jerkiness
 
                     //debug: write texture out
-                    //byte[] testReturnedTex = texture.EncodeToPNG();
-                    //File.WriteAllBytes(Application.dataPath + "/../SavedReturnedTex.png", testReturnedTex);
+
+                    #if !RT_RELEASE
+                    byte[] testReturnedTex = texture.EncodeToPNG();
+                    File.WriteAllBytes(Application.dataPath + "/../SavedReturnedTex.png", testReturnedTex);
+#endif
 
 
                     //Debug.Log("Read texture, setting to new image");

@@ -38,6 +38,7 @@ public class ImageGenerator : MonoBehaviour
     private void Awake()
     {
         _this = this;
+        m_camera = Camera.allCameras[0];
     }
 
     public void ScheduleGPURequest(ScheduledGPUEvent request)
@@ -62,8 +63,7 @@ public class ImageGenerator : MonoBehaviour
     {
         UpdateGenerateButtonStatus();
         Reset();
-        m_camera = RTUtil.FindObjectOrCreate("Camera").GetComponent<Camera>();
-        //oh, let's remember the original camera position so we can return to it
+       //oh, let's remember the original camera position so we can return to it
         m_oldCamPos = m_camera.transform.position;
         m_oldCamSize = m_camera.orthographicSize;
         //test area
