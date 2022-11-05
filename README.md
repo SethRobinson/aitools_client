@@ -7,7 +7,9 @@ There are two github respositories, one for the server, and one for the Unity cl
 
 The docs/screenshots are in the [server repository](https://github.com/SethRobinson/aitools_server), not here!
 
-# Download the [AI Tools Client (Windows, 22 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip)
+# Download the [AI Tools Client (Windows, 35 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip)
+
+# You will also need my [AI Tools Server](https://github.com/SethRobinson/aitools_server) to use this!
 
 Current version: **V0.49** (released Nov 11th 2022)
 
