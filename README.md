@@ -8,7 +8,7 @@ License:  BSD style attribution, see LICENSE.md
 To use this, you need to be running AUTOMATIC1111's [stable-diffusion-webui](https://github.com/AUTOMATIC1111/stable-diffusion-webui) server(s) or my own tweaked [version of it](https://github.com/SethRobinson/aitools_server) which has a few extra features. (background removal and some other things that gamedevelopers might be more interested in)
 
 <p float="left">
-<a href="Media/aitools_v050_screenshot2.png"><img align="top" src="media/aitools_v050_screenshot2.png"></a>
+<a href="Media/aitools_v050_screenshot2.png"><img align="top" src="Media/aitools_v050_screenshot2.png"></a>
 </p>
 
 Current version: **V0.50** (released Dec 12th 2022)
