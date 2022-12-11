@@ -5,7 +5,13 @@ License:  BSD style attribution, see LICENSE.md
 
 # Download the [AI Tools Client (Windows, 36 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip)
 
-To use this, you need to be running AUTOMATIC1111's [stable-diffusion-webui](https://github.com/AUTOMATIC1111/stable-diffusion-webui) server(s) or my own tweaked [version of it](https://github.com/SethRobinson/aitools_server) which has a few extra features. (background removal and some other things that gamedevelopers might be more interested in)
+To use this, you'll need at least one Stable Diffusion WebUI server running somewhere. (same machine as the client is ok) This client supports either of the following servers:
+
+ ##  [AUTOMATIC1111's Stable Diffusion WebUI](https://github.com/AUTOMATIC1111/stable-diffusion-webui) (must run with the --api parm) ##
+
+ or
+
+## [Seth's AI Tools Server](https://github.com/SethRobinson/aitools_server) (Same as above but with a few extra features, including background removal) ##
 
 <p float="left">
 <a href="Media/aitools_v050_screenshot2.png"><img align="top" src="Media/aitools_v050_screenshot2.png"></a>
