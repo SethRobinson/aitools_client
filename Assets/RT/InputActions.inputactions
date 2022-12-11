@@ -110,6 +110,17 @@
                 {
                     "name": "",
                     "id": "64f300ef-b08a-43ed-b4f1-a08c65dc0cef",
+                    "path": "<Mouse>/rightButton",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "PrimaryTouchContact",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "7056ae6d-1667-442e-bc96-8ac6944feca0",
                     "path": "<Mouse>/middleButton",
                     "interactions": "",
                     "processors": "",

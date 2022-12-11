@@ -13,6 +13,7 @@ using UnityEngine.UI;
 using DG.Tweening;
 using TMPro;
 using UnityEngine.EventSystems;
+using System.Collections.Generic;
 
 public class GameLogic : MonoBehaviour
 {
@@ -53,6 +54,7 @@ public class GameLogic : MonoBehaviour
     public TMP_Dropdown m_widthDropdown;
     public TMP_Dropdown m_heightDropdown;
     public TMP_Dropdown m_samplerDropdown;
+    public TMP_Dropdown m_modelDropdown;
 
     public enum eGameMode
     {
@@ -78,9 +80,39 @@ public class GameLogic : MonoBehaviour
 
     public int GetGenHeight() { return m_genHeight; }
 
-      public void OnGenWidthDropdownChanged()
+    public void OnGenWidthDropdownChanged()
     {
         int.TryParse(m_widthDropdown.options[m_widthDropdown.value].text, out m_genWidth);
+    }
+
+    public void SetWidthDropdown(string width)
+    {
+        //must be a valid existing setting for this to work
+        int i = 0;
+        foreach (var option in m_widthDropdown.options)
+        {
+             if (option.text == width)
+            {
+                m_widthDropdown.value = i;
+            }
+             i++;
+        }
+        
+    }
+
+    public void SetHeightDropdown(string height)
+    {
+        //must be a valid existing setting for this to work
+        int i = 0;
+        foreach (var option in m_heightDropdown.options)
+        {
+            if (option.text == height)
+            {
+                m_heightDropdown.value = i;
+            }
+            i++;
+        }
+
     }
 
     public void OnGenHeightDropdownChanged()
@@ -91,6 +123,30 @@ public class GameLogic : MonoBehaviour
     public string GetSamplerName() 
     {
         return m_samplerDropdown.options[m_samplerDropdown.value].text; 
+    }
+
+    public void ClearModelDropdown()
+    {
+        m_modelDropdown.options.Clear();
+    }
+
+    public void AddModelDropdown(string name)
+    {
+        List<string> options = new List<string>();
+        options.Add(name);
+        m_modelDropdown.AddOptions(options);
+    }
+
+    public void ClearSamplersDropdown()
+    {
+        m_samplerDropdown.options.Clear();
+    }
+
+    public void AddSamplersDropdown(string name)
+    {
+        List<string> options = new List<string>();
+        options.Add(name);
+        m_samplerDropdown.AddOptions(options);
     }
 
     public void SetSamplerByName(string name)
@@ -108,8 +164,46 @@ public class GameLogic : MonoBehaviour
 
         Debug.Log("Can't set default sampler, don't know: " + name);
     }
+    public void SetModelByName(string name)
+    {
+      
+        for (int i = 0; i < m_modelDropdown.options.Count; i++)
+        {
+            if (name == m_modelDropdown.options[i].text.ToLower())
+            {
+                m_modelDropdown.value = i;
+                return;
+            }
+        }
 
-    
+        //Debug.Log("Can't set default sampler, don't know: " + name);
+    }
+
+    public void SetChangeModelEnabled(bool enabled)
+    {
+        m_modelDropdown.interactable= enabled;
+    }
+    public void OnModelChanged(Int32 optionID)
+    {
+
+
+        //send request to all servers
+        ImageGenerator.Get().SetGenerate(false);
+        Config.Get().SendRequestToAllServers("sd_model_checkpoint", m_modelDropdown.options[optionID].text);
+        RTQuickMessageManager.Get().ShowMessage("Servers loading " + m_modelDropdown.options[optionID].text);
+
+        if (!m_modelDropdown.options[optionID].text.Contains("768"))
+        {
+            SetWidthDropdown("512");
+            SetHeightDropdown("512");
+        } else
+        {
+            SetWidthDropdown("768");
+            SetHeightDropdown("768");
+
+        }
+    }
+
     public void SetPrompt(string p)
     {
         m_inputField.text = p;
@@ -163,7 +257,6 @@ public class GameLogic : MonoBehaviour
             
             //success
         }
-
     }
 
     public bool GetInpaintMaskEnabled()
@@ -214,11 +307,23 @@ public class GameLogic : MonoBehaviour
     {
         return m_bTiling;
     }
+    public void ShowCompatibilityWarningIfNeeded()
+    {
+        if (!Config.Get().AllGPUsSupportAITools())
+        {
+            RTUtil.SetActiveByNameIfExists("RTWarningSplash", true);
+        }
+    }
 
     public void OnRemoveBackground(bool bNew)
     {
         m_bRemoveBackground = bNew;
         m_removeBackgroundToggle.isOn = bNew;
+
+        if (bNew)
+        { 
+            ShowCompatibilityWarningIfNeeded();
+        }
     }
 
     public bool GetRemoveBackground()
@@ -470,8 +575,10 @@ public class GameLogic : MonoBehaviour
         //isn't initted yet
         //RTMessageManager.Get().Schedule(0, PizzaLogic.Get().OnStartPizza);
         //RTMessageManager.Get().Schedule(0, BreakoutLogic.Get().OnStartBreakout);
-        RTMessageManager.Get().Schedule(0, ShootingGalleryLogic.Get().OnStartGameMode);
+        // RTMessageManager.Get().Schedule(0, ShootingGalleryLogic.Get().OnStartGameMode);
 #endif
+
+        
     }
 
     void OnApplicationQuit() 

@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Networking;
 using System;
-using System.Text;
 using MiniJSON;
 using SimpleJSON;
 
@@ -22,18 +21,17 @@ public class WebRequestServerInfo : MonoBehaviour
     {
     }
 
-    public void StartWebRequest(string httpDest, string extra)
+    public void StartInitialWebRequest(string httpDest, string extra)
     {
         StartCoroutine(GetRequest(httpDest));
     }
-
     IEnumerator GetRequest(String server)
     {
      
         WWWForm form = new WWWForm();
         var finalURL = server + "/file/aitools/get_info.json";
-
-        Debug.Log("Checking server "+ server+ "...");
+        string serverClickableURL = "<link=\"" + server + "\"><u>" + server + "</u></link>";
+        Debug.Log("Checking server "+ serverClickableURL + "...");
     again:
         //Create the request using a static method instead of a constructor
 
@@ -44,14 +42,26 @@ public class WebRequestServerInfo : MonoBehaviour
 
             if (postRequest.result != UnityWebRequest.Result.Success)
             {
+                if (postRequest.result == UnityWebRequest.Result.ProtocolError)
+                {
+                    Debug.Log("Server " + serverClickableURL + " isn't an AI Tools variant, trying to connect as vanilla Automatic1111 type...");
+                    var webScript = Config.Get().CreateWebRequestObject();
+                    webScript.StartConfigRequest(-1, server);
+
+                    yield break;
+
+                }
+                Debug.Log("Result is " + postRequest.result);
+
                 m_timesTried++;
                 if (m_timesTried < m_timesToTry)
                 {
+             
                     //well, let's try again before we say we failed.
-                    Debug.Log("Checking server " + server + "... (try "+m_timesTried+")");
+                    Debug.Log("Checking server " + serverClickableURL + "... (try "+m_timesTried+")");
                     goto again;
                 }
-                Debug.Log("Error connecting to server " + finalURL + ". ("+ postRequest.error+")  Are you sure it's up and this address/port is right?");
+                Debug.Log("Error connecting to server " + serverClickableURL + ". ("+ postRequest.error+ ")  Are you sure it's up and this address/port is right? It must be running with the --api parm. (and --listen if not on this machine)");
                 Debug.Log("Click Configuration, then Save & Apply to try again.");
                 GameLogic.Get().ShowConsole(true);
             }
@@ -85,6 +95,8 @@ public class WebRequestServerInfo : MonoBehaviour
 
                 if (dict.ContainsKey("required_client_version"))
                 {
+
+
                     System.Single.TryParse(dict["required_client_version"].ToString(), out requiredClient);
 
                     if (requiredClient > Config.Get().GetVersion())
@@ -101,8 +113,7 @@ public class WebRequestServerInfo : MonoBehaviour
                     GameLogic.Get().ShowConsole(true);
                 }
 
-                //Debug.Log("CONNECTED: " + server + " (" + serverName + ") V"+version+"");
-                RTConsole.Log("CONNECTED: <link=\"" + server + "\"><u>"+server+"</u></link> (" + serverName + ") V" + version + "");
+                RTConsole.Log("CONNECTED: "+serverClickableURL+" (" + serverName + ") V" + version + "");
 
                 List<object> gpus = dict["gpu"] as List<object>;
                 
@@ -113,7 +124,7 @@ public class WebRequestServerInfo : MonoBehaviour
                    g = new GPUInfo();
                    g.remoteURL = server;
                    g.remoteGPUID = i;
-        
+                   g.supportsAITools= true;
                    Config.Get().AddGPU(g);
                }
             }
@@ -121,5 +132,311 @@ public class WebRequestServerInfo : MonoBehaviour
 
         //either way, we're done with us
         GameObject.Destroy(gameObject);
+    }
+
+  
+    public void StartConfigRequest(int gpuID, string remoteURL)
+    {
+        StartCoroutine(GetConfigRequest(gpuID, remoteURL));
+    }
+    public void StartPopulateModelsRequest(GPUInfo g)
+    {
+        StartCoroutine(GetModelsRequest(g.localGPUID, g.remoteURL));
+    }
+
+    public void StartPopulateSamplersRequest(GPUInfo g)
+    {
+        StartCoroutine(GetSamplersRequest(g.localGPUID, g.remoteURL));
+    }
+    public void SendServerConfigRequest(int gpuID, string optionKey, string optionValue)
+    {
+        StartCoroutine(GetServerConfigRequest(gpuID, optionKey, optionValue));
+    }
+    
+    IEnumerator GetConfigRequest(int gpuID, String server)
+    {
+
+        WWWForm form = new WWWForm();
+        var finalURL = server + "/sdapi/v1/options";
+        string serverClickableURL = "<link=\"" + server + "\"><u>" + server + "</u></link>";
+        Debug.Log("Getting config data from " + serverClickableURL + "...");
+    again:
+        //Create the request using a static method instead of a constructor
+
+        using (var postRequest = UnityWebRequest.Get(finalURL))
+        {
+            //Start the request with a method instead of the object itself
+            yield return postRequest.SendWebRequest();
+
+            if (postRequest.result != UnityWebRequest.Result.Success)
+            {
+                m_timesTried++;
+                if (m_timesTried < m_timesToTry)
+                {
+
+                    //well, let's try again before we say we failed.
+                    Debug.Log("Getting config from " + serverClickableURL + "... (try " + m_timesTried + ")");
+                    goto again;
+                }
+                Debug.Log("Error getting config from server " + serverClickableURL + ". (" + postRequest.error + ")  Are you sure it's up and this address/port is right? It must be running with the --api parm. (and --listen if not on this machine)");
+                Debug.Log("Click Configuration, then Save & Apply to try again.");
+                GameLogic.Get().ShowConsole(true);
+            }
+            else
+            {
+                //converting postRequest.downloadHandler.text to a dictionary
+                //and then show all values
+                if (!Config.Get().IsValidGPU(gpuID) && gpuID != -1)
+                {
+                    Debug.LogError("Bad GPU of " + gpuID);
+                }
+                else
+                {
+                    if (gpuID == -1)
+                    {
+                        GPUInfo temp;
+                        //error checking?  that's for wimps
+                        temp = new GPUInfo();
+                        temp.remoteURL = server;
+                        temp.remoteGPUID = 0;
+                        temp.supportsAITools = false;
+                        Config.Get().AddGPU(temp);
+                        gpuID = temp.localGPUID;
+                        RTConsole.Log("Connected to server " + temp.localGPUID + ", it's a vanilla AUTOMATIC1111 server, certain AI Tools server only features will be disabled.");
+                    }
+                    var g = Config.Get().GetGPUInfo(gpuID);
+
+                    g.configDict = Json.Deserialize(postRequest.downloadHandler.text) as Dictionary<string, object>;
+                    RTConsole.Log("Active model on GPU "+g.localGPUID+": " + g.configDict["sd_model_checkpoint"]);
+
+                    //set currently model if possible, might fail due to race conditions but that's ok, it will get hit later when we have the list
+                    GameLogic.Get().SetModelByName(g.configDict["sd_model_checkpoint"].ToString());
+
+
+                    if (g.localGPUID == 0)
+                    {
+                        if (g.configDict["sd_model_checkpoint"].ToString().Contains("768"))
+                        {
+                            GameLogic.Get().SetWidthDropdown("768");
+                            GameLogic.Get().SetHeightDropdown("768");
+                        }
+                        if (g.configDict["sd_model_checkpoint"].ToString().Contains("1024"))
+                        {
+                            GameLogic.Get().SetWidthDropdown("1024");
+                            GameLogic.Get().SetHeightDropdown("1024");
+                        }
+                        if (g.configDict["sd_model_checkpoint"].ToString().Contains("256"))
+                        {
+                            GameLogic.Get().SetWidthDropdown("256");
+                            GameLogic.Get().SetHeightDropdown("256");
+                        }
+                    }
+                }
+
+            }
+
+            //either way, we're done with us
+            GameObject.Destroy(gameObject);
+        }
+    }
+
+
+    IEnumerator GetModelsRequest(int gpuID, String server)
+    {
+
+        WWWForm form = new WWWForm();
+        var finalURL = server + "/sdapi/v1/sd-models";
+        string serverClickableURL = "<link=\"" + server + "\"><u>" + server + "</u></link>";
+        Debug.Log("Getting Models from " + serverClickableURL + "...");
+    again:
+        //Create the request using a static method instead of a constructor
+
+        using (var postRequest = UnityWebRequest.Get(finalURL))
+        {
+            //Start the request with a method instead of the object itself
+            yield return postRequest.SendWebRequest();
+
+            if (postRequest.result != UnityWebRequest.Result.Success)
+            {
+                m_timesTried++;
+                if (m_timesTried < m_timesToTry)
+                {
+
+                    //well, let's try again before we say we failed.
+                    Debug.Log("Getting models from server " + serverClickableURL + "... (try " + m_timesTried + ")");
+                    goto again;
+                }
+                Debug.Log("Error getting models from server " + serverClickableURL + ". (" + postRequest.error + ")  Are you sure it's up and this address/port is right? It must be running with the --api parm. (and --listen if not on this machine)");
+                Debug.Log("Click Configuration, then Save & Apply to try again.");
+                GameLogic.Get().ShowConsole(true);
+            }
+            else
+            {
+                //converting postRequest.downloadHandler.text to a dictionary
+                //and then show all values
+                if (!Config.Get().IsValidGPU(gpuID))
+                {
+                    Debug.LogError("Bad GPU of " + gpuID);
+                }
+                else
+                {
+                    var g = Config.Get().GetGPUInfo(gpuID);
+
+                    var dict = Json.Deserialize(postRequest.downloadHandler.text) as Dictionary<string, object>;
+                    List<object> modelList = Json.Deserialize(postRequest.downloadHandler.text) as List<object>;
+                    //Debug.Log("models: ");
+
+                    GameLogic.Get().ClearModelDropdown();
+
+                    for (int i = 0; i < modelList.Count; i++)
+                    {
+                        var modelInfo = modelList[i] as Dictionary<string, object>;
+                       // Debug.Log(modelInfo["title"]);
+                        GameLogic.Get().AddModelDropdown(modelInfo["title"].ToString());
+                    }
+
+                    if (g.configDict != null)
+                    {
+                        //we know what the server it currently set to, we might not always due to race conditions
+                        GameLogic.Get().SetModelByName(g.configDict["sd_model_checkpoint"].ToString());
+                    }
+                }
+
+            }
+
+            //either way, we're done with us
+            GameObject.Destroy(gameObject);
+        }
+    }
+
+
+    IEnumerator GetSamplersRequest(int gpuID, String server)
+    {
+
+        WWWForm form = new WWWForm();
+        var finalURL = server + "/sdapi/v1/samplers";
+        string serverClickableURL = "<link=\"" + server + "\"><u>" + server + "</u></link>";
+        Debug.Log("Getting Samplers from " + serverClickableURL + "...");
+    again:
+        //Create the request using a static method instead of a constructor
+
+        using (var postRequest = UnityWebRequest.Get(finalURL))
+        {
+            //Start the request with a method instead of the object itself
+            yield return postRequest.SendWebRequest();
+
+            if (postRequest.result != UnityWebRequest.Result.Success)
+            {
+                m_timesTried++;
+                if (m_timesTried < m_timesToTry)
+                {
+
+                    //well, let's try again before we say we failed.
+                    Debug.Log("Getting samplers from server " + serverClickableURL + "... (try " + m_timesTried + ")");
+                    goto again;
+                }
+                Debug.Log("Error getting samplers from server " + serverClickableURL + ". (" + postRequest.error + ")  Are you sure it's up and this address/port is right? It must be running with the --api parm. (and --listen if not on this machine)");
+                Debug.Log("Click Configuration, then Save & Apply to try again.");
+                GameLogic.Get().ShowConsole(true);
+            }
+            else
+            {
+                //converting postRequest.downloadHandler.text to a dictionary
+                //and then show all values
+                if (!Config.Get().IsValidGPU(gpuID))
+                {
+                    Debug.LogError("Bad GPU of " + gpuID);
+                }
+                else
+                {
+                    var g = Config.Get().GetGPUInfo(gpuID);
+
+                    var dict = Json.Deserialize(postRequest.downloadHandler.text) as Dictionary<string, object>;
+                    List<object> modelList = Json.Deserialize(postRequest.downloadHandler.text) as List<object>;
+                    //Debug.Log("models: ");
+
+                    string originalSampler = GameLogic.Get().GetSamplerName();
+
+                    GameLogic.Get().ClearSamplersDropdown();
+
+                    for (int i = 0; i < modelList.Count; i++)
+                    {
+                        var modelInfo = modelList[i] as Dictionary<string, object>;
+                        // Debug.Log(modelInfo["title"]);
+                        GameLogic.Get().AddSamplersDropdown(modelInfo["name"].ToString());
+                    }
+
+                    GameLogic.Get().SetSamplerByName(originalSampler);
+
+                }
+
+            }
+
+            //either way, we're done with us
+            GameObject.Destroy(gameObject);
+        }
+    }
+
+
+    IEnumerator GetServerConfigRequest(int gpuID, string optionKey, string optionValue)
+    {
+
+        if (!Config.Get().IsValidGPU(gpuID))
+        {
+            Debug.LogError("Bad GPU of " + gpuID);
+            yield break;
+        }
+       
+        var g = Config.Get().GetGPUInfo(gpuID);
+
+        Config.Get().SetGPUBusy(gpuID, true);
+
+        string json =
+        $@"{{
+            ""{optionKey}"": ""{optionValue}""
+        }}";
+
+        //File.WriteAllText("json_to_send.json", json); //for debugging
+        var finalURL = g.remoteURL + "/sdapi/v1/options";
+
+        using (var postRequest = UnityWebRequest.PostWwwForm(finalURL, "POST"))
+        {
+            //Start the request with a method instead of the object itself
+            byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
+            postRequest.uploadHandler = (UploadHandler)new UploadHandlerRaw(bodyRaw);
+            postRequest.SetRequestHeader("Content-Type", "application/json");
+            yield return postRequest.SendWebRequest();
+
+            if (postRequest.result != UnityWebRequest.Result.Success)
+            {
+
+                Debug.Log(postRequest.error);
+                Debug.Log(postRequest.downloadHandler.text);
+
+                if (!Config.Get().IsValidGPU(gpuID))
+                {
+                    Debug.LogError("Bad GPU of " + gpuID);
+                    yield break;
+                }
+
+                Config.Get().SetGPUBusy(gpuID, false);
+
+            }
+            else
+            {
+
+                if (!Config.Get().IsValidGPU(gpuID))
+                {
+                    Debug.LogError("Bad GPU of " + gpuID);
+                    yield break;
+                }
+
+                Debug.Log("Server " + g.remoteURL+" has finished switching models."); // + postRequest.downloadHandler.text
+             
+                JSONNode rootNode = JSON.Parse(postRequest.downloadHandler.text);
+                Config.Get().SetGPUBusy(gpuID, false);
+
+            }
+        }
     }
 }

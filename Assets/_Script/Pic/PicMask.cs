@@ -222,7 +222,10 @@ public class PicMask : MonoBehaviour
     void Update()
     {
 
-        ResizeMaskIfNeeded();
+        if (IsMaskVisible())
+        {
+            ResizeMaskIfNeeded();
+        }
 
         if ((Input.GetMouseButton(0) || Input.GetMouseButtonUp(0)) && !EventSystem.current.IsPointerOverGameObject())
         {

@@ -1,3 +1,4 @@
+using B83.Win32;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -40,6 +41,12 @@ public class ImageGenerator : MonoBehaviour
         _this = this;
         m_camera = Camera.allCameras[0];
     }
+
+    public bool IsGenerating()
+    {
+        return m_generateActive;
+    }
+
 
     public void ScheduleGPURequest(ScheduledGPUEvent request)
     {
@@ -97,11 +104,12 @@ public class ImageGenerator : MonoBehaviour
         {
             SetButtonColor(m_generateButton, new Color(1, 0, 0, 1));
             m_generateButtonText.text = "Stop";
+            GameLogic.Get().SetChangeModelEnabled(false);
         } else
         {
             m_generateButtonText.text = "Generate";
             SetButtonColor(m_generateButton, new Color(0, 1, 0, 1));
-
+            GameLogic.Get().SetChangeModelEnabled(true);
         }
     }
     public void SetGenerate(bool bGenerate)

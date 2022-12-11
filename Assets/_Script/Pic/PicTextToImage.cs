@@ -115,7 +115,7 @@ public class PicTextToImage : MonoBehaviour
         m_bIsGenerating = true;
         startTime = Time.realtimeSinceStartup;
         var gpuInfo = Config.Get().GetGPUInfo(m_gpu);
-        string url = gpuInfo.remoteURL+ "/v1/txt2img";
+        string url = gpuInfo.remoteURL;
 
         
         StartCoroutine(GetRequest(m_prompt, m_prompt_strength,url));
@@ -129,12 +129,8 @@ public class PicTextToImage : MonoBehaviour
     {
         WWWForm form = new WWWForm();
 
-        //Create the request using a static method instead of a constructor
-
-        //String finalURL = url + "?prompt=" + context + "&prompt_strength=" + prompt_strength;
-        String finalURL = url;
-        Debug.Log("Generating text to image with " + finalURL + " local GPU ID " + m_gpu);
-
+        String finalURL;
+       
         bool bFixFace = GameLogic.Get().GetFixFaces();
         bool bTiled = GameLogic.Get().GetTiling();
         bool bRemoveBackground = GameLogic.Get().GetRemoveBackground();
@@ -143,40 +139,42 @@ public class PicTextToImage : MonoBehaviour
         int genHeight = GameLogic.Get().GetGenHeight();
         var gpuInf = Config.Get().GetGPUInfo(m_gpu);
 
-        string safety_filter = "default"; //use whatever the server is set at
+        string safety_filter = ""; //use whatever the server is set at
         if (Config.Get().GetSafetyFilter())
         {
-            safety_filter = "true";
+            safety_filter = $@"""override_settings"": {{""filter_nsfw"": true}},";
         }
 
-        //too bad raw interpolated strings are still in preview
-        string json =
-        $@"{{
-            ""txt2imgreq"":
-            {{
+       finalURL = url + "/sdapi/v1/txt2img";
+
+            //using the new API which doesn't support alpha masking the subject
+            string json =
+                 $@"{{
+            {safety_filter}
             ""prompt"": ""{SimpleJSON.JSONNode.Escape(m_prompt)}"",
             ""negative_prompt"": ""{SimpleJSON.JSONNode.Escape(GameLogic.Get().GetNegativePrompt())}"",
             ""steps"": {GameLogic.Get().GetSteps()},
             ""restore_faces"":{bFixFace.ToString().ToLower()},
             ""tiling"":{bTiled.ToString().ToLower()},
-            ""alpha_mask_subject"":{bRemoveBackground.ToString().ToLower()},
             ""cfg_scale"":{GameLogic.Get().GetTextStrength()},
             ""seed"": {m_seed},
             ""width"": {genWidth},
             ""height"": {genHeight},
-            ""safety_filter"": ""{safety_filter}"",
-            ""sampler_name"": ""{GameLogic.Get().GetSamplerName()}""
-        }}
+            ""sampler_name"": ""{GameLogic.Get().GetSamplerName()}"",
+            ""alpha_mask_subject"":{bRemoveBackground.ToString().ToLower()}
 
+        
         }}";
-      
+       
+        Debug.Log("Generating text to image with " + finalURL + " local GPU ID " + m_gpu);
+
         //",\"" + GameLogic.Get().GetSamplerName() + "\","  +  + ","
 
 #if !RT_RELEASE
         //File.WriteAllText("json_to_send.json", json);
 #endif
 
-        using (var postRequest = UnityWebRequest.Post(finalURL, "POST"))
+        using (var postRequest = UnityWebRequest.PostWwwForm(finalURL, "POST"))
         {
             byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
             

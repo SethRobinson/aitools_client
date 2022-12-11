@@ -1212,7 +1212,7 @@ public class RTUtil
 
     static public bool SetActiveByNameIfExists(string name, bool bActive)
     {
-        GameObject obj = GameObject.Find(name);
+        GameObject obj = FindIncludingInactive(name);
         if (obj != null)
         {
             obj.SetActive(bActive);
@@ -1305,6 +1305,21 @@ public class RTUtil
             return false;
         }
     }
+    public static int KillAllObjectsByName(GameObject parent, string name, bool bIsWildcardString, float delayTime = 0)
+    {
+        List<GameObject> temp = new List<GameObject>();
+
+        AddObjectsToListByNameIncludingInactive(parent, name, bIsWildcardString, temp);
+
+        foreach(GameObject obj in temp) 
+        {
+            GameObject.Destroy(obj, delayTime);
+        }
+
+        return temp.Count;
+    }
+
+
     //Below snippet taken from https://forum.unity.com/threads/deleting-all-chidlren-of-an-object.92827/, credit to mwk888
     /// <summary>
     /// Calls GameObject.Destroy on all children of transform. and immediately detaches the children

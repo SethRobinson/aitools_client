@@ -72,7 +72,6 @@ public class ResizeTool
             texture2D.ReadPixels(new Rect(width/2, 0, width / 2, height / 2), 0, 0); //lower left block
             texture2D.ReadPixels(new Rect(0, 0, width / 2, height / 2), width / 2, 0); //lower right block
 
-
             //actually upload the changed pixels to the graphics card
             texture2D.Apply();
         }
@@ -80,7 +79,6 @@ public class ResizeTool
         {
             Debug.LogError("Read/Write is not enabled on texture " + texture2D.name);
         }
-
 
         RenderTexture.ReleaseTemporary(rt);
     }
@@ -110,7 +108,6 @@ public class ResizeTool
     {
       Debug.LogError("Read/Write is not enabled on texture "+ texture2D.name);
     }
-
 
     RenderTexture.ReleaseTemporary(rt);
   }

@@ -2,7 +2,7 @@ using UnityEngine;
 
 public class PicTargetRect : MonoBehaviour
 {
-    Rect m_targetRectInPixels = new Rect(0, 0, 512, 512);
+    Rect m_targetRectInPixels = new Rect(0, 0, 768, 768);
     public SpriteRenderer m_picRenderer;
     public LineRenderer m_lineRen;
     public SpriteRenderer m_picMaskRenderer;
@@ -18,6 +18,8 @@ public class PicTargetRect : MonoBehaviour
     void Start()
     {
         UpdatePoints();
+
+
     }
 
     public bool IsMovingRect() { return m_bMovingRect; }

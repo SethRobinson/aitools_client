@@ -19,7 +19,7 @@ public class GalleryTarget : MonoBehaviour
 
     // Start is called before the first frame update
    
-    public void InitImage(Material mat, Texture2D tex, Texture2D alphaTex)
+    public void InitImage(Material mat, Texture2D tex)
     {
         m_spriteRenderer.material = mat;
 

@@ -30,10 +30,13 @@ public class GamePicManager : MonoBehaviour
 
     public string BuildJSonRequestForInpaint(string prompt, string negativePrompt, Texture2D pic512, Texture2D mask512, bool bRemoveBackground)
     {
-     
         byte[] picPng = pic512.EncodeToPNG();
-        byte[] picMaskPng = mask512.EncodeToPNG();
+        byte[] picMaskPng = null;
 
+        if (mask512)
+        {
+            picMaskPng = mask512.EncodeToPNG();
+        }
 
 #if !RT_RELEASE
         //For testing purposes, we can write out what we're going to send
@@ -42,7 +45,11 @@ public class GamePicManager : MonoBehaviour
 #endif
 
         string imgBase64 = Convert.ToBase64String(picPng);
-        string maskBase64 = Convert.ToBase64String(picMaskPng);
+        string maskBase64 = "";
+        if (picMaskPng != null)
+        {
+            maskBase64 = Convert.ToBase64String(picMaskPng);
+        }
 
         string maskedContent = GameLogic.Get().GetMaskContent();
         int maskBlur = (int)GameLogic.Get().GetAlphaMaskFeatheringPower(); //0 to 64
@@ -53,16 +60,35 @@ public class GamePicManager : MonoBehaviour
         var genHeight = pic512.height;
         var genWidth = pic512.width;
 
-        string safety_filter = "default"; //use whatever the server is set at
+        string safety_filter = ""; //use whatever the server is set at
         if (Config.Get().GetSafetyFilter())
         {
-            safety_filter = "true";
+            safety_filter = $@"""override_settings"": {{""filter_nsfw"": true}},";
         }
 
-        string json =
-$@"{{
-            ""img2imgreq"":
-            {{
+            string json;
+            string maskedContentIndex = "1";
+
+            if (maskedContent == "fill") maskedContent = "0";
+            if (maskedContent == "original") maskedContent = "1";
+            if (maskedContent == "latent noise") maskedContent = "2";
+            if (maskedContent == "latent nothing") maskedContent = "3";
+
+            string maskJson = "";
+
+            if (picMaskPng != null)
+            {
+                maskJson = $@" ""mask"": ""{maskBase64}"",";
+            }
+
+            json =
+    $@"{{
+             {maskJson}
+            ""init_images"":
+            [
+                ""{imgBase64}""
+            ],
+            {safety_filter}
             ""prompt"": ""{SimpleJSON.JSONNode.Escape(prompt)}"",
             ""negative_prompt"": ""{SimpleJSON.JSONNode.Escape(negativePrompt)}"",
             ""steps"": {GameLogic.Get().GetSteps()},
@@ -73,20 +99,13 @@ $@"{{
             ""width"": {genWidth},
             ""height"": {genHeight},
             ""sampler_name"": ""{GameLogic.Get().GetSamplerName()}"",
-            ""image"": ""{imgBase64}"",
-            ""alpha_mask_subject"":{bRemoveBackground.ToString().ToLower()},
-                  
-            ""mask_image"": ""{maskBase64}"",
+            
             ""denoising_strength"": {GameLogic.Get().GetInpaintStrength()},
             ""mask_blur"": {maskBlur},
-            ""safety_filter"": ""{safety_filter}"",
-            ""inpainting_fill"": ""{maskedContent}""
-
-        }}
-
+            ""inpainting_fill"": {maskedContentIndex},
+            ""alpha_mask_subject"":{bRemoveBackground.ToString().ToLower()}
         }}";
-
-
+        
         return json;
     }
 
@@ -113,13 +132,16 @@ $@"{{
         }
 
         var gpuInfo = Config.Get().GetGPUInfo(gpu);
-        string url = gpuInfo.remoteURL + "/v1/img2img";
+        string url;
+
+      
+       url = gpuInfo.remoteURL + "/sdapi/v1/img2img";
+
         Config.Get().SetGPUBusy(gpu, true);
 
         Debug.Log("Inpainting with " +url + " local GPU ID " + gpu);
 
-
-        using (var postRequest = UnityWebRequest.Post(url, "POST"))
+        using (var postRequest = UnityWebRequest.PostWwwForm(url, "POST"))
         {
             //Start the request with a method instead of the object itself
             byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
@@ -134,7 +156,7 @@ $@"{{
                 RTQuickMessageManager.Get().ShowMessage(msg);
                 Debug.Log(postRequest.downloadHandler.text);
                 Config.Get().SetGPUBusy(gpu, false);
-               }
+            }
             else
             {
                 //Debug.Log("Form upload complete! Downloaded " + postRequest.downloadedBytes); // + postRequest.downloadHandler.text
@@ -150,7 +172,6 @@ $@"{{
                         Config.Get().SetGPUBusy(gpu, false);
                     }
                 }
-
 
                 JSONNode rootNode = JSON.Parse(postRequest.downloadHandler.text);
                 yield return null; //wait a free to lesson the jerkiness
@@ -194,8 +215,8 @@ $@"{{
 
                     //debug: write texture out
 #if !RT_RELEASE
-         //           byte[] testReturnedTex = texture.EncodeToPNG();
-         //           File.WriteAllBytes(Application.dataPath + "/../SavedReturnedTex.png", testReturnedTex);
+                    byte[] testReturnedTex = texture.EncodeToPNG();
+                    File.WriteAllBytes(Application.dataPath + "/../SavedReturnedTex.png", testReturnedTex);
 #endif
 
                     myCallback.Invoke(texture, db);
@@ -204,13 +225,8 @@ $@"{{
                 {
                     Debug.Log("Error reading texture");
                 }
-
-
-              
             }
-
         }
-
     }
 
     void Start()

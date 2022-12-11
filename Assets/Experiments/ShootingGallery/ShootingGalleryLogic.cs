@@ -15,8 +15,7 @@ public class ShootingGalleryLogic : MonoBehaviour
     public GameObject m_textOverlayPrefab; //used for the "don't hit friendlies" message
 
     public Texture2D m_templateTexture;
-    public Texture2D m_alphaTexture;
-
+ 
     public Material m_alphaMat;
     public Texture2D m_crosshairTexture;
 
@@ -46,7 +45,7 @@ public class ShootingGalleryLogic : MonoBehaviour
     float m_coolDownAmountSeconds = 0.15f;
     Tween m_smallShakeTween;
     Tween m_bigShakeTween;
-
+    string m_negativePrompt = "pixelated, blurry, deformed, ugly";
     enum eMode
     {
         MODE_OFF,
@@ -146,7 +145,7 @@ public class ShootingGalleryLogic : MonoBehaviour
      
         GameObject pizzaObj = Instantiate(m_blockPrefab, m_levelRoot.transform);
         GalleryTarget pizza = pizzaObj.GetComponent<GalleryTarget>();
-        pizza.InitImage(m_alphaMat, tex, null);
+        pizza.InitImage(m_alphaMat, tex);
 
         //it's ready to be attached to a target, if we can find one
 
@@ -177,12 +176,17 @@ public class ShootingGalleryLogic : MonoBehaviour
     }
     public void OnStartGameMode()
     {
+
+        GameLogic.Get().ShowCompatibilityWarningIfNeeded();
+
+        m_smallShakeTween = null;
+        m_bigShakeTween = null;
         m_mode = eMode.MODE_ON;
         GameLogic.Get().SetGameMode(GameLogic.eGameMode.EXPERIMENT);
         GameLogic.Get().SetToolsVisible(false);
         ImageGenerator.Get().SetGenerate(false);
         GameLogic.Get().OnClearButton();
-        GameLogic.Get().OnFixFacesChanged(false); 
+        //GameLogic.Get().OnFixFacesChanged(false); 
         GameLogic.Get().SetInpaintStrength(1);
         GameLogic.Get().SetAlphaMaskFeatheringPower(4);
         m_score = 0;
@@ -200,7 +204,7 @@ public class ShootingGalleryLogic : MonoBehaviour
         AddCrosshairs();
         UpdateFromGUI();
 
-        RTAudioManager.Get().PlayMusic("Chee Zee Jungle", 0.5f, 1.0f, true);
+//        RTAudioManager.Get().PlayMusic("Chee Zee Jungle", 0.5f, 1.0f, true);
     }
 
     public void OnEndGameMode()
@@ -309,7 +313,6 @@ public class ShootingGalleryLogic : MonoBehaviour
         UpdateScore();
     }
 
-
     void Update()
     {
         switch(m_mode)
@@ -335,7 +338,7 @@ public class ShootingGalleryLogic : MonoBehaviour
                         if (m_yourTeamPromptHasChanged)
                         {
                             //save the json request, we can re-use it for each pizza
-                            m_yourTeamjson = GamePicManager.Get().BuildJSonRequestForInpaint(m_yourTeamMember, "", m_templateTexture, m_alphaTexture, true);
+                            m_yourTeamjson = GamePicManager.Get().BuildJSonRequestForInpaint(m_yourTeamMember, m_negativePrompt, m_templateTexture,null, true);
                             m_yourTeamPromptHasChanged = false;
                         }
                         db.Set("tag", "Friend");
@@ -349,7 +352,7 @@ public class ShootingGalleryLogic : MonoBehaviour
                         if (m_opposingTeamPromptHasChanged)
                         {
                             //save the json request, we can re-use it for each pizza
-                            m_opposingTeamjson = GamePicManager.Get().BuildJSonRequestForInpaint(m_opposingTeamMember, "", m_templateTexture, m_alphaTexture, true);
+                            m_opposingTeamjson = GamePicManager.Get().BuildJSonRequestForInpaint(m_opposingTeamMember, m_negativePrompt, m_templateTexture,null, true);
                             m_opposingTeamPromptHasChanged = false;
                         }
                         db.Set("tag", "Opponent");

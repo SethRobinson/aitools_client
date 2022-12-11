@@ -15,7 +15,7 @@ public class PicInterrogate : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
-       
+
     }
 
     // Update is called once per frame
@@ -28,7 +28,7 @@ public class PicInterrogate : MonoBehaviour
         }
         else
         {
-            
+
         }
     }
 
@@ -63,15 +63,15 @@ public class PicInterrogate : MonoBehaviour
     {
         //Debug.Log("Starting upscale...");
         m_gpu = gpu;
-    
+
         StartWebRequest(true);
     }
     public void StartWebRequest(bool bFromButton)
     {
         var gpuInfo = Config.Get().GetGPUInfo(m_gpu);
 
-        string url = gpuInfo.remoteURL+ "/v1/interrogator";
-       
+        string url = gpuInfo.remoteURL;
+
         if (Config.Get().IsGPUBusy(m_gpu))
         {
             Debug.LogError("Why is GPU busy?!");
@@ -82,10 +82,10 @@ public class PicInterrogate : MonoBehaviour
         m_bIsGenerating = true;
         startTime = Time.realtimeSinceStartup;
 
-        StartCoroutine(GetRequest( url));
+        StartCoroutine(GetRequest(url));
     }
 
-    IEnumerator GetRequest( string url)
+    IEnumerator GetRequest(string url)
     {
         //yield return new WaitForEndOfFrame();
 
@@ -96,24 +96,28 @@ public class PicInterrogate : MonoBehaviour
         //File.WriteAllBytes(Application.dataPath + "/../SavedScreen.png", picPng);
 
         //String finalURL = url + "?prompt=" + context + "&prompt_strength=" + prompt_strength;
-        String finalURL = url;
-        Debug.Log("Interrogating with " + finalURL + " local GPU ID " + m_gpu);
+        String finalURL = "";
+
         string imgBase64 = Convert.ToBase64String(picPng);
 
         var gpuInf = Config.Get().GetGPUInfo(m_gpu);
 
-        string json =
-        $@"{{
-            ""interrogatorreq"":
-            {{
-            ""image"": ""{imgBase64}""
-        }}
+        string json;
 
-        }}";
+        finalURL = url + "/sdapi/v1/interrogate";
+
+        json =
+         $@"{{
+            
+                ""image"": ""{imgBase64}"",
+                ""model"": ""clip""
+            }}";
+
+        Debug.Log("Interrogating with " + finalURL + " local GPU ID " + m_gpu);
 
         //File.WriteAllText("json_to_send.json", json); //for debugging
-       
-        using (var postRequest = UnityWebRequest.Post(finalURL, "POST"))
+
+        using (var postRequest = UnityWebRequest.PostWwwForm(finalURL, "POST"))
         {
             //Start the request with a method instead of the object itself
             byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
@@ -123,8 +127,6 @@ public class PicInterrogate : MonoBehaviour
 
             if (postRequest.result != UnityWebRequest.Result.Success)
             {
-               
-                
                 Debug.Log(postRequest.error);
                 Debug.Log(postRequest.downloadHandler.text);
 
@@ -136,11 +138,13 @@ public class PicInterrogate : MonoBehaviour
             {
                 Debug.Log("Interrogate finished Downloaded " + postRequest.downloadedBytes); // + postRequest.downloadHandler.text
 
+                Debug.Log(postRequest.downloadHandler.text);
+
                 JSONNode rootNode = JSON.Parse(postRequest.downloadHandler.text);
 
                 Debug.Assert(rootNode.Tag == JSONNodeType.Object);
-                var dataNode = rootNode["description"];
-              
+                var dataNode = rootNode["caption"];
+
                 string text = dataNode.Value.ToString();
                 //System.IO.File.WriteAllText("interrogation.txt", text); //for debugging
                 GameLogic.Get().SetPrompt(text);

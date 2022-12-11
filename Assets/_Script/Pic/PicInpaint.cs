@@ -92,8 +92,7 @@ public class PicInpaint : MonoBehaviour
         }
 
         var gpuInfo = Config.Get().GetGPUInfo(m_gpu);
-        string url =gpuInfo.remoteURL + "/v1/img2img";
-
+     
         m_seed = GameLogic.Get().GetSeed();
         
       
@@ -108,7 +107,7 @@ public class PicInpaint : MonoBehaviour
         m_bIsGenerating = true;
         startTime = Time.realtimeSinceStartup;
 
-        StartCoroutine(GetRequest(url));
+        StartCoroutine(GetRequest(gpuInfo.remoteURL));
     }
 
     IEnumerator GetRequest( string url)
@@ -162,9 +161,8 @@ public class PicInpaint : MonoBehaviour
         //For testing purposes, we could also write to a file in the project folder
         //File.WriteAllBytes(Application.dataPath + "/../SavedScreenMask.png",picMaskPng);
 #endif
-        String finalURL = url;
-        Debug.Log("Inpainting with " + finalURL+" local GPU ID "+m_gpu);
-
+        String finalURL;
+        
         string imgBase64 = Convert.ToBase64String(picPng);
         string maskBase64 = Convert.ToBase64String(picMaskPng);
 
@@ -179,17 +177,31 @@ public class PicInpaint : MonoBehaviour
         var genHeight = m_targetRect.GetHeight();
         var genWidth = m_targetRect.GetWidth();
 
-        string safety_filter = "default"; //use whatever the server is set at
+        string safety_filter = ""; //use whatever the server is set at
         if (Config.Get().GetSafetyFilter())
         {
-            safety_filter = "true";
+            safety_filter = $@"""override_settings"": {{""filter_nsfw"": true}},";
         }
 
+        string json;
 
-        string json =
-$@"{{
-            ""img2imgreq"":
-            {{
+            //using the new API which doesn't support alpha masking the subject
+            finalURL = url + "/sdapi/v1/img2img";
+
+            string maskedContentIndex = "1";
+
+            if (maskedContent == "fill") maskedContent = "0";
+            if (maskedContent == "original") maskedContent = "1";
+            if (maskedContent == "latent noise") maskedContent = "2";
+            if (maskedContent == "latent nothing") maskedContent = "3";
+
+            json =
+         $@"{{
+            ""init_images"":
+            [
+                ""{imgBase64}""
+            ], 
+            {safety_filter}
             ""prompt"": ""{SimpleJSON.JSONNode.Escape(m_prompt)}"",
             ""negative_prompt"": ""{SimpleJSON.JSONNode.Escape(m_negativePrompt)}"",
             ""steps"": {GameLogic.Get().GetSteps()},
@@ -200,23 +212,21 @@ $@"{{
             ""width"": {genWidth},
             ""height"": {genHeight},
             ""sampler_name"": ""{GameLogic.Get().GetSamplerName()}"",
-            ""image"": ""{imgBase64}"",
-            ""mask_image"": ""{maskBase64}"",
+            ""mask"": ""{maskBase64}"",
             ""denoising_strength"": {GameLogic.Get().GetInpaintStrength()},
             ""mask_blur"": {maskBlur},
-            ""safety_filter"": ""{safety_filter}"",
-            ""inpainting_fill"": ""{maskedContent}"",
+            ""inpainting_fill"": {maskedContentIndex},
             ""alpha_mask_subject"":{bRemoveBackground.ToString().ToLower()}
- 
-        }}
-
+      
         }}";
 
-      
+       Debug.Log("Inpainting with " + finalURL + " local GPU ID " + m_gpu);
+
+
 #if !RT_RELEASE
-//        File.WriteAllText("json_to_send.json", json);
+        //        File.WriteAllText("json_to_send.json", json);
 #endif
-        using (var postRequest = UnityWebRequest.Post(finalURL, "POST"))
+        using (var postRequest = UnityWebRequest.PostWwwForm(finalURL, "POST"))
         {
             //Start the request with a method instead of the object itself
             byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);

@@ -643,7 +643,7 @@ public class PicMain : MonoBehaviour
         if (m_pic.sprite.texture.filterMode != FilterMode.Point)
         {
             m_pic.sprite.texture.filterMode = FilterMode.Point;
-            if (m_undoevent != null)
+            if (m_undoevent != null && m_undoevent.m_texture != null)
             {
                 m_undoevent.m_texture.filterMode = FilterMode.Point;
             }
@@ -652,7 +652,7 @@ public class PicMain : MonoBehaviour
                
            m_pic.sprite.texture.filterMode = FilterMode.Bilinear;
       
-            if (m_undoevent != null)
+            if (m_undoevent != null && m_undoevent.m_texture != null)
              {
                 m_undoevent.m_texture.filterMode = FilterMode.Bilinear;
              }

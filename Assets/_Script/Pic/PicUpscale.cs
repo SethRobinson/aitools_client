@@ -74,8 +74,6 @@ public class PicUpscale : MonoBehaviour
     {
         var gpuInfo = Config.Get().GetGPUInfo(m_gpu);
 
-        string url = gpuInfo.remoteURL+ "/v1/extras";
-       
         if (!bFromButton)
         {
             m_upscale = GameLogic.Get().GetUpscale();
@@ -102,24 +100,21 @@ public class PicUpscale : MonoBehaviour
         m_bIsGenerating = true;
         startTime = Time.realtimeSinceStartup;
 
-        StartCoroutine(GetRequest( url));
+        StartCoroutine(GetRequest());
     }
 
-    IEnumerator GetRequest( string url)
+    IEnumerator GetRequest()
     {
-        //yield return new WaitForEndOfFrame();
-
+        var gpuInf = Config.Get().GetGPUInfo(m_gpu);
+             
         SpriteRenderer renderer = m_sprite.GetComponent<SpriteRenderer>();
         UnityEngine.Sprite s = renderer.sprite;
         byte[] picPng = s.texture.EncodeToPNG();
         // For testing purposes, also write to a file in the project folder
         //File.WriteAllBytes(Application.dataPath + "/../SavedScreen.png", picPng);
-        String finalURL = url;
-        Debug.Log("Upscaling with " + finalURL + " local GPU ID " + m_gpu);
+        string finalURL = gpuInf.remoteURL + "/sdapi/v1/extra-single-image";
         string imgBase64 = Convert.ToBase64String(picPng);
         yield return null; //wait a free to lesson the jerkiness
-
-        var gpuInf = Config.Get().GetGPUInfo(m_gpu);
 
         //A lot of these parms are hardcoded where I like them, maybe add GUI to the client to control them later
         float gfpgan_visibility = 0;
@@ -134,23 +129,24 @@ public class PicUpscale : MonoBehaviour
 
         string json =
 $@"{{
-            ""extrasreq"":
-            {{
+           
             ""image"": ""{imgBase64}"",
             ""upscaling_resize"": 2,
-            ""upscaler1_name"": ""ESRGAN_4x"",
-            ""upscaler2_name"": ""SwinIR_4x"",
-            ""extras_upscaler_2_visibility:"": 0.5,
+            ""upscaler_1"": ""SwinIR_4x"",
+            ""upscaler_2"": ""ESRGAN_4x"",
+            ""extras_upscaler_2_visibility:"": 1,
             ""gfpgan_visibility"": {gfpgan_visibility},
             ""codeformer_visibility"": {codeformer_visibility},
+            ""codeformer_weight"": 0,
             ""alpha_mask_subject"":{bRemoveBackground.ToString().ToLower()},
-            ""codeformer_weight"": 0
-        }}
-
+            ""upscale_first"": true
+           
         }}";
+      
+        Debug.Log("Upscaling with " + finalURL + " local GPU ID " + m_gpu);
 
         //File.WriteAllText("json_to_send.json", json); //for debugging
-        using (var postRequest = UnityWebRequest.Post(finalURL, "POST"))
+        using (var postRequest = UnityWebRequest.PostWwwForm(finalURL, "POST"))
         {
             //Start the request with a method instead of the object itself
             byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
@@ -173,26 +169,15 @@ $@"{{
                 yield return null; //wait a free to lesson the jerkiness
 
                 Debug.Assert(rootNode.Tag == JSONNodeType.Object);
-                var images = rootNode["images"];
                 //Debug.Log("images is of type " + images.Tag);
                 //Debug.Log("there are " + images.Count + " images");
 
-                Debug.Assert(images.Count == 1); //You better convert the extra images to new pics!
-
                 byte[] imgDataBytes = null;
-                if (images != null)
-                {
-                    for (int i = 0; i < images.Count; i++)
-                    {
-                        imgDataBytes = Convert.FromBase64String(images[i]);
-                        yield return null; //wait a free to lesson the jerkiness
-                    }
-                }
-                else
-                {
-                    Debug.Log("image data is missing");
-                }
 
+              
+                //we extract the image slightly differently with the new api
+                imgDataBytes = Convert.FromBase64String(rootNode["image"]);
+                yield return null; //wait a free to lesson the jerkiness
 
                 Texture2D texture = new Texture2D(0, 0, TextureFormat.RGBA32, false);
 
@@ -208,11 +193,8 @@ $@"{{
                     UnityEngine.Sprite newSprite = UnityEngine.Sprite.Create(texture, new Rect(0,0, texture.width, texture.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f);
                     renderer.sprite = newSprite;
                     m_picScript.OnImageReplaced();
-                    
-                    
                     //m_picScript.GetMaskScript().SetMaskVisible(false); //we don't want to see a rect
                     //or whatever
-
                 }
                 else
                 {

@@ -6,9 +6,13 @@ using DG.Tweening.Plugins.Core.PathCore;
 
 public class GPUInfo
 {
+    public int localGPUID;
     public int remoteGPUID;
     public string remoteURL;
     public bool IsGPUBusy;
+    public Dictionary<string, object> configDict = null;
+    public bool supportsAITools = false;
+    public ServerButtonScript buttonScript = null;
 }
 
 public class Config : MonoBehaviour
@@ -21,15 +25,17 @@ public class Config : MonoBehaviour
     string m_configText; //later move this to a config.txt or something
     const string m_configFileName = "config.txt";
     bool m_safetyFilter = false;
-    float m_requiredServerVersion = 0.27f;
+    float m_requiredServerVersion = 0.40f;
 
-    float m_version = 0.49f;
+    float m_version = 0.50f;
     string m_imageEditorPathAndExe = "none set";
     public string GetVersionString() { return m_version.ToString("0.00"); }
     public float GetVersion() { return m_version; }
     public float GetRequiredServerVersion() { return m_requiredServerVersion; }
 
     public List<AudioClip> m_audioClips;
+    public GameObject m_serverButtonPrefab;
+    public GameObject m_noServersButtonPrefab;
 
     void Awake()
     {
@@ -49,11 +55,14 @@ public class Config : MonoBehaviour
         if (m_configText == "")
         {
             //default
-            m_configText += "#add as many servers as you want, just replace the localhost:7860 part with the";
-            m_configText += "#server name/ip and port.\n";
+            m_configText += "#add as many add_server commands as you want, just replace the localhost:7860 part with the\n";
+            m_configText += "#server name/ip and port.  You can control any number of servers at the same time.\n";
+            m_configText += "\n";
+            m_configText += "#You need at least one server running to work. It can be either an automatic1111 Stable Diffusion WebUI server or\n";
+            m_configText += "#a Seth's AI Tools server which supports a few more features.  It will autodetect which kind it is.\n";
             m_configText += "\n";
             m_configText += "add_server|http://localhost:7860\n\n";
-            m_configText += "#kids around?  Then uncomment below to turn on the content filter. It's way too sensitive though.\r\n#enable_safety_filter\r\n\r\n";
+            m_configText += "#kids around?  Then uncomment below to turn on the NSFW filter. \r\n#enable_safety_filter\r\n\r\n";
             m_configText += "#Set the below path and .exe to an image editor to use the Edit option. Changed files will auto\n";
             m_configText += "#update in here.\n\n";
             m_configText += "set_image_editor|C:\\Program Files\\Adobe\\Adobe Photoshop 2023\\Photoshop.exe\n";
@@ -92,7 +101,6 @@ public class Config : MonoBehaviour
         return "bad GPUID: "+gpu;
     }
 
-
     public bool GetSafetyFilter() { return m_safetyFilter; }
     public void SetSafetyFilter(bool bNew) 
     {
@@ -129,14 +137,54 @@ public class Config : MonoBehaviour
         if (IsValidGPU(gpuID))
         {
             m_gpuInfo[gpuID].IsGPUBusy = bNew;
+
+            //visually reflect its state as well
+            m_gpuInfo[gpuID].buttonScript.OnSetBusy(bNew);
         }
        
     }
     
-
     public void AddGPU(GPUInfo g)
     {
+        g.localGPUID = m_gpuInfo.Count;
+
         m_gpuInfo.Add(g);
+
+        //we have at least one GPU now, kill the no servers button
+        RTUtil.KillAllObjectsByName(RTUtil.FindIncludingInactive("Panel").gameObject, "NoServersButtonPrefab", true);
+
+        //oh hey, let's also add an onscreen button for it that will open up its webui
+
+        //first, get the menu panel object we'll parent to
+        var panel = RTUtil.FindIncludingInactive("Panel");
+        var buttonObj = Instantiate(m_serverButtonPrefab, panel.transform);
+        g.buttonScript = buttonObj.GetComponent<ServerButtonScript>();
+        g.buttonScript.Setup(g.localGPUID, g.supportsAITools);
+        buttonObj.name = "ServerButtonPrefab"; //don't change, we delete these by this exact name
+        //move it down
+        float spacerY = -20;
+        var vPos = buttonObj.transform.localPosition;
+        vPos.y += spacerY* g.localGPUID;
+        buttonObj.transform.localPosition = vPos;
+
+        if (g.supportsAITools)
+        {
+            //learn more about this server, we haven't already run it yet
+            var webScript = CreateWebRequestObject();
+            webScript.StartConfigRequest(g.localGPUID, g.remoteURL);
+        }
+        
+        if (g.localGPUID == 0)
+        {
+            //it's the first one, let's get more info
+            var webScript = CreateWebRequestObject();
+            webScript.StartPopulateModelsRequest(g);
+
+            var webScript2 = CreateWebRequestObject();
+            webScript2.StartPopulateSamplersRequest(g);
+
+        }
+
     }
 
   public void SaveConfigToFile()
@@ -175,6 +223,26 @@ public class Config : MonoBehaviour
         
         return config;
     }
+    void ClearGPU()
+    {
+        m_gpuInfo = new List<GPUInfo>();
+      
+
+        RTUtil.KillAllObjectsByName(RTUtil.FindIncludingInactive("Panel").gameObject, "ServerButtonPrefab", true);
+        RTUtil.KillAllObjectsByName(RTUtil.FindIncludingInactive("Panel").gameObject, "NoServersButtonPrefab", true);
+
+        Instantiate(m_noServersButtonPrefab, RTUtil.FindIncludingInactive("Panel").transform);
+
+    }
+
+    public WebRequestServerInfo CreateWebRequestObject()
+    {
+        GameObject go = new GameObject("ServerRequest");
+        go.transform.parent = transform;
+        WebRequestServerInfo webScript = (WebRequestServerInfo)go.AddComponent<WebRequestServerInfo>();
+        return webScript;
+    }
+
     public void ProcessConfigString(string newConfig)
     {
 
@@ -182,7 +250,8 @@ public class Config : MonoBehaviour
         m_safetyFilter = false;
 
         //reset old config. This will likely do bad things if you're using GPUs at the time of loading
-        m_gpuInfo = new List<GPUInfo>();
+        ClearGPU();
+        
         m_configText = newConfig;
 
         //process it line by line
@@ -204,17 +273,16 @@ public class Config : MonoBehaviour
                 {
                     //Debug.Log("Adding server " +words[1]);
                     //let's ask the server what it can do, and add its virtual gpus to our list if possible
-                    GameObject go = new GameObject("ServerRequest");
-                    go.transform.parent = transform;
-                    WebRequestServerInfo webScript = (WebRequestServerInfo) go.AddComponent<WebRequestServerInfo>();
-                    
+                  
+                    var webScript = CreateWebRequestObject();
+
                     string extra = "";
 
                     if (words.Length > 2)
                     {
                         extra = words[2];
                     }
-                    webScript.StartWebRequest(words[1], extra);
+                    webScript.StartInitialWebRequest(words[1], extra);
                 } else
                 if (words[0] == "set_default_sampler")
                 {
@@ -242,6 +310,25 @@ public class Config : MonoBehaviour
 
     }
 
+    public void SendRequestToAllServers(string optionKey, string optionValue)
+    {
+        for (int i=0; i < m_gpuInfo.Count;i++)
+        {
+            var webScript = CreateWebRequestObject();
+            webScript.SendServerConfigRequest(i, optionKey, optionValue);
+        }
+    }
+
+    public bool AllGPUsSupportAITools()
+    {
+
+        for (int i = 0; i < m_gpuInfo.Count; i++)
+        {
+            if (!m_gpuInfo[i].supportsAITools) return false;
+        }
+
+        return true;
+    }
     public GPUInfo GetGPUInfo(int index) { return m_gpuInfo[index]; }
     public int GetGPUCount() { return m_gpuInfo.Count; }
     static public Config Get() { return _this; }

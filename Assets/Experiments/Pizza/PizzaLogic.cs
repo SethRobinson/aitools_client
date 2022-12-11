@@ -20,6 +20,7 @@ public class PizzaLogic : MonoBehaviour
     string m_json; //store this for requests so we don't have to compute it each time
     static PizzaLogic _this = null;
     Color m_oldBGColor;
+    string m_negativePrompt = "pixelated, blurry, deformed, ugly";
 
     private void Awake()
     {
@@ -57,7 +58,7 @@ public class PizzaLogic : MonoBehaviour
         Camera.allCameras[0].backgroundColor = Color.black;
 
         //save the json request, we can re-use it for each pizza
-        m_json = GamePicManager.Get().BuildJSonRequestForInpaint("pizza, top view", "", m_templateTexture, m_alphaTexture, true);
+        m_json = GamePicManager.Get().BuildJSonRequestForInpaint("pizza, top view",  m_negativePrompt, m_templateTexture, m_alphaTexture, true);
         m_generatePizza = true;
 
         RTAudioManager.Get().PlayMusic("JOHN_MICHEL_CELLO-BACH_AVE_MARIA", 0.5f, 1.0f, true); 
