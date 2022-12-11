@@ -27,8 +27,8 @@ Current version: **V0.50** (released Dec 12th 2022)
 * Drag and drop images in as well as paste images from the windows clipboard
 * Pan/zoom with thousands of images on the screen
 * Mask painting with controllable brush size
-* Can utilize multiple servers (three video cards on one machine? Run three servers!) allowing seamless use of all remote GPUs for ultra fast generation and a single click to change the active model
-* Neat workflow that allows evolving images with loopback while live-selecting the best alteratives to shape the image in real-time
+* Can utilize multiple servers (three video cards on one machine? Run three servers!) allowing seamless use of all GPUs for ultra fast generation and a single click to change the active model
+* Neat workflow that allows evolving images with loopback while live-selecting the best alternatives to shape the image in real-time
 * Open source, uses the Unity game engine and C# to do stuff with AI art
 * Privacy respected - does not phone home or collect any statistics, purely local usage
 
