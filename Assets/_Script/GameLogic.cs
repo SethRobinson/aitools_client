@@ -212,8 +212,8 @@ public class GameLogic : MonoBehaviour
     private void Awake()
     {
         _this = this;
-        Application.targetFrameRate = 20000;
-        QualitySettings.vSyncCount = 0;
+        // Application.targetFrameRate = 20000;
+        //QualitySettings.vSyncCount = 0;
         //QualitySettings.antiAliasing = 4;
         /*
         Debug.unityLogger.filterLogType = LogType.Log;
@@ -414,7 +414,6 @@ public class GameLogic : MonoBehaviour
         notepadScript.m_onClickedSavedCallback += OnConfigSaved;
         notepadScript.m_onClickedCancelCallback += OnConfigCanceled;
     }
-
 
     void OnConfigSaved(string text)
     {

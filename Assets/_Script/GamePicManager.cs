@@ -69,12 +69,12 @@ public class GamePicManager : MonoBehaviour
             string json;
             string maskedContentIndex = "1";
 
-            if (maskedContent == "fill") maskedContent = "0";
-            if (maskedContent == "original") maskedContent = "1";
-            if (maskedContent == "latent noise") maskedContent = "2";
-            if (maskedContent == "latent nothing") maskedContent = "3";
+        if (maskedContent == "fill") maskedContentIndex = "0";
+        if (maskedContent == "original") maskedContentIndex = "1";
+        if (maskedContent == "latent noise") maskedContentIndex = "2";
+        if (maskedContent == "latent nothing") maskedContentIndex = "3";
 
-            string maskJson = "";
+        string maskJson = "";
 
             if (picMaskPng != null)
             {

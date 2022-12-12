@@ -17,8 +17,6 @@ To use this, you'll need at least one Stable Diffusion WebUI server running some
 <a href="Media/aitools_v050_screenshot2.png"><img align="top" src="Media/aitools_v050_screenshot2.png"></a>
 </p>
 
-Current version: **V0.50** (released Dec 12th 2022)
-
 # Features #
 
 * It's not a web app, it's a native locally run Windows .exe
@@ -32,13 +30,15 @@ Current version: **V0.50** (released Dec 12th 2022)
 * Open source, uses the Unity game engine and C# to do stuff with AI art
 * Privacy respected - does not phone home or collect any statistics, purely local usage
 
-# Recent changes #
+## Current version: **V0.52** (released Dec 12th 2022) Recent changes: ##
 
 * Now also compatible with AUTOMATIC1111's [stable-diffusion-webui](https://github.com/AUTOMATIC1111/stable-diffusion-webui) server
 * Models and samplers are now queried and populated directly from your AI server(s)
 * Can now change model with a dropdown box, all connected servers will switch over
 * New display of each server's status, clicking it brings up the standard Web UI
 * Improved support for SD 2.1
+* BUGFIX in 0.51: GUI no longer eats way too many GPU cycles
+* BUGFIX in 0.52: Inpainting mode no longer always selects "original" regardless of dropdown setting
 
 You only need to download [the zip](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) and run the .exe to use this, However, the source might be useful to generate a build for other platforms, fork or steal pieces to use for yourself.  Go ahead!
 

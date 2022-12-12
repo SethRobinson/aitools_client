@@ -27,7 +27,7 @@ public class Config : MonoBehaviour
     bool m_safetyFilter = false;
     float m_requiredServerVersion = 0.40f;
 
-    float m_version = 0.50f;
+    float m_version = 0.52f;
     string m_imageEditorPathAndExe = "none set";
     public string GetVersionString() { return m_version.ToString("0.00"); }
     public float GetVersion() { return m_version; }
@@ -299,8 +299,15 @@ public class Config : MonoBehaviour
                 if (words[0] == "set_image_editor")
                 {
                     m_imageEditorPathAndExe = words[1];
-                }
+                } else
+                if (words[0] == "set_max_fps")
+                {
+                    int maxFPS;
 
+                    int.TryParse(words[1], out maxFPS);
+
+                    Application.targetFrameRate = maxFPS;
+                }
                 else
                 {
                     //Debug.Log("Processing " + line);
