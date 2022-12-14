@@ -4,6 +4,7 @@ using UnityEngine.Networking;
 using System;
 using SimpleJSON;
 using System.IO;
+using System.Globalization;
 
 public class PicTextToImage : MonoBehaviour
 {
@@ -97,7 +98,7 @@ public class PicTextToImage : MonoBehaviour
         {
             m_seed = GameLogic.Get().GetSeed();
             m_prompt = GameLogic.Get().GetPrompt();
-            m_prompt_strength = GameLogic.Get().GetTextStrength();
+            m_prompt_strength = GameLogic.Get().GetTextStrengthFloat();
         }
 
         if (m_seed == -1)
@@ -147,6 +148,7 @@ public class PicTextToImage : MonoBehaviour
 
        finalURL = url + "/sdapi/v1/txt2img";
 
+       string promptStrString = prompt_strength.ToString("0.0", CultureInfo.InvariantCulture);
             //using the new API which doesn't support alpha masking the subject
             string json =
                  $@"{{
@@ -156,7 +158,7 @@ public class PicTextToImage : MonoBehaviour
             ""steps"": {GameLogic.Get().GetSteps()},
             ""restore_faces"":{bFixFace.ToString().ToLower()},
             ""tiling"":{bTiled.ToString().ToLower()},
-            ""cfg_scale"":{GameLogic.Get().GetTextStrength()},
+            ""cfg_scale"":{promptStrString},
             ""seed"": {m_seed},
             ""width"": {genWidth},
             ""height"": {genHeight},
@@ -171,7 +173,7 @@ public class PicTextToImage : MonoBehaviour
         //",\"" + GameLogic.Get().GetSamplerName() + "\","  +  + ","
 
 #if !RT_RELEASE
-        //File.WriteAllText("json_to_send.json", json);
+       // File.WriteAllText("json_to_send.json", json);
 #endif
 
         using (var postRequest = UnityWebRequest.PostWwwForm(finalURL, "POST"))

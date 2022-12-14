@@ -94,13 +94,13 @@ public class GamePicManager : MonoBehaviour
             ""steps"": {GameLogic.Get().GetSteps()},
             ""restore_faces"":{bFixFace.ToString().ToLower()},
             ""tiling"":{bTiled.ToString().ToLower()},
-            ""cfg_scale"":{GameLogic.Get().GetTextStrength()},
+            ""cfg_scale"":{GameLogic.Get().GetTextStrengthString()},
             ""seed"": {GameLogic.Get().GetSeed()},
             ""width"": {genWidth},
             ""height"": {genHeight},
             ""sampler_name"": ""{GameLogic.Get().GetSamplerName()}"",
             
-            ""denoising_strength"": {GameLogic.Get().GetInpaintStrength()},
+            ""denoising_strength"": {GameLogic.Get().GetInpaintStrengthString()},
             ""mask_blur"": {maskBlur},
             ""inpainting_fill"": {maskedContentIndex},
             ""alpha_mask_subject"":{bRemoveBackground.ToString().ToLower()}

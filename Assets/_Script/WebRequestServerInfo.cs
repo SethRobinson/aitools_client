@@ -5,6 +5,7 @@ using UnityEngine.Networking;
 using System;
 using MiniJSON;
 using SimpleJSON;
+using System.Globalization;
 
 public class WebRequestServerInfo : MonoBehaviour
 {
@@ -27,7 +28,15 @@ public class WebRequestServerInfo : MonoBehaviour
     }
     IEnumerator GetRequest(String server)
     {
-     
+
+        /*
+        //hack to assume it is
+        var webScriptTemp = Config.Get().CreateWebRequestObject();
+        webScriptTemp.StartConfigRequest(-1, server);
+        yield break;
+        */
+
+
         WWWForm form = new WWWForm();
         var finalURL = server + "/file/aitools/get_info.json";
         string serverClickableURL = "<link=\"" + server + "\"><u>" + server + "</u></link>";
@@ -89,7 +98,7 @@ public class WebRequestServerInfo : MonoBehaviour
                 String serverName = dict["name"].ToString();
                 float version;
 
-                System.Single.TryParse(dict["version"].ToString(), out version);
+                System.Single.TryParse(dict["version"].ToString(), NumberStyles.Any, CultureInfo.CurrentCulture, out version);
 
                 float requiredClient = 0;
 
@@ -97,7 +106,7 @@ public class WebRequestServerInfo : MonoBehaviour
                 {
 
 
-                    System.Single.TryParse(dict["required_client_version"].ToString(), out requiredClient);
+                    System.Single.TryParse(dict["required_client_version"].ToString(), NumberStyles.Any, CultureInfo.CurrentCulture, out requiredClient);
 
                     if (requiredClient > Config.Get().GetVersion())
                     {
@@ -399,6 +408,7 @@ public class WebRequestServerInfo : MonoBehaviour
         //File.WriteAllText("json_to_send.json", json); //for debugging
         var finalURL = g.remoteURL + "/sdapi/v1/options";
 
+        json = json.Replace('\\', '/');
         using (var postRequest = UnityWebRequest.PostWwwForm(finalURL, "POST"))
         {
             //Start the request with a method instead of the object itself

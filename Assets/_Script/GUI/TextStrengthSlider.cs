@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using UnityEngine;
 
 public class TextStrengthSlider : MonoBehaviour
@@ -23,7 +24,7 @@ public class TextStrengthSlider : MonoBehaviour
 
     public void UpdateValue()
     {
-        m_text.text = "Text strength: " + m_slider.value.ToString("0.0#");
+        m_text.text = "Text strength: " + m_slider.value.ToString("0.0#", CultureInfo.InvariantCulture);
         GameLogic.Get().SetTextStrength(m_slider.value);
     }
 }

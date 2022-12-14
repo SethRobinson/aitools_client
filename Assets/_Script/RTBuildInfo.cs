@@ -1,1 +1,1 @@
-public static class RTBuildInfo { public static string Timestamp = "12/12/2022 16:01:18.22".Substring(0,20);} 
+public static class RTBuildInfo { public static string Timestamp = "Wed 12/14/2022 15:24:57.88".Substring(0,20);} 

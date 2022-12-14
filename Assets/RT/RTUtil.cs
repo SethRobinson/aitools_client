@@ -7,6 +7,7 @@ using UnityEngine.SceneManagement;
 using System.Runtime.InteropServices;
 using System.IO;
 using UnityEngine.Rendering;
+using System.Globalization;
 
 //Adapted from https://stackoverflow.com/questions/46237984/how-to-emulate-statically-the-c-bitfields-in-c
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -1637,7 +1638,7 @@ public class RTUtil
         if (type == typeof(float))
         {
             float b;
-            System.Single.TryParse(value, out b);
+            System.Single.TryParse(value, NumberStyles.Any, CultureInfo.CurrentCulture, out b);
             return b;
         }
 

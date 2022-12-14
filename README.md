@@ -3,7 +3,11 @@
 
 License:  BSD style attribution, see LICENSE.md
 
-# Download the [AI Tools Client (Windows, 36 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip)
+<p float="left">
+<a href="Media/aitools_v050_screenshot2.png"><img align="top" src="Media/aitools_v050_screenshot2.png"></a>
+</p>
+
+# Download the latest [AI Tools Client (Windows, 36 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip)
 
 To use this, you'll need at least one Stable Diffusion WebUI server running somewhere. (same machine as the client is ok) This client supports either of the following servers:
 
@@ -12,10 +16,6 @@ To use this, you'll need at least one Stable Diffusion WebUI server running some
  or
 
 ## [Seth's AI Tools Server](https://github.com/SethRobinson/aitools_server) (Same as above but with a few extra features, including background removal) ##
-
-<p float="left">
-<a href="Media/aitools_v050_screenshot2.png"><img align="top" src="Media/aitools_v050_screenshot2.png"></a>
-</p>
 
 # Features #
 
@@ -30,7 +30,7 @@ To use this, you'll need at least one Stable Diffusion WebUI server running some
 * Open source, uses the Unity game engine and C# to do stuff with AI art
 * Privacy respected - does not phone home or collect any statistics, purely local usage
 
-## Current version: **V0.52** (released Dec 12th 2022) Recent changes: ##
+## Current version: **V0.53** (released Dec 14th 2022) Recent changes: ##
 
 * Now also compatible with AUTOMATIC1111's [stable-diffusion-webui](https://github.com/AUTOMATIC1111/stable-diffusion-webui) server
 * Models and samplers are now queried and populated directly from your AI server(s)
@@ -39,6 +39,8 @@ To use this, you'll need at least one Stable Diffusion WebUI server running some
 * Improved support for SD 2.1
 * BUGFIX in 0.51: GUI no longer eats way too many GPU cycles
 * BUGFIX in 0.52: Inpainting mode no longer always selects "original" regardless of dropdown setting
+* BUGFIX in 0.53: Should work and not give errors when Windows regional settings are not set to US (was unable to recreate issue on Win11, but this should fix it in theory)
+* BUGFIX in 0.53: Fixed issue where switching models wouldn't work from subdirs on servers running on Windows
 
 You only need to download [the zip](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) and run the .exe to use this, However, the source might be useful to generate a build for other platforms, fork or steal pieces to use for yourself.  Go ahead!
 

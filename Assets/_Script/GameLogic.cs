@@ -14,6 +14,7 @@ using DG.Tweening;
 using TMPro;
 using UnityEngine.EventSystems;
 using System.Collections.Generic;
+using System.Globalization;
 
 public class GameLogic : MonoBehaviour
 {
@@ -185,8 +186,6 @@ public class GameLogic : MonoBehaviour
     }
     public void OnModelChanged(Int32 optionID)
     {
-
-
         //send request to all servers
         ImageGenerator.Get().SetGenerate(false);
         Config.Get().SendRequestToAllServers("sd_model_checkpoint", m_modelDropdown.options[optionID].text);
@@ -345,7 +344,6 @@ public class GameLogic : MonoBehaviour
             {
                 picScript.SafelyKillThisPic();
             }
-
         }
 
         ImageGenerator.Get().ReorganizePics(); //defrag 'em
@@ -431,7 +429,11 @@ public class GameLogic : MonoBehaviour
     {
         m_textStrength = str;
     }
-    public float GetInpaintStrength() { return m_inpaintStrength; }
+    public float GetInpaintStrengthFloat() { return m_inpaintStrength; }
+    public string GetInpaintStrengthString() 
+    {
+        return m_inpaintStrength.ToString("0.0", CultureInfo.InvariantCulture);
+    }
 
     public void SetInpaintStrength(float inpaint)
     {
@@ -450,7 +452,11 @@ public class GameLogic : MonoBehaviour
     {
         m_penSize = inpaint;
     }
-    public float GetTextStrength() { return m_textStrength; }
+    public float GetTextStrengthFloat() { return m_textStrength; }
+    public string GetTextStrengthString() 
+    {
+        return m_textStrength.ToString("0.0", CultureInfo.InvariantCulture);
+    }
 
     public string GetMaskContent()
     {
@@ -592,8 +598,6 @@ public class GameLogic : MonoBehaviour
         print("QUITTING!");
     }
     
-    
-
     private void OnDestroy()
     {
         print("Game logic destroyed");
