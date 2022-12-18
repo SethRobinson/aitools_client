@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Networking;
 using System;
+//TODO: Stop using two json systems, just why?!
 using MiniJSON;
 using SimpleJSON;
 using System.Globalization;
@@ -408,7 +409,7 @@ public class WebRequestServerInfo : MonoBehaviour
         //File.WriteAllText("json_to_send.json", json); //for debugging
         var finalURL = g.remoteURL + "/sdapi/v1/options";
 
-        json = json.Replace('\\', '/');
+        json = json.Replace("\\", "\\\\");
         using (var postRequest = UnityWebRequest.PostWwwForm(finalURL, "POST"))
         {
             //Start the request with a method instead of the object itself

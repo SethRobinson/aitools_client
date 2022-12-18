@@ -27,7 +27,7 @@ public class Config : MonoBehaviour
     bool m_safetyFilter = false;
     float m_requiredServerVersion = 0.40f;
 
-    float m_version = 0.53f;
+    float m_version = 0.54f;
     string m_imageEditorPathAndExe = "none set";
     public string GetVersionString() { return m_version.ToString("0.00"); }
     public float GetVersion() { return m_version; }

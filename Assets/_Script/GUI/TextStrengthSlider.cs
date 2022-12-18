@@ -24,7 +24,7 @@ public class TextStrengthSlider : MonoBehaviour
 
     public void UpdateValue()
     {
-        m_text.text = "Text strength: " + m_slider.value.ToString("0.0#", CultureInfo.InvariantCulture);
+        m_text.text = "CFG Scale: " + m_slider.value.ToString("0.0#", CultureInfo.InvariantCulture);
         GameLogic.Get().SetTextStrength(m_slider.value);
     }
 }

@@ -27,10 +27,11 @@ public class ImageGenerator : MonoBehaviour
     float spacingX = 5.12f;
     float spacingY = 5.38f; //extra space for the menu too
     float rowMovedSoFar = 0;
-
+    int m_curGenCount;
     Vector3 m_oldCamPos;
     float m_oldCamSize;
     Camera m_camera;
+    public GameObject m_settingPanelPrefab;
     static public ImageGenerator Get()
     {
         return _this;
@@ -47,6 +48,7 @@ public class ImageGenerator : MonoBehaviour
         return m_generateActive;
     }
 
+    public int GetCurrentGenerationCount() { return m_curGenCount; }
 
     public void ScheduleGPURequest(ScheduledGPUEvent request)
     {
@@ -54,6 +56,19 @@ public class ImageGenerator : MonoBehaviour
         //Debug.Log("Scheduled GPU event, " + m_gpuEventList.Count + " total");
     }
 
+    public void IncrementGenerationAndCheckForEnd()
+    {
+        m_curGenCount++;
+
+        if (GameLogic.Get().GetMaxToGenerate() > 0)
+        {
+            if (m_curGenCount >= GameLogic.Get().GetMaxToGenerate())
+            {
+                SetGenerate(false);
+
+            }
+        }
+    }
     public void OnStartingPicGenerator(GameObject go)
     {
         if (m_generateActive)
@@ -64,11 +79,14 @@ public class ImageGenerator : MonoBehaviour
         //now start up ours
         SetGenerate(true);
         m_picGenerator = go;
+
+
     }
 
     void Start()
     {
         UpdateGenerateButtonStatus();
+        
         Reset();
        //oh, let's remember the original camera position so we can return to it
         m_oldCamPos = m_camera.transform.position;
@@ -112,6 +130,28 @@ public class ImageGenerator : MonoBehaviour
             GameLogic.Get().SetChangeModelEnabled(true);
         }
     }
+
+    public void OnClickedGenerateSettingsButton()
+    {
+        const string panelName = "GenerateSettingsPanel";
+
+        var existing = RTUtil.FindIncludingInactive(panelName);
+        if (existing != null)
+        {
+            RTUtil.KillObjectByName(panelName);
+            return;
+        }
+
+        GameObject genPanel = Instantiate(m_settingPanelPrefab, RTUtil.FindIncludingInactive("Canvas").transform);
+        genPanel.name = panelName;
+
+    }
+    public void ResetGenerateCounter()
+    {
+        m_curGenCount = 0;
+        GameLogic.Get().ResetLastModifiedPrompt();
+    }
+
     public void SetGenerate(bool bGenerate)
     {
         
@@ -124,7 +164,7 @@ public class ImageGenerator : MonoBehaviour
         else
         {
             //RTConsole.Log("Stopping generator...");
-
+          
             if (m_picGenerator != null)
             {
                 PicGenerator picGenScript = m_picGenerator.GetComponent<PicGenerator>();
@@ -145,6 +185,7 @@ public class ImageGenerator : MonoBehaviour
     }
     public void OnGenerateButton()
     {
+        ResetGenerateCounter();
         SetGenerate(!m_generateActive);
     }
     // Update is called once per frame
@@ -293,6 +334,7 @@ public class ImageGenerator : MonoBehaviour
                 processAI.SetGPU(i);
                 scriptAI.SetGPU(i);
                 scriptAI.StartWebRequest(false);
+                IncrementGenerationAndCheckForEnd();
             }
         }
     }

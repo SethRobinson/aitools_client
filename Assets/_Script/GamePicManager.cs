@@ -215,8 +215,8 @@ public class GamePicManager : MonoBehaviour
 
                     //debug: write texture out
 #if !RT_RELEASE
-                    byte[] testReturnedTex = texture.EncodeToPNG();
-                    File.WriteAllBytes(Application.dataPath + "/../SavedReturnedTex.png", testReturnedTex);
+                   // byte[] testReturnedTex = texture.EncodeToPNG();
+                   // File.WriteAllBytes(Application.dataPath + "/../SavedReturnedTex.png", testReturnedTex);
 #endif
 
                     myCallback.Invoke(texture, db);

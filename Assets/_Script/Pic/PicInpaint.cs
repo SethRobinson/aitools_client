@@ -94,10 +94,19 @@ public class PicInpaint : MonoBehaviour
         var gpuInfo = Config.Get().GetGPUInfo(m_gpu);
      
         m_seed = GameLogic.Get().GetSeed();
-        
-      
+
+
         if (!m_useExisting || m_prompt == "")
-            m_prompt = GameLogic.Get().GetPrompt();
+        {
+            if (ImageGenerator.Get().IsGenerating())
+            {
+                m_prompt = GameLogic.Get().GetModifiedPrompt();
+            }
+            else
+            {
+                m_prompt = GameLogic.Get().GetPrompt();
+            }
+        }
 
         if (!m_useExisting || m_negativePrompt == "")
             m_negativePrompt = GameLogic.Get().GetNegativePrompt();
@@ -308,9 +317,9 @@ public class PicInpaint : MonoBehaviour
 
                     //debug: write texture out
 
-                    #if !RT_RELEASE
-                    byte[] testReturnedTex = texture.EncodeToPNG();
-                    File.WriteAllBytes(Application.dataPath + "/../SavedReturnedTex.png", testReturnedTex);
+ #if !RT_RELEASE
+                    //byte[] testReturnedTex = texture.EncodeToPNG();
+                    //File.WriteAllBytes(Application.dataPath + "/../SavedReturnedTex.png", testReturnedTex);
 #endif
 
 

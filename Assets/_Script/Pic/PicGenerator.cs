@@ -28,6 +28,8 @@ public class PicGenerator : MonoBehaviour
 
         //they want to start generating, ok
 
+
+
         m_bIsGenerating = true;
         ImageGenerator.Get().OnStartingPicGenerator(gameObject);
 
@@ -65,6 +67,8 @@ public class PicGenerator : MonoBehaviour
                 go.GetComponent<PicInpaint>().m_onFinishedRenderingCallback += OnCallbackFinished;
                 m_bDidTagObjectToBeNewSource = true;
             }
+
+            ImageGenerator.Get().IncrementGenerationAndCheckForEnd();
         }
     }
 
@@ -88,6 +92,7 @@ public class PicGenerator : MonoBehaviour
 
     public void OnInpaintGeneratorButton()
     {
+        ImageGenerator.Get().ResetGenerateCounter();
         SetIsGenerating(!GetIsGenerating());
     }
 }

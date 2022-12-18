@@ -97,7 +97,15 @@ public class PicTextToImage : MonoBehaviour
         if (!rerender || m_prompt == null || m_prompt == "")
         {
             m_seed = GameLogic.Get().GetSeed();
-            m_prompt = GameLogic.Get().GetPrompt();
+           
+            if (ImageGenerator.Get().IsGenerating()) 
+            {
+                m_prompt = GameLogic.Get().GetModifiedPrompt();
+            } else
+            {
+                m_prompt = GameLogic.Get().GetPrompt();
+            }
+
             m_prompt_strength = GameLogic.Get().GetTextStrengthFloat();
         }
 

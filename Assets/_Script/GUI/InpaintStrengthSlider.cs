@@ -23,7 +23,7 @@ public class InpaintStrengthSlider : MonoBehaviour
 
     public void UpdateValue()
     {
-        m_text.text = "Inpaint strength: " + m_slider.value.ToString("0.0##");
+        m_text.text = "Denoising Strength: " + m_slider.value.ToString("0.0##");
         GameLogic.Get().SetInpaintStrength(m_slider.value);
     }
 }

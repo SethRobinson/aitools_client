@@ -15,6 +15,8 @@ using TMPro;
 using UnityEngine.EventSystems;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
+
 
 public class GameLogic : MonoBehaviour
 {
@@ -23,6 +25,9 @@ public class GameLogic : MonoBehaviour
     string m_negativePrompt = "";
     int m_steps = 50;
     long m_seed = -1;
+    bool m_bRandomizePrompt = false;
+    int m_maxToGenerate = 1000;
+    string m_lastModifiedPrompt;
 
     float m_upscale = 2.0f; //1 means noc hange
     bool m_fixFaces = false;
@@ -76,7 +81,13 @@ public class GameLogic : MonoBehaviour
     {
         return Get().name;
     }
-  
+
+    public int GetMaxToGenerate() { return m_maxToGenerate; }
+    public void SetMaxToGenerate(int max) { m_maxToGenerate = max; }
+
+    public bool GetRandomizePrompt() { return m_bRandomizePrompt; }
+    public void SetRandomizePrompt(bool bNew) { m_bRandomizePrompt = bNew;}
+
     public int GetGenWidth() { return m_genWidth; }
 
     public int GetGenHeight() { return m_genHeight; }
@@ -167,7 +178,8 @@ public class GameLogic : MonoBehaviour
     }
     public void SetModelByName(string name)
     {
-      
+        name = name.ToLower();
+
         for (int i = 0; i < m_modelDropdown.options.Count; i++)
         {
             if (name == m_modelDropdown.options[i].text.ToLower())
@@ -350,6 +362,54 @@ public class GameLogic : MonoBehaviour
     }
 
     public string GetPrompt() { return m_prompt; }
+    public void ResetLastModifiedPrompt()
+    {
+        m_lastModifiedPrompt = "";
+    }
+
+    public string GetLastModifiedPrompt() { return m_lastModifiedPrompt; }
+
+
+    //should probably move this somewhere else
+
+    /// <summary>
+    /// Takes a string of comma delimited values and randomly removes one of them using Unity's native random number generator.
+    /// </summary>
+    /// <param name="input">The input string of comma delimited values.</param>
+    /// <returns>The modified string with one of the values removed.</returns>
+    public static string RemoveRandomValue(string input)
+    {
+        // Split the input string into an array of values
+        string[] values = input.Split(',');
+
+        // If the array has fewer than 2 values, return the original string
+        if (values.Length < 2)
+        {
+            return input;
+        }
+
+        // Choose a random index in the array using Unity's Random.Range method
+        int index = UnityEngine.Random.Range(0, values.Length);
+
+        // Remove the value at the chosen index
+        values = values.Where((val, idx) => idx != index).ToArray();
+
+        // Join the remaining values into a string and return it
+        return string.Join(", ", values);
+    }
+
+
+    public string GetModifiedPrompt()
+    {
+        if (m_bRandomizePrompt)
+        {
+            m_lastModifiedPrompt = RemoveRandomValue(m_prompt).Trim();
+            return m_lastModifiedPrompt;
+        }
+
+        return m_prompt;
+    }
+
     public string GetNegativePrompt() { return m_negativePrompt; }
     public int GetSteps() { return m_steps; }
     public long GetSeed() { return m_seed; }

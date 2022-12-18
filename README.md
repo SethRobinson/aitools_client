@@ -30,21 +30,18 @@ To use this, you'll need at least one Stable Diffusion WebUI server running some
 * Open source, uses the Unity game engine and C# to do stuff with AI art
 * Privacy respected - does not phone home or collect any statistics, purely local usage
 
-## Current version: **V0.53** (released Dec 14th 2022) Recent changes: ##
+## Current version: **V0.54** (released Dec 18th 2022) Recent changes: ##
 
 * Now also compatible with AUTOMATIC1111's [stable-diffusion-webui](https://github.com/AUTOMATIC1111/stable-diffusion-webui) server
-* Models and samplers are now queried and populated directly from your AI server(s)
-* Can now change model with a dropdown box, all connected servers will switch over
-* New display of each server's status, clicking it brings up the standard Web UI
-* Improved support for SD 2.1
-* BUGFIX in 0.51: GUI no longer eats way too many GPU cycles
-* BUGFIX in 0.52: Inpainting mode no longer always selects "original" regardless of dropdown setting
-* BUGFIX in 0.53: Should work and not give errors when Windows regional settings are not set to US (was unable to recreate issue on Win11, but this should fix it in theory)
-* BUGFIX in 0.53: Fixed issue where switching models wouldn't work from subdirs on servers running on Windows
+* BUGFIX in 0.54: Fixed problem where switching models would do nothing, choose wrong model, or not reflect the active model (cooperdk)
+* GUI in 0.54: Renamed Inpaint Strength to Denoising Strengh and Text Strength to CFG Scale.  I originally named these when I was using my own backend. For clarity I've switched to Auto1111's naming scheme
+* FEAT in 0.54: If you click the gear icon next to the Generate button you get a generate options menu. This menu can also be opened during generation to see status info on what's happening.
+* FEAT in 0.54: Can adjust maximum images to generate/inpaint (y0himba)
+* FEAT in 0.54: Can enable a randomize prompt option.  (cooperdk)
 
 You only need to download [the zip](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) and run the .exe to use this, However, the source might be useful to generate a build for other platforms, fork or steal pieces to use for yourself.  Go ahead!
 
-# Examples #
+# Media (outdated movies of the app) #
 
 <a href="https://www.youtube.com/watch?v=2TB4f8ojKYo"><img align="top" src="Media/apple_youtube_thumbnail.png" width=300></a>
 <a href="https://www.youtube.com/watch?v=3PmZ_9QfrE0"><img align="top" src="Media/remove_bg_youtube.png" width=300></a>
@@ -52,6 +49,8 @@ You only need to download [the zip](https://www.rtsoft.com/files/SethsAIToolsWin
 # Setup #
 
 If using AUTOMATIC1111's Stable Diffusion WebUI, make sure it has been started with the --api parm.  (additionally, with the --listen parm if it isn't on the local machine)
+
+On Windows, an easy way to do that is to edit webui-user.bat and add them after the "set COMMANDLINE_ARGS=" part.  Start the server by double clicking webui-user.bat.
 
 Next run aitools_client.exe.  Click on the "Configuration" button and a text editor will open with the default settings:
 
@@ -77,6 +76,8 @@ set_image_editor|C:\Program Files\Adobe\Adobe Photoshop 2023\Photoshop.exe
 ```
 
 If your Stable Diffusion WebUI server isn't running locally or at port 7860, change the http://localhost:7860 part to where it is.  Add multiple add_server commands for multiple servers.
+
+**NOTE:** Using automatic1111, on the server side, you will see a scary error saying "RuntimeError: File at path D:\pro\stable-diffusion-webui\aitools\get_info.json does not exist.", this is ok, the app checks for the file to see what kind of server it is once at the start.  It doesn't break anything.
 
 # Building from source
 
