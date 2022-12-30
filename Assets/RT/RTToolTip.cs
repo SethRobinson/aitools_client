@@ -5,6 +5,10 @@ using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using static UnityEngine.GraphicsBuffer;
 
+//Attach to GUI object for tooltip.  Needs RTToolTipManger running somewhere as well
+
+//By Seth A. Robinson, 2022
+
 public class RTToolTip : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
 {
     public string _text = "Change this text to the tooltip you want!";

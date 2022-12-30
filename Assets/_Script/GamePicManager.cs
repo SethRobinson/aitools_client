@@ -28,7 +28,8 @@ public class GamePicManager : MonoBehaviour
         return Get().name;
     }
 
-    public string BuildJSonRequestForInpaint(string prompt, string negativePrompt, Texture2D pic512, Texture2D mask512, bool bRemoveBackground)
+    public string BuildJSonRequestForInpaint(string prompt, string negativePrompt, Texture2D pic512, Texture2D mask512, bool bRemoveBackground, 
+        bool bOperateOnSubjectOnly = false, bool bDisableTranslucencyOfMask = false, bool bReverseSubjectMask = false)
     {
         byte[] picPng = pic512.EncodeToPNG();
         byte[] picMaskPng = null;
@@ -74,6 +75,21 @@ public class GamePicManager : MonoBehaviour
         if (maskedContent == "latent noise") maskedContentIndex = "2";
         if (maskedContent == "latent nothing") maskedContentIndex = "3";
 
+
+        string subjectMask = "";
+
+        if (bOperateOnSubjectOnly)
+        {
+            subjectMask = $@" ""generate_subject_mask"":{bOperateOnSubjectOnly.ToString().ToLower()},";
+
+
+            if (bReverseSubjectMask)
+            {
+                subjectMask = $@" ""generate_subject_mask_reverse"":{bOperateOnSubjectOnly.ToString().ToLower()},";
+
+            }
+        }
+
         string maskJson = "";
 
             if (picMaskPng != null)
@@ -99,12 +115,13 @@ public class GamePicManager : MonoBehaviour
             ""width"": {genWidth},
             ""height"": {genHeight},
             ""sampler_name"": ""{GameLogic.Get().GetSamplerName()}"",
-            
             ""denoising_strength"": {GameLogic.Get().GetInpaintStrengthString()},
             ""mask_blur"": {maskBlur},
             ""inpainting_fill"": {maskedContentIndex},
-            ""alpha_mask_subject"":{bRemoveBackground.ToString().ToLower()}
-        }}";
+            ""alpha_mask_subject"":{bRemoveBackground.ToString().ToLower()},
+            {subjectMask}
+            ""generate_subject_mask_force_no_translucency"":{bDisableTranslucencyOfMask.ToString().ToLower()}
+       }}";
         
         return json;
     }

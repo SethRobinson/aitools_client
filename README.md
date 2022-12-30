@@ -30,14 +30,15 @@ To use this, you'll need at least one Stable Diffusion WebUI server running some
 * Open source, uses the Unity game engine and C# to do stuff with AI art
 * Privacy respected - does not phone home or collect any statistics, purely local usage
 
-## Current version: **V0.54** (released Dec 18th 2022) Recent changes: ##
+## Current version: **V0.56** (released Dec 30th 2022) Recent changes: ##
 
 * Now also compatible with AUTOMATIC1111's [stable-diffusion-webui](https://github.com/AUTOMATIC1111/stable-diffusion-webui) server
-* BUGFIX in 0.54: Fixed problem where switching models would do nothing, choose wrong model, or not reflect the active model (cooperdk)
-* GUI in 0.54: Renamed Inpaint Strength to Denoising Strengh and Text Strength to CFG Scale.  I originally named these when I was using my own backend. For clarity I've switched to Auto1111's naming scheme
 * FEAT in 0.54: If you click the gear icon next to the Generate button you get a generate options menu. This menu can also be opened during generation to see status info on what's happening.
 * FEAT in 0.54: Can adjust maximum images to generate/inpaint (y0himba)
 * FEAT in 0.54: Can enable a randomize prompt option.  (cooperdk)
+* FEAT in 0.56: Can now see brush size overlay during mask painting
+* FEAT in 0.56: Added Crazy Cam experiment (uses your webcam to do weird live filters)
+* 0.56: Fixed pizza experiment to look right, api had changed slightly in regards to how 32bit sources are handled
 
 You only need to download [the zip](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) and run the .exe to use this, However, the source might be useful to generate a build for other platforms, fork or steal pieces to use for yourself.  Go ahead!
 

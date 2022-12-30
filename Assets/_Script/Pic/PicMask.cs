@@ -5,6 +5,8 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using static UnityEngine.Rendering.HableCurve;
+
 public class PicMask : MonoBehaviour
 {
 
@@ -14,6 +16,7 @@ public class PicMask : MonoBehaviour
     bool m_boolMaskHasBeenSet = false;
     bool m_bMaskModified;
     public PicTargetRect m_targetRectScript;
+    public LineRenderer m_brushSizeLineRenderer;
 
     // Start is called before the first frame update
     void Start()
@@ -219,12 +222,85 @@ public class PicMask : MonoBehaviour
         ForceMaskRectToBeWithinImageBounds();
     }
 
+    void DrawCircle(float radius, int segments)
+    {
+        float x;
+        float y;
+        float z = 0f;
+
+        float angle = 0;
+
+        // Set the number of vertices in the line renderer
+        m_brushSizeLineRenderer.positionCount = segments + 1;
+
+        for (int i = 0; i < (segments + 1); i++)
+        {
+            x = Mathf.Sin(Mathf.Deg2Rad * angle) * radius;
+            y = Mathf.Cos(Mathf.Deg2Rad * angle) * radius;
+
+            m_brushSizeLineRenderer.SetPosition(i, new Vector3(x, y, z));
+
+            angle += (360f / (float)segments);
+        }
+    }
+
     void Update()
     {
 
         if (IsMaskVisible())
         {
             ResizeMaskIfNeeded();
+
+            if (GameLogic.Get().GetPicWereHoveringOver() == gameObject && !GameLogic.Get().GUIIsBeingUsed())
+            {
+                m_brushSizeLineRenderer.enabled = true;
+
+                //we're hovering over this image, let's draw the brush size
+                int segments = 64;
+                Color color;
+             
+                color = new Color();
+             
+                    // Cast a ray from viewport point into world
+                    var vOrigin = gameObject.transform.position;
+                    vOrigin.y += 2.5f; //5.12/2 minus some extra leeway
+                    vOrigin.z = 0.3f;
+
+                    Ray ray = new Ray(vOrigin, new Vector3(0, 0, 1));
+
+                    Vector2 vTexPos1 = new Vector2();
+                    Vector2 vTexPos2 = new Vector2();
+
+                    if (IntersectsSprite(m_spriteMask, ray, out color, out vTexPos1))
+                    {
+                        vOrigin.x += 0.1f;
+                        ray.origin = vOrigin;
+
+                        if (IntersectsSprite(m_spriteMask, ray, out color, out vTexPos2))
+                        {
+                            float ratio = vTexPos2.x - vTexPos1.x;
+
+                        //Debug.Log("Texpos 1: " + vTexPos1+" Textpos2: "+vTexPos2+" Ratio: "+ratio);
+                        float radius = (GameLogic.Get().GetPenSize() * 0.1f) / ratio;
+
+                        Vector3 vClickWorldPos = m_cam.ScreenToWorldPoint(Input.mousePosition);
+                        var vTempPos = m_brushSizeLineRenderer.gameObject.transform.position;
+                        vTempPos.x = vClickWorldPos.x;
+                        vTempPos.y = vClickWorldPos.y;
+
+                        m_brushSizeLineRenderer.gameObject.transform.position = vTempPos;
+                        DrawCircle(radius, segments);
+                    }
+
+                }
+
+                    
+            } else
+            {
+                //mouse isn't over this pic, so no reason to show the brush size overlay
+                m_brushSizeLineRenderer.enabled= false;
+            }
+
         }
 
         if ((Input.GetMouseButton(0) || Input.GetMouseButtonUp(0)) && !EventSystem.current.IsPointerOverGameObject())
@@ -250,7 +326,6 @@ public class PicMask : MonoBehaviour
                 int brushSize = (int)GameLogic.Get().GetPenSize();
                 Color drawColor = new Color(1, 1, 1, 1);
 
-
                 Vector2 clickedPos = new Vector2(vTexPos.x, m_spriteMask.sprite.texture.height - vTexPos.y);
 
                 if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
@@ -261,8 +336,6 @@ public class PicMask : MonoBehaviour
                     m_targetRectScript.OnMoveToPixelLocation(vCenteredRectPos);
                     return;
                 }
-
-
 
                 if (Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt))
                 {

@@ -137,9 +137,9 @@ public class PicInpaint : MonoBehaviour
 
         /*
         //apply latent noise if needed
-        if (GameLogic.Get().GetNoiseStrength() > 0)
+        if (GameLogic.Get().GetExtraNoise() > 0)
         {
-            pic512.SetPixelsFromTextureWithAlphaMask(m_latentNoise, mask512, GameLogic.Get().GetNoiseStrength());
+            pic512.SetPixelsFromTextureWithAlphaMask(m_latentNoise, mask512, GameLogic.Get().GetExtraNoise());
             yield return null; //wait a frame to lessen the jerkiness
 
             // picSprite.texture.Blit(m_targetRect.GetOffsetX(), m_targetRect.GetOffsetY(), pic512, 0, 0, m_targetRect.GetWidth(), m_targetRect.GetHeight());

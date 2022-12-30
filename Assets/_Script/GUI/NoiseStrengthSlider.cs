@@ -23,6 +23,6 @@ public class NoiseStrengthSlider : MonoBehaviour
     public void UpdateValue()
     {
         m_text.text = "Inject extra noise: " + m_slider.value.ToString("0.0##");
-        GameLogic.Get().SetNoiseStrength(m_slider.value);
+        GameLogic.Get().SetExtraNoiseStrength(m_slider.value);
     }
 }

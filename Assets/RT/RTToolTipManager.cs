@@ -7,6 +7,8 @@ using UnityEngine.Android;
 //the RTNotepadPrefab file.
 //Then you just add RTToolTip.cs to any GUI object that needs a tooltip.
 
+//By Seth A. Robinson, 2022
+
 public class RTToolTipManager : MonoBehaviour
 {
 

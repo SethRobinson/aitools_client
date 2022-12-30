@@ -1,7 +1,5 @@
 /*
-
 Source code by Seth A. Robinson
-
  */
 
 //#define RT_NOAUDIO
@@ -16,7 +14,6 @@ using UnityEngine.EventSystems;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-
 
 public class GameLogic : MonoBehaviour
 {
@@ -33,11 +30,15 @@ public class GameLogic : MonoBehaviour
     bool m_fixFaces = false;
     float m_textStrength = 7.5f;
     float m_inpaintStrength = 0.80f;
-    float m_noiseStrength = 0;
+    float m_extraNoiseStrength = 0;
     float m_penSize = 20;
     public TMP_InputField m_inputField;
     public TMP_InputField m_negativeInputField;
     public TMP_InputField m_stepsInputField;
+    public TMP_InputField m_seedInputField;
+    public Slider m_inpaintStrengthInput;
+    public Slider m_maskBlendingInput;
+
     public Button m_generateButton;
     public Toggle m_fixFacesToggle;
     public Toggle m_upscaleToggle;
@@ -286,6 +287,7 @@ public class GameLogic : MonoBehaviour
     public void SetAlphaMaskFeatheringPower(float power)
     {
         m_alphaMaskFeatheringPower = power;
+        m_maskBlendingInput.value= power;
     }
 
     public bool GUIIsBeingUsed()
@@ -325,7 +327,7 @@ public class GameLogic : MonoBehaviour
             RTUtil.SetActiveByNameIfExists("RTWarningSplash", true);
         }
     }
-
+    
     public void OnRemoveBackground(bool bNew)
     {
         m_bRemoveBackground = bNew;
@@ -413,6 +415,18 @@ public class GameLogic : MonoBehaviour
     public string GetNegativePrompt() { return m_negativePrompt; }
     public int GetSteps() { return m_steps; }
     public long GetSeed() { return m_seed; }
+
+    public void SetSeed(int seed)
+    {
+        m_seed = seed;
+        m_seedInputField.text = seed.ToString();
+    }
+
+    public void SetFixFaces(bool bFixFaces)
+    {
+        m_fixFacesToggle.isOn = bFixFaces;
+    }
+   
     public bool GetFixFaces() { return m_fixFaces; }
     public float GetUpscale() { return m_upscale; }
     public void OnStepsChanged(string steps)
@@ -498,12 +512,17 @@ public class GameLogic : MonoBehaviour
     public void SetInpaintStrength(float inpaint)
     {
         m_inpaintStrength = inpaint;
-    }
-    public float GetNoiseStrength() { return m_noiseStrength; }
+        m_inpaintStrengthInput.value = inpaint;
 
-    public void SetNoiseStrength(float Noise)
+
+    }
+
+    
+    public float GetExtraNoise() { return m_extraNoiseStrength; } //no longer used
+
+    public void SetExtraNoiseStrength(float Noise) //no longer used
     {
-        m_noiseStrength = Noise;
+        m_extraNoiseStrength = Noise;
     }
 
     public float GetPenSize() { return m_penSize; }

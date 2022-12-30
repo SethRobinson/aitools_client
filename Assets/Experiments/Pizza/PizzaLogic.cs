@@ -51,6 +51,7 @@ public class PizzaLogic : MonoBehaviour
         GameLogic.Get().OnClearButton();
         GameLogic.Get().OnFixFacesChanged(false); //don't want faces on our pizza
         GameLogic.Get().SetInpaintStrength(1.0f);
+        GameLogic.Get().SetSeed(-1); //make sure it's random
         GameLogic.Get().SetAlphaMaskFeatheringPower(20);
         //GameLogic.Get().SetMaskContentByName("latent noise");
         RTUtil.FindObjectOrCreate("PizzaGUI").SetActive(true);
@@ -58,7 +59,7 @@ public class PizzaLogic : MonoBehaviour
         Camera.allCameras[0].backgroundColor = Color.black;
 
         //save the json request, we can re-use it for each pizza
-        m_json = GamePicManager.Get().BuildJSonRequestForInpaint("pizza, top view",  m_negativePrompt, m_templateTexture, m_alphaTexture, true);
+        m_json = GamePicManager.Get().BuildJSonRequestForInpaint("pizza, top view",  m_negativePrompt, m_templateTexture, m_alphaTexture, false);
         m_generatePizza = true;
 
         RTAudioManager.Get().PlayMusic("JOHN_MICHEL_CELLO-BACH_AVE_MARIA", 0.5f, 1.0f, true); 

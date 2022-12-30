@@ -30,11 +30,7 @@ Resizing an image from 1024px to 8196px 100 times took this method: 00:00:40.888
 Resizing an image from 1024px to 8196px 100 times with Unity.Texture2D.Resize() took: 01:08:08.55
 */
 
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Networking;
-using System;
 
 public class ResizeTool
 {
@@ -111,5 +107,6 @@ public class ResizeTool
 
     RenderTexture.ReleaseTemporary(rt);
   }
+    
 }
 
