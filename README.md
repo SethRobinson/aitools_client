@@ -30,7 +30,7 @@ To use this, you'll need at least one Stable Diffusion WebUI server running some
 * Open source, uses the Unity game engine and C# to do stuff with AI art
 * Privacy respected - does not phone home or collect any statistics, purely local usage
 
-## Current version: **V0.56** (released Dec 30th 2022) Recent changes: ##
+## Current version: **V0.57** (released Dec 31th 2022) Recent changes: ##
 
 * Now also compatible with AUTOMATIC1111's [stable-diffusion-webui](https://github.com/AUTOMATIC1111/stable-diffusion-webui) server
 * FEAT in 0.54: If you click the gear icon next to the Generate button you get a generate options menu. This menu can also be opened during generation to see status info on what's happening.
@@ -39,6 +39,7 @@ To use this, you'll need at least one Stable Diffusion WebUI server running some
 * FEAT in 0.56: Can now see brush size overlay during mask painting
 * FEAT in 0.56: Added Crazy Cam experiment (uses your webcam to do weird live filters)
 * 0.56: Fixed pizza experiment to look right, api had changed slightly in regards to how 32bit sources are handled
+* 0.57: Improved webcam compatibility
 
 You only need to download [the zip](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) and run the .exe to use this, However, the source might be useful to generate a build for other platforms, fork or steal pieces to use for yourself.  Go ahead!
 

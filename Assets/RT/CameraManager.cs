@@ -17,6 +17,7 @@ public class CameraManager : MonoBehaviour
     public Action<WebCamTexture> OnCameraStartedCallback;
     public Action<WebCamDevice[]> OnCameraInfoAvailableCallback;
     public Action<WebCamTexture> OnCameraDisplayedNewFrameCallback;
+    float _restartCameraTimer;
 
     bool m_camStarted = false;
     private void Awake()
@@ -46,11 +47,13 @@ public class CameraManager : MonoBehaviour
 
     public void SetCameraByIndex(int index)
     {
+
         if (index != _currentCameraIndex) 
         { 
            _currentCameraIndex= index;
             StopCamera();
-            StartCoroutine(InitWebcams());
+
+            _restartCameraTimer = Time.time + 1;
 
         }
     }
@@ -85,7 +88,7 @@ private IEnumerator InitWebcams()
             Debug.Log("no webcams found");
         }
 
-        StartCamera();
+       _restartCameraTimer= Time.time + 1;
     }
 
     public void StartCamera()
@@ -117,11 +120,9 @@ private IEnumerator InitWebcams()
             _texture.Stop();
             _texture = null;
 
-            //_display.texture = null;
-
-            _texture = null;
             //OnCameraStartedCallback = null;
             m_camStarted = false;
+            _restartCameraTimer = 0;
         }
     }
 
@@ -156,6 +157,7 @@ private IEnumerator InitWebcams()
     {
         if (_texture != null)
         {
+            _restartCameraTimer = 0;
             if (!m_camStarted)
             {
                 if (_texture.didUpdateThisFrame)
@@ -173,6 +175,16 @@ private IEnumerator InitWebcams()
 
             }
 
+        } else
+        {
+            if (_restartCameraTimer != 0)
+            {
+                if (_restartCameraTimer < Time.time)
+                {
+                    StartCamera();
+                    _restartCameraTimer = 0;
+                }
+            }
         }
 
         //if (Input.GetKeyDown(KeyCode.S))

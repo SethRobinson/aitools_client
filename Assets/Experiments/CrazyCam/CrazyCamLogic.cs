@@ -89,7 +89,7 @@ public class CrazyCamLogic : MonoBehaviour
         AddPreset("Old woman", "old woman, wrinkles, studio portrait, award winning", "original", 0.41f, true, true, 0, false);
         AddPreset("Old man", "old man, wrinkles, studio portrait, award winning", "original", 0.41f, true, true, 0, false);
         AddPreset("High five me", "two people giving high five, hands touching", "latent noise", 1.0f, true, false, 0, true);
-        AddPreset("Happy new year w/ friends", "great friends celebrating the new year in times square, smiling, posing for picture", "latent noise", 1.0f, false, false, 0, true);
+        AddPreset("Happy new year w/ friends", "great friends celebrating the new year in times square, smiling, posing for picture", "latent noise", 1.0f, true, false, 0, true);
         AddPreset("Proposing at disney", "Man proposes to girlfriend at Disneyland, posing for photo, happy", "latent noise", 1.0f, true, false, 0, true);
         AddPreset("Breaking up at disney", "((sad)), scowling, depressed, couple at disneyland, frustrated, angry", "latent noise", 1.0f, true, false, 0, true);
         AddPreset("Hug me", "a loving couple, hugging, hug, in love, smiling, playing, candid, mischievous", "latent noise", 1.0f, true, false, 0, true);
