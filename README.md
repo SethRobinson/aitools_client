@@ -30,24 +30,28 @@ To use this, you'll need at least one Stable Diffusion WebUI server running some
 * Open source, uses the Unity game engine and C# to do stuff with AI art
 * Privacy respected - does not phone home or collect any statistics, purely local usage
 
-## Current version: **V0.57** (released Dec 31th 2022) Recent changes: ##
+## Current version: **V0.58** (released Jan 14th 2023) Recent changes: ##
 
 * Now also compatible with AUTOMATIC1111's [stable-diffusion-webui](https://github.com/AUTOMATIC1111/stable-diffusion-webui) server
-* FEAT in 0.54: If you click the gear icon next to the Generate button you get a generate options menu. This menu can also be opened during generation to see status info on what's happening.
-* FEAT in 0.54: Can adjust maximum images to generate/inpaint (y0himba)
-* FEAT in 0.54: Can enable a randomize prompt option.  (cooperdk)
 * FEAT in 0.56: Can now see brush size overlay during mask painting
 * FEAT in 0.56: Added Crazy Cam experiment (uses your webcam to do weird live filters)
 * 0.56: Fixed pizza experiment to look right, api had changed slightly in regards to how 32bit sources are handled
 * 0.57: Improved webcam compatibility
+* (0.58) long model path/names are now truncated in the GUI and don't overlap other things, also alphabetically sorted
+* (0.58) Blur button removed, no room on this gui and pretty worthless 'feature' anyway
+* (0.58) BUGFIX: Fixed issue where mixing Win/linux servers wouldn't uniformly load a select model due to the / and \ difference if subdirs were used
+* (0.58) FEAT: Added "Generate mask" button, uses AI to create the mask, which you can then further edit.  (actually added two, named G1 and G2, highlight to see the different methods used) (Requires latest Seth's AI Tools server to use)
+
 
 You only need to download [the zip](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) and run the .exe to use this, However, the source might be useful to generate a build for other platforms, fork or steal pieces to use for yourself.  Go ahead!
 
-# Media (outdated movies of the app) #
+# Media (outdated videos of the app) #
 
 <a href="https://www.youtube.com/watch?v=2TB4f8ojKYo"><img align="top" src="Media/apple_youtube_thumbnail.png" width=300></a>
 <a href="https://www.youtube.com/watch?v=3PmZ_9QfrE0"><img align="top" src="Media/remove_bg_youtube.png" width=300></a>
 <a href="https://www.youtube.com/watch?v=FoYY_90KlyE"><img align="top" src="Media/ai_paintball_youtube.png" width=300></a>
+<a href="https://www.youtube.com/watch?v=VKj-x25-04E"><img align="top" src="Media/live_webcam_test.png" width=300></a>
+
 # Setup #
 
 If using AUTOMATIC1111's Stable Diffusion WebUI, make sure it has been started with the --api parm.  (additionally, with the --listen parm if it isn't on the local machine)

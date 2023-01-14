@@ -45,7 +45,7 @@ public class GameLogic : MonoBehaviour
     public Toggle m_tilingToggle;
     public Toggle m_removeBackgroundToggle;
 
-    float m_alphaMaskFeatheringPower = 2;
+    float m_alphaMaskFeatheringPower = 0;
     bool m_bLoopSource = false;
     bool m_inpaintMaskActive = false;
     int m_picsPerRow = 20;
@@ -62,6 +62,7 @@ public class GameLogic : MonoBehaviour
     public TMP_Dropdown m_heightDropdown;
     public TMP_Dropdown m_samplerDropdown;
     public TMP_Dropdown m_modelDropdown;
+    public TMP_Dropdown m_processDropdown;
 
     public enum eGameMode
     {
@@ -73,6 +74,7 @@ public class GameLogic : MonoBehaviour
     public eGameMode GetGameMode() { return m_gameMode; }
     public void SetGameMode(eGameMode gameMode) { m_gameMode = gameMode; }
 
+   
     static GameLogic _this = null;
     static public GameLogic Get()
     {
@@ -148,6 +150,11 @@ public class GameLogic : MonoBehaviour
         List<string> options = new List<string>();
         options.Add(name);
         m_modelDropdown.AddOptions(options);
+
+        List<TMP_Dropdown.OptionData> dropList = m_modelDropdown.options;
+        dropList.Sort((x, y) => x.text.CompareTo(y.text));
+        //dropList.Reverse();
+        m_modelDropdown.options = dropList;
     }
 
     public void ClearSamplersDropdown()

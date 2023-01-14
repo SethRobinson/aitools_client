@@ -10,6 +10,8 @@ public class ScheduledGPUEvent
 {
     public string mode = "upscale";
     public GameObject targetObj = null;
+    public bool disableTranslucency = false;
+
 }
 
 public class ImageGenerator : MonoBehaviour
@@ -101,7 +103,7 @@ public class ImageGenerator : MonoBehaviour
         //AddImageByFileName("black_and_white.png");
 
         //AddImageByFileName("tall_pic_test.png");
-       // AddImageByFileName("cosmo_tiny.bmp");
+        //AddImageByFileName("cosmo_tiny.bmp");
         //AddImageByFileName("square_pic_test.png");
         //m_generateActive = false;
 #endif
@@ -309,6 +311,11 @@ public class ImageGenerator : MonoBehaviour
                     var script = e.targetObj.GetComponent<PicInterrogate>();
                     script.SetGPU(gpuToUse);
                     script.OnForceInterrogate(gpuToUse);
+                }
+                else if (e.mode == "genmask")
+                {
+                    var script = e.targetObj.GetComponent<PicGenerateMask>();
+                    script.OnGenerateMask(gpuToUse, e.disableTranslucency);
                 }
                 else
                 {

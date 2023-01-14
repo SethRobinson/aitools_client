@@ -7,6 +7,7 @@ using System;
 using MiniJSON;
 using SimpleJSON;
 using System.Globalization;
+using System.Linq;
 
 public class WebRequestServerInfo : MonoBehaviour
 {
@@ -301,8 +302,16 @@ public class WebRequestServerInfo : MonoBehaviour
                     for (int i = 0; i < modelList.Count; i++)
                     {
                         var modelInfo = modelList[i] as Dictionary<string, object>;
-                       // Debug.Log(modelInfo["title"]);
-                        GameLogic.Get().AddModelDropdown(modelInfo["title"].ToString());
+                        // Debug.Log(modelInfo["title"]);
+                        string model = modelInfo["title"].ToString();
+
+                        GameLogic.Get().AddModelDropdown(model);
+
+                        if (model.Contains('\\'))
+                        {
+                            g.serverIsWindows = true; //well, it has a backslash in the filename, must be windows, right?  Slash vs blackslash is a big problem
+                            //when servers are mixed, which is why we need to know this if there are sub dirs in model names
+                        }
                     }
 
                     if (g.configDict != null)
@@ -409,6 +418,15 @@ public class WebRequestServerInfo : MonoBehaviour
         //File.WriteAllText("json_to_send.json", json); //for debugging
         var finalURL = g.remoteURL + "/sdapi/v1/options";
 
+        if (g.serverIsWindows)
+        {
+            json = json.Replace("/", "\\");
+        } else
+        {
+            json = json.Replace("\\", "/");
+        }
+
+        //either way
         json = json.Replace("\\", "\\\\");
         using (var postRequest = UnityWebRequest.PostWwwForm(finalURL, "POST"))
         {

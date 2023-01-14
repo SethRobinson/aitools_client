@@ -27,6 +27,8 @@ public class PicMain : MonoBehaviour
     public PicUpscale m_picUpscaleScript;
     public PicGenerator m_picGeneratorScript;
     public PicInterrogate m_picInterrogateScript;
+    public PicGenerateMask m_picGenerateMaskScript;
+
     public Camera m_camera;
 
     UndoEvent m_undoevent = new UndoEvent();
@@ -83,6 +85,7 @@ public class PicMain : MonoBehaviour
         if (m_picTextToImageScript.IsBusy()) m_picTextToImageScript.SetForceFinish(true);
         if (m_picInpaintScript.IsBusy()) m_picInpaintScript.SetForceFinish(true);
         if (m_picUpscaleScript.IsBusy()) m_picUpscaleScript.SetForceFinish(true);
+        if (m_picGenerateMaskScript != null && m_picGenerateMaskScript.IsBusy()) m_picGenerateMaskScript.SetForceFinish(true);
     }
 
     public bool GetLocked() { return m_bLocked; }
@@ -230,7 +233,6 @@ public class PicMain : MonoBehaviour
         }
 
         */
-
 
 
     public void LoadImageByFilename(string filename, bool bResize = false)
@@ -693,7 +695,6 @@ public class PicMain : MonoBehaviour
         {
             yield return StartCoroutine(processor.ComputeWith(blurFilter));
             processor = new ConvFilter.ConvolutionProcessor(processor.m_originalMap);
-
         }
 
         Debug.Log("Done!");
@@ -706,9 +707,35 @@ public class PicMain : MonoBehaviour
         m_pic.sprite.texture.Apply();
 
     }
+
+    public void OnGenerateMaskButton()
+    {
+        GameLogic.Get().ShowCompatibilityWarningIfNeeded();
+        Debug.Log("Generating mask...");
+        var e = new ScheduledGPUEvent();
+        e.mode = "genmask";
+        e.targetObj = this.gameObject;
+        ImageGenerator.Get().ScheduleGPURequest(e);
+        SetStatusMessage("Waiting for GPU...");
+    }
+
+    public void OnGenerateMaskButtonSimple()
+    {
+        GameLogic.Get().ShowCompatibilityWarningIfNeeded();
+        Debug.Log("Generating mask...");
+        var e = new ScheduledGPUEvent();
+        e.mode = "genmask";
+        e.targetObj = this.gameObject;
+        e.disableTranslucency = true;
+        ImageGenerator.Get().ScheduleGPURequest(e);
+        SetStatusMessage("Waiting for GPU...");
+    }
+
     public void OnMutateButton()
     {
         Debug.Log("Blurring..");
+        AddImageUndo(true);
+
         StartCoroutine(MutateAndWait());
 
        //texture.Apply();

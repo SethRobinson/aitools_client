@@ -13,6 +13,7 @@ public class GPUInfo
     public Dictionary<string, object> configDict = null;
     public bool supportsAITools = false;
     public ServerButtonScript buttonScript = null;
+    public bool serverIsWindows = false;
 }
 
 public class Config : MonoBehaviour
@@ -25,9 +26,9 @@ public class Config : MonoBehaviour
     string m_configText; //later move this to a config.txt or something
     const string m_configFileName = "config.txt";
     bool m_safetyFilter = false;
-    float m_requiredServerVersion = 0.42f;
+    float m_requiredServerVersion = 0.43f;
 
-    float m_version = 0.57f;
+    float m_version = 0.58f;
     string m_imageEditorPathAndExe = "none set";
     public string GetVersionString() { return m_version.ToString("0.00"); }
     public float GetVersion() { return m_version; }
@@ -143,7 +144,18 @@ public class Config : MonoBehaviour
         }
        
     }
-    
+
+    public Vector2 GetTopRightPosition(GameObject panel)
+    {
+        // Get the rectangle transform component of the panel
+        RectTransform rectTransform = panel.GetComponent<RectTransform>();
+        // Get the position of the panel in screen space
+        Vector2 screenPos = RectTransformUtility.WorldToScreenPoint(null, rectTransform.position);
+        // Calculate the top right position by adding the width and height of the panel to the screen position
+        Vector2 topRightPos = new Vector2(screenPos.x + rectTransform.rect.width, screenPos.y + rectTransform.rect.height);
+        return topRightPos;
+    }
+
     public void AddGPU(GPUInfo g)
     {
         g.localGPUID = m_gpuInfo.Count;
@@ -164,8 +176,15 @@ public class Config : MonoBehaviour
         //move it down
         float spacerY = -20;
         var vPos = buttonObj.transform.localPosition;
+
+        //replace X, dynamically adjust to how big the main tool panel is now? Well, I tried for 1 minute and it seems tricky due to parenting/etc so forget it, I'll just move the
+        //prefab for now
+        //Debug.Log("Top right of panel is " + GetTopRightPosition(panel));
+
+        //use existing Y and just add some spacing
         vPos.y += spacerY* g.localGPUID;
         buttonObj.transform.localPosition = vPos;
+
 
         if (g.supportsAITools)
         {
@@ -173,13 +192,15 @@ public class Config : MonoBehaviour
             var webScript = CreateWebRequestObject();
             webScript.StartConfigRequest(g.localGPUID, g.remoteURL);
         }
-        
+
+        var webScriptTemp = CreateWebRequestObject();
+        webScriptTemp.StartPopulateModelsRequest(g);
+
+
         if (g.localGPUID == 0)
         {
             //it's the first one, let's get more info
-            var webScript = CreateWebRequestObject();
-            webScript.StartPopulateModelsRequest(g);
-
+         
             var webScript2 = CreateWebRequestObject();
             webScript2.StartPopulateSamplersRequest(g);
 
