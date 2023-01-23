@@ -40,7 +40,7 @@ public class WebRequestServerInfo : MonoBehaviour
 
 
         WWWForm form = new WWWForm();
-        var finalURL = server + "/file/aitools/get_info.json";
+        var finalURL = server + "/aitools/get_info.json";
         string serverClickableURL = "<link=\"" + server + "\"><u>" + server + "</u></link>";
         Debug.Log("Checking server "+ serverClickableURL + "...");
     again:
@@ -53,25 +53,25 @@ public class WebRequestServerInfo : MonoBehaviour
 
             if (postRequest.result != UnityWebRequest.Result.Success)
             {
+                Debug.Log("Result is " + postRequest.result);
+
                 if (postRequest.result == UnityWebRequest.Result.ProtocolError)
                 {
                     Debug.Log("Server " + serverClickableURL + " isn't an AI Tools variant, trying to connect as vanilla Automatic1111 type...");
                     var webScript = Config.Get().CreateWebRequestObject();
                     webScript.StartConfigRequest(-1, server);
-
                     yield break;
-
                 }
-                Debug.Log("Result is " + postRequest.result);
 
+           
                 m_timesTried++;
                 if (m_timesTried < m_timesToTry)
                 {
-             
                     //well, let's try again before we say we failed.
                     Debug.Log("Checking server " + serverClickableURL + "... (try "+m_timesTried+")");
                     goto again;
                 }
+
                 Debug.Log("Error connecting to server " + serverClickableURL + ". ("+ postRequest.error+ ")  Are you sure it's up and this address/port is right? It must be running with the --api parm. (and --listen if not on this machine)");
                 Debug.Log("Click Configuration, then Save & Apply to try again.");
                 GameLogic.Get().ShowConsole(true);
