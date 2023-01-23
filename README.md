@@ -30,7 +30,7 @@ To use this, you'll need at least one Stable Diffusion WebUI server running some
 * Open source, uses the Unity game engine and C# to do stuff with AI art
 * Privacy respected - does not phone home or collect any statistics, purely local usage
 
-## Current version: **V0.58** (released Jan 14th 2023) Recent changes: ##
+## Current version: **V0.59** (released Jan 23rd 2023) Recent changes: ##
 
 * Now also compatible with AUTOMATIC1111's [stable-diffusion-webui](https://github.com/AUTOMATIC1111/stable-diffusion-webui) server
 * FEAT in 0.56: Can now see brush size overlay during mask painting
@@ -41,6 +41,7 @@ To use this, you'll need at least one Stable Diffusion WebUI server running some
 * (0.58) Blur button removed, no room on this gui and pretty worthless 'feature' anyway
 * (0.58) BUGFIX: Fixed issue where mixing Win/linux servers wouldn't uniformly load a select model due to the / and \ difference if subdirs were used
 * (0.58) FEAT: Added "Generate mask" button, uses AI to create the mask, which you can then further edit.  (actually added two, named G1 and G2, highlight to see the different methods used) (Requires latest Seth's AI Tools server to use)
+* (0.59) BUGFIX: Fixed problem where latest AI Tools server versions were detected as only automatic1111 servers, due to some changes to automatic's code I think (related to the fastapi api_middleware changes), it's sort of confusing to me but this fix works, requires AI Tools server 0.44+ now
 
 
 You only need to download [the zip](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) and run the .exe to use this, However, the source might be useful to generate a build for other platforms, fork or steal pieces to use for yourself.  Go ahead!
