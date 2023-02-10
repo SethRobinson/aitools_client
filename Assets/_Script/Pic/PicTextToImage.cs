@@ -266,6 +266,8 @@ public class PicTextToImage : MonoBehaviour
                         m_picScript.FillAlphaMaskWithImageAlpha();
                     }
                     m_picScript.OnImageReplaced();
+
+                    m_picScript.AutoSaveImageIfNeeded();
                 }
                 else
                 {

@@ -34,7 +34,7 @@ public class ObjectDrag : MonoBehaviour
 
         SetupResizeIcon();
     }
-
+     
 
     void SetupResizeIcon()
     {

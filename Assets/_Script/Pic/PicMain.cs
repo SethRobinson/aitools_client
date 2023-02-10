@@ -400,6 +400,8 @@ public class PicMain : MonoBehaviour
         RTQuickMessageManager.Get().ShowMessage("Opening 32 bit bmp with alpha mask in image editor...");
         RTMessageManager.Get().Schedule(0.1f, OnFileEdit);
     }
+
+   
     public void OnFileEdit()
     {
      
@@ -505,24 +507,29 @@ public class PicMain : MonoBehaviour
         m_targetRectScript.UpdatePoints();
     }
 
+    public void AutoSaveImageIfNeeded()
+    {
+        if (GameLogic.Get().GetAutoSave())
+        {
+            SaveFile("", "/autosave");
+        }
+    }
+
     //save to a random filename if passed a blank filename
-    public string SaveFile(string fname="") 
+    public string SaveFile(string fname="", string subdir = "") 
     {
         string tempDir = Application.dataPath;
 
-        //this might be needed on mac or something, but it won't work for photoshop paths when saving, we need to keep it
-        //backslashes for some reason
-        /*
-        tempDir = tempDir.Replace('\\', '/');
-        tempDir = tempDir.Substring(0, tempDir.LastIndexOf('/'));
-        tempDir += "/tempCache";
-        */
 
-
-        //default filename if none is sent in
+        //get the Assets dir, but strip off the word Assets
         tempDir = tempDir.Replace('/', '\\');
         tempDir = tempDir.Substring(0, tempDir.LastIndexOf('\\'));
 
+        //tack on subdir if needed
+         tempDir = tempDir + subdir;
+
+        //reconvert to \\ (I assume this code would have to change if it wasn't Windows... uhh
+        tempDir = tempDir.Replace('/', '\\');
 
         string fileName = tempDir + "\\pic_" + System.Guid.NewGuid() + ".bmp";
 
@@ -789,6 +796,8 @@ public class PicMain : MonoBehaviour
         e.targetObj = this.gameObject;
         
         ImageGenerator.Get().ScheduleGPURequest(e);
+       
+        
         SetStatusMessage("Waiting for GPU...");
     }
 

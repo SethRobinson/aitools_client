@@ -17,7 +17,7 @@ public class WebRequestServerInfo : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
-     }
+    }
 
     // Update is called once per frame
     void Update()
@@ -318,6 +318,7 @@ public class WebRequestServerInfo : MonoBehaviour
                     {
                         //we know what the server it currently set to, we might not always due to race conditions
                         GameLogic.Get().SetModelByName(g.configDict["sd_model_checkpoint"].ToString());
+
                     }
                 }
 

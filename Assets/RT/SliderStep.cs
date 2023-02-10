@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.UI;
 
 //Modified from https://forum.unity.com/threads/slider-bar-stepping.267467/
+//To use this, drag onto a slider GUI object, and add an OnValueChanged callback to UpdateStep()
 
 public class SliderStep : MonoBehaviour
 {

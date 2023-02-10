@@ -9,6 +9,8 @@ public class GenerateSettingsPanel : MonoBehaviour
     public Toggle m_randomizeToggle;
     public TMP_InputField m_maxPics;
     public TMP_Text m_statusText;
+    public Toggle m_cameraFollowToggle;
+    public Toggle m_autoSaveToggle;
 
 
     // Start is called before the first frame update
@@ -16,12 +18,24 @@ public class GenerateSettingsPanel : MonoBehaviour
     {
         //fill in default values
         m_randomizeToggle.isOn = GameLogic.Get().GetRandomizePrompt();
+        m_cameraFollowToggle.isOn = GameLogic.Get().GetCameraFollow();
+        m_autoSaveToggle.isOn = GameLogic.Get().GetAutoSave();
         m_maxPics.text = GameLogic.Get().GetMaxToGenerate().ToString();
     }
 
     public void OnRandomizeToggleChanged(bool bNew)
     {
         GameLogic.Get().SetRandomizePrompt(bNew);
+    }
+
+    public void OnAutoSaveToggleChanged(bool bNew)
+    {
+        GameLogic.Get().SetAutoSave(bNew);
+    }
+
+    public void OnCameraFollowToggleChanged(bool bNew)
+    {
+        GameLogic.Get().SetCameraFollow(bNew);
     }
 
     public void OnMaxPicsChanged(string maxPics)

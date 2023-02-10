@@ -14,6 +14,7 @@ public class RTIntroSplash : MonoBehaviour
     {
        // Debug.Log("Close button clicked");
         GameObject.Destroy(gameObject);
+       
     }
     public void OnLogoClicked()
     {

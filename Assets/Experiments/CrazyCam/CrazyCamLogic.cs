@@ -17,7 +17,11 @@ class CrazyCamPreset
     public string _presetName = "error";
     public bool _noTranslucency = false;
     public float _maskBlending = 0.0f;
-    public bool _reverse = false;
+    public int _maskMode = CrazyCamLogic.eMaskForegroundOnly;
+    public float _cfg = 7.5f;
+    public float _pix2pixcfg = 1.5f;
+    public string _modelRequirements = "";
+
 }
 
 public class CrazyCamLogic : MonoBehaviour
@@ -30,7 +34,14 @@ public class CrazyCamLogic : MonoBehaviour
     public TMP_Dropdown m_presetDropdown;
     public Toggle m_noTranslucencyToggle;
     public Toggle m_reverseMaskToggle;
+    public TMP_Dropdown m_maskDropdown;
 
+    //yeah, I should use an enum but casting everything to int sucks
+    public const int eMaskEntireImage = 0;
+    public const int eMaskForegroundOnly = 1;
+    public const int eMaskBackgroundOnly = 2;
+
+    public int m_maskMode = eMaskEntireImage;
 
     static CrazyCamLogic _this = null;
     List<CrazyCamPreset> m_presets;
@@ -46,7 +57,8 @@ public class CrazyCamLogic : MonoBehaviour
     public static CrazyCamLogic Get() { return _this; }
 
 
-    public void AddPreset(string presetName, string prompt, string maskContents, float denoisingStrength, bool bFixFaces, bool bNoTranslucency, float maskBlending, bool bReverse)
+    public void AddPreset(string presetName, string prompt, string maskContents, float denoisingStrength, bool bFixFaces, bool bNoTranslucency, float maskBlending, int maskMode, float cfg,
+        float pix2pixcfg, string suggestedModel)
     {
         CrazyCamPreset preset = new CrazyCamPreset();
         preset._prompt = prompt;
@@ -56,7 +68,10 @@ public class CrazyCamLogic : MonoBehaviour
         preset._fixFaces= bFixFaces;
         preset._noTranslucency= bNoTranslucency;
         preset._maskBlending = maskBlending;
-        preset._reverse = bReverse;
+        preset._maskMode = maskMode;
+        preset._cfg = cfg;
+        preset._pix2pixcfg= pix2pixcfg;
+        preset._modelRequirements = suggestedModel;
 
         m_presets.Add(preset);
 
@@ -74,35 +89,46 @@ public class CrazyCamLogic : MonoBehaviour
         Debug.Log("Doing presets");
         m_presets = new List<CrazyCamPreset>();
         m_presetDropdown.ClearOptions();
-        AddPreset("Preset: Use active settings", "", "", 0, true, false, 0, false); //special case, index 0 won't change anything
-        AddPreset("Fix my face (method 1)", "good looking person", "original", 0, true, false, 0, false);
-        AddPreset("Fix my face (method 2)", "good looking person", "original", 0.1f, false, false, 0, false);
+        AddPreset("Preset: Use active settings", "", "", 0, true, false, 0, eMaskForegroundOnly, 7.5f, 1.5f, ""); //special case, index 0 won't change anything
+        AddPreset("Fix my face (method 1)", "good looking person", "original", 0, true, false, 0, eMaskForegroundOnly, 7.5f, 1.5f, "inpaint");
+        AddPreset("Fix my face (method 2)", "good looking person", "original", 0.1f, false, false, 0, eMaskForegroundOnly, 7.5f, 1.5f, "inpaint");
 
-        AddPreset("Muscle man", "body builder, man, handsome, ripped, athlete, perfect body, large muscles", "original", 0.25f, true, false, 0, false);
-        AddPreset("Beautiful woman", "beautiful woman, elegant, cute, athlete, perfect body", "original", 0.25f, true, false, 0, false);
-        AddPreset("Zombie person", "a zombie", "original", 0.25f, true, false, 0, false);
-        AddPreset("My room has spiderwebs", "filled with ((cobwebs)), disgusting, spiders, horror", "original", 0.39f, true, false, 0, true);
-        AddPreset("A monster", "a (((scary monster))) in a room", "original", 0.69f, false, true, 0, false);
-        AddPreset("A giant spider", "a (((giant spider))) in a room", "original", 1.0f, false, true, 0, false);
-        AddPreset("Spider man", "spider man", "original", 0.64f, false, true, 0, false);
-        AddPreset("Erase me", "an empty room", "fill", 1.0f, false, true, 0, false);
-        AddPreset("Old woman", "old woman, wrinkles, studio portrait, award winning", "original", 0.41f, true, true, 0, false);
-        AddPreset("Old man", "old man, wrinkles, studio portrait, award winning", "original", 0.41f, true, true, 0, false);
-        AddPreset("High five me", "two people giving high five, hands touching", "latent noise", 1.0f, true, false, 0, true);
-        AddPreset("Happy new year w/ friends", "great friends celebrating the new year in times square, smiling, posing for picture, holding champagne glass", "latent noise", 1.0f, true, false, 0, true);
-        AddPreset("Proposing at disney", "Man proposes to girlfriend at Disneyland, posing for photo, happy", "latent noise", 1.0f, true, false, 0, true);
-        AddPreset("Breaking up at disney", "((sad)), scowling, depressed, couple at disneyland, frustrated", "latent noise", 1.0f, true, false, 0, true);
-        AddPreset("Hug me", "a loving couple, hugging, hug, in love, smiling, playing, candid, mischievous", "latent noise", 1.0f, true, false, 0, true);
-        AddPreset("Copy me", "two people, synchronized movement, same position", "latent noise", 1.0f, true, false, 0, true);
+        AddPreset("Muscle man", "body builder, man, handsome, ripped, athlete, perfect body, large muscles", "original", 0.25f, true, false, 0, eMaskForegroundOnly, 7.5f, 1.5f, "inpaint");
+        AddPreset("Beautiful woman", "beautiful woman, elegant, cute, athlete, perfect body", "original", 0.25f, true, false, 0, eMaskForegroundOnly, 7.5f, 1.5f, "inpaint");
+        AddPreset("Zombie person", "a zombie", "original", 0.25f, true, false, 0, eMaskForegroundOnly, 7.5f, 1.5f, "inpaint");
+        AddPreset("My room has spiderwebs", "filled with ((cobwebs)), disgusting, spiders, horror", "original", 0.39f, true, false, 0, eMaskBackgroundOnly, 7.5f, 1.5f, "inpaint");
+        AddPreset("A monster", "a (((scary monster))) in a room", "original", 0.69f, false, true, 0, eMaskForegroundOnly, 7.5f, 1.5f, "inpaint");
+        AddPreset("A giant spider", "a (((giant spider))) in a room", "original", 1.0f, false, true, 0, eMaskForegroundOnly, 7.5f, 1.5f, "inpaint");
+        AddPreset("Spider man", "spider man", "original", 0.64f, false, true, 0, eMaskForegroundOnly, 7.5f, 1.5f, "inpaint");
+        AddPreset("Erase me", "an empty room", "fill", 1.0f, false, true, 0, eMaskForegroundOnly, 7.5f, 1.5f, "inpaint");
+        AddPreset("Old woman", "old woman, wrinkles, studio portrait, award winning", "original", 0.41f, true, true, 0, eMaskForegroundOnly, 7.5f, 1.5f, "inpaint");
+        AddPreset("Old man", "old man, wrinkles, studio portrait, award winning", "original", 0.41f, true, true, 0, eMaskForegroundOnly, 7.5f, 1.5f, "inpaint");
+        AddPreset("High five me", "two people giving high five, hands touching", "latent noise", 1.0f, true, false, 0, eMaskBackgroundOnly, 7.5f, 1.5f, "inpaint");
+        AddPreset("Happy new year w/ friends", "great friends celebrating the new year in times square, smiling, posing for picture, holding champagne glass", "latent noise", 1.0f, true, false, 0, eMaskBackgroundOnly, 7.5f, 1.5f, "inpaint");
+        AddPreset("Proposing at disney", "Man proposes to girlfriend at Disneyland, posing for photo, happy", "latent noise", 1.0f, true, false, 0, eMaskBackgroundOnly, 7.5f, 1.5f, "inpaint");
+        AddPreset("Breaking up at disney", "((sad)), scowling, depressed, couple at disneyland, frustrated", "latent noise", 1.0f, true, false, 0, eMaskBackgroundOnly, 7.5f, 1.5f, "inpaint");
+        AddPreset("Hug me", "a loving couple, hugging, hug, in love, smiling, playing, candid, mischievous", "latent noise", 1.0f, true, false, 0, eMaskBackgroundOnly, 7.5f, 1.5f, "inpaint");
+        AddPreset("Copy me", "two people, identical twins, same pose", "latent noise", 1.0f, true, false, 0, eMaskBackgroundOnly, 7.5f, 1.5f, "inpaint");
         
-        AddPreset("Ninja fight", "person fighting ninja, getting hit, reaction, punched, action shot, epic, fireball", "latent noise", 1.0f, true, false, 0, true);
-        AddPreset("Holding fire", "person creating magic with hands, magic fire", "latent noise", 1.0f, true, false, 0, true);
-        AddPreset("Holding light saber", "person holding light saber, epic, dramatic lighting, star wars", "latent noise", 1.0f, true, false, 0, true);
-        AddPreset("Holding a hamburger", "person posing with a delicious small hamburger, bokeh, hamburger in hand", "latent noise", 1.0f, true, false, 0, true);
-        AddPreset("In the bad place", "((burning in hell)), horror, scary, screaming, epic, detailed, satan, skeleton, ghoul", "latent noise", 1.0f, false, false, 0, true);
+        AddPreset("Ninja fight", "person fighting ninja, getting hit, reaction, punched, action shot, epic, fireball", "latent noise", 1.0f, true, false, 0, eMaskBackgroundOnly, 7.5f, 1.5f, "inpaint");
+        AddPreset("Holding fire", "person creating magic with hands, magic fire", "latent noise", 1.0f, true, false, 0, eMaskBackgroundOnly, 7.5f, 1.5f, "inpaint");
+        AddPreset("Holding light saber", "person holding light saber, epic, dramatic lighting, star wars", "latent noise", 1.0f, true, false, 0, eMaskBackgroundOnly, 7.5f, 1.5f, "inpaint");
+        AddPreset("Holding a hamburger", "person posing with a delicious small hamburger, bokeh, hamburger in hand", "latent noise", 1.0f, true, false, 0, eMaskBackgroundOnly, 7.5f, 1.5f, "inpaint");
+        AddPreset("In the bad place", "((burning in hell)), horror, scary, screaming, epic, detailed, satan, skeleton, ghoul", "latent noise", 1.0f, false, false, 0, eMaskBackgroundOnly, 7.5f, 1.5f, "");
 
-        AddPreset("(for dog) A cat", "a cat in a room", "original", 0.45f, false, false, 0, false);
-        AddPreset("(for dog) Cavalier with shades", "a Cavalier King Charles Spaniel wearing sunglasses", "original", 0.45f, false, false, 0, false);
+        AddPreset("(for dog) A cat", "a cat in a room", "original", 0.45f, false, false, 0, eMaskForegroundOnly, 7.5f, 1.5f, "inpaint");
+        AddPreset("(for dog) Cavalier with shades", "a Cavalier King Charles Spaniel wearing sunglasses", "original", 0.45f, false, false, 0, eMaskForegroundOnly, 7.5f, 1.5f, "inpaint");
+        AddPreset("(pix2pix) Snowy", "make it snowing", "original",  0.70f, false, false, 0, eMaskBackgroundOnly, 12.5f, 1.5f, "pix2pix");
+        AddPreset("(pix2pix) Lego Person", "change person to lego", "original", 0.70f, false, false, 0, eMaskForegroundOnly, 14.5f, 1.5f, "pix2pix");
+        AddPreset("(pix2pix) Wearing leather", "change clothes to leather", "original", 0.70f, false, false, 0, eMaskForegroundOnly, 7.5f, 1.5f, "pix2pix");
+        AddPreset("(pix2pix) Bald", "change hair to bald", "original", 0.46f, false, false, 0, eMaskForegroundOnly, 5.5f, 1.5f, "pix2pix");
+        AddPreset("(pix2pix) Nice mustache", "Add mustache", "original", 0.46f, false, false, 0, eMaskForegroundOnly, 5.5f, 1.5f, "pix2pix");
+        AddPreset("(pix2pix) Nice beard", "Add beard", "original", 0.46f, false, false, 0, eMaskForegroundOnly, 5.5f, 1.5f, "pix2pix");
+        AddPreset("(pix2pix) Old man", "change to an old man", "original", 0.7f, false, false, 0, eMaskForegroundOnly, 2.5f, 1.5f, "pix2pix");
+        AddPreset("(pix2pix) Blue skies", "show sky outside window", "original", 0.7f, false, false, 0, eMaskBackgroundOnly, 12.5f, 1.5f, "pix2pix");
+
+
+
 
     }
 
@@ -120,7 +146,7 @@ public class CrazyCamLogic : MonoBehaviour
         GameLogic.Get().SetToolsVisible(false);
         ImageGenerator.Get().SetGenerate(false);
         GameLogic.Get().OnClearButton();
-        if (GameLogic.Get().GetSeed() < 0)
+        if (GameLogic.Get().GetSeed() < 0 && !GameLogic.Get().IsActiveModelPix2Pix())
         {
             GameLogic.Get().SetSeed(0);
             Debug.Log("Setting seed to 0 for Crazy Cam, we don't want -1 because random seeds will look worse");
@@ -161,6 +187,16 @@ public class CrazyCamLogic : MonoBehaviour
             m_camDropdown.value = index;
         }
     }
+
+    void SetMaskDropdownByIndex(int index)
+    {
+
+        if (index < m_camDropdown.options.Count)
+        {
+            m_maskDropdown.value = index;
+        }
+    }
+
     public void OnCameraInfoAvailable(WebCamDevice[] devices)
     {
      
@@ -190,6 +226,11 @@ public class CrazyCamLogic : MonoBehaviour
         CameraManager.Get().SetCameraByIndex(m_camDropdown.value);
     }
 
+    public void OnMaskDropdownChanged()
+    {
+       m_maskMode = m_maskDropdown.value;
+    }
+
     public void OnPresetDropdownChanged()
     {
         int choice = m_presetDropdown.value;
@@ -214,10 +255,22 @@ public class CrazyCamLogic : MonoBehaviour
         gl.SetMaskContentByName(preset._maskContents);
         gl.SetInpaintStrength(preset._denoisingStrength);
         gl.SetAlphaMaskFeatheringPower(preset._maskBlending);
-
+        gl.SetTextStrength(preset._cfg);
+        gl.SetPix2PixTextStrength(preset._pix2pixcfg);
         m_noTranslucencyToggle.isOn = preset._noTranslucency;
-        m_reverseMaskToggle.isOn = preset._reverse;
+        m_maskMode = preset._maskMode;
 
+        if (preset._modelRequirements.Length > 0)
+        {
+            if (GameLogic.Get().GetActiveModelFilename().Contains(preset._modelRequirements))
+            {
+            } else
+            {
+                RTQuickMessageManager.Get().ShowMessage("Warning:  You should switch to a SD model with "+preset._modelRequirements+" in the filename!");
+
+            }
+        }
+        SetMaskDropdownByIndex(m_maskMode);
         if (gl.GetSeed() == -1)
         {
             gl.SetSeed(0);
@@ -300,8 +353,33 @@ public class CrazyCamLogic : MonoBehaviour
 
         //Encode it as a PNG.
         //byte[] bytes = texture.EncodeToPNG();
-        var json = GamePicManager.Get().BuildJSonRequestForInpaint(GameLogic.Get().GetPrompt(), GameLogic.Get().GetNegativePrompt(), texture, null, false, true,
-            m_noTranslucencyToggle.isOn, m_reverseMaskToggle.isOn);
+
+        bool bOperateOnSubjectMaskOnly = false;
+        bool bReverseMask = false;
+        
+        switch (m_maskMode)
+        {
+            case eMaskEntireImage:
+                bOperateOnSubjectMaskOnly = false;
+                bReverseMask = false;
+                break;
+
+            case eMaskForegroundOnly:
+                bOperateOnSubjectMaskOnly = true;
+                bReverseMask = false;
+                break;
+
+            case eMaskBackgroundOnly:
+                bOperateOnSubjectMaskOnly = true;
+                bReverseMask = true;
+                break;
+
+          
+               // Debug.Log("Error, bad mask type");
+
+        }
+        var json = GamePicManager.Get().BuildJSonRequestForInpaint(GameLogic.Get().GetPrompt(), GameLogic.Get().GetNegativePrompt(), texture, null, false, bOperateOnSubjectMaskOnly,
+            m_noTranslucencyToggle.isOn, bReverseMask);
 
       
         GamePicManager.Get().SpawnInpaintRequest(json, OnImageRenderFinished, db);

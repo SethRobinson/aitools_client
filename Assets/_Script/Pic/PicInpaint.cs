@@ -217,6 +217,7 @@ public class PicInpaint : MonoBehaviour
             ""restore_faces"":{bFixFace.ToString().ToLower()},
             ""tiling"":{bTiled.ToString().ToLower()},
             ""cfg_scale"":{GameLogic.Get().GetTextStrengthString()},
+            ""image_cfg_scale"":{GameLogic.Get().GetPix2PixTextStrengthString()},
             ""seed"": {m_seed},
             ""width"": {genWidth},
             ""height"": {genHeight},
@@ -339,6 +340,7 @@ public class PicInpaint : MonoBehaviour
                     picSprite.texture.Blit(m_targetRect.GetOffsetX(), m_targetRect.GetOffsetY(), finalTexture, 0, 0, m_targetRect.GetWidth(), m_targetRect.GetHeight());
                     yield return null; //wait a frame to lesson the jerkiness
                     picSprite.texture.Apply();
+                    m_picScript.AutoSaveImageIfNeeded();
 
                     if (m_onFinishedRenderingCallback != null)
                         m_onFinishedRenderingCallback.Invoke(gameObject);

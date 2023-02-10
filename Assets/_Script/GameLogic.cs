@@ -23,12 +23,15 @@ public class GameLogic : MonoBehaviour
     int m_steps = 50;
     long m_seed = -1;
     bool m_bRandomizePrompt = false;
+    bool m_bAutoSave = false;
+    bool m_bCameraFollow = false;
     int m_maxToGenerate = 1000;
     string m_lastModifiedPrompt;
 
     float m_upscale = 2.0f; //1 means noc hange
     bool m_fixFaces = false;
     float m_textStrength = 7.5f;
+    float m_pix2pixtextStrength = 1.5f;
     float m_inpaintStrength = 0.80f;
     float m_extraNoiseStrength = 0;
     float m_penSize = 20;
@@ -38,12 +41,18 @@ public class GameLogic : MonoBehaviour
     public TMP_InputField m_seedInputField;
     public Slider m_inpaintStrengthInput;
     public Slider m_maskBlendingInput;
+    public Slider m_Pix2PixSlider;
+
+    public Slider m_textStrengthSlider;
+    public Slider m_pix2pixTextStrengthSlider;
+
 
     public Button m_generateButton;
     public Toggle m_fixFacesToggle;
     public Toggle m_upscaleToggle;
     public Toggle m_tilingToggle;
     public Toggle m_removeBackgroundToggle;
+
 
     float m_alphaMaskFeatheringPower = 0;
     bool m_bLoopSource = false;
@@ -63,6 +72,7 @@ public class GameLogic : MonoBehaviour
     public TMP_Dropdown m_samplerDropdown;
     public TMP_Dropdown m_modelDropdown;
     public TMP_Dropdown m_processDropdown;
+    string m_activeModelName;
 
     public enum eGameMode
     {
@@ -73,8 +83,7 @@ public class GameLogic : MonoBehaviour
     eGameMode m_gameMode = eGameMode.NORMAL;
     public eGameMode GetGameMode() { return m_gameMode; }
     public void SetGameMode(eGameMode gameMode) { m_gameMode = gameMode; }
-
-   
+    
     static GameLogic _this = null;
     static public GameLogic Get()
     {
@@ -90,6 +99,12 @@ public class GameLogic : MonoBehaviour
 
     public bool GetRandomizePrompt() { return m_bRandomizePrompt; }
     public void SetRandomizePrompt(bool bNew) { m_bRandomizePrompt = bNew;}
+
+    public bool GetAutoSave() { return m_bAutoSave; }
+    public void SetAutoSave(bool bNew) { m_bAutoSave = bNew; }
+
+    public bool GetCameraFollow() { return m_bCameraFollow; }
+    public void SetCameraFollow(bool bNew) { m_bCameraFollow = bNew; }
 
     public int GetGenWidth() { return m_genWidth; }
 
@@ -198,12 +213,45 @@ public class GameLogic : MonoBehaviour
         }
 
         //Debug.Log("Can't set default sampler, don't know: " + name);
+        UpdateGUI();
     }
 
     public void SetChangeModelEnabled(bool enabled)
     {
         m_modelDropdown.interactable= enabled;
     }
+
+    public string GetActiveModelFilename()
+    {
+        return m_activeModelName; 
+    }
+
+    public bool IsActiveModelPix2Pix()
+    {
+        if (m_activeModelName != null && m_activeModelName.Length > 0)
+        {
+            string temp = m_activeModelName.ToLower();
+
+            if (temp.Contains("pix2pix"))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public void OnHideGUI()
+    {
+        RTUtil.SetActiveByNameIfExists("Panel", false);
+        RTUtil.SetActiveByNameIfExists("MiniPanel", true);
+    }
+
+    public void OnShowGUI()
+    {
+        RTUtil.SetActiveByNameIfExists("Panel", true);
+        RTUtil.SetActiveByNameIfExists("MiniPanel", false);
+    }
+
     public void OnModelChanged(Int32 optionID)
     {
         //send request to all servers
@@ -221,8 +269,16 @@ public class GameLogic : MonoBehaviour
             SetHeightDropdown("768");
 
         }
+
+        m_activeModelName = m_modelDropdown.options[optionID].text;
+
+        UpdateGUI();
     }
 
+    public void UpdateGUI()
+    {
+        m_Pix2PixSlider.interactable = IsActiveModelPix2Pix();
+    }
     public void SetPrompt(string p)
     {
         m_inputField.text = p;
@@ -509,7 +565,21 @@ public class GameLogic : MonoBehaviour
     public void SetTextStrength(float str)
     {
         m_textStrength = str;
+        m_textStrengthSlider.value = str;
+
+
     }
+
+    public void SetPix2PixTextStrength(float str)
+    {
+        m_pix2pixtextStrength = str;
+        m_pix2pixTextStrengthSlider.value = str;
+
+    }
+
+
+
+
     public float GetInpaintStrengthFloat() { return m_inpaintStrength; }
     public string GetInpaintStrengthString() 
     {
@@ -520,8 +590,6 @@ public class GameLogic : MonoBehaviour
     {
         m_inpaintStrength = inpaint;
         m_inpaintStrengthInput.value = inpaint;
-
-
     }
 
     
@@ -542,6 +610,12 @@ public class GameLogic : MonoBehaviour
     public string GetTextStrengthString() 
     {
         return m_textStrength.ToString("0.0", CultureInfo.InvariantCulture);
+    }
+
+    public float GetPix2PixTextStrengthFloat() { return m_pix2pixtextStrength; }
+    public string GetPix2PixTextStrengthString()
+    {
+        return m_pix2pixtextStrength.ToString("0.0", CultureInfo.InvariantCulture);
     }
 
     public string GetMaskContent()
@@ -612,6 +686,14 @@ public class GameLogic : MonoBehaviour
         {
             Directory.CreateDirectory(dir);
         }
+
+        dir = @"autosave";
+        // If directory does not exist, create it
+        if (!Directory.Exists(dir))
+        {
+            Directory.CreateDirectory(dir);
+        }
+
 #if RT_NOAUDIO
 		AudioListener.pause = true;
 #endif
@@ -669,7 +751,7 @@ public class GameLogic : MonoBehaviour
         // RTMessageManager.Get().Schedule(0, ShootingGalleryLogic.Get().OnStartGameMode);
 #endif
 
-        
+        Config.Get().CheckForUpdate();
     }
 
     void OnApplicationQuit() 

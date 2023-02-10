@@ -14,6 +14,7 @@ public class GPUInfo
     public bool supportsAITools = false;
     public ServerButtonScript buttonScript = null;
     public bool serverIsWindows = false;
+    
 }
 
 public class Config : MonoBehaviour
@@ -28,7 +29,7 @@ public class Config : MonoBehaviour
     bool m_safetyFilter = false;
     float m_requiredServerVersion = 0.44f;
 
-    float m_version = 0.59f;
+    float m_version = 0.60f;
     string m_imageEditorPathAndExe = "none set";
     public string GetVersionString() { return m_version.ToString("0.00"); }
     public float GetVersion() { return m_version; }
@@ -91,7 +92,7 @@ public class Config : MonoBehaviour
     {
         return (gpu < GetGPUCount() && gpu >= 0);
     }
-
+    
     public string GetGPUName(int gpu)
     {
         if (IsValidGPU(gpu))
@@ -262,6 +263,14 @@ public class Config : MonoBehaviour
         go.transform.parent = transform;
         WebRequestServerInfo webScript = (WebRequestServerInfo)go.AddComponent<WebRequestServerInfo>();
         return webScript;
+    }
+
+    public void CheckForUpdate()
+    {
+        GameObject go = new GameObject("UpdateCheck");
+        go.transform.parent = transform;
+        UpdateChecker webScript = (UpdateChecker)go.AddComponent<UpdateChecker>();
+        webScript.StartInitialWebRequest();
     }
 
     public void ProcessConfigString(string newConfig)

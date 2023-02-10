@@ -2,7 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class RTWarningSplash : MonoBehaviour
+public class UpdateSplashGUI : MonoBehaviour
 {
     // Start is called before the first frame update
     void Start()
@@ -22,6 +22,17 @@ public class RTWarningSplash : MonoBehaviour
 
     }
 
+    public void OnDownloadUpdate()
+    {
+        
+        string downloadLink = "https://www.rtsoft.com/files/SethsAIToolsWindows.zip";
+
+        RTConsole.Log("Downloading " + downloadLink);
+        RTUtil.PopupUnblockOpenURL("https://www.rtsoft.com/files/SethsAIToolsWindows.zip");
+        OnCloseButtonClicked();
+
+
+    }
     // Update is called once per frame
     void Update()
     {
