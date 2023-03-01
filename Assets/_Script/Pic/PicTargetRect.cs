@@ -19,9 +19,14 @@ public class PicTargetRect : MonoBehaviour
     {
         UpdatePoints();
 
-
     }
 
+    public void MoveRectToTopLeft()
+    {
+        m_targetRectInPixels.x = 0;
+        m_targetRectInPixels.y = 0;
+        UpdatePoints();
+    }
     public bool IsMovingRect() { return m_bMovingRect; }
 
     public int GetWidth()
@@ -149,6 +154,8 @@ public class PicTargetRect : MonoBehaviour
   
         m_posDragIcon.transform.localPosition = new Vector3(picRect.position.x+ iconOffset, -(picRect.position.y+ iconOffset), m_sizeDragIcon.transform.localPosition.z);
         m_sizeDragIcon.transform.localPosition = new Vector3(picRect.xMax- iconOffset, -(picRect.yMax- iconOffset), m_sizeDragIcon.transform.localPosition.z);
+
+
     }
 
     // Update is called once per frame
@@ -230,6 +237,7 @@ public class PicTargetRect : MonoBehaviour
             m_targetRectInPixels = newRect;
             OnMoveToPixelLocation(m_targetRectInPixels.position);
             UpdatePoints();
+            this.GetComponent<PicMain>().SetNeedsToUpdateInfoPanelFlag();
         }
 
     }

@@ -25,16 +25,21 @@ public class GameLogic : MonoBehaviour
     bool m_bRandomizePrompt = false;
     bool m_bAutoSave = false;
     bool m_bCameraFollow = false;
+
+    bool m_bUseControlNet = false;
+    
     int m_maxToGenerate = 1000;
     string m_lastModifiedPrompt;
 
     float m_upscale = 2.0f; //1 means noc hange
     bool m_fixFaces = false;
     float m_textStrength = 7.5f;
+    float m_controlNetWeight = 1.0f;
     float m_pix2pixtextStrength = 1.5f;
     float m_inpaintStrength = 0.80f;
     float m_extraNoiseStrength = 0;
     float m_penSize = 20;
+    float m_controlNetGuidance = 1.0f;
     public TMP_InputField m_inputField;
     public TMP_InputField m_negativeInputField;
     public TMP_InputField m_stepsInputField;
@@ -52,8 +57,11 @@ public class GameLogic : MonoBehaviour
     public Toggle m_upscaleToggle;
     public Toggle m_tilingToggle;
     public Toggle m_removeBackgroundToggle;
+    public Toggle m_useControlNetToggle;
 
-
+    public string m_defaultControlNetProcessor = "depth";
+    public string m_defaultControlNetModel = "depth";
+   
     float m_alphaMaskFeatheringPower = 0;
     bool m_bLoopSource = false;
     bool m_inpaintMaskActive = false;
@@ -64,15 +72,20 @@ public class GameLogic : MonoBehaviour
     bool m_bRemoveBackground = false;
 
     public ImageGenerator m_AIimageGenerator;
- 
+  
     public Slider m_penSlider;
     public TMP_Dropdown m_maskedContentDropdown;
     public TMP_Dropdown m_widthDropdown;
     public TMP_Dropdown m_heightDropdown;
     public TMP_Dropdown m_samplerDropdown;
     public TMP_Dropdown m_modelDropdown;
-    public TMP_Dropdown m_processDropdown;
-    string m_activeModelName;
+   string m_activeModelName;
+    public GameObject m_controlNetPanelPrefab;
+
+    List<String> m_controlNetPreprocessorArray = new List<String>();
+    List<String> m_controlNetModelArray = new List<String>();
+    int m_controlNetPreprocessorCurIndex;
+    int m_controlNetModelCurIndex;
 
     public enum eGameMode
     {
@@ -155,6 +168,12 @@ public class GameLogic : MonoBehaviour
         return m_samplerDropdown.options[m_samplerDropdown.value].text; 
     }
 
+    public int GetSamplerIndex()
+    {
+        return m_samplerDropdown.value;
+    }
+
+
     public void ClearModelDropdown()
     {
         m_modelDropdown.options.Clear();
@@ -170,6 +189,19 @@ public class GameLogic : MonoBehaviour
         dropList.Sort((x, y) => x.text.CompareTo(y.text));
         //dropList.Reverse();
         m_modelDropdown.options = dropList;
+    }
+
+    public void ClearControlNetModelDropdown()
+    {
+        m_useControlNetToggle.interactable = true; //well, if we got this far it means controlnet is available
+
+        m_controlNetModelArray.Clear();
+    }
+
+    public void AddControlNetModelDropdown(string name)
+    {
+        m_controlNetModelArray.Add(name);
+      
     }
 
     public void ClearSamplersDropdown()
@@ -284,9 +316,30 @@ public class GameLogic : MonoBehaviour
         m_inputField.text = p;
     }
 
+    public List<String> GetControlNetPreprocessorArray() { return m_controlNetPreprocessorArray;  }
+    public List<String> GetControlNetModelArray() { return m_controlNetModelArray; }
+
     private void Awake()
     {
         _this = this;
+
+        //I guess we're hardcoding these for now, can't get the from the API
+        m_controlNetPreprocessorArray.Add("none");
+        m_controlNetPreprocessorArray.Add("canny");
+        m_controlNetPreprocessorArray.Add("depth");
+        m_controlNetPreprocessorArray.Add("depth_leres");
+        m_controlNetPreprocessorArray.Add("hed");
+        m_controlNetPreprocessorArray.Add("mlsd");
+        m_controlNetPreprocessorArray.Add("normal_map");
+        m_controlNetPreprocessorArray.Add("open pose");
+        m_controlNetPreprocessorArray.Add("pidinet");
+        m_controlNetPreprocessorArray.Add("scribble");
+        m_controlNetPreprocessorArray.Add("fake_scribble");
+        m_controlNetPreprocessorArray.Add("segmentation");
+
+        m_controlNetPreprocessorCurIndex = 1;
+        m_controlNetModelCurIndex = 0;
+
         // Application.targetFrameRate = 20000;
         //QualitySettings.vSyncCount = 0;
         //QualitySettings.antiAliasing = 4;
@@ -302,6 +355,63 @@ public class GameLogic : MonoBehaviour
     }
 
 
+    public string GetCurrentControlNetPreprocessorString()
+    {
+        return m_controlNetPreprocessorArray[m_controlNetPreprocessorCurIndex];
+    }
+
+    public string GetCurrentControlNetModelString()
+    {
+        return m_controlNetModelArray[m_controlNetModelCurIndex];   
+    }
+
+    public void OnCurrentControlNetPreprocessorStringChanged(int index)
+    {
+        m_controlNetPreprocessorCurIndex = index;
+    }
+
+    public void OnCurrentControlNetModelStringChanged(int index)
+    {
+        m_controlNetModelCurIndex = index;
+    }
+
+    void SetCurrentControlNetModelBySubstring(string substring)
+    {
+        //we'll set m_controlNetModelCurIndex by checking if the substring is inside of any of the strings in m_controlNetModelArray
+        for (int i = 0; i < m_controlNetModelArray.Count; i++)
+        {
+            if (m_controlNetModelArray[i].Contains(substring))
+            {
+                m_controlNetModelCurIndex = i;
+                return;
+            }
+        }
+    }
+
+    //Now we'll do the same thing, but for ControlNetPreprocessor
+    void SetCurrentControlNetPreprocessorBySubstring(string substring)
+    {
+        //we'll set m_controlNetPreprocessorCurIndex by checking if the substring is inside of any of the strings in m_controlNetPreprocessorArray
+        for (int i = 0; i < m_controlNetPreprocessorArray.Count; i++)
+        {
+            if (m_controlNetPreprocessorArray[i].Contains(substring))
+            {
+                m_controlNetPreprocessorCurIndex = i;
+                return;
+            }
+        }
+
+
+    }
+
+    public void SetDefaultControLNetOptions()
+    {
+        SetCurrentControlNetPreprocessorBySubstring(m_defaultControlNetProcessor);
+        SetCurrentControlNetModelBySubstring(m_defaultControlNetModel);
+    }
+
+    public int GetCurrentControlNetModelIndex() { return m_controlNetModelCurIndex; }
+    public int GetCurrentControlNetPreprocessorIndex() { return m_controlNetPreprocessorCurIndex; } 
     // Use this for initialization
     public GameObject GetPicWereHoveringOver()
     {
@@ -390,7 +500,40 @@ public class GameLogic : MonoBehaviour
             RTUtil.SetActiveByNameIfExists("RTWarningSplash", true);
         }
     }
-    
+
+    public void OnClickedControlNetSettingsButton()
+    {
+        const string panelName = "ControlNetSettingsPanel";
+
+        var existing = RTUtil.FindIncludingInactive(panelName);
+        if (existing != null)
+        {
+            RTUtil.KillObjectByName(panelName);
+            return;
+        }
+
+        GameObject genPanel = Instantiate(m_controlNetPanelPrefab, RTUtil.FindIncludingInactive("Canvas").transform);
+        genPanel.name = panelName;
+
+    }
+
+    public void OnUseControlNet(bool bNew)
+    {
+        m_bUseControlNet = bNew;
+        m_useControlNetToggle.isOn = bNew;
+
+        if (bNew)
+        {
+            ShowCompatibilityWarningIfNeeded();
+        }
+    }
+
+    public bool GetUseControlNet()
+    {
+
+        return m_bUseControlNet;
+    }
+
     public void OnRemoveBackground(bool bNew)
     {
         m_bRemoveBackground = bNew;
@@ -407,23 +550,32 @@ public class GameLogic : MonoBehaviour
         return m_bRemoveBackground;
     }
 
-    public void OnClearButton()
+    public void KillAllPics(bool bIncludeLockedAndBusy)
     {
-        Debug.Log("Clearing all pics");
-               
+          Debug.Log("Clearing all pics");
+
         var aiScripts = RTUtil.FindObjectOrCreate("Pics").transform.GetComponentsInChildren<PicMain>();
-        
+
         foreach (PicMain picScript in aiScripts)
         {
             //why do I get an error without this cast?!
             //(script as PicTextToImage).KillIfPossible();
-            if (!picScript.IsBusy())
+            if (bIncludeLockedAndBusy || !picScript.IsBusy())
             {
                 picScript.SafelyKillThisPic();
             }
         }
 
         ImageGenerator.Get().ReorganizePics(); //defrag 'em
+    }
+    public void OnClearButtonWithShiftAllowed()
+    {
+        KillAllPics(Input.GetKey(KeyCode.LeftShift)|| Input.GetKey(KeyCode.RightShift));
+    }
+
+    public void OnClearButton()
+    {
+        KillAllPics(false);
     }
 
     public string GetPrompt() { return m_prompt; }
@@ -433,7 +585,6 @@ public class GameLogic : MonoBehaviour
     }
 
     public string GetLastModifiedPrompt() { return m_lastModifiedPrompt; }
-
 
     //should probably move this somewhere else
 
@@ -462,7 +613,6 @@ public class GameLogic : MonoBehaviour
         // Join the remaining values into a string and return it
         return string.Join(", ", values);
     }
-
 
     public string GetModifiedPrompt()
     {
@@ -567,7 +717,22 @@ public class GameLogic : MonoBehaviour
         m_textStrength = str;
         m_textStrengthSlider.value = str;
 
+    }
 
+    public float GetControlNetWeight()
+    { return m_controlNetWeight; }
+
+    public void SetControlNetWeight(float weight)
+    {
+        m_controlNetWeight = weight;
+    }
+
+    public float GetControlNetGuidance()
+    { return m_controlNetGuidance; }
+
+    public void SetControlNetGuidance(float Guidance)
+    {
+        m_controlNetGuidance = Guidance;
     }
 
     public void SetPix2PixTextStrength(float str)
@@ -576,8 +741,6 @@ public class GameLogic : MonoBehaviour
         m_pix2pixTextStrengthSlider.value = str;
 
     }
-
-
 
 
     public float GetInpaintStrengthFloat() { return m_inpaintStrength; }
@@ -771,6 +934,12 @@ public class GameLogic : MonoBehaviour
         print("Game logic destroyed");
     }
 
+    public void OnNoServersButtonClicked()
+    {
+        Debug.Log("No servers button clicked");
+        RTQuickMessageManager.Get().ShowMessage("Click Configuration, then Apply to try to reconnect to servers");
+//        Config.Get().ConnectToServers();
+    }
     public void SetToolsVisible(bool bNew)
     {
         RTUtil.FindIncludingInactive("ToolsCanvas").SetActive(bNew);

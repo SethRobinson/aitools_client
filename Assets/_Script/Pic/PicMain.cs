@@ -4,12 +4,36 @@ using System.IO;
 using System;
 using TMPro;
 using B83.Image.BMP;
+using UnityEngine.Rendering;
 
 public class UndoEvent
 {
     public Texture2D m_texture;
     public Sprite m_sprite;
     public bool m_active = false;
+
+    public string m_lastPromptUsed = "";
+    public string m_lastNegativePromptUsed = "";
+    public long m_lastSeed = -1;
+    public int m_lastSteps = 0;
+    public string m_lastModel = "?";
+    public string m_lastSampler = "?";
+    public string m_lastOperation = "None";
+    public float m_lastDenoisingStrength = 0;
+    public float m_lastCFGScale = 0;
+    public string m_maskContents = "";
+    public float m_maskBlending = 0;
+    public bool m_fixFaces = false;
+    public bool m_tiling = false;
+    public bool m_bUsingPix2Pix = false;
+    public float m_pix2pixCFG = 0;
+
+    public bool m_bUsingControlNet = false;
+    public string m_lastControlNetModel = "";
+    public string m_lastControlNetModelPreprocessor = "";
+    public float m_lastControlNetWeight = 0;
+    public float m_lastControlNetGuidance = 0;
+
 }
 
 public class PicMain : MonoBehaviour
@@ -28,10 +52,14 @@ public class PicMain : MonoBehaviour
     public PicGenerator m_picGeneratorScript;
     public PicInterrogate m_picInterrogateScript;
     public PicGenerateMask m_picGenerateMaskScript;
+    public PicInfoPanel m_infoPanelScript;
+    bool m_bNeedsToUpdateInfoPanel = false;
 
+  
     public Camera m_camera;
 
     UndoEvent m_undoevent = new UndoEvent();
+    UndoEvent m_curEvent = new UndoEvent(); //useful for just saving the current status, makes it easy to copy to/from a real undo event
     bool m_isDestroyed;
     string m_editFilename = "";
     bool m_bLocked;
@@ -43,6 +71,23 @@ public class PicMain : MonoBehaviour
 
         m_camera = Camera.allCameras[0];
         m_canvas.worldCamera = m_camera;
+
+        int biggestSize = 512;
+       
+        if (m_pic.sprite != null && m_pic.sprite.texture != null)
+        {
+            //this already has an image, it's possible, happens when Duplicate is used
+        } else
+        {
+            Texture2D defaultTex = new Texture2D(biggestSize, biggestSize, TextureFormat.RGBA32, false);
+            defaultTex.Fill(Color.black);
+            defaultTex.FillAlpha(1.0f);
+            defaultTex.Apply();
+            m_pic.sprite = Sprite.Create(defaultTex, new Rect(0, 0, defaultTex.width, defaultTex.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f, 0, SpriteMeshType.FullRect);
+
+        }
+
+
     }
     public void SetDisableUndo(bool bNew)
     {
@@ -51,10 +96,68 @@ public class PicMain : MonoBehaviour
     public Camera GetCamera() { return m_camera; }
 
     public Canvas GetCanvas() { return m_canvas; }
+    public UndoEvent GetCurrentStats() { return m_curEvent; }
 
     public bool IsDestroyed()
     {
         return m_isDestroyed;
+    }
+
+    public string GetInfoText()
+    {
+
+        /*
+
+          string msg = "";
+          msg += "Image size: X: " + (int)m_pic.sprite.texture.width + ", Y: " + (int)m_pic.sprite.texture.height + " " +
+              "Mask Rect size: X: " + (int)m_targetRectScript.GetOffsetRect().width + ",  Y: " + (int)m_targetRectScript.GetOffsetRect().height + " ";
+
+          msg += "Last Operation: "+GetCurrentStats().m_lastOperation+"\n";
+          msg += "Model: "+GetCurrentStats().m_lastModel+ " Sampler: "+ GetCurrentStats().m_lastSampler+" Steps: " + GetCurrentStats().m_lastSteps +" Seed: " + GetCurrentStats().m_lastSeed +
+               " CFG Scale: "+GetCurrentStats().m_lastCFGScale+" Tiling: " + GetCurrentStats().m_tiling + " Fix Faces: " + GetCurrentStats().m_fixFaces+ "\nPrompt: " + GetCurrentStats().m_lastPromptUsed+"\nNegative prompt: "+
+              GetCurrentStats().m_lastNegativePromptUsed+"\n";
+
+          */
+
+        var c = GetCurrentStats();
+
+        string c1 = "`4";
+
+        string msg = 
+$@"`8{c1}Last Operation:`` {c.m_lastOperation}
+{c1}Image size X:`` {(int)m_pic.sprite.texture.width}{c1}, Y: ``{(int)m_pic.sprite.texture.height} 
+{c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().width}{c1}, Y: ``{(int)m_targetRectScript.GetOffsetRect().height}
+{c1}Model:`` {c.m_lastModel}
+{c1}Sampler:`` {c.m_lastSampler} {c1}Steps:`` {c.m_lastSteps} {c1}Seed:`` {c.m_lastSeed}
+{c1}CFG Scale:`` {c.m_lastCFGScale} {c1}Tiling: ``{c.m_tiling} {c1}Fix Faces:`` {c.m_fixFaces}
+{c1}Prompt:`` {c.m_lastPromptUsed}
+{c1}Negative prompt:`` {c.m_lastNegativePromptUsed}
+";
+
+
+        if (GetCurrentStats().m_lastOperation == "img2img")
+        {
+            msg += $@"{c1}Denoising Strength:`` " + GetCurrentStats().m_lastDenoisingStrength + "\n";
+            msg += $@"{c1}Mask Contents:`` " + GetCurrentStats().m_maskContents + " ";
+            msg += $@"{c1}Mask Blending:`` " + GetCurrentStats().m_maskBlending + "\n";
+
+            if (GetCurrentStats().m_bUsingPix2Pix)
+            {
+                msg += $@"{c1}Pix2Pix active: ``" + GetCurrentStats().m_bUsingPix2Pix + " ";
+                msg += $@"{c1}CFG: ``" + GetCurrentStats().m_pix2pixCFG + "\n";
+            }
+
+            if (GetCurrentStats().m_bUsingControlNet)
+            {
+                msg += $@"{c1}Control Net active:`` ";
+                msg += $@"{c1}Preprocessor:`` " + GetCurrentStats().m_lastControlNetModelPreprocessor + " ";
+                msg += $@"{c1}Model:`` " + GetCurrentStats().m_lastControlNetModel + " ";
+                msg += $@"{c1}Weight:`` " + GetCurrentStats().m_lastControlNetWeight+" Guidance: "+GetCurrentStats().m_lastControlNetGuidance + "\n";
+
+            }
+        }
+      
+        return RTUtil.ConvertSansiToUnityColors(msg);
     }
 
     public void SafelyKillThisPic()
@@ -62,6 +165,15 @@ public class PicMain : MonoBehaviour
         m_isDestroyed = true;
         GameObject.Destroy(gameObject);
     }
+
+    public void SafelyKillThisPicAndDeleteHoles()
+    {
+        m_isDestroyed = true;
+        GameObject.Destroy(gameObject);
+
+        ImageGenerator.Get().ReorganizePics(false);
+    }
+
     public bool IsBusy()
     {
         if (m_picTextToImageScript.IsBusy()) return true;
@@ -95,12 +207,25 @@ public class PicMain : MonoBehaviour
         m_text.text = msg;
     }
 
+    void KillUndoImageBuffers()
+    {
+        if (m_undoevent.m_sprite != null && m_undoevent.m_sprite.texture != null)
+        {
+            Destroy(m_undoevent.m_sprite.texture);
+        }
+
+    }
     public bool AddImageUndo(bool bDoFullCopy = false)
     {
         if (m_bDisableUndo) return false;
 
+     
+        m_undoevent = m_curEvent;
         m_undoevent.m_active = true;
-        
+
+        KillUndoImageBuffers();
+
+
         if (bDoFullCopy)
         {
             Texture2D copyTexture = m_pic.sprite.texture.Duplicate();
@@ -108,7 +233,8 @@ public class PicMain : MonoBehaviour
             float biggestSize = Math.Max(copyTexture.width, copyTexture.height);
 
             UnityEngine.Sprite newSprite = UnityEngine.Sprite.Create(copyTexture, 
-                new Rect(0, 0, copyTexture.width, copyTexture.height), new Vector2(0.5f, 0.5f), (biggestSize / 5.12f));
+                new Rect(0, 0, copyTexture.width, copyTexture.height), new Vector2(0.5f, 0.5f), (biggestSize / 5.12f), 0, SpriteMeshType.FullRect);
+            
             m_undoevent.m_sprite = newSprite;
         } else
         {
@@ -125,10 +251,32 @@ public class PicMain : MonoBehaviour
         if (m_undoevent.m_active)
         {
             Debug.Log("Undo");
+
+            m_curEvent = m_undoevent;
+
             Sprite tempSprite = m_pic.sprite;
+
+            bool bSizeChanged = false;
+
+            if (tempSprite.rect != m_undoevent.m_sprite.rect)
+            {
+                bSizeChanged = true;
+            }
+
             m_pic.sprite = m_undoevent.m_sprite;
             m_undoevent.m_sprite = tempSprite;
+            SetNeedsToUpdateInfoPanelFlag();
+            MovePicUpIfNeeded();
+            
+            if (bSizeChanged)
+            {
+        //        Debug.Log("Size changed!  Throwing away mask because Seth is lazy");
+        //        m_picMaskScript.RecreateMask();
+            }
+
             m_picMaskScript.ResizeMaskIfNeeded();
+            m_targetRectScript.UpdatePoints();
+
         }
         else
         {
@@ -138,9 +286,9 @@ public class PicMain : MonoBehaviour
     public void MovePicUpIfNeeded()
     {
         var vPos = m_pic.gameObject.transform.localPosition;
-        vPos.y = 0; //default
+       // vPos.y = 0; //default
 
-        if (m_pic.sprite.bounds.size.y != 5.12f)
+       // if (m_pic.sprite.bounds.size.y != 5.12f)
         {
            //um.. this pic is not square so it's letterboxed.  Let's move it up near the tool panel, looks better
             vPos.y = (5.12f - m_pic.sprite.bounds.size.y) / 2;
@@ -186,56 +334,57 @@ public class PicMain : MonoBehaviour
             Debug.Log("No image found on clipboard");
         }
        
+
         return false;
     }
 
-        //crashes when accessing image data on clipboard, no idea why.  Have tried in and out of threads
+    //crashes when accessing image data on clipboard, no idea why.  Have tried in and out of threads
 
-        /*
-        public bool LoadImageFromClipboard()
+    /*
+    public bool LoadImageFromClipboard()
+    {
+        Debug.Log("Trying to load image from clipboard...");
+
+        Texture2D texture = null;
+
+        System.Threading.Thread t = new System.Threading.Thread(() =>
         {
-            Debug.Log("Trying to load image from clipboard...");
 
-            Texture2D texture = null;
-
-            System.Threading.Thread t = new System.Threading.Thread(() =>
+            if (System.Windows.Forms.Clipboard.ContainsImage())
             {
+                Debug.Log("Found image on clipboard...");
 
-                if (System.Windows.Forms.Clipboard.ContainsImage())
+                var dataObject = System.Windows.Forms.Clipboard.GetDataObject();
+
+                var formats = dataObject.GetFormats(true);
+                if (formats == null || formats.Length == 0)
                 {
-                    Debug.Log("Found image on clipboard...");
-
-                    var dataObject = System.Windows.Forms.Clipboard.GetDataObject();
-
-                    var formats = dataObject.GetFormats(true);
-                    if (formats == null || formats.Length == 0)
-                    {
-
-                    }
-                    else
-                    {
-
-
-                        foreach (var f in formats)
-                            Debug.Log(" - " + f.ToString());
-                    }
 
                 }
+                else
+                {
 
 
-            });
+                    foreach (var f in formats)
+                        Debug.Log(" - " + f.ToString());
+                }
 
-            t.Start();
-            t.Join();
-
-
-            return true;
-        }
-
-        */
+            }
 
 
-    public void LoadImageByFilename(string filename, bool bResize = false)
+        });
+
+        t.Start();
+        t.Join();
+
+
+        return true;
+    }
+
+    */
+
+
+    public void LoadImageByFilename(string filename, bool bResize = false, bool bRenderAlphaHiddenAreasToo = false)
     {
         try
         {
@@ -282,17 +431,38 @@ public class PicMain : MonoBehaviour
 
             if (bNeedToProcessAlpha)
             {
-                alphaTex = texture.GetAlphaMask();
-              
-                alphaTex.Apply();
+                bool bAlphaWasUsed = false;
 
-                m_picMaskScript.SetMaskFromTexture(alphaTex);
-                texture.FillAlpha(1.0f);
-                texture.Apply();
+                alphaTex = texture.GetAlphaMask(out bAlphaWasUsed);
+                if (bAlphaWasUsed)
+                {
+                    //valid alpha found
+                    alphaTex.Apply();
+                    m_picMaskScript.SetMaskFromTexture(alphaTex);
+
+                    if (bRenderAlphaHiddenAreasToo)
+                    {
+                        //yes, we have an alpha channel, but actually, let's drop it (it's in our mask now anyway) so we can see the hidden
+                        //areas anyway.  We do this when loading a file from photoshop
+                        texture.FillAlpha(1.0f); //clearing out the alpha in the image
+                        texture.Apply();
+                    }
+                   
+                } else
+                {
+                    //No alpha.  Disable it so it will be auto-filled for operations that need it
+                    alphaTex = null;
+                    texture.FillAlpha(1.0f);
+                    texture.Apply();
+                }
             }
           
-            newSprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f);
+            newSprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f, 0, SpriteMeshType.FullRect);
 
+            if (m_pic.sprite != null && m_pic.sprite.texture != null)
+            {
+                Destroy(m_pic.sprite.texture);
+            }
             m_pic.sprite = newSprite;
             MovePicUpIfNeeded();
           
@@ -306,9 +476,67 @@ public class PicMain : MonoBehaviour
             Debug.LogError("Failed to load image from "+filename+".  Does the file even exist?");
             System.Console.WriteLine(e.StackTrace);
         }
+
+        SetNeedsToUpdateInfoPanelFlag();
+
     }
 
-   
+    public void CropToMaskRect()
+    {
+        AddImageUndo();
+
+
+        var croppedTexture = ResizeTool.CropTexture(m_pic.sprite.texture, m_targetRectScript.GetOffsetRect());
+        float biggestSize = Math.Max(croppedTexture.width, croppedTexture.height);
+
+        m_pic.sprite = Sprite.Create(croppedTexture, new Rect(0, 0, croppedTexture.width, croppedTexture.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f, 0, SpriteMeshType.FullRect);
+        
+        MovePicUpIfNeeded();
+        m_picMaskScript.ResizeMaskIfNeeded();
+        m_targetRectScript.UpdatePoints();
+        m_targetRectScript.OnMoveToPixelLocation(new Vector2(0, 0));
+        SetNeedsToUpdateInfoPanelFlag();
+
+    }
+    public void Resize(int newWidth, int newHeight, bool bKeepAspect)
+    {
+        if (m_pic.sprite == null)
+        {
+            SetStatusMessage("No image loaded");
+            return;
+        }
+
+        AddImageUndo(true);
+
+        if (bKeepAspect)
+        {
+
+            //crop our texture to correct aspect ratio first
+            var croppedTexture = ResizeTool.CropTextureToAspectRatio(m_pic.sprite.texture, newWidth, newHeight);
+
+            UnityEngine.Object.Destroy(m_pic.sprite.texture); //this will also kill the sprite?
+
+            //now do the real resizing
+            ResizeTool.Resize(croppedTexture, newWidth, newHeight, false, FilterMode.Bilinear);
+            float biggestSize = Math.Max(croppedTexture.width, croppedTexture.height);
+            m_pic.sprite = Sprite.Create(croppedTexture, new Rect(0, 0, croppedTexture.width, croppedTexture.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f, 0, SpriteMeshType.FullRect);
+        }
+        else
+        {
+            ResizeTool.Resize(m_pic.sprite.texture, newWidth, newHeight, false, FilterMode.Bilinear);
+            float biggestSize = Math.Max(m_pic.sprite.texture.width, m_pic.sprite.texture.height);
+            m_pic.sprite = Sprite.Create(m_pic.sprite.texture, new Rect(0, 0, m_pic.sprite.texture.width, m_pic.sprite.texture.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f, 0, SpriteMeshType.FullRect);
+        }
+
+        MovePicUpIfNeeded();
+        m_picMaskScript.ResizeMaskIfNeeded();
+        m_targetRectScript.UpdatePoints();
+
+        m_targetRectScript.OnMoveToPixelLocation(new Vector2(0, 0));
+        SetNeedsToUpdateInfoPanelFlag();
+
+    }
+
     public void OnTileButton()
     {
 
@@ -361,10 +589,17 @@ public class PicMain : MonoBehaviour
         float biggestSize = Math.Max(newImage.width, newImage.height);
 
         UnityEngine.Sprite newSprite = UnityEngine.Sprite.Create(newImage,
-            new Rect(0, 0, newImage.width, newImage.height), new Vector2(0.5f, 0.5f), (biggestSize / 5.12f));
-       
+            new Rect(0, 0, newImage.width, newImage.height), new Vector2(0.5f, 0.5f), (biggestSize / 5.12f), 0, SpriteMeshType.FullRect);
+       if (m_pic.sprite != null && m_pic.sprite.texture != null)
+        {
+            UnityEngine.Object.Destroy(m_pic.sprite.texture); 
+        }
+
         m_pic.sprite = newSprite;
         MovePicUpIfNeeded();
+
+        SetNeedsToUpdateInfoPanelFlag();
+
     }
 
     public void InvertMask()
@@ -379,13 +614,19 @@ public class PicMain : MonoBehaviour
     {
         if (bDoFullCopy)
         {
-            newImage = newImage.Duplicate();
+            var originalImage = newImage;
+            newImage = originalImage.Duplicate();
+            
+            //newImage.SetPixelsFromTextureWithAlphaMask(newImage, originalImage);
+            //newImage.Fill(0.0);
+            //newImage.FillAlpha(1.0f);
+            //newImage.Apply();
         }
 
         float biggestSize = Math.Max(newImage.width, newImage.height);
 
         UnityEngine.Sprite newSprite = UnityEngine.Sprite.Create(newImage,
-            new Rect(0, 0, newImage.width, newImage.height), new Vector2(0.5f, 0.5f), (biggestSize / 5.12f));
+            new Rect(0, 0, newImage.width, newImage.height), new Vector2(0.5f, 0.5f), (biggestSize / 5.12f), 0, SpriteMeshType.FullRect);
 
         m_picMaskScript.SetMaskFromSprite(newSprite);
     }
@@ -516,7 +757,7 @@ public class PicMain : MonoBehaviour
     }
 
     //save to a random filename if passed a blank filename
-    public string SaveFile(string fname="", string subdir = "") 
+    public string SaveFile(string fname="", string subdir = "", Texture2D texToSave = null, string fNamePostFix = "") 
     {
         string tempDir = Application.dataPath;
 
@@ -531,18 +772,37 @@ public class PicMain : MonoBehaviour
         //reconvert to \\ (I assume this code would have to change if it wasn't Windows... uhh
         tempDir = tempDir.Replace('/', '\\');
 
-        string fileName = tempDir + "\\pic_" + System.Guid.NewGuid() + ".bmp";
+        string fileName = tempDir + "\\pic_" + System.Guid.NewGuid() + fNamePostFix+".bmp";
 
         if (fname != null && fname != "")
         {
             fileName = fname;
         }
+        byte[] pngBytes;
 
-        Debug.Log("Saving file to " + fileName);
 
-        var pngBytes = m_pic.sprite.texture.EncodeToBMP(m_mask.sprite.texture);
+        bool bWriteOutTextFileToo = true;
+
+        if (texToSave == null)
+        {
+            pngBytes = m_pic.sprite.texture.EncodeToBMP(m_mask.sprite.texture);
+
+        } else
+        {
+            bWriteOutTextFileToo = false;
+            pngBytes = texToSave.EncodeToBMP();
+        }
+
         File.WriteAllBytes(fileName, pngBytes);
 
+        if (bWriteOutTextFileToo)
+        {
+            //write out a text file with the same name, but with .txt extension
+            string txtFileName = fileName.Substring(0, fileName.Length - 4) + ".txt";
+            UpdateInfoPanel(); //OPTIMIZE:  We don't really need to do it if it's already been done...
+            File.WriteAllText(txtFileName, m_infoPanelScript.GetTextInfoWithoutColors());
+        }
+        RTQuickMessageManager.Get().ShowMessage("Saved " + fileName);
 
         /*
          if we wanted png saving 
@@ -573,6 +833,7 @@ public class PicMain : MonoBehaviour
         public void SaveFileNoReturn()
     {
         RTQuickMessageManager.Get().ShowMessage("Saving image...");
+
         RTMessageManager.Get().Schedule(0.01f, this.SaveFileNoReturn2);
     }
 
@@ -610,7 +871,7 @@ public class PicMain : MonoBehaviour
                 Texture2D texture = new Texture2D(0, 0, TextureFormat.RGBA32, false);
                 texture.LoadImage(buffer);
                 AddImageUndo();
-                Sprite newSprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f), texture.width / 5.12f);
+                Sprite newSprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f), biggestsize / 5.12f);
                 m_pic.sprite = newSprite;
 
             }
@@ -688,6 +949,7 @@ public class PicMain : MonoBehaviour
         FillAlphaMaskIfBlank();
 
         ImageGenerator.Get().ScheduleGPURequest(e);
+        //ImageGenerator.Get().SetLastImg2ImgObject(this.gameObject); //if we wanted a non batch img2img to count for the restarting batch img2img button
         SetStatusMessage("Waiting for GPU...");
     }
 
@@ -709,7 +971,7 @@ public class PicMain : MonoBehaviour
         var newTex = processor.m_originalMap;
         float biggestSize = Math.Max(newTex.width, newTex.height);
 
-        Sprite newSprite = Sprite.Create(newTex, new Rect(0, 0, newTex.width, newTex.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f);
+        Sprite newSprite = Sprite.Create(newTex, new Rect(0, 0, newTex.width, newTex.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f, 0, SpriteMeshType.FullRect);
         m_pic.sprite = newSprite;
         m_pic.sprite.texture.Apply();
 
@@ -796,8 +1058,6 @@ public class PicMain : MonoBehaviour
         e.targetObj = this.gameObject;
         
         ImageGenerator.Get().ScheduleGPURequest(e);
-       
-        
         SetStatusMessage("Waiting for GPU...");
     }
 
@@ -805,8 +1065,37 @@ public class PicMain : MonoBehaviour
     private void OnDestroy()
     {
        InvalidateExportedEditFile();
+
+        if (m_pic.sprite && m_pic.sprite.texture)
+        {
+            UnityEngine.Object.Destroy(m_pic.sprite.texture); //this will also kill the sprite?
+            UnityEngine.Object.Destroy(m_pic.sprite);
+        }
+        KillUndoImageBuffers();
+
     }
 
+    public void SetNeedsToUpdateInfoPanelFlag()
+    {
+        m_bNeedsToUpdateInfoPanel = true;
+    }
+
+    public void SetControlImage(Texture tex)
+    {
+
+        float biggestSize = Math.Max(tex.width, tex.height);
+
+        Sprite newSprite = Sprite.Create(tex as Texture2D, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f, 0, SpriteMeshType.FullRect);
+        newSprite.texture.Apply();
+        m_infoPanelScript.SetSprite(newSprite);
+      
+    }
+    public void UpdateInfoPanel()
+    {
+        m_infoPanelScript.SetInfoText(GetInfoText());
+        m_bNeedsToUpdateInfoPanel = false;
+
+    }
     // Update is called once per frame
     void Update()
     {
@@ -816,7 +1105,7 @@ public class PicMain : MonoBehaviour
             m_editFileHasChanged = false;
 
             AddImageUndo();
-            LoadImageByFilename(m_editFilename, false);
+            LoadImageByFilename(m_editFilename, false, true);
         }
 
         //mask things faster when zoomed out by not rendering the GUI
@@ -831,6 +1120,16 @@ public class PicMain : MonoBehaviour
         else
         {
             m_canvas.enabled = true;
+        }
+
+       
+        if (m_bNeedsToUpdateInfoPanel)
+        {
+            if (m_infoPanelScript.IsPanelOpen())
+            {
+                UpdateInfoPanel();
+            }
+            
         }
     }
 

@@ -26,7 +26,7 @@ public class PicInpaint : MonoBehaviour
     public Texture2D m_latentNoise; //a texture we'll use for the noise instead of generating it ourself
     public PicTextToImage m_picTextToImageScript;
     bool m_useExisting = false;
-
+    bool m_bControlNetWasUsed = false;
     public void SetForceFinish(bool bNew)
     {
         if (bNew && m_bIsGenerating)
@@ -49,7 +49,7 @@ public class PicInpaint : MonoBehaviour
             }
             else
             {
-                m_picScript.SetStatusMessage(elapsed.ToString("Inpainting: 0.0#"));
+                m_picScript.SetStatusMessage(elapsed.ToString("img2img: 0.0#"));
             }
         }
     }
@@ -95,6 +95,12 @@ public class PicInpaint : MonoBehaviour
      
         m_seed = GameLogic.Get().GetSeed();
 
+        if (m_seed == -1)
+        {
+            var rand = new System.Random();
+            //let's set it to our own random so we know what it is later
+            m_seed = rand.NextLong();
+        }
 
         if (!m_useExisting || m_prompt == "")
         {
@@ -150,7 +156,11 @@ public class PicInpaint : MonoBehaviour
         */
 
         byte[] picPng = pic512.EncodeToPNG();
+        Destroy(pic512);
+
+
         yield return null; //wait a free to lesson the jerkiness
+        
 
 #if !RT_RELEASE
         //For testing purposes, we can write out what we're going to send
@@ -165,6 +175,8 @@ public class PicInpaint : MonoBehaviour
         byte[] picMaskPng = newtex.EncodeToPNG();
         yield return null; //wait a free to lesson the jerkiness
 
+        Destroy(mask512);
+        Destroy(newtex);
 #if !RT_RELEASE
 
         //For testing purposes, we could also write to a file in the project folder
@@ -194,22 +206,85 @@ public class PicInpaint : MonoBehaviour
 
         string json;
 
-            //using the new API which doesn't support alpha masking the subject
-            finalURL = url + "/sdapi/v1/img2img";
+        //using the new API which doesn't support alpha masking the subject
+        finalURL = url + "/sdapi/v1/img2img";
+        string controlnet_image_image = "";
+        string controlnet_units = "";
 
-            string maskedContentIndex = "1";
+        if (GameLogic.Get().GetUseControlNet())
+        {
+            finalURL = url + "/controlnet/img2img";
+            //controlnet_image_image = "\"controlnet_input_image\": [\""+imgBase64+"\"],"; //for controlnet requests
+            m_bControlNetWasUsed = true;
 
-            if (maskedContent == "fill") maskedContentIndex = "0";
-            if (maskedContent == "original") maskedContentIndex = "1";
-            if (maskedContent == "latent noise") maskedContentIndex = "2";
-            if (maskedContent == "latent nothing") maskedContentIndex = "3";
+            /*
+            controlnet_units = $@"""controlnet_units"": [
+{
+                "resize_mode"
+            */
+            
+        }
+        else
+        {
+            m_bControlNetWasUsed = false;
+        }
 
-            json =
+        string maskedContentIndex = "1";
+
+        if (maskedContent == "fill") maskedContentIndex = "0";
+        if (maskedContent == "original") maskedContentIndex = "1";
+        if (maskedContent == "latent noise") maskedContentIndex = "2";
+        if (maskedContent == "latent nothing") maskedContentIndex = "3";
+
+
+        /*
+
+           ""init_images"":
+        [
+            ""{imgBase64}""
+        ], 
+
+                        ""sampler_name"": ""{GameLogic.Get().GetSamplerName()}"",
+        none
+
+
+
+  //""controlnet_mask"": [""{maskBase64}""],
+
+         */
+
+        // ""mask"": ""{maskBase64}"",
+
+        int steps = GameLogic.Get().GetSteps();
+        bool bUsingPixToPix = GameLogic.Get().IsActiveModelPix2Pix();
+        string model = GameLogic.Get().GetActiveModelFilename();
+        string samplerName = GameLogic.Get().GetSamplerName();
+        float prompt_cfg = GameLogic.Get().GetTextStrengthFloat();
+        float denoising_strength = GameLogic.Get().GetInpaintStrengthFloat();
+        string lastControlNetModel = GameLogic.Get().GetCurrentControlNetModelString();
+        float pix2pixCFG = GameLogic.Get().GetPix2PixTextStrengthFloat();
+        string lastControlNetPreprocessor = GameLogic.Get().GetCurrentControlNetPreprocessorString();
+        float lastControlNetWeight = GameLogic.Get().GetControlNetWeight();
+        float lastControlNetGuidance = GameLogic.Get().GetControlNetGuidance();
+        string maskContents = GameLogic.Get().GetMaskContent();
+        json =
          $@"{{
-            ""init_images"":
+            ""init_images"":     
             [
                 ""{imgBase64}""
-            ], 
+            ],
+            {controlnet_image_image}
+            ""mask"": ""{maskBase64}"",
+            ""controlnet_module"": ""{GameLogic.Get().GetCurrentControlNetPreprocessorString()}"",
+            ""controlnet_model"": ""{GameLogic.Get().GetCurrentControlNetModelString()}"",
+            ""controlnet_weight"": {GameLogic.Get().GetControlNetWeight()},
+            ""controlnet_guidance"": {GameLogic.Get().GetControlNetGuidance()},
+            {controlnet_units}
+
+
+            ""inpainting_mask_invert"": 0,
+            ""inpaint_full_res_padding"": 0,
+            ""inpaint_full_res"": false,
             {safety_filter}
             ""prompt"": ""{SimpleJSON.JSONNode.Escape(m_prompt)}"",
             ""negative_prompt"": ""{SimpleJSON.JSONNode.Escape(m_negativePrompt)}"",
@@ -221,16 +296,16 @@ public class PicInpaint : MonoBehaviour
             ""seed"": {m_seed},
             ""width"": {genWidth},
             ""height"": {genHeight},
-            ""sampler_name"": ""{GameLogic.Get().GetSamplerName()}"",
-            ""mask"": ""{maskBase64}"",
+            ""sampler_index"": ""{GameLogic.Get().GetSamplerName()}"",
+           
             ""denoising_strength"": {GameLogic.Get().GetInpaintStrengthString()},
             ""mask_blur"": {maskBlur},
             ""inpainting_fill"": {maskedContentIndex},
             ""alpha_mask_subject"":{bRemoveBackground.ToString().ToLower()}
-      
+            
         }}";
 
-       Debug.Log("Inpainting with " + finalURL + " local GPU ID " + m_gpu);
+       Debug.Log("img2img with " + finalURL + " local GPU ID " + m_gpu);
 
 
 #if !RT_RELEASE
@@ -272,11 +347,16 @@ public class PicInpaint : MonoBehaviour
                */
 
                 var images = rootNode["images"];
-              
+
                 //Debug.Log("images is of type " + images.Tag);
                 //Debug.Log("there are " + images.Count + " images");
 
-                Debug.Assert(images.Count == 1); //You better convert the extra images to new pics!
+                if (!m_bControlNetWasUsed)
+                {
+                    Debug.Assert(images.Count == 1); //You better convert the extra images to new pics!
+                }
+
+                //we probably got 2 images, one is the thing we made for the control
 
                 byte[] imgDataBytes = null;
 
@@ -284,6 +364,25 @@ public class PicInpaint : MonoBehaviour
                 {
                     for (int i = 0; i < images.Count; i++)
                     {
+
+                        if (m_bControlNetWasUsed && i == 1)
+                        {
+                            //this is the second image, the control image it generated
+                            byte[] controlImageBytes = Convert.FromBase64String(images[i]);
+
+                            Texture2D tex = new Texture2D(0, 0, TextureFormat.RGBA32, false);
+
+                            if (tex.LoadImage(controlImageBytes, false))
+                            {
+                                yield return null; //wait a frame to lesson the jerkiness
+
+                                //give it to the thing
+                                m_picScript.SetControlImage(tex);
+                            }
+
+                                yield return null; //wait a free to lesson the jerkiness
+                            continue;
+                        }
 
                         //First get rid of the "data:image/png;base64," part
                         /*
@@ -328,6 +427,32 @@ public class PicInpaint : MonoBehaviour
                     this.gameObject.GetComponent<PicMain>().AddImageUndo(true);
                     yield return null; //wait a frame to lesson the jerkiness
 
+
+                    //we've already done the undo, so now let's update with the info we used to make this
+                    m_picScript.GetCurrentStats().m_lastPromptUsed = m_prompt;
+                    m_picScript.GetCurrentStats().m_lastNegativePromptUsed = m_negativePrompt;
+                    m_picScript.GetCurrentStats().m_lastSteps = steps;
+                    m_picScript.GetCurrentStats().m_lastCFGScale = (float)prompt_cfg;
+                    m_picScript.GetCurrentStats().m_lastSampler = samplerName;
+                    m_picScript.GetCurrentStats().m_tiling = bTiled;
+                    m_picScript.GetCurrentStats().m_fixFaces = bFixFace;
+
+                    m_picScript.GetCurrentStats().m_lastSeed = m_seed;
+                    m_picScript.GetCurrentStats().m_lastModel = model;
+                    m_picScript.GetCurrentStats().m_bUsingControlNet = m_bControlNetWasUsed;
+                    m_picScript.GetCurrentStats().m_bUsingPix2Pix = bUsingPixToPix;
+                    m_picScript.GetCurrentStats().m_lastOperation = "img2img";
+
+                    m_picScript.GetCurrentStats().m_lastControlNetModel = lastControlNetModel;
+                    m_picScript.GetCurrentStats().m_pix2pixCFG = pix2pixCFG;
+                    m_picScript.GetCurrentStats().m_lastControlNetModelPreprocessor = lastControlNetPreprocessor;
+                    m_picScript.GetCurrentStats().m_lastControlNetWeight = lastControlNetWeight;
+                    m_picScript.GetCurrentStats().m_lastControlNetGuidance = lastControlNetGuidance;
+                    m_picScript.GetCurrentStats().m_maskContents = maskContents;
+
+                    m_picScript.GetCurrentStats().m_lastDenoisingStrength = denoising_strength;
+                    m_picScript.SetNeedsToUpdateInfoPanelFlag();
+                  
                     int maskFeatheringRevolutions = (int)GameLogic.Get().GetAlphaMaskFeatheringPower();
                     Texture2D finalTexture = null;
 
@@ -342,6 +467,7 @@ public class PicInpaint : MonoBehaviour
                     picSprite.texture.Apply();
                     m_picScript.AutoSaveImageIfNeeded();
 
+                    Destroy(finalTexture);
                     if (m_onFinishedRenderingCallback != null)
                         m_onFinishedRenderingCallback.Invoke(gameObject);
                 }

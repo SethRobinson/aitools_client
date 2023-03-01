@@ -20,11 +20,12 @@ public class ImageGenerator : MonoBehaviour
     bool m_generateActive = false;
     bool _bAdvancedRow = false;
     public Button m_generateButton;
+    public Button m_imgGenerateButton;
     public GameObject m_pic_prefab;
     public TMPro.TextMeshProUGUI m_generateButtonText;
     GameObject m_picGenerator = null; //null if a pic isn't generating something
      LinkedList<ScheduledGPUEvent> m_gpuEventList = new LinkedList<ScheduledGPUEvent>();
-
+    GameObject m_lastImg2ImgGeneratorObj = null;
     Vector3 vStartPos = new Vector3(0, 0, 7);
     Vector3 vSpawnPos;
     float spacingX = 5.12f;
@@ -72,12 +73,43 @@ public class ImageGenerator : MonoBehaviour
             }
         }
     }
+
+    public void OnPicDestroyed(GameObject go)
+    {
+        if (go == m_lastImg2ImgGeneratorObj)
+        {
+            SetLastImg2ImgObject(null);
+        }
+    }
+    public void SetLastImg2ImgObject(GameObject go)
+    {
+        m_lastImg2ImgGeneratorObj = go;
+
+        //let's update the image
+        m_imgGenerateButton.interactable = (go != null);
+
+    }
+
+    public void OnRestartLastImg2ImgGenerator()
+    {
+        if (m_lastImg2ImgGeneratorObj != null)
+        {
+            m_lastImg2ImgGeneratorObj.GetComponent<PicGenerator>().OnInpaintGeneratorButton();
+        } else
+        {
+            RTQuickMessageManager.Get().ShowMessage("Restarting the last batch img2img operation won't work as nothing was started yet.");
+
+        }
+    }
     public void OnStartingPicGenerator(GameObject go)
     {
+
         if (m_generateActive)
         {
             SetGenerate(false);
         }
+
+        SetLastImg2ImgObject(go);
 
         //now start up ours
         SetGenerate(true);
@@ -89,7 +121,8 @@ public class ImageGenerator : MonoBehaviour
     void Start()
     {
         UpdateGenerateButtonStatus();
-        
+        SetLastImg2ImgObject(null);
+
         Reset();
        //oh, let's remember the original camera position so we can return to it
         m_oldCamPos = m_camera.transform.position;
@@ -103,7 +136,7 @@ public class ImageGenerator : MonoBehaviour
         //AddImageByFileName("large_pic.png");
         //AddImageByFileName("black_and_white.png");
 
-        //AddImageByFileName("tall_pic_test.png");
+     //   AddImageByFileName("tall_pic_test.png");
         //AddImageByFileName("cosmo_tiny.bmp");
         //AddImageByFileName("square_pic_test.png");
         //m_generateActive = false;
@@ -263,7 +296,7 @@ public class ImageGenerator : MonoBehaviour
         return pic;
     }
 
-    public void ReorganizePics()
+    public void ReorganizePics(bool bResetCamera = true)
     {
         Reset();
 
@@ -278,9 +311,11 @@ public class ImageGenerator : MonoBehaviour
                 AdvancePositionForNextPic();
             }
         }
-
-        m_camera.transform.position = m_oldCamPos;
-        m_camera.orthographicSize = m_oldCamSize;
+        if (bResetCamera)
+        {
+            m_camera.transform.position = m_oldCamPos;
+            m_camera.orthographicSize = m_oldCamSize;
+        }
     }
 
     public void ShutdownAllGPUProcesses()
@@ -324,8 +359,16 @@ public class ImageGenerator : MonoBehaviour
                 else if (e.mode == "inpaint")
                 {
                     var script = e.targetObj.GetComponent<PicInpaint>();
-                    script.SetGPU(gpuToUse);
-                    script.StartInpaint();
+                    if (GameLogic.Get().IsActiveModelPix2Pix() && GameLogic.Get().GetUseControlNet())
+                    {
+                        RTQuickMessageManager.Get().ShowMessage("ControlNet won't work with a pix2pix model loaded! Change model or disable ControlNet.");
+                        script.m_picScript.SetStatusMessage("");
+                    }
+                    else
+                    {
+                        script.SetGPU(gpuToUse);
+                        script.StartInpaint();
+                    }
                 }
 
                 else if (e.mode == "rerender")
@@ -372,27 +415,31 @@ public class ImageGenerator : MonoBehaviour
         for (int i = 0; i < Config.Get().GetGPUCount(); i++)
         {
 
-          
-
-                if (!Config.Get().IsGPUBusy(i))
+            if (!Config.Get().IsGPUBusy(i))
                 {
-                if (GameLogic.Get().IsActiveModelPix2Pix())
-                {
-                    RTQuickMessageManager.Get().ShowMessage("The loaded model is pix2pix, can't generate, can only inpaint.<BR>(Canceling generate mode)");
-                    SetGenerate(false);
 
-                }
-                else
-                {
-                    GameObject pic = CreateNewPic();
-                    PicTextToImage scriptAI = pic.GetComponent<PicTextToImage>();
-                    PicUpscale processAI = pic.GetComponent<PicUpscale>();
+                bool bDisableGeneration = false;
 
-                    processAI.SetGPU(i);
-                    scriptAI.SetGPU(i);
-                    scriptAI.StartWebRequest(false);
-                    IncrementGenerationAndCheckForEnd();
-                }
+                    if (GameLogic.Get().IsActiveModelPix2Pix())
+                    {
+                        RTQuickMessageManager.Get().ShowMessage("The loaded model is pix2pix, can't generate, can only inpaint.<BR>(Canceling generate mode)");
+                        SetGenerate(false);
+                        bDisableGeneration = true;
+                    }
+                  
+                   
+
+                if (!bDisableGeneration)
+                    {
+                        GameObject pic = CreateNewPic();
+                        PicTextToImage scriptAI = pic.GetComponent<PicTextToImage>();
+                        PicUpscale processAI = pic.GetComponent<PicUpscale>();
+
+                        processAI.SetGPU(i);
+                        scriptAI.SetGPU(i);
+                        scriptAI.StartWebRequest(false);
+                        IncrementGenerationAndCheckForEnd();
+                    }
                 }
            
         }

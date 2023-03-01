@@ -11,22 +11,42 @@ public class RTToolTipPrefabScript : MonoBehaviour
     bool _bNeedsUpdate = true;
     bool _bDidFirstUpdate = false;
     // Start is called before the first frame update
+    TextAlignment _alignment = TextAlignment.Center;
+
     void Start()
     {
         _canvasGroup.alpha = 0;  //avoid a flicker while we change its position
         _originalPos = _backGround.transform.position;
     }
 
+    public void SetAlignment(TextAlignment alignment)
+    {
+        _alignment = alignment; 
+    }
     void Reposition()
     {
         _textObj.enabled = true;
-      
+
+       // _textObj.alignment = TMPro.TextAlignmentOptions.Left;
         var vPos = _originalPos;
         var rt = _backGround.GetComponent<RectTransform>();
-        rt.ForceUpdateRectTransforms();
-        //move up
-        vPos.y += 48;
-     
+
+        if (_alignment == TextAlignment.Left)
+        {
+            rt.pivot = new Vector2(0, 0);
+            rt.ForceUpdateRectTransforms();
+        }
+        else
+        {
+            rt.ForceUpdateRectTransforms();
+
+            //move up, and then we'll tweak that if it looks like it's off the screen
+            vPos.y += 48;
+
+        }
+
+
+
         float offscreenX = vPos.x + rt.offsetMin.x;
         float offscreenY = vPos.y - rt.offsetMin.y;
      

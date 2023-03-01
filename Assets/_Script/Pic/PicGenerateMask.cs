@@ -25,7 +25,7 @@ public class PicGenerateMask : MonoBehaviour
         if (m_bIsGenerating)
         {
             float elapsed = Time.realtimeSinceStartup - startTime;
-            m_picScript.SetStatusMessage(elapsed.ToString("Upscale: 0.0#"));
+            m_picScript.SetStatusMessage(elapsed.ToString("DIS Masking: 0.0#"));
         }
         else
         {
@@ -182,14 +182,17 @@ $@"{{
                 //only care about the alpha channel.  So let's grab that and convert
                 //it to our mask
                 Texture2D alphaTex = null;
- 
-                alphaTex = texture.GetAlphaMask();
-                alphaTex.Apply();
+                bool bAlphaWasUsed = false;
 
+                alphaTex = texture.GetAlphaMask(out bAlphaWasUsed);
+                alphaTex.Apply();
 
                 m_picScript.GetMaskScript().SetMaskFromTextureAlpha(alphaTex);
                 m_picScript.GetMaskScript().SetMaskVisible(true);
-                
+
+                Destroy(texture); //done with this
+
+
                 if (Config.Get().IsValidGPU(m_gpu))
                 {
                     if (!Config.Get().IsGPUBusy(m_gpu))

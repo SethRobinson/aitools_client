@@ -11,7 +11,7 @@ using UnityEngine.Android;
 
 public class RTToolTipManager : MonoBehaviour
 {
-
+     
     public GameObject m_toolTipPrefab;
     public float m_delayBeforeShowingSeconds = 0.5f;
     // Start is called before the first frame update
@@ -20,6 +20,7 @@ public class RTToolTipManager : MonoBehaviour
     private void Awake()
     {
         m_this = this;
+     
     }
 
     public static RTToolTipManager Get()

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using System.IO;
 using DG.Tweening.Plugins.Core.PathCore;
+using UnityEngine.UI;
 
 public class GPUInfo
 {
@@ -29,7 +30,7 @@ public class Config : MonoBehaviour
     bool m_safetyFilter = false;
     float m_requiredServerVersion = 0.44f;
 
-    float m_version = 0.60f;
+    float m_version = 0.7f;
     string m_imageEditorPathAndExe = "none set";
     public string GetVersionString() { return m_version.ToString("0.00"); }
     public float GetVersion() { return m_version; }
@@ -52,6 +53,17 @@ public class Config : MonoBehaviour
     {
         RTAudioManager.Get().AddClipsToLibrary(m_audioClips);
 
+        ConnectToServers();
+
+    }
+
+    public void ConnectToServers()
+    {
+        if (GetGPUCount() > 0)
+        {
+            return;
+        }
+
         m_configText = LoadConfigFromFile();
 
         if (m_configText == "")
@@ -72,8 +84,8 @@ public class Config : MonoBehaviour
             m_configText += "#set_default_steps|50\n";
         }
 
+        RTQuickMessageManager.Get().ShowMessage("Connecting...");
         ProcessConfigString(m_configText);
-
     }
 
     public int GetFreeGPU()
@@ -123,6 +135,7 @@ public class Config : MonoBehaviour
         return false;
     }
 
+ 
     public string GetConfigText()
     {
         return m_configText;
@@ -194,16 +207,20 @@ public class Config : MonoBehaviour
             webScript.StartConfigRequest(g.localGPUID, g.remoteURL);
         }
 
-        var webScriptTemp = CreateWebRequestObject();
-        webScriptTemp.StartPopulateModelsRequest(g);
-
+    
 
         if (g.localGPUID == 0)
         {
-            //it's the first one, let's get more info
+            //it's the first one, let's get more info and just hope all the servers have the same capabilities.  If one server is missing an extension or model, well, that's on them
          
             var webScript2 = CreateWebRequestObject();
             webScript2.StartPopulateSamplersRequest(g);
+
+            var webScriptTemp = CreateWebRequestObject();
+            webScriptTemp.StartPopulateModelsRequest(g);
+
+            var webScriptControlnet = CreateWebRequestObject();
+            webScriptControlnet.StartPopulateControlNetModels(g);
 
         }
 
@@ -253,7 +270,11 @@ public class Config : MonoBehaviour
         RTUtil.KillAllObjectsByName(RTUtil.FindIncludingInactive("Panel").gameObject, "ServerButtonPrefab", true);
         RTUtil.KillAllObjectsByName(RTUtil.FindIncludingInactive("Panel").gameObject, "NoServersButtonPrefab", true);
 
-        Instantiate(m_noServersButtonPrefab, RTUtil.FindIncludingInactive("Panel").transform);
+        GameObject noServersObg = Instantiate(m_noServersButtonPrefab, RTUtil.FindIncludingInactive("Panel").transform);
+
+        //wire up its button
+        var button = noServersObg.GetComponent<Button>();
+        button.onClick.AddListener(() => { GameLogic.Get().OnNoServersButtonClicked(); });
 
     }
 

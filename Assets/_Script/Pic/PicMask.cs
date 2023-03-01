@@ -25,10 +25,13 @@ public class PicMask : MonoBehaviour
          m_spriteMask.color = new Color(1.0f, 0.0f, 0.0f, 0.4f);
 
         if (!m_boolMaskHasBeenSet)
+        //if (m_spriteMask.sprite == null || m_spriteMask.sprite.texture == null)
         {
+            
             RecreateMask();
         }
 
+     
         SetMaskVisible(false); //start with it off
     }
 
@@ -121,21 +124,42 @@ public class PicMask : MonoBehaviour
     
     public void OnClearMaskButton()
     {
-        m_spriteMask.sprite.texture.Fill(new Color(0, 0, 0, 0));
-        m_spriteMask.sprite.texture.Apply();
+        //m_spriteMask.sprite.texture.Fill(new Color(0, 0, 0, 0));
+        //m_spriteMask.sprite.texture.Apply();
+        //um for the above to actually work you'd need to rebuild the sprite I guess.  Easier to just do this:
+        RecreateMask();
+        m_boolMaskHasBeenSet = true; 
         m_bMaskModified = false;
     }
 
+    public void OnDestroy()
+    {
+        KillMask();
+    }
+
+    public void KillMask()
+    {
+        if (m_spriteMask.sprite != null && m_spriteMask.sprite.texture != null)
+        {
+            Destroy(m_spriteMask.sprite.texture);
+            Destroy(m_spriteMask.sprite);
+        }
+    }
     public void SetMaskFromSprite(Sprite s)
     {
+        KillMask();
+
         m_spriteMask.sprite = s;
         m_boolMaskHasBeenSet = true;
         m_bMaskModified = true; //it's possible it's still blank, but has been modified from default
     }
     public void SetMaskFromTexture(Texture2D copyTexture)
     {
+        KillMask();
+
+
         float biggestSize = Math.Max(copyTexture.width, copyTexture.height);
-        m_spriteMask.sprite = Sprite.Create(copyTexture, new Rect(0, 0, copyTexture.width, copyTexture.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f);
+        m_spriteMask.sprite = Sprite.Create(copyTexture, new Rect(0, 0, copyTexture.width, copyTexture.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f, 0, SpriteMeshType.FullRect);
         m_boolMaskHasBeenSet = true;
         m_bMaskModified = true;
 
@@ -144,8 +168,13 @@ public class PicMask : MonoBehaviour
 
     public void SetMaskFromTextureAlpha(Texture2D copyTexture)
     {
-        float biggestSize = Math.Max(copyTexture.width, copyTexture.height);
-        m_spriteMask.sprite = Sprite.Create(copyTexture, new Rect(0, 0, copyTexture.width, copyTexture.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f);
+        RecreateMask();
+
+        m_spriteMask.sprite.texture.SetColorAndAlphaFromAlphaChannel(copyTexture);
+        m_spriteMask.sprite.texture.Apply();
+        //float biggestSize = Math.Max(copyTexture.width, copyTexture.height);
+        //m_spriteMask.sprite = Sprite.Create(copyTexture, new Rect(0, 0, copyTexture.width, copyTexture.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f, 0, SpriteMeshType.FullRect);
+
         m_boolMaskHasBeenSet = true;
         m_bMaskModified = true;
 
@@ -194,6 +223,7 @@ public class PicMask : MonoBehaviour
             }
         }
 
+
         if (maskRect != m_targetRectScript.GetOffsetRect())
         {
             m_targetRectScript.SetOffsetRect(maskRect);
@@ -203,9 +233,14 @@ public class PicMask : MonoBehaviour
     {
         Texture2D copyTexture = new Texture2D(m_pic.sprite.texture.width, m_pic.sprite.texture.height, TextureFormat.RGBA32, false);
         float biggestSize = Math.Max(copyTexture.width, copyTexture.height);
-        m_spriteMask.sprite = Sprite.Create(copyTexture, new Rect(0, 0, copyTexture.width, copyTexture.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f);
+
+        KillMask();
+
         copyTexture.Fill(new Color(0, 0, 0, 0));
         copyTexture.Apply();
+
+        m_spriteMask.sprite = Sprite.Create(copyTexture, new Rect(0, 0, copyTexture.width, copyTexture.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f, 0, SpriteMeshType.FullRect);
+        
         m_boolMaskHasBeenSet = true;
         m_bMaskModified = false;
 
@@ -213,10 +248,18 @@ public class PicMask : MonoBehaviour
     }
     public void ResizeMaskIfNeeded()
     {
-        if (m_spriteMask.sprite.texture.width != m_pic.sprite.texture.width || m_spriteMask.sprite.texture.height != m_pic.sprite.texture.height)
+        if (m_spriteMask.sprite == null || m_spriteMask.sprite.texture == null)
         {
             RecreateMask();
-            //Debug.Log("Mask resized to " + m_spriteMask.sprite.texture.width);
+
+        }
+        else
+        {
+            if (m_spriteMask.sprite.texture.width != m_pic.sprite.texture.width || m_spriteMask.sprite.texture.height != m_pic.sprite.texture.height)
+            {
+                RecreateMask();
+                //Debug.Log("Mask resized to " + m_spriteMask.sprite.texture.width);
+            }
         }
         
         ForceMaskRectToBeWithinImageBounds();
@@ -247,9 +290,12 @@ public class PicMask : MonoBehaviour
     void Update()
     {
 
+       
         if (IsMaskVisible())
         {
             ResizeMaskIfNeeded();
+
+           
 
             if (GameLogic.Get().GetPicWereHoveringOver() == gameObject && !GameLogic.Get().GUIIsBeingUsed())
             {
@@ -303,6 +349,8 @@ public class PicMask : MonoBehaviour
 
         }
 
+      
+
         if ((Input.GetMouseButton(0) || Input.GetMouseButtonUp(0)) && !EventSystem.current.IsPointerOverGameObject())
         {
             GameObject go = GameLogic.Get().GetPicWereHoveringOver();
@@ -320,9 +368,7 @@ public class PicMask : MonoBehaviour
                 SetMaskVisible(true);
                 var oldTex = m_spriteMask.sprite.texture;
 
-                Texture2D copyTexture = new Texture2D(oldTex.width, oldTex.height, TextureFormat.RGBA32, false);
-                copyTexture.SetPixels(oldTex.GetPixels());
-
+             
                 int brushSize = (int)GameLogic.Get().GetPenSize();
                 Color drawColor = new Color(1, 1, 1, 1);
 
@@ -355,12 +401,13 @@ public class PicMask : MonoBehaviour
                     //moving the rect around, don't screw with the actual mask
                     return;
                 }
-            
+
                 m_bMaskModified = true;
-                copyTexture.SetPixelsWithinRadius((int)vTexPos.x, (int)vTexPos.y, brushSize, drawColor);
-                copyTexture.Apply();
-                float biggestSize = Math.Max(copyTexture.width, copyTexture.height);
-                m_spriteMask.sprite = Sprite.Create(copyTexture, new Rect(0, 0, copyTexture.width, copyTexture.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f);
+
+                //modify the our mask with the brush
+                m_spriteMask.sprite.texture.SetPixelsWithinRadius((int)vTexPos.x, (int)vTexPos.y, brushSize, drawColor);
+                m_spriteMask.sprite.texture.Apply();
+
                 m_boolMaskHasBeenSet = true;
             }
 

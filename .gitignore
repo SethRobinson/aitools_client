@@ -29,12 +29,8 @@ vanilla_noise.png
 wide_pic_test.jpg
 log.txt
 .vsconfig
-webgltemp/aitools_client/favicon.ico
-webgltemp/aitools_client/index.html
-webgltemp/aitools_client/logo.png
-webgltemp/aitools_client/Build/.htaccess
-webgltemp/aitools_client/Build/web.data.gz
-webgltemp/aitools_client/Build/web.framework.js.gz
-webgltemp/aitools_client/Build/web.loader.js
-webgltemp/aitools_client/Build/web.wasm.gz
+webgltemp/*
 SethsAIToolsWindowsBeta.zip
+OldVersions/*
+Images/*
+UserSettings/*

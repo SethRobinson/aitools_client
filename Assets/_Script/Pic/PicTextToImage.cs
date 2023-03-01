@@ -18,7 +18,7 @@ public class PicTextToImage : MonoBehaviour
     int m_gpu;
     public PicMain m_picScript;
     public Action<GameObject> OnFinishedRendering;
-  
+    
     public void SetForceFinish(bool bNew)
     {
         if (bNew && m_bIsGenerating)
@@ -38,6 +38,7 @@ public class PicTextToImage : MonoBehaviour
         return m_seed != -1;
     }
 
+   
     public long GetSeed() { return m_seed; }
     public bool IsBusy()
     {
@@ -147,6 +148,8 @@ public class PicTextToImage : MonoBehaviour
         int genWidth = GameLogic.Get().GetGenWidth();
         int genHeight = GameLogic.Get().GetGenHeight();
         var gpuInf = Config.Get().GetGPUInfo(m_gpu);
+        string model = GameLogic.Get().GetActiveModelFilename();
+        string samplerName = GameLogic.Get().GetSamplerName();
 
         string safety_filter = ""; //use whatever the server is set at
         if (Config.Get().GetSafetyFilter())
@@ -155,22 +158,24 @@ public class PicTextToImage : MonoBehaviour
         }
 
        finalURL = url + "/sdapi/v1/txt2img";
-
+       string negativePrompt = GameLogic.Get().GetNegativePrompt();
+       int steps = GameLogic.Get().GetSteps();
+     
        string promptStrString = prompt_strength.ToString("0.0", CultureInfo.InvariantCulture);
             //using the new API which doesn't support alpha masking the subject
             string json =
                  $@"{{
             {safety_filter}
             ""prompt"": ""{SimpleJSON.JSONNode.Escape(m_prompt)}"",
-            ""negative_prompt"": ""{SimpleJSON.JSONNode.Escape(GameLogic.Get().GetNegativePrompt())}"",
-            ""steps"": {GameLogic.Get().GetSteps()},
+            ""negative_prompt"": ""{SimpleJSON.JSONNode.Escape(negativePrompt)}"",
+            ""steps"": {steps},
             ""restore_faces"":{bFixFace.ToString().ToLower()},
             ""tiling"":{bTiled.ToString().ToLower()},
             ""cfg_scale"":{promptStrString},
             ""seed"": {m_seed},
             ""width"": {genWidth},
             ""height"": {genHeight},
-            ""sampler_name"": ""{GameLogic.Get().GetSamplerName()}"",
+            ""sampler_name"": ""{samplerName}"",
             ""alpha_mask_subject"":{bRemoveBackground.ToString().ToLower()}
 
         
@@ -253,11 +258,14 @@ public class PicTextToImage : MonoBehaviour
                 if (texture.LoadImage(imgDataBytes, false))
                 {
                     yield return null; //wait a frame to lesson the jerkiness
+                  
+                    
+                    
                     m_picScript.AddImageUndo();
                     //Debug.Log("Read texture");
                     float biggestSize = Math.Max(texture.width, texture.height);
                     
-                    Sprite newSprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f);
+                    Sprite newSprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f, 0, SpriteMeshType.FullRect);
                     renderer.sprite = newSprite;
                     bSuccess = true;
 
@@ -267,6 +275,24 @@ public class PicTextToImage : MonoBehaviour
                     }
                     m_picScript.OnImageReplaced();
 
+                    //we've already done the undo, so now let's update with the info we used to make this
+                    m_picScript.GetCurrentStats().m_lastPromptUsed = m_prompt;
+                    m_picScript.GetCurrentStats().m_lastNegativePromptUsed = negativePrompt;
+                    m_picScript.GetCurrentStats().m_lastSteps = steps;
+                    m_picScript.GetCurrentStats().m_lastCFGScale = (float)prompt_strength;
+                    m_picScript.GetCurrentStats().m_lastSampler = samplerName;
+                    m_picScript.GetCurrentStats().m_tiling = bTiled;
+                    m_picScript.GetCurrentStats().m_fixFaces = bFixFace;
+                    
+                    m_picScript.GetCurrentStats().m_lastSeed = m_seed;
+                    m_picScript.GetCurrentStats().m_lastModel = model;
+                    m_picScript.GetCurrentStats().m_bUsingControlNet = false;
+                    m_picScript.GetCurrentStats().m_bUsingPix2Pix = false;
+                    m_picScript.GetCurrentStats().m_lastOperation = "Generate";
+
+                    m_picScript.SetNeedsToUpdateInfoPanelFlag();
+
+
                     m_picScript.AutoSaveImageIfNeeded();
                 }
                 else
@@ -274,6 +300,7 @@ public class PicTextToImage : MonoBehaviour
                     Debug.Log("Error reading texture");
                 }
 
+            
                 m_picScript.SetStatusMessage("");
 
                 if (bSuccess && Config.Get().IsValidGPU(m_gpu) && m_bIsGenerating)

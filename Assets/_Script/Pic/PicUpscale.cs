@@ -191,7 +191,7 @@ $@"{{
                     yield return null; //wait a free to lesson the jerkiness
 
                     float biggestSize = Math.Max(texture.width, texture.height);
-                    UnityEngine.Sprite newSprite = UnityEngine.Sprite.Create(texture, new Rect(0,0, texture.width, texture.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f);
+                    UnityEngine.Sprite newSprite = UnityEngine.Sprite.Create(texture, new Rect(0,0, texture.width, texture.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f, 0, SpriteMeshType.FullRect);
                     renderer.sprite = newSprite;
                     m_picScript.OnImageReplaced();
                     //m_picScript.GetMaskScript().SetMaskVisible(false); //we don't want to see a rect

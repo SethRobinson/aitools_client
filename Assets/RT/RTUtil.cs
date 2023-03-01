@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using System.IO;
 using UnityEngine.Rendering;
 using System.Globalization;
+using System.Text.RegularExpressions;
 
 //Adapted from https://stackoverflow.com/questions/46237984/how-to-emulate-statically-the-c-bitfields-in-c
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -245,9 +246,10 @@ public static class Tex2DExtension
 
     }
 
-    public static Texture2D GetAlphaMask(this Texture2D tex) //grabs the alpha mask, replacing all colors
+    public static Texture2D GetAlphaMask(this Texture2D tex, out bool bAlphaWasUsed) //grabs the alpha mask, replacing all colors
     {
         Texture2D newtex = new Texture2D(tex.width, tex.height, TextureFormat.RGBA32, false);
+        bAlphaWasUsed = false;
 
         for (int x = 0; x < newtex.width; x++)
         {
@@ -260,7 +262,7 @@ public static class Tex2DExtension
                 else
                 {
                     var color = tex.GetPixel(x, y);
-
+                    bAlphaWasUsed = true;
                     /*
                     if (x % 100 == 0)
                     {
@@ -337,6 +339,7 @@ public static class Tex2DExtension
 
         return newtex;
     }
+
 
     public static Texture2D Duplicate (this Texture2D tex)
     {
@@ -508,7 +511,42 @@ public static class Tex2DExtension
 
         dest.Apply();
     }
+
+
+    public static void SetColorAndAlphaFromAlphaChannel(this Texture2D dest, Texture2D src)
+    {
+        //use assert to make sure all textures have the same dimensions
+        Debug.Assert(dest.width == src.width);
+        Debug.Assert(dest.height == src.height);
+
+        float finalAlpha;
+        float alpha;
+        
+
+            for (int x = 0; x < dest.width; x++)
+            {
+                for (int y = 0; y < dest.height; y++)
+                {
+                    alpha = src.GetPixel(x, y).a;
+
+                    if (alpha == 0)
+                    {
+                        //Debug.Log("skipping pixel");
+                    }
+                    else
+                    {
+                        finalAlpha = alpha;
+                        dest.SetPixel(x, y, new Color(1.0f*finalAlpha, 1.0f * finalAlpha, 1.0f * finalAlpha, 1.0f * finalAlpha));
+                    }
+                }
+            }
+        
+
+        dest.Apply();
+    }
+
 }
+
 
 public static class StringExt
 {
@@ -748,7 +786,7 @@ public class RTUtil
                     }
                     if (s[i] == '1')
                     {
-                        AppendColor(sb, 173, 244, 255, 255);
+                        AppendColor(sb, 80, 80, 200, 255);
                         continue;
                     }
                     if (s[i] == '2')
@@ -763,12 +801,12 @@ public class RTUtil
                     }
                     if (s[i] == '4')
                     {
-                        AppendColor(sb, 255, 39, 29, 255);
+                        AppendColor(sb, 180, 0,0, 255);
                         continue;
                     }
                     if (s[i] == '5')
                     {
-                        AppendColor(sb, 235, 183, 255, 255);
+                        AppendColor(sb, 51, 0, 51, 255);
                         continue;
                     }
                     if (s[i] == '6')
@@ -778,12 +816,12 @@ public class RTUtil
                     }
                     if (s[i] == '7')
                     {
-                        AppendColor(sb, 230, 230, 230, 255);
+                        AppendColor(sb, 120, 120, 120, 255);
                         continue;
                     }
                     if (s[i] == '8')
                     {
-                        AppendColor(sb, 255, 148, 69, 255);
+                        AppendColor(sb, 40, 40, 40, 255);
                         continue;
                     }
                     if (s[i] == '9')
@@ -1691,6 +1729,104 @@ public class RTUtil
 
     // detect headless mode (which has graphicsDeviceType Null)
     //From https://noobtuts.com/unity/detect-headless-mode
+   
+    public static string RemoveColorAndFontTagsEverything(string input) //Not SANSI `2 codes, but normal TMPro codes
+    {
+        // Match any color or font tag, including their attributes
+        Regex regex = new Regex("<.*?>"); //while this works, it also removes ANYTHING between <> which may not be what you need
+        // Replace matches with an empty string
+        return regex.Replace(input, "");
+    }
+
+
+    //credit for the below code goes to  Jayden Chapman ( https://gitlab.com/-/snippets/2031682 ) and Psycho8Vegemite ( https://forum.unity.com/threads/removing-rich-text-tags-from-a-string.530360/#post-6439283 )
+    public static string RemoveColorAndFontTags(string input)
+    {
+
+        input = RemoveRichTextDynamicTag(input, "color");
+
+        input = RemoveRichTextTag(input, "b");
+        input = RemoveRichTextTag(input, "i");
+        input = RemoveRichTextTag(input, "u");
+
+        // TMP
+        input = RemoveRichTextDynamicTag(input, "align");
+        input = RemoveRichTextDynamicTag(input, "size");
+    
+        /*
+        input = RemoveRichTextDynamicTag(input, "cspace");
+        input = RemoveRichTextDynamicTag(input, "font");
+        input = RemoveRichTextDynamicTag(input, "indent");
+        input = RemoveRichTextDynamicTag(input, "line-height");
+        input = RemoveRichTextDynamicTag(input, "line-indent");
+        input = RemoveRichTextDynamicTag(input, "link");
+        input = RemoveRichTextDynamicTag(input, "margin");
+        input = RemoveRichTextDynamicTag(input, "margin-left");
+        input = RemoveRichTextDynamicTag(input, "margin-right");
+        input = RemoveRichTextDynamicTag(input, "mark");
+        input = RemoveRichTextDynamicTag(input, "mspace");
+        input = RemoveRichTextDynamicTag(input, "noparse");
+        input = RemoveRichTextDynamicTag(input, "nobr");
+        input = RemoveRichTextDynamicTag(input, "page");
+        input = RemoveRichTextDynamicTag(input, "pos");
+        input = RemoveRichTextDynamicTag(input, "space");
+        input = RemoveRichTextDynamicTag(input, "sprite index");
+        input = RemoveRichTextDynamicTag(input, "sprite name");
+        input = RemoveRichTextDynamicTag(input, "sprite");
+        input = RemoveRichTextDynamicTag(input, "style");
+        input = RemoveRichTextDynamicTag(input, "voffset");
+        input = RemoveRichTextDynamicTag(input, "width");
+
+   ;
+        input = RemoveRichTextTag(input, "s");
+        input = RemoveRichTextTag(input, "sup");
+        input = RemoveRichTextTag(input, "sub");
+        input = RemoveRichTextTag(input, "allcaps");
+        input = RemoveRichTextTag(input, "smallcaps");
+        input = RemoveRichTextTag(input, "uppercase");
+        */
+        // TMP end
+
+
+        return input;
+
+    }
+
+
+
+    private static string RemoveRichTextDynamicTag(string input, string tag)
+    {
+        int index = -1;
+        while (true)
+        {
+            index = input.IndexOf($"<{tag}=");
+            //Debug.Log($"{{{index}}} - <noparse>{input}");
+            if (index != -1)
+            {
+                int endIndex = input.Substring(index, input.Length - index).IndexOf('>');
+                if (endIndex > 0)
+                    input = input.Remove(index, endIndex + 1);
+                continue;
+            }
+            input = RemoveRichTextTag(input, tag, false);
+            return input;
+        }
+    }
+    private static string RemoveRichTextTag(string input, string tag, bool isStart = true)
+    {
+        while (true)
+        {
+            int index = input.IndexOf(isStart ? $"<{tag}>" : $"</{tag}>");
+            if (index != -1)
+            {
+                input = input.Remove(index, 2 + tag.Length + (!isStart).GetHashCode());
+                continue;
+            }
+            if (isStart)
+                input = RemoveRichTextTag(input, tag, false);
+            return input;
+        }
+    }
 
     static public bool IsHeadless()
     {

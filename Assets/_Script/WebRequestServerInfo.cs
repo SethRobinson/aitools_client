@@ -155,6 +155,11 @@ public class WebRequestServerInfo : MonoBehaviour
         StartCoroutine(GetModelsRequest(g.localGPUID, g.remoteURL));
     }
 
+    public void StartPopulateControlNetModels(GPUInfo g)
+    {
+        StartCoroutine(GetControlNetModelsRequest(g.localGPUID, g.remoteURL));
+    }
+
     public void StartPopulateSamplersRequest(GPUInfo g)
     {
         StartCoroutine(GetSamplersRequest(g.localGPUID, g.remoteURL));
@@ -329,6 +334,72 @@ public class WebRequestServerInfo : MonoBehaviour
         }
     }
 
+
+
+    IEnumerator GetControlNetModelsRequest(int gpuID, String server)
+    {
+
+        WWWForm form = new WWWForm();
+        var finalURL = server + "/controlnet/model_list";
+        string serverClickableURL = "<link=\"" + server + "\"><u>" + server + "</u></link>";
+        Debug.Log("Trying to get a list of models from the ControlNet extension if it exists: " + serverClickableURL + "...");
+    again:
+        //Create the request using a static method instead of a constructor
+
+        using (var postRequest = UnityWebRequest.Get(finalURL))
+        {
+            //Start the request with a method instead of the object itself
+            yield return postRequest.SendWebRequest();
+
+            if (postRequest.result != UnityWebRequest.Result.Success)
+            {
+                m_timesTried++;
+                if (m_timesTried < m_timesToTry)
+                {
+
+                    //well, let's try again before we say we failed.
+                    Debug.Log("Getting list of controlnet models from server " + serverClickableURL + "... (try " + m_timesTried + ")");
+                    goto again;
+                }
+
+                Debug.Log("Didn't get list of controlnet models from server " + serverClickableURL + ". (" + postRequest.error + ") That extension is probably not installed, no biggie.");
+                //GameLogic.Get().ShowConsole(true);
+            }
+            else
+            {
+                if (!Config.Get().IsValidGPU(gpuID))
+                {
+                    Debug.LogError("Bad GPU of " + gpuID);
+                }
+                else
+                {
+                    var g = Config.Get().GetGPUInfo(gpuID);
+
+                    var dict = Json.Deserialize(postRequest.downloadHandler.text) as Dictionary<string, object>;
+                    List<object> modelList = dict["model_list"] as List<object>;
+                 
+                    GameLogic.Get().ClearControlNetModelDropdown();
+
+                    for (int i = 0; i < modelList.Count; i++)
+                    {
+                       
+                        Debug.Log(modelList[i]);
+                        string model = modelList[i].ToString();
+
+                       GameLogic.Get().AddControlNetModelDropdown(model);
+
+                       
+                    }
+
+                    GameLogic.Get().SetDefaultControLNetOptions();
+                }
+
+            }
+
+            //either way, we're done with us
+            GameObject.Destroy(gameObject);
+        }
+    }
 
     IEnumerator GetSamplersRequest(int gpuID, String server)
     {

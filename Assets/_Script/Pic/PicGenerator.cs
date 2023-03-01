@@ -29,6 +29,12 @@ public class PicGenerator : MonoBehaviour
         //they want to start generating, ok
 
 
+        if (GameLogic.Get().IsActiveModelPix2Pix() && GameLogic.Get().GetUseControlNet())
+        {
+            RTQuickMessageManager.Get().ShowMessage("ControlNet won't work with a pix2pix model loaded! Change model or disable ControlNet.");
+            m_bIsGenerating = false;
+            return;
+        }
 
         m_bIsGenerating = true;
         ImageGenerator.Get().OnStartingPicGenerator(gameObject);
@@ -74,6 +80,7 @@ public class PicGenerator : MonoBehaviour
 
     public void OnDestroy()
     {
+        ImageGenerator.Get().OnPicDestroyed(gameObject);
 
     }
     public void OnCallbackFinished(GameObject go)

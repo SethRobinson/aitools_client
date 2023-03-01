@@ -9,7 +9,7 @@ License:  BSD style attribution, see LICENSE.md
 
 # Download the latest [AI Tools Client (Windows, 36 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip)
 
-To use this, you'll need at least one Stable Diffusion WebUI server running somewhere. (same machine as the client is ok) This client supports either of the following servers:
+To use this, you'll need at least one Stable Diffusion WebUI server running somewhere (it can run on Windows or linux, the same machine as the client is ok) This client supports either of the following servers:
 
 ## [Seth's AI Tools Server](https://github.com/SethRobinson/aitools_server) (Same as below but with a few extra features, including background removal) ##
 
@@ -22,29 +22,43 @@ To use this, you'll need at least one Stable Diffusion WebUI server running some
 
 * It's not a web app, it's a native locally run Windows .exe
 * Live update integration (image and masking) with Photoshop or other image editors
-* text to image, inpainting, image interrogation, face fixing, upscaling, tiled texture generation with preview, alpha mask subject isolation (background removal)
+* text to image, img2img, image interrogation, face fixing, upscaling, tiled texture generation with preview, automasking of subject, background removal
 * Drag and drop images in as well as paste images from the windows clipboard
+* Built-in image processing like cropping and resizing
 * Pan/zoom with thousands of images on the screen
 * Mask painting with controllable brush size
+* Option to automatically save all generations, with accompanying .txt file that includes all settings
+* Supports pix2pix and ControlNet (server requires [Mikubill's sd-webui-controlnet extension](https://github.com/Mikubill/sd-webui-controlnet) and its models to be installed, otherwise the option is grayed out
 * Can utilize multiple servers (three video cards on one machine? Run three servers!) allowing seamless use of all GPUs for ultra fast generation and a single click to change the active model
 * Neat workflow that allows evolving images with loopback while live-selecting the best alternatives to shape the image in real-time
 * Open source, uses the Unity game engine and C# to do stuff with AI art
 * Privacy respected - does not phone home or collect any statistics, purely local usage. (it does check a single file on github.com to check for newer versions, but that's it)
 * Includes "experiments", little built-in games and apps designed to test using AI/SD for specific things: CrazyCam is a realtime webcam filter with 30+ presets, Shooting Gallery tests realtime craetion of sprites during a game, etc
 
-## Current version: **V0.60** (released Feb 9th 2023) Recent changes: ##
 
-*  Added support for Instruct pix2pix style transfer stuff that the latest servers support, the "Image CFG Scale Pix2Pix" slider becomes active if a pix2pix model is detected (detected by finding pix2pix in the filename of the model)  Won't allow normal renders in this mode as they aren't support in auto1111/etc.
-* Max CFG Scale now 30, instead of 20 (actually need it this high for some pix2pix stuff)
-* FEAT: Added auto new version notification. On startup, it downloads "latest_version_checker.json" directly from github to see if a new version has been released and offers to open the URL to download it (suggested by cooperdk, although I only notify, actually updating is up to the user)
-* FEAT: Added "Camera follow" mode, when rendering, the camera will move vertically automatically when a new line is reached, allowing a kind of screensaver mode, for example, zoom out and set 10 images per row for a type writer effect, or zoom way in and set 1 image per 1 row for a single image on screen at once, updating each render.  (note: you can position camera to second to last image so you only see finished images, it's flexible like that)
-* Can hide/show the main gui tool panel, useful for screenshots or the Camera Follow feature
-* FEAT: Added "Autosave everything" toggle, will write a copy of every image generated to the "autosave" sub directory.  Uses bmp and keeps masks information. (for example, if remove background is used, there will be a mask of the subject that shows up in the alpha channel in photoshop) (suggested by C.Jenkins)
-* CrazyCamera now supports three mask modes instead of two: "process everything", "process foreground",  "process backrgound"
-* CrazyCamera has new presets for pix2pix models, try "(pix2pix) Snowy", it's different from how normal SD filters work because it doesn't change the existing picture much and can change specific things, like "change hair to bananas" kind of works
-* Crazycamera gives (easily missed) warnings when the current SD model is the wrong kind (most need inpainting or pix2pix models to look right)
+## Current version: **V0.70** (released March 1st 2023) Recent changes: ##
 
-NOTE:  For pix2pix stuff, you need to add the [7 gb model](https://huggingface.co/timbrooks/instruct-pix2pix/resolve/main/instruct-pix2pix-00-22000.safetensors) to your models/Stable-diffusion folder. Apparently you can use the server web interface to merge models or stuff but I haven't played with that yet.
+**What's new in V0.70**:
+* Can zoom in farther
+* BUGFIX: Negative prompt is no longer ignored until the default text is edited
+* BUGFIX: Fixed misc glitches with masks and issues when images change size
+* BUGFIX: Live external edits with alpha channels no longer also cause those parts of the image to disappear visually, that wasn't supposed to happen, it's supposed to just move it to the active mask
+* BUGFIX: Fixed huge texture memory leaks, oops
+* NEW: New navmenu system for image options, easier to add more stuff now. It's a custom thing I wrote so of course it's a bit jank
+* NEW: Added experimental ControlNet support (requires https://github.com/Mikubill/sd-webui-controlnet extension + its models!  note that if its API changes, this will break it, but it shouldn't cause the rest of the program to break)
+* NEW:  Added resize and crop to rect on images, including with aspect correction
+* NEW: New "?" button for image info, will show lots of data (sizes, settings like prompt, seed, etc).  Text can be copied.
+* "Inpaint" renamed img2img in a few places, I figured it's a better generic term for when an image is modified in a process. This area will allow show the support images created with ControlNet, allowing you to save them out manually
+* Added a "restart the last img2img batch mode" button to the main img2img panel, useful for my workflow because I don't want to scroll up to find the "!" button on the last image I was using
+* Moved some things around in the RT directory to organize things a bit better
+* Tooltips now wait 0.5 seconds before displaying
+* When saving images, a <filename>.txt file is now also created which contains prompt/seed/etc info about the render
+* If you hold down Shift while clicking "Clear pics" it will delete ALL of them, including locked
+* Mask operations like move/adjust/add/subject selection are much faster
+
+NOTE:  For pix2pix stuff, you need to add the [7 gb model](https://huggingface.co/timbrooks/instruct-pix2pix/resolve/main/instruct-pix2pix-00-22000.safetensors) to your models/Stable-diffusion folder
+
+For ControlNet options, you need to install [Mikubill's sd-webui-controlnet extension](https://github.com/Mikubill/sd-webui-controlnet) and at least one of [its models](https://huggingface.co/lllyasviel/ControlNet/tree/main/models).  You should make sure it's working from the webUI interface on the server first.  Not required, but it's pretty badass, so set it up!  It will default to the "Depth" options if the model exists as I find it the most useful.
 
 You only need to download [the zip](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) and run the .exe to use this, However, the source might be useful to generate a build for other platforms, fork or steal pieces to use for yourself.  Go ahead!
 

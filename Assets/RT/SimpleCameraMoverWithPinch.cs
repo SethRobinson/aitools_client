@@ -24,7 +24,7 @@ public class SimpleCameraMoverWithPinch : MonoBehaviour
 
     Camera m_curCam;
     float m_minPerspectiveZoom = -80;
-    float m_maxPerspectiveZoom = 6;
+    float m_maxPerspectiveZoom = 2;
 
     public bool m_bReversePanDirection = true;
 
