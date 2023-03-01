@@ -28,7 +28,7 @@ To use this, you'll need at least one Stable Diffusion WebUI server running some
 * Pan/zoom with thousands of images on the screen
 * Mask painting with controllable brush size
 * Option to automatically save all generations, with accompanying .txt file that includes all settings
-* Supports pix2pix and ControlNet (server requires [Mikubill's sd-webui-controlnet extension](https://github.com/Mikubill/sd-webui-controlnet) and its models to be installed, otherwise the option is grayed out
+* Supports pix2pix and ControlNet (For ControlNet, the server requires [Mikubill's sd-webui-controlnet extension](https://github.com/Mikubill/sd-webui-controlnet) and its models to be installed, otherwise the option is grayed out
 * Can utilize multiple servers (three video cards on one machine? Run three servers!) allowing seamless use of all GPUs for ultra fast generation and a single click to change the active model
 * Neat workflow that allows evolving images with loopback while live-selecting the best alternatives to shape the image in real-time
 * Open source, uses the Unity game engine and C# to do stuff with AI art
@@ -45,9 +45,9 @@ To use this, you'll need at least one Stable Diffusion WebUI server running some
 * BUGFIX: Live external edits with alpha channels no longer also cause those parts of the image to disappear visually, that wasn't supposed to happen, it's supposed to just move it to the active mask
 * BUGFIX: Fixed huge texture memory leaks, oops
 * NEW: New navmenu system for image options, easier to add more stuff now. It's a custom thing I wrote so of course it's a bit jank
-* NEW: Added experimental ControlNet support (requires https://github.com/Mikubill/sd-webui-controlnet extension + its models!  note that if its API changes, this will break it, but it shouldn't cause the rest of the program to break)
+* NEW: Added experimental ControlNet support (requires that your server has the https://github.com/Mikubill/sd-webui-controlnet extension + its models installed!  note that if its API changes, this will break it, but it shouldn't cause the rest of the program to break)
 * NEW:  Added resize and crop to rect on images, including with aspect correction
-* NEW: New "?" button for image info, will show lots of data (sizes, settings like prompt, seed, etc).  Text can be copied.
+* NEW: New "Info panel" feature, opens when you click the "?" button. Will show lots of data (sizes, settings like prompt, seed, etc).  Text can be copied. This area will also show the ControlNet image that was generated if applicable.
 * "Inpaint" renamed img2img in a few places, I figured it's a better generic term for when an image is modified in a process. This area will allow show the support images created with ControlNet, allowing you to save them out manually
 * Added a "restart the last img2img batch mode" button to the main img2img panel, useful for my workflow because I don't want to scroll up to find the "!" button on the last image I was using
 * Moved some things around in the RT directory to organize things a bit better
