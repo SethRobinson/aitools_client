@@ -21,6 +21,7 @@ public class UndoEvent
     public string m_lastOperation = "None";
     public float m_lastDenoisingStrength = 0;
     public float m_lastCFGScale = 0;
+    public int m_gpu = 0;
     public string m_maskContents = "";
     public float m_maskBlending = 0;
     public bool m_fixFaces = false;
@@ -124,7 +125,7 @@ public class PicMain : MonoBehaviour
         string c1 = "`4";
 
         string msg = 
-$@"`8{c1}Last Operation:`` {c.m_lastOperation}
+$@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
 {c1}Image size X:`` {(int)m_pic.sprite.texture.width}{c1}, Y: ``{(int)m_pic.sprite.texture.height} 
 {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().width}{c1}, Y: ``{(int)m_targetRectScript.GetOffsetRect().height}
 {c1}Model:`` {c.m_lastModel}
@@ -139,7 +140,7 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation}
         {
             msg += $@"{c1}Denoising Strength:`` " + GetCurrentStats().m_lastDenoisingStrength + "\n";
             msg += $@"{c1}Mask Contents:`` " + GetCurrentStats().m_maskContents + " ";
-            msg += $@"{c1}Mask Blending:`` " + GetCurrentStats().m_maskBlending + "\n";
+            msg += $@"{c1}Mask Blending:`` " + GetCurrentStats().m_maskBlending.ToString("0.0#") + "\n";
 
             if (GetCurrentStats().m_bUsingPix2Pix)
             {
@@ -607,7 +608,7 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation}
         Debug.Log("invert mask");
         m_mask.sprite.texture.Invert();
         m_mask.sprite.texture.Apply();
-        SetMask(m_mask.sprite.texture, false);
+        //SetMask(m_mask.sprite.texture, false);
     }
 
     public void SetMask(Texture2D newImage, bool bDoFullCopy)

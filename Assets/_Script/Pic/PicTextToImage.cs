@@ -283,12 +283,12 @@ public class PicTextToImage : MonoBehaviour
                     m_picScript.GetCurrentStats().m_lastSampler = samplerName;
                     m_picScript.GetCurrentStats().m_tiling = bTiled;
                     m_picScript.GetCurrentStats().m_fixFaces = bFixFace;
-                    
                     m_picScript.GetCurrentStats().m_lastSeed = m_seed;
                     m_picScript.GetCurrentStats().m_lastModel = model;
                     m_picScript.GetCurrentStats().m_bUsingControlNet = false;
                     m_picScript.GetCurrentStats().m_bUsingPix2Pix = false;
                     m_picScript.GetCurrentStats().m_lastOperation = "Generate";
+                    m_picScript.GetCurrentStats().m_gpu = m_gpu;
 
                     m_picScript.SetNeedsToUpdateInfoPanelFlag();
 

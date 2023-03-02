@@ -1401,8 +1401,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: edd328fb144e819498d395172c8823a0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _text: Batch inpaint mode! Unlimited images will be generated using this one (and
-    its mask,etc) as the source
+  _text: 'Batch inpaint mode! Unlimited images will be generated using this one (and
+    its mask,etc) as the source (Hotky: !)'
 --- !u!1 &1073416371062731161
 GameObject:
   m_ObjectHideFlags: 0
@@ -3963,8 +3963,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: edd328fb144e819498d395172c8823a0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _text: Runs inpaint (aka img2img) on this pic.  Use the ! button to do batch mode,
-    much more exciting
+  _text: 'Runs inpaint (aka img2img) on this pic.  Use the ! button to do batch mode,
+    much more exciting. (Hotkey: I)'
 --- !u!1 &4585877088190574024
 GameObject:
   m_ObjectHideFlags: 0

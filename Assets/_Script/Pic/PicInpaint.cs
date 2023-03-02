@@ -442,14 +442,14 @@ public class PicInpaint : MonoBehaviour
                     m_picScript.GetCurrentStats().m_bUsingControlNet = m_bControlNetWasUsed;
                     m_picScript.GetCurrentStats().m_bUsingPix2Pix = bUsingPixToPix;
                     m_picScript.GetCurrentStats().m_lastOperation = "img2img";
-
+                    m_picScript.GetCurrentStats().m_gpu = m_gpu;
                     m_picScript.GetCurrentStats().m_lastControlNetModel = lastControlNetModel;
                     m_picScript.GetCurrentStats().m_pix2pixCFG = pix2pixCFG;
                     m_picScript.GetCurrentStats().m_lastControlNetModelPreprocessor = lastControlNetPreprocessor;
                     m_picScript.GetCurrentStats().m_lastControlNetWeight = lastControlNetWeight;
                     m_picScript.GetCurrentStats().m_lastControlNetGuidance = lastControlNetGuidance;
                     m_picScript.GetCurrentStats().m_maskContents = maskContents;
-
+                    m_picScript.GetCurrentStats().m_maskBlending = maskBlur;
                     m_picScript.GetCurrentStats().m_lastDenoisingStrength = denoising_strength;
                     m_picScript.SetNeedsToUpdateInfoPanelFlag();
                   

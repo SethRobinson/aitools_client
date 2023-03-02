@@ -30,7 +30,7 @@ public class Config : MonoBehaviour
     bool m_safetyFilter = false;
     float m_requiredServerVersion = 0.44f;
 
-    float m_version = 0.7f;
+    float m_version = 0.72f;
     string m_imageEditorPathAndExe = "none set";
     public string GetVersionString() { return m_version.ToString("0.00"); }
     public float GetVersion() { return m_version; }
@@ -59,6 +59,9 @@ public class Config : MonoBehaviour
 
     public void ConnectToServers()
     {
+
+        GameLogic.Get().SetHasControlNetSupport(false);
+
         if (GetGPUCount() > 0)
         {
             return;
@@ -218,6 +221,9 @@ public class Config : MonoBehaviour
 
             var webScriptTemp = CreateWebRequestObject();
             webScriptTemp.StartPopulateModelsRequest(g);
+
+            GameLogic.Get().SetHasControlNetSupport(false);
+            GameLogic.Get().ClearControlNetModelDropdown();
 
             var webScriptControlnet = CreateWebRequestObject();
             webScriptControlnet.StartPopulateControlNetModels(g);

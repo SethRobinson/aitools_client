@@ -91,6 +91,17 @@ public class RTConsole : MonoBehaviour
        
     }
 
+    public void CopyToClipboard()
+    {
+        //put all the lines of text into a string, then copy that to the system clipboard
+        string s = "";
+        foreach (string sLine in _lines)
+        {
+            s += sLine + "\n";
+        }
+        GUIUtility.systemCopyBuffer = s;
+    }
+
     public void SetMaxLines(int count)
     {
         if (_maxConsoleLines == count) return;

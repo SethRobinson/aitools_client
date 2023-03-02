@@ -25,6 +25,7 @@ public class GameLogic : MonoBehaviour
     bool m_bRandomizePrompt = false;
     bool m_bAutoSave = false;
     bool m_bCameraFollow = false;
+    bool m_bControlNetSupportExists = false;
 
     bool m_bUseControlNet = false;
     
@@ -191,10 +192,13 @@ public class GameLogic : MonoBehaviour
         m_modelDropdown.options = dropList;
     }
 
+    public void SetHasControlNetSupport(bool bHasControlNetSupport)
+    {
+        m_bControlNetSupportExists = bHasControlNetSupport;
+        m_useControlNetToggle.interactable = bHasControlNetSupport;
+    }
     public void ClearControlNetModelDropdown()
     {
-        m_useControlNetToggle.interactable = true; //well, if we got this far it means controlnet is available
-
         m_controlNetModelArray.Clear();
     }
 
@@ -362,6 +366,7 @@ public class GameLogic : MonoBehaviour
 
     public string GetCurrentControlNetModelString()
     {
+        if (m_controlNetModelArray.Count == 0) return "";
         return m_controlNetModelArray[m_controlNetModelCurIndex];   
     }
 
@@ -517,15 +522,17 @@ public class GameLogic : MonoBehaviour
 
     }
 
+    public bool HasControlNetSupport()
+    {
+        return m_bControlNetSupportExists;
+    }
+        
     public void OnUseControlNet(bool bNew)
     {
         m_bUseControlNet = bNew;
         m_useControlNetToggle.isOn = bNew;
 
-        if (bNew)
-        {
-            ShowCompatibilityWarningIfNeeded();
-        }
+        
     }
 
     public bool GetUseControlNet()
@@ -964,21 +971,19 @@ public class GameLogic : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.U)
             ||
             Input.GetKeyDown(KeyCode.M)
-            || 
-            (
-             (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
-             &&   
+            ||
+            Input.GetKeyDown(KeyCode.Alpha1)
+            ||
                 Input.GetKeyDown(KeyCode.I)
-            ))
+            )
         {
-
             if (GUIIsBeingUsed()) return;
 
                 GameObject go = GetPicWereHoveringOver();
 
             if (go)
             {
-                PicTextToImage TTIscript = go.GetComponent<PicTextToImage>();
+                //PicTextToImage TTIscript = go.GetComponent<PicTextToImage>();
                 PicMain picScript = go.GetComponent<PicMain>();
                 PicMask picMaskScript = go.GetComponent<PicMask>();
 
@@ -991,16 +996,24 @@ public class GameLogic : MonoBehaviour
                 {
                     picMaskScript.OnToggleMaskViewButton();
                 }
-
-                if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
+                if (Input.GetKeyDown(KeyCode.I))
                 {
-                    //Ctrl-?
-                    if (Input.GetKeyDown(KeyCode.I))
+                    if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
                     {
                         picScript.InvertMask();
                     }
-
+                    else
+                    {
+                        picScript.OnInpaintButton();
+                    }
                 }
+             
+
+                if (Input.GetKey(KeyCode.Alpha1) &&  (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)))
+                {
+                    picScript.m_picGeneratorScript.OnInpaintGeneratorButton();
+                }
+               
 
             }
         }

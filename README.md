@@ -36,7 +36,7 @@ To use this, you'll need at least one Stable Diffusion WebUI server running some
 * Includes "experiments", little built-in games and apps designed to test using AI/SD for specific things: CrazyCam is a realtime webcam filter with 30+ presets, Shooting Gallery tests realtime craetion of sprites during a game, etc
 
 
-## Current version: **V0.70** (released March 1st 2023) Recent changes: ##
+## Current version: **V0.72** (released March 2nd 2023) Recent changes: ##
 
 **What's new in V0.70**:
 * Can zoom in farther
@@ -55,10 +55,21 @@ To use this, you'll need at least one Stable Diffusion WebUI server running some
 * When saving images, a <filename>.txt file is now also created which contains prompt/seed/etc info about the render
 * If you hold down Shift while clicking "Clear pics" it will delete ALL of them, including locked
 * Mask operations like move/adjust/add/subject selection are much faster
+* (V0.71) BUGFIX: Ctrl-I now inverts mask again, was broken
+
+**What's new in V0.72**:
+* BUGFIX: No longer incorrectly gives a compatibility warning when selecting ControlNet if vanilla auto1111 is used (it works fine)
+* BUGFIX: Mask blending no longer always shows 0 in the pic's info panel
+* Apparently the ControlNet extension's API can incorrectly return no models, it's a hack, but if that is detected it will manually add them, in case that's a valid work around (filliptm)
+* ControlNet dropdown boxes look a bit better
+* Max pen size is now 300 instead of 200
+* Added hotkeys for img2img and img2img batch, I and ! respectively.  Must be hovering over a pic for it to work
+* Info panel now also shows the serverID used to generate the image, useful if one of them is acting up and making weird images
+* Added "Copy to clipboard" option to the log window
 
 NOTE:  For pix2pix stuff, you need to add the [7 gb model](https://huggingface.co/timbrooks/instruct-pix2pix/resolve/main/instruct-pix2pix-00-22000.safetensors) to your models/Stable-diffusion folder
 
-For ControlNet options, you need to install [Mikubill's sd-webui-controlnet extension](https://github.com/Mikubill/sd-webui-controlnet) and at least one of [its models](https://huggingface.co/lllyasviel/ControlNet/tree/main/models).  You should make sure it's working from the webUI interface on the server first.  You must run with the parm "--xformers", without it, the extension will crash when the API asks for option data and AI Tools can't connect at all.
+For ControlNet options, you need to install [Mikubill's sd-webui-controlnet extension](https://github.com/Mikubill/sd-webui-controlnet) and at least one of [its models](https://huggingface.co/lllyasviel/ControlNet/tree/main/models).  You should make sure it's working from the webUI interface on the server first.  You must run the server with the parm "--xformers", this is required by the extension.  Also, if you see "Protocol errors" anywhere, remove the Dreambooth extension, lately it's been causing API issues.  (as of March 2nd/2023 at least)
 
 You only need to download [the zip](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) and run the .exe to use this, However, the source might be useful to generate a build for other platforms, fork or steal pieces to use for yourself.  Go ahead!
 

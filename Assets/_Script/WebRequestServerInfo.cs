@@ -379,6 +379,7 @@ public class WebRequestServerInfo : MonoBehaviour
                     List<object> modelList = dict["model_list"] as List<object>;
                  
                     GameLogic.Get().ClearControlNetModelDropdown();
+                    GameLogic.Get().SetHasControlNetSupport(true);
 
                     for (int i = 0; i < modelList.Count; i++)
                     {
@@ -388,12 +389,24 @@ public class WebRequestServerInfo : MonoBehaviour
 
                        GameLogic.Get().AddControlNetModelDropdown(model);
 
-                       
                     }
 
+                    if (modelList.Count == 0)
+                    {
+                        Debug.LogWarning("CONTROL NET ERROR?  Something is wrong, the server returned an empty list of models.\nTo try to work around this, the default models have been added.  It's a hack and might not work.\nOnly choose models you have installed.");
+                        GameLogic.Get().ShowConsole(true);
+
+                        GameLogic.Get().AddControlNetModelDropdown("control_sd15_canny [fef5e48e]");
+                        GameLogic.Get().AddControlNetModelDropdown("control_sd15_depth [fef5e48e]");
+                        GameLogic.Get().AddControlNetModelDropdown("control_sd15_hed [fef5e48e]");
+                        GameLogic.Get().AddControlNetModelDropdown("control_sd15_mlsd [fef5e48e]");
+                        GameLogic.Get().AddControlNetModelDropdown("control_sd15_normal [fef5e48e]");
+                        GameLogic.Get().AddControlNetModelDropdown("control_sd15_openpose [fef5e48e]");
+                        GameLogic.Get().AddControlNetModelDropdown("control_sd15_scribble [fef5e48e]");
+                        GameLogic.Get().AddControlNetModelDropdown("control_sd15_seg [fef5e48e]");
+                    }
                     GameLogic.Get().SetDefaultControLNetOptions();
                 }
-
             }
 
             //either way, we're done with us
