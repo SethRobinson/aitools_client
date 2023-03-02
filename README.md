@@ -58,7 +58,7 @@ To use this, you'll need at least one Stable Diffusion WebUI server running some
 
 NOTE:  For pix2pix stuff, you need to add the [7 gb model](https://huggingface.co/timbrooks/instruct-pix2pix/resolve/main/instruct-pix2pix-00-22000.safetensors) to your models/Stable-diffusion folder
 
-For ControlNet options, you need to install [Mikubill's sd-webui-controlnet extension](https://github.com/Mikubill/sd-webui-controlnet) and at least one of [its models](https://huggingface.co/lllyasviel/ControlNet/tree/main/models).  You should make sure it's working from the webUI interface on the server first.  Not required, but it's pretty badass, so set it up!  It will default to the "Depth" options if the model exists as I find it the most useful.
+For ControlNet options, you need to install [Mikubill's sd-webui-controlnet extension](https://github.com/Mikubill/sd-webui-controlnet) and at least one of [its models](https://huggingface.co/lllyasviel/ControlNet/tree/main/models).  You should make sure it's working from the webUI interface on the server first.  You must run with the parm "--xformers", without it, the extension will crash when the API asks for option data and AI Tools can't connect at all.
 
 You only need to download [the zip](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) and run the .exe to use this, However, the source might be useful to generate a build for other platforms, fork or steal pieces to use for yourself.  Go ahead!
 
