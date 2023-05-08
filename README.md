@@ -36,36 +36,22 @@ To use this, you'll need at least one Stable Diffusion WebUI server running some
 * Includes "experiments", little built-in games and apps designed to test using AI/SD for specific things: CrazyCam is a realtime webcam filter with 30+ presets, Shooting Gallery tests realtime craetion of sprites during a game, etc
 
 
-## Current version: **V0.72** (released March 2nd 2023) Recent changes: ##
+## Current version: **V0.73** (released May 8th 2023) Recent changes: ##
 
-**What's new in V0.70**:
-* Can zoom in farther
-* BUGFIX: Negative prompt is no longer ignored until the default text is edited
-* BUGFIX: Fixed misc glitches with masks and issues when images change size
-* BUGFIX: Live external edits with alpha channels no longer also cause those parts of the image to disappear visually, that wasn't supposed to happen, it's supposed to just move it to the active mask
-* BUGFIX: Fixed huge texture memory leaks, oops
-* NEW: New navmenu system for image options, easier to add more stuff now. It's a custom thing I wrote so of course it's a bit jank
-* NEW: Added experimental ControlNet support (requires that your server has the https://github.com/Mikubill/sd-webui-controlnet extension + its models installed!  note that if its API changes, this will break it, but it shouldn't cause the rest of the program to break)
-* NEW:  Added resize and crop to rect on images, including with aspect correction
-* NEW: New "Info panel" feature, opens when you click the "?" button. Will show lots of data (sizes, settings like prompt, seed, etc).  Text can be copied. This area will also show the ControlNet image that was generated if applicable.
-* "Inpaint" renamed img2img in a few places, I figured it's a better generic term for when an image is modified in a process. This area will allow show the support images created with ControlNet, allowing you to save them out manually
-* Added a "restart the last img2img batch mode" button to the main img2img panel, useful for my workflow because I don't want to scroll up to find the "!" button on the last image I was using
-* Moved some things around in the RT directory to organize things a bit better
-* Tooltips now wait 0.5 seconds before displaying
-* When saving images, a <filename>.txt file is now also created which contains prompt/seed/etc info about the render
-* If you hold down Shift while clicking "Clear pics" it will delete ALL of them, including locked
-* Mask operations like move/adjust/add/subject selection are much faster
-* (V0.71) BUGFIX: Ctrl-I now inverts mask again, was broken
-
-**What's new in V0.72**:
-* BUGFIX: No longer incorrectly gives a compatibility warning when selecting ControlNet if vanilla auto1111 is used (it works fine)
-* BUGFIX: Mask blending no longer always shows 0 in the pic's info panel
-* Apparently the ControlNet extension's API can incorrectly return no models, it's a hack, but if that is detected it will manually add them, in case that's a valid work around (filliptm)
-* ControlNet dropdown boxes look a bit better
-* Max pen size is now 300 instead of 200
-* Added hotkeys for img2img and img2img batch, I and ! respectively.  Must be hovering over a pic for it to work
-* Info panel now also shows the serverID used to generate the image, useful if one of them is acting up and making weird images
-* Added "Copy to clipboard" option to the log window
+**What's new in V0.73**:
+* NEW: Added Hires. Fix (2x) checkbox, applies to generated images.  For now, it's using all the same defaults that the webUI does.  I don't see a way to change the Upscaler for the hires fix via API, but the results look good to me with whatever it's using (Martin80)
+NOTE: the v1.5-inpainting.ckpt model gives errors, try v1-5pruned.ckpt or other models if you get errors
+* NEW: CrazyCam can now use ControlNet with it, basically, think of it as allowing you to create totally new pictures, but controlling the pose of the character with whatever you're doing on the webcam. I only setup a few presets, but keep in mind you can enable ControlNet (try setting to latent noise at 1.0 and maybe set to process the entire pic instead of just foreground/background) for any setting you want
+* NEW: CrazyCam has a "update every this many seconds" option (jonwong666)
+* NEW:  CrazyCam has a "hide GUI" button (jonwong666)
+* NEW: CrazyCam has a pause button (jonwong666)
+* NEW: CrazyCam has a "auto save all generated images" checkbox (jonwong666)
+* Tooltips display longer, now depends on message length
+* Crazy Cam - Seed is no longer forced to be non-zero, I've been informed some users don't want frame-to-frame coherency. It's set to 0 when a preset is initially used, but will no longer change it back if you simply exit/return to the CrazyCam screen (jonwong666)
+* ControlNet code updated to use latest API instead of deprecated API
+* BUGFIX: Tooltip doesn't show up at the wrong times
+* Mask rectangles now resize to the full image size (or will be slightly smaller to maintain a 64 pixel multiple, required by im2img operations)
+* BUGIFIX:  Upscale command now works on newer auto1111 servers again, I guess they removed SwinIR from the default install
 
 NOTE:  For pix2pix stuff, you need to add the [7 gb model](https://huggingface.co/timbrooks/instruct-pix2pix/resolve/main/instruct-pix2pix-00-22000.safetensors) to your models/Stable-diffusion folder
 
