@@ -208,26 +208,40 @@ public class PicInpaint : MonoBehaviour
 
         //using the new API which doesn't support alpha masking the subject
         finalURL = url + "/sdapi/v1/img2img";
-        string controlnet_image_image = "";
-        string controlnet_units = "";
+        string normal_input_images = ""; //not used if controlnet is used
+        string controlnet_json = "";
 
         if (GameLogic.Get().GetUseControlNet())
         {
-            finalURL = url + "/controlnet/img2img";
-            //controlnet_image_image = "\"controlnet_input_image\": [\""+imgBase64+"\"],"; //for controlnet requests
+          //  finalURL = url + "/controlnet/img2img";
             m_bControlNetWasUsed = true;
 
-            /*
-            controlnet_units = $@"""controlnet_units"": [
-{
-                "resize_mode"
-            */
-            
+            //if we weren't generating our own control net input image on the fly, we'd use this: ""input_image"":""{controlNetimgBase64}"",
+          controlnet_json = $@"""controlnet"": {{
+          ""args"": [
+            {{
+          ""module"": ""{GameLogic.Get().GetCurrentControlNetPreprocessorString()}"",
+          ""model"": ""{GameLogic.Get().GetCurrentControlNetModelString()}"",
+          ""weight"": {GameLogic.Get().GetControlNetWeight()},
+          ""guidance_start"": 0,
+          ""guidance_end"": {GameLogic.Get().GetControlNetGuidance()}
+            }}
+          ]
+        }}";
+         
         }
         else
         {
             m_bControlNetWasUsed = false;
         }
+
+        normal_input_images = $@"""init_images"":     
+            [
+                ""{imgBase64}""
+            ],
+            ""mask"": ""{maskBase64}"",
+            ";
+
 
         string maskedContentIndex = "1";
 
@@ -235,25 +249,6 @@ public class PicInpaint : MonoBehaviour
         if (maskedContent == "original") maskedContentIndex = "1";
         if (maskedContent == "latent noise") maskedContentIndex = "2";
         if (maskedContent == "latent nothing") maskedContentIndex = "3";
-
-
-        /*
-
-           ""init_images"":
-        [
-            ""{imgBase64}""
-        ], 
-
-                        ""sampler_name"": ""{GameLogic.Get().GetSamplerName()}"",
-        none
-
-
-
-  //""controlnet_mask"": [""{maskBase64}""],
-
-         */
-
-        // ""mask"": ""{maskBase64}"",
 
         int steps = GameLogic.Get().GetSteps();
         bool bUsingPixToPix = GameLogic.Get().IsActiveModelPix2Pix();
@@ -267,20 +262,15 @@ public class PicInpaint : MonoBehaviour
         float lastControlNetWeight = GameLogic.Get().GetControlNetWeight();
         float lastControlNetGuidance = GameLogic.Get().GetControlNetGuidance();
         string maskContents = GameLogic.Get().GetMaskContent();
+       
+        
         json =
          $@"{{
-            ""init_images"":     
-            [
-                ""{imgBase64}""
-            ],
-            {controlnet_image_image}
-            ""mask"": ""{maskBase64}"",
-            ""controlnet_module"": ""{GameLogic.Get().GetCurrentControlNetPreprocessorString()}"",
-            ""controlnet_model"": ""{GameLogic.Get().GetCurrentControlNetModelString()}"",
-            ""controlnet_weight"": {GameLogic.Get().GetControlNetWeight()},
-            ""controlnet_guidance"": {GameLogic.Get().GetControlNetGuidance()},
-            {controlnet_units}
+           {normal_input_images}
 
+            ""alwayson_scripts"": {{
+            {controlnet_json}
+            }},
 
             ""inpainting_mask_invert"": 0,
             ""inpaint_full_res_padding"": 0,
@@ -309,7 +299,7 @@ public class PicInpaint : MonoBehaviour
 
 
 #if !RT_RELEASE
-        //        File.WriteAllText("json_to_send.json", json);
+                File.WriteAllText("json_to_send.json", json);
 #endif
         using (var postRequest = UnityWebRequest.PostWwwForm(finalURL, "POST"))
         {

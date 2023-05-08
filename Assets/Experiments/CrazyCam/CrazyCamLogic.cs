@@ -2,11 +2,13 @@ using System.Collections.Generic;
 using TMPro;
 using UnityEngine.UI;
 using UnityEngine;
+using System.IO;
 
 //A test to see how fast we can generate images and display them
 
-class CrazyCamPreset
+public class CrazyCamPreset
 {
+
     public string _sampler = "Euler a";
     public int _steps = 20;
 
@@ -22,10 +24,18 @@ class CrazyCamPreset
     public float _pix2pixcfg = 1.5f;
     public string _modelRequirements = "";
 
+    //controlnet
+    public bool _useControlNet = false;
+    public string _controlNetPreprocessor = "depth";
+    public string _controlNetModel = "depth";
+    public float _controlNetWeight = 1.0f;
+    public float _controlNetGuidanceEnd = 1.0f;
+    public float _controlNetGuidanceStart = 0.0f; //ignored currently
 }
 
 public class CrazyCamLogic : MonoBehaviour
 {
+    public Button m_pauseButton;
     public MeshRenderer m_meshRenderer;
     public MeshRenderer m_processedRenderer;
 
@@ -33,14 +43,14 @@ public class CrazyCamLogic : MonoBehaviour
     public TMP_Dropdown m_camDropdown;
     public TMP_Dropdown m_presetDropdown;
     public Toggle m_noTranslucencyToggle;
-    public Toggle m_reverseMaskToggle;
+    public Toggle m_autoSaveImages;
     public TMP_Dropdown m_maskDropdown;
 
     //yeah, I should use an enum but casting everything to int sucks
     public const int eMaskEntireImage = 0;
     public const int eMaskForegroundOnly = 1;
     public const int eMaskBackgroundOnly = 2;
-
+    bool m_renderingIsPaused = false;
     public int m_maskMode = eMaskEntireImage;
 
     static CrazyCamLogic _this = null;
@@ -48,6 +58,7 @@ public class CrazyCamLogic : MonoBehaviour
 
     float m_timeBetweenPicsSeconds = 0.3f;
     float m_timer;
+    float m_delayBetweenSnaps = 0;
 
     private void Awake()
     {
@@ -56,8 +67,31 @@ public class CrazyCamLogic : MonoBehaviour
 
     public static CrazyCamLogic Get() { return _this; }
 
+    public void OnTogglePause()
+    {
+        m_renderingIsPaused = !m_renderingIsPaused;
 
-    public void AddPreset(string presetName, string prompt, string maskContents, float denoisingStrength, bool bFixFaces, bool bNoTranslucency, float maskBlending, int maskMode, float cfg,
+        UpdateCrazyCamPauseButtonStatus();
+
+    }
+
+    public void UpdateCrazyCamPauseButtonStatus()
+    {
+        TMPro.TextMeshProUGUI buttonText = m_pauseButton.GetComponentInChildren<TMPro.TextMeshProUGUI>();
+
+        if (!m_renderingIsPaused)
+        {
+            //RTUtil.SetButtonColor(m_pauseButton, new Color(1, 0, 0, 1));
+            buttonText.text = "Pause";
+         }
+        else
+        {
+            buttonText.text = "Unpause";
+           // RTUtil.SetButtonColor(m_pauseButton, new Color(0, 1, 0, 1));
+        }
+    }
+
+    public CrazyCamPreset AddPreset(string presetName, string prompt, string maskContents, float denoisingStrength, bool bFixFaces, bool bNoTranslucency, float maskBlending, int maskMode, float cfg,
         float pix2pixcfg, string suggestedModel)
     {
         CrazyCamPreset preset = new CrazyCamPreset();
@@ -81,7 +115,19 @@ public class CrazyCamLogic : MonoBehaviour
         options.Add(option);
 
         m_presetDropdown.AddOptions(options);
+        return preset;
+    }
 
+    public void OnDelayChanged(string delayString)
+    {
+        float delay = 0;
+
+        float.TryParse(delayString, out delay);
+        m_timeBetweenPicsSeconds = delay;
+        m_delayBetweenSnaps = delay;
+        m_timer = 0;
+
+        Debug.Log("got delay " + delay);
     }
 
     public void Start()
@@ -99,7 +145,7 @@ public class CrazyCamLogic : MonoBehaviour
         AddPreset("My room has spiderwebs", "filled with ((cobwebs)), disgusting, spiders, horror", "original", 0.39f, true, false, 0, eMaskBackgroundOnly, 7.5f, 1.5f, "inpaint");
         AddPreset("A monster", "a (((scary monster))) in a room", "original", 0.69f, false, true, 0, eMaskForegroundOnly, 7.5f, 1.5f, "inpaint");
         AddPreset("A giant spider", "a (((giant spider))) in a room", "original", 1.0f, false, true, 0, eMaskForegroundOnly, 7.5f, 1.5f, "inpaint");
-        AddPreset("Spider man", "spider man", "original", 0.64f, false, true, 0, eMaskForegroundOnly, 7.5f, 1.5f, "inpaint");
+        AddPreset("Spider man", "spider man, super hero, epic, red costume, spiderman mask", "original", 0.64f, false, true, 0, eMaskForegroundOnly, 7.5f, 1.5f, "inpaint");
         AddPreset("Erase me", "an empty room", "fill", 1.0f, false, true, 0, eMaskForegroundOnly, 7.5f, 1.5f, "inpaint");
         AddPreset("Old woman", "old woman, wrinkles, studio portrait, award winning", "original", 0.41f, true, true, 0, eMaskForegroundOnly, 7.5f, 1.5f, "inpaint");
         AddPreset("Old man", "old man, wrinkles, studio portrait, award winning", "original", 0.41f, true, true, 0, eMaskForegroundOnly, 7.5f, 1.5f, "inpaint");
@@ -126,10 +172,10 @@ public class CrazyCamLogic : MonoBehaviour
         AddPreset("(pix2pix) Nice beard", "Add beard", "original", 0.46f, false, false, 0, eMaskForegroundOnly, 5.5f, 1.5f, "pix2pix");
         AddPreset("(pix2pix) Old man", "change to an old man", "original", 0.7f, false, false, 0, eMaskForegroundOnly, 2.5f, 1.5f, "pix2pix");
         AddPreset("(pix2pix) Blue skies", "show sky outside window", "original", 0.7f, false, false, 0, eMaskBackgroundOnly, 12.5f, 1.5f, "pix2pix");
-
-
-
-
+        var p = AddPreset("(controlnet) Spider man (partial)", "spider man, super hero, epic, red costume, spiderman mask", "latent noise", 1.0f, false, true, 0, eMaskForegroundOnly, 7.5f, 1.5f, "");
+        p._useControlNet = true;
+        p = AddPreset("(controlnet) Spider man (full)", "spider man, super hero, epic, red costume, spiderman mask", "latent noise", 1.0f, false, true, 0, eMaskEntireImage, 7.5f, 1.5f, "");
+        p._useControlNet = true;
     }
 
     public void SetPresetByIndex(int index)
@@ -146,30 +192,17 @@ public class CrazyCamLogic : MonoBehaviour
         GameLogic.Get().SetToolsVisible(false);
         ImageGenerator.Get().SetGenerate(false);
         GameLogic.Get().OnClearButton();
+        
+        
         if (GameLogic.Get().GetSeed() < 0 && !GameLogic.Get().IsActiveModelPix2Pix())
         {
-            GameLogic.Get().SetSeed(0);
-            Debug.Log("Setting seed to 0 for Crazy Cam, we don't want -1 because random seeds will look worse");
+        //    GameLogic.Get().SetSeed(0);
+            Debug.Log("Warning: Seed is set to -1 (random), this can make faces and things change a lot from frame to frame");
         }
-        //GameLogic.Get().OnFixFacesChanged(false); //don't want faces on our pizza
-       // GameLogic.Get().SetInpaintStrength(1.0f);
-       // GameLogic.Get().SetAlphaMaskFeatheringPower(20);
-        //GameLogic.Get().SetMaskContentByName("latent noise");
+
         RTUtil.FindObjectOrCreate("CrazyCamGUI").SetActive(true);
         RTUtil.FindObjectOrCreate("CrazyCamMode").SetActive(true);
-        //Camera.allCameras[0].backgroundColor = Color.black;
 
-        //save the json request, we can re-use it for each pizza
-        //m_json = GamePicManager.Get().BuildJSonRequestForInpaint("a cute dog in front of a black background, cartoon", "", m_templateTexture, m_alphaTexture, true);
-
-
-        /*
-        if (Config.Get().IsAnyGPUFree())
-        {
-            //this will send the json request to the aitools_server, and callback with the created image
-            GamePicManager.Get().SpawnInpaintRequest(m_json, OnBoardRenderFinished, new RTDB());
-        }
-        */
         CameraManager.Get().OnCameraStartedCallback += OnCameraStarted;
         CameraManager.Get().OnCameraInfoAvailableCallback += OnCameraInfoAvailable;
         CameraManager.Get().OnCameraDisplayedNewFrameCallback += OnCameraDisplayedNewFrame;
@@ -179,6 +212,8 @@ public class CrazyCamLogic : MonoBehaviour
         SetPresetByIndex(0);
 
     }
+
+  
     void SetCamDropdownByIndex(int index)
     {
         
@@ -275,6 +310,18 @@ public class CrazyCamLogic : MonoBehaviour
         {
             gl.SetSeed(0);
         }
+
+        gl.OnUseControlNet(preset._useControlNet);
+
+        if (preset._useControlNet)
+        {
+            //also set other control net settings, since we're using it 'n all
+            gl.SetControlNetGuidance(preset._controlNetGuidanceEnd);
+            gl.SetControlNetWeight(preset._controlNetWeight);
+            gl.SetCurrentControlNetPreprocessorBySubstring(preset._controlNetPreprocessor);
+            gl.SetCurrentControlNetModelBySubstring(preset._controlNetModel);
+
+        }
     }
 
     public void OnCameraStarted(WebCamTexture device)
@@ -284,9 +331,13 @@ public class CrazyCamLogic : MonoBehaviour
         var vScale = m_meshRenderer.gameObject.transform.parent.localScale;
         vScale.x = aspectX;
         m_meshRenderer.gameObject.transform.parent.localScale = vScale;
-       
+
         
-        //m_processedRenderer.gameObject.transform.parent.localScale = vScale;
+        var processedVScale = m_processedRenderer.gameObject.transform.parent.localScale;
+        float processedAspectX = (float)GameLogic.Get().GetGenWidth() / (float)GameLogic.Get().GetGenHeight();
+        processedVScale.x = processedAspectX;
+
+        m_processedRenderer.gameObject.transform.parent.localScale = processedVScale;
     }
 
     public void OnEndGameMode()
@@ -302,14 +353,41 @@ public class CrazyCamLogic : MonoBehaviour
         RTUtil.FindObjectOrCreate("CrazyCamMode").SetActive(false);
 
         CameraManager.Get().StopCamera();
+
+//        RTMessageManager.Get().Schedule(0.3f, RTUtil.KillAllObjectsByNameWrapper, null, "RTToolTipPrefab", true, 0);
+        RTMessageManager.Get().Schedule(0.3f, (name, bIsWildcardString) => RTUtil.KillAllObjectsByName(null, name, bIsWildcardString), "RTToolTipPrefab", true);
+
     }
 
     public void OnImageRenderFinished(Texture2D tex, RTDB db)
     {
+        if (m_renderingIsPaused) return;
+
+
+        //if m_autoSaveImages is checked, save the image
+        if (m_autoSaveImages.isOn)
+        {
+            string tempDir = Application.dataPath;
+            //get the Assets dir, but strip off the word Assets
+            tempDir = tempDir.Replace('/', '\\');
+            tempDir = tempDir.Substring(0, tempDir.LastIndexOf('\\'));
+            //tack on subdir if needed
+            tempDir = tempDir + "/autosave";
+            //reconvert to \\ (I assume this code would have to change if it wasn't Windows... uhh
+            tempDir = tempDir.Replace('/', '\\');
+            string fileName = tempDir + "\\CrazyCam_" + System.DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss") + ".png";
+
+            Debug.Log("Saving image to " + fileName);
+            File.WriteAllBytes(fileName, tex.EncodeToPNG());
+        }
         //Debug.Log("Got image");
         m_processedRenderer.material.mainTexture = tex;
         float timeTaken = Time.time - db.GetFloat("startTime");
-        m_timeBetweenPicsSeconds= timeTaken/Config.Get().GetGPUCount();
+
+        if (m_delayBetweenSnaps == 0)
+        {
+            m_timeBetweenPicsSeconds = timeTaken / Config.Get().GetGPUCount();
+        }
         //Debug.Log(timeTaken);
     }
     void OnCameraDisplayedNewFrame(WebCamTexture webCamTex)
@@ -318,14 +396,15 @@ public class CrazyCamLogic : MonoBehaviour
 
         if (m_timer > Time.time) return; //we don't want to show pics this fast
         if (!Config.Get().IsAnyGPUFree()) return;
+        if (m_renderingIsPaused) return;
 
         m_timer = Time.time + m_timeBetweenPicsSeconds;
         RTDB db = new RTDB();
         db.Set("startTime", Time.time);
         //let's remember how long it takes from start to finish to extract from webcam, get it inpainted, and display it
-
-      
+     
         float aspectRatio = (float)webCamTex.width / (float)webCamTex.height;
+        float targetAspectRatio = (float)GameLogic.Get().GetGenWidth() / (float)GameLogic.Get().GetGenHeight();
 
         Rect rect;
         if (aspectRatio > 1)
@@ -350,6 +429,7 @@ public class CrazyCamLogic : MonoBehaviour
         
         texture.Apply();
         ResizeTool.Resize(texture, GameLogic.Get().GetGenWidth(), GameLogic.Get().GetGenHeight(), true);
+      
 
         //Encode it as a PNG.
         //byte[] bytes = texture.EncodeToPNG();
@@ -379,9 +459,8 @@ public class CrazyCamLogic : MonoBehaviour
 
         }
         var json = GamePicManager.Get().BuildJSonRequestForInpaint(GameLogic.Get().GetPrompt(), GameLogic.Get().GetNegativePrompt(), texture, null, false, bOperateOnSubjectMaskOnly,
-            m_noTranslucencyToggle.isOn, bReverseMask);
+            m_noTranslucencyToggle.isOn, bReverseMask, GameLogic.Get().GetUseControlNet());
 
-      
         GamePicManager.Get().SpawnInpaintRequest(json, OnImageRenderFinished, db);
     }
 

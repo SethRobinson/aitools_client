@@ -552,5 +552,7 @@ public class WebRequestServerInfo : MonoBehaviour
 
             }
         }
+
+        GameObject.Destroy(gameObject);
     }
 }

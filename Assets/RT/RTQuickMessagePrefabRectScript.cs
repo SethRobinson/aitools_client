@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public class RTQuickMessagePrefabScript : MonoBehaviour
+public class RTQuickMessagePrefabRectScript : MonoBehaviour
 {
     Vector3 _originalPos;
     public GameObject _backGround;
@@ -21,8 +21,7 @@ public class RTQuickMessagePrefabScript : MonoBehaviour
     {
         RTMessageManager.Get().Schedule(timeInSecondsBeforeKillingIt, this.Die);
     }
-    
-
+   
     void Die()
     {
         GameObject.Destroy(gameObject);
@@ -35,30 +34,7 @@ public class RTQuickMessagePrefabScript : MonoBehaviour
        
         var rt = _backGround.GetComponent<RectTransform>();
         rt.ForceUpdateRectTransforms();
-        //move up
-        //vPos.y += 48;
-     
-        float offscreenX = vPos.x + rt.offsetMin.x;
-        float offscreenY = vPos.y - rt.offsetMin.y;
-     
-        if (offscreenX  < 0)
-        {
-            //move it to the right
-            vPos.x += -offscreenX;
-        }
-
-        if (vPos.x + rt.offsetMax.x > Screen.width)
-        {
-            //move to the left a bit
-            vPos.x += Screen.width- (vPos.x + rt.offsetMax.x);
-        }
-
-        if (offscreenY > Screen.height)
-        {
-            //move it below us, there is no room above
-            vPos.y -= (24+ (rt.offsetMax.y*2));
-        }
-
+      
         _backGround.transform.position = vPos;
         _canvasGroup.alpha = 1;
     }

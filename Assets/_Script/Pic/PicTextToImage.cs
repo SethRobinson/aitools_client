@@ -150,6 +150,7 @@ public class PicTextToImage : MonoBehaviour
         var gpuInf = Config.Get().GetGPUInfo(m_gpu);
         string model = GameLogic.Get().GetActiveModelFilename();
         string samplerName = GameLogic.Get().GetSamplerName();
+        bool hiresFix = GameLogic.Get().GetHiresFix();
 
         string safety_filter = ""; //use whatever the server is set at
         if (Config.Get().GetSafetyFilter())
@@ -176,8 +177,13 @@ public class PicTextToImage : MonoBehaviour
             ""width"": {genWidth},
             ""height"": {genHeight},
             ""sampler_name"": ""{samplerName}"",
-            ""alpha_mask_subject"":{bRemoveBackground.ToString().ToLower()}
+            ""alpha_mask_subject"":{bRemoveBackground.ToString().ToLower()},
 
+ ""enable_hr"": {hiresFix.ToString().ToLower()},
+  ""denoising_strength"": 0.7,
+  ""firstphase_width"": 0,
+  ""firstphase_height"": 0,
+  ""hr_scale"": 2
         
         }}";
        

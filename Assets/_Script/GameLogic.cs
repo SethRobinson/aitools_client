@@ -32,8 +32,9 @@ public class GameLogic : MonoBehaviour
     int m_maxToGenerate = 1000;
     string m_lastModifiedPrompt;
 
-    float m_upscale = 2.0f; //1 means noc hange
+    float m_upscale = 1.0f; //1 means noc hange
     bool m_fixFaces = false;
+    bool m_hiresFix = false;
     float m_textStrength = 7.5f;
     float m_controlNetWeight = 1.0f;
     float m_pix2pixtextStrength = 1.5f;
@@ -59,6 +60,7 @@ public class GameLogic : MonoBehaviour
     public Toggle m_tilingToggle;
     public Toggle m_removeBackgroundToggle;
     public Toggle m_useControlNetToggle;
+    public Toggle m_hiresFixToggle;
 
     public string m_defaultControlNetProcessor = "depth";
     public string m_defaultControlNetModel = "depth";
@@ -80,7 +82,7 @@ public class GameLogic : MonoBehaviour
     public TMP_Dropdown m_heightDropdown;
     public TMP_Dropdown m_samplerDropdown;
     public TMP_Dropdown m_modelDropdown;
-   string m_activeModelName;
+    string m_activeModelName = "";
     public GameObject m_controlNetPanelPrefab;
 
     List<String> m_controlNetPreprocessorArray = new List<String>();
@@ -288,6 +290,19 @@ public class GameLogic : MonoBehaviour
         RTUtil.SetActiveByNameIfExists("MiniPanel", false);
     }
 
+    public void OnHideCamToolGUI()
+    {
+        RTUtil.SetActiveByNameIfExists("CamToolPanel", false);
+        RTUtil.SetActiveByNameIfExists("CamToolMiniPanel", true);
+    }
+
+    public void OnShowCamToolGUI()
+    {
+        RTUtil.SetActiveByNameIfExists("CamToolPanel", true);
+        RTUtil.SetActiveByNameIfExists("CamToolMiniPanel", false);
+    }
+
+
     public void OnModelChanged(Int32 optionID)
     {
         //send request to all servers
@@ -380,7 +395,7 @@ public class GameLogic : MonoBehaviour
         m_controlNetModelCurIndex = index;
     }
 
-    void SetCurrentControlNetModelBySubstring(string substring)
+    public void SetCurrentControlNetModelBySubstring(string substring)
     {
         //we'll set m_controlNetModelCurIndex by checking if the substring is inside of any of the strings in m_controlNetModelArray
         for (int i = 0; i < m_controlNetModelArray.Count; i++)
@@ -394,7 +409,7 @@ public class GameLogic : MonoBehaviour
     }
 
     //Now we'll do the same thing, but for ControlNetPreprocessor
-    void SetCurrentControlNetPreprocessorBySubstring(string substring)
+    public void SetCurrentControlNetPreprocessorBySubstring(string substring)
     {
         //we'll set m_controlNetPreprocessorCurIndex by checking if the substring is inside of any of the strings in m_controlNetPreprocessorArray
         for (int i = 0; i < m_controlNetPreprocessorArray.Count; i++)
@@ -531,7 +546,6 @@ public class GameLogic : MonoBehaviour
     {
         m_bUseControlNet = bNew;
         m_useControlNetToggle.isOn = bNew;
-
         
     }
 
@@ -649,6 +663,8 @@ public class GameLogic : MonoBehaviour
    
     public bool GetFixFaces() { return m_fixFaces; }
     public float GetUpscale() { return m_upscale; }
+
+    public bool GetHiresFix() { return m_hiresFix; }
     public void OnStepsChanged(string steps)
     {
         //Debug.Log("Steps changed to " + steps);
@@ -822,6 +838,12 @@ public class GameLogic : MonoBehaviour
 
         m_upscaleToggle.isOn = upscale;
 
+    }
+
+    public void OnHiresFixChanged(bool newVal)
+    {
+        m_hiresFixToggle.isOn = newVal;
+        m_hiresFix = newVal;
     }
 
     public void OnFixFacesChanged(bool bNew)

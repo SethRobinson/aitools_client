@@ -20,12 +20,24 @@ public class RTToolTip : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     TextAlignment _alignment = TextAlignment.Center;
     // Start is called before the first frame update
     float _delayTimer = 0;
-    
+
+
     void Start()
     {
-        
+        Initialize();
     }
 
+    void OnEnable()
+    {
+        Initialize();
+    }
+
+    void Initialize()
+    {
+        ShowTip(false);
+      
+    }
+   
     //stop showing the tip when this component is removed or destroyed
     private void OnDestroy()
     {
@@ -94,6 +106,7 @@ public class RTToolTip : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
             }
         } else
         {
+            _delayTimer = 0;
             //stop showing it
             if (m_tipInstance)
             {
@@ -112,7 +125,7 @@ public class RTToolTip : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
     public void OnPointerExit(PointerEventData eventData)
     {
-       ShowTip(false);
+        ShowTip(false);
        _delayTimer = 0;
     }
 
@@ -120,8 +133,10 @@ public class RTToolTip : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
     // Update is called once per frame
     void Update()
     {
-          if (_delayTimer != 0 && _delayTimer < Time.time)
+  
+        if (_delayTimer != 0 && _delayTimer < Time.time)
         {
+
             ShowTip(true);
             _delayTimer = 0;
         }

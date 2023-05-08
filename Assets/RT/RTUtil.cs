@@ -9,6 +9,8 @@ using System.IO;
 using UnityEngine.Rendering;
 using System.Globalization;
 using System.Text.RegularExpressions;
+using UnityEngine.Assertions;
+using UnityEngine.UI;
 
 //Adapted from https://stackoverflow.com/questions/46237984/how-to-emulate-statically-the-c-bitfields-in-c
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -1277,6 +1279,41 @@ public class RTUtil
     public static void AddObjectsToListByNameIncludingInactive(GameObject parentObj, string name, bool bIsWildcardString, List<GameObject> objs)
     {
 
+        if (parentObj == null)
+        {
+            //ok, special case, we'll run this on everything
+
+            Scene scene = SceneManager.GetActiveScene();
+            if (!scene.isLoaded)
+            {
+                //no scene loaded
+                Debug.Assert(false);
+                return;
+            }
+
+            var game_objects = new List<GameObject>();
+            scene.GetRootGameObjects(game_objects);
+
+            foreach (GameObject obj in game_objects)
+            {
+                if (
+              (!bIsWildcardString && obj.gameObject.name == name) ||
+                  (bIsWildcardString && obj.gameObject.name.StartsWith(name))
+                  )
+                {
+                    objs.Add(obj);
+                }
+
+                //but what about their children, marty?
+
+
+                AddObjectsToListByNameIncludingInactive(obj, name, bIsWildcardString, objs);
+
+            }
+
+            return;
+        }
+
         for (int i = 0; i < parentObj.transform.childCount; i++)
         {
             if (
@@ -1348,6 +1385,7 @@ public class RTUtil
     {
         List<GameObject> temp = new List<GameObject>();
 
+        
         AddObjectsToListByNameIncludingInactive(parent, name, bIsWildcardString, temp);
 
         foreach(GameObject obj in temp) 
@@ -1356,6 +1394,11 @@ public class RTUtil
         }
 
         return temp.Count;
+    }
+
+    public static void KillAllObjectsByNameWrapper(GameObject parent, string name, bool bIsWildcardString, float delayTime = 0)
+    {
+        RTUtil.KillAllObjectsByName(parent, name, bIsWildcardString, delayTime);
     }
 
 
@@ -1738,6 +1781,72 @@ public class RTUtil
         return regex.Replace(input, "");
     }
 
+    //credit for below code goes to GPT-4 and Seth A. Robinson (3-21-23)
+
+    public static string ConvertAnsiToTextMeshProColors(string input)
+    {
+        // Map ANSI color codes to TextMeshPro color hex values.
+        Dictionary<int, string> ansiToTextMeshProColors = new Dictionary<int, string>
+    {
+        { 30, "000000" }, // Black
+        { 31, "800000" }, // Red
+        { 32, "008000" }, // Green
+        { 33, "808000" }, // Yellow
+        { 34, "000080" }, // Blue
+        { 35, "800080" }, // Magenta
+        { 36, "008080" }, // Cyan
+        { 37, "C0C0C0" }, // White
+        { 39, "FFFFFF" }, // Default foreground color (white)
+        { 90, "808080" }, // Bright black (gray)
+        { 91, "FF0000" }, // Bright red
+        { 92, "00FF00" }, // Bright green
+        { 93, "FFFF00" }, // Bright yellow
+        { 94, "0000FF" }, // Bright blue
+        { 95, "FF00FF" }, // Bright magenta
+        { 96, "00FFFF" }, // Bright cyan
+        { 97, "FFFFFF" }, // Bright white
+        { 49, "000000" }, // Default background color (black)
+    };
+
+        // Add background colors to the dictionary.
+        for (int i = 40; i <= 47; i++)
+        {
+            ansiToTextMeshProColors.Add(i, ansiToTextMeshProColors[i - 10]);
+            ansiToTextMeshProColors.Add(i + 60, ansiToTextMeshProColors[i + 50]);
+        }
+
+        // Replace ANSI color codes with TextMeshPro color tags.
+        return Regex.Replace(input, @"\x1B\[([\d;]+)m", match =>
+        {
+            string[] codes = match.Groups[1].Value.Split(';');
+            string result = "";
+            bool isBright = false;
+
+            foreach (string codeStr in codes)
+            {
+                if (int.TryParse(codeStr, out int code))
+                {
+                    if (code == 1)
+                    {
+                        isBright = true;
+                    }
+                    else if (code >= 30 && code <= 37 || code >= 90 && code <= 97 || code == 39)
+                    {
+                        int colorCode = isBright && code <= 37 ? code + 60 : code;
+                        result += $"<color=#{ansiToTextMeshProColors[colorCode]}>";
+                        isBright = false;
+                    }
+                    else if (code == 0)
+                    {
+                        result += "</color>";
+                        isBright = false;
+                    }
+                }
+            }
+
+            return result;
+        });
+    }
 
     //credit for the below code goes to  Jayden Chapman ( https://gitlab.com/-/snippets/2031682 ) and Psycho8Vegemite ( https://forum.unity.com/threads/removing-rich-text-tags-from-a-string.530360/#post-6439283 )
     public static string RemoveColorAndFontTags(string input)
@@ -1865,7 +1974,14 @@ public class RTUtil
         Debug.DrawLine(p4, p8, Color.cyan, delay);
     }
 
-  
+    static public void SetButtonColor(Button but, Color col)
+    {
+        var colors = but.colors;
+        colors.normalColor = col;
+        colors.selectedColor = col;
+        colors.highlightedColor = col;
+        but.colors = colors;
+    }
 
 
 }

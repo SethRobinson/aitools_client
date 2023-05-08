@@ -745,7 +745,9 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
     public void OnImageReplaced()
     {
         MovePicUpIfNeeded();
+
         m_picMaskScript.ResizeMaskIfNeeded();
+       
         m_targetRectScript.UpdatePoints();
     }
 

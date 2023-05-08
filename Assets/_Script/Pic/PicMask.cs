@@ -18,6 +18,17 @@ public class PicMask : MonoBehaviour
     public PicTargetRect m_targetRectScript;
     public LineRenderer m_brushSizeLineRenderer;
 
+
+    //let's be able to access the width and height of the mask from outside, in separate functions
+    public float GetMaskWidth()
+    {
+        return m_spriteMask.sprite.texture.width;
+    }
+    public float GetMaskHeight()
+    {
+        return m_spriteMask.sprite.texture.height;
+    }
+
     // Start is called before the first frame update
     void Start()
     {
@@ -244,6 +255,18 @@ public class PicMask : MonoBehaviour
         m_boolMaskHasBeenSet = true;
         m_bMaskModified = false;
 
+        if (m_targetRectScript)
+        {
+            float maskWidth = copyTexture.width;
+            float maskHeight = copyTexture.height;
+
+            //restrict the mask width and height to be a power of 2, and not larger than the image
+            maskWidth = RTUtil.ConvertNumToNearestMultiple((int)maskWidth, 64);
+            maskHeight = RTUtil.ConvertNumToNearestMultiple((int)maskHeight, 64);
+
+
+            m_targetRectScript.SetOffsetRect(new Rect(0, 0,maskWidth, maskHeight));
+        }
         //Debug.Log("Recreated mask");
     }
     public void ResizeMaskIfNeeded()

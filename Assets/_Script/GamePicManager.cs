@@ -29,7 +29,7 @@ public class GamePicManager : MonoBehaviour
     }
 
     public string BuildJSonRequestForInpaint(string prompt, string negativePrompt, Texture2D pic512, Texture2D mask512, bool bRemoveBackground, 
-        bool bOperateOnSubjectOnly = false, bool bDisableTranslucencyOfMask = false, bool bReverseSubjectMask = false)
+        bool bOperateOnSubjectOnly = false, bool bDisableTranslucencyOfMask = false, bool bReverseSubjectMask = false, bool bUseControlNet = false)
     {
         byte[] picPng = pic512.EncodeToPNG();
         byte[] picMaskPng = null;
@@ -97,13 +97,41 @@ public class GamePicManager : MonoBehaviour
                 maskJson = $@" ""mask"": ""{maskBase64}"",";
             }
 
-            json =
+
+        string controlnet_json = "";
+     
+        if (bUseControlNet)
+        {
+            //  finalURL = url + "/controlnet/img2img";
+        
+            //if we weren't generating our own control net input image on the fly, we'd use this: ""input_image"":""{controlNetimgBase64}"",
+            controlnet_json = $@"""controlnet"": {{
+          ""args"": [
+            {{
+          ""module"": ""{GameLogic.Get().GetCurrentControlNetPreprocessorString()}"",
+          ""model"": ""{GameLogic.Get().GetCurrentControlNetModelString()}"",
+          ""weight"": {GameLogic.Get().GetControlNetWeight()},
+          ""guidance_start"": 0,
+          ""guidance_end"": {GameLogic.Get().GetControlNetGuidance()}
+            }}
+          ]
+        }}";
+
+        }
+
+
+        json =
     $@"{{
              {maskJson}
             ""init_images"":
             [
                 ""{imgBase64}""
             ],
+
+            ""alwayson_scripts"": {{
+            {controlnet_json}
+            }},
+
             {safety_filter}
             ""prompt"": ""{SimpleJSON.JSONNode.Escape(prompt)}"",
             ""negative_prompt"": ""{SimpleJSON.JSONNode.Escape(negativePrompt)}"",
@@ -207,13 +235,14 @@ public class GamePicManager : MonoBehaviour
                 //Debug.Log("images is of type " + images.Tag);
                 //Debug.Log("there are " + images.Count + " images");
 
-                Debug.Assert(images.Count == 1); //You better convert the extra images to new pics!
+                Debug.Assert(images.Count > 0);
+                int imageCount = images.Count;
 
                 byte[] imgDataBytes = null;
 
                 if (images != null)
                 {
-                    for (int i = 0; i < images.Count; i++)
+                    for (int i = 0; i < 1; i++) //we're ignoring the second image, the one from controlnet
                     {
                         imgDataBytes = Convert.FromBase64String(images[i]);
                         yield return null; //wait a free to lesson the jerkiness

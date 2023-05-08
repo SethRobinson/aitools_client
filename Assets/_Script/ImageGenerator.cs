@@ -143,26 +143,18 @@ public class ImageGenerator : MonoBehaviour
 #endif
     }
 
-    public void SetButtonColor(Button but, Color col)
-    {
-        var colors = but.colors;
-        colors.normalColor = col;
-        colors.selectedColor = col;
-        colors.highlightedColor = col;
-        but.colors = colors;
-    }
-
+   
     public void UpdateGenerateButtonStatus()
     {
         if (m_generateActive)
         {
-            SetButtonColor(m_generateButton, new Color(1, 0, 0, 1));
+            RTUtil.SetButtonColor(m_generateButton, new Color(1, 0, 0, 1));
             m_generateButtonText.text = "Stop";
             GameLogic.Get().SetChangeModelEnabled(false);
         } else
         {
             m_generateButtonText.text = "Generate";
-            SetButtonColor(m_generateButton, new Color(0, 1, 0, 1));
+            RTUtil.SetButtonColor(m_generateButton, new Color(0, 1, 0, 1));
             GameLogic.Get().SetChangeModelEnabled(true);
         }
     }

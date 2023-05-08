@@ -126,15 +126,16 @@ public class PicUpscale : MonoBehaviour
             gfpgan_visibility = 0.3f;
             codeformer_visibility = 0.3f;
         }
+        
+        //""upscaler_2"": ""Lanczos"",
+        //""extras_upscaler_2_visibility: "": 0.5,  
 
         string json =
 $@"{{
            
             ""image"": ""{imgBase64}"",
             ""upscaling_resize"": 2,
-            ""upscaler_1"": ""SwinIR_4x"",
-            ""upscaler_2"": ""ESRGAN_4x"",
-            ""extras_upscaler_2_visibility:"": 1,
+            ""upscaler_1"": ""ESRGAN_4x"",
             ""gfpgan_visibility"": {gfpgan_visibility},
             ""codeformer_visibility"": {codeformer_visibility},
             ""codeformer_weight"": 0,
