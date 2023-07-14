@@ -7,7 +7,7 @@ using System;
 using MiniJSON;
 using SimpleJSON;
 using System.Globalization;
-using System.Linq;
+
 
 public class WebRequestServerInfo : MonoBehaviour
 {
@@ -160,9 +160,30 @@ public class WebRequestServerInfo : MonoBehaviour
         StartCoroutine(GetControlNetModelsRequest(g.localGPUID, g.remoteURL));
     }
 
+    public void StartPopulateControlNetPreprocessors(GPUInfo g)
+    {
+        StartCoroutine(GetControlNetPreprocessorsRequest(g.localGPUID, g.remoteURL));
+    }
+
+    public void StartPopulateControlNetSettings(GPUInfo g)
+    {
+        StartCoroutine(GetControlNetSettingsRequest(g.localGPUID, g.remoteURL));
+    }
+
+
     public void StartPopulateSamplersRequest(GPUInfo g)
     {
         StartCoroutine(GetSamplersRequest(g.localGPUID, g.remoteURL));
+    }
+
+    public void StartPopulateLorasRequest(GPUInfo g)
+    {
+        StartCoroutine(GetLorasRequest(g.localGPUID, g.remoteURL));
+    }
+
+    public void StartPopulateEmbeddingsRequest(GPUInfo g)
+    {
+        StartCoroutine(GetEmbeddingsRequest(g.localGPUID, g.remoteURL));
     }
     public void SendServerConfigRequest(int gpuID, string optionKey, string optionValue)
     {
@@ -176,6 +197,9 @@ public class WebRequestServerInfo : MonoBehaviour
         var finalURL = server + "/sdapi/v1/options";
         string serverClickableURL = "<link=\"" + server + "\"><u>" + server + "</u></link>";
         Debug.Log("Getting config data from " + serverClickableURL + "...");
+
+   
+    
     again:
         //Create the request using a static method instead of a constructor
 
@@ -393,7 +417,7 @@ public class WebRequestServerInfo : MonoBehaviour
 
                     if (modelList.Count == 0)
                     {
-                        Debug.LogWarning("CONTROL NET ERROR?  Something is wrong, the server returned an empty list of models.\nTo try to work around this, the default models have been added.  It's a hack and might not work.\nOnly choose models you have installed.");
+                        RTConsole.Log("CONTROL NET ERROR?  Something is wrong, the server returned an empty list of models.\nTo try to work around this, the default models have been added.  It's a hack and might not work.\nOnly choose models you have installed.");
                         GameLogic.Get().ShowConsole(true);
 
                         GameLogic.Get().AddControlNetModelDropdown("control_sd15_canny [fef5e48e]");
@@ -406,6 +430,134 @@ public class WebRequestServerInfo : MonoBehaviour
                         GameLogic.Get().AddControlNetModelDropdown("control_sd15_seg [fef5e48e]");
                     }
                     GameLogic.Get().SetDefaultControLNetOptions();
+                }
+            }
+
+            //either way, we're done with us
+            GameObject.Destroy(gameObject);
+        }
+    }
+
+
+    IEnumerator GetControlNetPreprocessorsRequest(int gpuID, String server)
+    {
+
+        WWWForm form = new WWWForm();
+        var finalURL = server + "/controlnet/module_list";
+        string serverClickableURL = "<link=\"" + server + "\"><u>" + server + "</u></link>";
+        Debug.Log("Trying to get a list of modules from the ControlNet extension if it exists: " + serverClickableURL + "...");
+    again:
+        //Create the request using a static method instead of a constructor
+
+        using (var postRequest = UnityWebRequest.Get(finalURL))
+        {
+            //Start the request with a method instead of the object itself
+            yield return postRequest.SendWebRequest();
+
+            if (postRequest.result != UnityWebRequest.Result.Success)
+            {
+                m_timesTried++;
+                if (m_timesTried < m_timesToTry)
+                {
+
+                    //well, let's try again before we say we failed.
+                    Debug.Log("Getting list of controlnet modules from server " + serverClickableURL + "... (try " + m_timesTried + ")");
+                    goto again;
+                }
+
+                Debug.Log("Didn't get list of controlnet modules from server " + serverClickableURL + ". (" + postRequest.error + ") That extension is probably not installed, no biggie.");
+                //GameLogic.Get().ShowConsole(true);
+            }
+            else
+            {
+                if (!Config.Get().IsValidGPU(gpuID))
+                {
+                    Debug.LogError("Bad GPU of " + gpuID);
+                }
+                else
+                {
+                    var g = Config.Get().GetGPUInfo(gpuID);
+
+                    var dict = Json.Deserialize(postRequest.downloadHandler.text) as Dictionary<string, object>;
+                    List<object> modelList = dict["module_list"] as List<object>;
+
+                    GameLogic.Get().ClearControlNetPreprocessorsDropdown();
+                    GameLogic.Get().SetHasControlNetSupport(true);
+
+                    for (int i = 0; i < modelList.Count; i++)
+                    {
+                        Debug.Log(modelList[i]);
+                        string model = modelList[i].ToString();
+                        GameLogic.Get().AddControlNetPreprocessorsDropdown(model);
+                    }
+
+                    if (modelList.Count == 0)
+                    {
+                        RTConsole.Log("CONTROL NET ERROR?  There are no preprocessors available, according to its API");
+                       
+                    }
+                    GameLogic.Get().SetDefaultControLNetOptions();
+                }
+            }
+
+            //either way, we're done with us
+            GameObject.Destroy(gameObject);
+        }
+    }
+
+
+
+    IEnumerator GetControlNetSettingsRequest(int gpuID, String server)
+    {
+
+        WWWForm form = new WWWForm();
+        var finalURL = server + "/controlnet/settings";
+        string serverClickableURL = "<link=\"" + server + "\"><u>" + server + "</u></link>";
+        Debug.Log("Trying to get settings from the ControlNet extension if it exists: " + serverClickableURL + "...");
+    again:
+        //Create the request using a static method instead of a constructor
+
+        using (var postRequest = UnityWebRequest.Get(finalURL))
+        {
+            //Start the request with a method instead of the object itself
+            yield return postRequest.SendWebRequest();
+
+            if (postRequest.result != UnityWebRequest.Result.Success)
+            {
+                m_timesTried++;
+                if (m_timesTried < m_timesToTry)
+                {
+
+                    //well, let's try again before we say we failed.
+                    Debug.Log("Getting list of controlnet modules from server " + serverClickableURL + "... (try " + m_timesTried + ")");
+                    goto again;
+                }
+
+                Debug.Log("Didn't get list of controlnet modules from server " + serverClickableURL + ". (" + postRequest.error + ") That extension is probably not installed, no biggie.");
+                //GameLogic.Get().ShowConsole(true);
+            }
+            else
+            {
+                if (!Config.Get().IsValidGPU(gpuID))
+                {
+                    Debug.LogError("Bad GPU of " + gpuID);
+                }
+                else
+                {
+                    var g = Config.Get().GetGPUInfo(gpuID);
+
+                    var dict = Json.Deserialize(postRequest.downloadHandler.text) as Dictionary<string, object>;
+
+                    if (dict != null && dict.ContainsKey("control_net_max_models_num"))
+                    {
+                       
+                        GameLogic.Get().SetControlNetMaxModels(
+                            Convert.ToInt32(dict["control_net_max_models_num"]));
+                    }
+                    else
+                    {
+                        Debug.Log("The key 'control_net_max_models_num' was not found in the JSON.");
+                    }
                 }
             }
 
@@ -555,4 +707,176 @@ public class WebRequestServerInfo : MonoBehaviour
 
         GameObject.Destroy(gameObject);
     }
+
+    IEnumerator GetLorasRequest(int gpuID, String server)
+    {
+
+        WWWForm form = new WWWForm();
+        var finalURL = server + "/sdapi/v1/loras";
+        string serverClickableURL = "<link=\"" + server + "\"><u>" + server + "</u></link>";
+        Debug.Log("Getting LORAS from " + serverClickableURL + "...");
+
+      
+    again:
+        //Create the request using a static method instead of a constructor
+
+        using (var postRequest = UnityWebRequest.Get(finalURL))
+        {
+            //Start the request with a method instead of the object itself
+            yield return postRequest.SendWebRequest();
+
+            if (postRequest.result != UnityWebRequest.Result.Success)
+            {
+                m_timesTried++;
+                if (m_timesTried < m_timesToTry)
+                {
+
+                    //well, let's try again before we say we failed.
+                    Debug.Log("Getting loras from server " + serverClickableURL + "... (try " + m_timesTried + ")");
+                    goto again;
+                }
+           }
+            else
+            {
+                //converting postRequest.downloadHandler.text to a dictionary
+                //and then show all values
+                if (!Config.Get().IsValidGPU(gpuID))
+                {
+                    Debug.LogError("Bad GPU of " + gpuID);
+                }
+                else
+                {
+                    var g = Config.Get().GetGPUInfo(gpuID);
+
+                    var dict = Json.Deserialize(postRequest.downloadHandler.text) as Dictionary<string, object>;
+                    List<object> modelList = Json.Deserialize(postRequest.downloadHandler.text) as List<object>;
+                    //Debug.Log("models: ");
+                 
+                    for (int i = 0; i < modelList.Count; i++)
+                    {
+                        var modelInfo = modelList[i] as Dictionary<string, object>;
+                        ModelModItem item = new ModelModItem();
+
+                        // Set properties only if the key exists
+                        if (modelInfo.ContainsKey("name")) item.name = modelInfo["name"].ToString();
+                        if (modelInfo.ContainsKey("alias")) item.alias = modelInfo["alias"].ToString();
+                        if (modelInfo.ContainsKey("path")) item.path = modelInfo["path"].ToString();
+                        if (modelInfo.ContainsKey("metadata"))
+                        {
+                            var meta = modelInfo["metadata"] as Dictionary<string, object>;
+                            if (meta != null)
+                            {
+                                if (meta.ContainsKey("ss_resolution")) item.resolution = meta["ss_resolution"].ToString();
+                                if (meta.ContainsKey("ss_sd_model_name")) item.modelName = meta["ss_sd_model_name"].ToString();
+                            }
+
+                        
+                            if (meta.ContainsKey("ss_tag_frequency"))
+                            {
+                                var tagFrequency = meta["ss_tag_frequency"] as Dictionary<string, object>;
+                                foreach (var tag in tagFrequency)
+                                {
+                                    var tagData = tag.Value as Dictionary<string, object>;
+                                    foreach (var tagString in tagData)
+                                    {
+                                        item.exampleList.Add(tagString.Key);
+                                    }
+                                }
+                            }
+
+                        }
+                        item.type = ModelModItem.ModelType.LORA;
+
+                        ModelModManager.Get().AddModItem(item);
+
+                    }
+
+              
+                }
+
+            }
+
+            //either way, we're done with us
+            GameObject.Destroy(gameObject);
+        }
+
+    }
+
+
+    IEnumerator GetEmbeddingsRequest(int gpuID, String server)
+    {
+
+        WWWForm form = new WWWForm();
+        var finalURL = server + "/sdapi/v1/embeddings";
+        string serverClickableURL = "<link=\"" + server + "\"><u>" + server + "</u></link>";
+        Debug.Log("Getting embeddings from " + serverClickableURL + "...");
+
+
+    again:
+        //Create the request using a static method instead of a constructor
+
+        using (var postRequest = UnityWebRequest.Get(finalURL))
+        {
+            //Start the request with a method instead of the object itself
+            yield return postRequest.SendWebRequest();
+
+            if (postRequest.result != UnityWebRequest.Result.Success)
+            {
+                m_timesTried++;
+                if (m_timesTried < m_timesToTry)
+                {
+
+                    //well, let's try again before we say we failed.
+                    Debug.Log("Getting embeddings from server " + serverClickableURL + "... (try " + m_timesTried + ")");
+                    goto again;
+                }
+            }
+            else
+            {
+                //converting postRequest.downloadHandler.text to a dictionary
+                //and then show all values
+                if (!Config.Get().IsValidGPU(gpuID))
+                {
+                    Debug.LogError("Bad GPU of " + gpuID);
+                }
+                else
+                {
+                    var g = Config.Get().GetGPUInfo(gpuID);
+
+                    var dict = Json.Deserialize(postRequest.downloadHandler.text) as Dictionary<string, object>;
+                    Dictionary<string, object> loadedDict = null;
+                    if (dict.ContainsKey("loaded"))
+                    {
+                        loadedDict = dict["loaded"] as Dictionary<string, object>;
+                    }
+                    //Debug.Log("models: ");
+
+                    if (loadedDict != null)
+                    {
+                        foreach (var model in loadedDict)
+                        {
+                            var modelInfo = model.Value as Dictionary<string, object>;
+                            ModelModItem item = new ModelModItem();
+                            item.type = ModelModItem.ModelType.EMBEDDING;
+                            // Set properties only if the key exists
+                            item.name = model.Key; // set name as model key
+                            if (modelInfo.ContainsKey("sd_checkpoint_name")) item.modelName = modelInfo["sd_checkpoint_name"]?.ToString();
+
+                            ModelModManager.Get().AddModItem(item);
+                        }
+                    }
+
+                    var webScript3 = Config.Get().CreateWebRequestObject();
+                    webScript3.StartPopulateLorasRequest(g);
+
+
+                }
+
+            }
+
+            //either way, we're done with us
+            GameObject.Destroy(gameObject);
+        }
+    }
+
 }

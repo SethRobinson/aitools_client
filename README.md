@@ -36,22 +36,16 @@ To use this, you'll need at least one Stable Diffusion WebUI server running some
 * Includes "experiments", little built-in games and apps designed to test using AI/SD for specific things: CrazyCam is a realtime webcam filter with 30+ presets, Shooting Gallery tests realtime craetion of sprites during a game, etc
 
 
-## Current version: **V0.73** (released May 8th 2023) Recent changes: ##
+## Current version: **V0.74** (released July 14th 2023) Recent changes: ##
 
-**What's new in V0.73**:
-* NEW: Added Hires. Fix (2x) checkbox, applies to generated images.  For now, it's using all the same defaults that the webUI does.  I don't see a way to change the Upscaler for the hires fix via API, but the results look good to me with whatever it's using (Martin80)
-NOTE: the v1.5-inpainting.ckpt model gives errors, try v1-5pruned.ckpt or other models if you get errors
-* NEW: CrazyCam can now use ControlNet with it, basically, think of it as allowing you to create totally new pictures, but controlling the pose of the character with whatever you're doing on the webcam. I only setup a few presets, but keep in mind you can enable ControlNet (try setting to latent noise at 1.0 and maybe set to process the entire pic instead of just foreground/background) for any setting you want
-* NEW: CrazyCam has a "update every this many seconds" option (jonwong666)
-* NEW:  CrazyCam has a "hide GUI" button (jonwong666)
-* NEW: CrazyCam has a pause button (jonwong666)
-* NEW: CrazyCam has a "auto save all generated images" checkbox (jonwong666)
-* Tooltips display longer, now depends on message length
-* Crazy Cam - Seed is no longer forced to be non-zero, I've been informed some users don't want frame-to-frame coherency. It's set to 0 when a preset is initially used, but will no longer change it back if you simply exit/return to the CrazyCam screen (jonwong666)
-* ControlNet code updated to use latest API instead of deprecated API
-* BUGFIX: Tooltip doesn't show up at the wrong times
-* Mask rectangles now resize to the full image size (or will be slightly smaller to maintain a 64 pixel multiple, required by im2img operations)
-* BUGIFIX:  Upscale command now works on newer auto1111 servers again, I guess they removed SwinIR from the default install
+**What's new in V0.74**:
+
+* FEATURE: Can now enable/disable Embeddings/Lora models via a new menu, click the new icon by the Generate button.  Will use preview images if available (no additional setup required, if it works on auto1111 this client will pick them up)
+* Fixed issue with negative random #s causing generation errors with some models like DPM++ SDE Karras (eugenioamato)
+* Tried to update project to Unity 2022.3.4f1 LTS but it has weird canvas rect area problems, even if you fix it, reloading the project breaks it again, no idea so giving up for now.  Sticking with 2022.2.18
+* Versioned to V0.74
+* ControlNet: Support updated, now reads processor list from server, I had just hardcoded them earlier because I was dumb and/or lazy
+* ControlNet: Default processor on startup will no longer be a weird coadapter_* setting in some cases
 
 NOTE:  For pix2pix stuff, you need to add the [7 gb model](https://huggingface.co/timbrooks/instruct-pix2pix/resolve/main/instruct-pix2pix-00-22000.safetensors) to your models/Stable-diffusion folder
 

@@ -26,7 +26,9 @@ public class GameLogic : MonoBehaviour
     bool m_bAutoSave = false;
     bool m_bCameraFollow = false;
     bool m_bControlNetSupportExists = false;
-
+    int m_controlNetMaxModels = 1; //the minimum possible, max is like 5 or something, we'll read
+    //from the server which it is.  If we were smart we'd say 0 means no support but hey, I'm adding
+    //this later
     bool m_bUseControlNet = false;
     
     int m_maxToGenerate = 1000;
@@ -62,9 +64,9 @@ public class GameLogic : MonoBehaviour
     public Toggle m_useControlNetToggle;
     public Toggle m_hiresFixToggle;
 
-    public string m_defaultControlNetProcessor = "depth";
-    public string m_defaultControlNetModel = "depth";
-   
+    string m_defaultControlNetProcessor = "depth";
+    string m_defaultControlNetModel = "sd15_depth";
+  
     float m_alphaMaskFeatheringPower = 0;
     bool m_bLoopSource = false;
     bool m_inpaintMaskActive = false;
@@ -176,7 +178,6 @@ public class GameLogic : MonoBehaviour
         return m_samplerDropdown.value;
     }
 
-
     public void ClearModelDropdown()
     {
         m_modelDropdown.options.Clear();
@@ -199,6 +200,17 @@ public class GameLogic : MonoBehaviour
         m_bControlNetSupportExists = bHasControlNetSupport;
         m_useControlNetToggle.interactable = bHasControlNetSupport;
     }
+
+    public void SetControlNetMaxModels(int max)
+    {
+        m_controlNetMaxModels = max;
+        
+    }
+
+    public int GetControlNetMaxModels()
+    {
+        return m_controlNetMaxModels;
+    }
     public void ClearControlNetModelDropdown()
     {
         m_controlNetModelArray.Clear();
@@ -208,6 +220,17 @@ public class GameLogic : MonoBehaviour
     {
         m_controlNetModelArray.Add(name);
       
+    }
+
+    public void ClearControlNetPreprocessorsDropdown()
+    {
+        m_controlNetPreprocessorArray.Clear();
+    }
+
+    public void AddControlNetPreprocessorsDropdown(string name)
+    {
+        m_controlNetPreprocessorArray.Add(name);
+
     }
 
     public void ClearSamplersDropdown()
@@ -395,7 +418,7 @@ public class GameLogic : MonoBehaviour
         m_controlNetModelCurIndex = index;
     }
 
-    public void SetCurrentControlNetModelBySubstring(string substring)
+    public bool SetCurrentControlNetModelBySubstring(string substring)
     {
         //we'll set m_controlNetModelCurIndex by checking if the substring is inside of any of the strings in m_controlNetModelArray
         for (int i = 0; i < m_controlNetModelArray.Count; i++)
@@ -403,9 +426,11 @@ public class GameLogic : MonoBehaviour
             if (m_controlNetModelArray[i].Contains(substring))
             {
                 m_controlNetModelCurIndex = i;
-                return;
+                return true; //we've found it
             }
         }
+
+        return false; //didn't see anything like that
     }
 
     //Now we'll do the same thing, but for ControlNetPreprocessor
@@ -1039,6 +1064,16 @@ public class GameLogic : MonoBehaviour
 
             }
         }
+    }
+
+    public void OnClickedModelModsButton()
+    {
+        const string panelName = "ModelModPanel";
+        var existing = RTUtil.FindIncludingInactive(panelName);
+
+        existing.GetComponent<ModelModManager>().ToggleWindow();
+
+
     }
 
 }

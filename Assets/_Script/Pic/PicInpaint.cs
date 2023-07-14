@@ -99,7 +99,7 @@ public class PicInpaint : MonoBehaviour
         {
             var rand = new System.Random();
             //let's set it to our own random so we know what it is later
-            m_seed = rand.NextLong();
+            m_seed = Math.Abs(rand.NextLong());
         }
 
         if (!m_useExisting || m_prompt == "")

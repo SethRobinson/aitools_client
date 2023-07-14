@@ -28,9 +28,9 @@ public class Config : MonoBehaviour
     string m_configText; //later move this to a config.txt or something
     const string m_configFileName = "config.txt";
     bool m_safetyFilter = false;
-    float m_requiredServerVersion = 0.44f;
+    float m_requiredServerVersion = 0.46f;
 
-    float m_version = 0.73f;
+    float m_version = 0.74f;
     string m_imageEditorPathAndExe = "none set";
     public string GetVersionString() { return m_version.ToString("0.00"); }
     public float GetVersion() { return m_version; }
@@ -224,9 +224,24 @@ public class Config : MonoBehaviour
 
             GameLogic.Get().SetHasControlNetSupport(false);
             GameLogic.Get().ClearControlNetModelDropdown();
-
+            GameLogic.Get().ClearControlNetPreprocessorsDropdown();
+          
             var webScriptControlnet = CreateWebRequestObject();
             webScriptControlnet.StartPopulateControlNetModels(g);
+
+            var webScriptControlnetModules = CreateWebRequestObject();
+            webScriptControlnetModules.StartPopulateControlNetPreprocessors(g);
+
+            var webScriptControlnetSettings = CreateWebRequestObject();
+            webScriptControlnetSettings.StartPopulateControlNetSettings(g);
+
+            ModelModManager.Get().ClearModItems();
+
+            //lora and embeddings
+            var webScript3 = CreateWebRequestObject();
+            webScript3.StartPopulateEmbeddingsRequest(g);
+
+
 
         }
 

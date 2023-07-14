@@ -26,6 +26,16 @@ public class CloseGUIWindowButton : MonoBehaviour
         GameObject.Destroy(m_windowToClose);
     }
 
+    public void OnDeactivateWindow()
+    {
+        if (m_windowToClose == null)
+        {
+            m_windowToClose = gameObject;
+        }
+
+        m_windowToClose.SetActive(false);
+    }
+
     // Update is called once per frame
     void Update()
     {
