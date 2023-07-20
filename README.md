@@ -36,9 +36,9 @@ To use this, you'll need at least one Stable Diffusion WebUI server running some
 * Includes "experiments", little built-in games and apps designed to test using AI/SD for specific things: CrazyCam is a realtime webcam filter with 30+ presets, Shooting Gallery tests realtime craetion of sprites during a game, etc
 
 
-## Current version: **V0.74** (released July 14th 2023) Recent changes: ##
+## Current version: **V0.75** (released July 20th 2023) Recent changes: ##
 
-**What's new in V0.74**:
+**Recent changes**:
 
 * FEATURE: Can now enable/disable Embeddings/Lora models via a new menu, click the new icon by the Generate button.  Will use preview images if available (no additional setup required, if it works on auto1111 this client will pick them up)
 * Fixed issue with negative random #s causing generation errors with some models like DPM++ SDE Karras (eugenioamato)
@@ -46,6 +46,7 @@ To use this, you'll need at least one Stable Diffusion WebUI server running some
 * Versioned to V0.74
 * ControlNet: Support updated, now reads processor list from server, I had just hardcoded them earlier because I was dumb and/or lazy
 * ControlNet: Default processor on startup will no longer be a weird coadapter_* setting in some cases
+* BUGFIX: Inpainting no longer fails if the ControlNet isn't installed (eugenioamato)
 
 NOTE:  For pix2pix stuff, you need to add the [7 gb model](https://huggingface.co/timbrooks/instruct-pix2pix/resolve/main/instruct-pix2pix-00-22000.safetensors) to your models/Stable-diffusion folder
 
