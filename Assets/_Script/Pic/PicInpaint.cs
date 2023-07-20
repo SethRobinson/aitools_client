@@ -258,7 +258,14 @@ public class PicInpaint : MonoBehaviour
         float denoising_strength = GameLogic.Get().GetInpaintStrengthFloat();
         string lastControlNetModel = GameLogic.Get().GetCurrentControlNetModelString();
         float pix2pixCFG = GameLogic.Get().GetPix2PixTextStrengthFloat();
-        string lastControlNetPreprocessor = GameLogic.Get().GetCurrentControlNetPreprocessorString();
+
+
+        string lastControlNetPreprocessor = "";
+        if (m_bControlNetWasUsed)
+        {
+            lastControlNetPreprocessor = GameLogic.Get().GetCurrentControlNetPreprocessorString();
+        }
+
         float lastControlNetWeight = GameLogic.Get().GetControlNetWeight();
         float lastControlNetGuidance = GameLogic.Get().GetControlNetGuidance();
         string maskContents = GameLogic.Get().GetMaskContent();
