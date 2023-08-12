@@ -302,7 +302,7 @@ public class PicInpaint : MonoBehaviour
             
         }}";
 
-       Debug.Log("img2img with " + finalURL + " local GPU ID " + m_gpu);
+        RTConsole.Log("img2img with " + finalURL + " local GPU ID " + m_gpu);
 
 
 #if !RT_RELEASE

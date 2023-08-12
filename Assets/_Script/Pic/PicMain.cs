@@ -5,6 +5,7 @@ using System;
 using TMPro;
 using B83.Image.BMP;
 using UnityEngine.Rendering;
+using System.Linq;
 
 public class UndoEvent
 {
@@ -34,7 +35,8 @@ public class UndoEvent
     public string m_lastControlNetModelPreprocessor = "";
     public float m_lastControlNetWeight = 0;
     public float m_lastControlNetGuidance = 0;
-
+  
+  
 }
 
 public class PicMain : MonoBehaviour
@@ -65,10 +67,17 @@ public class PicMain : MonoBehaviour
     string m_editFilename = "";
     bool m_bLocked;
     bool m_bDisableUndo;
+
+    public AIGuideManager.PassedInfo m_aiPassedInfo; //a misc place to store things the AI guide wants to
+
+
     // Start is called before the first frame update
     void Start()
     {
-        SetStatusMessage("");
+        if (m_text.text == "Sample text") //ugly hack because I'm lazy, but this will break if you change the prefab
+        {
+            SetStatusMessage("");
+        }
 
         m_camera = Camera.allCameras[0];
         m_canvas.worldCamera = m_camera;
@@ -325,14 +334,14 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
 
         if (File.Exists(tempPngFile))
         {
-            Debug.Log("Importing from clipboard...");
+            RTConsole.Log("Importing from clipboard...");
             LoadImageByFilename(tempPngFile, false);
             RTUtil.DeleteFileIfItExists(tempPngFile);
 
         }
         else
         {
-            Debug.Log("No image found on clipboard");
+            RTConsole.Log("No image found on clipboard");
         }
        
 
@@ -499,7 +508,86 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
         SetNeedsToUpdateInfoPanelFlag();
 
     }
-    public void Resize(int newWidth, int newHeight, bool bKeepAspect)
+
+    public System.Collections.IEnumerator AddBorder(int left, int right, int top, int bottom, Color borderColor, bool bSetMaskToBorder)
+    {
+        //swap top and bottom, texture is upside down
+        int temp = top;
+        top = bottom;
+        bottom = temp;
+
+        if (m_pic.sprite == null)
+        {
+            SetStatusMessage("No image loaded");
+           //exit from this couroutines
+            yield break;
+
+        }
+        
+        //AddImageUndo(true);
+
+        // Create a new image that is black, that adds the border (based on the size of m_pic.sprite)
+        int newWidth = m_pic.sprite.texture.width + left + right;
+        int newHeight = m_pic.sprite.texture.height + top + bottom;
+
+        Texture2D defaultTex = new Texture2D(newWidth, newHeight, TextureFormat.RGBA32, false);
+        yield return null;
+        defaultTex.Fill(borderColor);
+        yield return null;
+        //defaultTex.FillAlpha(1.0f);
+        defaultTex.Apply();
+        yield return null;
+        float biggestSize = Math.Max(defaultTex.width, defaultTex.height);
+
+        var newSprite = Sprite.Create(defaultTex, new Rect(0, 0, defaultTex.width, defaultTex.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f, 0, SpriteMeshType.FullRect);
+
+        // Copy the old image into the new one
+        Color[] pixels = m_pic.sprite.texture.GetPixels();
+        defaultTex.SetPixels(left, top, m_pic.sprite.texture.width, m_pic.sprite.texture.height, pixels);
+        yield return null;
+        defaultTex.Apply();
+        yield return null;
+
+        m_pic.sprite = newSprite;
+        MovePicUpIfNeeded();
+        m_picMaskScript.ResizeMaskIfNeeded();
+      
+        if (bSetMaskToBorder)
+        {
+            int overlayPixel = 4; // It helps to go one extra when outpainting?
+                                  // Get four rects of the border
+            Rect topRect = new Rect(0, 0, defaultTex.width, top + overlayPixel);
+            Rect bottomRect = new Rect(0, defaultTex.height - (bottom + overlayPixel), defaultTex.width, bottom + overlayPixel);
+            Rect leftRect = new Rect(0, 0, left + overlayPixel, m_pic.sprite.texture.height);
+            Rect rightRect = new Rect(defaultTex.width - (right + overlayPixel), 0, right + overlayPixel, m_pic.sprite.texture.height);
+
+            Color drawColor = new Color(1, 1, 1, 1);
+
+
+            // Set all four rects
+          
+            m_mask.sprite.texture.SetPixels((int)topRect.x, (int)topRect.y, (int)topRect.width, (int)topRect.height, Enumerable.Repeat(drawColor, (int)topRect.width * (int)topRect.height).ToArray());
+            yield return null;
+            m_mask.sprite.texture.SetPixels((int)bottomRect.x, (int)bottomRect.y, (int)bottomRect.width, (int)bottomRect.height, Enumerable.Repeat(drawColor, (int)bottomRect.width * (int)bottomRect.height).ToArray());
+            yield return null;
+            m_mask.sprite.texture.SetPixels((int)leftRect.x, (int)leftRect.y, (int)leftRect.width, (int)leftRect.height, Enumerable.Repeat(drawColor, (int)leftRect.width * (int)leftRect.height).ToArray());
+            yield return null; 
+            m_mask.sprite.texture.SetPixels((int)rightRect.x, (int)rightRect.y, (int)rightRect.width, (int)rightRect.height, Enumerable.Repeat(drawColor, (int)rightRect.width * (int)rightRect.height).ToArray());
+            yield return null;
+            // Make sure the mask is shown
+            m_picMaskScript.SetMaskVisible(true);
+            m_targetRectScript.UpdatePoints();
+          
+        }
+
+        m_mask.sprite.texture.Apply();
+        m_pic.sprite.texture.Apply();
+        m_picMaskScript.SetMaskModified(true);
+    }
+
+
+
+    public void Resize(int newWidth, int newHeight, bool bKeepAspect, FilterMode filterMode = FilterMode.Bilinear)
     {
         if (m_pic.sprite == null)
         {
@@ -518,13 +606,13 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
             UnityEngine.Object.Destroy(m_pic.sprite.texture); //this will also kill the sprite?
 
             //now do the real resizing
-            ResizeTool.Resize(croppedTexture, newWidth, newHeight, false, FilterMode.Bilinear);
+            ResizeTool.Resize(croppedTexture, newWidth, newHeight, false, filterMode);
             float biggestSize = Math.Max(croppedTexture.width, croppedTexture.height);
             m_pic.sprite = Sprite.Create(croppedTexture, new Rect(0, 0, croppedTexture.width, croppedTexture.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f, 0, SpriteMeshType.FullRect);
         }
         else
         {
-            ResizeTool.Resize(m_pic.sprite.texture, newWidth, newHeight, false, FilterMode.Bilinear);
+            ResizeTool.Resize(m_pic.sprite.texture, newWidth, newHeight, false, filterMode);
             float biggestSize = Math.Max(m_pic.sprite.texture.width, m_pic.sprite.texture.height);
             m_pic.sprite = Sprite.Create(m_pic.sprite.texture, new Rect(0, 0, m_pic.sprite.texture.width, m_pic.sprite.texture.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f, 0, SpriteMeshType.FullRect);
         }
@@ -682,7 +770,7 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
 
     private void OnChanged(object source, FileSystemEventArgs e)
     {
-        Debug.Log("File we're editing has changed");
+        RTConsole.Log("File we're editing has changed");
         m_editFileHasChanged = true;
     }
 
@@ -757,25 +845,28 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
         {
             SaveFile("", "/autosave");
         }
+
+        if (GameLogic.Get().GetAutoSavePNG())
+        {
+            SaveFile("", "/autosave", null, "", true);
+        }
     }
 
+
     //save to a random filename if passed a blank filename
-    public string SaveFile(string fname="", string subdir = "", Texture2D texToSave = null, string fNamePostFix = "") 
+    public string SaveFile(string fname="", string subdir = "", Texture2D texToSave = null, string fNamePostFix = "", bool bSaveAsPNG =false) 
     {
-        string tempDir = Application.dataPath;
+        
 
+        string fileName = Config.Get().GetBaseFileDir(subdir) + "\\pic_" + System.Guid.NewGuid() + fNamePostFix ;
 
-        //get the Assets dir, but strip off the word Assets
-        tempDir = tempDir.Replace('/', '\\');
-        tempDir = tempDir.Substring(0, tempDir.LastIndexOf('\\'));
-
-        //tack on subdir if needed
-         tempDir = tempDir + subdir;
-
-        //reconvert to \\ (I assume this code would have to change if it wasn't Windows... uhh
-        tempDir = tempDir.Replace('/', '\\');
-
-        string fileName = tempDir + "\\pic_" + System.Guid.NewGuid() + fNamePostFix+".bmp";
+        if (bSaveAsPNG)
+        {
+            fileName += ".png";
+        } else
+        {
+            fileName += ".bmp";
+        }
 
         if (fname != null && fname != "")
         {
@@ -786,14 +877,33 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
 
         bool bWriteOutTextFileToo = true;
 
-        if (texToSave == null)
-        {
-            pngBytes = m_pic.sprite.texture.EncodeToBMP(m_mask.sprite.texture);
 
-        } else
+        if (bSaveAsPNG)
         {
-            bWriteOutTextFileToo = false;
-            pngBytes = texToSave.EncodeToBMP();
+            if (texToSave == null)
+            {
+                pngBytes = m_pic.sprite.texture.EncodeToPNG();
+
+            }
+            else
+            {
+                bWriteOutTextFileToo = false;
+                pngBytes = texToSave.EncodeToPNG();
+            }
+
+        }
+        else
+        {
+            if (texToSave == null)
+            {
+                pngBytes = m_pic.sprite.texture.EncodeToBMP(m_mask.sprite.texture);
+
+            }
+            else
+            {
+                bWriteOutTextFileToo = false;
+                pngBytes = texToSave.EncodeToBMP();
+            }
         }
 
         File.WriteAllBytes(fileName, pngBytes);
@@ -805,26 +915,54 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
             UpdateInfoPanel(); //OPTIMIZE:  We don't really need to do it if it's already been done...
             File.WriteAllText(txtFileName, m_infoPanelScript.GetTextInfoWithoutColors());
         }
-        RTQuickMessageManager.Get().ShowMessage("Saved " + fileName);
 
-        /*
-         if we wanted png saving 
-         
-        string fileName = tempDir+"\\pic_"+ System.Guid.NewGuid()+".png";
+        RTQuickMessageManager.Get().ShowMessage("Saved " + fileName);
+        return fileName;
+    }
+
+
+    public string SaveFileJPG(string fname = "", string subdir = "", Texture2D texToSave = null, string fNamePostFix = "",int JPGquality = 80)
+    {
+
+
+        string fileName = Config.Get().GetBaseFileDir(subdir) + "\\pic_" + System.Guid.NewGuid() + fNamePostFix;
+
+            fileName += ".jpg";
        
         if (fname != null && fname != "")
         {
             fileName = fname;
         }
-        
-        Debug.Log("Saving file to "+fileName);
+        byte[] pngBytes;
 
-        var pngBytes = m_pic.sprite.texture.EncodeToPNG();
+
+        bool bWriteOutTextFileToo = true;
+
+
+        if (texToSave == null)
+        {
+            pngBytes = m_pic.sprite.texture.EncodeToJPG(JPGquality);
+
+        }
+        else
+        {
+            bWriteOutTextFileToo = false;
+            pngBytes = texToSave.EncodeToJPG(JPGquality);
+        }
+
+
         File.WriteAllBytes(fileName, pngBytes);
-        */
+
+        if (bWriteOutTextFileToo)
+        {
+            //write out a text file with the same name, but with .txt extension
+            string txtFileName = fileName.Substring(0, fileName.Length - 4) + ".txt";
+            UpdateInfoPanel(); //OPTIMIZE:  We don't really need to do it if it's already been done...
+            File.WriteAllText(txtFileName, m_infoPanelScript.GetTextInfoWithoutColors());
+        }
+
+        RTQuickMessageManager.Get().ShowMessage("Saved " + fileName);
         return fileName;
-
-
     }
 
     public void SaveFileNoReturn2()
@@ -833,7 +971,13 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
 
     }
 
-        public void SaveFileNoReturn()
+    public void SaveFilePNG()
+    {
+        SaveFile("","",null,"",true);
+
+    }
+
+    public void SaveFileNoReturn()
     {
         RTQuickMessageManager.Get().ShowMessage("Saving image...");
 
@@ -911,6 +1055,22 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
         SetStatusMessage("Waiting for GPU...");
     }
 
+    public void CleanupPixelArt()
+    {
+        m_pic.sprite.texture.filterMode = FilterMode.Point;
+        int originalWidth = m_pic.sprite.texture.width;
+        int originalHeight = m_pic.sprite.texture.height;
+
+        Resize(128, 128, true, FilterMode.Point);
+        m_pic.sprite.texture.filterMode = FilterMode.Point;
+        m_pic.sprite.texture.Apply();
+
+
+        //now let's resize it back up to the original size it was using our saved width/height
+       Resize(originalWidth, originalHeight, true, FilterMode.Point);
+       m_pic.sprite.texture.filterMode = FilterMode.Point;
+       m_pic.sprite.texture.Apply();
+    }
     public void OnToggleSmoothing()
     {
         if (m_pic.sprite.texture.filterMode != FilterMode.Point)
@@ -1054,6 +1214,24 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
         */
     }
 
+    public void OnReRenderCopyButton()
+    {
+
+        var newPic = Duplicate();
+
+        var e = new ScheduledGPUEvent();
+        e.mode = "rerender";
+        e.targetObj = newPic;
+
+        PicMain newPicMain = newPic.GetComponent<PicMain>();
+        //set the seed of this pic
+        PicTextToImage textToImage = GetComponent<PicTextToImage>();
+        textToImage.SetSeed(-1); //causes it to be random again
+
+        ImageGenerator.Get().ScheduleGPURequest(e);
+        newPicMain.SetStatusMessage("Waiting for GPU...");
+    }
+   
     public void OnReRenderButton()
     {
         var e = new ScheduledGPUEvent();
@@ -1064,7 +1242,31 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
         SetStatusMessage("Waiting for GPU...");
     }
 
-    
+    public void OnReRenderNewSeedButton()
+    {
+        var e = new ScheduledGPUEvent();
+        e.mode = "rerender";
+        e.targetObj = this.gameObject;
+        PicTextToImage textToImage = GetComponent<PicTextToImage>();
+        textToImage.SetSeed(-1); //causes it to be random again
+
+        ImageGenerator.Get().ScheduleGPURequest(e);
+        SetStatusMessage("Waiting for GPU...");
+    }
+
+    public void OnRenderButton(string promptAddition)
+    {
+        var e = new ScheduledGPUEvent();
+        e.mode = "render";
+        e.targetObj = this.gameObject;
+        e.promptOverride = promptAddition;
+
+        ImageGenerator.Get().ScheduleGPURequest(e);
+        SetStatusMessage("Waiting for GPU...");
+    }
+
+
+
     private void OnDestroy()
     {
        InvalidateExportedEditFile();

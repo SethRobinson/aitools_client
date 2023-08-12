@@ -4,6 +4,7 @@ using UnityEngine;
 using System.IO;
 using DG.Tweening.Plugins.Core.PathCore;
 using UnityEngine.UI;
+using static System.Net.WebRequestMethods;
 
 public class GPUInfo
 {
@@ -30,7 +31,18 @@ public class Config : MonoBehaviour
     bool m_safetyFilter = false;
     float m_requiredServerVersion = 0.46f;
 
-    float m_version = 0.75f;
+    string _openAI_APIKey = "";
+    public string _texgen_webui_address = "localhost:5000";
+    public string _openai_gpt4_endpoint = "https://api.openai.com/v1/chat/completions";
+    string _elevenLabs_APIKey = "";
+    string _elevenLabs_voiceID = "";
+    int _jpgSaveQuality = 80;
+
+    public string GetOpenAI_APIKey() { return _openAI_APIKey; }
+    public string GetElevenLabs_APIKey() { return _elevenLabs_APIKey; }
+    public string GetElevenLabs_voiceID() { return _elevenLabs_voiceID; }
+
+    float m_version = 0.76f;
     string m_imageEditorPathAndExe = "none set";
     public string GetVersionString() { return m_version.ToString("0.00"); }
     public float GetVersion() { return m_version; }
@@ -54,7 +66,6 @@ public class Config : MonoBehaviour
         RTAudioManager.Get().AddClipsToLibrary(m_audioClips);
 
         ConnectToServers();
-
     }
 
     public void ConnectToServers()
@@ -85,10 +96,33 @@ public class Config : MonoBehaviour
             m_configText += "set_image_editor|C:\\Program Files\\Adobe\\Adobe Photoshop 2023\\Photoshop.exe\n";
             m_configText += "\n#set_default_sampler|DDIM\n";
             m_configText += "#set_default_steps|50\n";
+            m_configText += "\n#To generate text with the AI Guide features, you need to set your OpenAI GPT4 key and/or a Text Generation web IO API url (presumably your own local server).\n";
+            m_configText += "\nset_openai_gpt4_key|<key goes here>|\n";
+            m_configText += "set_openai_gpt4_endpoint|https://api.openai.com/v1/chat/completions|\n";
+            m_configText += "\nset_texgen_webui_address|localhost:5000|\n";
         }
 
         RTQuickMessageManager.Get().ShowMessage("Connecting...");
         ProcessConfigString(m_configText);
+    }
+
+
+    public string GetBaseFileDir(string subdir)
+    {
+        string tempDir = Application.dataPath;
+
+
+        //get the Assets dir, but strip off the word Assets
+        tempDir = tempDir.Replace('/', '\\');
+        tempDir = tempDir.Substring(0, tempDir.LastIndexOf('\\'));
+
+        //tack on subdir if needed
+        tempDir = tempDir + subdir;
+
+        //reconvert to \\ (I assume this code would have to change if it wasn't Windows... uhh
+        tempDir = tempDir.Replace('/', '\\');
+
+        return tempDir;
     }
 
     public int GetFreeGPU()
@@ -107,7 +141,10 @@ public class Config : MonoBehaviour
     {
         return (gpu < GetGPUCount() && gpu >= 0);
     }
-    
+    public int GetJPGSaveQuality()
+    {
+        return _jpgSaveQuality;
+    }
     public string GetGPUName(int gpu)
     {
         if (IsValidGPU(gpu))
@@ -138,7 +175,6 @@ public class Config : MonoBehaviour
         return false;
     }
 
- 
     public string GetConfigText()
     {
         return m_configText;
@@ -202,15 +238,13 @@ public class Config : MonoBehaviour
         vPos.y += spacerY* g.localGPUID;
         buttonObj.transform.localPosition = vPos;
 
-
         if (g.supportsAITools)
         {
             //learn more about this server, we haven't already run it yet
             var webScript = CreateWebRequestObject();
             webScript.StartConfigRequest(g.localGPUID, g.remoteURL);
         }
-
-    
+           
 
         if (g.localGPUID == 0)
         {
@@ -241,8 +275,6 @@ public class Config : MonoBehaviour
             var webScript3 = CreateWebRequestObject();
             webScript3.StartPopulateEmbeddingsRequest(g);
 
-
-
         }
 
     }
@@ -259,7 +291,7 @@ public class Config : MonoBehaviour
         }
         catch (IOException ioex)
         {
-            Debug.Log("Couldn't write config.txt out. (" + ioex.Message + ")");
+            RTConsole.Log("Couldn't write config.txt out. (" + ioex.Message + ")");
         }
     }
 
@@ -278,7 +310,7 @@ public class Config : MonoBehaviour
         }
         catch (FileNotFoundException e)
         {
-            Debug.Log("No config.txt file, using defaults ("+e.Message+")");
+            RTConsole.Log("No config.txt file, using defaults ("+e.Message+")");
         }
         
         return config;
@@ -286,7 +318,6 @@ public class Config : MonoBehaviour
     void ClearGPU()
     {
         m_gpuInfo = new List<GPUInfo>();
-      
 
         RTUtil.KillAllObjectsByName(RTUtil.FindIncludingInactive("Panel").gameObject, "ServerButtonPrefab", true);
         RTUtil.KillAllObjectsByName(RTUtil.FindIncludingInactive("Panel").gameObject, "NoServersButtonPrefab", true);
@@ -296,7 +327,6 @@ public class Config : MonoBehaviour
         //wire up its button
         var button = noServersObg.GetComponent<Button>();
         button.onClick.AddListener(() => { GameLogic.Get().OnNoServersButtonClicked(); });
-
     }
 
     public WebRequestServerInfo CreateWebRequestObject()
@@ -372,6 +402,26 @@ public class Config : MonoBehaviour
                 {
                     m_imageEditorPathAndExe = words[1];
                 } else
+
+                    
+                if (words[0] == "set_openai_gpt4_key")
+                {
+                    _openAI_APIKey = words[1];
+                }
+                else
+                if (words[0] == "set_texgen_webui_address")
+                {
+                    _texgen_webui_address = words[1];
+                }
+                else
+              if (words[0] == "set_openai_gpt4_endpoint")
+                        {
+                    _openai_gpt4_endpoint = words[1];
+                }
+                else
+
+
+                    
                 if (words[0] == "set_max_fps")
                 {
                     int maxFPS;

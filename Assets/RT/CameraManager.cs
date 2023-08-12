@@ -85,7 +85,7 @@ private IEnumerator InitWebcams()
         }
         else
         {
-            Debug.Log("no webcams found");
+            RTConsole.Log("no webcams found");
         }
 
        _restartCameraTimer= Time.time + 1;

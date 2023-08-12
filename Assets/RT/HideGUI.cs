@@ -1,5 +1,6 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
+using Unity.XR.CoreUtils;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -17,6 +18,10 @@ public class HideGUI : MonoBehaviour
 
     public eStartupAlpha _SetAlphaAtStart = eStartupAlpha.SetAlphaToZero;
     public bool SetInactive = true;
+
+    public bool DisableInteractable = false;
+    public bool DisableBlocksRaycasts = false;
+
  	// Use this for initialization
 	void Start ()
     {
@@ -41,6 +46,16 @@ public class HideGUI : MonoBehaviour
         if (SetInactive)
         {
             gameObject.SetActive(false);
+        }
+
+        if (DisableInteractable)
+        {
+            GetComponent<CanvasGroup>().interactable = false;
+        }
+
+        if (DisableBlocksRaycasts)
+        {
+            GetComponent<CanvasGroup>().blocksRaycasts = false;
         }
 
         Destroy(this);

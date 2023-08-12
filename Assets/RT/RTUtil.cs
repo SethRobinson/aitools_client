@@ -248,6 +248,48 @@ public static class Tex2DExtension
 
     }
 
+    //do something like the above function, but we set a rect area instead of a circle
+    public static void SetPixelsWithinRect(this Texture2D tex, int x, int y, int width, int height, Color color)
+    {
+        if (x < 0)
+        {
+            x = 0;
+        }
+        if (x + width > tex.width)
+        {
+            width = tex.width - x;
+        }
+        if (y < 0)
+        {
+            y = 0;
+        }
+        if (y + height > tex.height)
+        {
+            height = tex.height - y;
+        }
+
+        for (int u = x; u < x + width; u++)
+        {
+            for (int v = y; v < y + height; v++)
+            {
+                tex.SetPixel(u, v, color);
+            }
+        }
+    }
+
+    //Same as above, but accept a rect
+    public static void SetPixelsWithinRect(this Texture2D tex, Rect rect, Color color)
+    {
+        int x = (int)rect.x;
+        int y = (int)rect.y;
+        int width = (int)rect.width;
+        int height = (int)rect.height;
+        
+        //call the above function
+        SetPixelsWithinRect(tex, x, y, width, height, color);
+
+    }
+
     public static Texture2D GetAlphaMask(this Texture2D tex, out bool bAlphaWasUsed) //grabs the alpha mask, replacing all colors
     {
         Texture2D newtex = new Texture2D(tex.width, tex.height, TextureFormat.RGBA32, false);
@@ -379,6 +421,33 @@ public static class Tex2DExtension
 
     }
 
+    public static void BlitWithAlpha(this Texture2D dst, int dstOffsetX, int dstOffsetY, Texture2D src, int srcOffsetX, int srcOffsetY, int width, int height)
+    {
+        Debug.Assert(dstOffsetX >= 0 && dstOffsetX + width <= dst.width);
+        Debug.Assert(dstOffsetY >= 0 && dstOffsetY + height <= dst.height);
+
+        Debug.Assert(srcOffsetX >= 0 && srcOffsetX + width <= src.width);
+        Debug.Assert(srcOffsetY >= 0 && srcOffsetY + height <= src.height);
+
+        for (int x = 0; x < width; x++)
+        {
+            for (int y = 0; y < height; y++)
+            {
+                Color dstColor = dst.GetPixel(dstOffsetX + x, (dst.height - 1) - (dstOffsetY + y));
+                Color srcColor = src.GetPixel(srcOffsetX + x, (src.height - 1) - (srcOffsetY + y));
+
+                float alpha = srcColor.a;
+                Color blendedColor = new Color(srcColor.r * alpha + dstColor.r * (1 - alpha),
+                                               srcColor.g * alpha + dstColor.g * (1 - alpha),
+                                               srcColor.b * alpha + dstColor.b * (1 - alpha),
+                                               alpha + dstColor.a * (1 - alpha));
+
+                dst.SetPixel(dstOffsetX + x, (dst.height - 1) - (dstOffsetY + y), blendedColor);
+            }
+        }
+
+       
+    }
 
     //Don't forget to .Apply() after doing this!
     public static void Fill(this Texture2D tex, Color color)
@@ -751,7 +820,7 @@ public class RTUtil
                 int closingIndex = s.IndexOf('}', i);
                 if (closingIndex == -1)
                 {
-                    RTConsole.Log("Malformed SANSI detected in " + s);
+                    //RTConsole.Log("Malformed SANSI detected in " + s);
                     continue;
                 }
 

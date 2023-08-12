@@ -123,7 +123,7 @@ $@"{{
 
         //        ""alpha_mask_subject_force_no_translucency"": true
 
-        Debug.Log("Generating mask with " + finalURL + " local GPU ID " + m_gpu);
+        RTConsole.Log("Generating mask with " + finalURL + " local GPU ID " + m_gpu);
 
         //File.WriteAllText("json_to_send.json", json); //for debugging
         using (var postRequest = UnityWebRequest.PostWwwForm(finalURL, "POST"))

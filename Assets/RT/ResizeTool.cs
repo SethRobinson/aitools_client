@@ -146,6 +146,7 @@ public class ResizeTool
 
         //set the active RenderTexture to the temporary texture so we can read from it
         RenderTexture.active = rt;
+        texture2D.filterMode = filter;
 
         //Copy the texture data on the GPU - this is where the magic happens [(;]
         Graphics.Blit(texture2D, rt);

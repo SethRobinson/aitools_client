@@ -57,7 +57,7 @@ public class WebRequestServerInfo : MonoBehaviour
 
                 if (postRequest.result == UnityWebRequest.Result.ProtocolError)
                 {
-                    Debug.Log("Server " + serverClickableURL + " isn't an AI Tools variant, trying to connect as vanilla Automatic1111 type...");
+                    RTConsole.Log("Server " + serverClickableURL + " isn't an AI Tools variant, trying to connect as vanilla Automatic1111 type...");
                     var webScript = Config.Get().CreateWebRequestObject();
                     webScript.StartConfigRequest(-1, server);
                     yield break;
@@ -72,8 +72,8 @@ public class WebRequestServerInfo : MonoBehaviour
                     goto again;
                 }
 
-                Debug.Log("Error connecting to server " + serverClickableURL + ". ("+ postRequest.error+ ")  Are you sure it's up and this address/port is right? It must be running with the --api parm. (and --listen if not on this machine)");
-                Debug.Log("Click Configuration, then Save & Apply to try again.");
+                RTConsole.Log("Error connecting to server " + serverClickableURL + ". ("+ postRequest.error+ ")  Are you sure it's up and this address/port is right? It must be running with the --api parm. (and --listen if not on this machine)");
+                RTConsole.Log("Click Configuration, then Save & Apply to try again.");
                 GameLogic.Get().ShowConsole(true);
             }
             else
@@ -112,7 +112,7 @@ public class WebRequestServerInfo : MonoBehaviour
 
                     if (requiredClient > Config.Get().GetVersion())
                     {
-                        Debug.Log("ERROR: The server says this client (V" + Config.Get().GetVersionString() + " is oudated and we should upgrade to V" +
+                        RTConsole.Log("ERROR: The server says this client (V" + Config.Get().GetVersionString() + " is oudated and we should upgrade to V" +
                                 requiredClient + " or newer.  Go upgrade! We'll try anyway though.");
                         GameLogic.Get().ShowConsole(true);
                     }
@@ -120,7 +120,7 @@ public class WebRequestServerInfo : MonoBehaviour
 
                 if (Config.Get().GetRequiredServerVersion() > version)
                 {
-                    Debug.Log("ERROR: The server version is outdated, we required "+ Config.Get().GetRequiredServerVersion()+ " or newer. GO UPGRADE!  Trying anyway though.");
+                    RTConsole.Log("ERROR: The server version is outdated, we required "+ Config.Get().GetRequiredServerVersion()+ " or newer. GO UPGRADE!  Trying anyway though.");
                     GameLogic.Get().ShowConsole(true);
                 }
 
@@ -215,11 +215,11 @@ public class WebRequestServerInfo : MonoBehaviour
                 {
 
                     //well, let's try again before we say we failed.
-                    Debug.Log("Getting config from " + serverClickableURL + "... (try " + m_timesTried + ")");
+                    RTConsole.Log("Getting config from " + serverClickableURL + "... (try " + m_timesTried + ")");
                     goto again;
                 }
-                Debug.Log("Error getting config from server " + serverClickableURL + ". (" + postRequest.error + ")  Are you sure it's up and this address/port is right? It must be running with the --api parm. (and --listen if not on this machine)");
-                Debug.Log("Click Configuration, then Save & Apply to try again.");
+                RTConsole.Log("Error getting config from server " + serverClickableURL + ". (" + postRequest.error + ")  Are you sure it's up and this address/port is right? It must be running with the --api parm. (and --listen if not on this machine)");
+                RTConsole.Log("Click Configuration, then Save & Apply to try again.");
                 GameLogic.Get().ShowConsole(true);
             }
             else
@@ -306,8 +306,8 @@ public class WebRequestServerInfo : MonoBehaviour
                     Debug.Log("Getting models from server " + serverClickableURL + "... (try " + m_timesTried + ")");
                     goto again;
                 }
-                Debug.Log("Error getting models from server " + serverClickableURL + ". (" + postRequest.error + ")  Are you sure it's up and this address/port is right? It must be running with the --api parm. (and --listen if not on this machine)");
-                Debug.Log("Click Configuration, then Save & Apply to try again.");
+                RTConsole.Log("Error getting models from server " + serverClickableURL + ". (" + postRequest.error + ")  Are you sure it's up and this address/port is right? It must be running with the --api parm. (and --listen if not on this machine)");
+                RTConsole.Log("Click Configuration, then Save & Apply to try again.");
                 GameLogic.Get().ShowConsole(true);
             }
             else

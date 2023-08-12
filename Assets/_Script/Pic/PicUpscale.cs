@@ -143,9 +143,9 @@ $@"{{
            
         }}";
 
-  //      ""alpha_mask_subject"":{ bRemoveBackground.ToString().ToLower()},
-  
-        Debug.Log("Upscaling with " + finalURL + " local GPU ID " + m_gpu);
+        //      ""alpha_mask_subject"":{ bRemoveBackground.ToString().ToLower()},
+
+        RTConsole.Log("Upscaling with " + finalURL + " local GPU ID " + m_gpu);
 
         //File.WriteAllText("json_to_send.json", json); //for debugging
         using (var postRequest = UnityWebRequest.PostWwwForm(finalURL, "POST"))

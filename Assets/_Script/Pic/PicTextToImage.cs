@@ -9,7 +9,8 @@ using System.Globalization;
 public class PicTextToImage : MonoBehaviour
 {
     float startTime;
-    string m_prompt;
+    string m_prompt = null;
+    string m_negativePrompt = null;
     int m_steps;
     float m_prompt_strength;
     long m_seed = -1;
@@ -17,14 +18,15 @@ public class PicTextToImage : MonoBehaviour
     bool m_bIsGenerating;
     int m_gpu;
     public PicMain m_picScript;
-    public Action<GameObject> OnFinishedRendering;
-    
+    public Action<GameObject> m_onFinishedRenderingCallback;
+
+
     public void SetForceFinish(bool bNew)
     {
         if (bNew && m_bIsGenerating)
         {
             m_picScript.SetStatusMessage("(killing process)");
-            OnFinishedRendering = null;
+            m_onFinishedRenderingCallback = null;
             m_gpu = -1; //invalid
         }
         
@@ -52,6 +54,10 @@ public class PicTextToImage : MonoBehaviour
     public void SetPrompt(string prompt)
     {
         m_prompt = prompt;
+    }
+    public void SetNegativePrompt(string prompt)
+    {
+        m_negativePrompt = prompt;
     }
 
     public float GetTextStrength() { return m_prompt_strength; }
@@ -95,16 +101,25 @@ public class PicTextToImage : MonoBehaviour
       
         m_steps = GameLogic.Get().GetSteps();
 
-        if (!rerender || m_prompt == null || m_prompt == "")
+        if (!rerender)
         {
             m_seed = GameLogic.Get().GetSeed();
            
-            if (ImageGenerator.Get().IsGenerating()) 
+            if (m_prompt == null)
             {
-                m_prompt = GameLogic.Get().GetModifiedPrompt();
-            } else
+                if (ImageGenerator.Get().IsGenerating())
+                {
+                    m_prompt = GameLogic.Get().GetModifiedPrompt();
+                }
+                else
+                {
+                    m_prompt = GameLogic.Get().GetPrompt();
+                }
+            }
+
+            if (m_negativePrompt == null)
             {
-                m_prompt = GameLogic.Get().GetPrompt();
+                m_negativePrompt = GameLogic.Get().GetNegativePrompt();
             }
 
             m_prompt_strength = GameLogic.Get().GetTextStrengthFloat();
@@ -135,6 +150,10 @@ public class PicTextToImage : MonoBehaviour
     {
         StartWebRequest(true);
     }
+    public void StartGenerateInitialRender()
+    {
+        StartWebRequest(false);
+    }
     IEnumerator GetRequest(String context, double prompt_strength, string url)
     {
         WWWForm form = new WWWForm();
@@ -159,16 +178,18 @@ public class PicTextToImage : MonoBehaviour
         }
 
        finalURL = url + "/sdapi/v1/txt2img";
-       string negativePrompt = GameLogic.Get().GetNegativePrompt();
        int steps = GameLogic.Get().GetSteps();
-     
-       string promptStrString = prompt_strength.ToString("0.0", CultureInfo.InvariantCulture);
+
+      
+
+        string promptStrString = prompt_strength.ToString("0.0", CultureInfo.InvariantCulture);
             //using the new API which doesn't support alpha masking the subject
             string json =
                  $@"{{
+        
             {safety_filter}
             ""prompt"": ""{SimpleJSON.JSONNode.Escape(m_prompt)}"",
-            ""negative_prompt"": ""{SimpleJSON.JSONNode.Escape(negativePrompt)}"",
+            ""negative_prompt"": ""{SimpleJSON.JSONNode.Escape(m_negativePrompt)}"",
             ""steps"": {steps},
             ""restore_faces"":{bFixFace.ToString().ToLower()},
             ""tiling"":{bTiled.ToString().ToLower()},
@@ -186,8 +207,8 @@ public class PicTextToImage : MonoBehaviour
   ""hr_scale"": 2
         
         }}";
-       
-        Debug.Log("Generating text to image with " + finalURL + " local GPU ID " + m_gpu);
+
+        RTConsole.Log("Generating text to image with " + finalURL + " local GPU ID " + m_gpu);
 
         //",\"" + GameLogic.Get().GetSamplerName() + "\","  +  + ","
 
@@ -265,9 +286,7 @@ public class PicTextToImage : MonoBehaviour
                 {
                     yield return null; //wait a frame to lesson the jerkiness
                   
-                    
-                    
-                    m_picScript.AddImageUndo();
+                   // m_picScript.AddImageUndo();
                     //Debug.Log("Read texture");
                     float biggestSize = Math.Max(texture.width, texture.height);
                     
@@ -283,7 +302,7 @@ public class PicTextToImage : MonoBehaviour
 
                     //we've already done the undo, so now let's update with the info we used to make this
                     m_picScript.GetCurrentStats().m_lastPromptUsed = m_prompt;
-                    m_picScript.GetCurrentStats().m_lastNegativePromptUsed = negativePrompt;
+                    m_picScript.GetCurrentStats().m_lastNegativePromptUsed = m_negativePrompt;
                     m_picScript.GetCurrentStats().m_lastSteps = steps;
                     m_picScript.GetCurrentStats().m_lastCFGScale = (float)prompt_strength;
                     m_picScript.GetCurrentStats().m_lastSampler = samplerName;
@@ -331,8 +350,8 @@ public class PicTextToImage : MonoBehaviour
                         processScript.StartWebRequest(false);
                     } else
                     {
-                        if (OnFinishedRendering != null)
-                            OnFinishedRendering.Invoke(gameObject);
+                        if (m_onFinishedRenderingCallback != null)
+                            m_onFinishedRenderingCallback.Invoke(gameObject);
                     }
                 }
               

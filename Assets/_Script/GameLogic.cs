@@ -24,6 +24,7 @@ public class GameLogic : MonoBehaviour
     long m_seed = -1;
     bool m_bRandomizePrompt = false;
     bool m_bAutoSave = false;
+    bool m_bAutoSavePNG = false;
     bool m_bCameraFollow = false;
     bool m_bControlNetSupportExists = false;
     int m_controlNetMaxModels = 1; //the minimum possible, max is like 5 or something, we'll read
@@ -119,7 +120,9 @@ public class GameLogic : MonoBehaviour
     public void SetRandomizePrompt(bool bNew) { m_bRandomizePrompt = bNew;}
 
     public bool GetAutoSave() { return m_bAutoSave; }
+    public bool GetAutoSavePNG() { return m_bAutoSavePNG; }
     public void SetAutoSave(bool bNew) { m_bAutoSave = bNew; }
+    public void SetAutoSavePNG(bool bNew) { m_bAutoSavePNG = bNew; }
 
     public bool GetCameraFollow() { return m_bCameraFollow; }
     public void SetCameraFollow(bool bNew) { m_bCameraFollow = bNew; }
@@ -333,15 +336,27 @@ public class GameLogic : MonoBehaviour
         Config.Get().SendRequestToAllServers("sd_model_checkpoint", m_modelDropdown.options[optionID].text);
         RTQuickMessageManager.Get().ShowMessage("Servers loading " + m_modelDropdown.options[optionID].text);
 
-        if (!m_modelDropdown.options[optionID].text.Contains("768"))
-        {
-            SetWidthDropdown("512");
-            SetHeightDropdown("512");
-        } else
+        SetWidthDropdown("512");
+        SetHeightDropdown("512");
+
+        if (m_modelDropdown.options[optionID].text.Contains("768"))
         {
             SetWidthDropdown("768");
             SetHeightDropdown("768");
+        } 
 
+        if (m_modelDropdown.options[optionID].text.Contains("XL"))
+        {
+            //XL models need this
+            SetWidthDropdown("1024");
+            SetHeightDropdown("1024");
+
+            if (m_samplerDropdown.options[m_samplerDropdown.value].text.Contains("DDIM"))
+            {
+                //DDIM won't work with this
+                SetSamplerByName("Euler");
+                SetSteps(100);
+            }
         }
 
         m_activeModelName = m_modelDropdown.options[optionID].text;
@@ -356,6 +371,11 @@ public class GameLogic : MonoBehaviour
     public void SetPrompt(string p)
     {
         m_inputField.text = p;
+    }
+
+    public void SetNegativePrompt(string p)
+    {
+        m_negativeInputField.text = p;
     }
 
     public List<String> GetControlNetPreprocessorArray() { return m_controlNetPreprocessorArray;  }
@@ -445,8 +465,6 @@ public class GameLogic : MonoBehaviour
                 return;
             }
         }
-
-
     }
 
     public void SetDefaultControLNetOptions()
@@ -559,6 +577,23 @@ public class GameLogic : MonoBehaviour
 
         GameObject genPanel = Instantiate(m_controlNetPanelPrefab, RTUtil.FindIncludingInactive("Canvas").transform);
         genPanel.name = panelName;
+
+    }
+
+    public void OnUseAIGuide(bool bNew)
+    {
+       // m_bUseControlNet = bNew;
+       // m_useControlNetToggle.isOn = bNew;
+
+    }
+
+    public void OnClickedAIGuideSettingsButton()
+    {
+       Debug.Log("Clicked AI guide settings");
+        const string panelName = "AIGuidePanel";
+        var existing = RTUtil.FindIncludingInactive(panelName);
+
+        existing.GetComponent<AIGuideManager>().ToggleWindow();
 
     }
 
@@ -888,7 +923,7 @@ public class GameLogic : MonoBehaviour
     public void OnNegativePromptChanged(String str)
     {
         m_negativePrompt = str;
-        Debug.Log("Negative prompt changed: " + str);
+        //Debug.Log("Negative prompt changed: " + str);
     }
 
     void Start()
@@ -924,7 +959,7 @@ public class GameLogic : MonoBehaviour
 
             */
 
-        RTConsole.Get().SetShowUnityDebugLogInConsole(true);
+        RTConsole.Get().SetShowUnityDebugLogInConsole(false);
 
         //RTEventManager.Get().Schedule(RTAudioManager.GetName(), "PlayMusic", 1, "intro");
         string version = "Unity V " + Application.unityVersion + " :";

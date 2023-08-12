@@ -257,7 +257,7 @@ public class RTConsole : MonoBehaviour
         _consoleText.text = string.Concat(_lines.ToArray());
 
         // _consoleText.text = _consoleText.text + RTUtil.ConvertSansiToUnityColors(text);
-        Canvas.ForceUpdateCanvases();
+        //Canvas.ForceUpdateCanvases();
         _scrollRect.verticalNormalizedPosition = 0f;
     }
 

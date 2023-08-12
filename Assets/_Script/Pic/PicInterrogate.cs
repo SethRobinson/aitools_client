@@ -113,7 +113,7 @@ public class PicInterrogate : MonoBehaviour
                 ""model"": ""clip""
             }}";
 
-        Debug.Log("Interrogating with " + finalURL + " local GPU ID " + m_gpu);
+        RTConsole.Log("Interrogating with " + finalURL + " local GPU ID " + m_gpu);
 
         //File.WriteAllText("json_to_send.json", json); //for debugging
 

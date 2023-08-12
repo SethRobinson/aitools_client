@@ -4,10 +4,10 @@
 License:  BSD style attribution, see LICENSE.md
 
 <p float="left">
-<a href="Media/aitools_v050_screenshot2.png"><img align="top" src="Media/aitools_v050_screenshot2.png"></a>
+<a href="Media/ai_tools_ai_guide.jpg"><img align="top" src="Media/ai_tools_ai_guide.jpg"></a>
 </p>
 
-# Download the latest [AI Tools Client (Windows, 36 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip)
+# Download the latest [AI Tools Client (Windows, 56 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip)
 
 To use this, you'll need at least one Stable Diffusion WebUI server running somewhere (it can run on Windows or linux, the same machine as the client is ok) This client supports either of the following servers:
 
@@ -28,25 +28,23 @@ To use this, you'll need at least one Stable Diffusion WebUI server running some
 * Pan/zoom with thousands of images on the screen
 * Mask painting with controllable brush size
 * Option to automatically save all generations, with accompanying .txt file that includes all settings
-* Supports pix2pix and ControlNet (For ControlNet, the server requires [Mikubill's sd-webui-controlnet extension](https://github.com/Mikubill/sd-webui-controlnet) and its models to be installed, otherwise the option is grayed out
+* Supports pix2pix and ControlNet (For ControlNet, the server requires [Mikubill's sd-webui-controlnet extension](https://github.com/Mikubill/sd-webui-controlnet)) and its models to be installed, otherwise the option is grayed out
 * Can utilize multiple servers (three video cards on one machine? Run three servers!) allowing seamless use of all GPUs for ultra fast generation and a single click to change the active model
 * Neat workflow that allows evolving images with loopback while live-selecting the best alternatives to shape the image in real-time
 * Open source, uses the Unity game engine and C# to do stuff with AI art
 * Privacy respected - does not phone home or collect any statistics, purely local usage. (it does check a single file on github.com to check for newer versions, but that's it)
 * Includes "experiments", little built-in games and apps designed to test using AI/SD for specific things: CrazyCam is a realtime webcam filter with 30+ presets, Shooting Gallery tests realtime craetion of sprites during a game, etc
+* AI Guide feature harnesses the power of GPT-4 or open source LLMs to create motivational posters, illustrated stories or whatever, with presets and web-slideshower viewer. Comes with presets like [Pixel Art Gaming Lies](https://www.rtsoft.com/ai/lies/) and [Random Story That Teaches Japanese](https://www.rtsoft.com/ai/jtest/)
 
 
-## Current version: **V0.75** (released July 20th 2023) Recent changes: ##
+## Current version: **V0.76** (released August 12th 2023) Recent changes: ##
 
 **Recent changes**:
 
-* FEATURE: Can now enable/disable Embeddings/Lora models via a new menu, click the new icon by the Generate button.  Will use preview images if available (no additional setup required, if it works on auto1111 this client will pick them up)
-* Fixed issue with negative random #s causing generation errors with some models like DPM++ SDE Karras (eugenioamato)
-* Tried to update project to Unity 2022.3.4f1 LTS but it has weird canvas rect area problems, even if you fix it, reloading the project breaks it again, no idea so giving up for now.  Sticking with 2022.2.18
-* Versioned to V0.74
-* ControlNet: Support updated, now reads processor list from server, I had just hardcoded them earlier because I was dumb and/or lazy
-* ControlNet: Default processor on startup will no longer be a weird coadapter_* setting in some cases
-* BUGFIX: Inpainting no longer fails if the ControlNet isn't installed (eugenioamato)
+* AI Guide feature harnesses the power of GPT-4 or Text generation web UI to create motivational posters, illustrated stories or whatever.  Some presets included.
+* Added "Cleanup pixel art" option to the pic drop down menu
+* Added "Add border and mask them" option to the pic drop down menu - with this, helps for doing outpainting with img2img
+* Can now autosave all pics as .bmp (with mask) or .png, or both
 
 NOTE:  For pix2pix stuff, you need to add the [7 gb model](https://huggingface.co/timbrooks/instruct-pix2pix/resolve/main/instruct-pix2pix-00-22000.safetensors) to your models/Stable-diffusion folder
 
@@ -78,9 +76,6 @@ Next run aitools_client.exe.  Click on the "Configuration" button and a text edi
 
 add_server|http://localhost:7860
 
-#kids around?  Then uncomment below to turn on the NSFW filter. 
-#enable_safety_filter
-
 #Set the below path and .exe to an image editor to use the Edit option. Changed files will auto
 #update in here.
 
@@ -88,6 +83,13 @@ set_image_editor|C:\Program Files\Adobe\Adobe Photoshop 2023\Photoshop.exe
 
 #set_default_sampler|DDIM
 #set_default_steps|50
+
+#To generate text with the AI Guide features, you need to set your OpenAI GPT4 key and/or a Text Generation web IO API url (presumably your own local server).
+
+set_openai_gpt4_key|<key goes here>|
+set_openai_gpt4_endpoint|https://api.openai.com/v1/chat/completions|
+
+set_texgen_webui_address|localhost:5000|
 ```
 
 If your Stable Diffusion WebUI server isn't running locally or at port 7860, change the http://localhost:7860 part to where it is.  Add multiple add_server commands for multiple servers.
@@ -96,7 +98,7 @@ If your Stable Diffusion WebUI server isn't running locally or at port 7860, cha
 
 # Building from source
 
-* Requires Unity 2022.2+
+* Requires Unity 2022.2.18f1 <-- Newer versions screw up the GUI and give nans for some reason, you MUST use this version to build this I guess
 * Open the scene "Main" and click play to run
 
 ---
@@ -107,6 +109,7 @@ Credits and links
 Kevin MacLeod (incompetech.com)
 Licensed under Creative Commons: By Attribution 3.0
 http://creativecommons.org/licenses/by/3.0/
+- NotoSansCJKjp-VF font licensed under the Open Font License (OFL)
 - Audio: JOHN_MICHEL_CELLO-BACH_AVE_MARIA.mp3 performed by John Michel. Licensed under Creative Commons: By Attribution 3.0
 http://creativecommons.org/licenses/by/3.0/
 

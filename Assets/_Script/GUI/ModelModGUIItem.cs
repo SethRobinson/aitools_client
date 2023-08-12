@@ -34,7 +34,7 @@ public class ModelModGUIItem : MonoBehaviour, IPointerClickHandler
     }
     public void OnPointerClick(PointerEventData eventData)
     {
-        Debug.Log("Clicked on " + _item.name);
+        //Debug.Log("Clicked on " + _item.name);
  
         string prompt = GameLogic.Get().GetPrompt();
        
@@ -190,7 +190,7 @@ public class ModelModGUIItem : MonoBehaviour, IPointerClickHandler
 
         if (item.type == ModelModItem.ModelType.EMBEDDING)
         {
-            Debug.Log("Found embedding");
+            //Debug.Log("Found embedding");
             string fileToDownload = gpuInfo.remoteURL + "/sd_extra_networks/thumb?filename=embeddings/" + item.name+".preview.png";
             RTMessageManager.Get().Schedule(timeOffsetSecondsToLoadImage, () => { StartCoroutine(GetTexture(fileToDownload)); });
             _toolTip._text = "Embedding. Keyword: "+item.name;

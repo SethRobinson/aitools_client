@@ -10,6 +10,29 @@ using System.Threading;
 using System.Collections.Generic;
 
 
+/*
+  
+ //Usage example
+    void Start()
+    {
+        RTConsole.Log("Connecting to LORD...");
+        _socket = new RTSocket();
+		_socket.SetDataType(RTSocket.eDataType.BYTES); //tell it we're working with raw data, not RTPackets
+		_socket.Connect("localhost", 23);
+        _socket.OnStringReceivedEvent += OnStringReceived;
+    }
+
+    void OnStringReceived(string str)
+    {
+        RTConsole.Log("Received: " + str);
+      
+    }
+
+
+
+
+*/
+
 public class RTSocketEvent
 {
 	public RTDB m_db = null;
@@ -26,15 +49,27 @@ public class RTSocket
 		FAILED_TO_CONNECT
 	};
 
-    public Action<string> OnTelnetStringReceivedEvent;
 
+	public enum eDataType
+	{
+		TEXT = 0, // Assumes everything is text, get replies by registering like this: with _socket.OnStringReceivedEvent += OnStringReceived;
+        RTPACKET, //Assumes RTPACKET custom format, use GetEventCount() and PopNextEvent (the sender MUST be sending in Seth's custom RTPACKET format!)
+		BYTES //Like above, but we aren't being sent RTPACKETS, we assume it's raw data and package them into RTPACKETS to be looked at ourself
+	}
+
+   
     public const short PACKET_TYPE_UNKNOWN = 0;
 	public const short PACKET_TYPE_DB = 1;
 	public const short PACKET_TYPE_MOVE = 2;
 
-
     private TcpClient _tcpClient = null;
-	Queue<RTSocketEvent> m_events;
+
+    public Action<string> OnStringReceivedEvent;
+
+    Queue<RTSocketEvent> m_events;
+	eDataType _dataType = eDataType.TEXT;
+
+
 	byte[] m_mainBuf = new byte[1024*100]; //this determines the max RT packet size we could handle btw..
 	byte[] m_tempBuf = new byte[1024*100]; //this determines the max RT packet size we could handle btw..
     int m_buffPos = 0;
@@ -44,7 +79,7 @@ public class RTSocket
 	string m_errorString;
 
     public TcpClient GetTcpClient() { return _tcpClient; }
-
+	public void SetDataType(eDataType type) { _dataType = type; }
     public int GetEventCount()
 	{
 		return m_events.Count;
@@ -367,7 +402,7 @@ public class RTSocket
 		}
         bool doLocalEcho = false;
 
-        //if (OnTelnetStringReceivedEvent != null) doLocalEcho = true;
+        //if (OnStringReceivedEvent != null) doLocalEcho = true;
 
         string echoLater = null;
 
@@ -381,9 +416,9 @@ public class RTSocket
         System.Buffer.BlockCopy(buffer, 0, m_mainBuf, m_buffPos, bytesRead);
 		m_buffPos += bytesRead;
 
-        if (OnTelnetStringReceivedEvent != null) //should we go into vanilla text "telnet" processing mode?
+        if (_dataType == eDataType.TEXT) //should we go into vanilla text "telnet" processing mode?
         {
-            //simple mode, just fine strings after a CR
+            //simple mode, just find strings after a CR
 
             while (m_buffPos > 0)
             {
@@ -402,7 +437,7 @@ public class RTSocket
                         //apply backspaces we find...
                         s = ApplyBackSpaces(s);
 
-                        OnTelnetStringReceivedEvent(s); //send it out
+                        OnStringReceivedEvent(s); //send it out
 
                         //add one, we don't want the CR
                         i++;
@@ -434,63 +469,83 @@ public class RTSocket
         } else
         {
 
-            //complex packet process mode
+			//complex packet process mode
 
-		    //take a look at our own buff and see if it's ready to do anything with
 
-		    while (m_buffPos > 5)
-		    {
-			    //did the full packet get here yet?
-			    int packetSize = 0;
+			if (_dataType == eDataType.RTPACKET)
+			{
 
-			    int p = 0;
-			    //read
-			    RTUtil.SerializeInt32(ref packetSize, m_mainBuf, ref p);
+				//take a look at our own buff and see if it's ready to do anything with
 
-			    //we now have enough to grab a full packet
+				while (m_buffPos > 5)
+				{
+					//did the full packet get here yet?
+					int packetSize = 0;
 
-			    if (m_buffPos >= packetSize) 
-			    {
-				    //ok, we have enough data
-				   // Debug.Log ("Packet is "+packetSize+" -  total buff is "+m_buffPos);
+					int p = 0;
+					//read
+					RTUtil.SerializeInt32(ref packetSize, m_mainBuf, ref p);
 
-				    //figure out if it's a raw data or a rtdb packet
-				    short packetType =0;
+					//we now have enough to grab a full packet
 
-				    RTUtil.SerializeInt16(ref packetType, m_mainBuf, ref p);
+					if (m_buffPos >= packetSize)
+					{
+						//ok, we have enough data
+						// Debug.Log ("Packet is "+packetSize+" -  total buff is "+m_buffPos);
 
-				    if (packetType == PACKET_TYPE_DB)
-				    {
-					    RTSocketEvent e = new RTSocketEvent();
-					    e.m_db = new RTDB();
-                        int tempIndex = 0;
+						//figure out if it's a raw data or a rtdb packet
+						short packetType = 0;
 
-                        e.m_db.DeSerialize(m_mainBuf, ref tempIndex);
-					    //Debug.Log ("Got: "+e.m_db.ToString());
-					    m_events.Enqueue(e);
-				    } else
-				    {
-					    //it's raw data
-					    RTSocketEvent e = new RTSocketEvent();
-					    e.m_raw = new byte[packetSize];
-					    //actually copy the data
-					    System.Buffer.BlockCopy(m_mainBuf, 0, e.m_raw, 0, packetSize);
-					    m_events.Enqueue(e);
-				    }
+						RTUtil.SerializeInt16(ref packetType, m_mainBuf, ref p);
 
-				    //cut out the part we just processed.  We're copying a chunk over itself.. is this legit??
-				    System.Buffer.BlockCopy(m_mainBuf, packetSize, m_tempBuf, 0, m_buffPos-packetSize);
-				    //now move it back
-				    System.Buffer.BlockCopy(m_tempBuf, 0, m_mainBuf, 0, m_buffPos-packetSize);
+						if (packetType == PACKET_TYPE_DB)
+						{
+							RTSocketEvent e = new RTSocketEvent();
+							e.m_db = new RTDB();
+							int tempIndex = 0;
 
-				    //fix offset
-				    m_buffPos = m_buffPos-packetSize;
-			    } else
-			    {
-				    //Debug.Log ("We only have "+m_buffPos+" bytes, but we need "+packetSize+" so we'll wait");
-			    }
-				
-		    }
+							e.m_db.DeSerialize(m_mainBuf, ref tempIndex);
+							//Debug.Log ("Got: "+e.m_db.ToString());
+							m_events.Enqueue(e);
+						}
+						else
+						{
+							//it's raw data
+							RTSocketEvent e = new RTSocketEvent();
+							e.m_raw = new byte[packetSize];
+							//actually copy the data
+							System.Buffer.BlockCopy(m_mainBuf, 0, e.m_raw, 0, packetSize);
+							m_events.Enqueue(e);
+						}
+
+						//cut out the part we just processed.  We're copying a chunk over itself.. is this legit??
+						System.Buffer.BlockCopy(m_mainBuf, packetSize, m_tempBuf, 0, m_buffPos - packetSize);
+						//now move it back
+						System.Buffer.BlockCopy(m_tempBuf, 0, m_mainBuf, 0, m_buffPos - packetSize);
+
+						//fix offset
+						m_buffPos = m_buffPos - packetSize;
+					}
+					else
+					{
+						//Debug.Log ("We only have "+m_buffPos+" bytes, but we need "+packetSize+" so we'll wait");
+					}
+
+				}
+			} else
+			{
+				//Raw data.  Let's 
+				//RTConsole.Log("Got " + m_buffPos + " bytes");
+
+                RTSocketEvent e = new RTSocketEvent();
+                e.m_raw = new byte[m_buffPos];
+                
+				//actually copy the data
+                System.Buffer.BlockCopy(m_mainBuf, 0, e.m_raw, 0, m_buffPos);
+                m_events.Enqueue(e);
+
+				m_buffPos = 0;
+            }
 
         }
 

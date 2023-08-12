@@ -25,7 +25,9 @@ public class PicSizeNavBar : MonoBehaviour
         _navBar.Reset();
         _navBar.AddOption("Crop to mask rect", CropToMaskRect, "Move/resize the active mask around this image, then choose this<br>to crop to that part.");
 
-        _navBar.AddOption("Resize to 512X512", Resize512, "Most models work best on images this size.<br>Hint: Use crop to mask size first to isolate the best parts first");
+        _navBar.AddOption("Resize to 128X128", Resize128, "Can be useful for making pixel art look better");
+        _navBar.AddOption("Resize to 256X256", Resize256, "Might be a useful size for, I don't know, something");
+        _navBar.AddOption("Resize to 512X512", Resize512, "SD 1.5 models work best on images this size.<br>Hint: Use crop to mask size first to isolate the best parts first");
         _navBar.AddOption("Resize to 512X512 (Keep aspect ratio)", Resize512WithAspect, "Like above but the image will crop if needed instead of stretching everything out");
         _navBar.AddOption("Resize to 768X768", Resize768, "Another useful size, maybe");
         _navBar.AddOption("Resize to 768X768 (Keep aspect ratio)", Resize768WithAspect, "Another useful size, maybe");
@@ -38,8 +40,18 @@ public class PicSizeNavBar : MonoBehaviour
 
         _navBar.AddOption("Resize to 2048X2048", Resize2048, "Another useful size, maybe");
         _navBar.AddOption("Resize to 2048X2048 (Keep aspect ratio)", Resize2048WithAspect, "Another useful size, maybe");
+        _navBar.AddOption("Add 30% empty border and mask it)", AddBorder, "To outpaint, do img2img with 1.0 Denoising + Mask Contents=Latent Noise, blending at 0.");
 
 
+    }
+
+    public void Resize128()
+    {
+        _picMain.Resize(128, 128, false);
+    }
+    public void Resize256()
+    {
+        _picMain.Resize(256, 256, false);
     }
 
     public void Resize512()
@@ -86,6 +98,16 @@ public class PicSizeNavBar : MonoBehaviour
     public void Resize2048()
     {
         _picMain.Resize(2048, 2048, false);
+    }
+
+    public void AddBorder()
+    {
+        //run as coroutine
+   
+        StartCoroutine(_picMain.AddBorder((int) ((float)_picMain.m_pic.sprite.texture.width*0.15f), (int)((float)_picMain.m_pic.sprite.texture.width * 0.15f),
+            (int)((float)_picMain.m_pic.sprite.texture.width * 0.15f), 
+            (int)((float)_picMain.m_pic.sprite.texture.width * 0.15f),
+            new Color(0,0,0,1), true));
     }
     public void Resize2048WithAspect()
     {

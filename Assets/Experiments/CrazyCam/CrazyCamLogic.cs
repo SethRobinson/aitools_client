@@ -196,8 +196,8 @@ public class CrazyCamLogic : MonoBehaviour
         
         if (GameLogic.Get().GetSeed() < 0 && !GameLogic.Get().IsActiveModelPix2Pix())
         {
-        //    GameLogic.Get().SetSeed(0);
-            Debug.Log("Warning: Seed is set to -1 (random), this can make faces and things change a lot from frame to frame");
+            //    GameLogic.Get().SetSeed(0);
+            RTConsole.Log("Warning: Seed is set to -1 (random), this can make faces and things change a lot from frame to frame");
         }
 
         RTUtil.FindObjectOrCreate("CrazyCamGUI").SetActive(true);
@@ -377,7 +377,7 @@ public class CrazyCamLogic : MonoBehaviour
             tempDir = tempDir.Replace('/', '\\');
             string fileName = tempDir + "\\CrazyCam_" + System.DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss") + ".png";
 
-            Debug.Log("Saving image to " + fileName);
+            RTConsole.Log("Saving image to " + fileName);
             File.WriteAllBytes(fileName, tex.EncodeToPNG());
         }
         //Debug.Log("Got image");

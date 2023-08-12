@@ -156,6 +156,11 @@ public class PicMask : MonoBehaviour
             Destroy(m_spriteMask.sprite);
         }
     }
+
+    public void SetMaskModified(bool bNew)
+    {
+        m_bMaskModified = true;
+    }
     public void SetMaskFromSprite(Sprite s)
     {
         KillMask();

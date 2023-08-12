@@ -5,6 +5,7 @@ Library/*
 Logs/*
 build/*
 .vs/*
+autosave/*
 Assembly-CSharp-Editor.csproj
 Assembly-CSharp-firstpass.csproj
 Assembly-CSharp.csproj
@@ -34,3 +35,5 @@ SethsAIToolsWindowsBeta.zip
 OldVersions/*
 Images/*
 UserSettings/*
+Assets/GUI/times.ttf
+Assets/GUI/GOTHIC.TTF
