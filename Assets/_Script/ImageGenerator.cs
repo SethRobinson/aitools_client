@@ -55,6 +55,11 @@ public class ImageGenerator : MonoBehaviour
 
     public int GetCurrentGenerationCount() { return m_curGenCount; }
 
+    public int GetCountOfQueudCommands()
+    {
+        return m_gpuEventList.Count;
+    }
+
     public void ScheduleGPURequest(ScheduledGPUEvent request)
     {
         m_gpuEventList.AddLast(request);

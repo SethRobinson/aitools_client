@@ -42,7 +42,7 @@ public class Config : MonoBehaviour
     public string GetElevenLabs_APIKey() { return _elevenLabs_APIKey; }
     public string GetElevenLabs_voiceID() { return _elevenLabs_voiceID; }
 
-    float m_version = 0.76f;
+    float m_version = 0.77f;
     string m_imageEditorPathAndExe = "none set";
     public string GetVersionString() { return m_version.ToString("0.00"); }
     public float GetVersion() { return m_version; }
@@ -389,6 +389,7 @@ public class Config : MonoBehaviour
                 if (words[0] == "set_default_sampler")
                 {
                     GameLogic.Get().SetSamplerByName(words[1]);
+                   
                 } else
                 if (words[0] == "set_default_steps")
                 {

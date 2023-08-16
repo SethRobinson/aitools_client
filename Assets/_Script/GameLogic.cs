@@ -257,6 +257,7 @@ public class GameLogic : MonoBehaviour
             if (name == m_samplerDropdown.options[i].text.ToLower())
             {
                 m_samplerDropdown.value = i;
+                CheckIfSamplerIsValid();
                 return;
             }
         }
@@ -328,6 +329,30 @@ public class GameLogic : MonoBehaviour
         RTUtil.SetActiveByNameIfExists("CamToolMiniPanel", false);
     }
 
+    public void CheckIfSamplerIsValid()
+    {
+        int optionID = m_modelDropdown.value;
+
+        if (m_modelDropdown.options[optionID].text.Contains("768"))
+        {
+            SetWidthDropdown("768");
+            SetHeightDropdown("768");
+        }
+
+        if (m_modelDropdown.options[optionID].text.Contains("XL"))
+        {
+            //XL models need this
+            SetWidthDropdown("1024");
+            SetHeightDropdown("1024");
+
+            if (m_samplerDropdown.options[m_samplerDropdown.value].text.Contains("DDIM"))
+            {
+                //DDIM won't work with this
+                SetSamplerByName("dpm++ 2s a karras");
+                SetSteps(70);
+            }
+        }
+    }
 
     public void OnModelChanged(Int32 optionID)
     {
@@ -339,29 +364,13 @@ public class GameLogic : MonoBehaviour
         SetWidthDropdown("512");
         SetHeightDropdown("512");
 
-        if (m_modelDropdown.options[optionID].text.Contains("768"))
-        {
-            SetWidthDropdown("768");
-            SetHeightDropdown("768");
-        } 
-
-        if (m_modelDropdown.options[optionID].text.Contains("XL"))
-        {
-            //XL models need this
-            SetWidthDropdown("1024");
-            SetHeightDropdown("1024");
-
-            if (m_samplerDropdown.options[m_samplerDropdown.value].text.Contains("DDIM"))
-            {
-                //DDIM won't work with this
-                SetSamplerByName("Euler");
-                SetSteps(100);
-            }
-        }
-
+     
         m_activeModelName = m_modelDropdown.options[optionID].text;
 
         UpdateGUI();
+
+        CheckIfSamplerIsValid();
+
     }
 
     public void UpdateGUI()
@@ -1029,6 +1038,16 @@ public class GameLogic : MonoBehaviour
         RTQuickMessageManager.Get().ShowMessage("Click Configuration, then Apply to try to reconnect to servers");
 //        Config.Get().ConnectToServers();
     }
+
+
+    public void SlowZoomChange(float zoomSpeed)
+    {
+        var cam = RTUtil.FindObjectOrCreate("Camera").GetComponent<Camera>();
+
+        if (cam == null) return;
+        //slowly zoom out the active camera, this is called every frame
+        cam.orthographicSize += zoomSpeed;
+    }
     public void SetToolsVisible(bool bNew)
     {
         RTUtil.FindIncludingInactive("ToolsCanvas").SetActive(bNew);
@@ -1036,6 +1055,29 @@ public class GameLogic : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
+
+        float zoomSpeed = 0.01f + Time.deltaTime;
+
+       
+        //if we wanted to be able to zoom in/out with keys (I used it for a video once)
+
+        /*
+        if (Input.GetKey(KeyCode.Minus))
+        {
+        
+                SlowZoomChange(-zoomSpeed);
+         
+        }
+
+        if (Input.GetKey(KeyCode.Equals))
+        {
+            SlowZoomChange(zoomSpeed);
+
+        }
+        */
+
+
+
         if (m_gameMode == eGameMode.EXPERIMENT) return;
 
         const float penAdjustmentSize = 7.0f;
@@ -1095,7 +1137,6 @@ public class GameLogic : MonoBehaviour
                 {
                     picScript.m_picGeneratorScript.OnInpaintGeneratorButton();
                 }
-               
 
             }
         }
@@ -1107,8 +1148,6 @@ public class GameLogic : MonoBehaviour
         var existing = RTUtil.FindIncludingInactive(panelName);
 
         existing.GetComponent<ModelModManager>().ToggleWindow();
-
-
     }
 
 }

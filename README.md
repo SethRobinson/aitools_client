@@ -37,7 +37,7 @@ To use this, you'll need at least one Stable Diffusion WebUI server running some
 * AI Guide feature harnesses the power of GPT-4 or open source LLMs to create motivational posters, illustrated stories or whatever, with presets and web-slideshower viewer. Comes with presets like [Pixel Art Gaming Lies](https://www.rtsoft.com/ai/lies/) and [Random Story That Teaches Japanese](https://www.rtsoft.com/ai/jtest/)
 
 
-## Current version: **V0.76** (released August 12th 2023) Recent changes: ##
+## Current version: **V0.77** (released August 16th 2023) Recent changes: ##
 
 **Recent changes**:
 
@@ -58,6 +58,7 @@ You only need to download [the zip](https://www.rtsoft.com/files/SethsAIToolsWin
 <a href="https://www.youtube.com/watch?v=3PmZ_9QfrE0"><img align="top" src="Media/remove_bg_youtube.png" width=300></a>
 <a href="https://www.youtube.com/watch?v=FoYY_90KlyE"><img align="top" src="Media/ai_paintball_youtube.png" width=300></a>
 <a href="https://www.youtube.com/watch?v=VKj-x25-04E"><img align="top" src="Media/live_webcam_test.png" width=300></a>
+<a href="https://www.youtube.com/watch?v=YQMWflU1v-U"><img align="top" src="Media/aiguide_youtube.png" width=300></a>
 
 # Setup #
 

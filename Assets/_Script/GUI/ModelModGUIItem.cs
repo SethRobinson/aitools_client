@@ -207,7 +207,7 @@ public class ModelModGUIItem : MonoBehaviour, IPointerClickHandler
             string fileToDownload = gpuInfo.remoteURL + "/sd_extra_networks/thumb?filename=" + item.path;
 
             fileToDownload = fileToDownload.Replace(".safetensors", ".preview.png");
-            Debug.Log("Trying to download " + fileToDownload + " to set it as our GUI image");
+            //Debug.Log("Trying to download " + fileToDownload + " to set it as our GUI image");
             //code to download the file in a coroutine
 
             RTMessageManager.Get().Schedule(timeOffsetSecondsToLoadImage, () => { StartCoroutine(GetTexture(fileToDownload)); });

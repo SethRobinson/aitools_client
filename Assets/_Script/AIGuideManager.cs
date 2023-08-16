@@ -1283,14 +1283,19 @@ public void ToggleWindow()
     
         if (m_bRenderASAP)
         {
-
-            //see if anything is currently rendering
-            if (ImageGenerator.Get().GetCurrentGenerationCount() == 0)
+            if (m_autoModeCheckbox.isOn)
             {
-                //cool, let's start the rendering and a new LLM request too
+                //see if anything is currently rendering
+                if (ImageGenerator.Get().GetCountOfQueudCommands() == 0)
+                {
+                    //cool, let's start the rendering and a new LLM request too
+                    m_bRenderASAP = false;
+                    OnProcessOutput();
+                    OnLLMStartButton();
+                }
+            } else
+            {
                 m_bRenderASAP = false;
-                OnProcessOutput();
-                OnLLMStartButton();
             }
         }
 
