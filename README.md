@@ -99,7 +99,7 @@ If your Stable Diffusion WebUI server isn't running locally or at port 7860, cha
 
 # Building from source
 
-* Requires Unity 2022.2.18f1 <-- Newer versions screw up the GUI and give nans for some reason, you MUST use this version to build this I guess
+* Requires Unity 2022.3.7+
 * Open the scene "Main" and click play to run
 
 ---
