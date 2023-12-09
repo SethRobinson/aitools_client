@@ -41,7 +41,7 @@ or
 * Can optionally use Dalle 3 for rendering with AI Guide
 
 
-## Current version: **V0.78** (released Dec 9th 2023) Recent changes: ##
+## Current version: **V0.78** (released Dec 9th 2023) ##
 
 **Recent changes**:
 
