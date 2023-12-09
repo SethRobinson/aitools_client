@@ -17,6 +17,9 @@ To use this, you'll need at least one Stable Diffusion WebUI server running some
 
 ##  [AUTOMATIC1111's Stable Diffusion WebUI](https://github.com/AUTOMATIC1111/stable-diffusion-webui) (must run with the --api parm) ##
 
+or
+
+## For the AI Guide feature, you can use your OpenAI api key to use GPT4 and Dalle 3 and not need a local server at all ##
 
 # Features #
 
@@ -35,6 +38,7 @@ To use this, you'll need at least one Stable Diffusion WebUI server running some
 * Privacy respected - does not phone home or collect any statistics, purely local usage. (it does check a single file on github.com to check for newer versions, but that's it)
 * Includes "experiments", little built-in games and apps designed to test using AI/SD for specific things: CrazyCam is a realtime webcam filter with 30+ presets, Shooting Gallery tests realtime craetion of sprites during a game, etc
 * AI Guide feature harnesses the power of GPT-4 or open source LLMs to create motivational posters, illustrated stories or whatever, with presets and web-slideshower viewer. Comes with presets like [Pixel Art Gaming Lies](https://www.rtsoft.com/ai/lies/) and [Random Story That Teaches Japanese](https://www.rtsoft.com/ai/jtest/)
+* Can optionally use Dalle 3 for rendering with AI Guide
 
 
 ## Current version: **V0.78** (released Dec 9th 2023) Recent changes: ##
