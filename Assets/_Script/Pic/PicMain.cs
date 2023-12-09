@@ -58,7 +58,8 @@ public class PicMain : MonoBehaviour
     public PicInfoPanel m_infoPanelScript;
     bool m_bNeedsToUpdateInfoPanel = false;
 
-  
+    public Action<GameObject> m_onFinishedRenderingCallback;
+
     public Camera m_camera;
 
     UndoEvent m_undoevent = new UndoEvent();
@@ -113,6 +114,10 @@ public class PicMain : MonoBehaviour
         return m_isDestroyed;
     }
 
+    public void ClearRenderingCallbacks()
+    {
+        m_onFinishedRenderingCallback = null;
+    }
     public string GetInfoText()
     {
 
@@ -186,14 +191,22 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
 
     public bool IsBusy()
     {
-        if (m_picTextToImageScript.IsBusy()) return true;
+       
+        if (IsBusyBasic()) return true;
         if (m_picGeneratorScript.GetIsGenerating()) return true;
-        if (m_picInpaintScript.IsBusy()) return true;
-        if (m_picUpscaleScript.IsBusy()) return true;
-        if (GetLocked()) return true;
 
         return false;
     }
+    public bool IsBusyBasic()
+    {
+        if (m_picTextToImageScript.IsBusy()) return true;
+        if (m_picInpaintScript.IsBusy()) return true;
+        if (m_picUpscaleScript.IsBusy()) return true;
+
+        return false;
+    }
+
+
 
     public void SetVisible(bool bNew)
     {
@@ -214,7 +227,16 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
     public void SetLocked(bool bNew) { m_bLocked = bNew; }
     public void SetStatusMessage(string msg)
     {
-        m_text.text = msg;
+        if (GameLogic.Get().GetTurbo())
+        {
+            m_text.text = ""; //hack to not show messages when in turbo mode
+
+        }
+        else
+        {
+            m_text.text = msg;
+
+        }
     }
 
     void KillUndoImageBuffers()
@@ -856,8 +878,7 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
     //save to a random filename if passed a blank filename
     public string SaveFile(string fname="", string subdir = "", Texture2D texToSave = null, string fNamePostFix = "", bool bSaveAsPNG =false) 
     {
-        
-
+  
         string fileName = Config.Get().GetBaseFileDir(subdir) + "\\pic_" + System.Guid.NewGuid() + fNamePostFix ;
 
         if (bSaveAsPNG)
@@ -968,13 +989,11 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
     public void SaveFileNoReturn2()
     {
         SaveFile();
-
     }
 
     public void SaveFilePNG()
     {
         SaveFile("","",null,"",true);
-
     }
 
     public void SaveFileNoReturn()
@@ -1090,7 +1109,6 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
                 m_undoevent.m_texture.filterMode = FilterMode.Bilinear;
              }
         }
-
       
     }
 
@@ -1216,7 +1234,6 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
 
     public void OnReRenderCopyButton()
     {
-
         var newPic = Duplicate();
 
         var e = new ScheduledGPUEvent();
@@ -1234,23 +1251,120 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
    
     public void OnReRenderButton()
     {
+        AddImageUndo();
         var e = new ScheduledGPUEvent();
         e.mode = "rerender";
         e.targetObj = this.gameObject;
-        
+
         ImageGenerator.Get().ScheduleGPURequest(e);
         SetStatusMessage("Waiting for GPU...");
     }
+    public void OnRenderWithDalle3Button()
+    {
+        AddImageUndo();
+        ClearRenderingCallbacks();
+        var e = new ScheduledGPUEvent();
+       
+        SetStatusMessage("Waiting for Dalle3...");
+        Dalle3Manager dalle3Script = gameObject.GetComponent<Dalle3Manager>();
+        
+        if (dalle3Script == null)
+        {
+            Debug.Log("Adding dalle3 script");
+            dalle3Script = gameObject.AddComponent<Dalle3Manager>();
+        }
+        
+        string json = dalle3Script.BuildJSON(m_picTextToImageScript.GetPrompt(), "dall-e-3");
+
+        //test
+        RTDB db = new RTDB();
+        dalle3Script.SpawnRequest(json, OnDalle3CompletedCallback, db, Config.Get().GetOpenAI_APIKey());
+        
+
+    }
+
+    public void OnRenderWithDalle3()
+    {
+        AddImageUndo();
+        var e = new ScheduledGPUEvent();
+        SetStatusMessage("Waiting for Dalle3...");
+
+        Dalle3Manager dalle3Script = gameObject.GetComponent<Dalle3Manager>();
+
+        if (dalle3Script == null)
+        {
+            Debug.Log("Adding dalle3 script");
+            dalle3Script = gameObject.AddComponent<Dalle3Manager>();
+        }
+
+        string json = dalle3Script.BuildJSON(m_picTextToImageScript.GetPrompt(), "dall-e-3");
+
+        //test
+        RTDB db = new RTDB();
+        dalle3Script.SpawnRequest(json, OnDalle3CompletedCallback, db, Config.Get().GetOpenAI_APIKey());
+
+    }
+
+    public void OnDalle3CompletedCallback(RTDB db, Texture2D texture)
+    {
+        if (texture == null)
+        {
+            Debug.Log("Error getting dalle image: " + db.GetString("msg"));
+
+            //if 429 (Too Many Requests) is in the text we'll wait and try again
+            if (db.GetString("msg").Contains("429"))
+            {
+               Debug.Log("Got 429, waiting 5 seconds and trying again");
+               RTMessageManager.Get().Schedule(UnityEngine.Random.Range(5.0f, 10.0f), OnRenderWithDalle3);
+            }
+            else
+            {
+
+                SetStatusMessage("" + db.GetString("msg"));
+            }
+            return;
+        }
+
+        //write to file?
+        //SaveFileJPG("dalle3_temp.jpg", "", texture, "", 80);
+        Debug.Log("Got dalle image back!");
+        SetStatusMessage("");
+
+        SetImage(texture, false);
+
+        GetCurrentStats().m_lastPromptUsed = m_picTextToImageScript.GetPrompt();
+        GetCurrentStats().m_lastNegativePromptUsed = "";
+        GetCurrentStats().m_lastSteps = 0;
+        GetCurrentStats().m_lastCFGScale = 0;
+        GetCurrentStats().m_lastSampler = "N/A";
+        GetCurrentStats().m_tiling = false;
+        GetCurrentStats().m_fixFaces = false;
+        GetCurrentStats().m_lastSeed = 0;
+      GetCurrentStats().m_lastModel = "Dalle 3";
+      GetCurrentStats().m_bUsingControlNet = false;
+      GetCurrentStats().m_bUsingPix2Pix = false;
+      GetCurrentStats().m_lastOperation = "Dalle 3";
+        GetCurrentStats().m_gpu = -1;
+
+      SetNeedsToUpdateInfoPanelFlag();
+
+
+      AutoSaveImageIfNeeded();
+
+        if (m_onFinishedRenderingCallback != null)
+            m_onFinishedRenderingCallback.Invoke(gameObject);
+    }
+
 
     public void OnReRenderNewSeedButton()
     {
+        AddImageUndo();
         var e = new ScheduledGPUEvent();
         e.mode = "rerender";
         e.targetObj = this.gameObject;
         PicTextToImage textToImage = GetComponent<PicTextToImage>();
         textToImage.SetSeed(-1); //causes it to be random again
-
-        ImageGenerator.Get().ScheduleGPURequest(e);
+         ImageGenerator.Get().ScheduleGPURequest(e);
         SetStatusMessage("Waiting for GPU...");
     }
 
@@ -1266,7 +1380,6 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
     }
 
 
-
     private void OnDestroy()
     {
        InvalidateExportedEditFile();
@@ -1276,8 +1389,8 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
             UnityEngine.Object.Destroy(m_pic.sprite.texture); //this will also kill the sprite?
             UnityEngine.Object.Destroy(m_pic.sprite);
         }
-        KillUndoImageBuffers();
 
+        KillUndoImageBuffers();
     }
 
     public void SetNeedsToUpdateInfoPanelFlag()

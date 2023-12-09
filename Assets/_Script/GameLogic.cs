@@ -35,7 +35,7 @@ public class GameLogic : MonoBehaviour
     int m_maxToGenerate = 1000;
     string m_lastModifiedPrompt;
 
-    float m_upscale = 1.0f; //1 means noc hange
+    float m_upscale = 1.0f; //1 means no change
     bool m_fixFaces = false;
     bool m_hiresFix = false;
     float m_textStrength = 7.5f;
@@ -64,6 +64,7 @@ public class GameLogic : MonoBehaviour
     public Toggle m_removeBackgroundToggle;
     public Toggle m_useControlNetToggle;
     public Toggle m_hiresFixToggle;
+    public Toggle m_turboToggle;
 
     string m_defaultControlNetProcessor = "depth";
     string m_defaultControlNetModel = "sd15_depth";
@@ -84,8 +85,12 @@ public class GameLogic : MonoBehaviour
     public TMP_Dropdown m_widthDropdown;
     public TMP_Dropdown m_heightDropdown;
     public TMP_Dropdown m_samplerDropdown;
+    
     public TMP_Dropdown m_modelDropdown;
     string m_activeModelName = "";
+
+    public TMP_Dropdown m_refinerModelDropdown;
+    public TMP_InputField m_refinerInputField;
     public GameObject m_controlNetPanelPrefab;
 
     List<String> m_controlNetPreprocessorArray = new List<String>();
@@ -115,7 +120,7 @@ public class GameLogic : MonoBehaviour
 
     public int GetMaxToGenerate() { return m_maxToGenerate; }
     public void SetMaxToGenerate(int max) { m_maxToGenerate = max; }
-
+    public bool GetTurbo() { return m_turboToggle.isOn; }
     public bool GetRandomizePrompt() { return m_bRandomizePrompt; }
     public void SetRandomizePrompt(bool bNew) { m_bRandomizePrompt = bNew;}
 
@@ -186,6 +191,16 @@ public class GameLogic : MonoBehaviour
         m_modelDropdown.options.Clear();
     }
 
+    public void ClearRefinerModelDropdown()
+    {
+        m_refinerModelDropdown.options.Clear();
+
+        //add the none option
+        AddRefinerModelDropdown("None");
+
+        m_refinerModelDropdown.value = 0;
+    }
+
     public void AddModelDropdown(string name)
     {
         List<string> options = new List<string>();
@@ -193,9 +208,22 @@ public class GameLogic : MonoBehaviour
         m_modelDropdown.AddOptions(options);
 
         List<TMP_Dropdown.OptionData> dropList = m_modelDropdown.options;
-        dropList.Sort((x, y) => x.text.CompareTo(y.text));
+      //  dropList.Sort((x, y) => x.text.CompareTo(y.text));
         //dropList.Reverse();
         m_modelDropdown.options = dropList;
+    }
+
+    public void AddRefinerModelDropdown(string name)
+    {
+        List<string> options = new List<string>();
+        options.Add(name);
+        m_refinerModelDropdown.AddOptions(options);
+
+        List<TMP_Dropdown.OptionData> dropList = m_refinerModelDropdown.options;
+       
+        //dropList.Sort((x, y) => x.text.CompareTo(y.text));
+        //dropList.Reverse();
+        m_refinerModelDropdown.options = dropList;
     }
 
     public void SetHasControlNetSupport(bool bHasControlNetSupport)
@@ -281,6 +309,23 @@ public class GameLogic : MonoBehaviour
         UpdateGUI();
     }
 
+    public void SetRefinerModelByName(string name)
+    {
+        name = name.ToLower();
+
+        for (int i = 0; i < m_refinerModelDropdown.options.Count; i++)
+        {
+            if (name == m_refinerModelDropdown.options[i].text.ToLower())
+            {
+                m_refinerModelDropdown.value = i;
+                return;
+            }
+        }
+
+        //Debug.Log("Can't set default sampler, don't know: " + name);
+        UpdateGUI();
+    }
+
     public void SetChangeModelEnabled(bool enabled)
     {
         m_modelDropdown.interactable= enabled;
@@ -291,6 +336,18 @@ public class GameLogic : MonoBehaviour
         return m_activeModelName; 
     }
 
+    public string GetActiveRefinerModelFilename()
+    {
+        if (m_refinerModelDropdown.options[m_refinerModelDropdown.value].text == "None") return ""; //might be better for the API
+        return m_refinerModelDropdown.options[m_refinerModelDropdown.value].text;
+    }
+
+    public float GetRefinerSwitchAt()
+    {
+        //return m_refinerInputField as a float, avoiding any possible errors durin conversion
+        float.TryParse(m_refinerInputField.text, out float result);
+        return result;  
+    }
     public bool IsActiveModelPix2Pix()
     {
         if (m_activeModelName != null && m_activeModelName.Length > 0)
@@ -331,6 +388,9 @@ public class GameLogic : MonoBehaviour
 
     public void CheckIfSamplerIsValid()
     {
+
+        if (m_modelDropdown.options.Count == 0) return;
+
         int optionID = m_modelDropdown.value;
 
         if (m_modelDropdown.options[optionID].text.Contains("768"))
@@ -345,12 +405,15 @@ public class GameLogic : MonoBehaviour
             SetWidthDropdown("1024");
             SetHeightDropdown("1024");
 
+            /*
             if (m_samplerDropdown.options[m_samplerDropdown.value].text.Contains("DDIM"))
             {
-                //DDIM won't work with this
+                //DDIM won't work well with this
                 SetSamplerByName("dpm++ 2s a karras");
                 SetSteps(70);
             }
+            */
+
         }
     }
 
@@ -363,14 +426,11 @@ public class GameLogic : MonoBehaviour
 
         SetWidthDropdown("512");
         SetHeightDropdown("512");
-
      
         m_activeModelName = m_modelDropdown.options[optionID].text;
 
         UpdateGUI();
-
         CheckIfSamplerIsValid();
-
     }
 
     public void UpdateGUI()
@@ -650,9 +710,17 @@ public class GameLogic : MonoBehaviour
         {
             //why do I get an error without this cast?!
             //(script as PicTextToImage).KillIfPossible();
-            if (bIncludeLockedAndBusy || !picScript.IsBusy())
+            if (!picScript.IsBusy())
             {
-                picScript.SafelyKillThisPic();
+
+                if (picScript.GetLocked() && !bIncludeLockedAndBusy)
+                {
+                    //don't kill it
+                }
+                else
+                {
+                    picScript.SafelyKillThisPic();
+                }
             }
         }
 
@@ -927,7 +995,18 @@ public class GameLogic : MonoBehaviour
     public void OnPromptChanged(String str)
     {
         m_prompt = str;
-        //Debug.Log("Prompt changed: " + str);
+       
+        if (GetTurbo())
+        {
+            //trigger re-render
+            //find suitable place to render to, get the last pic that was created/exists
+      
+            Debug.Log("Prompt changed: " + str);
+            var picMain = ImageGenerator.Get().GetPicToUseTurboOn();
+
+            //trigger a render to happen now
+
+        }
     }
     public void OnNegativePromptChanged(String str)
     {
@@ -1053,6 +1132,9 @@ public class GameLogic : MonoBehaviour
         RTUtil.FindIncludingInactive("ToolsCanvas").SetActive(bNew);
     }
     // Update is called once per frame
+
+
+ 
     void Update()
     {
 
@@ -1079,6 +1161,11 @@ public class GameLogic : MonoBehaviour
 
 
         if (m_gameMode == eGameMode.EXPERIMENT) return;
+
+
+
+
+
 
         const float penAdjustmentSize = 7.0f;
 

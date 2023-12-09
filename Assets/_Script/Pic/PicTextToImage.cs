@@ -18,16 +18,14 @@ public class PicTextToImage : MonoBehaviour
     bool m_bIsGenerating;
     int m_gpu;
     public PicMain m_picScript;
-    public Action<GameObject> m_onFinishedRenderingCallback;
-
-
+   
     public void SetForceFinish(bool bNew)
     {
         if (bNew && m_bIsGenerating)
         {
             m_picScript.SetStatusMessage("(killing process)");
-            m_onFinishedRenderingCallback = null;
-            m_gpu = -1; //invalid
+            m_picScript.ClearRenderingCallbacks();
+             m_gpu = -1; //invalid
         }
         
     }
@@ -40,7 +38,14 @@ public class PicTextToImage : MonoBehaviour
         return m_seed != -1;
     }
 
-   
+
+    public void Reset()
+    {
+        
+        m_prompt = null;
+        m_negativePrompt = null;
+
+    }
     public long GetSeed() { return m_seed; }
     public bool IsBusy()
     {
@@ -204,8 +209,10 @@ public class PicTextToImage : MonoBehaviour
   ""denoising_strength"": 0.7,
   ""firstphase_width"": 0,
   ""firstphase_height"": 0,
-  ""hr_scale"": 2
-        
+  ""hr_scale"": 2,
+      ""refiner_checkpoint"": ""{GameLogic.Get().GetActiveRefinerModelFilename()}"",
+      ""refiner_switch_at"": {GameLogic.Get().GetRefinerSwitchAt()}
+    
         }}";
 
         RTConsole.Log("Generating text to image with " + finalURL + " local GPU ID " + m_gpu);
@@ -350,8 +357,8 @@ public class PicTextToImage : MonoBehaviour
                         processScript.StartWebRequest(false);
                     } else
                     {
-                        if (m_onFinishedRenderingCallback != null)
-                            m_onFinishedRenderingCallback.Invoke(gameObject);
+                        if (m_picScript.m_onFinishedRenderingCallback != null)
+                            m_picScript.m_onFinishedRenderingCallback.Invoke(gameObject);
                     }
                 }
               

@@ -154,9 +154,9 @@ public class GoogleTextToSpeechManager : MonoBehaviour
                 string msg = postRequest.error;
                 Debug.Log(msg);
                 //Debug.Log(postRequest.downloadHandler.text);
-#if UNITY_STANDALONE && !RT_RELEASE
+//#if UNITY_STANDALONE && !RT_RELEASE
                 File.WriteAllText("tts_last_error_returned.json", postRequest.downloadHandler.text);
-#endif
+//#endif
                 db.Set("status", "failed");
                 db.Set("msg", msg);
                 myCallback.Invoke(db, null);

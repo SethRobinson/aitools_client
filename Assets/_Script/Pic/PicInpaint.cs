@@ -21,7 +21,6 @@ public class PicInpaint : MonoBehaviour
     bool m_bIsGenerating;
     int m_gpu;
     public SpriteRenderer m_spriteMask;
-    public Action<GameObject> m_onFinishedRenderingCallback;
     public PicMain m_picScript;
     public Texture2D m_latentNoise; //a texture we'll use for the noise instead of generating it ourself
     public PicTextToImage m_picTextToImageScript;
@@ -32,7 +31,7 @@ public class PicInpaint : MonoBehaviour
         if (bNew && m_bIsGenerating)
         {
             m_picScript.SetStatusMessage("(killing process)");
-            m_onFinishedRenderingCallback = null;
+            m_picScript.ClearRenderingCallbacks();
             m_gpu = -1; //invalid
         }
 
@@ -465,8 +464,8 @@ public class PicInpaint : MonoBehaviour
                     m_picScript.AutoSaveImageIfNeeded();
 
                     Destroy(finalTexture);
-                    if (m_onFinishedRenderingCallback != null)
-                        m_onFinishedRenderingCallback.Invoke(gameObject);
+                    if (m_picScript.m_onFinishedRenderingCallback != null)
+                        m_picScript.m_onFinishedRenderingCallback.Invoke(gameObject);
                 }
                 else
                 {

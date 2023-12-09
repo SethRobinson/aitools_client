@@ -72,37 +72,10 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
          $@"{{
 
 ""prompt"": ""{SimpleJSON.JSONNode.Escape(msg)}"",
+""max_tokens"": {max_tokens},
 ""max_new_tokens"": {max_tokens},
-""auto_max_new_tokens"": false,
-""preset"": ""None"",
-""do_sample"": true,
-""temperature"": 0.7,
-""top_p"": 0.9,
-""typical_p"": 1,
-""epsilon_cutoff"": 0,
-""eta_cutoff"": 0,
-""tfs"": 1,
-""top_a"": 0,
-""repetition_penalty"": 1.18,
-""repetition_penalty_range"": 0,
-""top_k"": 40,
-""min_length"": 0, 
-""no_repeat_ngram_size"": 0, 
-""num_beams"": 1, 
-""penalty_alpha"": 0, 
-""length_penalty"": 1, 
-""early_stopping"": false, 
-""mirostat_mode"": 0, 
-""mirostat_tau"": 5, 
-""mirostat_eta"": 0.1,
-""guidance_scale"": 1, 
-""negative_prompt"": """", 
-""seed"": -1,
-""add_bos_token"": true,
-""truncation_length"": 4096, 
-""ban_eos_token"": false, 
-""skip_special_tokens"": true, 
-""stopping_strings"": []
+""temperature"": {temperature},
+""seed"": -1
    }}";
 
         return json;
@@ -115,7 +88,7 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
         File.WriteAllText("text_completion_sent.json", json);
 #endif
         string url;
-        url = serverAddress + "/api/v1/generate";
+        url = serverAddress + "/v1/completions";
 
         using (var postRequest = UnityWebRequest.PostWwwForm(url, "POST"))
         {
@@ -131,9 +104,9 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
                 string msg = postRequest.error;
                 Debug.Log(msg);
                 //Debug.Log(postRequest.downloadHandler.text);
-#if UNITY_STANDALONE && !RT_RELEASE
+//#if UNITY_STANDALONE && !RT_RELEASE
                 File.WriteAllText("last_error_returned.json", postRequest.downloadHandler.text);
-#endif
+//#endif
 
                 db.Set("status", "failed");
                 db.Set("msg", msg);

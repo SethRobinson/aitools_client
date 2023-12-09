@@ -198,8 +198,6 @@ public class WebRequestServerInfo : MonoBehaviour
         string serverClickableURL = "<link=\"" + server + "\"><u>" + server + "</u></link>";
         Debug.Log("Getting config data from " + serverClickableURL + "...");
 
-   
-    
     again:
         //Create the request using a static method instead of a constructor
 
@@ -251,8 +249,7 @@ public class WebRequestServerInfo : MonoBehaviour
 
                     //set currently model if possible, might fail due to race conditions but that's ok, it will get hit later when we have the list
                     GameLogic.Get().SetModelByName(g.configDict["sd_model_checkpoint"].ToString());
-
-
+              
                     if (g.localGPUID == 0)
                     {
                         if (g.configDict["sd_model_checkpoint"].ToString().Contains("768"))
@@ -279,7 +276,6 @@ public class WebRequestServerInfo : MonoBehaviour
             GameObject.Destroy(gameObject);
         }
     }
-
 
     IEnumerator GetModelsRequest(int gpuID, String server)
     {
@@ -327,6 +323,7 @@ public class WebRequestServerInfo : MonoBehaviour
                     //Debug.Log("models: ");
 
                     GameLogic.Get().ClearModelDropdown();
+                    GameLogic.Get().ClearRefinerModelDropdown();
 
                     for (int i = 0; i < modelList.Count; i++)
                     {
@@ -335,6 +332,7 @@ public class WebRequestServerInfo : MonoBehaviour
                         string model = modelInfo["title"].ToString();
 
                         GameLogic.Get().AddModelDropdown(model);
+                        GameLogic.Get().AddRefinerModelDropdown(model);
 
                         if (model.Contains('\\'))
                         {
@@ -347,7 +345,7 @@ public class WebRequestServerInfo : MonoBehaviour
                     {
                         //we know what the server it currently set to, we might not always due to race conditions
                         GameLogic.Get().SetModelByName(g.configDict["sd_model_checkpoint"].ToString());
-
+         
                     }
                 }
 
@@ -611,7 +609,7 @@ public class WebRequestServerInfo : MonoBehaviour
                     List<object> modelList = Json.Deserialize(postRequest.downloadHandler.text) as List<object>;
                     //Debug.Log("models: ");
 
-                    string originalSampler = GameLogic.Get().GetSamplerName();
+                    string originalSampler = Config.Get().GetDefaultSampler();
 
                     GameLogic.Get().ClearSamplersDropdown();
 

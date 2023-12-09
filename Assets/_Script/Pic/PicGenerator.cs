@@ -50,14 +50,25 @@ public class PicGenerator : MonoBehaviour
     void Update()
     {
         if (!m_bIsGenerating) return;
+        if (m_picScript.IsBusyBasic()) return;
 
         m_picScript.SetStatusMessage("###SOURCE###");
 
         if (Config.Get().IsAnyGPUFree())
         {
-            m_picScript.FillAlphaMaskIfBlank(); 
-            //create new object
-            GameObject go = m_picScript.Duplicate();
+            m_picScript.FillAlphaMaskIfBlank();
+
+            GameObject go = gameObject;
+
+            if (!GameLogic.Get().GetTurbo())
+            {
+
+                //create new object
+                go = m_picScript.Duplicate();
+                m_bDidTagObjectToBeNewSource = true; //fake like we did it
+            
+
+            }
 
             //tell it what to do ASAP
             PicMask picMaskScript = go.GetComponent<PicMask>();
@@ -70,7 +81,7 @@ public class PicGenerator : MonoBehaviour
 
             if (!m_bDidTagObjectToBeNewSource)
             {
-                go.GetComponent<PicInpaint>().m_onFinishedRenderingCallback += OnCallbackFinished;
+                m_picScript.m_onFinishedRenderingCallback += OnCallbackFinished;
                 m_bDidTagObjectToBeNewSource = true;
             }
 

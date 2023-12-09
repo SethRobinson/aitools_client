@@ -37,14 +37,21 @@ To use this, you'll need at least one Stable Diffusion WebUI server running some
 * AI Guide feature harnesses the power of GPT-4 or open source LLMs to create motivational posters, illustrated stories or whatever, with presets and web-slideshower viewer. Comes with presets like [Pixel Art Gaming Lies](https://www.rtsoft.com/ai/lies/) and [Random Story That Teaches Japanese](https://www.rtsoft.com/ai/jtest/)
 
 
-## Current version: **V0.77** (released August 16th 2023) Recent changes: ##
+## Current version: **V0.78** (released Dec 9th 2023) Recent changes: ##
 
 **Recent changes**:
 
-* AI Guide feature harnesses the power of GPT-4 or Text generation web UI to create motivational posters, illustrated stories or whatever.  Some presets included.
-* Added "Cleanup pixel art" option to the pic drop down menu
-* Added "Add border and mask them" option to the pic drop down menu - with this, helps for doing outpainting with img2img
-* Can now autosave all pics as .bmp (with mask) or .png, or both
+* Added way to set the ChatGPT model via config.txt:  example: set_openai_gpt4_model|gpt-4
+* Added "Render with Dalle 3" option to pic menu, works with the same openai key entered for gpt. Once rendered, you can do normal operations like select the foreground, upscale, etc
+* AI Guide feature now has a renderer dropdown which can set Dalle 3 for rendering instead of SD WebUI
+* Added an optional Refiner setting
+* Experimental: Added a "Turbo mode" checkbox, if on, it does non-stop realtime rendering to the latest pic, this is so you can do "type and see it in realtime" with faster models. it also works with batch things like img2img, but the "turbo" models I tested need 6+ steps to get this to work and don't look great
+* Errors files are written out in release mode too, no reason to have those be debug only
+* BUGFIX: AI Guide button is aligned correctly at all screen sizes
+* AI Guide's "Text generation web UI" support fixed to work with its latest version 
+* Added new AI Guide preset called "Random basic story for lzlv_70b (TexGen WebUI)", amazingly it works nearly as well as chatgpt, go open source!
+* Added a "text to prepend" option to AI Guide, helped for the above setting as I feed it the "text:" part and it's missing from the generation
+- Note, AI Guide options are a bit outdated, they should all probably use non-json styles and then prompts would probably work with both TextGen WebUI and GPT4 but I'm too lazy to organize it better for now
 
 NOTE:  For pix2pix stuff, you need to add the [7 gb model](https://huggingface.co/timbrooks/instruct-pix2pix/resolve/main/instruct-pix2pix-00-22000.safetensors) to your models/Stable-diffusion folder
 
@@ -89,6 +96,7 @@ set_image_editor|C:\Program Files\Adobe\Adobe Photoshop 2023\Photoshop.exe
 
 set_openai_gpt4_key|<key goes here>|
 set_openai_gpt4_endpoint|https://api.openai.com/v1/chat/completions|
+set_openai_gpt4_model|gpt-4
 
 set_texgen_webui_address|localhost:5000|
 ```
@@ -99,7 +107,7 @@ If your Stable Diffusion WebUI server isn't running locally or at port 7860, cha
 
 # Building from source
 
-* Requires Unity 2022.3.7+
+* Requires Unity 2022.3.15+
 * Open the scene "Main" and click play to run
 
 ---

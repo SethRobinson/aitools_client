@@ -12,7 +12,6 @@ public class ScheduledGPUEvent
     public GameObject targetObj = null;
     public bool disableTranslucency = false;
     public string promptOverride = "";
-
 }
 
 public class ImageGenerator : MonoBehaviour
@@ -26,6 +25,7 @@ public class ImageGenerator : MonoBehaviour
     public TMPro.TextMeshProUGUI m_generateButtonText;
     GameObject m_picGenerator = null; //null if a pic isn't generating something
     LinkedList<ScheduledGPUEvent> m_gpuEventList = new LinkedList<ScheduledGPUEvent>();
+    LinkedList<ScheduledGPUEvent> m_eventList = new LinkedList<ScheduledGPUEvent>();
     GameObject m_lastImg2ImgGeneratorObj = null;
     Vector3 vStartPos = new Vector3(0, 0, 7);
     Vector3 vSpawnPos;
@@ -65,6 +65,13 @@ public class ImageGenerator : MonoBehaviour
         m_gpuEventList.AddLast(request);
         //Debug.Log("Scheduled GPU event, " + m_gpuEventList.Count + " total");
     }
+
+    public void ScheduleRequest(ScheduledGPUEvent request)
+    {
+        m_eventList.AddLast(request);
+        //Debug.Log("Scheduled GPU event, " + m_gpuEventList.Count + " total");
+    }
+
 
     public void IncrementGenerationAndCheckForEnd()
     {
@@ -121,8 +128,6 @@ public class ImageGenerator : MonoBehaviour
         //now start up ours
         SetGenerate(true);
         m_picGenerator = go;
-
-
     }
 
     void Start()
@@ -149,7 +154,6 @@ public class ImageGenerator : MonoBehaviour
         //m_generateActive = false;
 #endif
     }
-
 
     public void UpdateGenerateButtonStatus()
     {
@@ -190,7 +194,6 @@ public class ImageGenerator : MonoBehaviour
 
     public void SetGenerate(bool bGenerate)
     {
-
         m_generateActive = bGenerate;
 
         if (m_generateActive)
@@ -288,6 +291,20 @@ public class ImageGenerator : MonoBehaviour
         return pic;
     }
 
+    public PicMain GetPicToUseTurboOn()
+    {
+        //get the last pic created
+        var aiScripts = RTUtil.FindObjectOrCreate("Pics").transform.GetComponentsInChildren<PicMain>();
+        
+        //if empty, add a blank pic
+        if (aiScripts.Length == 0)
+        {
+            return CreateNewPic().GetComponent<PicMain>();
+        }
+        //return the last one
+        return aiScripts[aiScripts.Length - 1];
+
+    }
     public void ReorganizePics(bool bResetCamera = true)
     {
         Reset();
@@ -328,9 +345,34 @@ public class ImageGenerator : MonoBehaviour
 
     void Update()
     {
-        if (m_gpuEventList.Count > 0)
+
+        if (m_eventList.Count > 0)
+        {
+
+            ScheduledGPUEvent e = m_eventList.First.Value;
+            m_eventList.RemoveFirst();
+
+            if (e.targetObj)
+            {
+                if (e.mode == "render_dalle3")
+                {
+                    //var script = e.targetObj.GetComponent<PicUpscale>();
+                    //script.OnForceUpscale(gpuToUse);
+                    Debug.Log("Rendering dalle3");
+                }
+
+
+            }
+        }
+
+
+            if (m_gpuEventList.Count > 0)
         {
             int gpuToUse = Config.Get().GetFreeGPU();
+
+
+
+
 
             if (gpuToUse == -1)
             {
@@ -436,7 +478,29 @@ public class ImageGenerator : MonoBehaviour
 
                 if (!bDisableGeneration)
                 {
-                    GameObject pic = CreateNewPic();
+
+                    GameObject pic;
+
+                    if (GameLogic.Get().GetTurbo())
+                    {
+                        //special handling because we're in turbo mode, we'll generate over the last image instead of creating new ones
+                        pic = GetPicToUseTurboOn().gameObject;
+                        if (pic.GetComponent<PicMain>().IsBusy())
+                        {
+                            Debug.Log("Ignoring, we're still rendering");
+                            return;
+                        }
+                        PicTextToImage s = pic.GetComponent<PicTextToImage>();
+
+                        s.Reset();
+
+                    }
+                    else
+                    {
+                        pic = CreateNewPic();
+
+                    }
+
                     PicTextToImage scriptAI = pic.GetComponent<PicTextToImage>();
                     PicUpscale processAI = pic.GetComponent<PicUpscale>();
 

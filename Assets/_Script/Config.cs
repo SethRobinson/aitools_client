@@ -32,21 +32,25 @@ public class Config : MonoBehaviour
     float m_requiredServerVersion = 0.46f;
 
     string _openAI_APIKey = "";
+    string _openAI_APIModel = "gpt-4";
     public string _texgen_webui_address = "localhost:5000";
     public string _openai_gpt4_endpoint = "https://api.openai.com/v1/chat/completions";
     string _elevenLabs_APIKey = "";
     string _elevenLabs_voiceID = "";
     int _jpgSaveQuality = 80;
+    string m_defaultSampler = "Euler a";
 
     public string GetOpenAI_APIKey() { return _openAI_APIKey; }
+    public string GetOpenAI_APIModel() { return _openAI_APIModel; }
     public string GetElevenLabs_APIKey() { return _elevenLabs_APIKey; }
     public string GetElevenLabs_voiceID() { return _elevenLabs_voiceID; }
 
-    float m_version = 0.77f;
+    float m_version = 0.78f;
     string m_imageEditorPathAndExe = "none set";
     public string GetVersionString() { return m_version.ToString("0.00"); }
     public float GetVersion() { return m_version; }
     public float GetRequiredServerVersion() { return m_requiredServerVersion; }
+    public string GetDefaultSampler() { return m_defaultSampler; }
 
     public List<AudioClip> m_audioClips;
     public GameObject m_serverButtonPrefab;
@@ -98,6 +102,7 @@ public class Config : MonoBehaviour
             m_configText += "#set_default_steps|50\n";
             m_configText += "\n#To generate text with the AI Guide features, you need to set your OpenAI GPT4 key and/or a Text Generation web IO API url (presumably your own local server).\n";
             m_configText += "\nset_openai_gpt4_key|<key goes here>|\n";
+            m_configText += "\nset_openai_gpt4_model|gpt-4|\n";
             m_configText += "set_openai_gpt4_endpoint|https://api.openai.com/v1/chat/completions|\n";
             m_configText += "\nset_texgen_webui_address|localhost:5000|\n";
         }
@@ -389,6 +394,7 @@ public class Config : MonoBehaviour
                 if (words[0] == "set_default_sampler")
                 {
                     GameLogic.Get().SetSamplerByName(words[1]);
+                    m_defaultSampler = words[1];
                    
                 } else
                 if (words[0] == "set_default_steps")
@@ -408,6 +414,11 @@ public class Config : MonoBehaviour
                 if (words[0] == "set_openai_gpt4_key")
                 {
                     _openAI_APIKey = words[1];
+                }
+                else
+                 if (words[0] == "set_openai_gpt4_model")
+                {
+                    _openAI_APIModel = words[1];
                 }
                 else
                 if (words[0] == "set_texgen_webui_address")

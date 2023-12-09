@@ -18,6 +18,8 @@ public class AIGuideManager : MonoBehaviour
         public string m_llm_prompt;
         public string m_prompt;
         public string m_negativePrompt;
+        public string m_textToPrependToGeneration = "";
+
         public string m_example_llm_output; //so those without GPT4 etc can see how it works anyway
         public bool m_PixelArt128Checkbox;
         public bool m_AddBordersCheckbox;
@@ -30,14 +32,18 @@ public class AIGuideManager : MonoBehaviour
         public float m_fontSizeMod = 1.0f;
         public bool m_prependPrompt;
         public LLM_Type m_llmToUse = LLM_Type.GPT4;
-        
-     
+  
     }
 
     public enum LLM_Type
     {
             GPT4,
           TexGen
+    }
+    public enum Renderer_Type
+    {
+       SDWebGUI,
+        Dalle3
     }
 
 
@@ -56,6 +62,7 @@ public class AIGuideManager : MonoBehaviour
         public int m_textFontID;
         public string m_forcedFilename;
         public string m_forcedFilenameJPG;
+      
     }
 
     public enum ResponseTextType
@@ -87,6 +94,8 @@ public class AIGuideManager : MonoBehaviour
     public Toggle m_BoldCheckbox;
     string m_statusStopMessage = "";
     public TMP_Dropdown m_llmSelectionDropdown;
+    public TMP_Dropdown m_rendererSelectionDropdown;
+
     public TMP_Dropdown m_textFontDropdown;
     public TMP_Dropdown m_titleFontDropdown;
     int m_max_tokens;
@@ -100,6 +109,7 @@ public class AIGuideManager : MonoBehaviour
     public Image m_imageBorderColor;
     public Image m_imageTextColor;
     public string m_prompt_used_on_last_send;
+    public TMP_InputField m_textToPrependToGeneration;
     public Toggle m_prependPromptCheckbox;
     public Toggle m_autoModeCheckbox;
     public Toggle m_autoSave;
@@ -155,9 +165,9 @@ public class AIGuideManager : MonoBehaviour
 
             Queue<GTPChatLine> lines = _promptManager.BuildPrompt();
             
-            string json = _openAITextCompletionManager.BuildChatCompleteJSON(lines, m_max_tokens, _aiTemperature, "gpt-4");
+            string json = _openAITextCompletionManager.BuildChatCompleteJSON(lines, m_max_tokens, _aiTemperature, Config.Get().GetOpenAI_APIModel());
             RTDB db = new RTDB();
-            RTConsole.Log("Contacting GPT4 with " + json.Length + " bytes...");
+            RTConsole.Log("Contacting GPT4 at " + Config.Get()._openai_gpt4_endpoint+" with " + json.Length + " bytes...");
             _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnGTP4CompletedCallback, db, Config.Get().GetOpenAI_APIKey(), Config.Get()._openai_gpt4_endpoint);
         } else
         {
@@ -193,16 +203,35 @@ public class AIGuideManager : MonoBehaviour
 
         //Run OnRenderButton in PicMain, which is a component in pic
         PicMain picMain = pic.GetComponent<PicMain>();
-        picMain.OnRenderButton(imagePrompt);
-       
+        picMain.ClearRenderingCallbacks();
+
         PicTextToImage textToImage = pic.GetComponent<PicTextToImage>();
         textToImage.SetPrompt(GameLogic.Get().GetPrompt() + " " + imagePrompt);
         textToImage.SetNegativePrompt(GameLogic.Get().GetNegativePrompt());
-        picMain.SetStatusMessage("AI guided\n(waiting)");
+
+
+        if (m_rendererSelectionDropdown.value == (int)Renderer_Type.Dalle3)
+        {
+            Debug.Log("Dalle detected");
+            picMain.OnRenderWithDalle3();
+        }
+        else
+        {
+
+
+            picMain.OnRenderButton(imagePrompt);
+     
+        }
+            picMain.SetStatusMessage("AI guided\n(waiting)");
         yield return null;
+       
+        
+        
+        
+        
         if (m_PixelArt128Checkbox.isOn)
         {
-            pic.GetComponent<PicTextToImage>().m_onFinishedRenderingCallback += OnProcessPixelArt128;
+            pic.GetComponent<PicMain>().m_onFinishedRenderingCallback += OnProcessPixelArt128;
             yield return null;
         }
 
@@ -228,7 +257,7 @@ public class AIGuideManager : MonoBehaviour
         //see if m_AddBordersCheckbox has been checked by the user
         if (m_AddBordersCheckbox.isOn)
         {
-            pic.GetComponent<PicTextToImage>().m_onFinishedRenderingCallback += OnAddMotivationBorder;
+            pic.GetComponent<PicMain>().m_onFinishedRenderingCallback += OnAddMotivationBorder;
             //hack due to timing issues caused by using coroutines, the above will call OnAddMotivationtextWithTitle and OnSaveIfNeeded itself
     
             yield return null;
@@ -236,10 +265,10 @@ public class AIGuideManager : MonoBehaviour
         {
             if (m_OverlayTextCheckbox.isOn)
             {
-                pic.GetComponent<PicTextToImage>().m_onFinishedRenderingCallback += OnAddMotivationTextWithTitle;
+                pic.GetComponent<PicMain>().m_onFinishedRenderingCallback += OnAddMotivationTextWithTitle;
             }
 
-           pic.GetComponent<PicTextToImage>().m_onFinishedRenderingCallback += OnSaveIfNeeded;
+           pic.GetComponent<PicMain>().m_onFinishedRenderingCallback += OnSaveIfNeeded;
             
         }
 
@@ -322,7 +351,7 @@ public class AIGuideManager : MonoBehaviour
     public System.Collections.IEnumerator ProcessTextFileBasic()
     {
         // Iterate through each line of _inputPromptOutput.text, also removing whitespace
-        string[] lines = _inputPromptOutput.text.Split(new[] { "\r\n", "\r", "\n" }, System.StringSplitOptions.None);
+        string[] lines = (_inputPromptOutput.text).Split(new[] { "\r\n", "\r", "\n" }, System.StringSplitOptions.None);
         string text = "";
         string imagePrompt = ""; // Initialize imagePrompt to avoid an uninitialized variable error
 
@@ -657,6 +686,9 @@ public class AIGuideManager : MonoBehaviour
     void ModifyPromptIfNeeded()
     {
 
+        _inputPromptOutput.text = m_textToPrependToGeneration.text + _inputPromptOutput.text;
+
+
         if (m_prependPromptCheckbox.isOn)
         {
             m_response_text_type = FigureOutResponseTextType(_inputPromptOutput.text);
@@ -666,6 +698,8 @@ public class AIGuideManager : MonoBehaviour
                 _inputPromptOutput.text = m_prompt_used_on_last_send + _inputPromptOutput.text;
             }
         }
+
+
 
         if (m_autoSaveResponsesCheckbox.isOn || m_autoSaveJPG.isOn)
         {
@@ -703,7 +737,7 @@ public class AIGuideManager : MonoBehaviour
         }
         */
       
-        string reply = jsonNode["results"][0]["text"];
+        string reply = jsonNode["choices"][0]["text"];
         //Debug.Log(reply);
 
         _inputPromptOutput.text = reply;
@@ -946,7 +980,7 @@ Please create a ten page story in the JSON.  (each page has the two values)  It 
         preset.m_AddBordersCheckbox = true;
         preset.m_PixelArt128Checkbox = false;
         preset.m_fontSizeMod = 1.0f;
-        preset.m_maxTokens = 1500;
+        preset.m_maxTokens = 3500;
         preset.m_prependPrompt = false;
         preset.m_llmToUse = LLM_Type.TexGen;
         preset.m_llm_prompt = @"Story 1 (short):
@@ -964,8 +998,9 @@ text: ""Jesus, Emma.  Just cool your fuckin' jets"" yawned Jeff.  Ever since los
 
 image_prompt: young man wearing a yellow shirt, missing an arm, blood spurting from stump, looking at it in horror
 
-Story 2 (long):
+(end example)
 
+Create a story with at least 12 text/image pairs.
 ";
 
         preset.m_example_llm_output = @"";
@@ -1001,6 +1036,8 @@ text: ""Jesus, Emma.  Just cool your fuckin' jets"" yawned Jeff.  Ever since los
 image_prompt: young man, hispanic, 22 years old, wearing a yellow shirt, missing an arm, blood spurting from stump, looking at it in horror
 
 (end example)
+
+Create a story with at least 12 text/image pairs.
 ";
 
         preset.m_example_llm_output = @"text: Six years had passed since the outbreak, and the world was devoid of life except for the undead. The remnants of human civilization crumbled and lay forgotten. Amidst this doom, Louis and Kira, against all odds, trudged on.
@@ -1123,6 +1160,93 @@ image_prompt: Kenji, looking exhausted but happy, recounting his first day at wo
 
         AddPreset(preset);
 
+
+
+
+        preset = new AIGuidePreset();
+        preset.m_presetName = "Random basic story for lzlv_70b (TexGen WebUI)";
+        preset.m_prompt = "photo, 4k, still from a movie";
+        preset.m_negativePrompt = "anime, cartoon, drawing";
+        preset.m_OverlayTextCheckbox = true;
+        preset.m_AddBordersCheckbox = true;
+        preset.m_PixelArt128Checkbox = false;
+        preset.m_fontSizeMod = 1.0f;
+        preset.m_maxTokens = 3500;
+        preset.m_llmToUse = LLM_Type.TexGen;
+        preset.m_textToPrependToGeneration = "text: ";
+        preset.m_llm_prompt = @"Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
+
+### Instruction:
+
+
+### Input:
+Using this style (text/image description) please randomly create an original and inventive story in English. Make it wild, zany, and funny.
+
+When writing the image_prompt, keep in mind this is a stable diffusion image prompt, so please include the nationality and physical features of any characters in the image.
+
+Example of style:
+
+text: Haruna had always been a funny girl, full of spirit, and a bit of a klutz. As she stepped out of her tiny apartment in Osaka, her mother Yumiko lovingly scolded her in Japanese.
+
+image_prompt: An old Japanese woman wearing a kimono, small, smiling, waving goodbye to a 19 year old Japanese girl, wearing business casual, carrying a briefcase, with a high ponytail, leaving a small, cozy Japanese style apartment.
+
+text: Haruna took a deep breath. Today was her first day on the job. She was hired as an office assistant at NaniCorp, a zany gadget manufacturing company. As she got inside the office, she noticed a strange contraption on her desk. 
+
+image_prompt: A quirky office space filled with various gadgets. A robot mouse about the size of a vacuum, with a tiny tray carrying a coffee cup, stopped in front of a 19 year old Japanese girl, wearing business casual, looking around the colorful office space filled with youthful enthusiasm.
+
+(end example)
+
+Please create 12 text/image_prompt pairs for the story.
+
+### Response:
+
+text: "
+;
+        preset.m_example_llm_output = @"text: In a small, quaint village nestled in the mountains of Japan, lived a young girl named Himari. She was known for her boundless energy, her bright red hair tied into two long ponytails, and her peculiar sense of humor.
+
+image_prompt: A 10 year old Japanese girl, wearing a yellow kimono with a matching red obi belt, hair in two ponytails, holding a mischievous grin while standing in a traditional Japanese village with wooden houses and cherry blossom trees.
+
+text:  One day, Himari stumbled upon a strange creature in the woods. It was a furry, purple animal with a long tail and big, floppy ears. The creature introduced itself as Mogumogu, a rare and mysterious beast known for causing mischief.
+
+image_prompt: A 10 year old Japanese girl, wearing a yellow kimono with a matching red obi belt, hair in two ponytails, standing in a forest with cherry blossom trees, looking at a purple, furry creature with big floppy ears and a long tail.
+
+
+text:  Himari and Mogumogu became fast friends. Together, they explored the village, playing pranks on unsuspecting villagers. They tied strings to people's shoelaces, causing them to trip, and replaced the sweet rice balls at the local tea shop with ones filled with wasabi.
+
+image_prompt: A 10 year old Japanese girl, wearing a yellow kimono with a matching red obi belt, hair in two ponytails, standing next to a purple, furry creature with big floppy ears and a long tail, laughing as they watch a villager trip over a string tied to their shoelaces.
+
+text:  One day, as they were playing by the river, Himari noticed a group of men in suits carrying briefcases. They were from the Mega World Corporation, a company that wanted to build a huge resort in the village, destroying the homes and cherry blossom trees in the process.
+
+image_prompt: A 10 year old Japanese girl, wearing a yellow kimono with a matching red obi belt, hair in two ponytails, standing next to a purple, furry creature with big floppy ears and a long tail, looking at a group of men in suits carrying briefcases, standing near a river with cherry blossom trees in the background.
+
+text:  Himari and Mogumogu knew they had to stop the corporation. They came up with a plan to turn the tables on the men in suits. They replaced the suits with clown costumes and the briefcases with balloon animals, causing the men to run away in embarrassment.
+
+image_prompt: A group of men in suits, now wearing clown costumes and holding balloon animals, running away from a 10 year old Japanese girl, wearing a yellow kimono with a matching red obi belt, hair in two ponytails, standing next to a purple, furry creature with big floppy ears and a long tail, laughing at the men.
+
+text:  With the men from the Mega World Corporation gone, the village was saved. The villagers celebrated by throwing a huge festival, complete with traditional music, dancing, and lots of delicious food.
+
+image_prompt: A 10 year old Japanese girl, wearing a yellow kimono with a matching red obi belt, hair in two ponytails, standing next to a purple, furry creature with big floppy ears and a long tail, surrounded by villagers celebrating with traditional music, dancing, and food at a festival.
+
+text:  As the party continued into the night, Himari and Mogumogu danced under the stars, happy that they had protected their home and made lots of new friends along the way.
+
+image_prompt: A 10 year old Japanese girl, wearing a yellow kimono with a matching red obi belt, hair in two ponytails, dancing with a purple, furry creature with big floppy ears and a long tail, under the stars, surrounded by villagers celebrating at the festival.
+
+text:  The next day, the villagers woke up to find Himari and Mogumogu gone. They had left no trace, except for a note that read, ""Thank you for your kindness. We will always remember this village and the friends we made here. - Himari and Mogumogu.""
+
+image_prompt: A note that reads ""Thank you for your kindness. We will always remember this village and the friends we made here. - Himari and Mogumogu."" surrounded by villagers looking confused and sad, standing in a traditional Japanese village with wooden houses and cherry blossom trees.
+
+text:  The villagers mourned the loss of their friends, but they knew that Himari and Mogumogu were out there, causing mischief and spreading joy everywhere they went.
+
+image_prompt: A 10 year old Japanese girl, wearing a yellow kimono with a matching red obi belt, hair in two ponytails, and a purple, furry creature with big floppy ears and a long tail, moving on to their next adventure, leaving a trail of laughter and mischief behind them.
+
+ text: Years later, the villagers would tell stories of Himari and Mogumogu to their children and grandchildren, passing on the tale of the mischievous duo who brought joy and laughter to their small village.
+
+image_prompt: An elderly Japanese man and woman, wearing traditional clothing, sitting in front of a group of children, telling the story of a 10 year old Japanese girl and a purple, furry creature, while the children listen intently with big smiles on their faces.
+";
+
+        AddPreset(preset);
+
+
         preset = new AIGuidePreset();
         preset.m_presetName = "Random irreverent bible story in legos (GPT4)";
         preset.m_prompt = "LEGO MiniFig, <lora:lego_v2.0:0.8>";
@@ -1232,7 +1356,7 @@ public void OnPresetDropdownChanged()
         m_max_tokens = preset.m_maxTokens;
         m_prependPromptCheckbox.isOn = preset.m_prependPrompt;
         m_llmSelectionDropdown.value = (int)preset.m_llmToUse;
-
+        m_textToPrependToGeneration.text = preset.m_textToPrependToGeneration;
         return;
     }
 
