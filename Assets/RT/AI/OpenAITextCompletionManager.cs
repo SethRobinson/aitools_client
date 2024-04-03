@@ -5,10 +5,14 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Networking;
 using System.IO;
-
+using System.Runtime.InteropServices.ComTypes;
 
 public class OpenAITextCompletionManager : MonoBehaviour
 {
+
+    private UnityWebRequest _currentRequest;
+    bool m_connectionActive = false;
+
 
     public class GTPChatLine
     {
@@ -44,10 +48,10 @@ public class OpenAITextCompletionManager : MonoBehaviour
         string json = textCompletionScript.BuildChatCompleteJSON(lines);
         RTDB db = new RTDB();
 
-        textCompletionScript.SpawnChatCompleteRequest(json, OnGTP3CompletedCallback, db, openAI_APIKey);
+        textCompletionScript.SpawnChatCompleteRequest(json, OnOpenAICompletedCallback, db, openAI_APIKey);
     }
 
-   void OnGTP3CompletedCallback(RTDB db, JSONObject jsonNode)
+   void OnOpenAICompletedCallback(RTDB db, JSONObject jsonNode, string streamedText)
     {
 
         if (jsonNode == null)
@@ -71,18 +75,31 @@ public class OpenAITextCompletionManager : MonoBehaviour
     }
 
     //*  EXAMPLE END */
-    public bool SpawnChatCompleteRequest(string jsonRequest, Action<RTDB, JSONObject> myCallback, RTDB db, string openAI_APIKey, string endpoint = "https://api.openai.com/v1/chat/completions")
+    public bool SpawnChatCompleteRequest(string jsonRequest, Action<RTDB, JSONObject, string> myCallback, RTDB db, string openAI_APIKey, string endpoint = "https://api.openai.com/v1/chat/completions",
+        Action<string> streamingUpdateChunkCallback = null, bool bStreaming = false)
     {
+        if (bStreaming)
+        {
+            StartCoroutine(GetRequestStreaming(jsonRequest, myCallback, db, openAI_APIKey, endpoint, streamingUpdateChunkCallback));
+        } else
+        {
+            StartCoroutine(GetRequest(jsonRequest, myCallback, db, openAI_APIKey, endpoint));
 
-        StartCoroutine(GetRequest(jsonRequest, myCallback, db, openAI_APIKey, endpoint));
+        }
         return true;
     }
 
     //Build OpenAI.com API request json
-    public string BuildChatCompleteJSON(Queue<GTPChatLine> lines, int max_tokens = 100, float temperature = 1.3f, string model = "gpt-3.5-turbo")
+    public string BuildChatCompleteJSON(Queue<GTPChatLine> lines, int max_tokens = 100, float temperature = 1.3f, string model = "gpt-3.5-turbo", bool stream = false)
     {
 
         string msg = "";
+
+        string bStreamText = "false";
+        if (stream)
+        {
+            bStreamText = "true";
+        }
 
         //go through each object in lines
         foreach (GTPChatLine obj in lines)
@@ -99,13 +116,14 @@ public class OpenAITextCompletionManager : MonoBehaviour
              ""model"": ""{model}"",
              ""messages"":[{msg}],
              ""temperature"": {temperature},
-             ""max_tokens"": {max_tokens}
+            ""max_tokens"": {max_tokens},
+             ""stream"": {bStreamText}
             }}";
 
         return json;
     }
 
-    IEnumerator GetRequest(string json, Action<RTDB, JSONObject> myCallback, RTDB db, string openAI_APIKey, string endpoint)
+    IEnumerator GetRequest(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string openAI_APIKey, string endpoint)
     {
 
 #if UNITY_STANDALONE && !RT_RELEASE 
@@ -113,47 +131,135 @@ public class OpenAITextCompletionManager : MonoBehaviour
 #endif
         string url;
         url = endpoint;
+        m_connectionActive = true;
         //Debug.Log("Sending request " + url );
 
-        using (var postRequest = UnityWebRequest.PostWwwForm(url, "POST"))
+        using (_currentRequest = UnityWebRequest.PostWwwForm(url, "POST"))
         {
             //Start the request with a method instead of the object itself
             byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
-            postRequest.uploadHandler = (UploadHandler)new UploadHandlerRaw(bodyRaw);
-            postRequest.SetRequestHeader("Content-Type", "application/json");
-            postRequest.SetRequestHeader("Authorization", "Bearer "+openAI_APIKey);
-            yield return postRequest.SendWebRequest();
+            _currentRequest.uploadHandler = (UploadHandler)new UploadHandlerRaw(bodyRaw);
+            _currentRequest.SetRequestHeader("Content-Type", "application/json");
+            _currentRequest.SetRequestHeader("Authorization", "Bearer "+openAI_APIKey);
+            yield return _currentRequest.SendWebRequest();
 
-            if (postRequest.result != UnityWebRequest.Result.Success)
+            if (_currentRequest == null)
             {
-                string msg = postRequest.error;
+                //uh oh, we must have aborted things, quit out
+                yield break;
+            }
+
+            if (_currentRequest.result != UnityWebRequest.Result.Success)
+            {
+                string msg = _currentRequest.error;
                 Debug.Log(msg);
-                //Debug.Log(postRequest.downloadHandler.text);
+                //Debug.Log(_currentRequest.downloadHandler.text);
 //#if UNITY_STANDALONE && !RT_RELEASE
-                File.WriteAllText("last_error_returned.json", postRequest.downloadHandler.text);
-//#endif
-               
+                File.WriteAllText("last_error_returned.json", _currentRequest.downloadHandler.text);
+                //#endif
+                m_connectionActive = false;
+
                 db.Set("status", "failed");
                 db.Set("msg", msg);
-                myCallback.Invoke(db, null);
+                myCallback.Invoke(db, null, "");
             }
             else
             {
 
 #if UNITY_STANDALONE && !RT_RELEASE 
-//                Debug.Log("Form upload complete! Downloaded " + postRequest.downloadedBytes);
+//                Debug.Log("Form upload complete! Downloaded " + _currentRequest.downloadedBytes);
 
-                File.WriteAllText("textgen_json_received.json", postRequest.downloadHandler.text);
+                File.WriteAllText("textgen_json_received.json", _currentRequest.downloadHandler.text);
 #endif
 
-                JSONNode rootNode = JSON.Parse(postRequest.downloadHandler.text);
+                JSONNode rootNode = JSON.Parse(_currentRequest.downloadHandler.text);
                 yield return null; //wait a frame to lesson the jerkiness
 
                 Debug.Assert(rootNode.Tag == JSONNodeType.Object);
+                m_connectionActive = false;
 
                 db.Set("status", "success");
-                myCallback.Invoke(db, (JSONObject)rootNode);
+                myCallback.Invoke(db, (JSONObject)rootNode, "");
                
+            }
+        }
+    }
+
+    public bool IsRequestActive()
+    {
+        return m_connectionActive;
+    }
+    public void CancelCurrentRequest()
+    {
+        if (m_connectionActive)
+        {
+            m_connectionActive = false;
+            if (_currentRequest != null)
+                _currentRequest.Abort();
+            _currentRequest = null; // Ensure to nullify the reference
+            Debug.Log("Request aborted.");
+        }
+    }
+
+
+    IEnumerator GetRequestStreaming(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string openAI_APIKey, string endpoint,
+         Action<string> updateChunkCallback)
+    {
+
+#if UNITY_STANDALONE && !RT_RELEASE
+        File.WriteAllText("text_completion_sent.json", json);
+#endif
+        string url;
+        url = endpoint;
+        //Debug.Log("Sending request " + url );
+        m_connectionActive = true;
+
+        using (_currentRequest = UnityWebRequest.PostWwwForm(url, "POST"))
+        {
+            //Start the request with a method instead of the object itself
+            byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
+            _currentRequest.uploadHandler = (UploadHandler)new UploadHandlerRaw(bodyRaw);
+
+            var downloadHandler = new StreamingDownloadHandler(updateChunkCallback);
+            _currentRequest.downloadHandler = downloadHandler;
+
+            _currentRequest.SetRequestHeader("Content-Type", "application/json");
+            _currentRequest.SetRequestHeader("Authorization", "Bearer " + openAI_APIKey);
+            yield return _currentRequest.SendWebRequest();
+
+            if (_currentRequest == null)
+            {
+                //uh oh, we must have aborted things, quit out
+                yield break;
+            }
+
+            if (_currentRequest.result != UnityWebRequest.Result.Success)
+            {
+                string msg = _currentRequest.error;
+                Debug.Log(msg);
+                //Debug.Log(_currentRequest.downloadHandler.text);
+                //#if UNITY_STANDALONE && !RT_RELEASE
+                File.WriteAllText("last_error_returned.json", _currentRequest.downloadHandler.text);
+                //#endif
+                m_connectionActive = false;
+
+                db.Set("status", "failed");
+                db.Set("msg", msg);
+                myCallback.Invoke(db, null, "");
+            }
+            else
+            {
+
+#if UNITY_STANDALONE && !RT_RELEASE
+                //                Debug.Log("Form upload complete! Downloaded " + _currentRequest.downloadedBytes);
+
+                File.WriteAllText("textgen_json_received.json", _currentRequest.downloadHandler.text);
+#endif
+                m_connectionActive = false;
+            
+                db.Set("status", "success");
+                myCallback.Invoke(db, null, downloadHandler.GetContentAsString());
+
             }
         }
     }

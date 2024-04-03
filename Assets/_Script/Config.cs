@@ -38,14 +38,14 @@ public class Config : MonoBehaviour
     string _elevenLabs_APIKey = "";
     string _elevenLabs_voiceID = "";
     int _jpgSaveQuality = 80;
-    string m_defaultSampler = "Euler a";
+    string m_defaultSampler = "DPM++ SDE Karras";
 
     public string GetOpenAI_APIKey() { return _openAI_APIKey; }
     public string GetOpenAI_APIModel() { return _openAI_APIModel; }
     public string GetElevenLabs_APIKey() { return _elevenLabs_APIKey; }
     public string GetElevenLabs_voiceID() { return _elevenLabs_voiceID; }
 
-    float m_version = 0.78f;
+    float m_version = 0.80f;
     string m_imageEditorPathAndExe = "none set";
     public string GetVersionString() { return m_version.ToString("0.00"); }
     public float GetVersion() { return m_version; }
@@ -94,7 +94,7 @@ public class Config : MonoBehaviour
             m_configText += "#a Seth's AI Tools server which supports a few more features.  It will autodetect which kind it is.\n";
             m_configText += "\n";
             m_configText += "add_server|http://localhost:7860\n\n";
-            m_configText += "#kids around?  Then uncomment below to turn on the NSFW filter. \r\n#enable_safety_filter\r\n\r\n";
+         
             m_configText += "#Set the below path and .exe to an image editor to use the Edit option. Changed files will auto\n";
             m_configText += "#update in here.\n\n";
             m_configText += "set_image_editor|C:\\Program Files\\Adobe\\Adobe Photoshop 2023\\Photoshop.exe\n";

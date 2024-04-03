@@ -360,19 +360,12 @@ public class ImageGenerator : MonoBehaviour
                     //script.OnForceUpscale(gpuToUse);
                     Debug.Log("Rendering dalle3");
                 }
-
-
             }
         }
-
 
             if (m_gpuEventList.Count > 0)
         {
             int gpuToUse = Config.Get().GetFreeGPU();
-
-
-
-
 
             if (gpuToUse == -1)
             {

@@ -99,7 +99,7 @@ public class GPTPromptManager : MonoBehaviour
     }
      
 
-    public void SummarizeHistoryIntoJournal(string openAI_APIKey, Action<RTDB, JSONObject> myCallback)
+    public void SummarizeHistoryIntoJournal(string openAI_APIKey, Action<RTDB, JSONObject, string> myCallback)
     {
 
         Queue<GTPChatLine> lines = BuildPrompt(_interactionsToKeepWhenBuildingJournal);
@@ -129,7 +129,6 @@ public class GPTPromptManager : MonoBehaviour
         lines.Enqueue(new GTPChatLine("system", _baseSystemPrompt));
         lines.Enqueue(new GTPChatLine("system", _journalSystemPrompt));
 
-        //add the last few interactions, but ignore the last linesToIgnoreAtTheEnd lines
         //add the last few interactions, but ignore the last linesToIgnoreAtTheEnd lines
         int count = _interactions.Count - linesToIgnoreAtTheEnd;
         if (count < 0)

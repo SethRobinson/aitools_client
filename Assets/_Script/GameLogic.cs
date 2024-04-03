@@ -1067,7 +1067,6 @@ public class GameLogic : MonoBehaviour
         print ("Beta build detected!");
 #endif
 
-
         //  RTConsole.Get().SetMirrorToDebugLog(true);
 
         string[] args = System.Environment.GetCommandLineArgs();
@@ -1133,8 +1132,6 @@ public class GameLogic : MonoBehaviour
     }
     // Update is called once per frame
 
-
- 
     void Update()
     {
 
@@ -1159,13 +1156,7 @@ public class GameLogic : MonoBehaviour
         */
 
 
-
         if (m_gameMode == eGameMode.EXPERIMENT) return;
-
-
-
-
-
 
         const float penAdjustmentSize = 7.0f;
 

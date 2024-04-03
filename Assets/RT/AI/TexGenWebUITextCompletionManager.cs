@@ -5,10 +5,12 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Networking;
 using System.IO;
-
+using System.Runtime.InteropServices.ComTypes;
 
 public class TexGenWebUITextCompletionManager : MonoBehaviour
 {
+    private UnityWebRequest _currentRequest;
+    bool m_connectionActive = false;
 
     public void Start()
     {
@@ -30,10 +32,10 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
         string json = textCompletionScript.BuildChatCompleteJSON(prompt);
         RTDB db = new RTDB();
 
-        textCompletionScript.SpawnChatCompleteRequest(json, OnCompletedCallback, db, serverAddress);
+        textCompletionScript.SpawnChatCompleteRequest(json, OnCompletedCallback, db, serverAddress, "/v1/completions");
     }
 
-    void OnCompletedCallback(RTDB db, JSONObject jsonNode)
+    void OnCompletedCallback(RTDB db, JSONObject jsonNode, string streamedText)
     {
 
         if (jsonNode == null)
@@ -57,78 +59,211 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
     }
 
     //*  EXAMPLE END */
-    public bool SpawnChatCompleteRequest(string jsonRequest, Action<RTDB, JSONObject> myCallback, RTDB db, string serverAddress)
+    public bool SpawnChatCompleteRequest(string jsonRequest, Action<RTDB, JSONObject, string> myCallback, RTDB db, string serverAddress,
+        string apiCommandURL, Action<string> streamingUpdateChunkCallback = null, bool bStreaming = false)
     {
-        StartCoroutine(GetRequest(jsonRequest, myCallback, db, serverAddress));
+        if (bStreaming)
+        {
+            StartCoroutine(GetRequestStreaming(jsonRequest, myCallback, db, serverAddress, apiCommandURL, streamingUpdateChunkCallback));
+
+        }
+        else
+        {
+            StartCoroutine(GetRequest(jsonRequest, myCallback, db, serverAddress, apiCommandURL));
+        }
         return true;
     }
 
-    
 
-    public string BuildChatCompleteJSON(string msg, int max_tokens = 100, float temperature = 1.0f)
+
+    public string BuildChatCompleteJSON(string msg, int max_tokens = 100, float temperature = 1.0f, bool stream = false)
     {
-        
+        string bStreamText = "false";
+        if (stream)
+        {
+            bStreamText = "true";
+        }
+
+        int max_new_tokens = 99999;
         string json =
          $@"{{
 
 ""prompt"": ""{SimpleJSON.JSONNode.Escape(msg)}"",
 ""max_tokens"": {max_tokens},
-""max_new_tokens"": {max_tokens},
+""max_new_tokens"": {max_new_tokens},
 ""temperature"": {temperature},
+ ""stream"": {bStreamText},
 ""seed"": -1
    }}";
 
         return json;
     }
 
-    IEnumerator GetRequest(string json, Action<RTDB, JSONObject> myCallback, RTDB db, string serverAddress)
+
+    public string BuildForInstructJSON(Queue<OpenAITextCompletionManager.GTPChatLine> lines, int max_tokens = 100, float temperature = 1.3f, string mode = "instruct", bool stream = false)
+    {
+        string msg = "";
+
+        //go through each object in lines
+        foreach (OpenAITextCompletionManager.GTPChatLine obj in lines)
+        {
+            if (msg.Length > 0)
+            {
+                msg += ",\n";
+            }
+            msg += "{\"role\": \"" + obj._role + "\", \"content\": \"" + SimpleJSON.JSONNode.Escape(obj._content) + "\"}";
+        }
+
+        string bStreamText = "false";
+        if (stream)
+        {
+            bStreamText = "true";
+        }
+
+        string json =
+         $@"{{
+             ""messages"":[{msg}],
+             ""mode"": ""{mode}"",
+            ""temperature"": {temperature},
+             ""stream"": {bStreamText},
+             ""max_tokens"": {max_tokens}
+          
+     }}";
+
+        return json;
+    }
+
+    //  ""instructi
+    //  on_template"": ""Alpaca""
+
+    public bool IsRequestActive()
+    {
+        return m_connectionActive;
+    }
+    public void CancelCurrentRequest()
+    {
+        if (m_connectionActive)
+        {
+            m_connectionActive = false;
+            if (_currentRequest != null)
+             _currentRequest.Abort();
+            _currentRequest = null; // Ensure to nullify the reference
+            Debug.Log("Request aborted.");
+        }
+    }
+    IEnumerator GetRequest(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string serverAddress, string apiCommandURL)
     {
 
 #if UNITY_STANDALONE && !RT_RELEASE
         File.WriteAllText("text_completion_sent.json", json);
 #endif
         string url;
-        url = serverAddress + "/v1/completions";
-
-        using (var postRequest = UnityWebRequest.PostWwwForm(url, "POST"))
+        //        url = serverAddress + "/v1/chat/completions";
+        url = serverAddress + apiCommandURL;
+        m_connectionActive = true;
+        using (_currentRequest = UnityWebRequest.PostWwwForm(url, "POST"))
         {
             //Start the request with a method instead of the object itself
             byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
-            postRequest.uploadHandler = (UploadHandler)new UploadHandlerRaw(bodyRaw);
-               postRequest.SetRequestHeader("Content-Type", "application/json");
-            //   postRequest.SetRequestHeader("Authorization", "Bearer "+openAI_APIKey);
-            yield return postRequest.SendWebRequest();
+            _currentRequest.uploadHandler = (UploadHandler)new UploadHandlerRaw(bodyRaw);
+            _currentRequest.SetRequestHeader("Content-Type", "application/json");
+            yield return _currentRequest.SendWebRequest();
 
-            if (postRequest.result != UnityWebRequest.Result.Success)
+            if (_currentRequest == null)
             {
-                string msg = postRequest.error;
-                Debug.Log(msg);
-                //Debug.Log(postRequest.downloadHandler.text);
-//#if UNITY_STANDALONE && !RT_RELEASE
-                File.WriteAllText("last_error_returned.json", postRequest.downloadHandler.text);
-//#endif
+                //uh oh, we must have aborted things, quit out
+                yield break;
+            }
 
+            if (_currentRequest.result != UnityWebRequest.Result.Success)
+            {
+                string msg = _currentRequest.error;
+                Debug.Log(msg);
+                //Debug.Log(_currentRequest.downloadHandler.text);
+                //#if UNITY_STANDALONE && !RT_RELEASE
+                File.WriteAllText("last_error_returned.json", _currentRequest.downloadHandler.text);
+                //#endif
                 db.Set("status", "failed");
                 db.Set("msg", msg);
-                myCallback.Invoke(db, null);
+                m_connectionActive = false;
+                myCallback.Invoke(db, null, "");
             }
             else
             {
 
 #if UNITY_STANDALONE && !RT_RELEASE
-                //                Debug.Log("Form upload complete! Downloaded " + postRequest.downloadedBytes);
+                //                Debug.Log("Form upload complete! Downloaded " + _currentRequest.downloadedBytes);
 
-                File.WriteAllText("textgen_json_received.json", postRequest.downloadHandler.text);
+                File.WriteAllText("textgen_json_received.json", _currentRequest.downloadHandler.text);
 #endif
-                JSONNode rootNode = JSON.Parse(postRequest.downloadHandler.text);
+
+                JSONNode rootNode = JSON.Parse(_currentRequest.downloadHandler.text);
                 yield return null; //wait a frame to lesson the jerkiness
 
                 Debug.Assert(rootNode.Tag == JSONNodeType.Object);
+                db.Set("status", "success");
+                m_connectionActive = false;
+                myCallback.Invoke(db, (JSONObject)rootNode, "");
+            }
+        }
+    }
+
+
+    IEnumerator GetRequestStreaming(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string serverAddress, string apiCommandURL,
+        Action<string> updateChunkCallback)
+    {
+
+#if UNITY_STANDALONE && !RT_RELEASE
+        File.WriteAllText("text_completion_sent.json", json);
+#endif
+        string url;
+        url = serverAddress + apiCommandURL;
+        m_connectionActive = true;
+
+        using (_currentRequest = UnityWebRequest.PostWwwForm(url, "POST"))
+        {
+            //Start the request with a method instead of the object itself
+            byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
+            _currentRequest.uploadHandler = (UploadHandler)new UploadHandlerRaw(bodyRaw);
+
+            var downloadHandler = new StreamingDownloadHandler(updateChunkCallback);
+            _currentRequest.downloadHandler = downloadHandler;
+
+            _currentRequest.SetRequestHeader("Content-Type", "application/json");
+
+            yield return _currentRequest.SendWebRequest();
+
+            if (_currentRequest == null)
+            {
+                //uh oh, we must have aborted things, quit out
+                yield break;
+            }
+
+            if (_currentRequest.result != UnityWebRequest.Result.Success)
+            {
+                string msg = _currentRequest.error;
+                Debug.Log(msg);
+                //Debug.Log(_currentRequest.downloadHandler.text);
+                File.WriteAllText("last_error_returned.json", _currentRequest.downloadHandler.text);
+                m_connectionActive = false;
+
+                db.Set("status", "failed");
+                db.Set("msg", msg);
+                myCallback.Invoke(db, null, "");
+            }
+            else
+            {
+
+#if UNITY_STANDALONE && !RT_RELEASE
+                File.WriteAllText("textgen_json_received.json", _currentRequest.downloadHandler.text);
+#endif
+                m_connectionActive = false;
 
                 db.Set("status", "success");
-                myCallback.Invoke(db, (JSONObject)rootNode);
+                myCallback.Invoke(db, null, downloadHandler.GetContentAsString());
 
             }
         }
     }
+
 }

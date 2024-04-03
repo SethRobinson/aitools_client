@@ -1,5 +1,5 @@
 
-# Seth's AI Tools: A Unity based front-end for Stable Diffusion WebUI (and other AI stuff)
+# Seth's AI Tools: A Unity based front-end for Stable Diffusion WebUI, Textgen WebUI and OpenAI - allows LLM based stories, image editing, fun experiments like a paintball game with dynamically created enemies
 
 License:  BSD style attribution, see LICENSE.md
 
@@ -37,25 +37,21 @@ or
 * Open source, uses the Unity game engine and C# to do stuff with AI art
 * Privacy respected - does not phone home or collect any statistics, purely local usage. (it does check a single file on github.com to check for newer versions, but that's it)
 * Includes "experiments", little built-in games and apps designed to test using AI/SD for specific things: CrazyCam is a realtime webcam filter with 30+ presets, Shooting Gallery tests realtime craetion of sprites during a game, etc
-* AI Guide feature harnesses the power of GPT-4 or open source LLMs to create motivational posters, illustrated stories or whatever, with presets and web-slideshower viewer. Comes with presets like [Pixel Art Gaming Lies](https://www.rtsoft.com/ai/lies/) and [Random Story That Teaches Japanese](https://www.rtsoft.com/ai/jtest/)
+* AI Guide feature harnesses the power of GPT-4 or open source LLMs (via [Text generation web UI](https://github.com/oobabooga/text-generation-webui)) to create motivational posters, illustrated stories or whatever, with presets and web-slideshower viewer. Comes with presets like [Pixel Art Gaming Lies](https://www.rtsoft.com/ai/lies/) and [Random Story That Teaches Japanese](https://www.rtsoft.com/ai/jtest/)
 * Can optionally use Dalle 3 for rendering with AI Guide
 
 
-## Current version: **V0.78** (released Dec 9th 2023) ##
+## Current version: **V0.80** (released April 3rd 2024) ##
 
 **Recent changes**:
 
-* Added way to set the ChatGPT model via config.txt:  example: set_openai_gpt4_model|gpt-4
-* Added "Render with Dalle 3" option to pic menu, works with the same openai key entered for gpt. Once rendered, you can do normal operations like select the foreground, upscale, etc
-* AI Guide feature now has a renderer dropdown which can set Dalle 3 for rendering instead of SD WebUI
-* Added an optional Refiner setting
-* Experimental: Added a "Turbo mode" checkbox, if on, it does non-stop realtime rendering to the latest pic, this is so you can do "type and see it in realtime" with faster models. it also works with batch things like img2img, but the "turbo" models I tested need 6+ steps to get this to work and don't look great
-* Errors files are written out in release mode too, no reason to have those be debug only
-* BUGFIX: AI Guide button is aligned correctly at all screen sizes
-* AI Guide's "Text generation web UI" support fixed to work with its latest version 
-* Added new AI Guide preset called "Random basic story for lzlv_70b (TexGen WebUI)", amazingly it works nearly as well as chatgpt, go open source!
-* Added a "text to prepend" option to AI Guide, helped for the above setting as I feed it the "text:" part and it's missing from the generation
-- Note, AI Guide options are a bit outdated, they should all probably use non-json styles and then prompts would probably work with both TextGen WebUI and GPT4 but I'm too lazy to organize it better for now
+* AI Guide now supports "streaming" from OpenAI or Text generation web UI and allows rendering stories and posters while the generation is happening
+* AI Guide now supports three modes: GPT-4 (OpenAI), Raw Completion (Texgen WebUI), and Instruct (Texgen WebUI) mode.
+* AI Guide examples tweaked and improved, the render processer is much more forgiving of misformatted data.  I don't recommend using the JSON style ones as they don't support live-rendering and are more error prone.
+* Some defaults tweaked to get with the times, like DPM++ SDE Karras is the default sampler now.
+
+BTW, local LLMs have come a long way and they work GREAT now.  It's amazing that you can have unlimited stories and posters/etc. designed & rendered by AI in real-time using only computers in your own house.  The future is now!  I've done most of my LLM tests with 70B parm models but smaller ones will probably work ok too.
+
 
 NOTE:  For pix2pix stuff, you need to add the [7 gb model](https://huggingface.co/timbrooks/instruct-pix2pix/resolve/main/instruct-pix2pix-00-22000.safetensors) to your models/Stable-diffusion folder
 
@@ -111,8 +107,9 @@ If your Stable Diffusion WebUI server isn't running locally or at port 7860, cha
 
 # Building from source
 
-* Requires Unity 2022.3.15+
+* Requires Unity 2022.3.22+
 * Open the scene "Main" and click play to run
+* Assets/GUI/GOTHIC.TFF and Assets/GUI/times.ttf are not included and might break the build because I was having trouble and switched some settings around that might require them now (dynamic vs static TMPro font settings...)
 
 ---
 
