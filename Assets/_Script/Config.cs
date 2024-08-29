@@ -5,6 +5,26 @@ using System.IO;
 using DG.Tweening.Plugins.Core.PathCore;
 using UnityEngine.UI;
 using static System.Net.WebRequestMethods;
+using UnityEditor;
+using TMPro;
+
+
+public enum LLM_Type
+{
+    OpenAI_API,
+    GenericLLM_API,
+    Anthropic_API
+}
+
+public enum RTRendererType
+{
+    Any_Local,
+    A1111,
+    AI_Tools,
+    ComfyUI,
+    AI_Tools_or_A1111, //(this means either A1111 or AIT)
+    OpenAI_Dalle_3 //openai DALL-E
+}
 
 public class GPUInfo
 {
@@ -16,7 +36,10 @@ public class GPUInfo
     public bool supportsAITools = false;
     public ServerButtonScript buttonScript = null;
     public bool serverIsWindows = false;
-    
+    public RTRendererType _requestedRendererType = RTRendererType.A1111;
+    public bool isLocal = true; //false would mean an unlimited API like OpenAI's Dalle3.  Local means TextGen WebUI, AI Tools server or ComfyUI (doesn't actually have to be local)
+    public bool _usesDetailedPrompts = false; //simple is the default
+
 }
 
 public class Config : MonoBehaviour
@@ -38,14 +61,24 @@ public class Config : MonoBehaviour
     string _elevenLabs_APIKey = "";
     string _elevenLabs_voiceID = "";
     int _jpgSaveQuality = 80;
-    string m_defaultSampler = "DPM++ SDE Karras";
+    public string _texgen_webui_APIKey = "none";
 
+    string _anthropicAI_APIKey = "";
+    string _anthropicAI_APIModel = "claude-3-5-sonnet-20240620";
+    string _anthropicAI_APIEndpoint = "https://api.anthropic.com/v1/complete";
+
+    public string GetAnthropicAI_APIKey() { return _anthropicAI_APIKey; }
+    public string GetAnthropicAI_APIModel() { return _anthropicAI_APIModel; }
+    public string GetAnthropicAI_APIEndpoint() { return _anthropicAI_APIEndpoint; }
+
+    string m_defaultSampler = "DPM++ 2M";
+    static public string _saveDirName = "output"; //where to save files, relative to the app's root
     public string GetOpenAI_APIKey() { return _openAI_APIKey; }
     public string GetOpenAI_APIModel() { return _openAI_APIModel; }
     public string GetElevenLabs_APIKey() { return _elevenLabs_APIKey; }
     public string GetElevenLabs_voiceID() { return _elevenLabs_voiceID; }
 
-    float m_version = 0.80f;
+    float m_version = 0.90f;
     string m_imageEditorPathAndExe = "none set";
     public string GetVersionString() { return m_version.ToString("0.00"); }
     public float GetVersion() { return m_version; }
@@ -83,34 +116,61 @@ public class Config : MonoBehaviour
         }
 
         m_configText = LoadConfigFromFile();
-
-        if (m_configText == "")
+        if (string.IsNullOrEmpty(m_configText))
         {
-            //default
-            m_configText += "#add as many add_server commands as you want, just replace the localhost:7860 part with the\n";
-            m_configText += "#server name/ip and port.  You can control any number of servers at the same time.\n";
-            m_configText += "\n";
-            m_configText += "#You need at least one server running to work. It can be either an automatic1111 Stable Diffusion WebUI server or\n";
-            m_configText += "#a Seth's AI Tools server which supports a few more features.  It will autodetect which kind it is.\n";
-            m_configText += "\n";
-            m_configText += "add_server|http://localhost:7860\n\n";
-         
-            m_configText += "#Set the below path and .exe to an image editor to use the Edit option. Changed files will auto\n";
-            m_configText += "#update in here.\n\n";
-            m_configText += "set_image_editor|C:\\Program Files\\Adobe\\Adobe Photoshop 2023\\Photoshop.exe\n";
-            m_configText += "\n#set_default_sampler|DDIM\n";
-            m_configText += "#set_default_steps|50\n";
-            m_configText += "\n#To generate text with the AI Guide features, you need to set your OpenAI GPT4 key and/or a Text Generation web IO API url (presumably your own local server).\n";
-            m_configText += "\nset_openai_gpt4_key|<key goes here>|\n";
-            m_configText += "\nset_openai_gpt4_model|gpt-4|\n";
-            m_configText += "set_openai_gpt4_endpoint|https://api.openai.com/v1/chat/completions|\n";
-            m_configText += "\nset_texgen_webui_address|localhost:5000|\n";
+            m_configText = @"#add as many add_server commands as you want, just replace the localhost:7860 part with the
+#server name/ip and port.  You can control any number of renderer servers at the same time.
+
+#Supported server types:  Seth's AI Tools, A1111, ComfyUI supported.  For Dalle-3, don't set here, just enter your OpenAI key below.
+
+#Uncomment below and put your renderer server.  Add more add_server commands to add as many as you want.
+#add_server|http://localhost:7860
+
+#Set the below path and .exe to an image editor to use the Edit option. Changed files will auto
+#update in here.
+
+set_image_editor|C:\Program Files\Adobe\Adobe Photoshop 2023\Photoshop.exe
+
+#set_default_sampler|DDIM
+#set_default_steps|50
+
+#To generate text with the AI Guide features, you need at least one LLM. (or all, you can switch between them in the app)
+
+#OPENAI (works for LLM and Dalle-3 as renderer)
+set_openai_gpt4_key|<key goes here>|
+set_openai_gpt4_model|gpt-4o|
+set_openai_gpt4_endpoint|https://api.openai.com/v1/chat/completions|
+
+#address of your generic LLM to use, can be local, on your LAN, remote, etc (text-generation-webui or TabbyAPI API format)
+set_generic_llm_address|localhost:5000|
+#if your generic LLM needs a key, enter it here (or leave as ""none"")
+set_generic_llm_api_key|none|
+            
+#Anthropic LLM
+set_anthropic_ai_key|<key goes here>|
+set_anthropic_ai_model|claude-3-5-sonnet-20240620|
+set_anthropic_ai_endpoint|https://api.anthropic.com/v1/messages|
+set_anthropic_ai_version|2023-06-01|
+";
+            
         }
 
         RTQuickMessageManager.Get().ShowMessage("Connecting...");
         ProcessConfigString(m_configText);
     }
 
+    public void PopulateRendererDropDown(TMP_Dropdown rendererSelectionDropdown)
+    {
+        //populate the list based on the enums from RTServerType
+        rendererSelectionDropdown.ClearOptions();
+        List<string> options = new List<string>();
+        foreach (RTRendererType r in System.Enum.GetValues(typeof(RTRendererType)))
+        {
+            string option = r.ToString().Replace("_", " "); // Replace underscore with space
+            options.Add(option);
+        }
+        rendererSelectionDropdown.AddOptions(options);
+    }
 
     public string GetBaseFileDir(string subdir)
     {
@@ -130,15 +190,110 @@ public class Config : MonoBehaviour
         return tempDir;
     }
 
-    public int GetFreeGPU()
+    public bool DontHaveLocalServers()
     {
-        for (int i = 0; i < Config.Get().GetGPUCount(); i++)
+        for (int i = 0; i < GetGPUCount(); i++)
         {
-            if (!Config.Get().IsGPUBusy(i))
+            if (GetGPUInfo(i).isLocal) return false;
+        }
+
+        return true; //no local servers
+    }
+
+    public int GetFirstGPUIncludingOpenAI()
+    {
+        for (int i = 0; i < GetGPUCount();)
+        {
+            return i;
+        }
+
+        return -1;
+    }
+
+    public int GetFreeGPU(RTRendererType requestedGPUType = RTRendererType.Any_Local, bool bFreeOrBusyIsOk = false)
+    {
+        //special types
+
+        if (requestedGPUType != RTRendererType.Any_Local)
+        {
+            for (int i = 0; i < GetGPUCount(); i++)
             {
-                return i;
+                if (!IsGPUBusy(i))
+                {
+                    if (GetGPUInfo(i)._requestedRendererType == requestedGPUType)
+                    {
+                        return i;
+                    }
+
+                    if (requestedGPUType == RTRendererType.AI_Tools_or_A1111)
+                    {
+                        //special case to look for two kinds of things
+                        if (GetGPUInfo(i)._requestedRendererType == RTRendererType.A1111
+                            ||
+                                GetGPUInfo(i)._requestedRendererType == RTRendererType.AI_Tools
+                                )
+                        {
+                            return i;
+                        }
+                    }
+                }
+            }
+
+        }
+
+        if (requestedGPUType == RTRendererType.Any_Local)
+        {
+            //special way to find one for "any local"
+            for (int i = 0; i < Config.Get().GetGPUCount(); i++)
+            {
+                if (!Config.Get().IsGPUBusy(i) && GetGPUInfo(i).isLocal)
+                {
+                    return i;
+                }
             }
         }
+
+
+        //do it all again, but take whatever
+        if (bFreeOrBusyIsOk)
+        {
+            if (requestedGPUType != RTRendererType.Any_Local)
+            {
+                for (int i = 0; i < GetGPUCount(); i++)
+                {
+                    if (GetGPUInfo(i)._requestedRendererType == requestedGPUType)
+                    {
+                        return i;
+                    }
+
+                    if (requestedGPUType == RTRendererType.AI_Tools_or_A1111)
+                    {
+                        //special case to look for two kinds of things
+                        if (GetGPUInfo(i)._requestedRendererType == RTRendererType.A1111
+                            ||
+                                GetGPUInfo(i)._requestedRendererType == RTRendererType.AI_Tools
+                                )
+                        {
+                            return i;
+                        }
+                    }
+                }
+
+                return -1; //none of this type available
+
+            }
+
+            //special way to find one for "any local"
+
+            for (int i = 0; i < Config.Get().GetGPUCount(); i++)
+            {
+                if (GetGPUInfo(i).isLocal)
+                {
+                    return i;
+                }
+            }
+        }
+
         return -1; //none available right now
     }
 
@@ -174,7 +329,7 @@ public class Config : MonoBehaviour
 
         for (int i=0; i < m_gpuInfo.Count; i++)
         {
-            if (!IsGPUBusy(i)) return true;
+            if (!IsGPUBusy(i) && GetGPUInfo(i).isLocal) return true;
         }
 
         return false;
@@ -229,7 +384,7 @@ public class Config : MonoBehaviour
         var panel = RTUtil.FindIncludingInactive("Panel");
         var buttonObj = Instantiate(m_serverButtonPrefab, panel.transform);
         g.buttonScript = buttonObj.GetComponent<ServerButtonScript>();
-        g.buttonScript.Setup(g.localGPUID, g.supportsAITools);
+        g.buttonScript.Setup(g.localGPUID, g.supportsAITools, g._requestedRendererType);
         buttonObj.name = "ServerButtonPrefab"; //don't change, we delete these by this exact name
         //move it down
         float spacerY = -20;
@@ -243,43 +398,42 @@ public class Config : MonoBehaviour
         vPos.y += spacerY* g.localGPUID;
         buttonObj.transform.localPosition = vPos;
 
+            if (g._requestedRendererType == RTRendererType.AI_Tools || g._requestedRendererType == RTRendererType.A1111)
+            {
+
+            //We know how to query for extra info from these kinds of servers.  The problem is we'll assume they share certain info
+            //for multiple servers, like checkpoints, otherwise it will get weird in the GUI with different checkpoints for each server
+
+                GameLogic.Get().SetHasControlNetSupport(false);
+                GameLogic.Get().ClearControlNetModelDropdown();
+                GameLogic.Get().ClearControlNetPreprocessorsDropdown();
+                ModelModManager.Get().ClearModItems();
+
+                var webScript2 = CreateWebRequestObject();
+                webScript2.StartPopulateSamplersRequest(g);
+
+                var webScriptTemp = CreateWebRequestObject();
+                webScriptTemp.StartPopulateModelsRequest(g);
+
+                var webScriptControlnet = CreateWebRequestObject();
+                webScriptControlnet.StartPopulateControlNetModels(g);
+
+                var webScriptControlnetModules = CreateWebRequestObject();
+                webScriptControlnetModules.StartPopulateControlNetPreprocessors(g);
+
+                var webScriptControlnetSettings = CreateWebRequestObject();
+                webScriptControlnetSettings.StartPopulateControlNetSettings(g);
+
+                //lora and embeddings
+                var webScript3 = CreateWebRequestObject();
+                webScript3.StartPopulateEmbeddingsRequest(g);
+            }
+
         if (g.supportsAITools)
         {
             //learn more about this server, we haven't already run it yet
             var webScript = CreateWebRequestObject();
             webScript.StartConfigRequest(g.localGPUID, g.remoteURL);
-        }
-           
-
-        if (g.localGPUID == 0)
-        {
-            //it's the first one, let's get more info and just hope all the servers have the same capabilities.  If one server is missing an extension or model, well, that's on them
-         
-            var webScript2 = CreateWebRequestObject();
-            webScript2.StartPopulateSamplersRequest(g);
-
-            var webScriptTemp = CreateWebRequestObject();
-            webScriptTemp.StartPopulateModelsRequest(g);
-
-            GameLogic.Get().SetHasControlNetSupport(false);
-            GameLogic.Get().ClearControlNetModelDropdown();
-            GameLogic.Get().ClearControlNetPreprocessorsDropdown();
-          
-            var webScriptControlnet = CreateWebRequestObject();
-            webScriptControlnet.StartPopulateControlNetModels(g);
-
-            var webScriptControlnetModules = CreateWebRequestObject();
-            webScriptControlnetModules.StartPopulateControlNetPreprocessors(g);
-
-            var webScriptControlnetSettings = CreateWebRequestObject();
-            webScriptControlnetSettings.StartPopulateControlNetSettings(g);
-
-            ModelModManager.Get().ClearModItems();
-
-            //lora and embeddings
-            var webScript3 = CreateWebRequestObject();
-            webScript3.StartPopulateEmbeddingsRequest(g);
-
         }
 
     }
@@ -414,6 +568,19 @@ public class Config : MonoBehaviour
                 if (words[0] == "set_openai_gpt4_key")
                 {
                     _openAI_APIKey = words[1];
+                    if (_openAI_APIKey.Length > 30)
+                    {
+                        //Could be a valid key.  Create virtual GPU for it
+                        GPUInfo g = new GPUInfo();
+                        g.remoteURL = "https://platform.openai.com/usage"; //not used
+                        g.supportsAITools = false;
+                        g.isLocal = false;
+                        g._requestedRendererType = RTRendererType.OpenAI_Dalle_3;
+                        g._usesDetailedPrompts = false;
+                        AddGPU(g);
+
+                    }
+
                 }
                 else
                  if (words[0] == "set_openai_gpt4_model")
@@ -426,14 +593,35 @@ public class Config : MonoBehaviour
                     _texgen_webui_address = words[1];
                 }
                 else
+                if(words[0] == "set_generic_llm_address")
+                {
+                    _texgen_webui_address = words[1];
+                }
+                else
+                 if (words[0] == "set_generic_llm_api_key")
+                {
+                    _texgen_webui_APIKey = words[1];
+                }
+                else
+                if (words[0] == "set_anthropic_ai_key")
+                {
+                    _anthropicAI_APIKey = words[1];
+                }
+                else if (words[0] == "set_anthropic_ai_model")
+                {
+                    _anthropicAI_APIModel = words[1];
+                }
+                else if (words[0] == "set_anthropic_ai_endpoint")
+                {
+                    _anthropicAI_APIEndpoint = words[1];
+                }
+                else 
               if (words[0] == "set_openai_gpt4_endpoint")
                         {
                     _openai_gpt4_endpoint = words[1];
                 }
                 else
 
-
-                    
                 if (words[0] == "set_max_fps")
                 {
                     int maxFPS;
@@ -465,13 +653,56 @@ public class Config : MonoBehaviour
 
         for (int i = 0; i < m_gpuInfo.Count; i++)
         {
+            if (!m_gpuInfo[i].isLocal)
+            {
+                continue;
+            }
             if (!m_gpuInfo[i].supportsAITools) return false;
         }
 
         return true;
     }
-    public GPUInfo GetGPUInfo(int index) { return m_gpuInfo[index]; }
+    public GPUInfo GetGPUInfo(int index) 
+    {
+        if (index < 0)
+        {
+            //set assert
+            Debug.Log("Bad GPU Info!");
+
+        }
+        return m_gpuInfo[index]; 
+    }
     public int GetGPUCount() { return m_gpuInfo.Count; }
+
+    public string GetServerNameByGPUID(int gpuID)
+    {
+        if (gpuID < 0 || gpuID >= m_gpuInfo.Count) return "(no GPUID)";
+        return m_gpuInfo[gpuID]._requestedRendererType.ToString();
+    }
+
+    public bool IsGPUOfThisType(int GPUID, RTRendererType renderer)
+    {
+
+        if (renderer == RTRendererType.Any_Local && m_gpuInfo[GPUID].isLocal) return true;
+        if (renderer == RTRendererType.AI_Tools_or_A1111)
+        {
+            if (m_gpuInfo[GPUID]._requestedRendererType == RTRendererType.AI_Tools || m_gpuInfo[GPUID]._requestedRendererType == RTRendererType.A1111) return true;
+        }
+
+        if (m_gpuInfo[GPUID]._requestedRendererType == renderer) return true;
+
+        return false;
+    }
+    public bool DoesGPUExistForThatRenderer(RTRendererType renderer)
+    {
+   
+        for (int i = 0; i < m_gpuInfo.Count; i++)
+        {
+            if (IsGPUOfThisType(i, renderer)) return true;
+        }
+
+        return false;
+    }
     static public Config Get() { return _this; }
 
 }

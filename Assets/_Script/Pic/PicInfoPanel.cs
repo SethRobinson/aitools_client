@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -76,7 +77,9 @@ public class PicInfoPanel : MonoBehaviour
             postfix = "controlNet";
         }
 
-        _picMain.SaveFile("", "", _spriteRendererOne.sprite.texture, "_" + postfix);
+       
+
+        _picMain.SaveFile("", "/" + Config._saveDirName, _spriteRendererOne.sprite.texture, "_" + postfix);
     }
     // Update is called once per frame
     void Update()

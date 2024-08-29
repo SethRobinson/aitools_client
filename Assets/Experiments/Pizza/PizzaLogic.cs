@@ -80,10 +80,13 @@ public class PizzaLogic : MonoBehaviour
     {
         if (!m_generatePizza) return;
 
-        if (Config.Get().IsAnyGPUFree())
+
+        int gpuID = Config.Get().GetFreeGPU(RTRendererType.AI_Tools_or_A1111);
+
+        if (gpuID != -1)
         {
             //this will send the json request to the aitools_server, and callback with the created image
-            GamePicManager.Get().SpawnInpaintRequest(m_json, OnPizzaRenderFinished, new RTDB());
+            GamePicManager.Get().SpawnInpaintRequest(m_json, OnPizzaRenderFinished, new RTDB(), gpuID);
         }
 
     }

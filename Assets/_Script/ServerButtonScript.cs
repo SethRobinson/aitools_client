@@ -1,10 +1,11 @@
-using System.Collections;
-using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 
+
 public class ServerButtonScript : MonoBehaviour
 {
+    //define an enum with server type A1111, AIT, and COMFYUI
+    RTRendererType m_serverType = RTRendererType.A1111;
 
     public TextMeshProUGUI m_text;
     int m_buttonIndex = -1;
@@ -16,8 +17,10 @@ public class ServerButtonScript : MonoBehaviour
     {
         
     }
-    public void Setup(int buttonIndex, bool bSupportsAITools)
+
+    public void Setup(int buttonIndex, bool bSupportsAITools, RTRendererType serverType)
     {
+        m_serverType = serverType;
         m_buttonIndex = buttonIndex;
         m_bSupportsAITools = bSupportsAITools;
         UpdateText();
@@ -32,6 +35,8 @@ public class ServerButtonScript : MonoBehaviour
             busy = " <color=red>(busy)</color>";
         }
         string aitools = "";
+       
+        
         if (m_bSupportsAITools)
         {
             aitools = "AIT";
@@ -39,7 +44,18 @@ public class ServerButtonScript : MonoBehaviour
         {
             aitools = "1111";
         }
-        m_text.text = aitools+"Server " + m_buttonIndex.ToString() + " WebUI" + busy;
+
+        if (m_serverType == RTRendererType.ComfyUI)
+        {
+            aitools = "Comfy";
+        } else
+        if (m_serverType == RTRendererType.OpenAI_Dalle_3)
+        {
+            aitools = "Dalle-3";
+        }
+
+
+        m_text.text = aitools+" Server " + m_buttonIndex.ToString() + "" + busy;
     }
     public void OnSetBusy(bool bBusy)
     {

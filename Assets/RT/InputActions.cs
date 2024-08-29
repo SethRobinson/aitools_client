@@ -142,17 +142,6 @@ public partial class @InputActions: IInputActionCollection2, IDisposable
                 },
                 {
                     ""name"": """",
-                    ""id"": ""7056ae6d-1667-442e-bc96-8ac6944feca0"",
-                    ""path"": ""<Mouse>/middleButton"",
-                    ""interactions"": """",
-                    ""processors"": """",
-                    ""groups"": """",
-                    ""action"": ""PrimaryTouchContact"",
-                    ""isComposite"": false,
-                    ""isPartOfComposite"": false
-                },
-                {
-                    ""name"": """",
                     ""id"": ""969cb7a8-6f07-497a-a6b0-5b2f246c5f57"",
                     ""path"": ""<Mouse>/delta/y"",
                     ""interactions"": """",

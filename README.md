@@ -1,5 +1,5 @@
 
-# Seth's AI Tools: A Unity based front-end for Stable Diffusion WebUI, Textgen WebUI and OpenAI - allows LLM based stories, image editing, fun experiments like a paintball game with dynamically created enemies
+# Seth's AI Tools: A Unity based front-end that talks to various AI APIs to do experimental things like generate Twine games, quizzes, posters and more.
 
 License:  BSD style attribution, see LICENSE.md
 
@@ -9,17 +9,10 @@ License:  BSD style attribution, see LICENSE.md
 
 # Download the latest [AI Tools Client (Windows, 56 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip)
 
-To use this, you'll need at least one Stable Diffusion WebUI server running somewhere (it can run on Windows or linux, the same machine as the client is ok) This client supports either of the following servers:
+To use this, you'll need to connect to something that can generate images, and hopefully an LLM too.  A single OpenAI key is enough to do a lot, you can also connect A1111 and ComfyUI servers, Text Genersion WebUI and TabbyAPI servers for LLMs.
 
+Note:  Instead of A1111, you can use Seth's modified version that has a few special features:
 ## [Seth's AI Tools Server](https://github.com/SethRobinson/aitools_server) (Same as below but with a few extra features, including background removal) ##
-
- or
-
-##  [AUTOMATIC1111's Stable Diffusion WebUI](https://github.com/AUTOMATIC1111/stable-diffusion-webui) (must run with the --api parm) ##
-
-or
-
-## For the AI Guide feature, you can use your OpenAI api key to use GPT4 and Dalle 3 and not need a local server at all ##
 
 # Features #
 
@@ -34,30 +27,38 @@ or
 * Supports pix2pix and ControlNet (For ControlNet, the server requires [Mikubill's sd-webui-controlnet extension](https://github.com/Mikubill/sd-webui-controlnet)) and its models to be installed, otherwise the option is grayed out
 * Can utilize multiple servers (three video cards on one machine? Run three servers!) allowing seamless use of all GPUs for ultra fast generation and a single click to change the active model
 * Neat workflow that allows evolving images with loopback while live-selecting the best alternatives to shape the image in real-time
-* Open source, uses the Unity game engine and C# to do stuff with AI art
 * Privacy respected - does not phone home or collect any statistics, purely local usage. (it does check a single file on github.com to check for newer versions, but that's it)
 * Includes "experiments", little built-in games and apps designed to test using AI/SD for specific things: CrazyCam is a realtime webcam filter with 30+ presets, Shooting Gallery tests realtime craetion of sprites during a game, etc
-* AI Guide feature harnesses the power of GPT-4 or open source LLMs (via [Text generation web UI](https://github.com/oobabooga/text-generation-webui)) to create motivational posters, illustrated stories or whatever, with presets and web-slideshower viewer. Comes with presets like [Pixel Art Gaming Lies](https://www.rtsoft.com/ai/lies/) and [Random Story That Teaches Japanese](https://www.rtsoft.com/ai/jtest/)
-* Can optionally use Dalle 3 for rendering with AI Guide
+* AI Guide feature harnesses the power of AI to create motivational posters, illustrated stories or whatever
+* Adventure mode has presets to various modes - generate ready to upload illustrated web quiz from prompt, simple Twine game project from a prompt, and "Adventure", a sort of illustrated AI Dungeon type of toy
 
 
-## Current version: **V0.80** (released April 3rd 2024) ##
+## Current version: **V0.90** (released Sept 29th 2024) ##
 
 **Recent changes**:
 
-* AI Guide now supports "streaming" from OpenAI or Text generation web UI and allows rendering stories and posters while the generation is happening
-* AI Guide now supports three modes: GPT-4 (OpenAI), Raw Completion (Texgen WebUI), and Instruct (Texgen WebUI) mode.
-* AI Guide examples tweaked and improved, the render processer is much more forgiving of misformatted data.  I don't recommend using the JSON style ones as they don't support live-rendering and are more error prone.
-* Some defaults tweaked to get with the times, like DPM++ SDE Karras is the default sampler now.
+* Big overhaul that allows multiple kinds of renderers and LLMs to be used.
+* Added support for ComfyUI as a renderer (I needed this for Flux, A1111 doesn't/didn't support it) (Flux is AWESOME!)
+* Added support for Anthropic as a LLM
+* AI Guide has lots of changes, only Chat style AI is supported now, I deleted all the old presets.  Works well with Mistal Large and Llama 3.1
+* NEW: Adventure mode! Has presets to various modes - generate ready to upload illustrated web quiz from prompt, simple Twine game project from a prompt, and "Adventure", a sort of illustrated AI Dungeon type of toy
+* AI Guide and Adventure have .txt files to control presets, you can copy and edit these as needed to create your own presets
+* A lot of the image editings and image to image stuff I haven't been using lately, so beware it may be broken, it only works with A1111 based renderers anyway
+* You can now set an authentication key in config.txt for Text Generation WebUI/TabbyAPI LLM servers
+* Lots of little tweaks and improvements to the GUI
+* It's now possible to choose OpenAI for everything and use AI Guide and Adventure mode with only an OpenAI API key and setting nothing else up.  You can also mix and match, for example, use OpenAI or Anthropic for text generation, but your own A1111 and/or ComfyUI servers for the imagery. Or your own local LLM for text and... etc.
+* Everything it generates now goes into the "output" subfolder
+* AI Guide and Adventure presets will add "AI Generated" at the bottom of the image by default.  You can edit the presets to change/remove that label, but I figure it's useful for both humans and bot scapers of the future
 
-BTW, local LLMs have come a long way and they work GREAT now.  It's amazing that you can have unlimited stories and posters/etc. designed & rendered by AI in real-time using only computers in your own house.  The future is now!  I've done most of my LLM tests with 70B parm models but smaller ones will probably work ok too.
-
-
-NOTE:  For pix2pix stuff, you need to add the [7 gb model](https://huggingface.co/timbrooks/instruct-pix2pix/resolve/main/instruct-pix2pix-00-22000.safetensors) to your models/Stable-diffusion folder
-
-For ControlNet options, you need to install [Mikubill's sd-webui-controlnet extension](https://github.com/Mikubill/sd-webui-controlnet) and at least one of [its models](https://huggingface.co/lllyasviel/ControlNet/tree/main/models).  You should make sure it's working from the webUI interface on the server first.  You must run the server with the parm "--xformers", this is required by the extension.  Also, if you see "Protocol errors" anywhere, remove the Dreambooth extension, lately it's been causing API issues.  (as of March 2nd/2023 at least)
 
 You only need to download [the zip](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) and run the .exe to use this, However, the source might be useful to generate a build for other platforms, fork or steal pieces to use for yourself.  Go ahead!
+# Screenshots
+
+<a href="Media/ai_tools_dungeons_generate.png"><img src="Media/ai_tools_dungeons_generate.png" width="300"></a>
+<a href="Media/ait_dungeon_twine_export.png"><img src="Media/ait_dungeon_twine_export.png" width="300"></a>
+<a href="Media/ait_twine_stored_html2.png"><img src="Media/ait_twine_stored_html2.png" width="300"></a>
+<a href="Media/ait_quiz_kyoto.png"><img src="Media/ait_quiz_kyoto.png" width="300"></a>
+<a href="Media/ai_tools_birdy_to_bird.jpg"><img src="Media/ai_tools_birdy_to_bird.jpg" width="300"></a>
 
 # Media (outdated videos of the app) #
 
@@ -77,33 +78,40 @@ Next run aitools_client.exe.  Click on the "Configuration" button and a text edi
 
 ```bash
 #add as many add_server commands as you want, just replace the localhost:7860 part with the
-#server name/ip and port.  You can control any number of servers at the same time.
+#server name/ip and port.  You can control any number of renderer servers at the same time.
 
-#You need at least one server running to work. It can be either an automatic1111 Stable Diffusion WebUI server or
-#a Seth's AI Tools server which supports a few more features.  It will autodetect which kind it is.
+#Supported server types:  Seth's AI Tools, A1111, ComfyUI supported.  For Dalle-3, don't set here, just enter your OpenAI key below.
 
-add_server|http://localhost:7860
+#Uncomment below and put your renderer server.  Add more add_server commands to add as many as you want.
+#add_server|http://localhost:7860
 
 #Set the below path and .exe to an image editor to use the Edit option. Changed files will auto
 #update in here.
 
-set_image_editor|C:\Program Files\Adobe\Adobe Photoshop 2023\Photoshop.exe
+set_image_editor|C:\Program Files\Adobe\Adobe Photoshop 2024\Photoshop.exe
 
 #set_default_sampler|DDIM
 #set_default_steps|50
 
-#To generate text with the AI Guide features, you need to set your OpenAI GPT4 key and/or a Text Generation web IO API url (presumably your own local server).
+#To generate text with the AI Guide features, you need at least one LLM. (or all, you can switch between them in the app)
 
+#OPENAI (works for LLM and Dalle-3 as renderer)
 set_openai_gpt4_key|<key goes here>|
+set_openai_gpt4_model|gpt-4o|
 set_openai_gpt4_endpoint|https://api.openai.com/v1/chat/completions|
-set_openai_gpt4_model|gpt-4
 
-set_texgen_webui_address|localhost:5000|
+#address of your generic LLM to use, can be local, on your LAN, remote, etc (text-generation-webui or TabbyAPI API format)
+set_generic_llm_address|localhost:5000|
+#if your generic LLM needs a key, enter it here (or leave as "none")
+set_generic_llm_api_key|none|
+            
+#Anthropic LLM
+set_anthropic_ai_key|<key goes here>|
+set_anthropic_ai_model|claude-3-5-sonnet-20240620|
+set_anthropic_ai_endpoint|https://api.anthropic.com/v1/messages|
+set_anthropic_ai_version|2023-06-01|
+
 ```
-
-If your Stable Diffusion WebUI server isn't running locally or at port 7860, change the http://localhost:7860 part to where it is.  Add multiple add_server commands for multiple servers.
-
-**NOTE:** Using automatic1111, on the server side, you will see a scary error saying "RuntimeError: File at path D:\pro\stable-diffusion-webui\aitools\get_info.json does not exist.", this is ok, the app checks for the file to see what kind of server it is once at the start.  It doesn't break anything.
 
 # Building from source
 

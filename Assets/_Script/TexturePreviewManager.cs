@@ -26,8 +26,12 @@ public class TexturePreviewManager : MonoBehaviour
         if (!go)
         {
             Debug.Log("No picture is currently under the mouse cursor, can't preview.");
+            m_bActive = false;
             return;
         }
+
+        //Log the name of the object we're hovering over
+        Debug.Log("Hovering over: " + go.name);
 
         //ok, we know where to steal the texture from
         SpriteRenderer spriteRenderer =  RTUtil.FindInChildrenIncludingInactive(go, "Pic").GetComponent<SpriteRenderer>();  

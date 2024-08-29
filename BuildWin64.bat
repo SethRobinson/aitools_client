@@ -22,20 +22,30 @@ start notepad.exe log.txt
 pause
 )
 
-:Add a few more files we need
-mkdir build\win\utils
-xcopy /c utils build\win\utils\ /E /F /Y
-xcopy /c web build\win\web\ /E /F /Y
-del build\win\utils\RTClip.zip
+call UpdateBuildDirConfigFiles.bat
+
+del build\win\Adventure\test_*.txt
+del build\win\Adventure\TEST_*.txt
+del build\win\AIGuide\TEST_*.txt
+del build\win\AIGuide\test_*.txt
+del build\win\config.txt
+del build\win\ComfyUI\test_*.json
+del build\win\ComfyUI\TEST_*.json
+del build\win\ComfyUI\workflow\test_*.json
+del build\win\ComfyUI\workflow\TEST_*.json
+
 
 call %RT_PROJECTS%\Signing\sign.bat "build/win/%APP_NAME%.exe" "Seth's AI Tools"
 call %RT_PROJECTS%\Signing\sign.bat "build/win/utils/RTClip.exe" "RTClip"
+
+del build\win\utils\RTClip.zip
 
 
 :create the archive
 set ZIP_FNAME=SethsAIToolsWindows.zip
 del %ZIP_FNAME%
 cd build
+
 %RT_UTIL%\7za.exe a -r -tzip ..\%ZIP_FNAME% win
 cd ..
 :Rename the root folder

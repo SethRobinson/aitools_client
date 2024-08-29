@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Networking;
 using System.IO;
-using System.Runtime.InteropServices.ComTypes;
+
 
 public class TexGenWebUITextCompletionManager : MonoBehaviour
 {
@@ -60,11 +60,11 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
 
     //*  EXAMPLE END */
     public bool SpawnChatCompleteRequest(string jsonRequest, Action<RTDB, JSONObject, string> myCallback, RTDB db, string serverAddress,
-        string apiCommandURL, Action<string> streamingUpdateChunkCallback = null, bool bStreaming = false)
+        string apiCommandURL, Action<string> streamingUpdateChunkCallback = null, bool bStreaming = false, string apiKey = "none")
     {
         if (bStreaming)
         {
-            StartCoroutine(GetRequestStreaming(jsonRequest, myCallback, db, serverAddress, apiCommandURL, streamingUpdateChunkCallback));
+            StartCoroutine(GetRequestStreaming(jsonRequest, myCallback, db, serverAddress, apiCommandURL, streamingUpdateChunkCallback, apiKey));
 
         }
         else
@@ -99,13 +99,13 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
         return json;
     }
 
-
-    public string BuildForInstructJSON(Queue<OpenAITextCompletionManager.GTPChatLine> lines, int max_tokens = 100, float temperature = 1.3f, string mode = "instruct", bool stream = false)
+    // ""name1"": ""Jeff"",
+    public string BuildForInstructJSON(Queue<GTPChatLine> lines, int max_tokens = 100, float temperature = 1.3f, string mode = "instruct", bool stream = false, string texGenWebUICharacter = "")
     {
         string msg = "";
 
         //go through each object in lines
-        foreach (OpenAITextCompletionManager.GTPChatLine obj in lines)
+        foreach (GTPChatLine obj in lines)
         {
             if (msg.Length > 0)
             {
@@ -120,15 +120,21 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
             bStreamText = "true";
         }
 
+        string characterPart = "";
+        if (!string.IsNullOrEmpty(texGenWebUICharacter))
+        {
+            characterPart = $@",""character"": ""{SimpleJSON.JSONNode.Escape(texGenWebUICharacter)}""";
+        }
+
         string json =
          $@"{{
              ""messages"":[{msg}],
              ""mode"": ""{mode}"",
-            ""temperature"": {temperature},
+             ""temperature"": {temperature},
              ""stream"": {bStreamText},
-             ""max_tokens"": {max_tokens}
-          
-     }}";
+             ""max_new_tokens"": {max_tokens}
+             {characterPart}
+         }}";
 
         return json;
     }
@@ -146,7 +152,12 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
         {
             m_connectionActive = false;
             if (_currentRequest != null)
-             _currentRequest.Abort();
+            {
+                _currentRequest.Abort();
+            } else
+            {
+                RTConsole.Log("Unable to cancel request, no current request object");
+            }
             _currentRequest = null; // Ensure to nullify the reference
             Debug.Log("Request aborted.");
         }
@@ -154,9 +165,9 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
     IEnumerator GetRequest(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string serverAddress, string apiCommandURL)
     {
 
-#if UNITY_STANDALONE && !RT_RELEASE
+//#if UNITY_STANDALONE && !RT_RELEASE
         File.WriteAllText("text_completion_sent.json", json);
-#endif
+//#endif
         string url;
         //        url = serverAddress + "/v1/chat/completions";
         url = serverAddress + apiCommandURL;
@@ -167,6 +178,8 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
             byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
             _currentRequest.uploadHandler = (UploadHandler)new UploadHandlerRaw(bodyRaw);
             _currentRequest.SetRequestHeader("Content-Type", "application/json");
+
+         
             yield return _currentRequest.SendWebRequest();
 
             if (_currentRequest == null)
@@ -210,12 +223,12 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
 
 
     IEnumerator GetRequestStreaming(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string serverAddress, string apiCommandURL,
-        Action<string> updateChunkCallback)
+        Action<string> updateChunkCallback, string APIkey = "none")
     {
 
-#if UNITY_STANDALONE && !RT_RELEASE
+//#if UNITY_STANDALONE && !RT_RELEASE
         File.WriteAllText("text_completion_sent.json", json);
-#endif
+//#endif
         string url;
         url = serverAddress + apiCommandURL;
         m_connectionActive = true;
@@ -230,6 +243,10 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
             _currentRequest.downloadHandler = downloadHandler;
 
             _currentRequest.SetRequestHeader("Content-Type", "application/json");
+            if (APIkey != "" && APIkey != "none")
+            {
+                _currentRequest.SetRequestHeader("Authorization", "Bearer " + APIkey);
+            }
 
             yield return _currentRequest.SendWebRequest();
 

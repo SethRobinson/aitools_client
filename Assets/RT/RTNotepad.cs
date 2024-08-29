@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 
 /*
  Example of use:
@@ -36,6 +37,9 @@ public class RTNotepad : MonoBehaviour
     public TMPro.TMP_InputField m_textInput;
     public Action<String> m_onClickedSavedCallback;
     public Action<String> m_onClickedCancelCallback;
+    public Action<String> m_onClickedApplyCallback; //when they want to Apply but not save
+    public Button m_applyButton;
+    public Button m_saveButton;
 
     //This is a little helper object designed to be called statically to create the real thing
     public static RTNotepad OpenFile(string defaultText, GameObject prefab)
@@ -45,11 +49,26 @@ public class RTNotepad : MonoBehaviour
         goScript.m_textInput.text = defaultText;
         return goScript;
     }
-
   
+    public void SetApplyButtonVisible(bool bNew)
+    {
+        m_applyButton.gameObject.SetActive(bNew);
+    }
+
+    public void SetSaveButtonVisible(bool bNew)
+    {
+        m_saveButton.gameObject.SetActive(false);
+    }
+
     public void OnClickedSave()
     {
         m_onClickedSavedCallback.Invoke(m_textInput.text);
+        GameObject.Destroy(gameObject);
+    }
+
+    public void OnClickedApply()
+    {
+        m_onClickedApplyCallback.Invoke(m_textInput.text);
         GameObject.Destroy(gameObject);
     }
 
@@ -58,6 +77,5 @@ public class RTNotepad : MonoBehaviour
         m_onClickedCancelCallback.Invoke(m_textInput.text);
         GameObject.Destroy(gameObject);
     }
-
    
 }

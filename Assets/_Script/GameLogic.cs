@@ -19,6 +19,7 @@ public class GameLogic : MonoBehaviour
 {
     public GameObject m_notepadTemplatePrefab;
     string m_prompt = "";
+    string m_comfyUIPrompt = "";
     string m_negativePrompt = "";
     int m_steps = 50;
     long m_seed = -1;
@@ -34,7 +35,7 @@ public class GameLogic : MonoBehaviour
     
     int m_maxToGenerate = 1000;
     string m_lastModifiedPrompt;
-
+    public TMP_Dropdown m_rendererSelectionDropdown;
     float m_upscale = 1.0f; //1 means no change
     bool m_fixFaces = false;
     bool m_hiresFix = false;
@@ -49,6 +50,8 @@ public class GameLogic : MonoBehaviour
     public TMP_InputField m_negativeInputField;
     public TMP_InputField m_stepsInputField;
     public TMP_InputField m_seedInputField;
+    public TMP_InputField m_comfyUIPromptInputField;
+
     public Slider m_inpaintStrengthInput;
     public Slider m_maskBlendingInput;
     public Slider m_Pix2PixSlider;
@@ -89,6 +92,7 @@ public class GameLogic : MonoBehaviour
     public TMP_Dropdown m_modelDropdown;
     string m_activeModelName = "";
 
+    public TMP_Dropdown m_comfyUIAPIWorkflowsDropdown;
     public TMP_Dropdown m_refinerModelDropdown;
     public TMP_InputField m_refinerInputField;
     public GameObject m_controlNetPanelPrefab;
@@ -117,7 +121,7 @@ public class GameLogic : MonoBehaviour
     {
         return Get().name;
     }
-
+    public RTRendererType GetGlobalRenderer() { return (RTRendererType)m_rendererSelectionDropdown.value; }
     public int GetMaxToGenerate() { return m_maxToGenerate; }
     public void SetMaxToGenerate(int max) { m_maxToGenerate = max; }
     public bool GetTurbo() { return m_turboToggle.isOn; }
@@ -176,6 +180,13 @@ public class GameLogic : MonoBehaviour
         int.TryParse(m_heightDropdown.options[m_heightDropdown.value].text, out m_genHeight);
     }
 
+    public void OnComfyUIDropdownChanged()
+    {
+       //get the text of the selected option
+        string selected = m_comfyUIAPIWorkflowsDropdown.options[m_comfyUIAPIWorkflowsDropdown.value].text;
+        RTConsole.Log("Chose " + selected);
+        
+    }
     public string GetSamplerName() 
     {
         return m_samplerDropdown.options[m_samplerDropdown.value].text; 
@@ -442,6 +453,11 @@ public class GameLogic : MonoBehaviour
         m_inputField.text = p;
     }
 
+    public void SetComfyUIPrompt(string p)
+    {
+        m_comfyUIPromptInputField.text = p;
+    }
+
     public void SetNegativePrompt(string p)
     {
         m_negativeInputField.text = p;
@@ -627,8 +643,10 @@ public class GameLogic : MonoBehaviour
     }
     public void ShowCompatibilityWarningIfNeeded()
     {
-        if (!Config.Get().AllGPUsSupportAITools())
+        int gpu = Config.Get().GetFreeGPU(RTRendererType.AI_Tools, true);
+        if (gpu == -1)
         {
+            
             RTUtil.SetActiveByNameIfExists("RTWarningSplash", true);
         }
     }
@@ -710,7 +728,7 @@ public class GameLogic : MonoBehaviour
         {
             //why do I get an error without this cast?!
             //(script as PicTextToImage).KillIfPossible();
-            if (!picScript.IsBusy())
+            if (!picScript.IsBusy() || bIncludeLockedAndBusy)
             {
 
                 if (picScript.GetLocked() && !bIncludeLockedAndBusy)
@@ -724,6 +742,11 @@ public class GameLogic : MonoBehaviour
             }
         }
 
+        if (bIncludeLockedAndBusy)
+        {
+            //Might as well kill any texts around too
+            RTUtil.DestroyChildren(RTUtil.FindObjectOrCreate("Adventures").transform);
+        }
         ImageGenerator.Get().ReorganizePics(); //defrag 'em
     }
     public void OnClearButtonWithShiftAllowed()
@@ -737,6 +760,8 @@ public class GameLogic : MonoBehaviour
     }
 
     public string GetPrompt() { return m_prompt; }
+    public string GetComfyUIPrompt() { return m_comfyUIPrompt; }
+
     public void ResetLastModifiedPrompt()
     {
         m_lastModifiedPrompt = "";
@@ -782,6 +807,7 @@ public class GameLogic : MonoBehaviour
 
         return m_prompt;
     }
+
 
     public string GetNegativePrompt() { return m_negativePrompt; }
     public int GetSteps() { return m_steps; }
@@ -992,6 +1018,11 @@ public class GameLogic : MonoBehaviour
         m_fixFacesToggle.isOn = bNew;
     }
 
+    public void OnComfyUIPromptChanged(string str)
+    {
+        m_comfyUIPrompt = str;
+    }
+
     public void OnPromptChanged(String str)
     {
         m_prompt = str;
@@ -1091,8 +1122,49 @@ public class GameLogic : MonoBehaviour
 #endif
 
         Config.Get().CheckForUpdate();
+
+        LoadComfyUIWorkFlows();
+
+        Config.Get().PopulateRendererDropDown(m_rendererSelectionDropdown);
     }
 
+    public string GetActiveComfyUIWorkflowFileName()
+    {
+        return m_comfyUIAPIWorkflowsDropdown.options[m_comfyUIAPIWorkflowsDropdown.value].text;
+    }
+    public void LoadComfyUIWorkFlows()
+    {
+        // First, delete everything from the dropdown
+        m_comfyUIAPIWorkflowsDropdown.ClearOptions();
+
+        // Load the ComfyUI workflows
+        string[] files = Directory.GetFiles("ComfyUI", "*.json");
+
+        List<string> options = new List<string>();
+        int defaultIndex = -1;
+
+        foreach (string file in files)
+        {
+            // Get the name of the file
+            string name = Path.GetFileName(file);
+            options.Add(name);
+
+            // If name has nf4 in it, set that as the default selection
+            if (name.ToUpper().Contains("NF4"))
+            {
+                defaultIndex = options.Count - 1;
+            }
+        }
+
+        // Add options to the dropdown
+        m_comfyUIAPIWorkflowsDropdown.AddOptions(options);
+
+        // Set the default selection
+        if (defaultIndex != -1)
+        {
+            m_comfyUIAPIWorkflowsDropdown.value = defaultIndex;
+        }
+    }
     void OnApplicationQuit() 
 	{
         // Make sure prefs are saved before quitting.

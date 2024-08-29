@@ -70,7 +70,9 @@ public class SimpleCameraMoverWithPinch : MonoBehaviour
         {
             //RTConsole.Log("Mouse wheel: " + wheel);
             float size = m_curCam.orthographicSize;
-            float mouseWheelZoomSpeed = Mathf.Clamp(Mathf.Abs(size * 0.08f), 0.5f, Mathf.Abs(size * 0.1f));
+            float mouseWheelZoomSpeed = Mathf.Clamp(Mathf.Abs(size * 0.08f), 0.3f, Mathf.Abs(size * 0.1f));
+            
+            
             size -= wheel * mouseWheelZoomSpeed;
 
             //force it to stay within zoom bounds
@@ -117,6 +119,12 @@ public class SimpleCameraMoverWithPinch : MonoBehaviour
         //ignore clicks if we're over a GUI element
         bool bOverGUI = EventSystem.current.IsPointerOverGameObject();
         
+        //if not mobile and the right mouse is held down, set bOverGUI to false
+        if (Input.GetMouseButton(1))
+        {
+            bOverGUI = false;
+        }
+
         float zoomSpeed = 0.05f;
 
         if (m_bPinchActive)

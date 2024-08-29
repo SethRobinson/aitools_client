@@ -38,3 +38,11 @@ Assets/GUI/GOTHIC.TTF
 last_error_returned.json
 text_completion_sent.json
 textgen_json_received.json
+output/*
+clau
+claude_json_received.json
+comfyui_json_to_send.json
+dalle_last_error_returned.json
+dalle3_json_received.json
+dalle3_json_sent.json
+change_model_server_request.txt

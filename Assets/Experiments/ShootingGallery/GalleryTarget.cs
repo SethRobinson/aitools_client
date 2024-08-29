@@ -14,7 +14,6 @@ public class GalleryTarget : MonoBehaviour
    public PolygonCollider2D m_polyCollider;
    Sequence m_shootSequence = null;
    
-  
     bool m_dead = false;
 
     // Start is called before the first frame update

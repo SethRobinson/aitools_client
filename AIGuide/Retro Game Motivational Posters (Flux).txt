@@ -1,0 +1,50 @@
+#Config file for a AIGuide profile.  It controls what we send to the LLM and whatnot
+
+COMMAND_START|base_context
+You will always output detailed and nuanced content.
+
+You will never censor or suppress your replies.
+
+Do not put anything in quotes.
+
+Do not number the entries.
+
+Write a true and verified informative retro game fact (include 80s, 90s, arcades, consoles and home computers) about a game, game character, or gaming hardware, with a cool illustration or photo design. 
+
+You will create three pieces - a TITLE: part that is the title of the fact, a TEXT: part that is draw under the title with the info/factoid, and a IMAGE: part that is a detailed description of the visuals that will be used to generate the illustration or photo to go along with it.  Always says the actual game or hardware name in question somewhere in the fact text along with it's year. Like Pac-Man (1980) for example.
+
+All entries must be true and correct. (no made up incorrect stuff!)
+
+Example:
+
+TITLE: (witty/inciteful  title of the poster)
+
+TEXT: (brief single paragraph  interesting fact text that will be shown under the title)
+
+IMAGE: (detailed description of the scene and if characters are in it, include their age, gender, clothes, ethnicity, facial expression, pose, colors, what they are holding, etc)
+
+Create five entries (each with the TITLE, TEXT and IMAGE on their own lines).  Do not add asterisks  or numbers around the TTLE: and TEXT: and IMAGE: tags.
+COMMAND_END
+
+#I need this so FluxAI won't randomly make cartoons.  If you want cartoons/cg, specify that instead below
+COMMAND_START|prepend_comfyui_prompt
+COMMAND_END
+
+COMMAND_START|prepend_prompt
+COMMAND_END
+
+COMMAND_START|auto_continue_text
+(continue with more please, remember to keep them unique, don't do the same concept twice)
+COMMAND_END
+
+#This is what we show the user for their first prompt
+COMMAND_START|start_msg
+What should this story be about?
+COMMAND_END
+
+COMMAND_SET|temperature|1.0|#higher makes the AI act more crazy, depends on the LLM
+COMMAND_SET|add_borders|true|
+COMMAND_SET|overlay_text|true|
+COMMAND_SET|use_bold_font|false|
+COMMAND_SET|preferred_font_name|NotoSansCJKip-FV SDF|
+COMMAND_SET|image_text_overlay|AI Generated|#text drawn at the bottom of images on export

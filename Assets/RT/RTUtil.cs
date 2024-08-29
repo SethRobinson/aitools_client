@@ -11,6 +11,7 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 using UnityEngine.Assertions;
 using UnityEngine.UI;
+using TMPro;
 
 //Adapted from https://stackoverflow.com/questions/46237984/how-to-emulate-statically-the-c-bitfields-in-c
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -708,6 +709,24 @@ public class RTUtil
         {
             return false;
         }
+    }
+
+    public static string FilteredFilenameSafeToUseAsFileName(string fileName)
+    {
+        // Replace spaces with underscores
+        fileName = fileName.Replace(' ', '-'); //I'm not using _ because twine reserves that for variables, uhh
+
+        // Remove invalid characters (only allow alphanumeric, underscores, hyphens, and dots)
+        fileName = Regex.Replace(fileName, @"[^a-zA-Z0-9_.-]", "");
+
+        // Optionally, you can also limit the length of the filename if necessary
+        int maxLength = 255; // Typical filesystem limit
+        if (fileName.Length > maxLength)
+        {
+            fileName = fileName.Substring(0, maxLength);
+        }
+
+        return fileName;
     }
 
     public static uint Color32ToUInt(Color32 color)
@@ -1970,6 +1989,95 @@ public class RTUtil
 
     }
 
+
+    public static Texture2D RenderTextToTexture2D(string text, int width, int height, TMP_FontAsset font, float fontSize, Color color, bool bAutoSize, Vector2 vTextRectSizeMod, FontStyles fontStyles = 0)
+    {
+        //Debug.Log("Creating tex sized " + width + "x" + height);
+        // Create GameObject and TextMeshPro components
+        GameObject go = new GameObject();
+        go.layer = 31; // Use an unused layer
+        TextMeshPro tmp = go.AddComponent<TextMeshPro>();
+
+        // Setup TextMeshPro settings
+        tmp.text = text;
+        tmp.font = font;
+        tmp.fontSize = fontSize;
+        tmp.color = color;
+        tmp.alignment = TextAlignmentOptions.Center;
+        tmp.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+        tmp.rectTransform.anchoredPosition3D = Vector3.zero;
+
+        //text wrap size
+
+        tmp.rectTransform.sizeDelta = new Vector2(width * vTextRectSizeMod.x, height * vTextRectSizeMod.y);
+
+        tmp.enableAutoSizing = bAutoSize;
+        tmp.fontSizeMax = 9999999;
+        //set the font to be bold
+        tmp.fontStyle = fontStyles;
+        tmp.name = "TextMeshProATemp";
+        tmp.enableWordWrapping = true;
+        //set largest allowed font size
+        // Create a RenderTexture
+        RenderTexture renderTexture = new RenderTexture(width, height, 24);
+
+        // Create a new temporary Camera
+        GameObject tempCameraObject = new GameObject();
+        Camera tempCamera = tempCameraObject.AddComponent<Camera>();
+
+        // Position the camera to capture the text object
+        tempCamera.transform.position = Vector3.zero;
+        tempCamera.transform.position -= new Vector3(0, 0, 10);  // move back a bit
+        tempCamera.clearFlags = CameraClearFlags.Color;
+        tempCamera.backgroundColor = Color.clear; // transparent background
+        tempCamera.orthographic = true;
+
+        float maxSize = width;
+        if (height > maxSize)
+        {
+            maxSize = height;
+        }
+
+        float minSize = width;
+        if (height < minSize)
+        {
+            minSize = height;
+        }
+
+        tempCamera.orthographicSize = minSize / 2;  // set orthographic size
+        tempCamera.targetTexture = renderTexture;  // set target texture
+        tempCamera.cullingMask = 1 << 31;  // Set camera to only render layer 31
+        tempCamera.name = "TextCamera";
+        //tempCamera.nearClipPlane = 0;
+        //tempCamera.farClipPlane = 100000;
+
+        // Wait for the camera to finish rendering
+        tempCamera.Render();
+
+        // Create a Texture2D to hold the captured image
+        Texture2D tex2D = new Texture2D(width, height, TextureFormat.RGBA32, false);
+
+        // Copy from the RenderTexture to the Texture2D
+        RenderTexture.active = renderTexture;
+        tex2D.ReadPixels(new Rect(0, 0, renderTexture.width, renderTexture.height), 0, 0);
+        tex2D.Apply();
+
+        // Deactivate the render texture
+        RenderTexture.active = null;
+
+        // Clean up objects.  To debug positions, comment out below so you can see then in the scene
+        
+        GameObject.Destroy(tempCameraObject);
+        GameObject.Destroy(go);
+
+        return tex2D;
+    }
+
+    public static Color GetARandomBrightColor()
+    {
+        //return a random bright color
+        return new Color(UnityEngine.Random.Range(0.5f, 1.0f), UnityEngine.Random.Range(0.5f, 1.0f), UnityEngine.Random.Range(0.5f, 1.0f), 1.0f);
+    }
 
 
     private static string RemoveRichTextDynamicTag(string input, string tag)

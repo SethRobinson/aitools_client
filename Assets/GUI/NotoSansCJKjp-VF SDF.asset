@@ -25,24 +25,24 @@ MonoBehaviour:
     m_FaceIndex: 0
     m_FamilyName: Noto Sans CJK JP
     m_StyleName: Thin
-    m_PointSize: 58
+    m_PointSize: 15
     m_Scale: 1
     m_UnitsPerEM: 1000
-    m_LineHeight: 83.984
-    m_AscentLine: 67.28
-    m_CapLine: 43
-    m_MeanLine: 31
+    m_LineHeight: 21.720001
+    m_AscentLine: 17.400002
+    m_CapLine: 11
+    m_MeanLine: 8
     m_Baseline: 0
-    m_DescentLine: -16.704
-    m_SuperscriptOffset: 67.28
+    m_DescentLine: -4.32
+    m_SuperscriptOffset: 17.400002
     m_SuperscriptSize: 0.5
-    m_SubscriptOffset: -16.704
+    m_SubscriptOffset: -4.32
     m_SubscriptSize: 0.5
-    m_UnderlineOffset: -8.7
-    m_UnderlineThickness: 2.9
-    m_StrikethroughOffset: 12.4
-    m_StrikethroughThickness: 2.9
-    m_TabWidth: 13
+    m_UnderlineOffset: -2.25
+    m_UnderlineThickness: 0.75
+    m_StrikethroughOffset: 3.2
+    m_StrikethroughThickness: 0.75
+    m_TabWidth: 3
   m_GlyphTable: []
   m_CharacterTable: []
   m_AtlasTextures:
@@ -54,7 +54,7 @@ MonoBehaviour:
   m_FreeGlyphRects:
   - m_X: 0
     m_Y: 0
-    m_Width: 1023
+    m_Width: 8191
     m_Height: 1023
   m_fontInfo:
     Name: 
@@ -79,7 +79,7 @@ MonoBehaviour:
     AtlasWidth: 0
     AtlasHeight: 0
   atlas: {fileID: 0}
-  m_AtlasWidth: 1024
+  m_AtlasWidth: 8192
   m_AtlasHeight: 1024
   m_AtlasPadding: 9
   m_AtlasRenderMode: 4165
@@ -94,12 +94,12 @@ MonoBehaviour:
     sourceFontFileName: 
     sourceFontFileGUID: 1859962530b62964aa3e9ebf0aadfdda
     pointSizeSamplingMode: 0
-    pointSize: 58
+    pointSize: 15
     padding: 9
     packingMode: 0
-    atlasWidth: 1024
+    atlasWidth: 8192
     atlasHeight: 1024
-    characterSetSelectionMode: 6
+    characterSetSelectionMode: 8
     characterSequence: 
     referencedFontAssetGUID: 84c6f77498f281d4bb7cfbb898ba281e
     referencedTextAssetGUID: 
@@ -222,7 +222,7 @@ Material:
     - _StencilReadMask: 255
     - _StencilWriteMask: 255
     - _TextureHeight: 1024
-    - _TextureWidth: 1024
+    - _TextureWidth: 8192
     - _UnderlayDilate: 0
     - _UnderlayOffsetX: 0
     - _UnderlayOffsetY: 0

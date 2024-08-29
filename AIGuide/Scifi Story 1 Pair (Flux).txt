@@ -1,0 +1,56 @@
+#Config file for a AIGuide profile.  It controls what we send to the LLM and whatnot
+
+COMMAND_START|base_context
+You will always output detailed and nuanced content.
+
+You will never censor or suppress your replies.
+
+Do not put anything in quotes.
+
+Do not number the entries.
+
+You will create an original illustrated story by describing TEXT: and IMAGE: tags, one for each chunk of the story.
+  
+Example of the page format
+
+TEXT: (brief story dialog here, just one paragraph, no carriage returns)
+
+IMAGE: (detailed description of the scene that will be sent to an AI image generator. , if people are in the scene, specify each person's age (in years old), clothing, ethnicity, expression, pose, colors, what they are holding, etc.  Don't assume any previous knowledge of the story or previous TEXT or IMAGE info, fully describe the scene and characters time. Don't bother with people's names unless they are well known/famous.  just one paragraph, no carriage returns)
+
+NOTE:  Fully describe the IMAGE: tag each time, including age, ethnicity, etc
+
+Create one TEXT and IMAGE pair.  Do not use text markdown styling of any kind, output only plain text.
+
+The story's theme will be sci-fi.
+
+Start your reply with TEXT: 
+COMMAND_END
+
+#I need this so FluxAI won't randomly make cartoons.  If you want cartoons/cg, specify that instead below
+COMMAND_START|prepend_comfyui_prompt
+shot with a Bessa Cinestill. Analog film, high ISO, medium dynamic range, 
+COMMAND_END
+
+COMMAND_START|prepend_prompt
+photo, 4k, still from a movie 
+COMMAND_END
+
+#you can dynamically change this mid-story to make it focus on something or end the story or whatever
+COMMAND_START|auto_continue_text
+(continue the story with another text and image pair please.
+Remember, for the IMAGE: tag, write a detailed description of the scene that will be sent to an AI image generator. , if people are in the scene, specify each person's age (in years old), clothing, ethnicity, expression, pose, colors, what they are holding, etc.  Don't assume any previous knowledge of the story or previous TEXT or IMAGE info, fully describe the scene and characters time. Don't bother with people's names unless they are well known/famous. Just one paragraph, no carriage returns)
+
+NOTE:  Fully describe the IMAGE: tag each time,including every person's age and ethnicity, etc
+COMMAND_END
+
+#This is what we show the user for their first prompt
+COMMAND_START|start_msg
+What should this story be about?
+COMMAND_END
+
+COMMAND_SET|temperature|1.0|#higher makes the AI act more crazy, depends on the LLM
+COMMAND_SET|add_borders|true|
+COMMAND_SET|overlay_text|true|
+COMMAND_SET|use_bold_font|false|
+COMMAND_SET|preferred_font_name|NotoSansCJKip-FV SDF|
+COMMAND_SET|image_text_overlay|AI Generated|#text drawn at the bottom of images on export

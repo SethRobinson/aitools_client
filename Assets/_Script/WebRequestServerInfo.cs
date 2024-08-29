@@ -7,6 +7,7 @@ using System;
 using MiniJSON;
 using SimpleJSON;
 using System.Globalization;
+using System.IO;
 
 
 public class WebRequestServerInfo : MonoBehaviour
@@ -31,14 +32,6 @@ public class WebRequestServerInfo : MonoBehaviour
     IEnumerator GetRequest(String server)
     {
 
-        /*
-        //hack to assume it is
-        var webScriptTemp = Config.Get().CreateWebRequestObject();
-        webScriptTemp.StartConfigRequest(-1, server);
-        yield break;
-        */
-
-
         WWWForm form = new WWWForm();
         var finalURL = server + "/aitools/get_info.json";
         string serverClickableURL = "<link=\"" + server + "\"><u>" + server + "</u></link>";
@@ -57,9 +50,10 @@ public class WebRequestServerInfo : MonoBehaviour
 
                 if (postRequest.result == UnityWebRequest.Result.ProtocolError)
                 {
-                    RTConsole.Log("Server " + serverClickableURL + " isn't an AI Tools variant, trying to connect as vanilla Automatic1111 type...");
+                    RTConsole.Log("Server " + serverClickableURL + " isn't an AI Tools variant, trying to connect as ComfyUI...");
                     var webScript = Config.Get().CreateWebRequestObject();
-                    webScript.StartConfigRequest(-1, server);
+                    webScript.StartComfyUIRequest(-1, server);
+                    GameObject.Destroy(gameObject);
                     yield break;
                 }
 
@@ -106,8 +100,6 @@ public class WebRequestServerInfo : MonoBehaviour
 
                 if (dict.ContainsKey("required_client_version"))
                 {
-
-
                     System.Single.TryParse(dict["required_client_version"].ToString(), NumberStyles.Any, CultureInfo.CurrentCulture, out requiredClient);
 
                     if (requiredClient > Config.Get().GetVersion())
@@ -136,6 +128,7 @@ public class WebRequestServerInfo : MonoBehaviour
                    g.remoteURL = server;
                    g.remoteGPUID = i;
                    g.supportsAITools= true;
+                    g._requestedRendererType = RTRendererType.AI_Tools;
                    Config.Get().AddGPU(g);
                }
             }
@@ -145,10 +138,100 @@ public class WebRequestServerInfo : MonoBehaviour
         GameObject.Destroy(gameObject);
     }
 
-  
+    IEnumerator GetRequestToCheckForComfyUI(int gpuID, String server)
+    {
+
+        WWWForm form = new WWWForm();
+        var finalURL = server + "/prompt";
+        string serverClickableURL = "<link=\"" + server + "\"><u>" + server + "</u></link>";
+        Debug.Log("Checking server " + serverClickableURL + "...");
+    again:
+        //Create the request using a static method instead of a constructor
+
+        using (var postRequest = UnityWebRequest.Get(finalURL))
+        {
+            //Start the request with a method instead of the object itself
+            yield return postRequest.SendWebRequest();
+
+            if (postRequest.result != UnityWebRequest.Result.Success)
+            {
+                Debug.Log("Result is " + postRequest.result);
+
+                if (postRequest.result == UnityWebRequest.Result.ProtocolError)
+                {
+                    RTConsole.Log("Server " + serverClickableURL + " isn't a ComfyUI server, trying to connect as vanilla Automatic1111 type...");
+                    var webScript = Config.Get().CreateWebRequestObject();
+                    webScript.StartConfigRequest(-1, server);
+                    //either way, we're done with us
+                    GameObject.Destroy(gameObject);
+                    yield break;
+                }
+
+
+                m_timesTried++;
+                if (m_timesTried < m_timesToTry)
+                {
+                    //well, let's try again before we say we failed.
+                    Debug.Log("Checking server " + serverClickableURL + "... (try " + m_timesTried + ")");
+                    goto again;
+                }
+
+                RTConsole.Log("Error connecting to server " + serverClickableURL + ". (" + postRequest.error + ")  Are you sure it's up and this address/port is right? It must be running with the --api parm. (and --listen if not on this machine)");
+                RTConsole.Log("Click Configuration, then Save & Apply to try again.");
+                GameLogic.Get().ShowConsole(true);
+            }
+            else
+            {
+                //converting postRequest.downloadHandler.text to a dictionary
+                //and then show all values
+
+                var dict = Json.Deserialize(postRequest.downloadHandler.text) as Dictionary<string, object>;
+
+                /*
+                 if (dict != null)
+                 { 
+                     foreach (KeyValuePair<string, object> kvp in dict)
+                     {
+                         if (kvp.Value != null)
+                         {
+                             Debug.Log("Key: " + kvp.Key + " Value: " + kvp.Value.ToString());
+                         }
+                     }
+                 }
+                */
+
+                //log the dict value of context
+                String serverName = "ComfyUI";
+               
+
+                RTConsole.Log("CONNECTED: " + serverClickableURL + " (" + serverName + ") ");
+
+                //it only has an "exec_info" in it problem, not bothering to check it
+
+                    GPUInfo g;
+                    //error checking?  that's for wimps
+                    g = new GPUInfo();
+                    g.remoteURL = server;
+                    g.remoteGPUID = 0; //hardcoded
+                    g.supportsAITools = false;
+                    g._requestedRendererType = RTRendererType.ComfyUI;
+                    g._usesDetailedPrompts = true; //we're assuming ComfyUI is always FLUX, probably a bad assumption
+                    Config.Get().AddGPU(g);
+               
+            }
+        }
+
+        //either way, we're done with us
+        GameObject.Destroy(gameObject);
+    }
+
     public void StartConfigRequest(int gpuID, string remoteURL)
     {
         StartCoroutine(GetConfigRequest(gpuID, remoteURL));
+    }
+    public void StartComfyUIRequest(int gpuID, string remoteURL)
+    {
+        StartCoroutine(GetRequestToCheckForComfyUI(gpuID, remoteURL));
     }
     public void StartPopulateModelsRequest(GPUInfo g)
     {
@@ -559,9 +642,10 @@ public class WebRequestServerInfo : MonoBehaviour
                 }
             }
 
-            //either way, we're done with us
-            GameObject.Destroy(gameObject);
+           
         }
+        //either way, we're done with us
+        GameObject.Destroy(gameObject);
     }
 
     IEnumerator GetSamplersRequest(int gpuID, String server)
@@ -626,9 +710,10 @@ public class WebRequestServerInfo : MonoBehaviour
 
             }
 
-            //either way, we're done with us
-            GameObject.Destroy(gameObject);
+          
         }
+        //either way, we're done with us
+        GameObject.Destroy(gameObject);
     }
 
 
@@ -638,6 +723,7 @@ public class WebRequestServerInfo : MonoBehaviour
         if (!Config.Get().IsValidGPU(gpuID))
         {
             Debug.LogError("Bad GPU of " + gpuID);
+            GameObject.Destroy(gameObject);
             yield break;
         }
        
@@ -663,6 +749,12 @@ public class WebRequestServerInfo : MonoBehaviour
 
         //either way
         json = json.Replace("\\", "\\\\");
+       
+        
+        //write out the request to a .txt file
+       // File.WriteAllText("change_model_server_request.txt", json);
+
+        
         using (var postRequest = UnityWebRequest.PostWwwForm(finalURL, "POST"))
         {
             //Start the request with a method instead of the object itself
@@ -684,7 +776,7 @@ public class WebRequestServerInfo : MonoBehaviour
                 }
 
                 Config.Get().SetGPUBusy(gpuID, false);
-
+               
             }
             else
             {
@@ -794,10 +886,10 @@ public class WebRequestServerInfo : MonoBehaviour
 
             }
 
-            //either way, we're done with us
-            GameObject.Destroy(gameObject);
         }
 
+        //either way, we're done with us
+        GameObject.Destroy(gameObject);
     }
 
 
@@ -872,9 +964,10 @@ public class WebRequestServerInfo : MonoBehaviour
 
             }
 
-            //either way, we're done with us
-            GameObject.Destroy(gameObject);
         }
+
+        //either way, we're done with us
+        GameObject.Destroy(gameObject);
     }
 
 }

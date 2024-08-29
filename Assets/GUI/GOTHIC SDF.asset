@@ -6763,8 +6763,8 @@ MonoBehaviour:
     packingMode: 0
     atlasWidth: 1024
     atlasHeight: 1024
-    characterSetSelectionMode: 1
-    characterSequence: 32 - 126, 160 - 255, 8192 - 8303, 8364, 8482, 9633
+    characterSetSelectionMode: 6
+    characterSequence: 20-7E,A0-AE,B0-B6,B8-FF,2013-2014,2018-201A,201C-201E,2020-2022,2026,2030,2039-203A,2122
     referencedFontAssetGUID: 541f0e729c89cc1439baeb30058a91ff
     referencedTextAssetGUID: 
     fontStyle: 0

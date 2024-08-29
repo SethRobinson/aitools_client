@@ -8,6 +8,7 @@ using System.Globalization;
 
 public class PicTextToImage : MonoBehaviour
 {
+   
     float startTime;
     string m_prompt = null;
     string m_negativePrompt = null;
@@ -18,7 +19,9 @@ public class PicTextToImage : MonoBehaviour
     bool m_bIsGenerating;
     int m_gpu;
     public PicMain m_picScript;
-   
+
+    string m_comfyUIPromptID;
+    
     public void SetForceFinish(bool bNew)
     {
         if (bNew && m_bIsGenerating)
@@ -54,6 +57,11 @@ public class PicTextToImage : MonoBehaviour
     public string GetPrompt()
     {
         return m_prompt;
+    }
+
+    public string GetNegativePrompt()
+    {
+        return m_negativePrompt;
     }
 
     public void SetPrompt(string prompt)
@@ -106,19 +114,30 @@ public class PicTextToImage : MonoBehaviour
       
         m_steps = GameLogic.Get().GetSteps();
 
-        if (!rerender)
+        if (!rerender || m_prompt == null)
         {
             m_seed = GameLogic.Get().GetSeed();
            
             if (m_prompt == null)
             {
+                m_prompt = "";
+
+                if (m_gpu != -1)
+                {
+                    if (Config.Get().GetGPUInfo(m_gpu)._requestedRendererType == RTRendererType.ComfyUI)
+                    {
+                        m_prompt += GameLogic.Get().GetComfyUIPrompt() + " ";
+                    }
+                }
+
+
                 if (ImageGenerator.Get().IsGenerating())
                 {
-                    m_prompt = GameLogic.Get().GetModifiedPrompt();
+                    m_prompt += GameLogic.Get().GetModifiedPrompt();
                 }
                 else
                 {
-                    m_prompt = GameLogic.Get().GetPrompt();
+                    m_prompt += GameLogic.Get().GetPrompt();
                 }
             }
 
@@ -136,20 +155,37 @@ public class PicTextToImage : MonoBehaviour
             //let's set it to our own random so we know what it is later
             m_seed = Math.Abs(rand.NextLong());
         }
+        var gpuInfo = Config.Get().GetGPUInfo(m_gpu);
+
+        if (gpuInfo._requestedRendererType == RTRendererType.OpenAI_Dalle_3)
+        {
+            //TODO;  If we want to show a timer, we would kind of start it here...
+            m_picScript.OnRenderWithDalle3();
+            return;
+        }
+
         if (Config.Get().IsGPUBusy(m_gpu))
         {
             Debug.LogError("Why is GPU busy?!");
             return;
         }
         Config.Get().SetGPUBusy(m_gpu, true);
+        
         m_bIsGenerating = true;
         startTime = Time.realtimeSinceStartup;
-        var gpuInfo = Config.Get().GetGPUInfo(m_gpu);
         string url = gpuInfo.remoteURL;
 
-        
-        StartCoroutine(GetRequest(m_prompt, m_prompt_strength,url));
-
+        //if a ComfyUI server, we need to use the new API so we'll launch GetRequestComfyUI.  Check with a switch statement
+       
+        if(gpuInfo._requestedRendererType == RTRendererType.ComfyUI)
+        {
+            StartCoroutine(GetRequestComfyUI(m_prompt, m_prompt_strength, url));
+        }
+        else
+        {
+            StartCoroutine(GetRequest(m_prompt, m_prompt_strength, url));
+        }
+      
     }
     public void StartGenerate()
     {
@@ -323,8 +359,6 @@ public class PicTextToImage : MonoBehaviour
                     m_picScript.GetCurrentStats().m_gpu = m_gpu;
 
                     m_picScript.SetNeedsToUpdateInfoPanelFlag();
-
-
                     m_picScript.AutoSaveImageIfNeeded();
                 }
                 else
@@ -368,6 +402,364 @@ public class PicTextToImage : MonoBehaviour
 
         }
 
+    }
+
+        public string LoadComfyUIJSon(string fName)
+        {
+        string tempString = "";
+
+
+            string finalFileName = "ComfyUI/" + fName;
+
+            try
+            {
+                using (System.IO.StreamReader reader = new System.IO.StreamReader(finalFileName))
+                {
+                tempString = reader.ReadToEnd();
+                }
+
+            }
+            catch (FileNotFoundException e)
+            {
+                RTConsole.Log("ComfyUI Json prompt " + finalFileName + " not found. (" + e.Message + ")");
+            }
+
+        return tempString;
+        }
+    bool FindAndReplaceValue(JSONNode node, string keyToFind, JSONNode newValue)
+    {
+        foreach (var key in node.Keys)
+        {
+            if (node[key].IsObject)
+            {
+                if (node[key][keyToFind] != null)
+                {
+                    node[key][keyToFind] = newValue;
+                    return true;
+                }
+                // Recursively search in nested objects
+                if (FindAndReplaceValue(node[key], keyToFind, newValue))
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    void ModifyJsonValue(JSONNode jsonNode, string keyToFind, JSONNode newValue)
+    {
+        // Recursively find and replace the value
+        if (!FindAndReplaceValue(jsonNode, keyToFind, newValue))
+        {
+            Debug.LogWarning($"{keyToFind} not found in the JSON.");
+        }
+    }
+
+        IEnumerator GetRequestComfyUI(String context, double prompt_strength, string url)
+        {
+        m_comfyUIPromptID = "";
+
+        WWWForm form = new WWWForm();
+
+            String finalURL;
+
+            int genWidth = GameLogic.Get().GetGenWidth();
+            int genHeight = GameLogic.Get().GetGenHeight();
+            var gpuInf = Config.Get().GetGPUInfo(m_gpu);
+
+            finalURL = url + "/prompt";
+            int steps = GameLogic.Get().GetSteps();
+
+            string promptStrString = prompt_strength.ToString("0.0", CultureInfo.InvariantCulture);
+
+        //Load the prompt via 
+        string comfyUIGraphJSon = LoadComfyUIJSon(GameLogic.Get().GetActiveComfyUIWorkflowFileName());
+
+            JSONNode jsonNode = JSON.Parse(comfyUIGraphJSon);
+
+            // Modify multiple values
+            ModifyJsonValue(jsonNode, "noise_seed", JSONNode.Parse(m_seed.ToString())); // Example seed value
+            //modify the prompt
+            ModifyJsonValue(jsonNode, "text", m_prompt); // Example seed value
+
+            string modifiedJsonString = jsonNode.ToString();
+
+            string json =
+                    $@"{{
+                ""prompt"": {modifiedJsonString}
+            }}";
+
+
+            RTConsole.Log("ComfyUI: Generating text to image with " + finalURL + " local GPU ID " + m_gpu);
+
+            //",\"" + GameLogic.Get().GetSamplerName() + "\","  +  + ","
+
+    #if !RT_RELEASE
+             File.WriteAllText("comfyui_json_to_send.json", json);
+    #endif
+
+            using (var postRequest = UnityWebRequest.PostWwwForm(finalURL, "POST"))
+            {
+                byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
+
+                postRequest.uploadHandler = (UploadHandler)new UploadHandlerRaw(bodyRaw);
+
+                postRequest.SetRequestHeader("Content-Type", "application/json");
+
+                //Start the request with a method instead of the object itself
+                yield return postRequest.SendWebRequest();
+
+                if (postRequest.result != UnityWebRequest.Result.Success)
+                {
+                    string msg = postRequest.error + " (GetRequestComfyUI - " + Config.Get().GetGPUName(m_gpu) + ")";
+                    Debug.Log(msg);
+                    RTQuickMessageManager.Get().ShowMessage(msg);
+                    Debug.Log(postRequest.downloadHandler.text);
+
+                    Config.Get().SetGPUBusy(m_gpu, false);
+                    m_bIsGenerating = false;
+                    m_picScript.SetStatusMessage("Generate error");
+                }
+                else
+                {
+                    //Debug.Log("Form upload complete! Downloaded " + postRequest.downloadedBytes); // + postRequest.downloadHandler.text
+
+                    //Ok, we now have to dig into the response and pull out the json image
+
+                    JSONNode rootNode = JSON.Parse(postRequest.downloadHandler.text);
+                    yield return null; //wait a free to lesson the jerkiness
+    
+                    m_comfyUIPromptID = rootNode["prompt_id"];
+                    Debug.Log("Extracted Prompt ID: " + m_comfyUIPromptID);
+
+                //spawn this
+                StartCoroutine(GetComfyUIHistory(url));
+                /*
+                    m_picScript.SetStatusMessage("");
+                    if (Config.Get().IsValidGPU(m_gpu) && m_bIsGenerating)
+                    {
+                        m_bIsGenerating = false;
+
+                        if (!Config.Get().IsGPUBusy(m_gpu))
+                        {
+                            Debug.LogError("Why is GPU not busy?! We were using it!");
+                        }
+                        else
+                        {
+                            Config.Get().SetGPUBusy(m_gpu, false);
+                        }
+                        //dostuff later...
+                        m_bIsGenerating = false;
+                    }
+
+                */
+
+                //Ok, now, if we'd done a websocket, we could just sit here and wait for it
+                //to be done, but websocket support means a third party lib, and you know that's
+                //going to cause headaches whenever you port to something else so.. I'm going to
+                //do it another way, we'll just keep pinging the api until the file is there.
+                //there is also "history" we could ping, but it shows nothing until it's done
+                //anyway, so useless I think.
+
+
+
+            }
+
+            }
+
+        }
+
+
+    IEnumerator GetComfyUIHistory(string url)
+    {
+        // Construct the final URL with query parameters
+        string finalURL = url + "/history/" + m_comfyUIPromptID;
+
+        Debug.Log("ComfyUI: Checking history " + finalURL + " local GPU ID " + m_gpu);
+
+        while (true)
+        {
+            using (UnityWebRequest getRequest = UnityWebRequest.Get(finalURL))
+            {
+                // Start the request
+                yield return getRequest.SendWebRequest();
+
+                if (getRequest.result != UnityWebRequest.Result.Success)
+                {
+                    string msg = getRequest.error + " (GetComfyUIHistory - " + Config.Get().GetGPUName(m_gpu) + ")";
+                    Debug.Log(msg);
+                    RTQuickMessageManager.Get().ShowMessage(msg);
+                    Debug.Log(getRequest.downloadHandler.text);
+
+                    Config.Get().SetGPUBusy(m_gpu, false);
+                    m_bIsGenerating = false;
+                    m_picScript.SetStatusMessage("Generate error");
+                    // Exit the coroutine if there's an error
+                    yield break;
+                }
+                else
+                {
+                    // Handle the response
+                   // Debug.Log("Got history Downloaded " + getRequest.downloadedBytes);
+                    JSONNode rootNode = JSON.Parse(getRequest.downloadHandler.text);
+
+                    if (rootNode.Count > 0)
+                    {
+                        // Extract the required part
+                        JSONNode statusNode = rootNode[m_comfyUIPromptID]["status"];
+                        JSONNode outputsNode = rootNode[m_comfyUIPromptID]["outputs"];
+
+                        // Check if the status is "success"
+                        if (statusNode["status_str"] == "success")
+                        {
+                            // Iterate through the outputs to find the one with "images"
+                            foreach (string key in outputsNode.Keys)
+                            {
+                                JSONNode outputNode = outputsNode[key];
+                                if (outputNode.HasKey("images"))
+                                {
+                                    JSONNode imagesNode = outputNode["images"];
+                                    foreach (JSONNode image in imagesNode)
+                                    {
+                                        string filename = image["filename"];
+                                        string subfolder = image["subfolder"];
+                                        string folderType = image["type"];
+                                        Debug.Log("Filename: " + filename);
+
+                                        // Start GetComfyUIImageFile coroutine and exit
+                                        StartCoroutine(GetComfyUIImageFile(url, filename, subfolder, folderType));
+                                        yield break;
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            RTQuickMessageManager.Get().ShowMessage("ComfyUI reports a failed render");
+                            if (Config.Get().IsValidGPU(m_gpu) && m_bIsGenerating)
+                            {
+                                m_bIsGenerating = false;
+
+                                if (!Config.Get().IsGPUBusy(m_gpu))
+                                {
+                                    Debug.LogError("Why is GPU not busy?! We were using it!");
+                                }
+                                else
+                                {
+                                    Config.Get().SetGPUBusy(m_gpu, false);
+                                }
+                                yield break;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Nothing here yet, wait for 500 ms and keep polling
+                        yield return new WaitForSeconds(0.5f);
+                    }
+                }
+            }
+        }
+    }
+
+    IEnumerator GetComfyUIImageFile(string url, string comfyUIfilename, string comfyUIsubfolder,
+        string comfyUIfolderType)
+    {
+
+        WWWForm form = new WWWForm();
+        form.AddField("filename", comfyUIfilename);
+        form.AddField("subfolder", comfyUIsubfolder);
+        form.AddField("type", comfyUIfolderType);
+
+        // Construct the final URL with query parameters
+        string finalURL = url + "/view?" + System.Text.Encoding.UTF8.GetString(form.data);
+
+
+        RTConsole.Log("ComfyUI: Generating text to image with " + finalURL + " local GPU ID " + m_gpu);
+
+        //",\"" + GameLogic.Get().GetSamplerName() + "\","  +  + ","
+
+
+        using (UnityWebRequest getRequest = UnityWebRequest.Get(finalURL))
+        {
+            // Start the request
+            yield return getRequest.SendWebRequest();
+
+            if (getRequest.result != UnityWebRequest.Result.Success)
+            {
+                string msg = getRequest.error + "GetComfyUIImageFile - (" + Config.Get().GetGPUName(m_gpu) + ")";
+                Debug.Log(msg);
+                RTQuickMessageManager.Get().ShowMessage(msg);
+                Debug.Log(getRequest.downloadHandler.text);
+
+                Config.Get().SetGPUBusy(m_gpu, false);
+                m_bIsGenerating = false;
+                m_picScript.SetStatusMessage("Generate error");
+            }
+            else
+            {
+                // Handle the response, which should be a raw PNG file in getRequest.downloadedBytes
+                SpriteRenderer renderer = m_sprite.GetComponent<SpriteRenderer>();
+                Sprite s = renderer.sprite;
+
+                Texture2D texture = new Texture2D(0, 0, TextureFormat.RGBA32, false);
+              
+                yield return null; //wait a frame to lesson the jerkiness
+
+                if (texture.LoadImage(getRequest.downloadHandler.data, false))
+                {
+                    yield return null; //wait a frame to lesson the jerkiness
+
+                    // m_picScript.AddImageUndo();
+                    //Debug.Log("Read texture");
+                    float biggestSize = Math.Max(texture.width, texture.height);
+
+                    Sprite newSprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f, 0, SpriteMeshType.FullRect);
+                    renderer.sprite = newSprite;
+
+                    m_picScript.OnImageReplaced();
+
+                    m_picScript.GetCurrentStats().m_lastPromptUsed = m_prompt;
+
+                    m_picScript.GetCurrentStats().m_lastSeed = m_seed;
+
+                    m_picScript.GetCurrentStats().m_bUsingControlNet = false;
+                    m_picScript.GetCurrentStats().m_bUsingPix2Pix = false;
+                    m_picScript.GetCurrentStats().m_lastOperation = "Generate";
+                    m_picScript.GetCurrentStats().m_gpu = m_gpu;
+
+                    m_picScript.SetNeedsToUpdateInfoPanelFlag();
+                    m_picScript.AutoSaveImageIfNeeded();
+
+                    m_picScript.SetStatusMessage("");
+                }
+
+                if (Config.Get().IsValidGPU(m_gpu) && m_bIsGenerating)
+                {
+               
+                    if (!Config.Get().IsGPUBusy(m_gpu))
+                    {
+                        Debug.LogError("Why is GPU not busy?! We were using it!");
+                    }
+                    else
+                    {
+                        Config.Get().SetGPUBusy(m_gpu, false);
+                    }
+
+
+                    //dostuff later...
+                    m_bIsGenerating = false;
+
+                    if (m_picScript.m_onFinishedRenderingCallback != null)
+                        m_picScript.m_onFinishedRenderingCallback.Invoke(gameObject);
+                }
+
+                yield return null; // wait a frame to lessen the jerkiness
+
+
+            }
+        }
     }
 
 }

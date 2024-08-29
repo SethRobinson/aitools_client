@@ -154,22 +154,25 @@ public class GamePicManager : MonoBehaviour
         return json;
     }
 
-    public bool SpawnInpaintRequest(string jsonRequest, Action<Texture2D, RTDB> myCallback, RTDB db)
+    public bool SpawnInpaintRequest(string jsonRequest, Action<Texture2D, RTDB> myCallback, RTDB db, int gpuID = -1)
     {
        
         Debug.Assert(Config.Get().GetFreeGPU() != -1);
-        StartCoroutine(GetRequest(jsonRequest, myCallback, db));
+        StartCoroutine(GetRequest(jsonRequest, myCallback, db, gpuID));
         return true;
     }
 
-    IEnumerator GetRequest(string json, Action<Texture2D, RTDB> myCallback, RTDB db)
+    IEnumerator GetRequest(string json, Action<Texture2D, RTDB> myCallback, RTDB db, int gpu = -1)
     {
 
 #if !RT_RELEASE
         //        File.WriteAllText("json_to_send.json", json);
 #endif
+        if (gpu == -1)
+        {
+            gpu = Config.Get().GetFreeGPU();
+        }
 
-        int gpu = Config.Get().GetFreeGPU();
         if (gpu == -1)
         {
             Debug.LogError("No GPU available for inpaint");

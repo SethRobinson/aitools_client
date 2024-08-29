@@ -1,0 +1,418 @@
+#Config file for an adventure mode profile.  It controls what we send to the LLM and whatnot
+
+COMMAND_START|base_context
+Your goal is to write a multiple choice quiz.
+
+1) You will always output detailed and nuanced content.
+
+2) All quiz questions and answers are accurate and the correct answer is clearly the only correct answer.
+
+GUIDELINES: 
+
+* Do not include any summarizing statements or paragraphs. 
+* Keep your language explicit and detailed and do not engage in vague generalities. 
+* Keep flowery prose and grandiose language to a minimum, be concise and brief.
+
+The user will tell you what subject to base the quiz on.
+
+After displaying the question, you will give the user four choices. 
+
+Example of how the choices should look for the question, "What is the name of the protaganist in Metroid?" It will be a CHOICE: followed by a ChoiceID and number of total choices given so far, increment this number by one, so the same number is never used twice across the story replies. 
+
+In the ChoiceID part, add INCORRECT or CORRECT to designate the correct answer.
+
+Also add a FACTOID section about the correct answer which will be shown after an is chosen.
+
+Example:
+
+CHOICE:MARIO-INCORRECT-1:Mario Bros.
+CHOICE:SAMUS-CORRECT-ARAN-2:Samus Aran
+CHOICE:SAMMY-INCORRECT-DAVIS-3:Sammy Davis Jr.
+CHOICE:DINK-SMALLWOOD-INCORRECT-4:Dink Smallwood
+
+FACTOID:Samus Aran was heavily inspired by Ellen Ripley, the protagonist of the Alien film series. The Metroid series creators were big fans of the Alien movies, and they wanted to create a strong, resourceful female character in the same vein.
+
+At the end of every response & choices, create a compelling and clever image design to go with the question and answer. (This image will be shown after the user chooses an answer)  Fully describe the image scene for use with image generation tools within a DETAILED_SCENE_VISUAL_DESCRIPTION_START and DETAILED_SCENE_VISUAL_DESCRIPTION_END, and a simplified version in a SIMPLE_SCENE_VISUAL_DESCRIPTION_START and SIMPLE_SCENE_VISUAL_DESCRIPTION_END tag like this:
+
+DETAILED_SCENE_VISUAL_DESCRIPTION_START
+(write a detailed summary of the scene and environment. No flowery prose, just detailed descriptions of each person in the image including their  name if well known, age, ethnicity, body, clothes, face, hair style and color, facial expression and pose. Fully describe the environment, this will be fed into an image generation prompt so be thorough.)
+DETAILED_SCENE_VISUAL_DESCRIPTION_END
+
+Also add a second simplied version like this:
+
+SIMPLE_SCENE_VISUAL_DESCRIPTION_START
+(like above, but only simple keywords separately by a comma)
+SIMPLE_SCENE_VISUAL_DESCRIPTION_END
+
+Only write one question per reply.  Don't number the questions.
+
+Now the user will tell you what kind of quiz to make.  Don't write any story about the quiz, just get straight to the questions and choices.
+
+COMMAND_END
+
+
+#I need this so FluxAI won't randomly make cartoons.  If you want cartoons/cg, specify that instead below
+COMMAND_START|prepend_comfyui_prompt
+COMMAND_END
+
+COMMAND_START|prepend_prompt 
+COMMAND_END
+
+#system reminder is sent directly before every human answer, I do this because without it, the ai can 'forget' how to do certain things.  These type of messages are auto removed except for the latest ones, so they don't eat your context space
+
+COMMAND_START|system_reminder
+(reminder: Randomize which choice position is correct, it shouldn't always be the first answer for instance. Don't repeat questions, keep it fresh and interesting.  Do not give the answer to the question in the visual scene description!  Maybe little clues would be ok though.)
+COMMAND_END
+
+#when "auto" is used, this will be reply given to the llm between its generations.  (keep in mind the system_reminder may also be added)
+#note: in CHOOSE_YOUR_OWN_ADVENTURE auto_continue_text is overriden with "choices", so your setting isn't used at all
+COMMAND_START|auto_continue_text
+(continue with another quiz question please)
+COMMAND_END
+
+#This is what we show the user for their first prompt
+COMMAND_START|start_msg
+
+Note: Click Export to create an .html version in the "output" directory and preview the Quiz.
+
+What should the quiz be about?
+COMMAND_END
+
+COMMAND_START|default_input
+COMMAND_END
+
+COMMAND_SET|temperature|1.0|#higher makes the AI act more crazy, depends on the LLM
+COMMAND_SET|mode|QUIZ|#Choose your own adventure mode, it will generate the entire adventure at once
+COMMAND_SET|spatial_organization_method|TREE_BY_GENERATION|#VERTICAL, TREE_SPLIT or TREE_BY_GENERATION
+COMMAND_SET|image_text_overlay|AI Generated|#text drawn at the bottom of images on export
+
+
+#the html below will be used to create the .html output for the quiz.  
+#there are a few things that will get replaced, _INSERT_TITLE_ and _INSERT_CHOICES_
+
+The questions it will add to the _INSERT_CHOICES_ will look like this:
+
+{
+  question: "What is the capital of France?",
+  options: ["London", "Berlin", "Paris", "Madrid"],
+  correctAnswer: "Paris",
+  image: "/<image name>.png",
+  explanation: "Paris is indeed the capital of France. Known as the 'City of Light', it has been the country's capital since 987 CE and is famous for its iconic Eiffel Tower and world-class cuisine."
+},
+
+COMMAND_START|quiz_html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quiz</title>
+    <style>
+        :root {
+            --primary-color: #3498db;
+            --secondary-color: #2c3e50;
+            --correct-color: #2ecc71;
+            --incorrect-color: #e74c3c;
+            --background-color: #ecf0f1;
+            --text-color: #34495e;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: 'Arial', sans-serif;
+            background-color: var(--background-color);
+            color: var(--text-color);
+        }
+        .quiz-container {
+            display: flex;
+            flex-direction: row;
+            min-height: 100vh;
+            max-width: 100%;
+            margin: 0 auto;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+        }
+        .question-section {
+            width: 50%;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            background-color: white;
+            overflow-y: auto; /* Allow scrolling if content overflows */
+        }
+        .image-section {
+            width: 50%;
+            background-color: var(--secondary-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        .question-number {
+            font-size: clamp(16px, 3vw, 20px);
+            color: var(--primary-color);
+            margin-bottom: 10px;
+            text-align: left;
+        }
+        .question {
+            font-size: clamp(18px, 4vw, 24px);
+            font-weight: bold;
+            margin-bottom: 20px;
+            color: var(--secondary-color);
+        }
+        .feedback {
+            margin-top: 10px;
+            padding: 15px;
+            border-radius: 5px;
+            font-size: clamp(14px, 3vw, 18px);
+            display: none;
+        }
+        .feedback.correct {
+            background-color: #d5f5e3;
+            color: #27ae60;
+        }
+        .feedback.incorrect {
+            background-color: #fadbd8;
+            color: #c0392b;
+        }
+        #nextBtn {
+            margin-top: 10px;
+            margin-bottom: 20px;
+            padding: 15px 30px;
+            font-size: clamp(16px, 3vw, 18px);
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            display: none; /* Initially hidden */
+        }
+        #nextBtn:hover {
+            background-color: #2980b9;
+        }
+        .options {
+            display: flex;
+            flex-direction: column;
+        }
+        .option {
+            margin: 10px 0;
+            padding: 15px;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.1s;
+            font-size: clamp(14px, 3vw, 16px);
+        }
+        .option:hover {
+            background-color: #2980b9;
+            transform: translateY(-2px);
+        }
+        .option:active {
+            transform: translateY(1px);
+        }
+        .option.correct {
+            background-color: var(--correct-color);
+        }
+        .option.incorrect {
+            background-color: var(--incorrect-color);
+        }
+        .result {
+            text-align: center;
+            font-size: clamp(18px, 4vw, 24px);
+            padding: 40px;
+            background-color: white;
+        }
+        img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            max-width: none;
+            max-height: none;
+        }
+        
+        @media (max-width: 768px) {
+            .quiz-container {
+                flex-direction: column;
+                height: auto;
+            }
+            .question-section, .image-section {
+                width: 100%;
+                padding: 20px;
+            }
+            .image-section {
+                order: -1;
+                height: 30vh; /* Reduced height for more room for the question and options */
+            }
+            .question-section {
+                flex: 1; /* Allow the question section to expand */
+                padding: 10px; /* Adjust padding to fit mobile screens better */
+            }
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            font-size: clamp(12px, 2vw, 14px);
+        }
+
+        .footer a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div id="main-container">
+        <!-- Quiz content will be inserted here -->
+    </div>
+
+    <!-- Add audio elements for correct and incorrect sounds -->
+    <audio id="correctSound" src="correct-sound.mp3"></audio>
+    <audio id="incorrectSound" src="incorrect-sound.mp3"></audio>
+
+    <script>
+
+         const quizData = [
+			_INSERT_CHOICES_
+        ];
+
+         let currentQuestion = 0;
+        let score = 0;
+        let nextImage = new Image(); // Preload the next image
+
+        function initQuiz() {
+            const mainContainer = document.getElementById('main-container');
+            mainContainer.innerHTML = `
+                <div class="quiz-container">
+                    <div class="question-section">
+                        <div id="questionNumber" class="question-number"></div>
+                        <div id="question" class="question"></div>
+                        <div id="feedback" class="feedback"></div>
+                        <button id="nextBtn">Next Question</button>
+                        <div id="options" class="options"></div>
+                        ${currentQuestion === 0 ? '<div class="footer">(this quiz created by <a href="https://github.com/SethRobinson/aitools_client" target="_blank">Seth\'s AI Tools</a>)</div>' : ''}
+                    </div>
+                    <div class="image-section">
+                        <img id="questionImage" src="question.png" alt="Quiz question image">
+                    </div>
+                </div>
+            `;
+            loadQuestion();
+        }
+
+        function loadQuestion() {
+            const questionNumberElement = document.getElementById('questionNumber');
+            const questionElement = document.getElementById('question');
+            const optionsElement = document.getElementById('options');
+            const feedbackElement = document.getElementById('feedback');
+            const nextBtn = document.getElementById('nextBtn');
+
+            questionNumberElement.textContent = `(${currentQuestion + 1} of ${quizData.length})`;
+            questionElement.textContent = quizData[currentQuestion].question;
+            optionsElement.innerHTML = '';
+            feedbackElement.style.display = 'none';
+            feedbackElement.classList.remove('correct', 'incorrect');  // Reset feedback classes
+            nextBtn.style.display = 'none'; // Hide next button until an answer is selected
+
+            // Preload the image for the current question
+            nextImage.src = quizData[currentQuestion].image;
+
+            quizData[currentQuestion].options.forEach(option => {
+                const button = document.createElement('button');
+                button.textContent = option;
+                button.classList.add('option');
+                button.addEventListener('click', () => selectAnswer(option));
+                optionsElement.appendChild(button);
+            });
+
+            if (currentQuestion === quizData.length - 1) {
+                nextBtn.textContent = "Finished! (See results)";
+            } else {
+                nextBtn.textContent = "Next Question";
+            }
+
+            // Preload the image for the next question, if applicable
+            if (currentQuestion < quizData.length - 1) {
+                const subsequentImage = new Image();
+                subsequentImage.src = quizData[currentQuestion + 1].image;
+            }
+        }
+
+        function selectAnswer(selectedOption) {
+            const correct = quizData[currentQuestion].correctAnswer;
+            const options = document.querySelectorAll('.option');
+            const feedbackElement = document.getElementById('feedback');
+            const nextBtn = document.getElementById('nextBtn');
+            const correctSound = document.getElementById('correctSound');
+            const incorrectSound = document.getElementById('incorrectSound');
+            const imageElement = document.getElementById('questionImage');
+
+            options.forEach(option => {
+                option.disabled = true;
+                if (option.textContent === correct) {
+                    option.classList.add('correct');
+                } else if (option.textContent === selectedOption && selectedOption !== correct) {
+                    option.classList.add('incorrect');
+                }
+            });
+
+            if (selectedOption === correct) {
+                score++;
+                feedbackElement.textContent = `Correct! ${quizData[currentQuestion].explanation}`;
+                feedbackElement.classList.add('correct');
+                correctSound.play(); // Play correct sound
+            } else {
+                feedbackElement.textContent = `Wrong! ${quizData[currentQuestion].explanation}`;
+                feedbackElement.classList.add('incorrect');
+                incorrectSound.play(); // Play incorrect sound
+            }
+
+            imageElement.src = nextImage.src; // Show the preloaded image after selecting an option
+            feedbackElement.style.display = 'block';
+            nextBtn.style.display = 'block'; // Show next button after answer is selected
+            nextBtn.addEventListener('click', nextQuestion);
+        }
+
+        function nextQuestion() {
+            currentQuestion++;
+            if (currentQuestion < quizData.length) {
+                initQuiz();
+            } else {
+                showResult();
+            }
+        }
+
+        function showResult() {
+            const mainContainer = document.getElementById('main-container');
+            const percentage = (score / quizData.length) * 100;
+            mainContainer.innerHTML = `
+                <div class="result">
+                    <h2>Quiz Completed!</h2>
+                    <p>You got ${score} out of ${quizData.length} questions correct.</p>
+                    <p>Your score: ${percentage.toFixed(2)}%</p>
+                    <button id="restartBtn">Restart Quiz</button>
+                    <div class="footer">(this quiz created by <a href="https://github.com/SethRobinson/aitools_client" target="_blank">Seth's AI Tools</a>)</div>
+                </div>
+            `;
+            document.getElementById('restartBtn').addEventListener('click', restartQuiz);
+        }
+
+        function restartQuiz() {
+            currentQuestion = 0;
+            score = 0;
+            initQuiz();
+        }
+
+        initQuiz();
+    </script>
+</body>
+</html>
+COMMAND_END

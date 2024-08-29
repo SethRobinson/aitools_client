@@ -2,6 +2,7 @@ using B83.Win32;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Net;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.UI;
@@ -12,6 +13,10 @@ public class ScheduledGPUEvent
     public GameObject targetObj = null;
     public bool disableTranslucency = false;
     public string promptOverride = "";
+    
+    public string requestedSimplePrompt = "";
+    public string requestedDetailedPrompt = "";
+    public RTRendererType requestedRenderer = RTRendererType.Any_Local;
 }
 
 public class ImageGenerator : MonoBehaviour
@@ -63,12 +68,6 @@ public class ImageGenerator : MonoBehaviour
     public void ScheduleGPURequest(ScheduledGPUEvent request)
     {
         m_gpuEventList.AddLast(request);
-        //Debug.Log("Scheduled GPU event, " + m_gpuEventList.Count + " total");
-    }
-
-    public void ScheduleRequest(ScheduledGPUEvent request)
-    {
-        m_eventList.AddLast(request);
         //Debug.Log("Scheduled GPU event, " + m_gpuEventList.Count + " total");
     }
 
@@ -170,7 +169,6 @@ public class ImageGenerator : MonoBehaviour
             GameLogic.Get().SetChangeModelEnabled(true);
         }
     }
-
     public void OnClickedGenerateSettingsButton()
     {
         const string panelName = "GenerateSettingsPanel";
@@ -256,7 +254,8 @@ public class ImageGenerator : MonoBehaviour
     {
         GameObject pic = Instantiate(m_pic_prefab, vSpawnPos, Quaternion.identity);
         pic.transform.parent = RTUtil.FindObjectOrCreate("Pics").transform;
-
+        PicMain picMain = pic.GetComponent<PicMain>();
+        picMain.PassInTempInfo(GameLogic.Get().GetGlobalRenderer(), -1);
         if (_bAdvancedRow)
         {
             if (GameLogic.Get().GetCameraFollow())
@@ -345,27 +344,18 @@ public class ImageGenerator : MonoBehaviour
 
     void Update()
     {
+            //temporary list of gpu events, we can put them here to be rescheduled later
+            LinkedList<ScheduledGPUEvent> tempGPUList = new LinkedList<ScheduledGPUEvent>();
 
-        if (m_eventList.Count > 0)
-        {
-
-            ScheduledGPUEvent e = m_eventList.First.Value;
-            m_eventList.RemoveFirst();
-
-            if (e.targetObj)
-            {
-                if (e.mode == "render_dalle3")
-                {
-                    //var script = e.targetObj.GetComponent<PicUpscale>();
-                    //script.OnForceUpscale(gpuToUse);
-                    Debug.Log("Rendering dalle3");
-                }
-            }
-        }
-
-            if (m_gpuEventList.Count > 0)
+        if (m_gpuEventList.Count > 0)
         {
             int gpuToUse = Config.Get().GetFreeGPU();
+
+            if (Config.Get().DontHaveLocalServers())
+            {
+                //special case
+                gpuToUse = Config.Get().GetFirstGPUIncludingOpenAI();
+            }
 
             if (gpuToUse == -1)
             {
@@ -373,7 +363,47 @@ public class ImageGenerator : MonoBehaviour
                 return;
             }
 
+            var gpuInfo = Config.Get().GetGPUInfo(gpuToUse);
+
+            tryAgain:
+
             ScheduledGPUEvent e = m_gpuEventList.First.Value;
+            
+            //first see if we can do anything with it
+            if (e.requestedRenderer != RTRendererType.Any_Local)
+            {
+                if (e.requestedRenderer != gpuInfo._requestedRendererType)
+                {
+                    //we can't do this on this GPU.. is the one they want available?
+                    int newGPU = Config.Get().GetFreeGPU(e.requestedRenderer);
+                    if (newGPU != -1)
+                    {
+                        //we can do it on this one
+                        gpuToUse = newGPU;
+                        gpuInfo = Config.Get().GetGPUInfo(gpuToUse);
+                    }
+                    else
+                    {
+                        //move the event to tempGPUList
+                        tempGPUList.AddFirst(e);
+                        m_gpuEventList.RemoveFirst();
+
+                        if (m_gpuEventList.Count == 0)
+                            {
+                            //uh oh, geuss we need to get out of here.  
+                            foreach (ScheduledGPUEvent g in tempGPUList)
+                            {
+                                m_gpuEventList.AddFirst(g);
+                            }
+                            return;
+                        }
+
+                            goto tryAgain;
+                    }
+
+                }
+            }
+            
             m_gpuEventList.RemoveFirst();
 
             if (e.targetObj)
@@ -406,7 +436,6 @@ public class ImageGenerator : MonoBehaviour
                     {
                         RTQuickMessageManager.Get().ShowMessage("The loaded model is pix2pix, can't generate, only inpaint/modify existing images.");
                         script.m_picScript.SetStatusMessage("");
-
                     }
                     else
                     {
@@ -426,8 +455,49 @@ public class ImageGenerator : MonoBehaviour
                     }
                     else
                     {
-                        script.SetGPU(gpuToUse);
-                        script.StartGenerateInitialRender();
+                        //get gpuinfo
+
+                        if (gpuInfo._usesDetailedPrompts)
+                        {
+                            if (e.requestedDetailedPrompt.Length > 0)
+                            {
+                                script.SetPrompt(e.requestedDetailedPrompt);
+                            } else if (e.requestedSimplePrompt.Length > 0)
+                            {
+                                script.SetPrompt(e.requestedSimplePrompt);
+                            } else
+                            {
+                                //default is nothing, probably already set
+                            }
+                        } else
+                        {
+                            //this renderer wants simple prompts
+                            if (e.requestedSimplePrompt.Length > 0)
+                            {
+                                script.SetPrompt(e.requestedSimplePrompt);
+                            }
+                            else if (e.requestedDetailedPrompt.Length > 0)
+                            {
+                                script.SetPrompt(e.requestedDetailedPrompt);
+                            }
+                            else
+                            {
+                                //default is nothing, probably already set
+                            }
+                        }
+
+                        //as for how we actually kickoff things..
+
+                        if (gpuInfo._requestedRendererType == RTRendererType.OpenAI_Dalle_3)
+                        {
+                            var picMain = e.targetObj.GetComponent<PicMain>();
+                            picMain.OnRenderWithDalle3();
+                        }
+                        else
+                        {
+                            script.SetGPU(gpuToUse);
+                            script.StartGenerateInitialRender();
+                        }
                     }
                 }
                 else if (e.mode == "interrogate")
@@ -449,10 +519,19 @@ public class ImageGenerator : MonoBehaviour
 
         }
 
+            //we add any gpu events we had to ignore for now, put them at the front
+            foreach (ScheduledGPUEvent e in tempGPUList)
+            {
+                m_gpuEventList.AddFirst(e);
+            }
+
+
         if (!m_generateActive || m_picGenerator != null)
         {
             return;
         }
+
+        //if generate is on, we'll keep generating more images forever
 
         for (int i = 0; i < Config.Get().GetGPUCount(); i++)
         {
@@ -462,7 +541,7 @@ public class ImageGenerator : MonoBehaviour
 
                 bool bDisableGeneration = false;
 
-                if (GameLogic.Get().IsActiveModelPix2Pix())
+                if (GameLogic.Get().IsActiveModelPix2Pix() && Config.Get().IsGPUOfThisType(i, GameLogic.Get().GetGlobalRenderer()))
                 {
                     RTQuickMessageManager.Get().ShowMessage("The loaded model is pix2pix, can't generate, can only inpaint.<BR>(Canceling generate mode)");
                     SetGenerate(false);
@@ -471,8 +550,12 @@ public class ImageGenerator : MonoBehaviour
 
                 if (!bDisableGeneration)
                 {
-
                     GameObject pic;
+
+                    if (!Config.Get().IsGPUOfThisType(i, GameLogic.Get().GetGlobalRenderer()))
+                    {
+                        continue;
+                    }
 
                     if (GameLogic.Get().GetTurbo())
                     {
@@ -484,22 +567,22 @@ public class ImageGenerator : MonoBehaviour
                             return;
                         }
                         PicTextToImage s = pic.GetComponent<PicTextToImage>();
-
                         s.Reset();
-
                     }
                     else
                     {
                         pic = CreateNewPic();
-
                     }
 
                     PicTextToImage scriptAI = pic.GetComponent<PicTextToImage>();
                     PicUpscale processAI = pic.GetComponent<PicUpscale>();
+                    PicMain picScript = pic.GetComponent<PicMain>();
 
                     processAI.SetGPU(i);
+                    
                     scriptAI.SetGPU(i);
                     scriptAI.StartWebRequest(false);
+                    picScript.PassInTempInfo(GameLogic.Get().GetGlobalRenderer(), i);
                     IncrementGenerationAndCheckForEnd();
                 }
             }

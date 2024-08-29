@@ -302,7 +302,6 @@ public class CrazyCamLogic : MonoBehaviour
             } else
             {
                 RTQuickMessageManager.Get().ShowMessage("Warning:  You should switch to a SD model with "+preset._modelRequirements+" in the filename!");
-
             }
         }
         SetMaskDropdownByIndex(m_maskMode);
@@ -372,7 +371,7 @@ public class CrazyCamLogic : MonoBehaviour
             tempDir = tempDir.Replace('/', '\\');
             tempDir = tempDir.Substring(0, tempDir.LastIndexOf('\\'));
             //tack on subdir if needed
-            tempDir = tempDir + "/autosave";
+            tempDir = tempDir + "/"+Config._saveDirName;
             //reconvert to \\ (I assume this code would have to change if it wasn't Windows... uhh
             tempDir = tempDir.Replace('/', '\\');
             string fileName = tempDir + "\\CrazyCam_" + System.DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss") + ".png";
@@ -461,7 +460,11 @@ public class CrazyCamLogic : MonoBehaviour
         var json = GamePicManager.Get().BuildJSonRequestForInpaint(GameLogic.Get().GetPrompt(), GameLogic.Get().GetNegativePrompt(), texture, null, false, bOperateOnSubjectMaskOnly,
             m_noTranslucencyToggle.isOn, bReverseMask, GameLogic.Get().GetUseControlNet());
 
-        GamePicManager.Get().SpawnInpaintRequest(json, OnImageRenderFinished, db);
+        int gpu = Config.Get().GetFreeGPU(RTRendererType.AI_Tools);
+        if (gpu != -1)
+        {
+            GamePicManager.Get().SpawnInpaintRequest(json, OnImageRenderFinished, db, gpu);
+        }
     }
 
     void Update()

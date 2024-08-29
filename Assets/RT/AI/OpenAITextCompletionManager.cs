@@ -7,24 +7,34 @@ using UnityEngine.Networking;
 using System.IO;
 using System.Runtime.InteropServices.ComTypes;
 
+
+    public class GTPChatLine
+    {
+        public GTPChatLine(string role, string content, string internalTag = "")
+        {
+            _role = role;
+            _content = content;
+            _internalTag = internalTag;
+           
+        }
+
+        public GTPChatLine Clone()
+        {
+            return new GTPChatLine(_role, _content, _internalTag);
+        }
+
+
+        public string _role; //must be set to user, assistant, or system
+        public string _content;
+        public string _internalTag;
+    }
+
 public class OpenAITextCompletionManager : MonoBehaviour
 {
 
     private UnityWebRequest _currentRequest;
     bool m_connectionActive = false;
 
-
-    public class GTPChatLine
-    {
-        public GTPChatLine(string role, string content)
-        {
-            _role = role;
-            _content = content;
-        }
-
-        public string _role; //must be set to user, assistant, or system
-        public string _content;
-    }
 
     public void Start()
     {

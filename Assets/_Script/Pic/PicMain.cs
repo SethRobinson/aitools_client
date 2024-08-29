@@ -14,6 +14,7 @@ public class UndoEvent
     public bool m_active = false;
 
     public string m_lastPromptUsed = "";
+    public RTRendererType m_requestedRenderer = RTRendererType.Any_Local;
     public string m_lastNegativePromptUsed = "";
     public long m_lastSeed = -1;
     public int m_lastSteps = 0;
@@ -22,7 +23,7 @@ public class UndoEvent
     public string m_lastOperation = "None";
     public float m_lastDenoisingStrength = 0;
     public float m_lastCFGScale = 0;
-    public int m_gpu = 0;
+    public int m_gpu = -1;
     public string m_maskContents = "";
     public float m_maskBlending = 0;
     public bool m_fixFaces = false;
@@ -35,7 +36,6 @@ public class UndoEvent
     public string m_lastControlNetModelPreprocessor = "";
     public float m_lastControlNetWeight = 0;
     public float m_lastControlNetGuidance = 0;
-  
   
 }
 
@@ -68,6 +68,8 @@ public class PicMain : MonoBehaviour
     string m_editFilename = "";
     bool m_bLocked;
     bool m_bDisableUndo;
+    float m_genericTimerStart = 0; //used to countdown for Dalle3
+    string m_genericTimerText = "Waiting...";
 
     public AIGuideManager.PassedInfo m_aiPassedInfo; //a misc place to store things the AI guide wants to
 
@@ -98,7 +100,7 @@ public class PicMain : MonoBehaviour
 
         }
 
-
+        MakeDraggable();
     }
     public void SetDisableUndo(bool bNew)
     {
@@ -118,30 +120,35 @@ public class PicMain : MonoBehaviour
     {
         m_onFinishedRenderingCallback = null;
     }
-    public string GetInfoText()
+
+    public void MakeDraggable()
     {
 
-        /*
+        //we want to be able to drag this around, so we'll have to disable the mask drawing stuff
+        //m_picMaskScript.SetMaskVisible(false);
+        //Add ObjectDrag to us
+        
 
-          string msg = "";
-          msg += "Image size: X: " + (int)m_pic.sprite.texture.width + ", Y: " + (int)m_pic.sprite.texture.height + " " +
-              "Mask Rect size: X: " + (int)m_targetRectScript.GetOffsetRect().width + ",  Y: " + (int)m_targetRectScript.GetOffsetRect().height + " ";
-
-          msg += "Last Operation: "+GetCurrentStats().m_lastOperation+"\n";
-          msg += "Model: "+GetCurrentStats().m_lastModel+ " Sampler: "+ GetCurrentStats().m_lastSampler+" Steps: " + GetCurrentStats().m_lastSteps +" Seed: " + GetCurrentStats().m_lastSeed +
-               " CFG Scale: "+GetCurrentStats().m_lastCFGScale+" Tiling: " + GetCurrentStats().m_tiling + " Fix Faces: " + GetCurrentStats().m_fixFaces+ "\nPrompt: " + GetCurrentStats().m_lastPromptUsed+"\nNegative prompt: "+
-              GetCurrentStats().m_lastNegativePromptUsed+"\n";
-
-          */
-
+    }
+    public string GetInfoText()
+    {
+       
         var c = GetCurrentStats();
 
         string c1 = "`4";
 
-        string msg = 
-$@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
-{c1}Image size X:`` {(int)m_pic.sprite.texture.width}{c1}, Y: ``{(int)m_pic.sprite.texture.height} 
-{c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().width}{c1}, Y: ``{(int)m_targetRectScript.GetOffsetRect().height}
+        string rendererRequested = GetCurrentStats().m_requestedRenderer.ToString();
+
+        string msg =
+$@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}Renderer:`` {rendererRequested} {c1}on ServerID: ``{c.m_gpu} {Config.Get().GetServerNameByGPUID(c.m_gpu)}
+";
+
+        if (m_pic != null && m_pic.sprite != null && m_pic.sprite.texture != null)
+        {
+            msg += $@"{c1}Image size X:`` {(int)m_pic.sprite.texture.width} {c1}, Y: ``{(int)m_pic.sprite.texture.height}";
+        }
+
+msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().width}{c1}, Y: ``{(int)m_targetRectScript.GetOffsetRect().height}
 {c1}Model:`` {c.m_lastModel}
 {c1}Sampler:`` {c.m_lastSampler} {c1}Steps:`` {c.m_lastSteps} {c1}Seed:`` {c.m_lastSeed}
 {c1}CFG Scale:`` {c.m_lastCFGScale} {c1}Tiling: ``{c.m_tiling} {c1}Fix Faces:`` {c.m_fixFaces}
@@ -183,10 +190,16 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
 
     public void SafelyKillThisPicAndDeleteHoles()
     {
+
         m_isDestroyed = true;
         GameObject.Destroy(gameObject);
-
-        ImageGenerator.Get().ReorganizePics(false);
+       
+        /*
+        if (!AdventureLogic.Get().IsActive())
+        {
+            ImageGenerator.Get().ReorganizePics(false);
+        }
+        */
     }
 
     public bool IsBusy()
@@ -230,14 +243,16 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
         if (GameLogic.Get().GetTurbo())
         {
             m_text.text = ""; //hack to not show messages when in turbo mode
-
         }
         else
         {
             m_text.text = msg;
-
         }
+
+        m_genericTimerStart = 0; //disable any timer
     }
+
+   
 
     void KillUndoImageBuffers()
     {
@@ -251,14 +266,12 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
     {
         if (m_bDisableUndo) return false;
 
-     
         m_undoevent = m_curEvent;
         m_undoevent.m_active = true;
 
         KillUndoImageBuffers();
 
-
-        if (bDoFullCopy)
+        if (bDoFullCopy && m_pic.sprite != null && m_pic.sprite.texture != null)
         {
             Texture2D copyTexture = m_pic.sprite.texture.Duplicate();
 
@@ -268,9 +281,11 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
                 new Rect(0, 0, copyTexture.width, copyTexture.height), new Vector2(0.5f, 0.5f), (biggestSize / 5.12f), 0, SpriteMeshType.FullRect);
             
             m_undoevent.m_sprite = newSprite;
+            m_undoevent.m_texture = m_pic.sprite.texture;
         } else
         {
             m_undoevent.m_sprite = m_pic.sprite;
+            m_undoevent.m_texture = m_pic.sprite.texture;
         }
         //Debug.Log("Image added to undo");
 
@@ -517,7 +532,6 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
     {
         AddImageUndo();
 
-
         var croppedTexture = ResizeTool.CropTexture(m_pic.sprite.texture, m_targetRectScript.GetOffsetRect());
         float biggestSize = Math.Max(croppedTexture.width, croppedTexture.height);
 
@@ -671,22 +685,48 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
         }
     }
 
+    public void SetCurrentEvent(UndoEvent newEvent)
+    {
+        //instead of assign newEvent to m_curEvent, we'll copy it
+        m_curEvent = new UndoEvent();
+        
+        //it would be slow to copy each thing by hand, so we'll itterate through its properties and copy them
+        foreach (var prop in newEvent.GetType().GetFields())
+        {
+            prop.SetValue(m_curEvent, prop.GetValue(newEvent));
+        }
+
+        m_curEvent.m_sprite = null;
+        m_curEvent.m_texture = null;
+
+
+       
+
+    }
     public GameObject Duplicate()
     {
         //make a copy of this entire object
 
         GameObject go = ImageGenerator.Get().CreateNewPic();
         PicMain targetPicScript = go.GetComponent<PicMain>();
+        
+        //if in adventure mode, go ahead and move it to the right of us
+        if (AdventureLogic.Get().IsActive())
+        {
+            go.transform.position = new Vector3(transform.position.x + 5.12f, transform.position.y, transform.position.z);
+        }
+
         PicTargetRect targetRectScript = go.GetComponent<PicTargetRect>();
         PicTextToImage targetTextToImageScript = go.GetComponent<PicTextToImage>();
-
+        
         targetPicScript.SetImage(m_pic.sprite.texture, true);
         targetPicScript.SetMask(m_mask.sprite.texture, true);
         targetTextToImageScript.SetSeed(m_picTextToImageScript.GetSeed()); //if we've set it, it will carry to the duplicate as well
         targetTextToImageScript.SetTextStrength(m_picTextToImageScript.GetTextStrength()); //if we've set it, it will carry to the duplicate as well
         targetTextToImageScript.SetPrompt(m_picTextToImageScript.GetPrompt()); //if we've set it, it will carry to the duplicate as well
+        targetTextToImageScript.SetNegativePrompt(m_picTextToImageScript.GetNegativePrompt()); //if we've set it, it will carry to the duplicate as well
         targetRectScript.SetOffsetRect(m_targetRectScript.GetOffsetRect());
-
+        targetPicScript.SetCurrentEvent(m_curEvent); //copy the current event
         return go;
     }
 
@@ -701,16 +741,16 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
 
         UnityEngine.Sprite newSprite = UnityEngine.Sprite.Create(newImage,
             new Rect(0, 0, newImage.width, newImage.height), new Vector2(0.5f, 0.5f), (biggestSize / 5.12f), 0, SpriteMeshType.FullRect);
-       if (m_pic.sprite != null && m_pic.sprite.texture != null)
+       
+        if (m_pic.sprite != null && m_pic.sprite.texture != null)
         {
             UnityEngine.Object.Destroy(m_pic.sprite.texture); 
         }
 
         m_pic.sprite = newSprite;
+        OnImageReplaced();
         MovePicUpIfNeeded();
-
         SetNeedsToUpdateInfoPanelFlag();
-
     }
 
     public void InvertMask()
@@ -753,7 +793,6 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
         RTMessageManager.Get().Schedule(0.1f, OnFileEdit);
     }
 
-   
     public void OnFileEdit()
     {
      
@@ -811,8 +850,9 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
     {
         //string projectCurrentDir = Directory.GetCurrentDirectory();
         //command = projectCurrentDir + "/" + command;
-
-        UnityEngine.Debug.Log(string.Format("{0} Run command: {1}", DateTime.Now, command));
+        try
+        {
+            UnityEngine.Debug.Log(string.Format("{0} Run command: {1}", DateTime.Now, command));
 
         System.Diagnostics.ProcessStartInfo ps = new System.Diagnostics.ProcessStartInfo(command);
         using (System.Diagnostics.Process p = new System.Diagnostics.Process())
@@ -850,14 +890,18 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
             }
             */
         }
+        }
+        catch (Exception ex)
+        {
+            UnityEngine.Debug.LogError(string.Format("{0} Failed to run command '{1}'. Error: {2}", DateTime.Now, command, ex.Message));
+            RTQuickMessageManager.Get().ShowMessage("Failed to run command: " + command);
+        }
     }
 
     public void OnImageReplaced()
     {
         MovePicUpIfNeeded();
-
         m_picMaskScript.ResizeMaskIfNeeded();
-       
         m_targetRectScript.UpdatePoints();
     }
 
@@ -865,18 +909,17 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
     {
         if (GameLogic.Get().GetAutoSave())
         {
-            SaveFile("", "/autosave");
+            SaveFile("", "/"+ Config._saveDirName);
         }
 
         if (GameLogic.Get().GetAutoSavePNG())
         {
-            SaveFile("", "/autosave", null, "", true);
+            SaveFile("", "/"+Config._saveDirName, null, "", true);
         }
     }
 
-
     //save to a random filename if passed a blank filename
-    public string SaveFile(string fname="", string subdir = "", Texture2D texToSave = null, string fNamePostFix = "", bool bSaveAsPNG =false) 
+    public string SaveFile(string fname="", string subdir = "", Texture2D texToSave = null, string fNamePostFix = "", bool bSaveAsPNG =false, bool bWriteOutTextFileToo = true) 
     {
   
         string fileName = Config.Get().GetBaseFileDir(subdir) + "\\pic_" + System.Guid.NewGuid() + fNamePostFix ;
@@ -894,9 +937,6 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
             fileName = fname;
         }
         byte[] pngBytes;
-
-
-        bool bWriteOutTextFileToo = true;
 
 
         if (bSaveAsPNG)
@@ -941,10 +981,8 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
         return fileName;
     }
 
-
     public string SaveFileJPG(string fname = "", string subdir = "", Texture2D texToSave = null, string fNamePostFix = "",int JPGquality = 80)
     {
-
 
         string fileName = Config.Get().GetBaseFileDir(subdir) + "\\pic_" + System.Guid.NewGuid() + fNamePostFix;
 
@@ -971,7 +1009,6 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
             pngBytes = texToSave.EncodeToJPG(JPGquality);
         }
 
-
         File.WriteAllBytes(fileName, pngBytes);
 
         if (bWriteOutTextFileToo)
@@ -988,12 +1025,12 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
 
     public void SaveFileNoReturn2()
     {
-        SaveFile();
+        SaveFile("", "/" + Config._saveDirName);
     }
 
     public void SaveFilePNG()
     {
-        SaveFile("","",null,"",true);
+        SaveFile("", "/" + Config._saveDirName, null,"",true);
     }
 
     public void SaveFileNoReturn()
@@ -1074,8 +1111,54 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
         SetStatusMessage("Waiting for GPU...");
     }
 
+    public void AddTextLabelToImage(string label)
+    {
+        if (label == null || label.Count() == 0) return;
+
+        float bottom = 64;
+
+        Rect textAreaRect = new Rect(0, 0, m_pic.sprite.texture.width, bottom);
+
+        float maxSize = textAreaRect.width;
+        if (textAreaRect.height > maxSize)
+        {
+            maxSize = textAreaRect.height;
+        }
+
+        float minSize = textAreaRect.width;
+        if (textAreaRect.height < minSize)
+        {
+            minSize = textAreaRect.height;
+        }
+
+        float fontSize = maxSize / 4;
+        float titleHeight = 0;
+        titleHeight = textAreaRect.height * 0.34f;
+
+        Texture2D tex;
+        Rect rect;
+
+        TMPro.FontStyles fontStyles = TMPro.FontStyles.Bold;
+        int fontID = 0;
+
+        tex = RTUtil.RenderTextToTexture2D(label, (int)textAreaRect.width,
+           (int)(textAreaRect.height - titleHeight), AIGuideManager.Get().GetFontByID(fontID), fontSize, Color.white,
+        false, new Vector2(1, 1), fontStyles);
+
+        //File.WriteAllBytes("crap.png", tex.EncodeToPNG()); //for debugging
+
+        rect = textAreaRect;
+        rect.yMax -= titleHeight;
+        //add it to our real texture
+        m_pic.sprite.texture.BlitWithAlpha((int)rect.xMin, (int)(m_pic.sprite.texture.height - rect.height), tex,
+            0, 0, (int)rect.width, (int)rect.height);
+        m_pic.sprite.texture.Apply();
+
+    }
+
     public void CleanupPixelArt()
     {
+        AddTextLabelToImage("AI Generated");
         m_pic.sprite.texture.filterMode = FilterMode.Point;
         int originalWidth = m_pic.sprite.texture.width;
         int originalHeight = m_pic.sprite.texture.height;
@@ -1240,6 +1323,16 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
         e.mode = "rerender";
         e.targetObj = newPic;
 
+        //if comfyui was used, make sure we specify that
+        if (GetCurrentStats().m_gpu != -1)
+        {
+            e.requestedRenderer = Config.Get().GetGPUInfo(GetCurrentStats().m_gpu)._requestedRendererType;
+        }
+        else
+        {
+            //try to get it from somewhere else
+            e.requestedRenderer = GetCurrentStats().m_requestedRenderer;
+        }
         PicMain newPicMain = newPic.GetComponent<PicMain>();
         //set the seed of this pic
         PicTextToImage textToImage = GetComponent<PicTextToImage>();
@@ -1248,46 +1341,69 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
         ImageGenerator.Get().ScheduleGPURequest(e);
         newPicMain.SetStatusMessage("Waiting for GPU...");
     }
-   
+  
     public void OnReRenderButton()
     {
-        AddImageUndo();
+        AddImageUndo(true);
         var e = new ScheduledGPUEvent();
         e.mode = "rerender";
         e.targetObj = this.gameObject;
 
+        if (GetCurrentStats().m_gpu != -1)
+        {
+            e.requestedRenderer = Config.Get().GetGPUInfo(GetCurrentStats().m_gpu)._requestedRendererType;
+        }
+        else
+        {
+            //try to get it from somewhere else
+            e.requestedRenderer = GetCurrentStats().m_requestedRenderer;
+        }
+
         ImageGenerator.Get().ScheduleGPURequest(e);
         SetStatusMessage("Waiting for GPU...");
+
     }
     public void OnRenderWithDalle3Button()
     {
-        AddImageUndo();
-        ClearRenderingCallbacks();
-        var e = new ScheduledGPUEvent();
-       
-        SetStatusMessage("Waiting for Dalle3...");
-        Dalle3Manager dalle3Script = gameObject.GetComponent<Dalle3Manager>();
-        
-        if (dalle3Script == null)
-        {
-            Debug.Log("Adding dalle3 script");
-            dalle3Script = gameObject.AddComponent<Dalle3Manager>();
-        }
-        
-        string json = dalle3Script.BuildJSON(m_picTextToImageScript.GetPrompt(), "dall-e-3");
+       OnRenderWithDalle3();
+    }
 
-        //test
-        RTDB db = new RTDB();
-        dalle3Script.SpawnRequest(json, OnDalle3CompletedCallback, db, Config.Get().GetOpenAI_APIKey());
-        
+    public void StartGenericTimer(string text)
+    {
+        m_genericTimerText = text;
+        m_genericTimerStart = Time.realtimeSinceStartup;
+    }
 
+    public void StopGenericTimer()
+    {
+        m_genericTimerText = "Done";
+        m_genericTimerStart = 0;
     }
 
     public void OnRenderWithDalle3()
     {
-        AddImageUndo();
+       
         var e = new ScheduledGPUEvent();
+        GetCurrentStats().m_requestedRenderer = RTRendererType.OpenAI_Dalle_3;
+
+        //let's set the GPUID for the heck of it
+
+        GetCurrentStats().m_gpu = Config.Get().GetFreeGPU(RTRendererType.OpenAI_Dalle_3, true);
+
+        if (GetCurrentStats().m_gpu == -1)
+        {
+            //write message they can see
+            RTQuickMessageManager.Get().ShowMessage("No Dalle-3 server is connected to, check your config");
+            return;
+        }
+
         SetStatusMessage("Waiting for Dalle3...");
+
+        //if prompt is null, we'll set it
+        if (m_picTextToImageScript.GetPrompt() == null || m_picTextToImageScript.GetPrompt().Length < 1)
+        {
+            m_picTextToImageScript.SetPrompt(GameLogic.Get().GetPrompt());
+        }
 
         Dalle3Manager dalle3Script = gameObject.GetComponent<Dalle3Manager>();
 
@@ -1303,10 +1419,13 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
         RTDB db = new RTDB();
         dalle3Script.SpawnRequest(json, OnDalle3CompletedCallback, db, Config.Get().GetOpenAI_APIKey());
 
+        //Oh, let's start a timer
+        StartGenericTimer("Dalle3...");
     }
 
     public void OnDalle3CompletedCallback(RTDB db, Texture2D texture)
     {
+        StopGenericTimer();
         if (texture == null)
         {
             Debug.Log("Error getting dalle image: " + db.GetString("msg"));
@@ -1325,13 +1444,13 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
             return;
         }
 
-        //write to file?
-        //SaveFileJPG("dalle3_temp.jpg", "", texture, "", 80);
-        Debug.Log("Got dalle image back!");
+        AddImageUndo(true);
+
         SetStatusMessage("");
+        //only do the undo if our sprite texture is valid
 
-        SetImage(texture, false);
-
+        SetImage(texture, true);
+      
         GetCurrentStats().m_lastPromptUsed = m_picTextToImageScript.GetPrompt();
         GetCurrentStats().m_lastNegativePromptUsed = "";
         GetCurrentStats().m_lastSteps = 0;
@@ -1340,43 +1459,106 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
         GetCurrentStats().m_tiling = false;
         GetCurrentStats().m_fixFaces = false;
         GetCurrentStats().m_lastSeed = 0;
-      GetCurrentStats().m_lastModel = "Dalle 3";
-      GetCurrentStats().m_bUsingControlNet = false;
-      GetCurrentStats().m_bUsingPix2Pix = false;
-      GetCurrentStats().m_lastOperation = "Dalle 3";
-        GetCurrentStats().m_gpu = -1;
-
-      SetNeedsToUpdateInfoPanelFlag();
-
-
-      AutoSaveImageIfNeeded();
-
+        GetCurrentStats().m_lastModel = "Dalle 3";
+        GetCurrentStats().m_bUsingControlNet = false;
+        GetCurrentStats().m_bUsingPix2Pix = false;
+        GetCurrentStats().m_lastOperation = "Dalle 3";
+        
+        SetNeedsToUpdateInfoPanelFlag();
+        AutoSaveImageIfNeeded();
+        
         if (m_onFinishedRenderingCallback != null)
             m_onFinishedRenderingCallback.Invoke(gameObject);
     }
+    void RemoveScheduledCalls()
+    {
+        RTMessageManager.Get().Schedule(UnityEngine.Random.Range(5.0f, 10.0f), OnRenderWithDalle3);
 
+        RTMessageManager.Get().RemoveScheduledCalls((System.Action)OnRenderWithDalle3);
+    }
+    public void OnRenderWithAITOrA1111()
+    {
+        int gpuID = Config.Get().GetFreeGPU(RTRendererType.AI_Tools_or_A1111, false);
+        
+        if (gpuID == -1)
+        {
+            //write message they can see
+            RTQuickMessageManager.Get().ShowMessage("No AIT/A1111 server is connected to, check your config");
+            return;
+        }
+
+        GetCurrentStats().m_requestedRenderer = RTRendererType.AI_Tools_or_A1111;
+        GetCurrentStats().m_gpu = Config.Get().GetFreeGPU(GetCurrentStats().m_requestedRenderer, true); //show we don't care
+
+        RemoveScheduledCalls();
+        OnReRenderNewSeedButton();
+    }
+
+    public void OnRenderWithComfyUI()
+    {
+        int gpuID = Config.Get().GetFreeGPU(RTRendererType.ComfyUI, true);
+
+        if (gpuID == -1)
+        {
+            //write message they can see
+            RTQuickMessageManager.Get().ShowMessage("No ComfyUI server is connected to, check your config");
+            return;
+        }
+
+        GetCurrentStats().m_requestedRenderer = RTRendererType.ComfyUI;
+        GetCurrentStats().m_gpu = Config.Get().GetFreeGPU(GetCurrentStats().m_requestedRenderer, true); //show we don't care
+
+        RemoveScheduledCalls();
+        OnReRenderNewSeedButton();
+    }
 
     public void OnReRenderNewSeedButton()
     {
+        RemoveScheduledCalls();
         AddImageUndo();
         var e = new ScheduledGPUEvent();
         e.mode = "rerender";
+        
+        if (GetCurrentStats().m_gpu != -1)
+        {
+            e.requestedRenderer = Config.Get().GetGPUInfo(GetCurrentStats().m_gpu)._requestedRendererType;
+        }
+        else
+        {
+
+            //try to get it from somewhere else
+            e.requestedRenderer = GetCurrentStats().m_requestedRenderer;
+        }
         e.targetObj = this.gameObject;
         PicTextToImage textToImage = GetComponent<PicTextToImage>();
         textToImage.SetSeed(-1); //causes it to be random again
-         ImageGenerator.Get().ScheduleGPURequest(e);
+        ImageGenerator.Get().ScheduleGPURequest(e);
         SetStatusMessage("Waiting for GPU...");
+
     }
 
-    public void OnRenderButton(string promptAddition)
+    //I return it, in case the caller wants to set additional parms
+    public ScheduledGPUEvent OnRenderButton(string promptAddition)
     {
+        RemoveScheduledCalls();
         var e = new ScheduledGPUEvent();
         e.mode = "render";
         e.targetObj = this.gameObject;
         e.promptOverride = promptAddition;
+        
+        if (GetCurrentStats().m_gpu != -1)
+        {
+            e.requestedRenderer = Config.Get().GetGPUInfo(GetCurrentStats().m_gpu)._requestedRendererType;
+        }
+        else
+        {
+            //try to get it from somewhere else
+            e.requestedRenderer = GetCurrentStats().m_requestedRenderer;
+        }
 
         ImageGenerator.Get().ScheduleGPURequest(e);
         SetStatusMessage("Waiting for GPU...");
+        return e;
     }
 
 
@@ -1449,6 +1631,28 @@ $@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}on ServerID: ``{c.m_gpu}
             }
             
         }
+
+        if (m_genericTimerStart != 0)
+        {
+            float elapsed = Time.realtimeSinceStartup - m_genericTimerStart;
+
+            m_text.text = m_genericTimerText+" "+elapsed.ToString("0.0#");
+            
+        }
+    }
+
+      public void PassInTempInfo(ScheduledGPUEvent e)
+    {
+        //this doesn't really matter, but let's update our current info based on what we think will happen
+        GetCurrentStats().m_lastPromptUsed = m_picTextToImageScript.GetPrompt();
+        GetCurrentStats().m_requestedRenderer = e.requestedRenderer;
+    }
+
+    public void PassInTempInfo(RTRendererType requestedRenderer, int gpuID)
+    {
+        GetCurrentStats().m_lastPromptUsed = m_picTextToImageScript.GetPrompt();
+        GetCurrentStats().m_requestedRenderer = requestedRenderer;
+        GetCurrentStats().m_gpu = gpuID;
     }
 
 }

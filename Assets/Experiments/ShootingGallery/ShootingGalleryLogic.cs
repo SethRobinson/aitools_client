@@ -176,7 +176,6 @@ public class ShootingGalleryLogic : MonoBehaviour
     }
     public void OnStartGameMode()
     {
-
         GameLogic.Get().ShowCompatibilityWarningIfNeeded();
 
         m_smallShakeTween = null;
@@ -324,8 +323,9 @@ public class ShootingGalleryLogic : MonoBehaviour
                     HandleInput();
                 }
 
+                int requestedGPU = Config.Get().GetFreeGPU(RTRendererType.AI_Tools_or_A1111);
 
-                if (Config.Get().IsAnyGPUFree())
+                if (requestedGPU != -1)
                 {
                     //this will send the json request to the aitools_server, and callback with the created image
                     int r = UnityEngine.Random.Range(0, 5);
@@ -344,7 +344,7 @@ public class ShootingGalleryLogic : MonoBehaviour
                         db.Set("tag", "Friend");
 
                         if (m_yourTeamMember != "")
-                            GamePicManager.Get().SpawnInpaintRequest(m_yourTeamjson, OnImageRenderFinished, db);
+                            GamePicManager.Get().SpawnInpaintRequest(m_yourTeamjson, OnImageRenderFinished, db, requestedGPU);
                     }
                     else
                     {
@@ -358,7 +358,7 @@ public class ShootingGalleryLogic : MonoBehaviour
                         db.Set("tag", "Opponent");
                   
                         if (m_opposingTeamMember != "")
-                            GamePicManager.Get().SpawnInpaintRequest(m_opposingTeamjson, OnImageRenderFinished, db);
+                            GamePicManager.Get().SpawnInpaintRequest(m_opposingTeamjson, OnImageRenderFinished, db, requestedGPU);
                     }
                 }
 

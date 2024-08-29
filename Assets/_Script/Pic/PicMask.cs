@@ -319,11 +319,16 @@ public class PicMask : MonoBehaviour
     {
 
        
+        //If Ctrl key is down, exit now
+        if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
+        {
+            return;
+        }
+
         if (IsMaskVisible())
         {
             ResizeMaskIfNeeded();
 
-           
 
             if (GameLogic.Get().GetPicWereHoveringOver() == gameObject && !GameLogic.Get().GUIIsBeingUsed())
             {

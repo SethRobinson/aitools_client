@@ -89,7 +89,6 @@ public class Dalle3Manager : MonoBehaviour
             postRequest.SetRequestHeader("Content-Type", "application/json");
             postRequest.SetRequestHeader("Authorization", "Bearer " + openAI_APIKey);
 
-        
             // Send the request and wait for it to complete.
             yield return postRequest.SendWebRequest();
 
@@ -113,7 +112,6 @@ public class Dalle3Manager : MonoBehaviour
        //         Debug.Log("TTS Form upload complete! Downloaded " + postRequest.downloadedBytes);
                 File.WriteAllBytes("dalle3_json_received.json", postRequest.downloadHandler.data);
 #endif
-
 
                 //convert the json to a texture2d
                 JSONNode rootNode = JSON.Parse(postRequest.downloadHandler.text);

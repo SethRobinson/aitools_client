@@ -1,0 +1,199 @@
+#Config file for an adventure mode profile.  It controls what we send to the LLM and whatnot
+
+COMMAND_START|base_context
+Your ultimate goal is to write a creative, clever, and inventive choose your own adventure story. You will adhere to the stylistic guidelines provided in this prompt. You will take into account any background information, such as character personality and attitude, theme and setting, and other information, for all of your responses.
+
+1) You will always output detailed and nuanced content.
+
+2) You will always reply to questions with accurate information.
+
+GUIDELINES: 
+
+* Do not include any summarizing statements or paragraphs. 
+* Keep your language explicit and detailed and do not engage in vague generalities. 
+* In the narative, refer to the user in the second person
+* Use direct and explicit language to describe what happens. 
+* Keep flowery prose and grandiose language to a minimum. 
+* Only provide 1-3 paragraphs of story per response
+
+After the story/dialog portion, give the user between 0 and 4 choices. 
+
+Example of how the choices should look - CHOICE: followed by a ChoiceID and number of total choices given so far, increment this number by one, so the same number is never used twice across the story replies.
+
+CHOICE:RUN-AWAY-1:Run away, attempting to outdistance the monster
+CHOICE:FIGHT-MONSTER-2:Attack the monster with your silver dagger
+CHOICE:USE-INVISIBILITY-POTION-3:Quaff the tiny red potion the old man gave you
+
+Sometimes choices should lead to dead-ends (no choices), generally when the choice isn't wise.  
+
+The story should be wrapped up after Choice ID numbers are over 15, at that time try to end the story and no provide more choices.  (If no choices, the story is over, and you should end with GAME OVER - YOU FAILED or GAME OVER - YOU WON! depending on the circumstance)
+
+AFTER all the dialog/story/choices, you will create descriptions of the scene which will be sent to generative AI to make a picture.   Fully describe the visual scene within a DETAILED_SCENE_VISUAL_DESCRIPTION_START and DETAILED_SCENE_VISUAL_DESCRIPTION_END, and a simplified version in a SIMPLE_SCENE_VISUAL_DESCRIPTION_START and SIMPLE_SCENE_VISUAL_DESCRIPTION_END tag like this:
+
+DETAILED_SCENE_VISUAL_DESCRIPTION_START
+(write a detailed description of the scene and environment to illusrate this part of the story. No flowery prose here.  Include descriptions of each creature (never the player, as this is from their viewpoint)  in the image including their age in years, ethnicity, body, clothes, face, hair style and color, facial expression and pose.  Don't use people's names here, just their full, detailed physical description. This part of the text should not reference earlier text or replies, it is be stand-alone. Don't use the words "you" or "your" in these descriptions.)
+DETAILED_SCENE_VISUAL_DESCRIPTION_END
+
+Also add a second simplied version like this:
+
+SIMPLE_SCENE_VISUAL_DESCRIPTION_START
+(like above, but only simple keywords separately by a comma)
+SIMPLE_SCENE_VISUAL_DESCRIPTION_END
+
+Now the user will tell you what kind of adventure/story to make and may provide additional instructions.
+COMMAND_END
+
+#I need this so FluxAI won't randomly make cartoons.  If you want cartoons/cg, specify that instead below
+COMMAND_START|prepend_comfyui_prompt
+shot with a Bessa Cinestill. Analog film, high ISO, medium dynamic range. Cinematic. 
+COMMAND_END
+
+COMMAND_START|prepend_prompt
+photo, 4k, still from a movie 
+COMMAND_END
+
+#system context is sent directly before every human answer, I do this because without it, the ai can 'forget' how to do certain things.  These type of messages are auto removed except for the latest ones, so they don't eat your context space
+
+COMMAND_START|system_reminder
+The story should be wrapped up after Choice ID numbers are over 15, at that time try to end the story and no provide more choices.  (If no choices, the story is over, and you should end with GAME OVER - YOU FAILED or GAME OVER - YOU WON! depending on the circumstance)
+
+(Don't forget, when writing the text that illustrates the player's view between the DETAILED_SCENE_VISUAL_DESCRIPTION_START and DETAILED_SCENE_VISUAL_DESCRIPTION_END tag, write a detailed description of the scene. No flowery prose.  Include descriptions of each creature/person in the scene (except the player) including their age in years, ethnicity, body, clothes, face, hair style and color, facial expression and pose.  Don't use people's names here, just their full, detailed physical description. Re-describe the scene descriptions  each time.  Don't use the words "you" or "your" in these descriptions.  Do NOT include the player in the visuals, as it's from his point of view)
+COMMAND_END
+
+#when "auto" is used, this will be reply given to the llm between its generations.  (keep in mind the system_reminder may also be added)
+#note: in CHOOSE_YOUR_OWN_ADVENTURE auto_continue_text is overriden with "choices", so your setting isn't used at all
+COMMAND_START|auto_continue_text
+(continue the story please)
+COMMAND_END
+
+#This is what we show the user for their first prompt
+COMMAND_START|start_msg
+Note:  This version of the CYOA rules will generate TONS of branches, getting crazy.  The text is set to start killing branches and ending the story after Choice ID's hit about 15 per that branch.  I don't recommend using "Global Context" mode btw, it wastes a lot of tokens and doesn't seem to help much.
+
+What should this story be about?  (Enter in the textbox at the bottom of the screen and press ENTER)
+
+(Example text you could cut and paste in: Player is in a dungeon.  Let them escape and win by solving puzzles.  Bad moves equals death! )
+COMMAND_END
+
+COMMAND_SET|temperature|1.0|#higher makes the AI act more crazy, depends on the LLM
+COMMAND_SET|mode|CHOOSE_YOUR_OWN_ADVENTURE|#Choose your own adventure mode, it will generate the entire adventure at once
+COMMAND_SET|spatial_organization_method|TREE_BY_GENERATION|#VERTICAL, TREE_SPLIT or TREE_BY_GENERATION
+COMMAND_SET|image_text_overlay|AI Generated|#text drawn at the bottom of images on export
+
+COMMAND_START|twine_start
+:: StoryTitle
+_INSERT_TITLE_
+
+:: StoryData
+{
+  "ifid": "_INSERT_GUID_",
+  "format": "Harlowe",
+  "format-version": "3.3.9",
+  "start": "ADVENTURE-START",
+  "zoom": 1
+}
+COMMAND_END
+
+COMMAND_START|twine_passage
+:: _PASSAGE_NAME_ {}
+<div class="content-container"><div class="image-container">
+_INSERT_IMAGES_</div><div class="dialog">
+_INSERT_TEXT_
+_INSERT_CHOICES_
+</div></div>
+COMMAND_END
+
+COMMAND_START|twine_image
+<img src="_IMAGE_FILENAME_">
+COMMAND_END
+
+COMMAND_START|twine_end
+:: StoryStylesheet [stylesheet]
+/* Custom inline style for dialogue text */
+
+.dialogue {
+    color: #cfd700; /* Brighter yellow */
+    font-style: italic; /* Italicize the text */
+    font-weight: bold; /* Bold text */
+    display: inline; /* Keep it inline */
+}
+
+/* Remove any unwanted block artifacts */
+.dialogue::before {
+    content: "";
+    display: none; /* Ensures no extra content is added before the dialogue */
+}
+
+/* General passage text styling */
+tw-passage {
+    color: #f5f5f5; /* Warm white text color for better contrast on dark backgrounds */
+    font-family: 'Georgia', serif; /* Classic serif font for a storybook feel */
+    line-height: 1.6em; /* Improved readability */
+}
+
+/* Styling for choice links */
+tw-link, .enchantment-link {
+    color: #26a69a; /* Rich Teal for choice links */
+    text-decoration: none; /* Remove underline */
+    border-bottom: 2px solid #26a69a; /* Underline effect using border */
+    padding-bottom: 2px; /* Space between text and underline */
+    transition: color 0.2s ease, border-bottom-color 0.2s ease; /* Smooth transition for hover effects */
+}
+
+tw-link:hover, .enchantment-link:hover {
+    color: #00796b; /* Darker Teal on hover */
+    border-bottom-color: #00796b; /* Matching underline color on hover */
+}
+
+/* General styling */
+.content-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1em; /* Slightly larger gap for better separation */
+}
+
+.image-container img {
+  max-width: 100%;
+  height: auto;
+  transition: max-width 0.2s ease;
+  padding: 2% 2% 2% 2%;
+}
+
+/* Mobile-specific styling */
+@media (min-width: 1px) {
+  tw-story {
+   padding: 0% 5% 0% 15%;
+   background-color: #000000; 
+   color: #f5f5f5; /* Ensures text remains visible */
+  }
+}
+
+@media (min-width: 1200px) 
+{
+  .content-container 
+  {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+
+  .dialog {
+    flex: 1;
+    order: 1; /* Dialog on the left */
+  }
+
+  .image-container {
+    flex-basis: 50%; /* Adjust this value as needed */
+    order: 2; /* Image on the right */
+    text-align: right;
+  }
+
+  .image-container img {
+    max-width: 100%;
+    height: auto;
+  }
+}
+COMMAND_END
+#if there are no choices, let's add a button to start over as pressing F5 to reload won't actually do it
+COMMAND_START|twine_text_if_no_choices
+(link:"Start Over")[(goto:"ADVENTURE-START")]
+COMMAND_END
