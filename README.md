@@ -7,11 +7,13 @@ License:  BSD style attribution, see LICENSE.md
 <a href="Media/ai_tools_ai_guide.jpg"><img align="top" src="Media/ai_tools_ai_guide.jpg"></a>
 </p>
 
-# Download the latest [AI Tools Client (Windows, 56 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip)
+# Download the latest [AI Tools Client (Windows, 62 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip)
 
 To use this, you'll need to connect to something that can generate images, and hopefully an LLM too.  A single OpenAI key is enough to do a lot, you can also mix and match by connecting to local or remote A1111 and ComfyUI servers as well as Text Generation WebUI and TabbyAPI servers for LLMs.
 
 Note:  Instead of A1111, you can use [Seth's modified version](https://github.com/SethRobinson/aitools_server) that has a few special features for use with this (like background removal which is used in the Paintball game test).
+
+https://github.com/user-attachments/assets/a4d0f2db-79f6-46f1-8229-28e93e8053bc
 
 # Features #
 
