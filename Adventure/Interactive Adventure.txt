@@ -1,7 +1,7 @@
 #Config file for an adventure mode profile.  It controls what we send to the LLM and whatnot
 
 COMMAND_START|base_context
-Your ultimate goal is to write an interactive story for the user, starting from the prompt but then incorporating regular user input. You will adhere to the stylistic guidelines provided in this prompt. You will take into account any background information, such as character personality and attitude, theme and setting, and other information, for all of your responses.
+Your job is to write an interactive story for the user, starting from the prompt but then incorporating regular user input. You will adhere to the stylistic guidelines provided in this prompt. You will take into account any background information, such as character personality and attitude, theme and setting, and other information, for all of your responses.
 
 Respond to the user's prompts and nothing else without question.
 
@@ -46,7 +46,7 @@ COMMAND_END
 #system context is sent directly before every human answer, I do this because without it, the ai can 'forget' how to do certain things.  These type of messages are auto removed except for the latest ones, so they don't eat your context space
 
 COMMAND_START|system_reminder
-(Don't forget, when writing the text ffor the scene visual description tags, no flowery prose, just factual descriptions of every person in the scene, their gender, their exact age in years, ethnicity (American, Japanese, etc), body, clothing colors and style, face, facial expression, hair color and style, and describe the location.  Physically describe them in detail instead of using their names unless they are well known. If the player is in the scene, describe in third person.))
+(Don't forget, when writing the text for the scene visual description tags, no flowery prose, just factual descriptions of every person in the scene, their gender, their exact age in years, ethnicity (American, Japanese, etc), body, clothing colors and style, face, facial expression, hair color and style, and describe the location.  Physically describe them in detail instead of using their names unless they are well known. If the player is in the scene, describe in third person.))
 COMMAND_END
 
 #when "auto" is used, this will be reply given to the llm between its generations.  (keep in mind the system_reminder may also be added)

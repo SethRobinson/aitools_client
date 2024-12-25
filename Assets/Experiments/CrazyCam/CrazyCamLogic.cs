@@ -362,7 +362,6 @@ public class CrazyCamLogic : MonoBehaviour
     {
         if (m_renderingIsPaused) return;
 
-
         //if m_autoSaveImages is checked, save the image
         if (m_autoSaveImages.isOn)
         {

@@ -56,6 +56,8 @@ public class PicMain : MonoBehaviour
     public PicInterrogate m_picInterrogateScript;
     public PicGenerateMask m_picGenerateMaskScript;
     public PicInfoPanel m_infoPanelScript;
+    public PicMovie m_picMovie;
+
     bool m_bNeedsToUpdateInfoPanel = false;
 
     public Action<GameObject> m_onFinishedRenderingCallback;
@@ -184,14 +186,16 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
     public void SafelyKillThisPic()
     {
+        KillGPUProcesses();
         m_isDestroyed = true;
         GameObject.Destroy(gameObject);
     }
 
     public void SafelyKillThisPicAndDeleteHoles()
     {
-
+        KillGPUProcesses();
         m_isDestroyed = true;
+        
         GameObject.Destroy(gameObject);
        
         /*
@@ -219,7 +223,10 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         return false;
     }
 
-
+    public bool IsMovie()
+    {
+        return m_picMovie.IsMovie();
+    }
 
     public void SetVisible(bool bNew)
     {
@@ -230,6 +237,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     }
     public void KillGPUProcesses()
     {
+        
         if (m_picTextToImageScript.IsBusy()) m_picTextToImageScript.SetForceFinish(true);
         if (m_picInpaintScript.IsBusy()) m_picInpaintScript.SetForceFinish(true);
         if (m_picUpscaleScript.IsBusy()) m_picUpscaleScript.SetForceFinish(true);
@@ -916,6 +924,12 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         {
             SaveFile("", "/"+Config._saveDirName, null, "", true);
         }
+
+        
+        if (GameLogic.Get().GetAnyAutoSave())
+        {
+            m_picMovie.SaveMovie("/" + Config._saveDirName);
+        }
     }
 
     //save to a random filename if passed a blank filename
@@ -1025,7 +1039,15 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
     public void SaveFileNoReturn2()
     {
-        SaveFile("", "/" + Config._saveDirName);
+
+        if (IsMovie())
+        {
+            m_picMovie.SaveMovie("/" + Config._saveDirName);
+        }
+        else
+        {
+            SaveFile("", "/" + Config._saveDirName);
+        }
     }
 
     public void SaveFilePNG()

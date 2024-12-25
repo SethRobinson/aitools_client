@@ -1,36 +1,7 @@
 {
-  "6": {
-    "inputs": {
-      "text": "<AITOOLS_PROMPT>",
-      "clip": [
-        "31",
-        1
-      ]
-    },
-    "class_type": "CLIPTextEncode",
-    "_meta": {
-      "title": "CLIP Text Encode (Positive Prompt)"
-    }
-  },
-  "8": {
-    "inputs": {
-      "samples": [
-        "13",
-        0
-      ],
-      "vae": [
-        "31",
-        2
-      ]
-    },
-    "class_type": "VAEDecode",
-    "_meta": {
-      "title": "VAE Decode"
-    }
-  },
   "10": {
     "inputs": {
-      "vae_name": "ae.sft"
+      "vae_name": "hunyuan_video_vae_bf16.safetensors"
     },
     "class_type": "VAELoader",
     "_meta": {
@@ -39,23 +10,13 @@
   },
   "11": {
     "inputs": {
-      "clip_name1": "t5xxl_fp16.safetensors",
-      "clip_name2": "clip_l.safetensors",
-      "type": "flux"
+      "clip_name1": "clip_l.safetensors",
+      "clip_name2": "llava_llama3_fp8_scaled.safetensors",
+      "type": "hunyuan_video"
     },
     "class_type": "DualCLIPLoader",
     "_meta": {
       "title": "DualCLIPLoader"
-    }
-  },
-  "12": {
-    "inputs": {
-      "unet_name": "flux1-dev.sft",
-      "weight_dtype": "default"
-    },
-    "class_type": "UNETLoader",
-    "_meta": {
-      "title": "Load Diffusion Model"
     }
   },
   "13": {
@@ -77,7 +38,7 @@
         0
       ],
       "latent_image": [
-        "27",
+        "45",
         0
       ]
     },
@@ -101,7 +62,7 @@
       "steps": 20,
       "denoise": 1,
       "model": [
-        "31",
+        "78",
         0
       ]
     },
@@ -113,7 +74,7 @@
   "22": {
     "inputs": {
       "model": [
-        "31",
+        "67",
         0
       ],
       "conditioning": [
@@ -128,7 +89,7 @@
   },
   "25": {
     "inputs": {
-      "noise_seed": 548245905984012
+      "noise_seed": 256474980045411
     },
     "class_type": "RandomNoise",
     "_meta": {
@@ -137,9 +98,9 @@
   },
   "26": {
     "inputs": {
-      "guidance": 3.5,
+      "guidance": 6,
       "conditioning": [
-        "6",
+        "44",
         0
       ]
     },
@@ -148,36 +109,91 @@
       "title": "FluxGuidance"
     }
   },
-  "27": {
+  "44": {
     "inputs": {
-      "width": 1024,
-      "height": 1024,
-      "batch_size": 1
-    },
-    "class_type": "EmptySD3LatentImage",
-    "_meta": {
-      "title": "EmptySD3LatentImage"
-    }
-  },
-  "30": {
-    "inputs": {
-      "images": [
-        "8",
+      "text": "<AITOOLS_PROMPT>",
+      "clip": [
+        "11",
         0
       ]
     },
-    "class_type": "PreviewImage",
+    "class_type": "CLIPTextEncode",
     "_meta": {
-      "title": "Preview Image"
+      "title": "CLIP Text Encode (Positive Prompt)"
     }
   },
-  "31": {
+  "45": {
     "inputs": {
-      "ckpt_name": "nf4Flux1_nf4Bnb.safetensors"
+      "width": 848,
+      "height": 480,
+      "length": 77,
+      "batch_size": 1
     },
-    "class_type": "CheckpointLoaderNF4",
+    "class_type": "EmptyHunyuanLatentVideo",
     "_meta": {
-      "title": "CheckpointLoaderNF4"
+      "title": "EmptyHunyuanLatentVideo"
+    }
+  },
+  "67": {
+    "inputs": {
+      "shift": 7,
+      "model": [
+        "78",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingSD3",
+    "_meta": {
+      "title": "ModelSamplingSD3"
+    }
+  },
+  "73": {
+    "inputs": {
+      "tile_size": 256,
+      "overlap": 64,
+      "samples": [
+        "13",
+        0
+      ],
+      "vae": [
+        "10",
+        0
+      ]
+    },
+    "class_type": "VAEDecodeTiled",
+    "_meta": {
+      "title": "VAE Decode (Tiled)"
+    }
+  },
+  "78": {
+    "inputs": {
+      "unet_name": "hunyuan-video-t2v-720p-Q5_K_M.gguf"
+    },
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {
+      "title": "Unet Loader (GGUF)"
+    }
+  },
+  "80": {
+    "inputs": {
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "AnimateDiff",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": false,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": false,
+      "images": [
+        "73",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
     }
   }
 }

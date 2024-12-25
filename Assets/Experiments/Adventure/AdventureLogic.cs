@@ -174,7 +174,7 @@ public class AdventureLogic : MonoBehaviour
     string m_json; //store this for requests so we don't have to compute it each time
     static AdventureLogic _this = null;
     Color m_oldBGColor;
-    string m_assistantName = "assistant";
+  
     public GameObject _adventureTextPrefab;
     public GameObject m_notepadTemplatePrefab; //(attach to RTNotepad prefab)
     bool m_ranFirstTimeStuff;
@@ -189,10 +189,13 @@ public class AdventureLogic : MonoBehaviour
     public TMP_Dropdown m_profileDropdown;
     TextFileConfigExtractor extractor = new TextFileConfigExtractor();
     public TMP_InputField m_forcedComfyUIPicsInputField;
+    public TMP_InputField m_stopAfterInputField;
+
     public TMP_InputField m_reminderCountInputField;
     public TMP_InputField m_LLMAtOnceInputField;
     public TMP_Dropdown m_llmSelectionDropdown;
     public TMP_Dropdown m_rendererSelectionDropdown;
+    int m_totalLLMGenerationCounter = 0;
 
     public AdventureMode GetMode()
     {
@@ -213,6 +216,7 @@ public class AdventureLogic : MonoBehaviour
         return int.TryParse(m_LLMAtOnceInputField.text, out int result) ? result : 0;
     }
     public Toggle _bUseGlobalPrompts;
+
     bool _bForceUniquePassageNames = false;
     int m_generationsSinceLastReminder = 0;
     public bool GetForceUniquePassageNames() { return _bForceUniquePassageNames; }
@@ -236,14 +240,11 @@ public class AdventureLogic : MonoBehaviour
 
     public void Start()
     {
-        m_globalPromptManager = new GPTPromptManager();
+        m_globalPromptManager = gameObject.AddComponent<GPTPromptManager>();
         PopulateProfilesDropDown();
         Config.Get().PopulateRendererDropDown(m_rendererSelectionDropdown);
     }
-    public string GetAssistantName()
-    {
-        return m_assistantName;
-    }
+    
     public bool IsActive()
     {
         return _bIsActive;
@@ -345,6 +346,7 @@ public class AdventureLogic : MonoBehaviour
         //clear all pics
         GameLogic.Get().KillAllPics(true);
         m_globalPromptManager.Reset();
+        m_totalLLMGenerationCounter = 0;
         _generationInfo = new List<GenerationInfo>();
         LoadAndRunAdventure();
     }
@@ -368,7 +370,7 @@ public class AdventureLogic : MonoBehaviour
 
         AdventureText aText = AddText(extractor.StartMsg);
         aText.SetDontSendTextToLLM(true);
-        aText.GetPromptManager().AddInteraction("system", extractor.BaseContext);
+        aText.GetPromptManager().AddInteraction(Config.Get().GetAISystemWord(), extractor.BaseContext);
         //aText.GetPromptManager().AddInteraction(m_assistantName, extractor.StartMsg);
         m_generationsSinceLastReminder = 0;
         m_globalPromptManager.CloneFrom(aText.GetPromptManager());
@@ -482,6 +484,11 @@ public class AdventureLogic : MonoBehaviour
         return int.TryParse(m_forcedComfyUIPicsInputField.text, out int result) ? result : 0;
     }
 
+    public int GetStopAfter()
+    {
+        return int.TryParse(m_stopAfterInputField.text, out int result) ? result : 0;
+    }
+
     public RTRendererType GetRenderer()
     {
         return (RTRendererType)m_rendererSelectionDropdown.value;
@@ -538,9 +545,22 @@ public class AdventureLogic : MonoBehaviour
         return text;
     }
 
+    public void ResetGenerationCounter()
+    {
+        m_totalLLMGenerationCounter = 0;
+    }
     public AdventureText AddTextAndGetReply(string text, AdventureText textScript, bool bDontCreateReplyBox = false)
     {
+        m_totalLLMGenerationCounter++;
 
+        if (m_totalLLMGenerationCounter >= GetStopAfter() && GetStopAfter() > 0)
+        {
+            RTQuickMessageManager.Get().ShowMessage("Stopped after " + GetStopAfter() + " generations.");
+            //set the max llms and renders to 0
+            m_LLMAtOnceInputField.text = "0";
+            m_forcedComfyUIPicsInputField.text = "0";
+            m_totalLLMGenerationCounter = 0;
+        }
         if (_bUseGlobalPrompts.isOn)
         {
             return AddTextAndGetReplyGlobal(text, textScript, bDontCreateReplyBox);
@@ -569,7 +589,7 @@ public class AdventureLogic : MonoBehaviour
         {
             //we are an AI response, so 
             text = AddReminderIfNeeded(text);
-            Debug.Log("Text submitted: " + text);
+            //Debug.Log("Text submitted: " + text);
             Vector3 vReplyBoxPos = textScript.GetBottomWorldPosition();
 
             if (bDontCreateReplyBox == false)
@@ -643,7 +663,7 @@ public class AdventureLogic : MonoBehaviour
             //we are an AI response, so 
             m_globalPromptManager.AddInteraction("user", text);
 
-            Debug.Log("Text submitted: " + text);
+           // Debug.Log("Text submitted: " + text);
             Vector3 vReplyBoxPos = textScript.GetBottomWorldPosition();
 
             if (bDontCreateReplyBox == false)

@@ -46,3 +46,7 @@ dalle_last_error_returned.json
 dalle3_json_received.json
 dalle3_json_sent.json
 change_model_server_request.txt
+AIGuide/TEST_*
+ComfyUI/TEST_*
+Adventure/TEST_*
+crap.png

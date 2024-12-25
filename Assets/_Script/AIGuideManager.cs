@@ -25,6 +25,7 @@ public class AIGuideManager : MonoBehaviour
         public int m_textFontID;
         public string m_forcedFilename;
         public string m_forcedFilenameJPG;
+        public string m_forcedFileNameBase;
     }
 
     public enum ResponseTextType
@@ -37,7 +38,7 @@ public class AIGuideManager : MonoBehaviour
     static AIGuideManager _this;
     public CanvasGroup _canvasGroup;
     float _aiTemperature = 1.0f; //higher is more creative and chaotic
-
+    int m_llmGenerationCounter = 0;
     //keep track of the start button so we can change the text on it later
     public Button m_startButton;
     public TMP_InputField _inputPrompt;
@@ -45,6 +46,7 @@ public class AIGuideManager : MonoBehaviour
     public TMP_InputField _inputPromptOutput;
     public TMP_InputField _autoContinueTextInput;
     public Scrollbar _inputPromptOutputScrollRect;
+    public TMP_InputField _stopAfterTextInput;
 
     public OpenAITextCompletionManager _openAITextCompletionManager;
     public TexGenWebUITextCompletionManager _texGenWebUICompletionManager;
@@ -86,13 +88,11 @@ public class AIGuideManager : MonoBehaviour
     public string m_prompt_used_on_last_send;
     public TMP_InputField m_textToPrependToGeneration;
     public Toggle m_prependPromptCheckbox;
-    public Toggle m_streamCheckbox;
     public Toggle m_autoModeCheckbox;
     public Toggle m_autoSave;
     public Toggle m_autoSaveJPG;
     int _curPicIdx = 0;
 
-    bool m_bRenderASAP = false;
     bool m_bIsPossibleToContinue = false;
     bool m_bTalkingToLLM = false;
     string m_imageFileNameBase;
@@ -170,7 +170,7 @@ public class AIGuideManager : MonoBehaviour
         _inputPromptOutput.text += "\n\n";
         accumulatedText += "\n\n";
         m_totalPromptReceived += "\n\n";
-
+        m_llmGenerationCounter++;
         //actually, because it's so damn slow, let's just reset the text.  We won't be changing
         //the promptManager, so the LLM will still be getting it all, it's more an issue with my
         //slow text scanning
@@ -188,16 +188,38 @@ public class AIGuideManager : MonoBehaviour
         SpawnLLMRequest(lines);
         SetStartTextOnStartButton(false);
         RTQuickMessageManager.Get().ShowMessage("Contacting LLM...", 1);
+
+        //Convert _stopAfterTextInput to an int
+        int stopAfter;
+        bool parseSuccess = int.TryParse(_stopAfterTextInput.text, out stopAfter);
+        if (parseSuccess)
+        {
+            if (m_llmGenerationCounter >= stopAfter)
+            {
+                //we better stop after this one
+                m_bIsPossibleToContinue = false;
+                m_autoModeCheckbox.isOn = false;
+
+            }
+        }
+        else
+        {
+            // Handle parse failure
+            RTConsole.Log("Error:  You need to set the stop after to something valid");
+            GameLogic.Get().ShowConsole(true);
+            m_bIsPossibleToContinue = false;
+        }
+        
     }
 
     public void SpawnLLMRequest(Queue<GTPChatLine> lines)
     {
         if (m_llmSelectionDropdown.value == (int)LLM_Type.OpenAI_API)
         {
-            string json = _openAITextCompletionManager.BuildChatCompleteJSON(lines, m_max_tokens, _aiTemperature, Config.Get().GetOpenAI_APIModel(), m_streamCheckbox.isOn);
+            string json = _openAITextCompletionManager.BuildChatCompleteJSON(lines, m_max_tokens, _aiTemperature, Config.Get().GetOpenAI_APIModel(), true);
             RTDB db = new RTDB();
             RTConsole.Log("Contacting GPT4 at " + Config.Get()._openai_gpt4_endpoint + " with " + json.Length + " bytes...");
-            _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnGTP4CompletedCallback, db, Config.Get().GetOpenAI_APIKey(), Config.Get()._openai_gpt4_endpoint, OnStreamingTextCallback, m_streamCheckbox.isOn);
+            _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnGTP4CompletedCallback, db, Config.Get().GetOpenAI_APIKey(), Config.Get()._openai_gpt4_endpoint, OnStreamingTextCallback, true);
         }
 
         if (m_llmSelectionDropdown.value == (int)LLM_Type.GenericLLM_API)
@@ -205,10 +227,10 @@ public class AIGuideManager : MonoBehaviour
             Debug.Log("Contacting TexGen WebUI asking for chat style response at " + Config.Get()._texgen_webui_address); ;
 
 
-            string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, m_max_tokens, _aiTemperature, "chat", m_streamCheckbox.isOn);
+            string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, m_max_tokens, _aiTemperature, "chat", true);
 
             RTDB db = new RTDB();
-            _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, Config.Get()._texgen_webui_address, "/v1/chat/completions", OnStreamingTextCallback, m_streamCheckbox.isOn,
+            _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, Config.Get()._texgen_webui_address, "/v1/chat/completions", OnStreamingTextCallback,true,
                 Config.Get()._texgen_webui_APIKey);
         }
 
@@ -216,11 +238,11 @@ public class AIGuideManager : MonoBehaviour
         {
             Debug.Log("Contacting TexGen WebUI asking for chat style response at " + Config.Get().GetAnthropicAI_APIEndpoint()); ;
 
-            string json = _anthropicAITextCompletionManager.BuildChatCompleteJSON(lines, m_max_tokens, _aiTemperature, Config.Get().GetAnthropicAI_APIModel(), m_streamCheckbox.isOn);
+            string json = _anthropicAITextCompletionManager.BuildChatCompleteJSON(lines, m_max_tokens, _aiTemperature, Config.Get().GetAnthropicAI_APIModel(), true);
 
             RTDB db = new RTDB();
             _anthropicAITextCompletionManager.SpawnChatCompletionRequest(json, OnTexGenCompletedCallback, db, Config.Get().GetAnthropicAI_APIKey(), Config.Get().GetAnthropicAI_APIEndpoint(), OnStreamingTextCallback,
-                m_streamCheckbox.isOn);
+                true);
         }
 
         m_bTalkingToLLM = true;
@@ -246,8 +268,7 @@ public class AIGuideManager : MonoBehaviour
 
         if (IsRequestActive())
         {
-            if (m_streamCheckbox.isOn)
-            {
+           
                 _texGenWebUICompletionManager.CancelCurrentRequest();
                 _openAITextCompletionManager.CancelCurrentRequest();
                 _anthropicAITextCompletionManager.CancelCurrentRequest();
@@ -256,13 +277,7 @@ public class AIGuideManager : MonoBehaviour
 
                 //Set text on m_startButton back to Start
                 SetStartTextOnStartButton(true);
-
-            }
-            else
-            {
-                //show a popup unity message that says "Canceling only works when streaming is check-marked"
-                RTQuickMessageManager.Get().ShowMessage("Canceling only works when streaming is check-marked", 5);
-            }
+                m_llmGenerationCounter = 0;
             return;
         }
 
@@ -292,7 +307,7 @@ public class AIGuideManager : MonoBehaviour
         {
             //this counts as a new generation
             _promptManager.Reset();
-
+            m_llmGenerationCounter = 0;
             _inputPromptOutput.text = "";
         }
 
@@ -322,7 +337,15 @@ public class AIGuideManager : MonoBehaviour
             }
         }
 
+        _promptManager.SetSystemName(Config.Get().GetAISystemWord());
+        
         _promptManager.SetBaseSystemPrompt(_inputPrompt.text);
+        //_promptManager.AddInteraction("assistant", "I will start without any extra text explaining or verifying.  Are you ready?");
+
+        //let's add a user prompt too, some models require it
+        _promptManager.AddInteraction("user", "Start now.");
+
+
         Queue<GTPChatLine> lines = _promptManager.BuildPromptChat();
 
         SpawnLLMRequest(lines);
@@ -332,7 +355,7 @@ public class AIGuideManager : MonoBehaviour
 
         SetStartTextOnStartButton(false);
 
-        if (m_streamCheckbox.isOn)
+        if (true)
         {
             //_inputPromptOutput.text = "";
             _inputPromptOutput.text += m_textToPrependToGeneration.text;
@@ -352,7 +375,6 @@ public class AIGuideManager : MonoBehaviour
         RTQuickMessageManager.Get().ShowMessage("Contacting LLM...", 1);
         SetStatus("Sent request to LLM, waiting for reply", true);
     }
-
 
     public System.Collections.IEnumerator AddPicture(string text, string imagePrompt, string title, int idx, RTRendererType requestedRender)
     {
@@ -410,6 +432,10 @@ public class AIGuideManager : MonoBehaviour
             if (m_autoSaveJPG.isOn)
                 picMain.m_aiPassedInfo.m_forcedFilenameJPG = m_imageFileNameBase + idxString + ".jpg";
 
+            if (m_autoSave.isOn || m_autoSaveJPG.isOn)
+            {
+                picMain.m_aiPassedInfo.m_forcedFileNameBase = m_imageFileNameBase + idxString;
+            }
         }
 
         //see if m_AddBordersCheckbox has been checked by the user
@@ -496,8 +522,6 @@ public class AIGuideManager : MonoBehaviour
         string text = "";
         string imagePrompt = ""; // Initialize imagePrompt to avoid an uninitialized variable error
         string title = "";
-
-
 
         string forceKey = "";
 
@@ -609,7 +633,6 @@ public class AIGuideManager : MonoBehaviour
         if (m_autoSave.isOn || m_autoSaveJPG.isOn)
         {
             SetupRandomAutoSaveFolder();
-
         }
         else
         {
@@ -627,7 +650,6 @@ public class AIGuideManager : MonoBehaviour
         else
         {
             //using json, gp4 is good at this
-
             //StartCoroutine(ProcessJSONFile());
         }
 
@@ -638,10 +660,24 @@ public class AIGuideManager : MonoBehaviour
         PicMain picMain = entity.GetComponent<PicMain>();
         picMain.m_pic.sprite.texture.filterMode = FilterMode.Point;
     }
-
+    public bool IsSaving()
+    {
+        return m_autoSave.isOn || m_autoSaveJPG.isOn;
+    }
     public void OnSaveIfNeeded(GameObject entity)
     {
         PicMain picMain = entity.GetComponent<PicMain>();
+
+        if (IsSaving() && picMain.IsMovie())
+        {
+            if (!m_bCreatedRandomAutoSaveFolder)
+            {
+                SetupRandomAutoSaveFolder();
+            }
+
+            picMain.m_picMovie.SaveMovieWithNewFilename(picMain.m_aiPassedInfo.m_forcedFileNameBase);
+        }
+        
         if (picMain.m_aiPassedInfo.m_forcedFilename != null && picMain.m_aiPassedInfo.m_forcedFilename.Length > 0)
         {
             picMain.AddTextLabelToImage(m_extractor.ImageTextOverlay);
@@ -821,7 +857,7 @@ public class AIGuideManager : MonoBehaviour
             Debug.Log(reply);
         }
 
-        SetStatus("Success, got reply. " + m_statusStopMessage, false);
+        SetStatus("Generated "+ m_llmGenerationCounter+" "+ m_statusStopMessage, false);
         //let's add our original prompt to it, I assume that's what we want
         GenericProcessingAfterGettingText(streamedText);
 
@@ -880,19 +916,14 @@ public class AIGuideManager : MonoBehaviour
             File.WriteAllText(path, _inputPromptOutput.text);
         }
 
-        if (m_autoModeCheckbox.isOn)
-        {
-            m_bRenderASAP = true;
-        }
-
     }
+    
     void GenericProcessingAfterGettingText(string streamedText)
     {
         m_bIsPossibleToContinue = true;
-
         _promptManager.AddInteraction("assistant", streamedText);
-
     }
+
     void OnTexGenCompletedCallback(RTDB db, JSONObject jsonNode, string streamedText)
     {
         m_bTalkingToLLM = false;
@@ -935,7 +966,9 @@ public class AIGuideManager : MonoBehaviour
         }
 
         //_inputPromptOutput.text += reply;
-        SetStatus("Success, got reply. " + m_statusStopMessage, false);
+        //SetStatus("Success, got reply. " + m_statusStopMessage, false);
+        SetStatus("Generated " + m_llmGenerationCounter + " " + m_statusStopMessage, false);
+
         GenericProcessingAfterGettingText(streamedText);
         //ModifyPromptIfNeeded();
     }
@@ -1196,12 +1229,11 @@ public class AIGuideManager : MonoBehaviour
         {
             if (m_autoModeCheckbox.isOn)
             {
+
+               
                 OnLLMContinueButton();
             }
-            else
-            {
-                m_bRenderASAP = false;
-            }
+            
         }
 
 

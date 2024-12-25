@@ -5,10 +5,13 @@ using System;
 using SimpleJSON;
 using System.IO;
 using System.Globalization;
+using System.Collections.Generic;
+using System.Net.WebSockets;
+using System.Threading;
 
 public class PicTextToImage : MonoBehaviour
 {
-   
+
     float startTime;
     string m_prompt = null;
     string m_negativePrompt = null;
@@ -19,19 +22,75 @@ public class PicTextToImage : MonoBehaviour
     bool m_bIsGenerating;
     int m_gpu;
     public PicMain m_picScript;
-
-    string m_comfyUIPromptID;
+    private int m_totalComfySteps = 0;
     
+    string m_additionalMessage;
+    string m_comfyUIPromptID;
+    private ClientWebSocket m_ws;
+
+    private CancellationTokenSource m_cancellationTokenSource;
     public void SetForceFinish(bool bNew)
     {
         if (bNew && m_bIsGenerating)
         {
-            m_picScript.SetStatusMessage("(killing process)");
+            m_picScript.SetStatusMessage("(cancelling...)");
             m_picScript.ClearRenderingCallbacks();
-             m_gpu = -1; //invalid
+
+            if (gameObject.activeInHierarchy)
+            {
+                // If the object is still active, use the coroutine for smooth cleanup
+                StartCoroutine(CancelRender());
+            }
+            else
+            {
+                // If the object is being destroyed, use immediate cancellation
+                CancelRenderImmediate();
+            }
         }
-        
     }
+    private void CancelRenderImmediate()
+    {
+        if (!m_bIsGenerating || m_gpu == -1)
+            return;
+
+        var gpuInfo = Config.Get().GetGPUInfo(m_gpu);
+        string url = gpuInfo.remoteURL;
+
+        // Send interrupt request synchronously
+        using (var interruptRequest = new UnityWebRequest(url + "/interrupt", "POST"))
+        {
+            interruptRequest.SendWebRequest();
+        }
+
+        // If we have a prompt ID, try to remove it from queue
+        if (!string.IsNullOrEmpty(m_comfyUIPromptID))
+        {
+            string json = JsonUtility.ToJson(new { delete = new[] { m_comfyUIPromptID } });
+
+            using (var queueRequest = UnityWebRequest.PostWwwForm(url + "/queue", "POST"))
+            {
+                byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
+                queueRequest.uploadHandler = new UploadHandlerRaw(bodyRaw);
+                queueRequest.SetRequestHeader("Content-Type", "application/json");
+                queueRequest.SendWebRequest();
+            }
+        }
+
+        // Close the websocket connection if it exists
+        CloseWebSocket();
+
+        // Clean up state
+        if (Config.Get().IsValidGPU(m_gpu))
+        {
+            Config.Get().SetGPUBusy(m_gpu, false);
+        }
+
+        m_bIsGenerating = false;
+        m_picScript.SetStatusMessage("Cancelled");
+        m_comfyUIPromptID = null;
+    }
+
+
     public void SetSeed(long seed)
     {
         m_seed = seed;
@@ -44,7 +103,7 @@ public class PicTextToImage : MonoBehaviour
 
     public void Reset()
     {
-        
+
         m_prompt = null;
         m_negativePrompt = null;
 
@@ -78,7 +137,7 @@ public class PicTextToImage : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
-       
+
     }
 
     // Update is called once per frame
@@ -87,20 +146,30 @@ public class PicTextToImage : MonoBehaviour
         if (m_bIsGenerating)
         {
             float elapsed = Time.realtimeSinceStartup - startTime;
+            string timeString = RTUtil.GetTimeAsMinutesSeconds(elapsed);
+
             if (m_gpu == -1)
             {
-                m_picScript.SetStatusMessage(elapsed.ToString("(killing): 0.0#"));
+                m_picScript.SetStatusMessage($"(killing): {timeString}");
             }
             else
             {
-                m_picScript.SetStatusMessage(elapsed.ToString("Generate: 0.0#"));
+                if (m_additionalMessage != null)
+                {
+                    m_picScript.SetStatusMessage($"Generate: {timeString}\r\n{m_additionalMessage}");
+                }
+                else
+                {
+                    m_picScript.SetStatusMessage($"Generate: {timeString}");
+                }
             }
-        } 
+        }
     }
     private void OnDestroy()
     {
         if (m_bIsGenerating)
         {
+            SetForceFinish(true);
             Config.Get().SetGPUBusy(m_gpu, false);
         }
     }
@@ -109,15 +178,32 @@ public class PicTextToImage : MonoBehaviour
     {
         m_gpu = gpuID;
     }
+
+    private void ExtractTotalSteps(JSONNode jsonNode)
+    {
+        // Look through all nodes for BasicScheduler
+        foreach (var key in jsonNode.Keys)
+        {
+            if (jsonNode[key].IsObject && jsonNode[key]["class_type"] == "BasicScheduler")
+            {
+                if (jsonNode[key]["inputs"].HasKey("steps"))
+                {
+                    m_totalComfySteps = jsonNode[key]["inputs"]["steps"].AsInt;
+                    break;
+                }
+            }
+        }
+    }
+
     public void StartWebRequest(bool rerender)
     {
-      
+
         m_steps = GameLogic.Get().GetSteps();
 
         if (!rerender || m_prompt == null)
         {
             m_seed = GameLogic.Get().GetSeed();
-           
+
             if (m_prompt == null)
             {
                 m_prompt = "";
@@ -127,6 +213,8 @@ public class PicTextToImage : MonoBehaviour
                     if (Config.Get().GetGPUInfo(m_gpu)._requestedRendererType == RTRendererType.ComfyUI)
                     {
                         m_prompt += GameLogic.Get().GetComfyUIPrompt() + " ";
+                        //trim whitespace
+                        m_prompt = m_prompt.Trim();
                     }
                 }
 
@@ -170,14 +258,14 @@ public class PicTextToImage : MonoBehaviour
             return;
         }
         Config.Get().SetGPUBusy(m_gpu, true);
-        
+
         m_bIsGenerating = true;
         startTime = Time.realtimeSinceStartup;
         string url = gpuInfo.remoteURL;
 
         //if a ComfyUI server, we need to use the new API so we'll launch GetRequestComfyUI.  Check with a switch statement
-       
-        if(gpuInfo._requestedRendererType == RTRendererType.ComfyUI)
+
+        if (gpuInfo._requestedRendererType == RTRendererType.ComfyUI)
         {
             StartCoroutine(GetRequestComfyUI(m_prompt, m_prompt_strength, url));
         }
@@ -185,7 +273,7 @@ public class PicTextToImage : MonoBehaviour
         {
             StartCoroutine(GetRequest(m_prompt, m_prompt_strength, url));
         }
-      
+
     }
     public void StartGenerate()
     {
@@ -200,7 +288,7 @@ public class PicTextToImage : MonoBehaviour
         WWWForm form = new WWWForm();
 
         String finalURL;
-       
+
         bool bFixFace = GameLogic.Get().GetFixFaces();
         bool bTiled = GameLogic.Get().GetTiling();
         bool bRemoveBackground = GameLogic.Get().GetRemoveBackground();
@@ -218,15 +306,15 @@ public class PicTextToImage : MonoBehaviour
             safety_filter = $@"""override_settings"": {{""filter_nsfw"": true}},";
         }
 
-       finalURL = url + "/sdapi/v1/txt2img";
-       int steps = GameLogic.Get().GetSteps();
+        finalURL = url + "/sdapi/v1/txt2img";
+        int steps = GameLogic.Get().GetSteps();
 
-      
+
 
         string promptStrString = prompt_strength.ToString("0.0", CultureInfo.InvariantCulture);
-            //using the new API which doesn't support alpha masking the subject
-            string json =
-                 $@"{{
+        //using the new API which doesn't support alpha masking the subject
+        string json =
+             $@"{{
         
             {safety_filter}
             ""prompt"": ""{SimpleJSON.JSONNode.Escape(m_prompt)}"",
@@ -256,13 +344,13 @@ public class PicTextToImage : MonoBehaviour
         //",\"" + GameLogic.Get().GetSamplerName() + "\","  +  + ","
 
 #if !RT_RELEASE
-       // File.WriteAllText("json_to_send.json", json);
+        // File.WriteAllText("json_to_send.json", json);
 #endif
 
         using (var postRequest = UnityWebRequest.PostWwwForm(finalURL, "POST"))
         {
             byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
-            
+
             postRequest.uploadHandler = (UploadHandler)new UploadHandlerRaw(bodyRaw);
 
             postRequest.SetRequestHeader("Content-Type", "application/json");
@@ -306,7 +394,7 @@ public class PicTextToImage : MonoBehaviour
 
                 if (images != null)
                 {
-                    for (int i=0; i<images.Count; i++)
+                    for (int i = 0; i < images.Count; i++)
                     {
                         //convert each to be a pic
                         imgDataBytes = Convert.FromBase64String(images[i]);
@@ -328,11 +416,11 @@ public class PicTextToImage : MonoBehaviour
                 if (texture.LoadImage(imgDataBytes, false))
                 {
                     yield return null; //wait a frame to lesson the jerkiness
-                  
-                   // m_picScript.AddImageUndo();
+
+                    // m_picScript.AddImageUndo();
                     //Debug.Log("Read texture");
                     float biggestSize = Math.Max(texture.width, texture.height);
-                    
+
                     Sprite newSprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f, 0, SpriteMeshType.FullRect);
                     renderer.sprite = newSprite;
                     bSuccess = true;
@@ -366,7 +454,7 @@ public class PicTextToImage : MonoBehaviour
                     Debug.Log("Error reading texture");
                 }
 
-            
+
                 m_picScript.SetStatusMessage("");
 
                 if (bSuccess && Config.Get().IsValidGPU(m_gpu) && m_bIsGenerating)
@@ -389,43 +477,44 @@ public class PicTextToImage : MonoBehaviour
                     {
                         processScript.SetGPU(m_gpu);
                         processScript.StartWebRequest(false);
-                    } else
+                    }
+                    else
                     {
                         if (m_picScript.m_onFinishedRenderingCallback != null)
                             m_picScript.m_onFinishedRenderingCallback.Invoke(gameObject);
                     }
                 }
-              
+
                 m_bIsGenerating = false;
-            
+
             }
 
         }
 
     }
 
-        public string LoadComfyUIJSon(string fName)
-        {
+    public string LoadComfyUIJSon(string fName)
+    {
         string tempString = "";
 
 
-            string finalFileName = "ComfyUI/" + fName;
+        string finalFileName = "ComfyUI/" + fName;
 
-            try
+        try
+        {
+            using (System.IO.StreamReader reader = new System.IO.StreamReader(finalFileName))
             {
-                using (System.IO.StreamReader reader = new System.IO.StreamReader(finalFileName))
-                {
                 tempString = reader.ReadToEnd();
-                }
+            }
 
-            }
-            catch (FileNotFoundException e)
-            {
-                RTConsole.Log("ComfyUI Json prompt " + finalFileName + " not found. (" + e.Message + ")");
-            }
+        }
+        catch (FileNotFoundException e)
+        {
+            RTConsole.Log("ComfyUI Json prompt " + finalFileName + " not found. (" + e.Message + ")");
+        }
 
         return tempString;
-        }
+    }
     bool FindAndReplaceValue(JSONNode node, string keyToFind, JSONNode newValue)
     {
         foreach (var key in node.Keys)
@@ -447,222 +536,470 @@ public class PicTextToImage : MonoBehaviour
         return false;
     }
 
-    void ModifyJsonValue(JSONNode jsonNode, string keyToFind, JSONNode newValue)
+    void ModifyJsonValue(JSONNode jsonNode, string keyToFind, JSONNode newValue, bool bShowWarning)
     {
         // Recursively find and replace the value
         if (!FindAndReplaceValue(jsonNode, keyToFind, newValue))
         {
-            Debug.LogWarning($"{keyToFind} not found in the JSON.");
+            if (bShowWarning)
+            {
+                Debug.LogWarning($"{keyToFind} not found in the JSON.");
+                RTConsole.Log($"{keyToFind} not found in the JSON.");
+            }
         }
     }
 
-        IEnumerator GetRequestComfyUI(String context, double prompt_strength, string url)
+    bool ReplaceInString(ref string str, string find, string replace)
+    {
+        if (str.Contains(find))
         {
+            str = str.Replace(find, replace);
+            return true;
+        }
+        return false;
+    }
+    IEnumerator GetRequestComfyUI(String context, double prompt_strength, string url)
+    {
         m_comfyUIPromptID = "";
 
         WWWForm form = new WWWForm();
 
-            String finalURL;
+        String finalURL;
 
-            int genWidth = GameLogic.Get().GetGenWidth();
-            int genHeight = GameLogic.Get().GetGenHeight();
-            var gpuInf = Config.Get().GetGPUInfo(m_gpu);
+        int genWidth = GameLogic.Get().GetGenWidth();
+        int genHeight = GameLogic.Get().GetGenHeight();
+        var gpuInf = Config.Get().GetGPUInfo(m_gpu);
 
-            finalURL = url + "/prompt";
-            int steps = GameLogic.Get().GetSteps();
+        finalURL = url + "/prompt";
+        int steps = GameLogic.Get().GetSteps();
 
-            string promptStrString = prompt_strength.ToString("0.0", CultureInfo.InvariantCulture);
+        string promptStrString = prompt_strength.ToString("0.0", CultureInfo.InvariantCulture);
 
         //Load the prompt via 
         string comfyUIGraphJSon = LoadComfyUIJSon(GameLogic.Get().GetActiveComfyUIWorkflowFileName());
 
-            JSONNode jsonNode = JSON.Parse(comfyUIGraphJSon);
+        //Replace all instances of <AITOOLS_PROMPT> with m_prompt in comfyUIGraphJSon
+        bool bDidFindPromptTag = ReplaceInString(ref comfyUIGraphJSon, "<AITOOLS_PROMPT>", m_prompt);
 
-            // Modify multiple values
-            ModifyJsonValue(jsonNode, "noise_seed", JSONNode.Parse(m_seed.ToString())); // Example seed value
-            //modify the prompt
-            ModifyJsonValue(jsonNode, "text", m_prompt); // Example seed value
+        JSONNode jsonNode = JSON.Parse(comfyUIGraphJSon);
+        ExtractTotalSteps(jsonNode);
+        // Modify multiple values
+        ModifyJsonValue(jsonNode, "noise_seed", JSONNode.Parse(m_seed.ToString()), true); // Example seed value
 
-            string modifiedJsonString = jsonNode.ToString();
 
-            string json =
-                    $@"{{
+        if (!bDidFindPromptTag)
+        {
+            ModifyJsonValue(jsonNode, "text", m_prompt, true); // override the prompt
+        }
+
+        int frameCountOverRide = ComfyUIPanel.Get().GetFrameCount();
+        if (frameCountOverRide >= 0)
+        {
+            ModifyJsonValue(jsonNode, "length", JSONNode.Parse(frameCountOverRide.ToString()), false); //hunyuan
+            ModifyJsonValue(jsonNode, "frames_number", JSONNode.Parse(frameCountOverRide.ToString()), false); //ltx
+        }
+
+
+        string modifiedJsonString = jsonNode.ToString();
+
+        string json =
+                $@"{{
                 ""prompt"": {modifiedJsonString}
             }}";
 
 
-            RTConsole.Log("ComfyUI: Generating text to image with " + finalURL + " local GPU ID " + m_gpu);
+        RTConsole.Log("ComfyUI: Generating text to image with " + finalURL + " local GPU ID " + m_gpu);
 
-            //",\"" + GameLogic.Get().GetSamplerName() + "\","  +  + ","
+        //",\"" + GameLogic.Get().GetSamplerName() + "\","  +  + ","
 
-    #if !RT_RELEASE
-             File.WriteAllText("comfyui_json_to_send.json", json);
-    #endif
+#if !RT_RELEASE
+        File.WriteAllText("comfyui_json_to_send.json", json);
+#endif
 
-            using (var postRequest = UnityWebRequest.PostWwwForm(finalURL, "POST"))
+        using (var postRequest = UnityWebRequest.PostWwwForm(finalURL, "POST"))
+        {
+            byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
+
+            postRequest.uploadHandler = (UploadHandler)new UploadHandlerRaw(bodyRaw);
+
+            postRequest.SetRequestHeader("Content-Type", "application/json");
+
+            //Start the request with a method instead of the object itself
+            yield return postRequest.SendWebRequest();
+
+            if (postRequest.result != UnityWebRequest.Result.Success)
             {
-                byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
+                string msg = postRequest.error + " (GetRequestComfyUI - " + Config.Get().GetGPUName(m_gpu) + ")";
+                Debug.Log(msg);
+                RTQuickMessageManager.Get().ShowMessage(msg);
+                Debug.Log(postRequest.downloadHandler.text);
 
-                postRequest.uploadHandler = (UploadHandler)new UploadHandlerRaw(bodyRaw);
+                Config.Get().SetGPUBusy(m_gpu, false);
+                m_bIsGenerating = false;
+                m_picScript.SetStatusMessage("Generate error");
+            }
+            else
+            {
+                //Debug.Log("Form upload complete! Downloaded " + postRequest.downloadedBytes); // + postRequest.downloadHandler.text
 
-                postRequest.SetRequestHeader("Content-Type", "application/json");
+                //Ok, we now have to dig into the response and pull out the json image
 
-                //Start the request with a method instead of the object itself
-                yield return postRequest.SendWebRequest();
+                JSONNode rootNode = JSON.Parse(postRequest.downloadHandler.text);
+                yield return null; //wait a free to lesson the jerkiness
 
-                if (postRequest.result != UnityWebRequest.Result.Success)
-                {
-                    string msg = postRequest.error + " (GetRequestComfyUI - " + Config.Get().GetGPUName(m_gpu) + ")";
-                    Debug.Log(msg);
-                    RTQuickMessageManager.Get().ShowMessage(msg);
-                    Debug.Log(postRequest.downloadHandler.text);
-
-                    Config.Get().SetGPUBusy(m_gpu, false);
-                    m_bIsGenerating = false;
-                    m_picScript.SetStatusMessage("Generate error");
-                }
-                else
-                {
-                    //Debug.Log("Form upload complete! Downloaded " + postRequest.downloadedBytes); // + postRequest.downloadHandler.text
-
-                    //Ok, we now have to dig into the response and pull out the json image
-
-                    JSONNode rootNode = JSON.Parse(postRequest.downloadHandler.text);
-                    yield return null; //wait a free to lesson the jerkiness
-    
-                    m_comfyUIPromptID = rootNode["prompt_id"];
-                    Debug.Log("Extracted Prompt ID: " + m_comfyUIPromptID);
+                m_comfyUIPromptID = rootNode["prompt_id"];
+                Debug.Log("Extracted Prompt ID: " + m_comfyUIPromptID);
 
                 //spawn this
                 StartCoroutine(GetComfyUIHistory(url));
-                /*
-                    m_picScript.SetStatusMessage("");
-                    if (Config.Get().IsValidGPU(m_gpu) && m_bIsGenerating)
-                    {
-                        m_bIsGenerating = false;
-
-                        if (!Config.Get().IsGPUBusy(m_gpu))
-                        {
-                            Debug.LogError("Why is GPU not busy?! We were using it!");
-                        }
-                        else
-                        {
-                            Config.Get().SetGPUBusy(m_gpu, false);
-                        }
-                        //dostuff later...
-                        m_bIsGenerating = false;
-                    }
-
-                */
-
-                //Ok, now, if we'd done a websocket, we could just sit here and wait for it
-                //to be done, but websocket support means a third party lib, and you know that's
-                //going to cause headaches whenever you port to something else so.. I'm going to
-                //do it another way, we'll just keep pinging the api until the file is there.
-                //there is also "history" we could ping, but it shows nothing until it's done
-                //anyway, so useless I think.
-
-
-
-            }
+              
 
             }
 
         }
 
+    }
 
+
+    void SetStatusAdditionalMessage(string message)
+    {
+        m_additionalMessage = message;
+    }
+    IEnumerator ConnectWebSocket(string baseUrl)
+    {
+        string wsUrl = baseUrl.Replace("http://", "ws://").Replace("https://", "wss://");
+        wsUrl = wsUrl + "/ws";
+        Uri uri;
+
+        try
+        {
+            m_ws = new ClientWebSocket();
+            m_cancellationTokenSource = new CancellationTokenSource();
+            uri = new Uri(wsUrl);
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"Error initializing WebSocket: {e.Message}");
+            CloseWebSocket();
+            yield break;
+        }
+
+        var connectTask = m_ws.ConnectAsync(uri, m_cancellationTokenSource.Token);
+
+        while (!connectTask.IsCompleted)
+        {
+            if (m_cancellationTokenSource.Token.IsCancellationRequested)
+            {
+                Debug.Log("WebSocket connection cancelled");
+                CloseWebSocket();
+                yield break;
+            }
+            yield return null;
+        }
+
+        // Handle completion states outside the while loop
+        if (connectTask.IsFaulted)
+        {
+            Debug.LogError($"WebSocket connection error: {connectTask.Exception?.GetBaseException().Message}");
+            CloseWebSocket();
+            yield break;
+        }
+
+        if (connectTask.IsCanceled)
+        {
+            Debug.Log("WebSocket connection cancelled during connect");
+            CloseWebSocket();
+            yield break;
+        }
+
+        // Start listening for messages only if we successfully connected
+        if (m_ws.State == WebSocketState.Open)
+        {
+            StartCoroutine(ReceiveLoop());
+        }
+        else
+        {
+            Debug.LogError("WebSocket failed to enter Open state after connection");
+            CloseWebSocket();
+        }
+    }
+
+
+    private IEnumerator ReceiveLoop()
+    {
+        byte[] buffer = new byte[4096];
+
+        while (m_ws != null && m_ws.State == WebSocketState.Open)
+        {
+            // Check cancellation before starting new receive operation
+            if (m_cancellationTokenSource == null || m_cancellationTokenSource.Token.IsCancellationRequested)
+            {
+                break;
+            }
+
+            var segment = new ArraySegment<byte>(buffer);
+            var receiveTask = m_ws.ReceiveAsync(segment, m_cancellationTokenSource.Token);
+
+            while (!receiveTask.IsCompleted)
+            {
+                if (m_ws == null || m_cancellationTokenSource == null ||
+                    m_cancellationTokenSource.Token.IsCancellationRequested ||
+                    m_ws.State != WebSocketState.Open)
+                {
+                    yield break;
+                }
+                yield return null;
+            }
+
+            // Handle the completed task
+            if (receiveTask.IsFaulted)
+            {
+                Debug.LogError($"WebSocket receive error: {receiveTask.Exception?.GetBaseException().Message}");
+                break;
+            }
+
+            if (receiveTask.IsCanceled)
+            {
+                Debug.Log("WebSocket receive cancelled");
+                break;
+            }
+
+            // Process the result
+            var result = receiveTask.Result;
+
+            if (result.MessageType == WebSocketMessageType.Text)
+            {
+                string message = System.Text.Encoding.UTF8.GetString(buffer, 0, result.Count);
+                if (!string.IsNullOrEmpty(message))
+                {
+                    try
+                    {
+                        ProcessWebSocketMessage(message);
+                    }
+                    catch (Exception e)
+                    {
+                        Debug.LogError($"Error processing WebSocket message: {e.Message}");
+                    }
+                }
+            }
+            else if (result.MessageType == WebSocketMessageType.Close)
+            {
+                Debug.Log("WebSocket received close message");
+                break;
+            }
+        }
+
+        // Cleanup
+        if (m_ws != null && m_ws.State == WebSocketState.Open)
+        {
+            CloseWebSocket();
+        }
+    }
+    private void ProcessWebSocketMessage(string message)
+    {
+        if (string.IsNullOrEmpty(message))
+        {
+            return;
+        }
+
+        try
+        {
+            JSONNode data = JSON.Parse(message);
+
+            if (data == null)
+            {
+                Debug.LogWarning("Failed to parse WebSocket message as JSON");
+                return;
+            }
+
+            // Check for progress update events
+            if (data.HasKey("type") && data["type"] == "progress")
+            {
+                if (data.HasKey("data") && data["data"].HasKey("value"))
+                {
+                    float progress = data["data"]["value"].AsFloat;
+                    string progressText = (progress % 1 == 0) ? progress.ToString("F0") : progress.ToString("F1");
+                    SetStatusAdditionalMessage($"Step {progressText} of {m_totalComfySteps}");
+                }
+            }
+            // Also check for execution status
+            else if (data.HasKey("type") && data["type"] == "executing")
+            {
+                if (data.HasKey("data") && data["data"].HasKey("node"))
+                {
+                    string nodeId = data["data"]["node"];
+                    SetStatusAdditionalMessage($"Processing node {nodeId}...");
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"Error processing WebSocket message: {e.Message}");
+        }
+    }
     IEnumerator GetComfyUIHistory(string url)
     {
-        // Construct the final URL with query parameters
-        string finalURL = url + "/history/" + m_comfyUIPromptID;
+        
+        if (m_comfyUIPromptID == null || m_comfyUIPromptID == "")
+        {
+            RTConsole.Log("Bad promptid for some reason, can't continue");
+            yield return false;
+        }
+        string historyURL = url + "/history/" + m_comfyUIPromptID;
 
-        Debug.Log("ComfyUI: Checking history " + finalURL + " local GPU ID " + m_gpu);
+        // First connect to WebSocket for progress
+        yield return StartCoroutine(ConnectWebSocket(url));
 
         while (true)
         {
-            using (UnityWebRequest getRequest = UnityWebRequest.Get(finalURL))
+            // Check history for completion
+            using (UnityWebRequest historyRequest = UnityWebRequest.Get(historyURL))
             {
-                // Start the request
-                yield return getRequest.SendWebRequest();
+                yield return historyRequest.SendWebRequest();
 
-                if (getRequest.result != UnityWebRequest.Result.Success)
+                if (historyRequest.result != UnityWebRequest.Result.Success)
                 {
-                    string msg = getRequest.error + " (GetComfyUIHistory - " + Config.Get().GetGPUName(m_gpu) + ")";
+                    string msg = historyRequest.error + " (GetComfyUIHistory - " + Config.Get().GetGPUName(m_gpu) + ")";
                     Debug.Log(msg);
                     RTQuickMessageManager.Get().ShowMessage(msg);
-                    Debug.Log(getRequest.downloadHandler.text);
+                    Debug.Log(historyRequest.downloadHandler.text);
 
                     Config.Get().SetGPUBusy(m_gpu, false);
                     m_bIsGenerating = false;
                     m_picScript.SetStatusMessage("Generate error");
-                    // Exit the coroutine if there's an error
+
+                    CloseWebSocket();
                     yield break;
                 }
-                else
+
+                JSONNode rootNode = JSON.Parse(historyRequest.downloadHandler.text);
+
+                if (rootNode.Count > 0)
                 {
-                    // Handle the response
-                   // Debug.Log("Got history Downloaded " + getRequest.downloadedBytes);
-                    JSONNode rootNode = JSON.Parse(getRequest.downloadHandler.text);
+                    JSONNode statusNode = rootNode[m_comfyUIPromptID]["status"];
+                    JSONNode outputsNode = rootNode[m_comfyUIPromptID]["outputs"];
 
-                    if (rootNode.Count > 0)
+                    if (statusNode["status_str"] == "success")
                     {
-                        // Extract the required part
-                        JSONNode statusNode = rootNode[m_comfyUIPromptID]["status"];
-                        JSONNode outputsNode = rootNode[m_comfyUIPromptID]["outputs"];
-
-                        // Check if the status is "success"
-                        if (statusNode["status_str"] == "success")
+                        foreach (string key in outputsNode.Keys)
                         {
-                            // Iterate through the outputs to find the one with "images"
-                            foreach (string key in outputsNode.Keys)
+                            JSONNode outputNode = outputsNode[key];
+                            foreach (KeyValuePair<string, JSONNode> node in outputNode)
                             {
-                                JSONNode outputNode = outputsNode[key];
-                                if (outputNode.HasKey("images"))
+                                JSONNode filesNode = node.Value;
+                                foreach (JSONNode file in filesNode)
                                 {
-                                    JSONNode imagesNode = outputNode["images"];
-                                    foreach (JSONNode image in imagesNode)
+                                    string filename = file["filename"];
+                                    string subfolder = file["subfolder"];
+                                    string folderType = file["type"];
+                                    if (filename != null && subfolder != null && folderType != null)
                                     {
-                                        string filename = image["filename"];
-                                        string subfolder = image["subfolder"];
-                                        string folderType = image["type"];
-                                        Debug.Log("Filename: " + filename);
-
-                                        // Start GetComfyUIImageFile coroutine and exit
-                                        StartCoroutine(GetComfyUIImageFile(url, filename, subfolder, folderType));
-                                        yield break;
+                                        string extension = System.IO.Path.GetExtension(filename).ToLower();
+                                        if (extension == ".png" || extension == ".jpg" || extension == ".jpeg" || extension == ".bmp" || extension == ".gif")
+                                        {
+                                            CloseWebSocket();
+                                            StartCoroutine(GetComfyUIImageFile(url, filename, subfolder, folderType));
+                                            yield break;
+                                        }
+                                        else if (extension == ".mp4" || extension == ".avi" || extension == ".mov" || extension == ".webp")
+                                        {
+                                            CloseWebSocket();
+                                            StartCoroutine(GetComfyUIMovieFile(url, filename, subfolder, folderType));
+                                            yield break;
+                                        }
                                     }
                                 }
                             }
                         }
-                        else
+                    }
+                    else if (statusNode["status_str"] == "error")
+                    {
+                        RTQuickMessageManager.Get().ShowMessage("ComfyUI reports a failed render");
+                        if (Config.Get().IsValidGPU(m_gpu) && m_bIsGenerating)
                         {
-                            RTQuickMessageManager.Get().ShowMessage("ComfyUI reports a failed render");
-                            if (Config.Get().IsValidGPU(m_gpu) && m_bIsGenerating)
+                            m_bIsGenerating = false;
+                            if (!Config.Get().IsGPUBusy(m_gpu))
                             {
-                                m_bIsGenerating = false;
-
-                                if (!Config.Get().IsGPUBusy(m_gpu))
-                                {
-                                    Debug.LogError("Why is GPU not busy?! We were using it!");
-                                }
-                                else
-                                {
-                                    Config.Get().SetGPUBusy(m_gpu, false);
-                                }
-                                yield break;
+                                Debug.LogError("Why is GPU not busy?! We were using it!");
                             }
+                            else
+                            {
+                                Config.Get().SetGPUBusy(m_gpu, false);
+                            }
+                            CloseWebSocket();
+                            yield break;
                         }
                     }
-                    else
-                    {
-                        // Nothing here yet, wait for 500 ms and keep polling
-                        yield return new WaitForSeconds(0.5f);
-                    }
                 }
+            }
+
+            yield return new WaitForSeconds(0.5f);
+        }
+    }
+
+    private void CloseWebSocket()
+    {
+        try
+        {
+            if (m_ws != null)
+            {
+                // Cancel any ongoing operations first
+                m_cancellationTokenSource?.Cancel();
+
+                // Only try to close if the connection is still open
+                if (m_ws.State == WebSocketState.Open)
+                {
+                    var closeTask = m_ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "Done", CancellationToken.None);
+                    closeTask.Wait(1000); // Wait up to 1 second for clean closure
+                }
+
+                // Dispose of the websocket
+                m_ws.Dispose();
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"Error closing WebSocket: {e.Message}");
+        }
+        finally
+        {
+            m_ws = null;
+            if (m_cancellationTokenSource != null)
+            {
+                m_cancellationTokenSource.Dispose();
+                m_cancellationTokenSource = null;
             }
         }
     }
 
+    //this deletes the movies from the servers memory, I think there is some kind of bug where as they stack up, the server finally crashes if you don't do this?
+    IEnumerator CleanComfyUITempFiles(string url)
+    {
+        string clearJson = $@"{{""clear"": true}}";
+
+        string clearURL = url + "/history?" + m_comfyUIPromptID;
+        using (var postRequest = UnityWebRequest.PostWwwForm(clearURL, "POST"))
+        {
+            byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(clearJson);
+            postRequest.uploadHandler = (UploadHandler)new UploadHandlerRaw(bodyRaw);
+            postRequest.SetRequestHeader("Content-Type", "application/json");
+            //Start the request with a method instead of the object itself
+            yield return postRequest.SendWebRequest();
+            if (postRequest.result != UnityWebRequest.Result.Success)
+            {
+                string msg = postRequest.error + " (GetComfyUIImageFile -  " + Config.Get().GetGPUName(m_gpu) + ")";
+                Debug.Log(msg);
+                RTQuickMessageManager.Get().ShowMessage(msg);
+                RTConsole.Log(msg);
+
+            }
+            else
+            {
+                //Debug.Log("Form upload complete! Downloaded " + postRequest.downloadedBytes); // + postRequest.downloadHandler.text
+            }
+        }
+
+    }
     IEnumerator GetComfyUIImageFile(string url, string comfyUIfilename, string comfyUIsubfolder,
         string comfyUIfolderType)
     {
@@ -703,8 +1040,8 @@ public class PicTextToImage : MonoBehaviour
                 SpriteRenderer renderer = m_sprite.GetComponent<SpriteRenderer>();
                 Sprite s = renderer.sprite;
 
-                Texture2D texture = new Texture2D(0, 0, TextureFormat.RGBA32, false);
-              
+                Texture2D texture = new Texture2D(8, 8, TextureFormat.RGBA32, false); //0 causes errors now?  Weird
+
                 yield return null; //wait a frame to lesson the jerkiness
 
                 if (texture.LoadImage(getRequest.downloadHandler.data, false))
@@ -737,7 +1074,7 @@ public class PicTextToImage : MonoBehaviour
 
                 if (Config.Get().IsValidGPU(m_gpu) && m_bIsGenerating)
                 {
-               
+
                     if (!Config.Get().IsGPUBusy(m_gpu))
                     {
                         Debug.LogError("Why is GPU not busy?! We were using it!");
@@ -747,17 +1084,162 @@ public class PicTextToImage : MonoBehaviour
                         Config.Get().SetGPUBusy(m_gpu, false);
                     }
 
+                    //we're done, can delete us from ComfyUI, may fix comfyui bug with it crashing after too many generations?
+
 
                     //dostuff later...
                     m_bIsGenerating = false;
 
                     if (m_picScript.m_onFinishedRenderingCallback != null)
                         m_picScript.m_onFinishedRenderingCallback.Invoke(gameObject);
+
+                    StartCoroutine(CleanComfyUITempFiles(url));
+
                 }
 
                 yield return null; // wait a frame to lessen the jerkiness
 
 
+            }
+        }
+    }
+
+    public IEnumerator CancelRender()
+    {
+        if (!m_bIsGenerating || m_gpu == -1)
+            yield break;
+
+        var gpuInfo = Config.Get().GetGPUInfo(m_gpu);
+        string url = gpuInfo.remoteURL;
+
+        // First send interrupt request
+        using (var interruptRequest = UnityWebRequest.PostWwwForm(url + "/interrupt", ""))
+        {
+            yield return interruptRequest.SendWebRequest();
+
+            if (interruptRequest.result != UnityWebRequest.Result.Success)
+            {
+                Debug.LogError($"Failed to send interrupt request: {interruptRequest.error}");
+            }
+        }
+
+        // If we have a prompt ID, remove it from queue
+        if (!string.IsNullOrEmpty(m_comfyUIPromptID))
+        {
+            string json = JsonUtility.ToJson(new { delete = new[] { m_comfyUIPromptID } });
+
+            using (var queueRequest = UnityWebRequest.PostWwwForm(url + "/queue", "POST"))
+            {
+                byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
+                queueRequest.uploadHandler = new UploadHandlerRaw(bodyRaw);
+                queueRequest.SetRequestHeader("Content-Type", "application/json");
+
+                yield return queueRequest.SendWebRequest();
+
+                if (queueRequest.result != UnityWebRequest.Result.Success)
+                {
+                    Debug.LogError($"Failed to remove from queue: {queueRequest.error}");
+                }
+            }
+        }
+
+        // Close the websocket connection if it exists
+        CloseWebSocket();
+
+        // Clean up state
+        if (Config.Get().IsValidGPU(m_gpu))
+        {
+            Config.Get().SetGPUBusy(m_gpu, false);
+        }
+
+        m_bIsGenerating = false;
+        m_picScript.SetStatusMessage("Cancelled");
+
+        // Clear the prompt ID
+        m_comfyUIPromptID = null;
+
+        CleanComfyUITempFiles(url);
+    }
+
+    IEnumerator GetComfyUIMovieFile(string url, string comfyUIfilename, string comfyUIsubfolder,
+       string comfyUIfolderType)
+    {
+
+        WWWForm form = new WWWForm();
+        form.AddField("filename", comfyUIfilename);
+        form.AddField("subfolder", comfyUIsubfolder);
+        form.AddField("type", comfyUIfolderType);
+
+        // Construct the final URL with query parameters
+        string finalURL = url + "/view?" + System.Text.Encoding.UTF8.GetString(form.data);
+
+        RTConsole.Log("ComfyUI: Generating text to image with " + finalURL + " local GPU ID " + m_gpu);
+
+        //",\"" + GameLogic.Get().GetSamplerName() + "\","  +  + ","
+
+
+        using (UnityWebRequest getRequest = UnityWebRequest.Get(finalURL))
+        {
+            // Start the request
+            yield return getRequest.SendWebRequest();
+
+            if (getRequest.result != UnityWebRequest.Result.Success)
+            {
+                string msg = getRequest.error + "GetComfyUIImageFile - (" + Config.Get().GetGPUName(m_gpu) + ")";
+                Debug.Log(msg);
+                RTQuickMessageManager.Get().ShowMessage(msg);
+                Debug.Log(getRequest.downloadHandler.text);
+
+                Config.Get().SetGPUBusy(m_gpu, false);
+                m_bIsGenerating = false;
+                m_picScript.SetStatusMessage("Generate error");
+            }
+            else
+            {
+                // Handle the response, which should be a raw PNG file in getRequest.downloadedBytes
+
+                yield return null; //wait a frame to lesson the jerkiness
+
+
+                //getRequest.downloadHandler.data is the movie data, we'll need to send it to the movie player system
+
+                //for debugging, save getRequest.downloadHandler.data to disk as test.mp4
+                string tempPath = Config.Get().GetBaseFileDir("/" + Config._saveDirName + "/temp_movie_") + m_comfyUIPromptID;
+
+                //add the fileextension that get from the server
+                string extension = System.IO.Path.GetExtension(comfyUIfilename).ToLower();
+                tempPath += extension;
+
+                File.WriteAllBytes(tempPath, getRequest.downloadHandler.data);
+                m_picScript.SetStatusMessage("");
+                m_picScript.m_picMovie.PlayMovie(tempPath);
+
+
+                if (Config.Get().IsValidGPU(m_gpu) && m_bIsGenerating)
+                {
+
+                    if (!Config.Get().IsGPUBusy(m_gpu))
+                    {
+                        Debug.LogError("Why is GPU not busy?! We were using it!");
+                    }
+                    else
+                    {
+                        Config.Get().SetGPUBusy(m_gpu, false);
+                    }
+
+                    //we're done, can delete us from ComfyUI, may fix comfyui bug with it crashing after too many generations?
+
+                    //dostuff later...
+                    m_bIsGenerating = false;
+
+                    if (m_picScript.m_onFinishedRenderingCallback != null)
+                        m_picScript.m_onFinishedRenderingCallback.Invoke(gameObject);
+
+                    StartCoroutine(CleanComfyUITempFiles(url));
+
+                }
+
+                yield return null; // wait a frame to lessen the jerkiness
             }
         }
     }

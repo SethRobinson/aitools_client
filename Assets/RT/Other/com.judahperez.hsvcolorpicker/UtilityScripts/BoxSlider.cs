@@ -65,7 +65,7 @@ namespace HSVPicker
 			}
 			set
 			{
-				this.value = Mathf.Lerp(minValue, maxValue, value);
+				this.@value = Mathf.Lerp(minValue, maxValue, value);
 			}
 		}
 

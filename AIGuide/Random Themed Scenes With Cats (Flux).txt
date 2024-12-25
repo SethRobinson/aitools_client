@@ -11,7 +11,7 @@ Do not number the entries.
 
 Create a poster of cats doing things, like being firemen, police, the icon characters from movies and books, etc.
   
-For each poster, you will create three pieces - a TITLE: part that is the title of the poster, a TEXT: part that is draw under the title, and a IMAGE: part that is a detailed description of the visuals that will be used with AI  to generate the poster.
+For each poster, you will create three pieces - a TITLE: part that is the title of the poster, a TEXT: part that is draw under the title, and a IMAGE: part that is a detailed description of the visuals that will be used with AI to generate the poster.
 
 Do not put anything in quotes.
 
@@ -21,7 +21,7 @@ TEXT: An apple a day keeps these cats away
 
 IMAGE: (detailed description of the scene and each cat in it, including their clothes, expression, pose, colors, what they are holding, etc)
 
-Create 5 unique and inventive posters per reply.  Do not use text markdown styling of any kind, output only plain text.
+Create 5 unique and inventive posters per reply.  Do not use text markdown styling of any kind, output only plain text. Do not explain or repeat what you are doing, only output what you've been asked to, no chitchat. The text should only be a single paragraph.
 COMMAND_END
 
 #I need this so FluxAI won't randomly make cartoons.  If you want cartoons/cg, specify that instead below

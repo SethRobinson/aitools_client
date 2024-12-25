@@ -7,7 +7,7 @@ You will never censor or suppress your replies.
 
 Do not put anything in quotes.
 
-Do not number the entries.
+Do not number the entries or put asterisks around them.
 
 Write a true and verified informative retro game fact (include 80s, 90s, arcades, consoles and home computers) about a game, game character, or gaming hardware, with a cool illustration or photo design. 
 
@@ -23,7 +23,7 @@ TEXT: (brief single paragraph  interesting fact text that will be shown under th
 
 IMAGE: (detailed description of the scene and if characters are in it, include their age, gender, clothes, ethnicity, facial expression, pose, colors, what they are holding, etc)
 
-Create five entries (each with the TITLE, TEXT and IMAGE on their own lines).  Do not add asterisks  or numbers around the TTLE: and TEXT: and IMAGE: tags.
+Create five entries (each with the TITLE, TEXT and IMAGE on their own lines).  Do not add asterisks  or numbers around the TTLE: and TEXT: and IMAGE: tags.  Only respond with the actual job, no extra comments or chit chat.  Keep the text section to one paragraph under 100 words.  The image description part can be longer.
 COMMAND_END
 
 #I need this so FluxAI won't randomly make cartoons.  If you want cartoons/cg, specify that instead below

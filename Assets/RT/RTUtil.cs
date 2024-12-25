@@ -12,6 +12,8 @@ using System.Text.RegularExpressions;
 using UnityEngine.Assertions;
 using UnityEngine.UI;
 using TMPro;
+using UnityEngine.Profiling;
+
 
 //Adapted from https://stackoverflow.com/questions/46237984/how-to-emulate-statically-the-c-bitfields-in-c
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -90,6 +92,8 @@ public static class Extensions
 
         return r % range + min;
     }
+
+  
 
     //returns a uniformly random long between long.Min inclusive and long.Max inclusive
     public static long NextLong(this System.Random rng)
@@ -1273,7 +1277,12 @@ public class RTUtil
         return (sinIn + 1.0f) / 2;
     }
 
-
+    public static string GetTimeAsMinutesSeconds(float timeSeconds)
+    {
+        int minutes = Mathf.FloorToInt(timeSeconds / 60f);
+        int seconds = Mathf.FloorToInt(timeSeconds % 60f);
+        return $"{minutes:00}:{seconds:00}";
+    }
     static public string SetFirstCharacterToUpperCase(string s)
     {
         if (string.IsNullOrEmpty(s))
@@ -1762,7 +1771,7 @@ public class RTUtil
 
     static public void AccelerateTo(Rigidbody body, Vector3 targetVelocity, float maxAccel)
     {
-        Vector3 deltaV = targetVelocity - body.velocity;
+        Vector3 deltaV = targetVelocity - body.linearVelocity;
         Vector3 accel = deltaV;
 
         if (accel.sqrMagnitude > maxAccel * maxAccel)
@@ -2073,6 +2082,16 @@ public class RTUtil
         return tex2D;
     }
 
+   public static bool IsMemoryLow()
+    {
+        // Check system memory
+        long totalMemory = SystemInfo.systemMemorySize * 1024L * 1024L; // Convert to bytes
+        long reservedMemory = Profiler.GetTotalReservedMemoryLong();
+        long threshold = totalMemory * 90 / 100; // 90% usage as threshold
+
+        return reservedMemory >= threshold;
+    }
+
     public static Color GetARandomBrightColor()
     {
         //return a random bright color
@@ -2159,6 +2178,49 @@ public class RTUtil
         colors.highlightedColor = col;
         but.colors = colors;
     }
+    /// <summary>
+    /// Copies a file from source to destination, creating directories if needed.
+    /// </summary>
+    /// <param name="fileSource">Source file path</param>
+    /// <param name="fileDestination">Destination file path</param>
+    /// <returns>True if copy was successful, false if there was an error</returns>
+    public static bool CopyFile(string fileSource, string fileDestination)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(fileSource) || string.IsNullOrEmpty(fileDestination))
+            {
+                Debug.LogError("RTUtil.CopyFile: Source or destination path is null or empty");
+                return false;
+            }
 
+            if (!File.Exists(fileSource))
+            {
+                Debug.LogError($"RTUtil.CopyFile: Source file does not exist: {fileSource}");
+                return false;
+            }
+
+            // Create the destination directory if it doesn't exist
+            string destDirectory = Path.GetDirectoryName(fileDestination);
+            if (!string.IsNullOrEmpty(destDirectory) && !Directory.Exists(destDirectory))
+            {
+                Directory.CreateDirectory(destDirectory);
+            }
+
+            // If destination file exists, delete it first
+            if (File.Exists(fileDestination))
+            {
+                File.Delete(fileDestination);
+            }
+
+            File.Copy(fileSource, fileDestination);
+            return true;
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"RTUtil.CopyFile: Error copying file from {fileSource} to {fileDestination}: {e.Message}");
+            return false;
+        }
+    }
 
 }

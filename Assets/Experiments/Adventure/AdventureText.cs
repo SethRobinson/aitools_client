@@ -473,6 +473,7 @@ public class AdventureText : MonoBehaviour
     {
         _bIsOnAuto = bAuto;
 
+        
         // Change button color based on auto status
         Color buttonColor = bAuto ? Color.green : _autoButtonOriginalBackgroundColor;
         _autoButton.GetComponent<Image>().color = buttonColor;
@@ -481,6 +482,9 @@ public class AdventureText : MonoBehaviour
     public void OnAutoButton()
     {
         //Let's just keep rendering story automatically
+
+        //They manually hit an auto button, reset the counter
+        AdventureLogic.Get().ResetGenerationCounter();
         SetAuto(!_bIsOnAuto);
     }
    
@@ -604,10 +608,10 @@ public class AdventureText : MonoBehaviour
             m_promptManager.RemoveLastInteractionIfItExists();
         } else
         {
-            AdventureLogic.Get().GetGlobalPromptManager().AddInteraction(AdventureLogic.Get().GetAssistantName(), streamedText);
+            AdventureLogic.Get().GetGlobalPromptManager().AddInteraction(Config.Get().GetAIAssistantWord(), streamedText);
 
         }
-        m_promptManager.AddInteraction(AdventureLogic.Get().GetAssistantName(), streamedText);
+        m_promptManager.AddInteraction(Config.Get().GetAIAssistantWord(), streamedText);
         ProcessChoices();
 
         _bAddedFinishedTextToPrompt = true;
@@ -719,6 +723,13 @@ public class AdventureText : MonoBehaviour
         e.targetObj = pic;
         e.requestedSimplePrompt = GameLogic.Get().GetPrompt() + " " + picText;
         e.requestedDetailedPrompt = GameLogic.Get().GetComfyUIPrompt()+" "+picTextComfyUI;
+
+        //trim the whitespace from the strings above
+        e.requestedSimplePrompt = e.requestedSimplePrompt.Trim();
+        e.requestedDetailedPrompt = e.requestedDetailedPrompt.Trim();
+
+
+
         e.requestedRenderer = desiredRenderer;
         picScript.PassInTempInfo(e);
 
@@ -809,6 +820,15 @@ public class AdventureText : MonoBehaviour
 
         OnStop();
 
+
+        if (GetIsUserCreated())
+        {
+            //this isn't a normal prompt, this is a user prompt.  Let's assume they hand-edited it and we should just spawn the next text window instead of this
+            //Show an error message to the screen
+            RTQuickMessageManager.Get().ShowMessage("This is a user-created prompt, you can't regenerate it. Delete it, activate the earlier story prompt, and enter new text at the bottom.");
+            return;
+
+        }
         if (_bAddedFinishedTextToPrompt)
         {
             _bAddedFinishedTextToPrompt = false;

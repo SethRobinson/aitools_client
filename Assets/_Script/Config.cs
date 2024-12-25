@@ -8,7 +8,6 @@ using static System.Net.WebRequestMethods;
 using UnityEditor;
 using TMPro;
 
-
 public enum LLM_Type
 {
     OpenAI_API,
@@ -39,7 +38,6 @@ public class GPUInfo
     public RTRendererType _requestedRendererType = RTRendererType.A1111;
     public bool isLocal = true; //false would mean an unlimited API like OpenAI's Dalle3.  Local means TextGen WebUI, AI Tools server or ComfyUI (doesn't actually have to be local)
     public bool _usesDetailedPrompts = false; //simple is the default
-
 }
 
 public class Config : MonoBehaviour
@@ -54,8 +52,13 @@ public class Config : MonoBehaviour
     bool m_safetyFilter = false;
     float m_requiredServerVersion = 0.46f;
 
+    //default names for AI stuff
+    string m_assistantName = "assistant";
+    string m_systemName = "system";
+    string m_userName = "user";
+
     string _openAI_APIKey = "";
-    string _openAI_APIModel = "gpt-4";
+    string _openAI_APIModel = "gpt-4o";
     public string _texgen_webui_address = "localhost:5000";
     public string _openai_gpt4_endpoint = "https://api.openai.com/v1/chat/completions";
     string _elevenLabs_APIKey = "";
@@ -66,6 +69,10 @@ public class Config : MonoBehaviour
     string _anthropicAI_APIKey = "";
     string _anthropicAI_APIModel = "claude-3-5-sonnet-20240620";
     string _anthropicAI_APIEndpoint = "https://api.anthropic.com/v1/complete";
+
+    public string GetAISystemWord() { return m_systemName; }
+    public string GetAIUserWord() { return m_userName; }
+    public string GetAIAssistantWord() { return m_assistantName; }
 
     public string GetAnthropicAI_APIKey() { return _anthropicAI_APIKey; }
     public string GetAnthropicAI_APIModel() { return _anthropicAI_APIModel; }
@@ -78,7 +85,7 @@ public class Config : MonoBehaviour
     public string GetElevenLabs_APIKey() { return _elevenLabs_APIKey; }
     public string GetElevenLabs_voiceID() { return _elevenLabs_voiceID; }
 
-    float m_version = 0.90f;
+    float m_version = 0.91f;
     string m_imageEditorPathAndExe = "none set";
     public string GetVersionString() { return m_version.ToString("0.00"); }
     public float GetVersion() { return m_version; }
@@ -145,12 +152,19 @@ set_openai_gpt4_endpoint|https://api.openai.com/v1/chat/completions|
 set_generic_llm_address|localhost:5000|
 #if your generic LLM needs a key, enter it here (or leave as ""none"")
 set_generic_llm_api_key|none|
+
+#the following allow you to override the default system, assistant, and user keywords for the generic LLM, if needed.  
+#different LLMs are trained on different words, if the llm server you use doesn't hide this from you, you might notice weird
+#or buggy behavior if these aren't changed to match what that specific llm wants
+#set_generic_llm_system_keyword|system|#default is system
+#set_generic_llm_assistant_keyword|assistant|#default is assistant
+#set_generic_llm_user_keyword|user|#default is user
             
 #Anthropic LLM
 set_anthropic_ai_key|<key goes here>|
-set_anthropic_ai_model|claude-3-5-sonnet-20240620|
+set_anthropic_ai_model|claude-3-5-sonnet-latest|
 set_anthropic_ai_endpoint|https://api.anthropic.com/v1/messages|
-set_anthropic_ai_version|2023-06-01|
+
 ";
             
         }
@@ -601,6 +615,20 @@ set_anthropic_ai_version|2023-06-01|
                  if (words[0] == "set_generic_llm_api_key")
                 {
                     _texgen_webui_APIKey = words[1];
+                }else
+                if (words[0] == "set_generic_llm_system_keyword")
+                {
+                    m_systemName = words[1];
+                }
+                else
+                 if (words[0] == "set_generic_llm_assistant_keyword")
+                {
+                    m_assistantName = words[1];
+                }
+                else
+                   if (words[0] == "set_generic_llm_user_keyword")
+                {
+                    m_userName = words[1];
                 }
                 else
                 if (words[0] == "set_anthropic_ai_key")
@@ -616,10 +644,11 @@ set_anthropic_ai_version|2023-06-01|
                     _anthropicAI_APIEndpoint = words[1];
                 }
                 else 
-              if (words[0] == "set_openai_gpt4_endpoint")
+                if (words[0] == "set_openai_gpt4_endpoint")
                         {
                     _openai_gpt4_endpoint = words[1];
                 }
+              
                 else
 
                 if (words[0] == "set_max_fps")

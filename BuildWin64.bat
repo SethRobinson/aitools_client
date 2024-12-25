@@ -23,7 +23,6 @@ pause
 )
 
 call UpdateBuildDirConfigFiles.bat
-
 del build\win\Adventure\test_*.txt
 del build\win\Adventure\TEST_*.txt
 del build\win\AIGuide\TEST_*.txt
@@ -39,6 +38,9 @@ call %RT_PROJECTS%\Signing\sign.bat "build/win/%APP_NAME%.exe" "Seth's AI Tools"
 call %RT_PROJECTS%\Signing\sign.bat "build/win/utils/RTClip.exe" "RTClip"
 
 del build\win\utils\RTClip.zip
+rmdir /S /Q "build\win\Seth's AI Tools_BurstDebugInformation_DoNotShip"
+rmdir /S /Q "build\win\autosave"
+rmdir /S /Q "build\win\tempCache"
 
 
 :create the archive

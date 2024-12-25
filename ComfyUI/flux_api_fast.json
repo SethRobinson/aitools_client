@@ -12,7 +12,7 @@
   },
   "6": {
     "inputs": {
-      "text": "a bottle with a rainbow galaxy inside it on top of a wooden table on a table in the middle of a modern kitchen",
+      "text": "<AITOOLS_PROMPT>",
       "clip": [
         "11",
         0

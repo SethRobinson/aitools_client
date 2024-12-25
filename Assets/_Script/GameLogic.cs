@@ -132,6 +132,7 @@ public class GameLogic : MonoBehaviour
     public bool GetAutoSavePNG() { return m_bAutoSavePNG; }
     public void SetAutoSave(bool bNew) { m_bAutoSave = bNew; }
     public void SetAutoSavePNG(bool bNew) { m_bAutoSavePNG = bNew; }
+    public bool GetAnyAutoSave() { return m_bAutoSave || m_bAutoSavePNG; }
 
     public bool GetCameraFollow() { return m_bCameraFollow; }
     public void SetCameraFollow(bool bNew) { m_bCameraFollow = bNew; }
@@ -684,6 +685,14 @@ public class GameLogic : MonoBehaviour
 
     }
 
+    public void OnClickedComfyUISettingsButton()
+    {
+        Debug.Log("Clicked ComfyUI settings");
+        const string panelName = "ComfyUIPanel";
+        var existing = RTUtil.FindIncludingInactive(panelName);
+        existing.GetComponent<ComfyUIPanel>().ToggleWindow();
+    }
+
     public bool HasControlNetSupport()
     {
         return m_bControlNetSupportExists;
@@ -992,7 +1001,6 @@ public class GameLogic : MonoBehaviour
        if (upscale)
         {
             m_upscale = 2.0f;
-
         }
         else
         {
@@ -1032,7 +1040,7 @@ public class GameLogic : MonoBehaviour
             //trigger re-render
             //find suitable place to render to, get the last pic that was created/exists
       
-            Debug.Log("Prompt changed: " + str);
+            //Debug.Log("Prompt changed: " + str);
             var picMain = ImageGenerator.Get().GetPicToUseTurboOn();
 
             //trigger a render to happen now
@@ -1079,7 +1087,7 @@ public class GameLogic : MonoBehaviour
             */
 
         RTConsole.Get().SetShowUnityDebugLogInConsole(false);
-
+        RTConsole.Get().SetMirrorToDebugLog(true);
         //RTEventManager.Get().Schedule(RTAudioManager.GetName(), "PlayMusic", 1, "intro");
         string version = "Unity V " + Application.unityVersion + " :";
 
@@ -1249,6 +1257,8 @@ public class GameLogic : MonoBehaviour
             Input.GetKeyDown(KeyCode.Alpha1)
             ||
                 Input.GetKeyDown(KeyCode.I)
+                ||
+                Input.GetKeyDown(KeyCode.P)
             )
         {
             if (GUIIsBeingUsed()) return;
@@ -1260,6 +1270,7 @@ public class GameLogic : MonoBehaviour
                 //PicTextToImage TTIscript = go.GetComponent<PicTextToImage>();
                 PicMain picScript = go.GetComponent<PicMain>();
                 PicMask picMaskScript = go.GetComponent<PicMask>();
+                PicMovie picMovieScript = go.GetComponent<PicMovie>();
 
                 if (Input.GetKeyDown(KeyCode.U))
                 {
@@ -1270,6 +1281,12 @@ public class GameLogic : MonoBehaviour
                 {
                     picMaskScript.OnToggleMaskViewButton();
                 }
+
+                if (Input.GetKeyDown(KeyCode.P))
+                {
+                    picMovieScript.TogglePlay();
+                }
+
                 if (Input.GetKeyDown(KeyCode.I))
                 {
                     if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))

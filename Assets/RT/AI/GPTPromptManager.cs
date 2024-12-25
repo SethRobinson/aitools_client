@@ -18,6 +18,21 @@ public class GPTPromptManager : MonoBehaviour
 
     string _baseSystemPrompt = "";
     string _journalSystemPrompt = "";
+
+    string _nameToUseForSystem = "system";
+    string _nameToUseForUser = "user";
+  
+    public void SetSystemName(string systemName)
+    {
+        _nameToUseForSystem = systemName;
+    }
+
+    public void SetUserName(string userName)
+    {
+        _nameToUseForUser = userName;
+    }
+
+    
     // Start is called before the first frame update
     void Start()
     {
@@ -37,7 +52,9 @@ public class GPTPromptManager : MonoBehaviour
         _journalSystemPrompt = other._journalSystemPrompt;
 
         _interactions = new Queue<GTPChatLine>();
-
+        _nameToUseForSystem = other._nameToUseForSystem;
+        _nameToUseForUser = other._nameToUseForUser;
+      
         foreach (var chatLine in other._interactions)
         {
             // Create a new GTPChatLine instance for each item
@@ -139,7 +156,7 @@ public class GPTPromptManager : MonoBehaviour
         string basePrompt = $@"Summarize the entire conversation of you playing this game thus far into {_maxWordsForJournal} words or less.";
 
         //add a line with role system using the base prompt
-        lines.Enqueue(new GTPChatLine("user", basePrompt));
+        lines.Enqueue(new GTPChatLine(_nameToUseForUser, basePrompt));
 
         OpenAITextCompletionManager textCompletionScript = gameObject.GetComponent<OpenAITextCompletionManager>();
 
@@ -167,9 +184,9 @@ public class GPTPromptManager : MonoBehaviour
 
         //add a line with role system using the base prompt
         if (_baseSystemPrompt.Length > 0)
-            lines.Enqueue(new GTPChatLine("system", _baseSystemPrompt));
+            lines.Enqueue(new GTPChatLine(_nameToUseForSystem, _baseSystemPrompt));
         if (_journalSystemPrompt.Length > 0)
-            lines.Enqueue(new GTPChatLine("system", _journalSystemPrompt));
+            lines.Enqueue(new GTPChatLine(_nameToUseForSystem, _journalSystemPrompt));
 
         //add the last few interactions, but ignore the last linesToIgnoreAtTheEnd lines
         int count = _interactions.Count - linesToIgnoreAtTheEnd;
@@ -207,8 +224,8 @@ public class GPTPromptManager : MonoBehaviour
         Queue<GTPChatLine> lines = new Queue<GTPChatLine>();
 
         //add a line with role system using the base prompt
-        lines.Enqueue(new GTPChatLine("system", _baseSystemPrompt));
-        lines.Enqueue(new GTPChatLine("system", _journalSystemPrompt));
+        lines.Enqueue(new GTPChatLine(_nameToUseForSystem, _baseSystemPrompt));
+        lines.Enqueue(new GTPChatLine(_nameToUseForSystem, _journalSystemPrompt));
 
         //add the last few interactions, but ignore the last linesToIgnoreAtTheEnd lines
         int count = _interactions.Count - linesToIgnoreAtTheEnd;

@@ -100,7 +100,7 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
     }
 
     // ""name1"": ""Jeff"",
-    public string BuildForInstructJSON(Queue<GTPChatLine> lines, int max_tokens = 100, float temperature = 1.3f, string mode = "instruct", bool stream = false, string texGenWebUICharacter = "")
+    public string BuildForInstructJSON(Queue<GTPChatLine> lines, int max_new_tokens = 100, float temperature = 1.3f, string mode = "instruct", bool stream = false, string texGenWebUICharacter = "")
     {
         string msg = "";
 
@@ -132,7 +132,7 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
              ""mode"": ""{mode}"",
              ""temperature"": {temperature},
              ""stream"": {bStreamText},
-             ""max_new_tokens"": {max_tokens}
+             ""max_new_tokens"": {max_new_tokens}
              {characterPart}
          }}";
 
@@ -220,7 +220,6 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
             }
         }
     }
-
 
     IEnumerator GetRequestStreaming(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string serverAddress, string apiCommandURL,
         Action<string> updateChunkCallback, string APIkey = "none")
