@@ -125,9 +125,15 @@ set_anthropic_ai_endpoint|https://api.anthropic.com/v1/messages|
 
 # Setting up with ComfyUI (for FLUX images, Hunyuan video or any custom workflow)
 
-First, install [ComfyUI](https://github.com/comfyanonymous/ComfyUI) and get it rendering stuff in Flux and/or Hunyuan using tutorials out there.  Don't move on until it's working natively! (without AITools)
+First, install [ComfyUI](https://github.com/comfyanonymous/ComfyUI) and get it rendering stuff in Flux and/or Hunyuan using tutorials out there.
 
-Next, inside ComfyUI's web GUI, drag in aitools_client/ComfyUI/flux_api.json or maybe video_hunyuan_t2v_480_api.json.  The neat thing about ComfyUI is it will read this and convert it to its visual workflow format, ready to run.  (you might want to change the prompt from <AITOOLS_PROMPT> to something else during testing here) - Click Queue.  Does it work?  Adjust it until it does, then change the prompt back to <AITOOLS_PROMPT>.  Then do Workflow->Export (API).  You can now add/overwrite that in your aitools_client dir.  Inside of AITools, select that workflow under the ComfyUI workflows dropdown list.  It should now render right!  Images/videos are auto detected when being displayed.  AITools is will dynamically modify the workflow when using it by changing <AITOOLS_PROMPT>, and also the total length of frames if applicable (for videos).  Not much else right now, so to even change the resolution you need to modify the workflow as described.  (or faster, just use a text editor on the .json directly)
+Actually, maybe ignore the link above as you probably want something will run on your 3090 or 4090 (I guess there are ways to get going on weaker cards too but..) I used these [download links/workflow](https://www.cognibuild.ai/hunyuan-gguf-necessary-models) for gguf, there is a [tutorial video](https://www.youtube.com/watch?v=CZKZIPGef6s) to go with it but I didn't really use that as I installed to a linux server.
+
+Don't move on until it's working natively and you can **generate videos in ComfyUI directly**! (without AITools)
+
+Next, just for a test to make sure it's going to work, inside ComfyUI's web GUI, drag in aitools_client/ComfyUI/flux_api.json or maybe video_hunyuan_t2v_480_api.json.  The neat thing about ComfyUI is it will read this and convert it to its visual workflow format, ready to run.  (you might want to change the prompt from <AITOOLS_PROMPT> to something else during testing here) - Click Queue.  Does it work? If so, you're done, just go run AITools, it should work. If not, adjust it until it does (change paths or models or whatever you need, you could even start with a totally different workflow you found somewhere else), then change the prompt back to <AITOOLS_PROMPT>.  Then do Workflow->Export (API).  
+
+You can now add/overwrite that in your aitools_client dir.  Inside of AITools, select that workflow under the ComfyUI workflows dropdown list.  It should now render right!  Images/videos are auto detected when being displayed.  AITools is will dynamically modify the workflow when using it by changing <AITOOLS_PROMPT>, and also the total length of frames if applicable (for videos).  Not much else right now, so to even change the resolution you need to modify the workflow as described.  (or faster, just use a text editor on the .json directly)
 
 Check discussions for some more info [here](https://github.com/SethRobinson/aitools_client/discussions/18)
 
