@@ -180,7 +180,7 @@ public class ImageGenerator : MonoBehaviour
             return;
         }
 
-        GameObject genPanel = Instantiate(m_settingPanelPrefab, RTUtil.FindIncludingInactive("Canvas").transform);
+        GameObject genPanel = Instantiate(m_settingPanelPrefab, RTUtil.FindIncludingInactive("MainCanvas").transform);
         genPanel.name = panelName;
 
     }

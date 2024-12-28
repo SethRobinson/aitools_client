@@ -576,7 +576,7 @@ public class PicTextToImage : MonoBehaviour
         string promptStrString = prompt_strength.ToString("0.0", CultureInfo.InvariantCulture);
 
         //Load the prompt via 
-        string comfyUIGraphJSon = LoadComfyUIJSon(GameLogic.Get().GetActiveComfyUIWorkflowFileName());
+        string comfyUIGraphJSon = LoadComfyUIJSon(GameLogic.Get().GetActiveComfyUIWorkflowFileName(m_gpu));
 
         //Replace all instances of <AITOOLS_PROMPT> with m_prompt in comfyUIGraphJSon
         bool bDidFindPromptTag = ReplaceInString(ref comfyUIGraphJSon, "<AITOOLS_PROMPT>", m_prompt);

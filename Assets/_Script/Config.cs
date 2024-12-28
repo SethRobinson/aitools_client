@@ -38,6 +38,7 @@ public class GPUInfo
     public RTRendererType _requestedRendererType = RTRendererType.A1111;
     public bool isLocal = true; //false would mean an unlimited API like OpenAI's Dalle3.  Local means TextGen WebUI, AI Tools server or ComfyUI (doesn't actually have to be local)
     public bool _usesDetailedPrompts = false; //simple is the default
+    public int _comfyUIWorkFlowOverride = -1;
 }
 
 public class Config : MonoBehaviour
@@ -85,7 +86,7 @@ public class Config : MonoBehaviour
     public string GetElevenLabs_APIKey() { return _elevenLabs_APIKey; }
     public string GetElevenLabs_voiceID() { return _elevenLabs_voiceID; }
 
-    float m_version = 0.91f;
+    float m_version = 0.92f;
     string m_imageEditorPathAndExe = "none set";
     public string GetVersionString() { return m_version.ToString("0.00"); }
     public float GetVersion() { return m_version; }
@@ -136,7 +137,7 @@ public class Config : MonoBehaviour
 #Set the below path and .exe to an image editor to use the Edit option. Changed files will auto
 #update in here.
 
-set_image_editor|C:\Program Files\Adobe\Adobe Photoshop 2023\Photoshop.exe
+set_image_editor|C:\Program Files\Adobe\Adobe Photoshop 2025\Photoshop.exe
 
 #set_default_sampler|DDIM
 #set_default_steps|50

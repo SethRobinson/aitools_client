@@ -186,8 +186,8 @@ public class GameLogic : MonoBehaviour
        //get the text of the selected option
         string selected = m_comfyUIAPIWorkflowsDropdown.options[m_comfyUIAPIWorkflowsDropdown.value].text;
         RTConsole.Log("Chose " + selected);
-        
     }
+
     public string GetSamplerName() 
     {
         return m_samplerDropdown.options[m_samplerDropdown.value].text; 
@@ -655,15 +655,16 @@ public class GameLogic : MonoBehaviour
     public void OnClickedControlNetSettingsButton()
     {
         const string panelName = "ControlNetSettingsPanel";
-
         var existing = RTUtil.FindIncludingInactive(panelName);
         if (existing != null)
         {
+            RTConsole.Log("Killing controlnetsettings");
             RTUtil.KillObjectByName(panelName);
             return;
         }
+        RTConsole.Log("Creating "+panelName);
 
-        GameObject genPanel = Instantiate(m_controlNetPanelPrefab, RTUtil.FindIncludingInactive("Canvas").transform);
+        GameObject genPanel = Instantiate(m_controlNetPanelPrefab, RTUtil.FindIncludingInactive("MainCanvas").transform);
         genPanel.name = panelName;
 
     }
@@ -1131,19 +1132,30 @@ public class GameLogic : MonoBehaviour
 
         Config.Get().CheckForUpdate();
 
-        LoadComfyUIWorkFlows();
+        LoadComfyUIWorkFlows(m_comfyUIAPIWorkflowsDropdown, false);
 
         Config.Get().PopulateRendererDropDown(m_rendererSelectionDropdown);
     }
 
-    public string GetActiveComfyUIWorkflowFileName()
+    public string GetActiveComfyUIWorkflowFileName(int serverID)
     {
+
+        //if serverID exists, let's check it
+        if (Config.Get().IsValidGPU(serverID))
+        {
+            GPUInfo gpuInfo = Config.Get().GetGPUInfo(serverID);
+            if (gpuInfo._comfyUIWorkFlowOverride != -1)
+            {
+                return m_comfyUIAPIWorkflowsDropdown.options[gpuInfo._comfyUIWorkFlowOverride].text;
+            }
+        }
+
         return m_comfyUIAPIWorkflowsDropdown.options[m_comfyUIAPIWorkflowsDropdown.value].text;
     }
-    public void LoadComfyUIWorkFlows()
+    public void LoadComfyUIWorkFlows(TMP_Dropdown dropdown, bool bIsOverrideSettingsPanel)
     {
         // First, delete everything from the dropdown
-        m_comfyUIAPIWorkflowsDropdown.ClearOptions();
+        dropdown.ClearOptions();
 
         // Load the ComfyUI workflows
         string[] files = Directory.GetFiles("ComfyUI", "*.json");
@@ -1165,12 +1177,20 @@ public class GameLogic : MonoBehaviour
         }
 
         // Add options to the dropdown
-        m_comfyUIAPIWorkflowsDropdown.AddOptions(options);
+        dropdown.AddOptions(options);
 
         // Set the default selection
         if (defaultIndex != -1)
         {
-            m_comfyUIAPIWorkflowsDropdown.value = defaultIndex;
+            dropdown.value = defaultIndex;
+        }
+
+        if (bIsOverrideSettingsPanel)
+        {
+            //add another option called "Global default" and set that to active
+            dropdown.options.Add(new TMP_Dropdown.OptionData("Global default"));
+            dropdown.value = dropdown.options.Count - 1;
+
         }
     }
     void OnApplicationQuit() 

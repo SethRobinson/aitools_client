@@ -35,7 +35,7 @@ https://github.com/user-attachments/assets/a4d0f2db-79f6-46f1-8229-28e93e8053bc
 * Experimental video support (ComfyUI can generate videos via Hunyuan or LTX.  Still basic support, but we can view them just like the images)
 
 
-## Current version: **V0.91** (released Dec 25th 2024) ##
+## Current version: **V0.92** (released Dec 29th 2024) ##
 
 **Recent changes**:
 
@@ -50,6 +50,11 @@ https://github.com/user-attachments/assets/a4d0f2db-79f6-46f1-8229-28e93e8053bc
 * I no longer include the non "API" version ComfyUI workflows, ComfyUI can now load the API versions directly just fine (drag and drop into ComfyUI) so keeping the non-api version around isn't needed
 * Updated to Unity 6, I did this because I thought I needed to for wepb support, but I ended up not using it and forgot I updated, now I'm sort of stuck because I don't want to redo the GUI additions I added.  Unity 6 sort of sucks because the licensing changed, but for free stuff like this it doesn't matter I guess
 * Added some a few more ComfyUI workflows, AIGuide templates, Adventure templates.  I haven't used A1111 in months so I'm not even sure if the A1111 integration still works (probably does tho).  I kind of just add/work on whatever I need at the time, sorry!
+
+V0.92:
+* Fixed a bug with certain GUI settings windows not working sometimes
+* Fixed Hunyuan workflow, it was giving ComfyUI errors because an update from a few days ago added required parms
+* Each server now has a little settings button that allows you to override which ComfyUI workflow that specific server will use
 
 You only need to download [the zip](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) and run the .exe to use this, However, the source might be useful to generate a build for other platforms, fork or steal pieces to use for yourself.  Go ahead!
 # Screenshots
