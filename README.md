@@ -56,6 +56,9 @@ V0.92:
 * Fixed Hunyuan workflow, it was giving ComfyUI errors because an update from a few days ago added required parms
 * Each server now has a little settings button that allows you to override which ComfyUI workflow that specific server will use
 
+V0.93:
+* Fixed compatibility with text-generation-webui's API, forgot I broke it a while back, oops
+
 You only need to download [the zip](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) and run the .exe to use this, However, the source might be useful to generate a build for other platforms, fork or steal pieces to use for yourself.  Go ahead!
 # Screenshots
 

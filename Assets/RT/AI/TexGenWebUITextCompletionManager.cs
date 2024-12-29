@@ -132,7 +132,9 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
              ""mode"": ""{mode}"",
              ""temperature"": {temperature},
              ""stream"": {bStreamText},
-             ""max_new_tokens"": {max_new_tokens}
+             ""max_new_tokens"": {max_new_tokens},
+             ""mode"": ""instruct"",
+             ""instruction_template"": ""Alpaca""             
              {characterPart}
          }}";
 
