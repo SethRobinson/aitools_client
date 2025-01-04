@@ -181,7 +181,7 @@ $@"{{
                 imgDataBytes = Convert.FromBase64String(rootNode["image"]);
                 yield return null; //wait a free to lesson the jerkiness
 
-                Texture2D texture = new Texture2D(0, 0, TextureFormat.RGBA32, false);
+                Texture2D texture = new Texture2D(8, 8, TextureFormat.RGBA32, false);
 
                 if (texture.LoadImage(imgDataBytes, false))
                 {

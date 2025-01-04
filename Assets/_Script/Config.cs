@@ -86,7 +86,7 @@ public class Config : MonoBehaviour
     public string GetElevenLabs_APIKey() { return _elevenLabs_APIKey; }
     public string GetElevenLabs_voiceID() { return _elevenLabs_voiceID; }
 
-    float m_version = 0.93f;
+    float m_version = 0.94f;
     string m_imageEditorPathAndExe = "none set";
     public string GetVersionString() { return m_version.ToString("0.00"); }
     public float GetVersion() { return m_version; }

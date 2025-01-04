@@ -19,6 +19,16 @@
       "title": "DualCLIPLoader"
     }
   },
+  "12": {
+    "inputs": {
+      "unet_name": "hunyuan_video_t2v_720p_bf16.safetensors",
+      "weight_dtype": "fp8_e4m3fn"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Load Diffusion Model"
+    }
+  },
   "13": {
     "inputs": {
       "noise": [
@@ -62,7 +72,7 @@
       "steps": 20,
       "denoise": 1,
       "model": [
-        "78",
+        "12",
         0
       ]
     },
@@ -89,7 +99,7 @@
   },
   "25": {
     "inputs": {
-      "noise_seed": 305921920059582
+      "noise_seed": 744592328244735
     },
     "class_type": "RandomNoise",
     "_meta": {
@@ -126,7 +136,7 @@
     "inputs": {
       "width": 848,
       "height": 480,
-      "length": 77,
+      "length": 93,
       "batch_size": 1
     },
     "class_type": "EmptyHunyuanLatentVideo",
@@ -136,9 +146,9 @@
   },
   "67": {
     "inputs": {
-      "shift": 7,
+      "shift": 6,
       "model": [
-        "78",
+        "12",
         0
       ]
     },
@@ -149,10 +159,10 @@
   },
   "73": {
     "inputs": {
-      "tile_size": 256,
-      "overlap": 64,
-      "temporal_size": 64,
-      "temporal_overlap": 8,
+      "tile_size": 128,
+      "overlap": 32,
+      "temporal_size": 32,
+      "temporal_overlap": 4,
       "samples": [
         "13",
         0
@@ -167,15 +177,6 @@
       "title": "VAE Decode (Tiled)"
     }
   },
-  "78": {
-    "inputs": {
-      "unet_name": "hunyuan-video-t2v-720p-Q5_K_M.gguf"
-    },
-    "class_type": "UnetLoaderGGUF",
-    "_meta": {
-      "title": "Unet Loader (GGUF)"
-    }
-  },
   "80": {
     "inputs": {
       "frame_rate": 24,
@@ -184,7 +185,7 @@
       "format": "video/h264-mp4",
       "pix_fmt": "yuv420p",
       "crf": 19,
-      "save_metadata": false,
+      "save_metadata": true,
       "trim_to_audio": false,
       "pingpong": false,
       "save_output": false,

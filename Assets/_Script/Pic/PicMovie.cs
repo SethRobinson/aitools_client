@@ -12,6 +12,9 @@ public class PicMovie : MonoBehaviour
     private RenderTexture _renderTexture; // We'll create this dynamically
     public Renderer _renderer;
     string m_fileName;
+    float _updateTimerSeconds = 0.0f;
+    float _updateIntervalSeconds = 1;
+    public PicMain _picMainScript;
 
     // Start is called before the first frame update
     void Start()
@@ -45,6 +48,11 @@ public class PicMovie : MonoBehaviour
 
             _videoPlayer.Play();
         }
+    }
+
+    public string GetFileExtensionOfMovie()
+    {
+        return System.IO.Path.GetExtension(m_fileName);
     }
 
     public void SaveMovie(string path)
@@ -81,9 +89,9 @@ public class PicMovie : MonoBehaviour
 
         // Extract just the filename without the path
         string fileName = System.IO.Path.GetFileName(m_fileName);
-          
+
         RTUtil.CopyFile(m_fileName, path);
-        
+
     }
     public void DeleteMovieIfNeeded()
     {
@@ -119,7 +127,23 @@ public class PicMovie : MonoBehaviour
         }
     }
     // Update is called once per frame
-    
+
+    public void Update()
+    {
+        //see if it's time to update
+        if (_updateTimerSeconds  < Time.time)
+        {
+            _updateTimerSeconds  = Time.time + _updateIntervalSeconds;
+
+            //if we have a valid movie filename, but it isn't loaded/playing, let's load and play it now
+            if (m_fileName != null && m_fileName.Length > 0 && _renderTexture == null && _picMainScript.IsVisible())
+            {
+                PlayMovie(m_fileName);
+            }
+        }
+
+    }
+
     public bool IsMovie()
     {
         return _movieObject.activeSelf;
@@ -195,56 +219,34 @@ public class PicMovie : MonoBehaviour
     {
         try
         {
-            // Check memory before starting
             if (RTUtil.IsMemoryLow())
             {
-                // Force garbage collection
                 System.GC.Collect();
                 Resources.UnloadUnusedAssets();
-
-                // Check again after cleanup
                 if (RTUtil.IsMemoryLow())
                 {
                     RTQuickMessageManager.Get().ShowMessage("Low memory warning - video playback may be affected");
-
                     return;
                 }
             }
 
-            // Ensure cleanup of previous resources
             CleanupVideoResources();
+            m_fileName = filename;
+            _movieObject.SetActive(true);
 
-        m_fileName = filename;
+            _videoPlayer.source = VideoSource.Url;
+            _videoPlayer.url = filename;
+            _videoPlayer.isLooping = true;
+            _videoPlayer.playOnAwake = false;  // Changed to false
 
-        _movieObject.SetActive(true);
-            try
-            {
-                _renderTexture = new RenderTexture(1920, 1080, 0);
-                if (!_renderTexture.Create())
-                {
-                    throw new System.Exception("Failed to create render texture");
-                }
-                _videoPlayer.targetTexture = _renderTexture;
-            }
-            catch (System.Exception e)
-            {
-                HandleVideoError($"Failed to initialize video resources: {e.Message}");
-                return;
-            }
+            _videoPlayer.prepareCompleted -= OnVideoPrepared;
+            _videoPlayer.prepareCompleted += OnVideoPrepared;
+            _videoPlayer.errorReceived -= OnVideoError;
+            _videoPlayer.errorReceived += OnVideoError;
+            _videoPlayer.loopPointReached -= OnVideoLoop;
+            _videoPlayer.loopPointReached += OnVideoLoop;
 
-            // Assign the RenderTexture to a material
-            Material newMaterial = new Material(_materialTemplate);
-            
-            if (newMaterial == null)
-            {
-                HandleVideoError($"newMaterial failed to init.  Out of mem?");
-                return;
-            }
-            newMaterial.mainTexture = _renderTexture;
-            _renderer.material = newMaterial;
-
-            // Configure video player with additional error handling
-            ConfigureVideoPlayer(filename);
+            _videoPlayer.Prepare();
         }
         catch (System.Exception e)
         {
@@ -253,17 +255,28 @@ public class PicMovie : MonoBehaviour
         }
     }
 
+
+
     private void OnVideoError(VideoPlayer source, string message)
     {
         HandleVideoError(message);
     }
 
+    public void UnloadTheMovieToSaveMemory()
+    {
+        CleanupVideoResources();
+    }
+
+
+    
     private void HandleVideoError(string message)
     {
         // Debug.LogError($"VideoPlayer error for {_videoPlayer.url}: {message}");
         //_movieObject.SetActive(false);
         RTQuickMessageManager.Get().ShowMessage("Can't play the video.  Corrupted?  Make sure the length is a valid #");
 
+        GameLogic.Get().AskAllMoviePicsToUnloadTheMovieToSaveMemory();
+        
         // Clean up handlers
         _videoPlayer.prepareCompleted -= OnVideoPrepared;
         _videoPlayer.errorReceived -= OnVideoError;
@@ -271,23 +284,36 @@ public class PicMovie : MonoBehaviour
 
     private void OnVideoPrepared(VideoPlayer source)
     {
-        // Get the video dimensions
-        float videoWidth = source.width;
-        float videoHeight = source.height;
+        try
+        {
+            _renderTexture = new RenderTexture((int)source.width, (int)source.height, 0);
+            if (!_renderTexture.Create())
+            {
+                throw new System.Exception("Failed to create render texture");
+            }
+            _videoPlayer.targetTexture = _renderTexture;
 
-        // Calculate aspect ratio
-        float aspectRatio = videoWidth / videoHeight;
+            Material newMaterial = new Material(_materialTemplate);
+            if (newMaterial == null)
+            {
+                HandleVideoError("newMaterial failed to init. Out of mem?");
+                return;
+            }
+            newMaterial.mainTexture = _renderTexture;
+            _renderer.material = newMaterial;
 
-        // Adjust the _movieObject scale to maintain aspect ratio, modifying Y only
-        Vector3 scale = _movieObject.transform.localScale;
-        scale.y = scale.x / aspectRatio;
-        _movieObject.transform.localScale = scale;
+            float videoWidth = source.width;
+            float videoHeight = source.height;
+            Vector3 scale = _movieObject.transform.localScale;
+            scale.y = scale.x * ((float)videoHeight / videoWidth);
+            _movieObject.transform.localScale = scale;
 
-        // Start playing the video
-        source.Play();
-
-        // Remove the event listener to prevent duplicate handling
-        _videoPlayer.prepareCompleted -= OnVideoPrepared;
+            source.Play();
+        }
+        catch (System.Exception e)
+        {
+            HandleVideoError($"Error in OnVideoPrepared: {e.Message}");
+        }
     }
 }
 

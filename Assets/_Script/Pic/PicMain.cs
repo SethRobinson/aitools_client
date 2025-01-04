@@ -123,6 +123,13 @@ public class PicMain : MonoBehaviour
         m_onFinishedRenderingCallback = null;
     }
 
+    public void UnloadToSaveMemoryIfPossible()
+    {
+        if (IsMovie())
+        {
+            m_picMovie.UnloadTheMovieToSaveMemory();
+        }
+    }
     public void MakeDraggable()
     {
 
@@ -465,7 +472,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             }
             else
             {
-                texture = new Texture2D(0, 0, TextureFormat.RGBA32, false);
+                texture = new Texture2D(16, 16, TextureFormat.RGBA32, false);
                 texture.LoadImage(buffer);
             }
 
@@ -1618,6 +1625,11 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         m_bNeedsToUpdateInfoPanel = false;
 
     }
+
+    public bool IsVisible()
+    {
+        return m_pic.isVisible;
+    }
     // Update is called once per frame
     void Update()
     {
@@ -1666,8 +1678,24 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
       public void PassInTempInfo(ScheduledGPUEvent e)
     {
         //this doesn't really matter, but let's update our current info based on what we think will happen
-        GetCurrentStats().m_lastPromptUsed = m_picTextToImageScript.GetPrompt();
+        if (e.promptOverride != null && e.promptOverride.Length > 0)
+        {
+            GetCurrentStats().m_lastPromptUsed = e.promptOverride;
+        } else
+        {
+            GetCurrentStats().m_lastPromptUsed = m_picTextToImageScript.GetPrompt();
+        }
+
+        if (e.requestedDetailedPrompt != null && e.requestedDetailedPrompt.Length > 0)
+        {
+            GetCurrentStats().m_lastPromptUsed = e.requestedDetailedPrompt;
+        }
+        
+
         GetCurrentStats().m_requestedRenderer = e.requestedRenderer;
+        SetNeedsToUpdateInfoPanelFlag();
+
+
     }
 
     public void PassInTempInfo(RTRendererType requestedRenderer, int gpuID)
@@ -1675,6 +1703,8 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         GetCurrentStats().m_lastPromptUsed = m_picTextToImageScript.GetPrompt();
         GetCurrentStats().m_requestedRenderer = requestedRenderer;
         GetCurrentStats().m_gpu = gpuID;
+        SetNeedsToUpdateInfoPanelFlag();
+
     }
 
 }

@@ -375,7 +375,24 @@ public class PicTextToImage : MonoBehaviour
 
                 //Ok, we now have to dig into the response and pull out the json image
 
-                JSONNode rootNode = JSON.Parse(postRequest.downloadHandler.text);
+                //catch all exceptions
+                JSONNode rootNode = null;
+
+                try
+                {
+                    rootNode = JSON.Parse(postRequest.downloadHandler.text);
+                    // Your code using rootNode here
+                }
+                catch (Exception ex)
+                {
+                    RTConsole.Log($"Failed to parse JSON: {ex.Message}");
+                    m_bIsGenerating = false;
+                    m_picScript.SetStatusMessage("Bad json, can't parse reply");
+                    yield break;
+
+                }
+
+                
                 yield return null; //wait a free to lesson the jerkiness
 
                 Debug.Assert(rootNode.Tag == JSONNodeType.Object);
@@ -409,7 +426,7 @@ public class PicTextToImage : MonoBehaviour
                 SpriteRenderer renderer = m_sprite.GetComponent<SpriteRenderer>();
                 Sprite s = renderer.sprite;
 
-                Texture2D texture = new Texture2D(0, 0, TextureFormat.RGBA32, false);
+                Texture2D texture = new Texture2D(8, 8, TextureFormat.RGBA32, false);
                 bool bSuccess = false;
                 yield return null; //wait a frame to lesson the jerkiness
 
@@ -581,7 +598,22 @@ public class PicTextToImage : MonoBehaviour
         //Replace all instances of <AITOOLS_PROMPT> with m_prompt in comfyUIGraphJSon
         bool bDidFindPromptTag = ReplaceInString(ref comfyUIGraphJSon, "<AITOOLS_PROMPT>", m_prompt);
 
-        JSONNode jsonNode = JSON.Parse(comfyUIGraphJSon);
+      JSONNode jsonNode = null;
+
+        try
+        {
+            jsonNode = JSON.Parse(comfyUIGraphJSon);
+            // Your code using rootNode here
+        }
+        catch (Exception ex)
+        {
+            RTConsole.Log($"Failed to parse JSON: {ex.Message}");
+            m_bIsGenerating = false;
+            m_picScript.SetStatusMessage("Bad json, can't parse reply");
+            yield break;
+        }
+
+
         ExtractTotalSteps(jsonNode);
         // Modify multiple values
         ModifyJsonValue(jsonNode, "noise_seed", JSONNode.Parse(m_seed.ToString()), true); // Example seed value
@@ -644,7 +676,25 @@ public class PicTextToImage : MonoBehaviour
 
                 //Ok, we now have to dig into the response and pull out the json image
 
-                JSONNode rootNode = JSON.Parse(postRequest.downloadHandler.text);
+                JSONNode rootNode = null;
+
+
+                try
+                {
+                    rootNode = JSON.Parse(postRequest.downloadHandler.text);
+                   
+                    // Your code using rootNode here
+                }
+                catch (Exception ex)
+                {
+                    RTConsole.Log($"Failed to parse JSON: {ex.Message}");
+                    m_bIsGenerating = false;
+                    m_picScript.SetStatusMessage("Bad json, can't parse reply");
+                    //had an error, so let's return early
+                    yield break;
+                }
+
+
                 yield return null; //wait a free to lesson the jerkiness
 
                 m_comfyUIPromptID = rootNode["prompt_id"];
@@ -915,6 +965,7 @@ public class PicTextToImage : MonoBehaviour
                     else if (statusNode["status_str"] == "error")
                     {
                         RTQuickMessageManager.Get().ShowMessage("ComfyUI reports a failed render");
+                        SetStatusAdditionalMessage("Comfy Error\nServer " + m_gpu);
                         if (Config.Get().IsValidGPU(m_gpu) && m_bIsGenerating)
                         {
                             m_bIsGenerating = false;

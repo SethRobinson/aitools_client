@@ -107,90 +107,110 @@ COMMAND_START|twine_image
 <img src="_IMAGE_FILENAME_">
 COMMAND_END
 
+COMMAND_START|twine_video
+<img src="_IMAGE_FILENAME_">
+<video autoplay loop muted playsinline> <source src="_IMAGE_FILENAME_" type="video/mp4"> </video>
+COMMAND_END
+
+
 COMMAND_START|twine_end
 :: StoryStylesheet [stylesheet]
 /* Custom inline style for dialogue text */
-
 .dialogue {
-    color: #cfd700; /* Brighter yellow */
-    font-style: italic; /* Italicize the text */
-    font-weight: bold; /* Bold text */
-    display: inline; /* Keep it inline */
+    color: #cfd700;
+    font-style: italic;
+    font-weight: bold;
+    display: inline;
 }
 
 /* Remove any unwanted block artifacts */
 .dialogue::before {
     content: "";
-    display: none; /* Ensures no extra content is added before the dialogue */
+    display: none;
 }
 
 /* General passage text styling */
 tw-passage {
-    color: #f5f5f5; /* Warm white text color for better contrast on dark backgrounds */
-    font-family: 'Georgia', serif; /* Classic serif font for a storybook feel */
-    line-height: 1.6em; /* Improved readability */
+    color: #f5f5f5;
+    font-family: 'Georgia', serif;
+    line-height: 1.6em;
 }
 
 /* Styling for choice links */
 tw-link, .enchantment-link {
-    color: #26a69a; /* Rich Teal for choice links */
-    text-decoration: none; /* Remove underline */
-    border-bottom: 2px solid #26a69a; /* Underline effect using border */
-    padding-bottom: 2px; /* Space between text and underline */
-    transition: color 0.2s ease, border-bottom-color 0.2s ease; /* Smooth transition for hover effects */
+    color: #26a69a;
+    text-decoration: none;
+    border-bottom: 2px solid #26a69a;
+    padding-bottom: 2px;
+    transition: color 0.2s ease, border-bottom-color 0.2s ease;
 }
 
 tw-link:hover, .enchantment-link:hover {
-    color: #00796b; /* Darker Teal on hover */
-    border-bottom-color: #00796b; /* Matching underline color on hover */
+    color: #00796b;
+    border-bottom-color: #00796b;
 }
 
 /* General styling */
 .content-container {
-  display: flex;
-  flex-direction: column;
-  gap: 1em; /* Slightly larger gap for better separation */
+    display: flex;
+    flex-direction: column;
+    gap: 1em;
 }
 
-.image-container img {
-  max-width: 100%;
-  height: auto;
-  transition: max-width 0.2s ease;
-  padding: 2% 2% 2% 2%;
+/* Image and Video container styles */
+.image-container {
+    width: 100%;
+    margin: 0 auto;
+}
+
+/* Common styles for both images and videos */
+.image-container img,
+.image-container video {
+    max-width: 100%;
+    height: auto;
+    transition: max-width 0.2s ease;
+    padding: 2%;
+    display: block;
+    margin: 0 auto;
+}
+
+/* Specific video styling */
+.image-container video {
+    background-color: #000;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
 }
 
 /* Mobile-specific styling */
 @media (min-width: 1px) {
-  tw-story {
-   padding: 0% 5% 0% 15%;
-   background-color: #000000; 
-   color: #f5f5f5; /* Ensures text remains visible */
-  }
+    tw-story {
+        padding: 0% 5% 0% 15%;
+        background-color: #000000;
+        color: #f5f5f5;
+    }
 }
 
-@media (min-width: 1200px) 
-{
-  .content-container 
-  {
-    flex-direction: row;
-    align-items: flex-start;
-  }
+@media (min-width: 1200px) {
+    .content-container {
+        flex-direction: row;
+        align-items: flex-start;
+    }
 
-  .dialog {
-    flex: 1;
-    order: 1; /* Dialog on the left */
-  }
+    .dialog {
+        flex: 1;
+        order: 1;
+    }
 
-  .image-container {
-    flex-basis: 50%; /* Adjust this value as needed */
-    order: 2; /* Image on the right */
-    text-align: right;
-  }
+    .image-container {
+        flex-basis: 50%;
+        order: 2;
+        text-align: right;
+    }
+}
 
-  .image-container img {
-    max-width: 100%;
-    height: auto;
-  }
+/* Ensure videos maintain aspect ratio */
+.image-container video {
+    aspect-ratio: 16/9;
+    object-fit: contain;
 }
 COMMAND_END
 #if there are no choices, let's add a button to start over as pressing F5 to reload won't actually do it

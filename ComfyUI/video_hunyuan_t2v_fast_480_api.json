@@ -21,8 +21,8 @@
   },
   "12": {
     "inputs": {
-      "unet_name": "hunyuan_video_t2v_720p_bf16.safetensors",
-      "weight_dtype": "fp8_e4m3fn"
+      "unet_name": "hunyuan_video_FastVideo_720_fp8_e4m3fn.safetensors",
+      "weight_dtype": "fp8_e4m3fn_fast"
     },
     "class_type": "UNETLoader",
     "_meta": {
@@ -69,7 +69,7 @@
   "17": {
     "inputs": {
       "scheduler": "simple",
-      "steps": 20,
+      "steps": 7,
       "denoise": 1,
       "model": [
         "12",
@@ -99,7 +99,7 @@
   },
   "25": {
     "inputs": {
-      "noise_seed": 744592328244735
+      "noise_seed": 425732862878927
     },
     "class_type": "RandomNoise",
     "_meta": {
@@ -108,7 +108,7 @@
   },
   "26": {
     "inputs": {
-      "guidance": 6,
+      "guidance": 8,
       "conditioning": [
         "44",
         0
@@ -121,7 +121,7 @@
   },
   "44": {
     "inputs": {
-      "text": "<AITOOLS_PROMPT>",
+      "text": "a girl is skipping down the street in Kyoto",
       "clip": [
         "11",
         0
@@ -134,8 +134,8 @@
   },
   "45": {
     "inputs": {
-      "width": 1280,
-      "height": 720,
+      "width": 512,
+      "height": 480,
       "length": 93,
       "batch_size": 1
     },
@@ -146,7 +146,7 @@
   },
   "67": {
     "inputs": {
-      "shift": 6,
+      "shift": 17,
       "model": [
         "12",
         0

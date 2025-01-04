@@ -728,8 +728,6 @@ public class AdventureText : MonoBehaviour
         e.requestedSimplePrompt = e.requestedSimplePrompt.Trim();
         e.requestedDetailedPrompt = e.requestedDetailedPrompt.Trim();
 
-
-
         e.requestedRenderer = desiredRenderer;
         picScript.PassInTempInfo(e);
 
@@ -795,21 +793,21 @@ public class AdventureText : MonoBehaviour
 
         if (AdventureLogic.Get().GetLLMType() == LLM_Type.GenericLLM_API)
         {
-            string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, 4096, 1.0f, "chat", true);
+            string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, 4096, AdventureLogic.Get().GetExtractor().Temperature, "instruct", true);
             _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, Config.Get()._texgen_webui_address, "/v1/chat/completions", OnStreamingTextCallback, true, Config.Get()._texgen_webui_APIKey);
             SetLLMActive(true);
         }
         
         if (AdventureLogic.Get().GetLLMType() == LLM_Type.OpenAI_API)
         {
-            string json = _openAITextCompletionManager.BuildChatCompleteJSON(lines, 4096, 1.0f, Config.Get().GetOpenAI_APIModel(), true);
+            string json = _openAITextCompletionManager.BuildChatCompleteJSON(lines, 4096, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetOpenAI_APIModel(), true);
             _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db,  Config.Get().GetOpenAI_APIKey(), Config.Get()._openai_gpt4_endpoint, OnStreamingTextCallback, true);
             SetLLMActive(true);
         }
 
         if (AdventureLogic.Get().GetLLMType() == LLM_Type.Anthropic_API)
         {
-            string json = _anthropicAITextCompletionManager.BuildChatCompleteJSON(lines, 4096, 1.0f, Config.Get().GetAnthropicAI_APIModel(), true);
+            string json = _anthropicAITextCompletionManager.BuildChatCompleteJSON(lines, 4096, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetAnthropicAI_APIModel(), true);
             _anthropicAITextCompletionManager.SpawnChatCompletionRequest(json, OnTexGenCompletedCallback, db, Config.Get().GetAnthropicAI_APIKey(), Config.Get().GetAnthropicAI_APIEndpoint(), OnStreamingTextCallback, true);
             SetLLMActive(true);
         }

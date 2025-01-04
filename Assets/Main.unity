@@ -11408,6 +11408,7 @@ GameObject:
   - component: {fileID: 311706019}
   - component: {fileID: 311706020}
   - component: {fileID: 311706021}
+  - component: {fileID: 311706022}
   m_Layer: 0
   m_Name: GameLogic
   m_TagString: Untagged
@@ -11599,6 +11600,18 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: ee98964f7a61a364ea02f7521c095b8f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!114 &311706022
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 311706009}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6732b4a1273dc6d47b204df9a00fb13b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
 --- !u!1 &317796614
@@ -49852,7 +49865,7 @@ MonoBehaviour:
   m_TargetGraphic: {fileID: 821879226}
   m_HandleRect: {fileID: 821879225}
   m_Direction: 2
-  m_Value: 0
+  m_Value: 1
   m_Size: 1
   m_NumberOfSteps: 0
   m_OnValueChanged:

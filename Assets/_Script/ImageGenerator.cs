@@ -487,10 +487,11 @@ public class ImageGenerator : MonoBehaviour
                         }
 
                         //as for how we actually kickoff things..
+                        var picMain = e.targetObj.GetComponent<PicMain>();
+                        picMain.PassInTempInfo(gpuInfo._requestedRendererType, gpuToUse);
 
                         if (gpuInfo._requestedRendererType == RTRendererType.OpenAI_Dalle_3)
                         {
-                            var picMain = e.targetObj.GetComponent<PicMain>();
                             picMain.OnRenderWithDalle3();
                         }
                         else
@@ -498,6 +499,8 @@ public class ImageGenerator : MonoBehaviour
                             script.SetGPU(gpuToUse);
                             script.StartGenerateInitialRender();
                         }
+
+            
                     }
                 }
                 else if (e.mode == "interrogate")

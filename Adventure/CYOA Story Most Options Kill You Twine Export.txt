@@ -15,8 +15,7 @@ GUIDELINES:
 * Use direct and explicit language to describe what happens. 
 * Keep flowery prose and grandiose language to a minimum. 
 * Only provide 1-3 paragraphs of story per response
-
-
+
 The user will tell you what kind of adventure/story to make and provide additional new instructions when needed.
 
 After the story portion, give the user between 0 and 4 choices.   (If no choices, the story is over, and you should end with GAME OVER - YOU FAILED or GAME OVER - YOU WON! depending on the circumstance)
@@ -42,6 +41,25 @@ Also add a second simplied version like this:
 SIMPLE_SCENE_VISUAL_DESCRIPTION_START
 (like above, but only simple keywords separately by a comma)
 SIMPLE_SCENE_VISUAL_DESCRIPTION_END
+
+A full example:
+
+As you stroll down Main Street USA under the dimming Californian sky, the lights of Disneyland twinkle like stars, beckoning you to experience their magic. Your heart races with excitement, but something underlying tingles your nerves with unease. The joyful clamor is punctuated by a shiver-inducing scream slicing through the air. In front of you lies the ghostly Pirates of the Caribbean ride, renowned for its lifelike animatronics and whimsical tunes. As you step into the queue, you are handed a strange glowing amulet by the cast member guiding you to your boat.
+
+As the ride starts, the jovial sound of “Yo Ho” fills the air. But as your boat ventures deeper into the mock cavern, the musky aroma of chlorinated water gives way to the metallic scent of blood. Around you, animatronic pirates come to life, their rusty blades shining ominously, accompanied by feral grins that seem far too real. A skeleton pirate assumes the wheel, his empty eye sockets sparking to life with malevolence as he steers the craft into a chilling chamber.
+
+CHOICE:DODGE-ANIMATRONICS-WILL-DIE-1:Dodge and attempt to swim out through the cavernous water
+CHOICE:USE-AMULET-2:Use the glowing amulet as instructed by the mysterious cast member
+CHOICE:ATTACK-ANIMATRONICS-WILL-DIE-3:Grab a loose piece of wood and attempt to fend off the animatronics
+
+DETAILED_SCENE_VISUAL_DESCRIPTION_START
+The scene is set within a dark, cavernous ride. The player, a 25-year-old Japanese-American female with a slim build, wearing a red Disneyland t-shirt and blue jeans, sits alone in a small boat. Her black hair is tied back in a ponytail, and her expression is a mixture of fear and determination. Across the water, animatronic pirates, featuring a blend of ethnicities with a predominantly tattered European look, brandish rusting swords with malicious intent, their faces set in maniacal grins. One animatronic, a grizzled male pirate with a peg leg and an eyepatch, appears to control the boat's steering wheel. The cavern is shrouded in darkness, intermittently illuminated by dim, flickering lantern lights which cast unsettling shadows across the damp walls.
+DETAILED_SCENE_VISUAL_DESCRIPTION_END
+
+SIMPLE_SCENE_VISUAL_DESCRIPTION_START
+dark ride, 25-year-old Japanese-American female, red shirt, blue jeans, black hair, animatronic pirates, pirate cave, boat, fear
+SIMPLE_SCENE_VISUAL_DESCRIPTION_END
+
 
 Now the user will tell you what kind of adventure/story to make and may provide additional instructions.
 COMMAND_END
@@ -97,8 +115,6 @@ COMMAND_SET|spatial_organization_method|TREE_BY_GENERATION|#VERTICAL, TREE_SPLIT
 COMMAND_SET|image_text_overlay|AI Generated|#text drawn at the bottom of images on export
 
 COMMAND_START|twine_start
-
-COMMAND_START|twine_start
 :: StoryTitle
 _INSERT_TITLE_
 
@@ -125,90 +141,110 @@ COMMAND_START|twine_image
 <img src="_IMAGE_FILENAME_">
 COMMAND_END
 
+COMMAND_START|twine_video
+<img src="_IMAGE_FILENAME_">
+<video autoplay loop muted playsinline> <source src="_IMAGE_FILENAME_" type="video/mp4"> </video>
+COMMAND_END
+
+
 COMMAND_START|twine_end
 :: StoryStylesheet [stylesheet]
 /* Custom inline style for dialogue text */
-
 .dialogue {
-    color: #cfd700; /* Brighter yellow */
-    font-style: italic; /* Italicize the text */
-    font-weight: bold; /* Bold text */
-    display: inline; /* Keep it inline */
+    color: #cfd700;
+    font-style: italic;
+    font-weight: bold;
+    display: inline;
 }
 
 /* Remove any unwanted block artifacts */
 .dialogue::before {
     content: "";
-    display: none; /* Ensures no extra content is added before the dialogue */
+    display: none;
 }
 
 /* General passage text styling */
 tw-passage {
-    color: #f5f5f5; /* Warm white text color for better contrast on dark backgrounds */
-    font-family: 'Georgia', serif; /* Classic serif font for a storybook feel */
-    line-height: 1.6em; /* Improved readability */
+    color: #f5f5f5;
+    font-family: 'Georgia', serif;
+    line-height: 1.6em;
 }
 
 /* Styling for choice links */
 tw-link, .enchantment-link {
-    color: #26a69a; /* Rich Teal for choice links */
-    text-decoration: none; /* Remove underline */
-    border-bottom: 2px solid #26a69a; /* Underline effect using border */
-    padding-bottom: 2px; /* Space between text and underline */
-    transition: color 0.2s ease, border-bottom-color 0.2s ease; /* Smooth transition for hover effects */
+    color: #26a69a;
+    text-decoration: none;
+    border-bottom: 2px solid #26a69a;
+    padding-bottom: 2px;
+    transition: color 0.2s ease, border-bottom-color 0.2s ease;
 }
 
 tw-link:hover, .enchantment-link:hover {
-    color: #00796b; /* Darker Teal on hover */
-    border-bottom-color: #00796b; /* Matching underline color on hover */
+    color: #00796b;
+    border-bottom-color: #00796b;
 }
 
 /* General styling */
 .content-container {
-  display: flex;
-  flex-direction: column;
-  gap: 1em; /* Slightly larger gap for better separation */
+    display: flex;
+    flex-direction: column;
+    gap: 1em;
 }
 
-.image-container img {
-  max-width: 100%;
-  height: auto;
-  transition: max-width 0.2s ease;
-  padding: 2% 2% 2% 2%;
+/* Image and Video container styles */
+.image-container {
+    width: 100%;
+    margin: 0 auto;
+}
+
+/* Common styles for both images and videos */
+.image-container img,
+.image-container video {
+    max-width: 100%;
+    height: auto;
+    transition: max-width 0.2s ease;
+    padding: 2%;
+    display: block;
+    margin: 0 auto;
+}
+
+/* Specific video styling */
+.image-container video {
+    background-color: #000;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
 }
 
 /* Mobile-specific styling */
 @media (min-width: 1px) {
-  tw-story {
-   padding: 0% 5% 0% 15%;
-   background-color: #000000; 
-   color: #f5f5f5; /* Ensures text remains visible */
-  }
+    tw-story {
+        padding: 0% 5% 0% 15%;
+        background-color: #000000;
+        color: #f5f5f5;
+    }
 }
 
-@media (min-width: 1200px) 
-{
-  .content-container 
-  {
-    flex-direction: row;
-    align-items: flex-start;
-  }
+@media (min-width: 1200px) {
+    .content-container {
+        flex-direction: row;
+        align-items: flex-start;
+    }
 
-  .dialog {
-    flex: 1;
-    order: 1; /* Dialog on the left */
-  }
+    .dialog {
+        flex: 1;
+        order: 1;
+    }
 
-  .image-container {
-    flex-basis: 50%; /* Adjust this value as needed */
-    order: 2; /* Image on the right */
-    text-align: right;
-  }
+    .image-container {
+        flex-basis: 50%;
+        order: 2;
+        text-align: right;
+    }
+}
 
-  .image-container img {
-    max-width: 100%;
-    height: auto;
-  }
+/* Ensure videos maintain aspect ratio */
+.image-container video {
+    aspect-ratio: 16/9;
+    object-fit: contain;
 }
 COMMAND_END
 #if there are no choices, let's add a button to start over as pressing F5 to reload won't actually do it

@@ -90,7 +90,6 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
 
 ""prompt"": ""{SimpleJSON.JSONNode.Escape(msg)}"",
 ""max_tokens"": {max_tokens},
-""max_new_tokens"": {max_new_tokens},
 ""temperature"": {temperature},
  ""stream"": {bStreamText},
 ""seed"": -1
@@ -126,15 +125,21 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
             characterPart = $@",""character"": ""{SimpleJSON.JSONNode.Escape(texGenWebUICharacter)}""";
         }
 
+
+        string extra = "";
+
+        // extra = ",\"stopping_strings\": [ \"\\n\" ],\r\n    \"stop\": [ \"\\n\" ]";
+
+        //  ""instruction_template"": ""Alpaca""
         string json =
          $@"{{
              ""messages"":[{msg}],
              ""mode"": ""{mode}"",
              ""temperature"": {temperature},
              ""stream"": {bStreamText},
-             ""max_new_tokens"": {max_new_tokens},
-             ""mode"": ""instruct"",
-             ""instruction_template"": ""Alpaca""             
+             ""max_tokens"": {max_new_tokens}
+          
+             {extra}
              {characterPart}
          }}";
 

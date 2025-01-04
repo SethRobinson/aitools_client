@@ -10,9 +10,7 @@ public class AdventureExportQuiz : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
-        
     }
-
 
     public string GetQuestionData(string path, AdventureText at)
     {
@@ -35,7 +33,9 @@ public class AdventureExportQuiz : MonoBehaviour
         var picsSpawned = at.GetPicsSpawned();
         int picCount = 0;
         string fileName = "";
-       
+
+        string picFileExtension = ".png";
+
         foreach (PicMain pic in picsSpawned)
         {
             if (pic != null)
@@ -45,8 +45,22 @@ public class AdventureExportQuiz : MonoBehaviour
                 //filter to be a valid filename
                 fileName = RTUtil.FilteredFilenameSafeToUseAsFileName(fileName + "-" + picCount.ToString());
                 picCount++;
-                pic.AddTextLabelToImage(AdventureLogic.Get().GetExtractor().ImageTextOverlay);
-                pic.SaveFile(path + fileName + ".png", "", null, "", true, false);
+
+                if (pic.IsMovie())
+                {
+                    //actual filename of the movie
+                    picFileExtension = pic.m_picMovie.GetFileExtensionOfMovie();
+
+                    Debug.Log("Found movie with file extension " + picFileExtension);
+                    pic.m_picMovie.SaveMovieWithNewFilename(path + fileName + picFileExtension);
+
+                } else
+                {
+                    pic.AddTextLabelToImage(AdventureLogic.Get().GetExtractor().ImageTextOverlay);
+                    pic.SaveFile(path + fileName + picFileExtension, "", null, "", true, false);
+
+                }
+
                 break; //we don't support more than 1 image right now
                 
             }
@@ -66,7 +80,6 @@ public class AdventureExportQuiz : MonoBehaviour
 
             //also escape carriage return/new lines so they can be embedded in a javascript string
             question = question.Replace("\n", "\\n");
-
 
             choiceText += "question: \"" + question + "\",\n";
 
@@ -88,14 +101,15 @@ public class AdventureExportQuiz : MonoBehaviour
                 {
                     correctAnswer = choice.description.Replace("\"", "\\\"");
                 }
-
-
+                
             }
+
             choiceText += "],\n";
 
-
             choiceText += "correctAnswer: \"" + correctAnswer + "\",\n";
-            choiceText += "image: \"" + fileName + ".png\",\n";
+            
+            
+            choiceText += "image: \"" + fileName + picFileExtension+"\",\n";
             choiceText += "explanation: \""+at.GetFactoid().Replace("\"", "\\\"") + "\"\n";
             choiceText += "},\n";
 

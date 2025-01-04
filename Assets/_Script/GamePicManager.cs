@@ -256,7 +256,7 @@ public class GamePicManager : MonoBehaviour
                     Debug.Log("image data is missing");
                 }
 
-                Texture2D texture = new Texture2D(0, 0, TextureFormat.RGBA32, false);
+                Texture2D texture = new Texture2D(16, 16, TextureFormat.RGBA32, false);
 
                 if (texture.LoadImage(imgDataBytes, false))
                 {

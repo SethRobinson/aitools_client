@@ -60,11 +60,28 @@ public class AdventureExportTwine : MonoBehaviour
             {
                 string fileName = at.GetName();
 
+                string picFileExtension = ".png";
+
+
                 //filter to be a valid filename
                 fileName = RTUtil.FilteredFilenameSafeToUseAsFileName(fileName+"-"+picCount.ToString());
-                pic.AddTextLabelToImage(AdventureLogic.Get().GetExtractor().ImageTextOverlay);
-                pic.SaveFile(path+fileName+".png","", null, "", true, false);
-                imageText += AdventureLogic.Get().GetExtractor().TwineImage.Replace("_IMAGE_FILENAME_", fileName+".png")+"\n";
+              
+
+                if (pic.IsMovie())
+                {
+                    //actual filename of the movie
+                    picFileExtension = pic.m_picMovie.GetFileExtensionOfMovie();
+                    pic.m_picMovie.SaveMovieWithNewFilename(path + fileName + picFileExtension);
+                    imageText += AdventureLogic.Get().GetExtractor().TwineVideo.Replace("_IMAGE_FILENAME_", fileName + picFileExtension) + "\n";
+                }
+                else
+                {
+                    pic.AddTextLabelToImage(AdventureLogic.Get().GetExtractor().ImageTextOverlay);
+                    pic.SaveFile(path + fileName + picFileExtension, "", null, "", true, false);
+                    imageText += AdventureLogic.Get().GetExtractor().TwineImage.Replace("_IMAGE_FILENAME_", fileName + picFileExtension) + "\n";
+                }
+
+
                 picCount++;
 
             }

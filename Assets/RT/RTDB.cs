@@ -2,6 +2,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
+using UnityEditor;
 
 public class MyRef<T>
 {
@@ -173,6 +174,15 @@ public class RTDB
     {
         if (m_database.ContainsKey(key))
         {
+
+            //see if m_database[key] actually exists or not
+            if (m_database[key] == null)
+            {
+               // Debug.LogWarning(key + " is null");
+                return v;
+            }
+
+
             if (m_database[key].GetType() != typeof(string))
             {
                 Debug.LogWarning(key + " should be string but is " + m_database[key].GetType());

@@ -139,7 +139,7 @@ COMMAND_START|quiz_html
             flex-direction: column;
             justify-content: center;
             background-color: white;
-            overflow-y: auto; /* Allow scrolling if content overflows */
+            overflow-y: auto;
         }
         .image-section {
             width: 50%;
@@ -148,6 +148,13 @@ COMMAND_START|quiz_html
             align-items: center;
             justify-content: center;
             overflow: hidden;
+        }
+        .image-section img, .image-section video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            max-width: none;
+            max-height: none;
         }
         .question-number {
             font-size: clamp(16px, 3vw, 20px);
@@ -187,7 +194,7 @@ COMMAND_START|quiz_html
             border-radius: 5px;
             cursor: pointer;
             transition: background-color 0.3s;
-            display: none; /* Initially hidden */
+            display: none;
         }
         #nextBtn:hover {
             background-color: #2980b9;
@@ -226,13 +233,6 @@ COMMAND_START|quiz_html
             padding: 40px;
             background-color: white;
         }
-        img {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-            max-width: none;
-            max-height: none;
-        }
         
         @media (max-width: 768px) {
             .quiz-container {
@@ -245,11 +245,11 @@ COMMAND_START|quiz_html
             }
             .image-section {
                 order: -1;
-                height: 30vh; /* Reduced height for more room for the question and options */
+                height: 30vh;
             }
             .question-section {
-                flex: 1; /* Allow the question section to expand */
-                padding: 10px; /* Adjust padding to fit mobile screens better */
+                flex: 1;
+                padding: 10px;
             }
         }
 
@@ -274,19 +274,52 @@ COMMAND_START|quiz_html
         <!-- Quiz content will be inserted here -->
     </div>
 
-    <!-- Add audio elements for correct and incorrect sounds -->
     <audio id="correctSound" src="correct-sound.mp3"></audio>
     <audio id="incorrectSound" src="incorrect-sound.mp3"></audio>
 
     <script>
-
          const quizData = [
 			_INSERT_CHOICES_
         ];
 
-         let currentQuestion = 0;
+
+        let currentQuestion = 0;
         let score = 0;
-        let nextImage = new Image(); // Preload the next image
+        let nextMedia = null; // Will store either Image or Video for preloading
+
+        function isVideo(filename) {
+            return filename.toLowerCase().endsWith('.mp4') || 
+                   filename.toLowerCase().endsWith('.webm') || 
+                   filename.toLowerCase().endsWith('.mov');
+        }
+
+        function preloadMedia(filename) {
+            if (isVideo(filename)) {
+                nextMedia = document.createElement('video');
+                nextMedia.src = filename;
+                nextMedia.load();
+            } else {
+                nextMedia = new Image();
+                nextMedia.src = filename;
+            }
+        }
+
+        function updateMediaElement(filename) {
+            const imageElement = document.getElementById('questionImage');
+            const videoElement = document.getElementById('questionVideo');
+            
+            if (isVideo(filename)) {
+                imageElement.style.display = 'none';
+                videoElement.style.display = 'block';
+                videoElement.querySelector('source').src = filename;
+                videoElement.load();
+                videoElement.play();
+            } else {
+                videoElement.style.display = 'none';
+                imageElement.style.display = 'block';
+                imageElement.src = filename;
+            }
+        }
 
         function initQuiz() {
             const mainContainer = document.getElementById('main-container');
@@ -301,7 +334,11 @@ COMMAND_START|quiz_html
                         ${currentQuestion === 0 ? '<div class="footer">(this quiz created by <a href="https://github.com/SethRobinson/aitools_client" target="_blank">Seth\'s AI Tools</a>)</div>' : ''}
                     </div>
                     <div class="image-section">
-                        <img id="questionImage" src="question.png" alt="Quiz question image">
+                        <img id="questionImage" src="question.png" alt="Quiz question">
+                        <video id="questionVideo" playsinline muted loop style="display: none;">
+                            <source src="" type="video/mp4">
+                            Your browser does not support the video tag.
+                        </video>
                     </div>
                 </div>
             `;
@@ -309,53 +346,54 @@ COMMAND_START|quiz_html
         }
 
         function loadQuestion() {
-            const questionNumberElement = document.getElementById('questionNumber');
-            const questionElement = document.getElementById('question');
-            const optionsElement = document.getElementById('options');
-            const feedbackElement = document.getElementById('feedback');
-            const nextBtn = document.getElementById('nextBtn');
+            const elements = {
+                questionNumber: document.getElementById('questionNumber'),
+                question: document.getElementById('question'),
+                options: document.getElementById('options'),
+                feedback: document.getElementById('feedback'),
+                nextBtn: document.getElementById('nextBtn')
+            };
 
-            questionNumberElement.textContent = `(${currentQuestion + 1} of ${quizData.length})`;
-            questionElement.textContent = quizData[currentQuestion].question;
-            optionsElement.innerHTML = '';
-            feedbackElement.style.display = 'none';
-            feedbackElement.classList.remove('correct', 'incorrect');  // Reset feedback classes
-            nextBtn.style.display = 'none'; // Hide next button until an answer is selected
+            elements.questionNumber.textContent = `(${currentQuestion + 1} of ${quizData.length})`;
+            elements.question.textContent = quizData[currentQuestion].question;
+            elements.options.innerHTML = '';
+            elements.feedback.style.display = 'none';
+            elements.feedback.classList.remove('correct', 'incorrect');
+            elements.nextBtn.style.display = 'none';
 
-            // Preload the image for the current question
-            nextImage.src = quizData[currentQuestion].image;
+            // Initial media setup
+            updateMediaElement('question.png');
+
+            // Preload next question's media
+            if (currentQuestion < quizData.length) {
+                preloadMedia(quizData[currentQuestion].image);
+            }
 
             quizData[currentQuestion].options.forEach(option => {
                 const button = document.createElement('button');
                 button.textContent = option;
                 button.classList.add('option');
                 button.addEventListener('click', () => selectAnswer(option));
-                optionsElement.appendChild(button);
+                elements.options.appendChild(button);
             });
 
             if (currentQuestion === quizData.length - 1) {
-                nextBtn.textContent = "Finished! (See results)";
-            } else {
-                nextBtn.textContent = "Next Question";
-            }
-
-            // Preload the image for the next question, if applicable
-            if (currentQuestion < quizData.length - 1) {
-                const subsequentImage = new Image();
-                subsequentImage.src = quizData[currentQuestion + 1].image;
+                elements.nextBtn.textContent = "Finished! (See results)";
             }
         }
 
         function selectAnswer(selectedOption) {
-            const correct = quizData[currentQuestion].correctAnswer;
-            const options = document.querySelectorAll('.option');
-            const feedbackElement = document.getElementById('feedback');
-            const nextBtn = document.getElementById('nextBtn');
-            const correctSound = document.getElementById('correctSound');
-            const incorrectSound = document.getElementById('incorrectSound');
-            const imageElement = document.getElementById('questionImage');
+            const elements = {
+                options: document.querySelectorAll('.option'),
+                feedback: document.getElementById('feedback'),
+                nextBtn: document.getElementById('nextBtn'),
+                correctSound: document.getElementById('correctSound'),
+                incorrectSound: document.getElementById('incorrectSound')
+            };
 
-            options.forEach(option => {
+            const correct = quizData[currentQuestion].correctAnswer;
+
+            elements.options.forEach(option => {
                 option.disabled = true;
                 if (option.textContent === correct) {
                     option.classList.add('correct');
@@ -366,19 +404,21 @@ COMMAND_START|quiz_html
 
             if (selectedOption === correct) {
                 score++;
-                feedbackElement.textContent = `Correct! ${quizData[currentQuestion].explanation}`;
-                feedbackElement.classList.add('correct');
-                correctSound.play(); // Play correct sound
+                elements.feedback.textContent = `Correct! ${quizData[currentQuestion].explanation}`;
+                elements.feedback.classList.add('correct');
+                elements.correctSound.play().catch(() => {}); // Ignore audio errors
             } else {
-                feedbackElement.textContent = `Wrong! ${quizData[currentQuestion].explanation}`;
-                feedbackElement.classList.add('incorrect');
-                incorrectSound.play(); // Play incorrect sound
+                elements.feedback.textContent = `Wrong! ${quizData[currentQuestion].explanation}`;
+                elements.feedback.classList.add('incorrect');
+                elements.incorrectSound.play().catch(() => {}); // Ignore audio errors
             }
 
-            imageElement.src = nextImage.src; // Show the preloaded image after selecting an option
-            feedbackElement.style.display = 'block';
-            nextBtn.style.display = 'block'; // Show next button after answer is selected
-            nextBtn.addEventListener('click', nextQuestion);
+            // Show the answer media
+            updateMediaElement(quizData[currentQuestion].image);
+
+            elements.feedback.style.display = 'block';
+            elements.nextBtn.style.display = 'block';
+            elements.nextBtn.addEventListener('click', nextQuestion);
         }
 
         function nextQuestion() {

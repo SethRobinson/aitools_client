@@ -37,7 +37,6 @@ public class AIGuideManager : MonoBehaviour
     ResponseTextType m_response_text_type;
     static AIGuideManager _this;
     public CanvasGroup _canvasGroup;
-    float _aiTemperature = 1.0f; //higher is more creative and chaotic
     int m_llmGenerationCounter = 0;
     //keep track of the start button so we can change the text on it later
     public Button m_startButton;
@@ -120,6 +119,10 @@ public class AIGuideManager : MonoBehaviour
 
         //_inputPromptOutput.text is a TMPro.TMP_InputField and accumulatedText is a string
         _inputPromptOutput.text += text;
+
+        //make _inputPromptOutput scroll to the bottom
+        _inputPromptOutputScrollRect.value = 1;  // Scrolls back to the top
+
         accumulatedText += text;
         m_totalPromptReceived += text;
 
@@ -166,7 +169,6 @@ public class AIGuideManager : MonoBehaviour
 
     public void OnLLMContinueButton()
     {
-
         _inputPromptOutput.text += "\n\n";
         accumulatedText += "\n\n";
         m_totalPromptReceived += "\n\n";
@@ -177,7 +179,6 @@ public class AIGuideManager : MonoBehaviour
         _inputPromptOutput.text = "";
         //Let's also move the _inputPromptOutputScrollRect to the top now that the text is empty
         _inputPromptOutputScrollRect.value = 0.0f;  // Scrolls back to the top
-
 
         accumulatedText = "";
 
@@ -199,7 +200,6 @@ public class AIGuideManager : MonoBehaviour
                 //we better stop after this one
                 m_bIsPossibleToContinue = false;
                 m_autoModeCheckbox.isOn = false;
-
             }
         }
         else
@@ -216,7 +216,7 @@ public class AIGuideManager : MonoBehaviour
     {
         if (m_llmSelectionDropdown.value == (int)LLM_Type.OpenAI_API)
         {
-            string json = _openAITextCompletionManager.BuildChatCompleteJSON(lines, m_max_tokens, _aiTemperature, Config.Get().GetOpenAI_APIModel(), true);
+            string json = _openAITextCompletionManager.BuildChatCompleteJSON(lines, m_max_tokens, m_extractor.Temperature, Config.Get().GetOpenAI_APIModel(), true);
             RTDB db = new RTDB();
             RTConsole.Log("Contacting GPT4 at " + Config.Get()._openai_gpt4_endpoint + " with " + json.Length + " bytes...");
             _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnGTP4CompletedCallback, db, Config.Get().GetOpenAI_APIKey(), Config.Get()._openai_gpt4_endpoint, OnStreamingTextCallback, true);
@@ -227,7 +227,7 @@ public class AIGuideManager : MonoBehaviour
             Debug.Log("Contacting TexGen WebUI asking for chat style response at " + Config.Get()._texgen_webui_address); ;
 
 
-            string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, m_max_tokens, _aiTemperature, "chat", true);
+            string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, m_max_tokens, m_extractor.Temperature, "instruct", true);
 
             RTDB db = new RTDB();
             _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, Config.Get()._texgen_webui_address, "/v1/chat/completions", OnStreamingTextCallback,true,
@@ -238,7 +238,7 @@ public class AIGuideManager : MonoBehaviour
         {
             Debug.Log("Contacting TexGen WebUI asking for chat style response at " + Config.Get().GetAnthropicAI_APIEndpoint()); ;
 
-            string json = _anthropicAITextCompletionManager.BuildChatCompleteJSON(lines, m_max_tokens, _aiTemperature, Config.Get().GetAnthropicAI_APIModel(), true);
+            string json = _anthropicAITextCompletionManager.BuildChatCompleteJSON(lines, m_max_tokens, m_extractor.Temperature, Config.Get().GetAnthropicAI_APIModel(), true);
 
             RTDB db = new RTDB();
             _anthropicAITextCompletionManager.SpawnChatCompletionRequest(json, OnTexGenCompletedCallback, db, Config.Get().GetAnthropicAI_APIKey(), Config.Get().GetAnthropicAI_APIEndpoint(), OnStreamingTextCallback,
@@ -360,7 +360,7 @@ public class AIGuideManager : MonoBehaviour
             //_inputPromptOutput.text = "";
             _inputPromptOutput.text += m_textToPrependToGeneration.text;
             //move view to the top of the textbox as it might be scrolled down before we erased the text
-            _inputPromptOutputScrollRect.value = 0.0f;  // Scrolls back to the top
+            //_inputPromptOutputScrollRect.value = 0.0f;  // Scrolls back to the top
         }
 
         if (m_autoSave.isOn || m_autoSaveJPG.isOn)

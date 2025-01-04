@@ -35,7 +35,7 @@ https://github.com/user-attachments/assets/a4d0f2db-79f6-46f1-8229-28e93e8053bc
 * Experimental video support (ComfyUI can generate videos via Hunyuan or LTX.  Still basic support, but we can view them just like the images)
 
 
-## Current version: **V0.92** (released Dec 29th 2024) ##
+## Current version: **V0.94** (released Jan 4th 2025) ##
 
 **Recent changes**:
 
@@ -58,6 +58,17 @@ V0.92:
 
 V0.93:
 * Fixed compatibility with text-generation-webui's API, forgot I broke it a while back, oops
+
+V0.94:
+
+* Video memory management implemented, will unload videos that aren't on the screen if needed and load them when they are
+* Fixed issue where some video aspect ratios wouldn't be correct when displayed
+* Updated hunyuan workflows (as if anyone can keep up with how often these things change) and added a new one for "fast".  (drag into comfy and do install missing nodes, then try to run them to see what models they need)
+* Adventure mode "Export" options for the quiz and twine game now work with video too
+* AIGuide response text scroll bar works better while it's streaming llm data in
+* BUGFIX: "?" Info panel now scrolls with auto-selecting its text
+* BUGFIX: Temperature setting in Adventure settings .txt files actually has an effect on the llm now
+* The log.txt file is now written in the same dir as the .exe, previously it was in some hard to find spot in /users/<username> etc.
 
 You only need to download [the zip](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) and run the .exe to use this, However, the source might be useful to generate a build for other platforms, fork or steal pieces to use for yourself.  Go ahead!
 # Screenshots

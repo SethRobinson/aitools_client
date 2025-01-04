@@ -53,6 +53,7 @@ public class TextFileConfigExtractor
     public string TwinePassage { get; private set; }
     public string TwineEnd { get; private set; }
     public string TwineImage { get; private set; }
+    public string TwineVideo { get; private set; }
     public string ImageTextOverlay { get; private set; }
     public string DefaultInput { get; private set; }
     public string QuizHTML { get; private set; }
@@ -120,6 +121,7 @@ public class TextFileConfigExtractor
                           { "twine_start", (ce, data) => ce.TwineStart =data },
                           { "twine_passage", (ce, data) => ce.TwinePassage = data },
                           { "twine_image", (ce, data) => ce.TwineImage = data },
+                          { "twine_video", (ce, data) => ce.TwineVideo = data },
                           { "twine_end", (ce, data) => ce.TwineEnd = data },
                           { "twine_text_if_no_choices", (ce, data) => ce.TwineTextIfNoChoices = data }
 

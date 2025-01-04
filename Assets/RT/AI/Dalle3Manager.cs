@@ -139,8 +139,10 @@ public class Dalle3Manager : MonoBehaviour
                     Debug.Log("image data is missing");
                 }
 
+
+
                 // Load texture from the byte array
-                Texture2D texture = new Texture2D(0, 0, TextureFormat.RGBA32, false);
+                Texture2D texture = new Texture2D(8, 8, TextureFormat.RGBA32, false);
                 if (texture.LoadImage(imgDataBytes, false))
                 {
                     yield return null; // Wait a frame to lessen the jerkiness

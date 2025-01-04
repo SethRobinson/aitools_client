@@ -59,7 +59,6 @@ public class GameLogic : MonoBehaviour
     public Slider m_textStrengthSlider;
     public Slider m_pix2pixTextStrengthSlider;
 
-
     public Button m_generateButton;
     public Toggle m_fixFacesToggle;
     public Toggle m_upscaleToggle;
@@ -1268,6 +1267,13 @@ public class GameLogic : MonoBehaviour
         {
             m_penSlider.value -= penAdjustmentSize;
         }
+        
+        if (Input.GetKeyDown(KeyCode.Backslash))
+        {
+           
+                AskAllMoviePicsToUnloadTheMovieToSaveMemory();
+           
+        }
 
 
         if (Input.GetKeyDown(KeyCode.U)
@@ -1279,6 +1285,7 @@ public class GameLogic : MonoBehaviour
                 Input.GetKeyDown(KeyCode.I)
                 ||
                 Input.GetKeyDown(KeyCode.P)
+                
             )
         {
             if (GUIIsBeingUsed()) return;
@@ -1302,9 +1309,13 @@ public class GameLogic : MonoBehaviour
                     picMaskScript.OnToggleMaskViewButton();
                 }
 
+
+          
+
                 if (Input.GetKeyDown(KeyCode.P))
                 {
-                    picMovieScript.TogglePlay();
+                        picMovieScript.TogglePlay();
+                  
                 }
 
                 if (Input.GetKeyDown(KeyCode.I))
@@ -1329,6 +1340,25 @@ public class GameLogic : MonoBehaviour
         }
     }
 
+    public void AskAllMoviePicsToUnloadTheMovieToSaveMemory()
+    {
+
+        //show message about unloading
+        RTQuickMessageManager.Get().ShowMessage("Unloading movies to save memory");
+
+        var aiScripts = RTUtil.FindObjectOrCreate("Pics").transform.GetComponentsInChildren<PicMain>();
+
+        foreach (PicMain picScript in aiScripts)
+        {
+            if (!picScript.IsDestroyed())
+            {
+                 //tell it to unload
+                    picScript.UnloadToSaveMemoryIfPossible();
+               
+               
+            }
+        }
+    }
     public void OnClickedModelModsButton()
     {
         const string panelName = "ModelModPanel";
