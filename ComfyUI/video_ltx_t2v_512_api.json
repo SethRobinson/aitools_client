@@ -116,7 +116,7 @@
   },
   "88": {
     "inputs": {
-      "text": "watermark, logo, text, subtitles, worst quality, inconsistent motion, blurry, jittery, distorted",
+      "text": "<AITOOLS_NEGATIVE_PROMPT>",
       "clip": [
         "142",
         0

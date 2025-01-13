@@ -227,7 +227,7 @@ public class AIGuideManager : MonoBehaviour
             Debug.Log("Contacting TexGen WebUI asking for chat style response at " + Config.Get()._texgen_webui_address); ;
 
 
-            string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, m_max_tokens, m_extractor.Temperature, "instruct", true);
+            string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, m_max_tokens, m_extractor.Temperature, Config.Get().GetGenericLLMMode(), true, Config.Get().GetLLMParms());
 
             RTDB db = new RTDB();
             _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, Config.Get()._texgen_webui_address, "/v1/chat/completions", OnStreamingTextCallback,true,
@@ -609,7 +609,7 @@ public class AIGuideManager : MonoBehaviour
                     //for each non-busy local gpu, add 1 to count
                     for (int i = 0; i < Config.Get().GetGPUCount(); i++)
                     {
-                        if (Config.Get().GetGPUInfo(i).isLocal && !Config.Get().IsGPUBusy(i))
+                        if (Config.Get().GetGPUInfo(i)._bIsActive && Config.Get().GetGPUInfo(i).isLocal && !Config.Get().IsGPUBusy(i))
                         {
                             StartCoroutine(AddPicture(text, imagePrompt, title, _curPicIdx++,
                                 Config.Get().GetGPUInfo(i)._requestedRendererType));

@@ -82,6 +82,17 @@ public class ServerButtonScript : MonoBehaviour
         UpdateText();
     }
 
+    public void OnClickedEnableCheckbox(bool bEnable)
+    {
+        if (!Config.Get().IsValidGPU(m_buttonIndex))
+        {
+            Debug.Log("Invalid GPU/Server");
+            return;
+        }
+        Config.Get().GetGPUInfo(m_buttonIndex)._bIsActive = bEnable;
+
+        
+    }
     public void OnClick()
     {
         if (!Config.Get().IsValidGPU(m_buttonIndex))

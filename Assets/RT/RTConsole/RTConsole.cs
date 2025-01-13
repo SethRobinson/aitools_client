@@ -219,50 +219,64 @@ public class RTConsole : MonoBehaviour
     {
         if (_isSendingToUnityDebugLog)
         {
-
             if (_isDisplayingUnityDebugLog)
             {
-                //yes, this is bad, but it's only used for debug stuff
                 SetShowUnityDebugLogInConsole(false);
                 Debug.unityLogger.Log(_logPrependString, text);
                 SetShowUnityDebugLogInConsole(true);
-            } else
+            }
+            else
             {
                 Debug.Log(text);
             }
-           
         }
 
         if (!_isHeadlessMode && _consoleText)
         {
-            //add the line
             _lines.Enqueue(RTUtil.ConvertSansiToUnityColors(text));
             _requiresRefresh = true;
-        }
+            // Schedule an immediate scroll update
 
+            //only start if active
+            if (gameObject.activeInHierarchy)
+                StartCoroutine(ScrollToBottomNextFrame());
+        }
     }
 
     void TrimAndUpdateWidget()
     {
-
         _requiresRefresh = false;
-        //if we have too many lines, kill the oldest one.  Unity's Text widget sucks btw, it can't show that many lines
+
         while (_lines.Count > _maxConsoleLines)
         {
             _lines.Dequeue();
         }
 
-        //copy them to the text object
-
         _consoleText.text = string.Concat(_lines.ToArray());
 
-        // _consoleText.text = _consoleText.text + RTUtil.ConvertSansiToUnityColors(text);
-        //Canvas.ForceUpdateCanvases();
+        // Force the scroll rect to update immediately
+        Canvas.ForceUpdateCanvases();
+        LayoutRebuilder.ForceRebuildLayoutImmediate(_consoleText.rectTransform);
+        StartCoroutine(ScrollToBottomNextFrame());
+    }
+
+    private IEnumerator ScrollToBottomNextFrame()
+    {
+        // Wait for end of frame to ensure layout is updated
+        yield return new WaitForEndOfFrame();
+
+        // Force canvas update again
+        Canvas.ForceUpdateCanvases();
+
+        // Set scroll position to bottom
+        _scrollRect.verticalNormalizedPosition = 0f;
+
+        // Wait one more frame to ensure the scroll position is applied
+        yield return null;
         _scrollRect.verticalNormalizedPosition = 0f;
     }
 
-	// Update is called once per frame
-	void Update ()
+    void Update()
     {
         if (_requiresRefresh)
         {

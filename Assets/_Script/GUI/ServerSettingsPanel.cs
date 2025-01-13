@@ -8,6 +8,7 @@ public class ServerSettingsPanel : MonoBehaviour
     public TMP_Dropdown m_comfyUIAPIWorkflowsDropdown;
     public TMP_Text m_titleText;
     int _serverID = -1;
+    public TMP_Text m_settingsText;
 
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
@@ -64,6 +65,11 @@ public class ServerSettingsPanel : MonoBehaviour
 
         // Re-add the listener
         m_comfyUIAPIWorkflowsDropdown.onValueChanged.AddListener(OnComfyUIDropdownChanged);
+
+
+
+        //set our info
+        m_settingsText.text = "URL: " + serverInfo.remoteURL;
     }
 
     // Update is called once per frame

@@ -7,6 +7,13 @@ using UnityEngine.Networking;
 using System.IO;
 
 
+public class LLMParm
+{
+    public string _key;
+    public string _value;
+}
+
+
 public class TexGenWebUITextCompletionManager : MonoBehaviour
 {
     private UnityWebRequest _currentRequest;
@@ -19,6 +26,8 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
 
     //*  EXAMPLE START (this could be moved to your own code) */
 
+   
+    /*
     void ExampleOfUse()
     {
         //build a stack of GTPChatLine so we can add as many as we want
@@ -29,12 +38,13 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
 
         string prompt = "crap";
 
-        string json = textCompletionScript.BuildChatCompleteJSON(prompt);
+        string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, m_max_tokens, m_extractor.Temperature, Config.Get().GetGenericLLMMode(), true, Config.Get().GetLLMParms());
         RTDB db = new RTDB();
 
         textCompletionScript.SpawnChatCompleteRequest(json, OnCompletedCallback, db, serverAddress, "/v1/completions");
     }
 
+    */
     void OnCompletedCallback(RTDB db, JSONObject jsonNode, string streamedText)
     {
 
@@ -76,30 +86,9 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
 
 
 
-    public string BuildChatCompleteJSON(string msg, int max_tokens = 100, float temperature = 1.0f, bool stream = false)
-    {
-        string bStreamText = "false";
-        if (stream)
-        {
-            bStreamText = "true";
-        }
-
-        int max_new_tokens = 99999;
-        string json =
-         $@"{{
-
-""prompt"": ""{SimpleJSON.JSONNode.Escape(msg)}"",
-""max_tokens"": {max_tokens},
-""temperature"": {temperature},
- ""stream"": {bStreamText},
-""seed"": -1
-   }}";
-
-        return json;
-    }
-
+  
     // ""name1"": ""Jeff"",
-    public string BuildForInstructJSON(Queue<GTPChatLine> lines, int max_new_tokens = 100, float temperature = 1.3f, string mode = "instruct", bool stream = false, string texGenWebUICharacter = "")
+    public string BuildForInstructJSON(Queue<GTPChatLine> lines, int max_new_tokens = 100, float temperature = 1.3f, string mode = "instruct", bool stream = false, List<LLMParm> parms = null)
     {
         string msg = "";
 
@@ -119,28 +108,35 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
             bStreamText = "true";
         }
 
-        string characterPart = "";
-        if (!string.IsNullOrEmpty(texGenWebUICharacter))
+     
+        string extra = "";
+        //for each parms, add it to extra with a comma in front
+        if (parms != null)
         {
-            characterPart = $@",""character"": ""{SimpleJSON.JSONNode.Escape(texGenWebUICharacter)}""";
+            foreach (LLMParm parm in parms)
+            {
+                extra += $",\"{parm._key}\": {parm._value}\r\n";
+            }
         }
 
+        //replace all ` in extra to |
+        extra = extra.Replace("`", "|");
 
-        string extra = "";
+        //I removed these, they should be passed in as  List<LLMParm> now
+        //        ""max_tokens"": { max_new_tokens},
+        //           ""num_ctx"": 131072
 
         // extra = ",\"stopping_strings\": [ \"\\n\" ],\r\n    \"stop\": [ \"\\n\" ]";
-
+        //32768
         //  ""instruction_template"": ""Alpaca""
         string json =
          $@"{{
              ""messages"":[{msg}],
              ""mode"": ""{mode}"",
              ""temperature"": {temperature},
-             ""stream"": {bStreamText},
-             ""max_tokens"": {max_new_tokens}
-          
+             ""stream"": {bStreamText}
              {extra}
-             {characterPart}
+          
          }}";
 
         return json;
@@ -229,14 +225,13 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
     }
 
     IEnumerator GetRequestStreaming(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string serverAddress, string apiCommandURL,
-        Action<string> updateChunkCallback, string APIkey = "none")
+     Action<string> updateChunkCallback, string APIkey = "none")
     {
-
-//#if UNITY_STANDALONE && !RT_RELEASE
+#if UNITY_STANDALONE && !RT_RELEASE
         File.WriteAllText("text_completion_sent.json", json);
-//#endif
-        string url;
-        url = serverAddress + apiCommandURL;
+#endif
+
+        string url = serverAddress + apiCommandURL;
         m_connectionActive = true;
 
         using (_currentRequest = UnityWebRequest.PostWwwForm(url, "POST"))
@@ -262,29 +257,32 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
                 yield break;
             }
 
-            if (_currentRequest.result != UnityWebRequest.Result.Success)
+            if (_currentRequest.result != UnityWebRequest.Result.Success || downloadHandler.IsError())
             {
                 string msg = _currentRequest.error;
-                Debug.Log(msg);
-                //Debug.Log(_currentRequest.downloadHandler.text);
-                File.WriteAllText("last_error_returned.json", _currentRequest.downloadHandler.text);
-                m_connectionActive = false;
+                string errorResponse = downloadHandler.GetContentAsString();
+                Debug.Log($"Error: {msg}");
+                Debug.Log($"Response Code: {_currentRequest.responseCode}");
+                Debug.Log($"Response Body: {errorResponse}");
 
+#if UNITY_STANDALONE && !RT_RELEASE
+                File.WriteAllText("last_error_returned.json", errorResponse);
+#endif
+
+                m_connectionActive = false;
                 db.Set("status", "failed");
-                db.Set("msg", msg);
+                db.Set("msg", $"{msg}\nResponse: {errorResponse}");
                 myCallback.Invoke(db, null, "");
             }
             else
             {
-
 #if UNITY_STANDALONE && !RT_RELEASE
-                File.WriteAllText("textgen_json_received.json", _currentRequest.downloadHandler.text);
+                File.WriteAllText("textgen_json_received.json", downloadHandler.GetContentAsString());
 #endif
-                m_connectionActive = false;
 
+                m_connectionActive = false;
                 db.Set("status", "success");
                 myCallback.Invoke(db, null, downloadHandler.GetContentAsString());
-
             }
         }
     }

@@ -693,6 +693,23 @@ public class GameLogic : MonoBehaviour
         existing.GetComponent<ComfyUIPanel>().ToggleWindow();
     }
 
+    public void OnClickedComfyUIOpenDirButton()
+    {
+        Debug.Log("Opening dir with the ComfyUI settings");
+        //string[] files = Directory.GetFiles("ComfyUI", "*.json");
+
+        //Actually, let's just open Windows Explorer into the ComfyUI folder
+        System.Diagnostics.Process.Start("explorer.exe", "ComfyUI");
+
+    }
+
+    public void OnClickedRescanComfyUIWorkflowsFolder()
+    {
+        Debug.Log("Rescanning ComfyUI workflows folder");
+        LoadComfyUIWorkFlows(m_comfyUIAPIWorkflowsDropdown, false);
+
+    }
+
     public bool HasControlNetSupport()
     {
         return m_bControlNetSupportExists;
@@ -897,6 +914,7 @@ public class GameLogic : MonoBehaviour
 
     void OnConfigSaved(string text)
     {
+       
         Config.Get().ProcessConfigString(text);
         Config.Get().SaveConfigToFile(); //it might have changed.
 

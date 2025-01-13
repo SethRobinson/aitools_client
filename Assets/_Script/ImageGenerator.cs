@@ -16,6 +16,8 @@ public class ScheduledGPUEvent
     
     public string requestedSimplePrompt = "";
     public string requestedDetailedPrompt = "";
+    public string requestedNegativePrompt = "";
+
     public RTRendererType requestedRenderer = RTRendererType.Any_Local;
 }
 
@@ -351,7 +353,7 @@ public class ImageGenerator : MonoBehaviour
         {
             int gpuToUse = Config.Get().GetFreeGPU();
 
-            if (Config.Get().DontHaveLocalServers())
+            if ( GameLogic.Get().GetGlobalRenderer() == RTRendererType.OpenAI_Dalle_3)
             {
                 //special case
                 gpuToUse = Config.Get().GetFirstGPUIncludingOpenAI();
@@ -539,7 +541,7 @@ public class ImageGenerator : MonoBehaviour
         for (int i = 0; i < Config.Get().GetGPUCount(); i++)
         {
 
-            if (!Config.Get().IsGPUBusy(i))
+            if (!Config.Get().IsGPUBusy(i) && Config.Get().GetGPUInfo(i)._bIsActive)
             {
 
                 bool bDisableGeneration = false;

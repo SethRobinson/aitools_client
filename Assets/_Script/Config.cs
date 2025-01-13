@@ -39,14 +39,17 @@ public class GPUInfo
     public bool isLocal = true; //false would mean an unlimited API like OpenAI's Dalle3.  Local means TextGen WebUI, AI Tools server or ComfyUI (doesn't actually have to be local)
     public bool _usesDetailedPrompts = false; //simple is the default
     public int _comfyUIWorkFlowOverride = -1;
+    public bool _bIsActive = true;
 }
+
 
 public class Config : MonoBehaviour
 {  
     public static bool _isTestMode = false; //could do anything, _testMode is checked by random functions
   
     List<GPUInfo> m_gpuInfo = new List<GPUInfo>();
-    
+    List<LLMParm> m_llmParms = new List<LLMParm>();
+
     static Config _this;
     string m_configText; //later move this to a config.txt or something
     const string m_configFileName = "config.txt";
@@ -54,22 +57,23 @@ public class Config : MonoBehaviour
     float m_requiredServerVersion = 0.46f;
 
     //default names for AI stuff
-    string m_assistantName = "assistant";
-    string m_systemName = "system";
-    string m_userName = "user";
+    string m_assistantName;
+    string m_systemName;
+    string m_userName;
 
-    string _openAI_APIKey = "";
-    string _openAI_APIModel = "gpt-4o";
-    public string _texgen_webui_address = "localhost:5000";
-    public string _openai_gpt4_endpoint = "https://api.openai.com/v1/chat/completions";
-    string _elevenLabs_APIKey = "";
-    string _elevenLabs_voiceID = "";
-    int _jpgSaveQuality = 80;
-    public string _texgen_webui_APIKey = "none";
+    string _openAI_APIKey;
+    string _openAI_APIModel;
+    public string _texgen_webui_address;
+    public string _openai_gpt4_endpoint;
+    string _elevenLabs_APIKey ;
+    string _elevenLabs_voiceID;
+    int _jpgSaveQuality;
+    public string _texgen_webui_APIKey;
 
-    string _anthropicAI_APIKey = "";
-    string _anthropicAI_APIModel = "claude-3-5-sonnet-20240620";
-    string _anthropicAI_APIEndpoint = "https://api.anthropic.com/v1/complete";
+    string _anthropicAI_APIKey;
+    string _anthropicAI_APIModel;
+    string _anthropicAI_APIEndpoint;
+    string _genericLLMMode;
 
     public string GetAISystemWord() { return m_systemName; }
     public string GetAIUserWord() { return m_userName; }
@@ -85,8 +89,10 @@ public class Config : MonoBehaviour
     public string GetOpenAI_APIModel() { return _openAI_APIModel; }
     public string GetElevenLabs_APIKey() { return _elevenLabs_APIKey; }
     public string GetElevenLabs_voiceID() { return _elevenLabs_voiceID; }
+    public List<LLMParm> GetLLMParms() { return m_llmParms; }
+    public string GetGenericLLMMode() { return _genericLLMMode; }
 
-    float m_version = 0.94f;
+    float m_version = 0.95f;
     string m_imageEditorPathAndExe = "none set";
     public string GetVersionString() { return m_version.ToString("0.00"); }
     public float GetVersion() { return m_version; }
@@ -96,6 +102,29 @@ public class Config : MonoBehaviour
     public List<AudioClip> m_audioClips;
     public GameObject m_serverButtonPrefab;
     public GameObject m_noServersButtonPrefab;
+
+    void SetDefaults()
+    {
+     m_assistantName = "assistant";
+     m_systemName = "system";
+     m_userName = "user";
+
+     _openAI_APIKey = "";
+     _openAI_APIModel = "gpt-4o";
+     _texgen_webui_address = "localhost:5000";
+    _openai_gpt4_endpoint = "https://api.openai.com/v1/chat/completions";
+     _elevenLabs_APIKey = "";
+     _elevenLabs_voiceID = "";
+     _jpgSaveQuality = 80;
+      _texgen_webui_APIKey = "none";
+      _genericLLMMode = "chat-instruct";
+         _anthropicAI_APIKey = "";
+     _anthropicAI_APIModel = "claude-3-5-sonnet-latest";
+     _anthropicAI_APIEndpoint = "https://api.anthropic.com/v1/complete";
+     m_llmParms = new List<LLMParm>();
+     m_llmParms.Clear();
+
+    }
 
     void Awake()
     {
@@ -154,12 +183,25 @@ set_generic_llm_address|localhost:5000|
 #if your generic LLM needs a key, enter it here (or leave as ""none"")
 set_generic_llm_api_key|none|
 
+#what we tell the model to use. If you notice the llm is forgetting things or messing up, your model might not be an instruct-compatible model, try llama 3.3 with Ollama as a test.
+set_generic_llm_mode|chat-instruct|
+
+#this is needed if using an ollama server, otherwise you'll see a ""model is required"" error.  Note that might cause the model to be loaded which means a huge delay at first.
+add_generic_llm_parm|model|""llama3.3""|
+add_generic_llm_parm|num_ctx|131072|#needed for ollama, the context the model supports
+add_generic_llm_parm|max_tokens|4096|
+
+#somethings you could play with
+#add_generic_llm_parm|stop|[""<`eot_id`>"", ""<`eom_id`>"", ""<`end_header_id`>""]|#Note that ` gets turned into |
+#add_generic_llm_parm|stopping_strings|[""<`eot_id`>"", ""<`eom_id`>"", ""<`end_header_id`>""]|
+
 #the following allow you to override the default system, assistant, and user keywords for the generic LLM, if needed.  
 #different LLMs are trained on different words, if the llm server you use doesn't hide this from you, you might notice weird
 #or buggy behavior if these aren't changed to match what that specific llm wants
 #set_generic_llm_system_keyword|system|#default is system
 #set_generic_llm_assistant_keyword|assistant|#default is assistant
 #set_generic_llm_user_keyword|user|#default is user
+
             
 #Anthropic LLM
 set_anthropic_ai_key|<key goes here>|
@@ -233,7 +275,7 @@ set_anthropic_ai_endpoint|https://api.anthropic.com/v1/messages|
         {
             for (int i = 0; i < GetGPUCount(); i++)
             {
-                if (!IsGPUBusy(i))
+                if (!IsGPUBusy(i) && Config.Get().GetGPUInfo(i)._bIsActive)
                 {
                     if (GetGPUInfo(i)._requestedRendererType == requestedGPUType)
                     {
@@ -261,7 +303,7 @@ set_anthropic_ai_endpoint|https://api.anthropic.com/v1/messages|
             //special way to find one for "any local"
             for (int i = 0; i < Config.Get().GetGPUCount(); i++)
             {
-                if (!Config.Get().IsGPUBusy(i) && GetGPUInfo(i).isLocal)
+                if (!Config.Get().IsGPUBusy(i) && GetGPUInfo(i).isLocal && Config.Get().GetGPUInfo(i)._bIsActive)
                 {
                     return i;
                 }
@@ -276,12 +318,12 @@ set_anthropic_ai_endpoint|https://api.anthropic.com/v1/messages|
             {
                 for (int i = 0; i < GetGPUCount(); i++)
                 {
-                    if (GetGPUInfo(i)._requestedRendererType == requestedGPUType)
+                    if (GetGPUInfo(i)._requestedRendererType == requestedGPUType && Config.Get().GetGPUInfo(i)._bIsActive)
                     {
                         return i;
                     }
 
-                    if (requestedGPUType == RTRendererType.AI_Tools_or_A1111)
+                    if (requestedGPUType == RTRendererType.AI_Tools_or_A1111 && Config.Get().GetGPUInfo(i)._bIsActive)
                     {
                         //special case to look for two kinds of things
                         if (GetGPUInfo(i)._requestedRendererType == RTRendererType.A1111
@@ -302,7 +344,7 @@ set_anthropic_ai_endpoint|https://api.anthropic.com/v1/messages|
 
             for (int i = 0; i < Config.Get().GetGPUCount(); i++)
             {
-                if (GetGPUInfo(i).isLocal)
+                if (GetGPUInfo(i).isLocal && Config.Get().GetGPUInfo(i)._bIsActive)
                 {
                     return i;
                 }
@@ -344,7 +386,7 @@ set_anthropic_ai_endpoint|https://api.anthropic.com/v1/messages|
 
         for (int i=0; i < m_gpuInfo.Count; i++)
         {
-            if (!IsGPUBusy(i) && GetGPUInfo(i).isLocal) return true;
+            if (!IsGPUBusy(i) && GetGPUInfo(i).isLocal && Config.Get().GetGPUInfo(i)._bIsActive) return true;
         }
 
         return false;
@@ -471,7 +513,7 @@ set_anthropic_ai_endpoint|https://api.anthropic.com/v1/messages|
 
     string LoadConfigFromFile()
     {
-
+        SetDefaults();
         string config = "";
 
         try
@@ -521,7 +563,7 @@ set_anthropic_ai_endpoint|https://api.anthropic.com/v1/messages|
 
     public void ProcessConfigString(string newConfig)
     {
-
+        SetDefaults();
         ImageGenerator.Get().ShutdownAllGPUProcesses();
         m_safetyFilter = false;
 
@@ -631,6 +673,10 @@ set_anthropic_ai_endpoint|https://api.anthropic.com/v1/messages|
                 {
                     m_userName = words[1];
                 }
+                else if (words[0] == "set_generic_llm_mode")
+                {
+                    _genericLLMMode = words[1];
+                }
                 else
                 if (words[0] == "set_anthropic_ai_key")
                 {
@@ -660,6 +706,20 @@ set_anthropic_ai_endpoint|https://api.anthropic.com/v1/messages|
 
                     Application.targetFrameRate = maxFPS;
                 }
+                else if (words[0] == "add_generic_llm_parm")
+                {
+                    LLMParm p = new LLMParm();
+                    p._key = words[1];
+                    p._value = words[2];
+                    m_llmParms.Add(p);
+                }
+                else if (words[0] == "set_jpg_save_quality")
+                {
+                    int quality;
+                    int.TryParse(words[1], out quality);
+                    _jpgSaveQuality = quality;
+
+                }
                 else
                 {
                     //Debug.Log("Processing " + line);
@@ -683,7 +743,7 @@ set_anthropic_ai_endpoint|https://api.anthropic.com/v1/messages|
 
         for (int i = 0; i < m_gpuInfo.Count; i++)
         {
-            if (!m_gpuInfo[i].isLocal)
+            if (!m_gpuInfo[i].isLocal || !Config.Get().GetGPUInfo(i)._bIsActive)
             {
                 continue;
             }
@@ -709,6 +769,13 @@ set_anthropic_ai_endpoint|https://api.anthropic.com/v1/messages|
         if (gpuID < 0 || gpuID >= m_gpuInfo.Count) return "(no GPUID)";
         return m_gpuInfo[gpuID]._requestedRendererType.ToString();
     }
+    public string GetServerAddressByGPUID(int gpuID)
+    {
+        if (gpuID < 0 || gpuID >= m_gpuInfo.Count) return "";
+        return m_gpuInfo[gpuID].remoteURL;
+    }
+
+
 
     public bool IsGPUOfThisType(int GPUID, RTRendererType renderer)
     {

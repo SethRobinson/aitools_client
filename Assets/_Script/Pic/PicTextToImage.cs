@@ -388,6 +388,14 @@ public class PicTextToImage : MonoBehaviour
                     RTConsole.Log($"Failed to parse JSON: {ex.Message}");
                     m_bIsGenerating = false;
                     m_picScript.SetStatusMessage("Bad json, can't parse reply");
+                    // Close the websocket connection if it exists
+                    CloseWebSocket();
+
+                    // Clean up state
+                    if (Config.Get().IsValidGPU(m_gpu))
+                    {
+                        Config.Get().SetGPUBusy(m_gpu, false);
+                    }
                     yield break;
 
                 }
@@ -596,9 +604,12 @@ public class PicTextToImage : MonoBehaviour
         string comfyUIGraphJSon = LoadComfyUIJSon(GameLogic.Get().GetActiveComfyUIWorkflowFileName(m_gpu));
 
         //Replace all instances of <AITOOLS_PROMPT> with m_prompt in comfyUIGraphJSon
-        bool bDidFindPromptTag = ReplaceInString(ref comfyUIGraphJSon, "<AITOOLS_PROMPT>", m_prompt);
+        
+        
+        bool bDidFindPromptTag = ReplaceInString(ref comfyUIGraphJSon, "<AITOOLS_PROMPT>", JSONNode.Escape(m_prompt));
+        bDidFindPromptTag = ReplaceInString(ref comfyUIGraphJSon, "<AITOOLS_NEGATIVE_PROMPT>", JSONNode.Escape(m_negativePrompt));
 
-      JSONNode jsonNode = null;
+        JSONNode jsonNode = null;
 
         try
         {
@@ -610,6 +621,13 @@ public class PicTextToImage : MonoBehaviour
             RTConsole.Log($"Failed to parse JSON: {ex.Message}");
             m_bIsGenerating = false;
             m_picScript.SetStatusMessage("Bad json, can't parse reply");
+            CloseWebSocket();
+
+            // Clean up state
+            if (Config.Get().IsValidGPU(m_gpu))
+            {
+                Config.Get().SetGPUBusy(m_gpu, false);
+            }
             yield break;
         }
 
@@ -678,7 +696,6 @@ public class PicTextToImage : MonoBehaviour
 
                 JSONNode rootNode = null;
 
-
                 try
                 {
                     rootNode = JSON.Parse(postRequest.downloadHandler.text);
@@ -690,6 +707,13 @@ public class PicTextToImage : MonoBehaviour
                     RTConsole.Log($"Failed to parse JSON: {ex.Message}");
                     m_bIsGenerating = false;
                     m_picScript.SetStatusMessage("Bad json, can't parse reply");
+                    CloseWebSocket();
+
+                    // Clean up state
+                    if (Config.Get().IsValidGPU(m_gpu))
+                    {
+                        Config.Get().SetGPUBusy(m_gpu, false);
+                    }
                     //had an error, so let's return early
                     yield break;
                 }
@@ -926,6 +950,18 @@ public class PicTextToImage : MonoBehaviour
 
                 if (rootNode.Count > 0)
                 {
+
+                    if (m_comfyUIPromptID == null)
+                    {
+                        //what are we doing here?
+                        Debug.Log("No prompt id, ignoring");
+                        //exit
+                        m_bIsGenerating = false;
+                        m_picScript.SetStatusMessage("Generate error");
+                        CloseWebSocket();
+                        yield break;
+
+                    }
                     JSONNode statusNode = rootNode[m_comfyUIPromptID]["status"];
                     JSONNode outputsNode = rootNode[m_comfyUIPromptID]["outputs"];
 

@@ -7,10 +7,10 @@ using UnityEngine.Networking;
 public class StreamingDownloadHandler : DownloadHandlerScript
 {
     private Action<string> m_textChunkUpdateCallback;
-
     private StringBuilder stringBuilder = new StringBuilder();
-
     private string incompleteChunk = "";
+    private bool isErrorResponse = false;
+
     protected override string GetText()
     {
         return stringBuilder.ToString();
@@ -20,6 +20,7 @@ public class StreamingDownloadHandler : DownloadHandlerScript
     {
         return GetText();
     }
+
     public StreamingDownloadHandler(Action<string> textChunkUpdateCallback) : base(new byte[1024])
     {
         m_textChunkUpdateCallback = textChunkUpdateCallback;
@@ -34,15 +35,28 @@ public class StreamingDownloadHandler : DownloadHandlerScript
         }
 
         string text = Encoding.UTF8.GetString(data, 0, dataLength);
-     
-        // Process the chunk received
-        // For example, you can check if the string contains complete JSON objects/messages
-        // and process them accordingly. This is just a placeholder for your processing logic.
-        ProcessChunk(text);
 
+        // Check if this might be an error response (only check first chunk)
+        if (stringBuilder.Length == 0 && text.TrimStart().StartsWith("{\"error"))
+        {
+            isErrorResponse = true;
+            stringBuilder.Append(text);
+            return true;
+        }
+
+        // If it's an error response, just accumulate the text
+        if (isErrorResponse)
+        {
+            stringBuilder.Append(text);
+            return true;
+        }
+
+        // Otherwise process as normal streaming chunk
+        ProcessChunk(text);
         return true;
     }
 
+    // Rest of your existing ProcessChunk and ProcessJsonChunk methods remain exactly the same
     protected void ProcessChunk(string chunk)
     {
         chunk = incompleteChunk + chunk; // Prepend any previously incomplete chunk
@@ -114,15 +128,20 @@ public class StreamingDownloadHandler : DownloadHandlerScript
         }
     }
 
-
     protected override void CompleteContent()
     {
         Debug.Log("Download complete!");
-        // Handle any remaining data in stringBuilder if necessary
     }
 
     public string GetContent()
     {
         return stringBuilder.ToString();
     }
+
+    // Add this method to check if we received an error response
+    public bool IsError()
+    {
+        return isErrorResponse;
+    }
 }
+

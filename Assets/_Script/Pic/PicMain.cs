@@ -149,7 +149,7 @@ public class PicMain : MonoBehaviour
         string rendererRequested = GetCurrentStats().m_requestedRenderer.ToString();
 
         string msg =
-$@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}Renderer:`` {rendererRequested} {c1}on ServerID: ``{c.m_gpu} {Config.Get().GetServerNameByGPUID(c.m_gpu)}
+$@"`8{c1}Last Operation:`` {c.m_lastOperation} {c1}Renderer:`` {rendererRequested} {c1}on ServerID: ``{c.m_gpu} {Config.Get().GetServerNameByGPUID(c.m_gpu)} ({Config.Get().GetServerAddressByGPUID(c.m_gpu)})
 ";
 
         if (m_pic != null && m_pic.sprite != null && m_pic.sprite.texture != null)
@@ -1611,19 +1611,17 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
     public void SetControlImage(Texture tex)
     {
-
         float biggestSize = Math.Max(tex.width, tex.height);
 
         Sprite newSprite = Sprite.Create(tex as Texture2D, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f, 0, SpriteMeshType.FullRect);
         newSprite.texture.Apply();
         m_infoPanelScript.SetSprite(newSprite);
-      
     }
+
     public void UpdateInfoPanel()
     {
         m_infoPanelScript.SetInfoText(GetInfoText());
         m_bNeedsToUpdateInfoPanel = false;
-
     }
 
     public bool IsVisible()
@@ -1663,15 +1661,12 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             {
                 UpdateInfoPanel();
             }
-            
         }
 
         if (m_genericTimerStart != 0)
         {
             float elapsed = Time.realtimeSinceStartup - m_genericTimerStart;
-
             m_text.text = m_genericTimerText+" "+elapsed.ToString("0.0#");
-            
         }
     }
 
@@ -1690,18 +1685,26 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         {
             GetCurrentStats().m_lastPromptUsed = e.requestedDetailedPrompt;
         }
-        
 
+        if (e.requestedNegativePrompt != null && e.requestedNegativePrompt.Length > 0)
+        {
+            GetCurrentStats().m_lastNegativePromptUsed = e.requestedNegativePrompt;
+        }
+        else
+        {
+            GetCurrentStats().m_lastNegativePromptUsed = GameLogic.Get().GetNegativePrompt();
+        }
+        
         GetCurrentStats().m_requestedRenderer = e.requestedRenderer;
         SetNeedsToUpdateInfoPanelFlag();
-
-
     }
 
     public void PassInTempInfo(RTRendererType requestedRenderer, int gpuID)
     {
         GetCurrentStats().m_lastPromptUsed = m_picTextToImageScript.GetPrompt();
         GetCurrentStats().m_requestedRenderer = requestedRenderer;
+        GetCurrentStats().m_lastNegativePromptUsed = GameLogic.Get().GetNegativePrompt();
+
         GetCurrentStats().m_gpu = gpuID;
         SetNeedsToUpdateInfoPanelFlag();
 
