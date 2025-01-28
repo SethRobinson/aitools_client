@@ -90,7 +90,7 @@ Also, the default config sets parms for context.  I also added "add_generic_llm_
 
 V0.96: (Jan 13th, 2025)
 
-* BUGFIX: Setting the "con_txt" context length as shown in the config.txt actually works for Ollama now
+* BUGFIX: Setting the "num_ctx" context length as shown in the config.txt actually works for Ollama now
 * AI Guide images created before a renderer is available now properly queue up instead of just being weird black images that can never be rendered.  So if you were limited on VRAM you could create a bunch of things with the LLM only, then load the ComfyUI renderer later to render them (apply the config again and it will detect it without restarting the app)
 * Some minor tweaks to comfy and adventure profiles
 
