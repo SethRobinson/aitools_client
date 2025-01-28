@@ -88,7 +88,7 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
 
   
     // ""name1"": ""Jeff"",
-    public string BuildForInstructJSON(Queue<GTPChatLine> lines, int max_new_tokens = 100, float temperature = 1.3f, string mode = "instruct", bool stream = false, List<LLMParm> parms = null)
+    public string BuildForInstructJSON(Queue<GTPChatLine> lines, int max_new_tokens = 100, float temperature = 1.3f, string mode = "instruct", bool stream = false, List<LLMParm> parms = null, bool bIsOllama = false)
     {
         string msg = "";
 
@@ -115,6 +115,20 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
         {
             foreach (LLMParm parm in parms)
             {
+
+                if (parm._key == "model")
+                {
+                    //special handling, remove the quotes
+                    string valueTemp = parm._value;
+                    valueTemp = valueTemp.Replace("\"", "");
+                    //if ollama, append _ait to the model
+                    if (bIsOllama)
+                    {
+                        valueTemp += "_ait";
+                    }
+                    extra += $",\"{parm._key}\": \"{valueTemp}\"\r\n";
+                    continue;
+                }
                 extra += $",\"{parm._key}\": {parm._value}\r\n";
             }
         }
@@ -265,9 +279,9 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
                 Debug.Log($"Response Code: {_currentRequest.responseCode}");
                 Debug.Log($"Response Body: {errorResponse}");
 
-#if UNITY_STANDALONE && !RT_RELEASE
+//#if UNITY_STANDALONE && !RT_RELEASE
                 File.WriteAllText("last_error_returned.json", errorResponse);
-#endif
+//#endif
 
                 m_connectionActive = false;
                 db.Set("status", "failed");
@@ -276,9 +290,9 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
             }
             else
             {
-#if UNITY_STANDALONE && !RT_RELEASE
+//#if UNITY_STANDALONE && !RT_RELEASE
                 File.WriteAllText("textgen_json_received.json", downloadHandler.GetContentAsString());
-#endif
+//#endif
 
                 m_connectionActive = false;
                 db.Set("status", "success");

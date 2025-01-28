@@ -121,7 +121,7 @@
   },
   "44": {
     "inputs": {
-      "text": "a girl is skipping down the street in Kyoto",
+      "text": "<AITOOLS_PROMPT>",
       "clip": [
         "11",
         0

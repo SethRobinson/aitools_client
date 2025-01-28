@@ -35,7 +35,7 @@ https://github.com/user-attachments/assets/a4d0f2db-79f6-46f1-8229-28e93e8053bc
 * Experimental video support (Includes ComfyUI workflows that can generate videos via Hunyuan or LTX.  Still basic support, but we can view them just like the images)
 
 
-## Current version: **V0.95** (released Jan 13th 2025) ##
+## Current version: **V0.96** (released Jan 28th 2025) ##
 
 **Recent changes**:
 
@@ -88,6 +88,11 @@ Also, the default config sets parms for context.  I also added "add_generic_llm_
 * Added support for ComfyUI negative prompts, any workflow that has <AITOOLS_NEGATIVE_PROMPT> in it will be set the current active negative prompt.  However, none of my Flux/Hunyuan prompt workflows even have a place to put in a negative prompt, although I know it is possible (kind of a hack though?) so if you find a workflow that does have one, you can just replace it with <AITOOLS_NEGATIVE_PROMPT>  and it should work. I did add it to the ltx video one though.
 * Server/GPUs now have a checkbox so you can disable one temporarily if need be, old method was having to edit the config.txt and apply which would stop renders in progress.  Server properties dialog now shows its remote URL as well
 
+V0.96: (Jan 13th, 2025)
+
+* BUGFIX: Setting the "con_txt" context length as shown in the config.txt actually works for Ollama now
+* AI Guide images created before a renderer is available now properly queue up instead of just being weird black images that can never be rendered.  So if you were limited on VRAM you could create a bunch of things with the LLM only, then load the ComfyUI renderer later to render them (apply the config again and it will detect it without restarting the app)
+* Some minor tweaks to comfy and adventure profiles
 
 You only need to download [the zip](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) and run the .exe to use this, However, the source might be useful to generate a build for other platforms, fork or steal pieces to use for yourself.  Go ahead!
 # Screenshots

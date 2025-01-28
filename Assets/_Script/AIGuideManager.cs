@@ -227,7 +227,7 @@ public class AIGuideManager : MonoBehaviour
             Debug.Log("Contacting TexGen WebUI asking for chat style response at " + Config.Get()._texgen_webui_address); ;
 
 
-            string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, m_max_tokens, m_extractor.Temperature, Config.Get().GetGenericLLMMode(), true, Config.Get().GetLLMParms());
+            string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, m_max_tokens, m_extractor.Temperature, Config.Get().GetGenericLLMMode(), true, Config.Get().GetLLMParms(), Config.Get().GetGenericLLMIsOllama());
 
             RTDB db = new RTDB();
             _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, Config.Get()._texgen_webui_address, "/v1/chat/completions", OnStreamingTextCallback,true,
@@ -397,8 +397,7 @@ public class AIGuideManager : MonoBehaviour
         if (!Config.Get().DoesGPUExistForThatRenderer((RTRendererType)m_rendererSelectionDropdown.value))
         {
             //display an error message
-            RTQuickMessageManager.Get().ShowMessage("That renderer type seems to be missing currently!");
-            yield break;
+            RTQuickMessageManager.Get().ShowMessage("That renderer type seems to be missing currently!  Scheduling anyway");
         }
 
         ScheduledGPUEvent e = picMain.OnRenderButton(imagePrompt);

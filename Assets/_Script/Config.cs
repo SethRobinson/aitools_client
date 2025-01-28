@@ -7,6 +7,7 @@ using UnityEngine.UI;
 using static System.Net.WebRequestMethods;
 using UnityEditor;
 using TMPro;
+using System;
 
 public enum LLM_Type
 {
@@ -74,7 +75,7 @@ public class Config : MonoBehaviour
     string _anthropicAI_APIModel;
     string _anthropicAI_APIEndpoint;
     string _genericLLMMode;
-
+    Boolean m_genericServerIsOllama = false;
     public string GetAISystemWord() { return m_systemName; }
     public string GetAIUserWord() { return m_userName; }
     public string GetAIAssistantWord() { return m_assistantName; }
@@ -92,7 +93,7 @@ public class Config : MonoBehaviour
     public List<LLMParm> GetLLMParms() { return m_llmParms; }
     public string GetGenericLLMMode() { return _genericLLMMode; }
 
-    float m_version = 0.95f;
+    float m_version = 0.96f;
     string m_imageEditorPathAndExe = "none set";
     public string GetVersionString() { return m_version.ToString("0.00"); }
     public float GetVersion() { return m_version; }
@@ -187,9 +188,9 @@ set_generic_llm_api_key|none|
 set_generic_llm_mode|chat-instruct|
 
 #this is needed if using an ollama server, otherwise you'll see a ""model is required"" error.  Note that might cause the model to be loaded which means a huge delay at first.
-add_generic_llm_parm|model|""llama3.3""|
-add_generic_llm_parm|num_ctx|131072|#needed for ollama, the context the model supports
-add_generic_llm_parm|max_tokens|4096|
+add_generic_llm_parm|model|""llama3.3""|#needed for ollama, the model you want to use
+#add_generic_llm_parm|num_ctx|131072|#needed for ollama, the context size you want the model to load with (we'll create a custom profile with an _ait extension)
+#add_generic_llm_parm|max_tokens|4096|
 
 #somethings you could play with
 #add_generic_llm_parm|stop|[""<`eot_id`>"", ""<`eom_id`>"", ""<`end_header_id`>""]|#Note that ` gets turned into |
@@ -561,6 +562,11 @@ set_anthropic_ai_endpoint|https://api.anthropic.com/v1/messages|
         webScript.StartInitialWebRequest();
     }
 
+    public void SetGenericLLMIsOllama(bool bNew)
+    {
+        m_genericServerIsOllama = bNew;
+    }
+    public bool GetGenericLLMIsOllama() { return m_genericServerIsOllama; }
     public void ProcessConfigString(string newConfig)
     {
         SetDefaults();
@@ -727,6 +733,17 @@ set_anthropic_ai_endpoint|https://api.anthropic.com/v1/messages|
             }
         }
 
+
+        //Ok, if we got here we've got all our data and can do a little extra work.
+        SetGenericLLMIsOllama(false);
+
+        if (_texgen_webui_address != null && _texgen_webui_address.Length > 1 && GetGenericLLMParm("model").Length > 1)
+        {
+            //Let's start a web request to see if it's a Ollama server
+            var webScript = CreateWebRequestObject();
+            webScript.StartSetupOLlamaServer(_texgen_webui_address,m_llmParms);
+
+        }
     }
 
     public void SendRequestToAllServers(string optionKey, string optionValue)
@@ -775,7 +792,20 @@ set_anthropic_ai_endpoint|https://api.anthropic.com/v1/messages|
         return m_gpuInfo[gpuID].remoteURL;
     }
 
+    public string GetGenericLLMParm(string key, List<LLMParm> llmParms = null)
+    {
+        if (llmParms == null)
+        {
+            llmParms = m_llmParms;
+        }
 
+        string value = "";
+        foreach (LLMParm p in llmParms)
+        {
+            if (p._key == key) value = p._value;
+        }
+        return value;
+    }
 
     public bool IsGPUOfThisType(int GPUID, RTRendererType renderer)
     {
@@ -801,5 +831,5 @@ set_anthropic_ai_endpoint|https://api.anthropic.com/v1/messages|
         return false;
     }
     static public Config Get() { return _this; }
-
+    static public string GetOllamaModelExt() { return "_ait"; }
 }
