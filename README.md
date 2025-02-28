@@ -71,6 +71,7 @@ Your ComfyUI server needs to be started using the --listen parm, so the API can 
 
 After running it, a config.txt will be made. There is an config edit button inside the app, your config will look like this:
 
+```
 #add as many add_server commands as you want, just replace the localhost:7860 part with the
 #server name/ip and port.  You can control any number of renderer servers at the same time.
 
@@ -125,7 +126,7 @@ set_anthropic_ai_endpoint|https://api.anthropic.com/v1/messages|
 #if you're using a ComfyUI workflow that creates audio, and you don't have AITOOLS_AUDIO_PROMPT or AITOOLS_AUDIO_NEGATIVE_PROMPT set in the ComfyUI workflow, these are used as defaults:
 set_default_audio_prompt|audio that perfectly matches the onscreen action|
 set_default_audio_negative_prompt|music|
-
+```
 
 
 # Setting up with ComfyUI (for FLUX images, Wan 2.1, Hunyuan video or any custom workflow)
