@@ -15,7 +15,7 @@ To use this, you'll need to connect to something that can generate images, and h
 ## Features
 
 - It's not a web app, it's a native locally run Windows .exe
-- It's kind of like lego, is can run ComfyUI workflows that chain together.  You need to understand ComyUI and workflow tweaking as you'll still need to install all the needed plugins and models there.
+- It's kind of like lego, is can run ComfyUI workflows that chain together.  You need to understand ComyUI and workflow tweaking as you'll still need to install all the needed custom nodes and models there. (you do have ComfyUI Manager installed, right?!)
 - Drag and drop images in as well as paste images from the windows clipboard
 - Built-in image processing like cropping and resizing, mask painting
 - Pan/zoom with thousands of images on the screen
