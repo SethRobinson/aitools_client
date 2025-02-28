@@ -37,7 +37,7 @@ To use this, you'll need to connect to something that can generate images, and h
 
 ## Known issues
 
-- I suspect certain workflows won't work on Windows because I have a subdir in the model filename and the whole "/" vs "\" thing rears its ugly head.  Why wouldn't ComfyUI fix those based on the system it's running on?  Anyway, you can either use a @replace to fix them in AITools, or edit the workflow's .json with a text editor, or drag the workflow into ComfyUI and edit the path there.  I only test on Windows, with the servers running on Ubuntu.
+- I suspect certain workflows won't work on Windows because I have a subdir in the model filename and the whole "/" vs "\\" thing rears its ugly head.  Why wouldn't ComfyUI fix those based on the system it's running on?  Anyway, you can either use a @replace to fix them in AITools, or edit the workflow's .json with a text editor, or drag the workflow into ComfyUI and edit the path there.  I only test on Windows, with the servers running on Ubuntu.
 - Lack of documentation etc due to laziness
 - CrazyCam (where the webcam is being used for realtime image processing) is half broken and slow
 - Expect things to break and change, it's very alpha and probably always will be
