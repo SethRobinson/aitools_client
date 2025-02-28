@@ -13,6 +13,8 @@ public class PicMask : MonoBehaviour
     Camera m_cam;
     public SpriteRenderer m_spriteMask;
     public SpriteRenderer m_pic;
+    public PicMovie m_movieScript;
+
     bool m_boolMaskHasBeenSet = false;
     bool m_bMaskModified;
     public PicTargetRect m_targetRectScript;
@@ -199,6 +201,8 @@ public class PicMask : MonoBehaviour
     public void ForceMaskRectToBeWithinImageBounds()
     {
 
+        if (m_spriteMask.sprite == null) return; //not ready yet
+
         var maskRect = m_targetRectScript.GetOffsetRect();
 
         if (maskRect.x < 0)
@@ -247,7 +251,35 @@ public class PicMask : MonoBehaviour
     }
     public void RecreateMask()
     {
-        Texture2D copyTexture = new Texture2D(m_pic.sprite.texture.width, m_pic.sprite.texture.height, TextureFormat.RGBA32, false);
+
+        int maskSizeX = 0;
+        int maskSizeY = 0;
+
+
+        if (m_movieScript.IsMovie())
+        {
+            maskSizeX = m_movieScript.GetMovieSize().x;
+            maskSizeY = m_movieScript.GetMovieSize().y;
+
+            if (maskSizeX == 0)
+            {
+                return;
+            }
+        }
+
+        if (m_pic.sprite != null && m_pic.sprite.texture != null)
+        {
+            maskSizeX = m_pic.sprite.texture.width;
+            maskSizeY = m_pic.sprite.texture.height;
+           
+        } else
+        {
+            Debug.Log("RecreateMask: No valid image/movie available");
+            return;
+        }
+     
+
+        Texture2D copyTexture = new Texture2D(maskSizeX,maskSizeY , TextureFormat.RGBA32, false);
         float biggestSize = Math.Max(copyTexture.width, copyTexture.height);
 
         KillMask();
@@ -268,8 +300,6 @@ public class PicMask : MonoBehaviour
             //restrict the mask width and height to be a power of 2, and not larger than the image
             maskWidth = RTUtil.ConvertNumToNearestMultiple((int)maskWidth, 64);
             maskHeight = RTUtil.ConvertNumToNearestMultiple((int)maskHeight, 64);
-
-
             m_targetRectScript.SetOffsetRect(new Rect(0, 0,maskWidth, maskHeight));
         }
         //Debug.Log("Recreated mask");
@@ -278,8 +308,8 @@ public class PicMask : MonoBehaviour
     {
         if (m_spriteMask.sprite == null || m_spriteMask.sprite.texture == null)
         {
+           
             RecreateMask();
-
         }
         else
         {

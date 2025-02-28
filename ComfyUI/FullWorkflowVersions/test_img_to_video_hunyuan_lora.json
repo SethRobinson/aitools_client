@@ -1,0 +1,2083 @@
+{
+  "last_node_id": 180,
+  "last_link_id": 273,
+  "nodes": [
+    {
+      "id": 156,
+      "type": "DownloadAndLoadHyVideoTextEncoder",
+      "pos": [
+        -1160,
+        1170
+      ],
+      "size": [
+        420,
+        180
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "hyvid_text_encoder",
+          "type": "HYVIDTEXTENCODER",
+          "links": [
+            213
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "DownloadAndLoadHyVideoTextEncoder"
+      },
+      "widgets_values": [
+        "Kijai/llava-llama-3-8b-text-encoder-tokenizer",
+        "openai/clip-vit-large-patch14",
+        "fp16",
+        false,
+        2,
+        "disabled"
+      ]
+    },
+    {
+      "id": 115,
+      "type": "Label (rgthree)",
+      "pos": [
+        -900,
+        -300
+      ],
+      "size": [
+        83.349609375,
+        25
+      ],
+      "flags": {
+        "allow_interaction": true
+      },
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "SETUP",
+      "properties": {
+        "fontSize": 25,
+        "fontFamily": "Arial",
+        "fontColor": "#ffffff",
+        "textAlign": "left",
+        "backgroundColor": "transparent",
+        "padding": 0,
+        "borderRadius": 0
+      },
+      "color": "#fff0",
+      "bgcolor": "#fff0"
+    },
+    {
+      "id": 155,
+      "type": "HyVideoLoraSelect",
+      "pos": [
+        -1160,
+        -50
+      ],
+      "size": [
+        380,
+        110
+      ],
+      "flags": {},
+      "order": 19,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "prev_lora",
+          "type": "HYVIDLORA",
+          "shape": 7,
+          "link": 211
+        },
+        {
+          "name": "blocks",
+          "type": "SELECTEDBLOCKS",
+          "shape": 7,
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "lora",
+          "type": "HYVIDLORA",
+          "links": [
+            207
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "HyVideoLoraSelect"
+      },
+      "widgets_values": [
+        "lora Hun\\closeupface-v1.1.safetensors",
+        0.6
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 150,
+      "type": "HyVideoLoraSelect",
+      "pos": [
+        -1160,
+        90
+      ],
+      "size": [
+        380,
+        110
+      ],
+      "flags": {},
+      "order": 21,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "prev_lora",
+          "type": "HYVIDLORA",
+          "shape": 7,
+          "link": 207
+        },
+        {
+          "name": "blocks",
+          "type": "SELECTEDBLOCKS",
+          "shape": 7,
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "lora",
+          "type": "HYVIDLORA",
+          "links": [
+            208
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "HyVideoLoraSelect"
+      },
+      "widgets_values": [
+        "lora Hun\\closeupface-v1.1.safetensors",
+        0.7000000000000001
+      ]
+    },
+    {
+      "id": 5,
+      "type": "HyVideoDecode",
+      "pos": [
+        540,
+        -200
+      ],
+      "size": [
+        345.4285888671875,
+        150
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 26,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": null
+        },
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [
+            111
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "HyVideoDecode"
+      },
+      "widgets_values": [
+        true,
+        64,
+        192,
+        false
+      ]
+    },
+    {
+      "id": 149,
+      "type": "Label (rgthree)",
+      "pos": [
+        -700,
+        90
+      ],
+      "size": [
+        41.68701171875,
+        25
+      ],
+      "flags": {
+        "allow_interaction": true
+      },
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "lora\n\n",
+      "properties": {
+        "fontSize": 25,
+        "fontFamily": "Arial",
+        "fontColor": "#ffffff",
+        "textAlign": "left",
+        "backgroundColor": "transparent",
+        "padding": 0,
+        "borderRadius": 0
+      },
+      "color": "#fff0",
+      "bgcolor": "#fff0"
+    },
+    {
+      "id": 154,
+      "type": "HyVideoLoraSelect",
+      "pos": [
+        -1160,
+        -190
+      ],
+      "size": [
+        380,
+        110
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "prev_lora",
+          "type": "HYVIDLORA",
+          "shape": 7,
+          "link": null
+        },
+        {
+          "name": "blocks",
+          "type": "SELECTEDBLOCKS",
+          "shape": 7,
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "lora",
+          "type": "HYVIDLORA",
+          "links": [
+            211
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "HyVideoLoraSelect"
+      },
+      "widgets_values": [
+        "lora Hun\\closeupface-v1.1.safetensors",
+        0.7000000000000001
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 161,
+      "type": "Label (rgthree)",
+      "pos": [
+        -740,
+        120
+      ],
+      "size": [
+        135.3466796875,
+        10
+      ],
+      "flags": {
+        "allow_interaction": true
+      },
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "select and CTRL+B to activate",
+      "properties": {
+        "fontSize": 10,
+        "fontFamily": "Arial",
+        "fontColor": "#ffffff",
+        "textAlign": "left",
+        "backgroundColor": "transparent",
+        "padding": 0,
+        "borderRadius": 0
+      },
+      "color": "#fff0",
+      "bgcolor": "#fff0"
+    },
+    {
+      "id": 164,
+      "type": "Label (rgthree)",
+      "pos": [
+        -1160,
+        510
+      ],
+      "size": [
+        383.7451171875,
+        10
+      ],
+      "flags": {
+        "allow_interaction": true
+      },
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "_____________________________________________________________________",
+      "properties": {
+        "fontSize": 10,
+        "fontFamily": "Arial",
+        "fontColor": "green",
+        "textAlign": "left",
+        "backgroundColor": "transparent",
+        "padding": 0,
+        "borderRadius": 0
+      },
+      "color": "#fff0",
+      "bgcolor": "#fff0"
+    },
+    {
+      "id": 162,
+      "type": "Label (rgthree)",
+      "pos": [
+        -290,
+        510
+      ],
+      "size": [
+        44.4580078125,
+        25
+      ],
+      "flags": {
+        "allow_interaction": true
+      },
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "size\n",
+      "properties": {
+        "fontSize": 25,
+        "fontFamily": "Arial",
+        "fontColor": "blue",
+        "textAlign": "left",
+        "backgroundColor": "transparent",
+        "padding": 0,
+        "borderRadius": 0
+      },
+      "color": "#fff0",
+      "bgcolor": "#fff0"
+    },
+    {
+      "id": 163,
+      "type": "Label (rgthree)",
+      "pos": [
+        -320,
+        670
+      ],
+      "size": [
+        76.40380859375,
+        25
+      ],
+      "flags": {
+        "allow_interaction": true
+      },
+      "order": 7,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "frames\n",
+      "properties": {
+        "fontSize": 25,
+        "fontFamily": "Arial",
+        "fontColor": "blue",
+        "textAlign": "left",
+        "backgroundColor": "transparent",
+        "padding": 0,
+        "borderRadius": 0
+      },
+      "color": "#fff0",
+      "bgcolor": "#fff0"
+    },
+    {
+      "id": 160,
+      "type": "Note",
+      "pos": [
+        -1670,
+        580
+      ],
+      "size": [
+        490,
+        780
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "                   ⚠️choose ATTENTION_MODE that works for you⚠️\n\n\n\nNOTES:\n\nThe current situation is that the Fast model, when used alone, may cause artifacts. However, when used in combination with LoRAs, it works really well.\n\nSo my advice is:\nUse the Fast model (which allows for a low number of steps, as low as 6 to 9) only if you are also using LoRAs together.\nIn all cases where the LoRA is not compatible or the Fast model causes artifacts, it's recommended to switch to the standard model and increase the number of steps to at least 15 or more. (25 to 30 steps is a good choice)\n\nThat said, not all LoRAs are compatible with Kijai's nodes, so it's up to you to test which ones work.\n\n\n\nThere's also a FAST LoRA, which can be loaded onto the standard model. Unfortunately, that one isn’t compatible with these nodes, and no one has bothered to convert it yet to make it work.\n\nI don’t know how to convert it.. otherwise, I would have done it myself.\nA lot of things would be much simpler by now 😒.\n\n\n\n\n\n\nThe available LoRA models for image-to-video are two at the moment:\n\n512*320 and latest v2 960*544.\n\nit's important to test in this early stage which of the two is better to use.\n\nIt seems that the smaller model works better at low resolutions but not really 100% sure yet, while the larger model tends to produce more noticeable artifacts at lower resolutions.\n\nDo your tests and let the community knows please."
+      ],
+      "color": "#a81414",
+      "bgcolor": "#940000"
+    },
+    {
+      "id": 151,
+      "type": "HyVideoLoraSelect",
+      "pos": [
+        -1160,
+        230
+      ],
+      "size": [
+        380,
+        110
+      ],
+      "flags": {},
+      "order": 23,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "prev_lora",
+          "type": "HYVIDLORA",
+          "shape": 7,
+          "link": 208
+        },
+        {
+          "name": "blocks",
+          "type": "SELECTEDBLOCKS",
+          "shape": 7,
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "lora",
+          "type": "HYVIDLORA",
+          "links": [
+            209
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "HyVideoLoraSelect"
+      },
+      "widgets_values": [
+        "XL/pixel-art-xl.safetensors",
+        0.7000000000000001
+      ]
+    },
+    {
+      "id": 157,
+      "type": "HyVideoVAELoader",
+      "pos": [
+        -1160,
+        1030
+      ],
+      "size": [
+        410,
+        82
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "compile_args",
+          "type": "COMPILEARGS",
+          "shape": 7,
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "vae",
+          "type": "VAE",
+          "links": [
+            214
+          ],
+          "slot_index": 0
+        }
+      ],
+      "title": "VAE",
+      "properties": {
+        "Node name for S&R": "HyVideoVAELoader"
+      },
+      "widgets_values": [
+        "hunyuan_video_vae_bf16.safetensors",
+        "bf16"
+      ]
+    },
+    {
+      "id": 159,
+      "type": "HyVideoModelLoader",
+      "pos": [
+        -1160,
+        720
+      ],
+      "size": [
+        550,
+        250
+      ],
+      "flags": {},
+      "order": 29,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "compile_args",
+          "type": "COMPILEARGS",
+          "shape": 7,
+          "link": null
+        },
+        {
+          "name": "block_swap_args",
+          "type": "BLOCKSWAPARGS",
+          "shape": 7,
+          "link": null
+        },
+        {
+          "name": "lora",
+          "type": "HYVIDLORA",
+          "shape": 7,
+          "link": 215
+        }
+      ],
+      "outputs": [
+        {
+          "name": "model",
+          "type": "HYVIDEOMODEL",
+          "links": [
+            212
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "HyVideoModelLoader"
+      },
+      "widgets_values": [
+        "hunyuan_video_720_fp8_e4m3fn.safetensors",
+        "bf16",
+        "fp8_e4m3fn",
+        "offload_device",
+        "sdpa",
+        false,
+        true
+      ],
+      "color": "#a81414",
+      "bgcolor": "#940000"
+    },
+    {
+      "id": 153,
+      "type": "HyVideoLoraSelect",
+      "pos": [
+        -1155.4547119140625,
+        555.4542846679688
+      ],
+      "size": [
+        550,
+        102
+      ],
+      "flags": {},
+      "order": 27,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "prev_lora",
+          "type": "HYVIDLORA",
+          "shape": 7,
+          "link": 210
+        },
+        {
+          "name": "blocks",
+          "type": "SELECTEDBLOCKS",
+          "shape": 7,
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "lora",
+          "type": "HYVIDLORA",
+          "links": [
+            215
+          ],
+          "slot_index": 0
+        }
+      ],
+      "title": "IMG 2 VID   LORA",
+      "properties": {
+        "Node name for S&R": "HyVideoLoraSelect"
+      },
+      "widgets_values": [
+        "img2vid544p.safetensors",
+        1
+      ],
+      "color": "#233",
+      "bgcolor": "#355"
+    },
+    {
+      "id": 158,
+      "type": "Anything Everywhere3",
+      "pos": [
+        -575.16455078125,
+        1050.8460693359375
+      ],
+      "size": [
+        252,
+        66
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 31,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "HYVIDEOMODEL",
+          "type": "*",
+          "shape": 7,
+          "color_on": "",
+          "link": 212
+        },
+        {
+          "name": "HYVIDTEXTENCODER",
+          "type": "*",
+          "shape": 7,
+          "color_on": "",
+          "link": 213
+        },
+        {
+          "name": "VAE",
+          "type": "*",
+          "shape": 7,
+          "color_on": "#FF6E6E",
+          "link": 214
+        }
+      ],
+      "outputs": [],
+      "title": "➡️",
+      "properties": {
+        "Node name for S&R": "Anything Everywhere3",
+        "group_restricted": 0,
+        "color_restricted": 0
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 30,
+      "type": "HyVideoTextEncode",
+      "pos": [
+        -133.9568328857422,
+        944.013671875
+      ],
+      "size": [
+        760,
+        350
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text_encoders",
+          "type": "HYVIDTEXTENCODER",
+          "link": null
+        },
+        {
+          "name": "custom_prompt_template",
+          "type": "PROMPT_TEMPLATE",
+          "shape": 7,
+          "link": null
+        },
+        {
+          "name": "clip_l",
+          "type": "CLIP",
+          "shape": 7,
+          "link": null
+        },
+        {
+          "name": "hyvid_cfg",
+          "type": "HYVID_CFG",
+          "shape": 7,
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "hyvid_embeds",
+          "type": "HYVIDEMBEDS",
+          "links": [
+            206
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "HyVideoTextEncode"
+      },
+      "widgets_values": [
+        "<AITOOLS_PROMPT>",
+        "bad quality video",
+        "video"
+      ],
+      "color": "#5b8b2c",
+      "bgcolor": "#477718"
+    },
+    {
+      "id": 86,
+      "type": "HyVideoTeaCache",
+      "pos": [
+        165.2777099609375,
+        -311.4739990234375
+      ],
+      "size": [
+        310,
+        70
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 11,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "teacache_args",
+          "type": "TEACACHEARGS",
+          "links": [
+            116
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "HyVideoTeaCache"
+      },
+      "widgets_values": [
+        0.2
+      ],
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 88,
+      "type": "HyVideoEnhanceAVideo",
+      "pos": [
+        111.67229461669922,
+        -182.48867797851562
+      ],
+      "size": [
+        310,
+        154
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 12,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "feta_args",
+          "type": "FETAARGS",
+          "links": [
+            118
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "HyVideoEnhanceAVideo"
+      },
+      "widgets_values": [
+        2,
+        true,
+        true,
+        0,
+        1
+      ]
+    },
+    {
+      "id": 3,
+      "type": "HyVideoSampler",
+      "pos": [
+        220,
+        70
+      ],
+      "size": [
+        310,
+        700
+      ],
+      "flags": {},
+      "order": 24,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "HYVIDEOMODEL",
+          "link": null
+        },
+        {
+          "name": "hyvid_embeds",
+          "type": "HYVIDEMBEDS",
+          "link": 206
+        },
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "shape": 7,
+          "link": 121
+        },
+        {
+          "name": "stg_args",
+          "type": "STGARGS",
+          "shape": 7,
+          "link": null
+        },
+        {
+          "name": "context_options",
+          "type": "HYVIDCONTEXT",
+          "shape": 7,
+          "link": null
+        },
+        {
+          "name": "feta_args",
+          "type": "FETAARGS",
+          "shape": 7,
+          "link": 118
+        },
+        {
+          "name": "teacache_args",
+          "type": "TEACACHEARGS",
+          "shape": 7,
+          "link": 116
+        },
+        {
+          "name": "num_frames",
+          "type": "INT",
+          "widget": {
+            "name": "num_frames"
+          },
+          "link": 259
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "widget": {
+            "name": "width"
+          },
+          "link": 155
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "widget": {
+            "name": "height"
+          },
+          "link": 156
+        }
+      ],
+      "outputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "links": [
+            4
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "HyVideoSampler"
+      },
+      "widgets_values": [
+        272,
+        480,
+        97,
+        25,
+        6,
+        9,
+        558256463429691,
+        "randomize",
+        1,
+        1,
+        "FlowMatchDiscreteScheduler"
+      ],
+      "color": "#233",
+      "bgcolor": "#355"
+    },
+    {
+      "id": 100,
+      "type": "Label (rgthree)",
+      "pos": [
+        -73.356201171875,
+        -310.90765380859375
+      ],
+      "size": [
+        155.5908203125,
+        25
+      ],
+      "flags": {
+        "allow_interaction": true
+      },
+      "order": 13,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "LOAD IMAGE",
+      "properties": {
+        "fontSize": 25,
+        "fontFamily": "Arial",
+        "fontColor": "pink",
+        "textAlign": "left",
+        "backgroundColor": "transparent",
+        "padding": 0,
+        "borderRadius": 0
+      },
+      "color": "#fff0",
+      "bgcolor": "#fff0"
+    },
+    {
+      "id": 44,
+      "type": "LoadImage",
+      "pos": [
+        -726.8576049804688,
+        -388.02947998046875
+      ],
+      "size": [
+        430,
+        740
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 4,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "pic_fbc072f2-b9d9-4572-b4db-e975f21f410b.png",
+        "image"
+      ],
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 176,
+      "type": "VHS_LoadImagePath",
+      "pos": [
+        -269.1806335449219,
+        -230.64671325683594
+      ],
+      "size": [
+        235.24609375,
+        168
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "vae",
+          "type": "VAE",
+          "shape": 7,
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            262,
+            263
+          ]
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VHS_LoadImagePath",
+        "rejects_ue_links": true
+      },
+      "widgets_values": {
+        "image": "<AITOOLS_INPUT_1>",
+        "custom_width": 0,
+        "custom_height": 0,
+        "videopreview": {
+          "hidden": false,
+          "paused": false,
+          "params": {
+            "custom_width": 0,
+            "custom_height": 0,
+            "filename": "<AITOOLS_INPUT_1>",
+            "type": "path",
+            "format": "video/<AITOOLS_INPUT_1>"
+          }
+        }
+      }
+    },
+    {
+      "id": 82,
+      "type": "ColorMatchImage",
+      "pos": [
+        783.79736328125,
+        -197.9695587158203
+      ],
+      "size": [
+        315,
+        126
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 28,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 111
+        },
+        {
+          "name": "reference",
+          "type": "IMAGE",
+          "link": 263
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            112
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ColorMatchImage"
+      },
+      "widgets_values": [
+        "blur",
+        0,
+        1
+      ]
+    },
+    {
+      "id": 60,
+      "type": "ImageFromBatch+",
+      "pos": [
+        995.3394775390625,
+        -226.2975311279297
+      ],
+      "size": [
+        315,
+        82
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 30,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 112
+        },
+        {
+          "name": "length",
+          "type": "INT",
+          "widget": {
+            "name": "length"
+          },
+          "link": 258
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            261
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageFromBatch+"
+      },
+      "widgets_values": [
+        5,
+        -1
+      ],
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 144,
+      "type": "VHS_VideoCombine",
+      "pos": [
+        1438.316650390625,
+        -224.8238067626953
+      ],
+      "size": [
+        210,
+        376
+      ],
+      "flags": {},
+      "order": 32,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 261
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "shape": 7,
+          "link": null
+        },
+        {
+          "name": "meta_batch",
+          "type": "VHS_BatchManager",
+          "shape": 7,
+          "link": null
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "shape": 7,
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Filenames",
+          "type": "VHS_FILENAMES",
+          "links": null
+        }
+      ],
+      "title": "combined",
+      "properties": {
+        "Node name for S&R": "VHS_VideoCombine"
+      },
+      "widgets_values": {
+        "frame_rate": 24,
+        "loop_count": 0,
+        "filename_prefix": "HunyuanVideo_leapfusion_I2V_Comparison",
+        "format": "video/h264-mp4",
+        "pix_fmt": "yuv420p",
+        "crf": 13,
+        "save_metadata": true,
+        "trim_to_audio": false,
+        "pingpong": false,
+        "save_output": false,
+        "videopreview": {
+          "hidden": false,
+          "paused": false,
+          "params": {
+            "filename": "HunyuanVideo_leapfusion_I2V_Comparison_00001.mp4",
+            "subfolder": "",
+            "type": "temp",
+            "format": "video/h264-mp4",
+            "frame_rate": 24,
+            "workflow": "HunyuanVideo_leapfusion_I2V_Comparison_00001.png",
+            "fullpath": "/home/hal/ComfyUI/temp/HunyuanVideo_leapfusion_I2V_Comparison_00001.mp4"
+          },
+          "muted": false
+        }
+      }
+    },
+    {
+      "id": 180,
+      "type": "Primitive integer [Crystools]",
+      "pos": [
+        -290.96954345703125,
+        578.902099609375
+      ],
+      "size": [
+        315,
+        58
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "int",
+          "type": "INT",
+          "links": [
+            258,
+            259
+          ]
+        }
+      ],
+      "title": "Frames",
+      "properties": {
+        "Node name for S&R": "Primitive integer [Crystools]"
+      },
+      "widgets_values": [
+        69
+      ]
+    },
+    {
+      "id": 178,
+      "type": "Primitive integer [Crystools]",
+      "pos": [
+        -314.4949951171875,
+        695.3442993164062
+      ],
+      "size": [
+        315,
+        58
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "int",
+          "type": "INT",
+          "links": [
+            254
+          ],
+          "slot_index": 0
+        }
+      ],
+      "title": "Height",
+      "properties": {
+        "Node name for S&R": "Primitive integer [Crystools]"
+      },
+      "widgets_values": [
+        768
+      ]
+    },
+    {
+      "id": 179,
+      "type": "Primitive integer [Crystools]",
+      "pos": [
+        -310.8447570800781,
+        824.5433959960938
+      ],
+      "size": [
+        315,
+        58
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "int",
+          "type": "INT",
+          "links": [
+            255
+          ],
+          "slot_index": 0
+        }
+      ],
+      "title": "Width",
+      "properties": {
+        "Node name for S&R": "Primitive integer [Crystools]"
+      },
+      "widgets_values": [
+        512
+      ]
+    },
+    {
+      "id": 45,
+      "type": "ImageResizeKJ",
+      "pos": [
+        -302.03033447265625,
+        213.5192413330078
+      ],
+      "size": [
+        420,
+        290
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 20,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 262
+        },
+        {
+          "name": "get_image_size",
+          "type": "IMAGE",
+          "shape": 7,
+          "link": null
+        },
+        {
+          "name": "width_input",
+          "type": "INT",
+          "shape": 7,
+          "widget": {
+            "name": "width_input"
+          },
+          "link": null
+        },
+        {
+          "name": "height_input",
+          "type": "INT",
+          "shape": 7,
+          "widget": {
+            "name": "height_input"
+          },
+          "link": null
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "widget": {
+            "name": "width"
+          },
+          "link": 255
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "widget": {
+            "name": "height"
+          },
+          "link": 254
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            63
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": [
+            155
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": [
+            156
+          ],
+          "slot_index": 2
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageResizeKJ"
+      },
+      "widgets_values": [
+        272,
+        480,
+        "lanczos",
+        false,
+        2,
+        0,
+        0,
+        "center"
+      ],
+      "color": "#233",
+      "bgcolor": "#355"
+    },
+    {
+      "id": 43,
+      "type": "HyVideoEncode",
+      "pos": [
+        151.12060546875,
+        812.640869140625
+      ],
+      "size": [
+        420,
+        150
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 22,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": null
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 63
+        }
+      ],
+      "outputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "links": [
+            121
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "HyVideoEncode"
+      },
+      "widgets_values": [
+        false,
+        64,
+        128,
+        true
+      ]
+    },
+    {
+      "id": 152,
+      "type": "HyVideoLoraSelect",
+      "pos": [
+        -1153.2874755859375,
+        347.3455505371094
+      ],
+      "size": [
+        380,
+        110
+      ],
+      "flags": {},
+      "order": 25,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "prev_lora",
+          "type": "HYVIDLORA",
+          "shape": 7,
+          "link": 209
+        },
+        {
+          "name": "blocks",
+          "type": "SELECTEDBLOCKS",
+          "shape": 7,
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "lora",
+          "type": "HYVIDLORA",
+          "links": [
+            210
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "HyVideoLoraSelect"
+      },
+      "widgets_values": [
+        "civ/SECRET SAUCE B3 Hunyuan.safetensors",
+        0.7000000000000001
+      ]
+    }
+  ],
+  "links": [
+    [
+      4,
+      3,
+      0,
+      5,
+      1,
+      "LATENT"
+    ],
+    [
+      63,
+      45,
+      0,
+      43,
+      1,
+      "IMAGE"
+    ],
+    [
+      111,
+      5,
+      0,
+      82,
+      0,
+      "IMAGE"
+    ],
+    [
+      112,
+      82,
+      0,
+      60,
+      0,
+      "IMAGE"
+    ],
+    [
+      116,
+      86,
+      0,
+      3,
+      6,
+      "TEACACHEARGS"
+    ],
+    [
+      118,
+      88,
+      0,
+      3,
+      5,
+      "FETAARGS"
+    ],
+    [
+      121,
+      43,
+      0,
+      3,
+      2,
+      "LATENT"
+    ],
+    [
+      155,
+      45,
+      1,
+      3,
+      8,
+      "INT"
+    ],
+    [
+      156,
+      45,
+      2,
+      3,
+      9,
+      "INT"
+    ],
+    [
+      206,
+      30,
+      0,
+      3,
+      1,
+      "HYVIDEMBEDS"
+    ],
+    [
+      207,
+      155,
+      0,
+      150,
+      0,
+      "HYVIDLORA"
+    ],
+    [
+      208,
+      150,
+      0,
+      151,
+      0,
+      "HYVIDLORA"
+    ],
+    [
+      209,
+      151,
+      0,
+      152,
+      0,
+      "HYVIDLORA"
+    ],
+    [
+      210,
+      152,
+      0,
+      153,
+      0,
+      "HYVIDLORA"
+    ],
+    [
+      211,
+      154,
+      0,
+      155,
+      0,
+      "HYVIDLORA"
+    ],
+    [
+      212,
+      159,
+      0,
+      158,
+      0,
+      "HYVIDEOMODEL"
+    ],
+    [
+      213,
+      156,
+      0,
+      158,
+      1,
+      "HYVIDTEXTENCODER"
+    ],
+    [
+      214,
+      157,
+      0,
+      158,
+      2,
+      "VAE"
+    ],
+    [
+      215,
+      153,
+      0,
+      159,
+      2,
+      "HYVIDLORA"
+    ],
+    [
+      217,
+      157,
+      0,
+      43,
+      0,
+      "VAE"
+    ],
+    [
+      218,
+      157,
+      0,
+      34,
+      3,
+      "VAE"
+    ],
+    [
+      219,
+      157,
+      0,
+      62,
+      3,
+      "VAE"
+    ],
+    [
+      220,
+      157,
+      0,
+      144,
+      3,
+      "VAE"
+    ],
+    [
+      221,
+      157,
+      0,
+      5,
+      0,
+      "VAE"
+    ],
+    [
+      222,
+      156,
+      0,
+      30,
+      0,
+      "HYVIDTEXTENCODER"
+    ],
+    [
+      223,
+      159,
+      0,
+      3,
+      0,
+      "HYVIDEOMODEL"
+    ],
+    [
+      238,
+      157,
+      0,
+      43,
+      0,
+      "VAE"
+    ],
+    [
+      239,
+      157,
+      0,
+      5,
+      0,
+      "VAE"
+    ],
+    [
+      240,
+      157,
+      0,
+      34,
+      3,
+      "VAE"
+    ],
+    [
+      241,
+      157,
+      0,
+      62,
+      3,
+      "VAE"
+    ],
+    [
+      242,
+      157,
+      0,
+      144,
+      3,
+      "VAE"
+    ],
+    [
+      243,
+      159,
+      0,
+      3,
+      0,
+      "HYVIDEOMODEL"
+    ],
+    [
+      244,
+      156,
+      0,
+      30,
+      0,
+      "HYVIDTEXTENCODER"
+    ],
+    [
+      245,
+      157,
+      0,
+      176,
+      0,
+      "VAE"
+    ],
+    [
+      246,
+      157,
+      0,
+      5,
+      0,
+      "VAE"
+    ],
+    [
+      247,
+      157,
+      0,
+      62,
+      3,
+      "VAE"
+    ],
+    [
+      248,
+      157,
+      0,
+      144,
+      3,
+      "VAE"
+    ],
+    [
+      249,
+      156,
+      0,
+      30,
+      0,
+      "HYVIDTEXTENCODER"
+    ],
+    [
+      250,
+      157,
+      0,
+      43,
+      0,
+      "VAE"
+    ],
+    [
+      251,
+      157,
+      0,
+      34,
+      3,
+      "VAE"
+    ],
+    [
+      252,
+      159,
+      0,
+      3,
+      0,
+      "HYVIDEOMODEL"
+    ],
+    [
+      254,
+      178,
+      0,
+      45,
+      5,
+      "INT"
+    ],
+    [
+      255,
+      179,
+      0,
+      45,
+      4,
+      "INT"
+    ],
+    [
+      258,
+      180,
+      0,
+      60,
+      1,
+      "INT"
+    ],
+    [
+      259,
+      180,
+      0,
+      3,
+      7,
+      "INT"
+    ],
+    [
+      261,
+      60,
+      0,
+      144,
+      0,
+      "IMAGE"
+    ],
+    [
+      262,
+      176,
+      0,
+      45,
+      0,
+      "IMAGE"
+    ],
+    [
+      263,
+      176,
+      0,
+      82,
+      1,
+      "IMAGE"
+    ],
+    [
+      264,
+      157,
+      0,
+      5,
+      0,
+      "VAE"
+    ],
+    [
+      265,
+      156,
+      0,
+      30,
+      0,
+      "HYVIDTEXTENCODER"
+    ],
+    [
+      266,
+      157,
+      0,
+      43,
+      0,
+      "VAE"
+    ],
+    [
+      267,
+      159,
+      0,
+      3,
+      0,
+      "HYVIDEOMODEL"
+    ],
+    [
+      268,
+      157,
+      0,
+      144,
+      3,
+      "VAE"
+    ],
+    [
+      269,
+      157,
+      0,
+      5,
+      0,
+      "VAE"
+    ],
+    [
+      270,
+      156,
+      0,
+      30,
+      0,
+      "HYVIDTEXTENCODER"
+    ],
+    [
+      271,
+      159,
+      0,
+      3,
+      0,
+      "HYVIDEOMODEL"
+    ],
+    [
+      272,
+      157,
+      0,
+      144,
+      3,
+      "VAE"
+    ],
+    [
+      273,
+      157,
+      0,
+      43,
+      0,
+      "VAE"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "SETUP",
+      "bounding": [
+        -1170,
+        -270,
+        620,
+        1630
+      ],
+      "color": "#437000",
+      "font_size": 24,
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.6115909044841591,
+      "offset": [
+        2222.185865435702,
+        812.2247645049933
+      ]
+    },
+    "node_versions": {
+      "comfyui-hunyuanvideowrapper": "1.0.1",
+      "cg-use-everywhere": "ce510b97d10e69d5fd0042e115ecd946890d2079",
+      "comfy-core": "0.3.14",
+      "comfyui-videohelpersuite": "1.5.2",
+      "ComfyUI-Image-Filters": "0ff33fe29f7be072ad5d2cd89efa18fed82957fe",
+      "comfyui_essentials": "1.1.0",
+      "ComfyUI-Crystools": "72e2e9af4a6b9a58ca5d753cacff37ba1ff9bfa8",
+      "comfyui-kjnodes": "1.0.5"
+    },
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "controller_panel": {
+      "controllers": {},
+      "hidden": true,
+      "highlight": true,
+      "version": 2,
+      "default_order": []
+    },
+    "ue_links": [
+      {
+        "downstream": 5,
+        "downstream_slot": 0,
+        "upstream": "157",
+        "upstream_slot": 0,
+        "controller": 158,
+        "type": "VAE"
+      },
+      {
+        "downstream": 30,
+        "downstream_slot": 0,
+        "upstream": "156",
+        "upstream_slot": 0,
+        "controller": 158,
+        "type": "HYVIDTEXTENCODER"
+      },
+      {
+        "downstream": 3,
+        "downstream_slot": 0,
+        "upstream": "159",
+        "upstream_slot": 0,
+        "controller": 158,
+        "type": "HYVIDEOMODEL"
+      },
+      {
+        "downstream": 144,
+        "downstream_slot": 3,
+        "upstream": "157",
+        "upstream_slot": 0,
+        "controller": 158,
+        "type": "VAE"
+      },
+      {
+        "downstream": 43,
+        "downstream_slot": 0,
+        "upstream": "157",
+        "upstream_slot": 0,
+        "controller": 158,
+        "type": "VAE"
+      }
+    ],
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true
+  },
+  "version": 0.4
+}

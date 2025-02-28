@@ -12,11 +12,9 @@ public class ScheduledGPUEvent
     public string mode = "upscale";
     public GameObject targetObj = null;
     public bool disableTranslucency = false;
-    public string promptOverride = "";
-    
-    public string requestedSimplePrompt = "";
-    public string requestedDetailedPrompt = "";
-    public string requestedNegativePrompt = "";
+    public PicJob m_picJob = null;
+    public string workflow = "";
+    public string parm_1_string = ""; //only used when a comfy workflow is set and not null
 
     public RTRendererType requestedRenderer = RTRendererType.Any_Local;
 }
@@ -67,6 +65,11 @@ public class ImageGenerator : MonoBehaviour
         return m_gpuEventList.Count;
     }
 
+    public bool RunGPUEventNow(ScheduledGPUEvent request, int serverID, bool bisMainWorkflow)
+    {
+        RunRender(request, serverID, bisMainWorkflow);
+        return true;
+    }
     public void ScheduleGPURequest(ScheduledGPUEvent request)
     {
         m_gpuEventList.AddLast(request);
@@ -176,16 +179,12 @@ public class ImageGenerator : MonoBehaviour
         const string panelName = "GenerateSettingsPanel";
 
         var existing = RTUtil.FindIncludingInactive(panelName);
-        if (existing != null)
-        {
-            RTUtil.KillObjectByName(panelName);
-            return;
-        }
+        existing.GetComponent<GenerateSettingsPanel>().ToggleWindow();
 
-        GameObject genPanel = Instantiate(m_settingPanelPrefab, RTUtil.FindIncludingInactive("MainCanvas").transform);
-        genPanel.name = panelName;
-
+        existing.name = panelName;
+        Debug.Log("Clicked OnClickedGenerateSettingsButton");
     }
+
     public void ResetGenerateCounter()
     {
         m_curGenCount = 0;
@@ -229,6 +228,28 @@ public class ImageGenerator : MonoBehaviour
         ResetGenerateCounter();
         SetGenerate(!m_generateActive);
     }
+
+    public void GenerateOneImage()
+    {
+        GameObject picGO = CreateNewPic();
+        PicMain picScript = picGO.GetComponent<PicMain>();
+
+        PicJob jobDefaults = new PicJob();
+
+        jobDefaults.requestedRenderer = GameLogic.Get().GetGlobalRenderer();
+        jobDefaults._requestedPrompt = GameLogic.Get().GetModifiedGlobalPrompt();
+        jobDefaults._requestedNegativePrompt = GameLogic.Get().GetNegativePrompt();
+        jobDefaults._requestedAudioPrompt = Config.Get().GetDefaultAudioPrompt();
+        jobDefaults._requestedAudioNegativePrompt = Config.Get().GetDefaultAudioNegativePrompt();
+
+        picScript.AddJobListWithStartingJobInfo(jobDefaults, GameLogic.Get().GetPicJobListAsListOfStrings());
+        picScript.UpdateJobs();
+    }
+    public void OnGenerateOneButton()
+    {
+        GenerateOneImage();
+    }
+
     // Update is called once per frame
     public void Reset()
     {
@@ -257,7 +278,6 @@ public class ImageGenerator : MonoBehaviour
         GameObject pic = Instantiate(m_pic_prefab, vSpawnPos, Quaternion.identity);
         pic.transform.parent = RTUtil.FindObjectOrCreate("Pics").transform;
         PicMain picMain = pic.GetComponent<PicMain>();
-        picMain.PassInTempInfo(GameLogic.Get().GetGlobalRenderer(), -1);
         if (_bAdvancedRow)
         {
             if (GameLogic.Get().GetCameraFollow())
@@ -277,6 +297,16 @@ public class ImageGenerator : MonoBehaviour
     {
         AddImageByFileName(fname);
     }
+
+    public GameObject AddImageByTexture(Texture2D tex)
+    {
+        GameObject pic = CreateNewPic();
+        PicMain picScript = pic.GetComponent<PicMain>();
+        PicMask picMask = pic.GetComponent<PicMask>();
+        picScript.SetImage(tex, false);
+        picMask.ResizeMaskIfNeeded();
+        return pic;
+    }
     public GameObject AddImageByFileName(string fname) //Send a blank filename to just get a pic back
     {
         GameObject pic = CreateNewPic();
@@ -285,8 +315,10 @@ public class ImageGenerator : MonoBehaviour
 
         if (fname.Length != 0)
         {
+            picScript.SetDisableUndo(true);
             picScript.LoadImageByFilename(fname, false);
             picMask.ResizeMaskIfNeeded();
+            picScript.SetDisableUndo(false);
         }
 
         return pic;
@@ -296,7 +328,7 @@ public class ImageGenerator : MonoBehaviour
     {
         //get the last pic created
         var aiScripts = RTUtil.FindObjectOrCreate("Pics").transform.GetComponentsInChildren<PicMain>();
-        
+
         //if empty, add a blank pic
         if (aiScripts.Length == 0)
         {
@@ -305,6 +337,27 @@ public class ImageGenerator : MonoBehaviour
         //return the last one
         return aiScripts[aiScripts.Length - 1];
 
+    }
+    public void RunTool1OnAllPics()
+    {
+        var aiScripts = RTUtil.FindObjectOrCreate("Pics").transform.GetComponentsInChildren<PicMain>();
+
+        foreach (PicMain picScript in aiScripts)
+        {
+            picScript.OnTool1();
+        }
+    }
+
+
+    public void AddJoblistToAllPics(List<string> joblist)
+    {
+        var aiScripts = RTUtil.FindObjectOrCreate("Pics").transform.GetComponentsInChildren<PicMain>();
+
+        foreach (PicMain picScript in aiScripts)
+        {
+            picScript.AddJobList(joblist);
+            picScript.UpdateJobs();
+        }
     }
     public void ReorganizePics(bool bResetCamera = true)
     {
@@ -344,16 +397,51 @@ public class ImageGenerator : MonoBehaviour
         }
     }
 
+    void RunRender(ScheduledGPUEvent e, int gpuToUse, bool bIsMainWorkflow)
+    {
+        var script = e.targetObj.GetComponent<PicTextToImage>();
+        GPUInfo gpuInfo = Config.Get().GetGPUInfo(gpuToUse);
+
+        //assert that e.picJob isn't null
+        if (e.m_picJob == null)
+        {
+            Debug.LogError("e.m_picJob is null");
+            return;
+        }
+
+        script.SetPrompt(e.m_picJob._requestedPrompt);
+        script.SetNegativePrompt(e.m_picJob._requestedNegativePrompt);
+        script.SetAudioPrompt(e.m_picJob._requestedAudioPrompt);
+        script.SetAudioNegativePrompt(e.m_picJob._requestedAudioNegativePrompt);
+
+        //as for how we actually kickoff things..
+        var picMain = e.targetObj.GetComponent<PicMain>();
+        picMain.PassInTempInfo(gpuInfo._requestedRendererType, gpuToUse);
+
+        if (gpuInfo._requestedRendererType == RTRendererType.OpenAI_Dalle_3)
+        {
+            picMain.OnRenderWithDalle3();
+        }
+        else
+        {
+            script.SetGPU(gpuToUse);
+            script.SetGPUEvent(e);
+            script.StartGenerateInitialRender();
+        }
+
+    }
+
+
     void Update()
     {
-            //temporary list of gpu events, we can put them here to be rescheduled later
-            LinkedList<ScheduledGPUEvent> tempGPUList = new LinkedList<ScheduledGPUEvent>();
+        //temporary list of gpu events, we can put them here to be rescheduled later
+        LinkedList<ScheduledGPUEvent> tempGPUList = new LinkedList<ScheduledGPUEvent>();
 
         if (m_gpuEventList.Count > 0)
         {
             int gpuToUse = Config.Get().GetFreeGPU();
 
-            if ( GameLogic.Get().GetGlobalRenderer() == RTRendererType.OpenAI_Dalle_3)
+            if (GameLogic.Get().GetGlobalRenderer() == RTRendererType.OpenAI_Dalle_3)
             {
                 //special case
                 gpuToUse = Config.Get().GetFirstGPUIncludingOpenAI();
@@ -367,10 +455,10 @@ public class ImageGenerator : MonoBehaviour
 
             var gpuInfo = Config.Get().GetGPUInfo(gpuToUse);
 
-            tryAgain:
+        tryAgain:
 
             ScheduledGPUEvent e = m_gpuEventList.First.Value;
-            
+
             //first see if we can do anything with it
             if (e.requestedRenderer != RTRendererType.Any_Local)
             {
@@ -391,7 +479,7 @@ public class ImageGenerator : MonoBehaviour
                         m_gpuEventList.RemoveFirst();
 
                         if (m_gpuEventList.Count == 0)
-                            {
+                        {
                             //uh oh, geuss we need to get out of here.  
                             foreach (ScheduledGPUEvent g in tempGPUList)
                             {
@@ -400,123 +488,22 @@ public class ImageGenerator : MonoBehaviour
                             return;
                         }
 
-                            goto tryAgain;
+                        goto tryAgain;
                     }
 
                 }
             }
-            
+
             m_gpuEventList.RemoveFirst();
 
             if (e.targetObj)
             {
-                if (e.mode == "upscale")
+                 if (e.mode == "render")
                 {
-                    var script = e.targetObj.GetComponent<PicUpscale>();
-                    script.OnForceUpscale(gpuToUse);
-                }
-                else if (e.mode == "inpaint")
-                {
-                    var script = e.targetObj.GetComponent<PicInpaint>();
-                    if (GameLogic.Get().IsActiveModelPix2Pix() && GameLogic.Get().GetUseControlNet())
-                    {
-                        RTQuickMessageManager.Get().ShowMessage("ControlNet won't work with a pix2pix model loaded! Change model or disable ControlNet.");
-                        script.m_picScript.SetStatusMessage("");
-                    }
-                    else
-                    {
-                        script.SetGPU(gpuToUse);
-                        script.StartInpaint();
-                    }
-                }
 
-                else if (e.mode == "rerender")
-                {
-                    var script = e.targetObj.GetComponent<PicTextToImage>();
+                    RunRender(e, gpuToUse, true);
 
-                    if (GameLogic.Get().IsActiveModelPix2Pix())
-                    {
-                        RTQuickMessageManager.Get().ShowMessage("The loaded model is pix2pix, can't generate, only inpaint/modify existing images.");
-                        script.m_picScript.SetStatusMessage("");
-                    }
-                    else
-                    {
-
-                        script.SetGPU(gpuToUse);
-                        script.StartGenerate();
-                    }
-                }
-                else if (e.mode == "render")
-                {
-                    var script = e.targetObj.GetComponent<PicTextToImage>();
-
-                    if (GameLogic.Get().IsActiveModelPix2Pix())
-                    {
-                        RTQuickMessageManager.Get().ShowMessage("The loaded model is pix2pix, can't generate, only inpaint/modify existing images.");
-                        script.m_picScript.SetStatusMessage("");
-                    }
-                    else
-                    {
-                        //get gpuinfo
-
-                        if (gpuInfo._usesDetailedPrompts)
-                        {
-                            if (e.requestedDetailedPrompt.Length > 0)
-                            {
-                                script.SetPrompt(e.requestedDetailedPrompt);
-                            } else if (e.requestedSimplePrompt.Length > 0)
-                            {
-                                script.SetPrompt(e.requestedSimplePrompt);
-                            } else
-                            {
-                                //default is nothing, probably already set
-                            }
-                        } else
-                        {
-                            //this renderer wants simple prompts
-                            if (e.requestedSimplePrompt.Length > 0)
-                            {
-                                script.SetPrompt(e.requestedSimplePrompt);
-                            }
-                            else if (e.requestedDetailedPrompt.Length > 0)
-                            {
-                                script.SetPrompt(e.requestedDetailedPrompt);
-                            }
-                            else
-                            {
-                                //default is nothing, probably already set
-                            }
-                        }
-
-                        //as for how we actually kickoff things..
-                        var picMain = e.targetObj.GetComponent<PicMain>();
-                        picMain.PassInTempInfo(gpuInfo._requestedRendererType, gpuToUse);
-
-                        if (gpuInfo._requestedRendererType == RTRendererType.OpenAI_Dalle_3)
-                        {
-                            picMain.OnRenderWithDalle3();
-                        }
-                        else
-                        {
-                            script.SetGPU(gpuToUse);
-                            script.StartGenerateInitialRender();
-                        }
-
-            
-                    }
-                }
-                else if (e.mode == "interrogate")
-                {
-                    var script = e.targetObj.GetComponent<PicInterrogate>();
-                    script.SetGPU(gpuToUse);
-                    script.OnForceInterrogate(gpuToUse);
-                }
-                else if (e.mode == "genmask")
-                {
-                    var script = e.targetObj.GetComponent<PicGenerateMask>();
-                    script.OnGenerateMask(gpuToUse, e.disableTranslucency);
-                }
-                else
+                } else
                 {
                     Debug.LogError("Unknown mode: " + e.mode);
                 }
@@ -524,11 +511,11 @@ public class ImageGenerator : MonoBehaviour
 
         }
 
-            //we add any gpu events we had to ignore for now, put them at the front
-            foreach (ScheduledGPUEvent e in tempGPUList)
-            {
-                m_gpuEventList.AddFirst(e);
-            }
+        //we add any gpu events we had to ignore for now, put them at the front
+        foreach (ScheduledGPUEvent e in tempGPUList)
+        {
+            m_gpuEventList.AddFirst(e);
+        }
 
 
         if (!m_generateActive || m_picGenerator != null)
@@ -544,52 +531,14 @@ public class ImageGenerator : MonoBehaviour
             if (!Config.Get().IsGPUBusy(i) && Config.Get().GetGPUInfo(i)._bIsActive)
             {
 
-                bool bDisableGeneration = false;
-
-                if (GameLogic.Get().IsActiveModelPix2Pix() && Config.Get().IsGPUOfThisType(i, GameLogic.Get().GetGlobalRenderer()))
+                //Let's schedule to render something with our active parms
+                if (!Config.Get().IsGPUOfThisType(i, GameLogic.Get().GetGlobalRenderer()))
                 {
-                    RTQuickMessageManager.Get().ShowMessage("The loaded model is pix2pix, can't generate, can only inpaint.<BR>(Canceling generate mode)");
-                    SetGenerate(false);
-                    bDisableGeneration = true;
+                    continue;
                 }
+                GenerateOneImage();
+                break;
 
-                if (!bDisableGeneration)
-                {
-                    GameObject pic;
-
-                    if (!Config.Get().IsGPUOfThisType(i, GameLogic.Get().GetGlobalRenderer()))
-                    {
-                        continue;
-                    }
-
-                    if (GameLogic.Get().GetTurbo())
-                    {
-                        //special handling because we're in turbo mode, we'll generate over the last image instead of creating new ones
-                        pic = GetPicToUseTurboOn().gameObject;
-                        if (pic.GetComponent<PicMain>().IsBusy())
-                        {
-                            Debug.Log("Ignoring, we're still rendering");
-                            return;
-                        }
-                        PicTextToImage s = pic.GetComponent<PicTextToImage>();
-                        s.Reset();
-                    }
-                    else
-                    {
-                        pic = CreateNewPic();
-                    }
-
-                    PicTextToImage scriptAI = pic.GetComponent<PicTextToImage>();
-                    PicUpscale processAI = pic.GetComponent<PicUpscale>();
-                    PicMain picScript = pic.GetComponent<PicMain>();
-
-                    processAI.SetGPU(i);
-                    
-                    scriptAI.SetGPU(i);
-                    scriptAI.StartWebRequest(false);
-                    picScript.PassInTempInfo(GameLogic.Get().GetGlobalRenderer(), i);
-                    IncrementGenerationAndCheckForEnd();
-                }
             }
 
         }

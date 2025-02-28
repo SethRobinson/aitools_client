@@ -1,0 +1,6 @@
+COMMAND_START|joblist
+text_to_img_flux_api.json @replace|flux1-dev.sft|flux1-dev.sft| @replace|"width": 1024|"width": 1024| @replace|"height": 1024|"height": 1024| @replace|"steps": 20|"steps": 20|
+img_to_video_wanvideo_api.json
+-If using with something that writes the audio prompt (AIGuide,Advenure) , disable the @Copy command below to not overwrite it with our base prompt
+video_to_video_gen_mmaudio_api.json @Copy|prompt|audio_prompt| -@Comment| MMaudio creates sound to go with the video but uh... it's not great.  We use the prompt as the audio prompt.
+COMMAND_END

@@ -1,0 +1,1559 @@
+{
+  "last_node_id": 146,
+  "last_link_id": 528,
+  "nodes": [
+    {
+      "id": 26,
+      "type": "CLIPTextEncode",
+      "pos": [
+        600,
+        30
+      ],
+      "size": [
+        400,
+        130
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 525
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "shape": 3,
+          "links": [
+            504
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": [
+        "<AITOOLS_PROMPT>"
+      ],
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 27,
+      "type": "CLIPTextEncode",
+      "pos": [
+        532.8179931640625,
+        209.09085083007812
+      ],
+      "size": [
+        400,
+        90
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 526
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "shape": 3,
+          "links": [
+            505
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": [
+        "<AITOOLS_NEGATIVE_PROMPT>"
+      ],
+      "color": "#322",
+      "bgcolor": "#533"
+    },
+    {
+      "id": 30,
+      "type": "PreviewImage",
+      "pos": [
+        1783.668701171875,
+        37.80007553100586
+      ],
+      "size": [
+        258.6734924316406,
+        246
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 7,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 509
+        }
+      ],
+      "outputs": [],
+      "title": "Cropped Preview",
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 29,
+      "type": "PreviewImage",
+      "pos": [
+        1755.7515869140625,
+        360.4564208984375
+      ],
+      "size": [
+        390,
+        340
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 508
+        }
+      ],
+      "outputs": [],
+      "title": "Final Preview",
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 143,
+      "type": "workflow>Loader charged",
+      "pos": [
+        -281.11572265625,
+        25.53717041015625
+      ],
+      "size": [
+        520,
+        170
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "shape": 3,
+          "links": [
+            525,
+            526,
+            527
+          ]
+        },
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "shape": 3,
+          "links": [
+            528
+          ]
+        },
+        {
+          "name": "model",
+          "type": "MODEL",
+          "shape": 3,
+          "links": [
+            524
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "workflow/Loader charged"
+      },
+      "widgets_values": [
+        "SD1.5/dreamshaper_8Inpainting.safetensors",
+        1,
+        true,
+        true
+      ]
+    },
+    {
+      "id": 22,
+      "type": "LoadImage",
+      "pos": [
+        -263.44305419921875,
+        427.7726745605469
+      ],
+      "size": [
+        400,
+        370
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 1,
+      "mode": 4,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "shape": 3,
+          "links": [],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "shape": 3,
+          "links": [],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "clipspace/clipspace-mask-593605.4000000358.png [input]",
+        "image"
+      ]
+    },
+    {
+      "id": 145,
+      "type": "VHS_LoadImagePath",
+      "pos": [
+        388.29541015625,
+        436.37017822265625
+      ],
+      "size": [
+        235.24609375,
+        168
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "vae",
+          "type": "VAE",
+          "shape": 7,
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            510
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": [
+            511
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VHS_LoadImagePath",
+        "rejects_ue_links": true
+      },
+      "widgets_values": {
+        "image": "<AITOOLS_INPUT_1>",
+        "custom_width": 0,
+        "custom_height": 0,
+        "videopreview": {
+          "hidden": false,
+          "paused": false,
+          "params": {
+            "custom_width": 0,
+            "custom_height": 0,
+            "filename": "<AITOOLS_INPUT_1>",
+            "type": "path",
+            "format": "video/<AITOOLS_INPUT_1>"
+          }
+        }
+      }
+    },
+    {
+      "id": 144,
+      "type": "workflow>Mask Detailer Mine",
+      "pos": [
+        1105.976806640625,
+        187.89202880859375
+      ],
+      "size": [
+        519,
+        726
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 524
+        },
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 527
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 528
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 504
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 505
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 511
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 510
+        },
+        {
+          "name": "scheduler_func_opt",
+          "type": "SCHEDULER_FUNC",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            508
+          ]
+        },
+        {
+          "name": "cropped_refined",
+          "type": "IMAGE",
+          "shape": 6,
+          "links": [
+            509
+          ]
+        },
+        {
+          "name": "cropped_enhanced_alpha",
+          "type": "IMAGE",
+          "shape": 6,
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "workflow>Mask Detailer Mine"
+      },
+      "widgets_values": [
+        6,
+        "auto",
+        512,
+        true,
+        1024,
+        true,
+        58357322079275,
+        "randomize",
+        20,
+        8,
+        "euler",
+        "normal",
+        0.5,
+        5,
+        3,
+        10,
+        0.2,
+        1,
+        1,
+        true,
+        20,
+        false,
+        true
+      ]
+    }
+  ],
+  "links": [
+    [
+      70,
+      1,
+      2,
+      14,
+      1,
+      "VAE"
+    ],
+    [
+      71,
+      1,
+      2,
+      20,
+      1,
+      "VAE"
+    ],
+    [
+      72,
+      3,
+      0,
+      24,
+      0,
+      "MODEL"
+    ],
+    [
+      73,
+      42,
+      1,
+      24,
+      1,
+      "CLIP"
+    ],
+    [
+      74,
+      1,
+      2,
+      24,
+      2,
+      "VAE"
+    ],
+    [
+      75,
+      42,
+      1,
+      27,
+      0,
+      "CLIP"
+    ],
+    [
+      76,
+      42,
+      1,
+      44,
+      0,
+      "CLIP"
+    ],
+    [
+      77,
+      42,
+      1,
+      45,
+      0,
+      "CLIP"
+    ],
+    [
+      78,
+      42,
+      1,
+      26,
+      0,
+      "CLIP"
+    ],
+    [
+      79,
+      1,
+      2,
+      14,
+      1,
+      "VAE"
+    ],
+    [
+      80,
+      1,
+      2,
+      20,
+      1,
+      "VAE"
+    ],
+    [
+      81,
+      3,
+      0,
+      24,
+      0,
+      "MODEL"
+    ],
+    [
+      82,
+      42,
+      1,
+      24,
+      1,
+      "CLIP"
+    ],
+    [
+      83,
+      1,
+      2,
+      24,
+      2,
+      "VAE"
+    ],
+    [
+      84,
+      42,
+      1,
+      27,
+      0,
+      "CLIP"
+    ],
+    [
+      85,
+      42,
+      1,
+      44,
+      0,
+      "CLIP"
+    ],
+    [
+      86,
+      42,
+      1,
+      45,
+      0,
+      "CLIP"
+    ],
+    [
+      87,
+      42,
+      1,
+      26,
+      0,
+      "CLIP"
+    ],
+    [
+      88,
+      3,
+      0,
+      34,
+      1,
+      "MODEL"
+    ],
+    [
+      89,
+      46,
+      0,
+      34,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      90,
+      7,
+      0,
+      34,
+      3,
+      "CONDITIONING"
+    ],
+    [
+      91,
+      1,
+      2,
+      34,
+      4,
+      "VAE"
+    ],
+    [
+      92,
+      4,
+      0,
+      34,
+      5,
+      "INT"
+    ],
+    [
+      93,
+      4,
+      1,
+      34,
+      6,
+      "INT"
+    ],
+    [
+      504,
+      26,
+      0,
+      144,
+      3,
+      "CONDITIONING"
+    ],
+    [
+      505,
+      27,
+      0,
+      144,
+      4,
+      "CONDITIONING"
+    ],
+    [
+      508,
+      144,
+      0,
+      29,
+      0,
+      "IMAGE"
+    ],
+    [
+      509,
+      144,
+      1,
+      30,
+      0,
+      "IMAGE"
+    ],
+    [
+      510,
+      145,
+      0,
+      144,
+      6,
+      "IMAGE"
+    ],
+    [
+      511,
+      145,
+      1,
+      144,
+      5,
+      "MASK"
+    ],
+    [
+      513,
+      143,
+      0,
+      "144:0",
+      0,
+      "MODEL"
+    ],
+    [
+      514,
+      143,
+      1,
+      "144:0",
+      1,
+      "CLIP"
+    ],
+    [
+      515,
+      143,
+      2,
+      "144:0",
+      2,
+      "VAE"
+    ],
+    [
+      516,
+      143,
+      1,
+      26,
+      0,
+      "CLIP"
+    ],
+    [
+      517,
+      143,
+      2,
+      145,
+      0,
+      "VAE"
+    ],
+    [
+      518,
+      143,
+      1,
+      27,
+      0,
+      "CLIP"
+    ],
+    [
+      519,
+      143,
+      0,
+      "144:0",
+      0,
+      "MODEL"
+    ],
+    [
+      520,
+      143,
+      1,
+      "144:0",
+      1,
+      "CLIP"
+    ],
+    [
+      521,
+      143,
+      2,
+      "144:0",
+      2,
+      "VAE"
+    ],
+    [
+      522,
+      143,
+      1,
+      26,
+      0,
+      "CLIP"
+    ],
+    [
+      523,
+      143,
+      1,
+      27,
+      0,
+      "CLIP"
+    ],
+    [
+      524,
+      143,
+      2,
+      144,
+      0,
+      "MODEL"
+    ],
+    [
+      525,
+      143,
+      0,
+      26,
+      0,
+      "CLIP"
+    ],
+    [
+      526,
+      143,
+      0,
+      27,
+      0,
+      "CLIP"
+    ],
+    [
+      527,
+      143,
+      0,
+      144,
+      1,
+      "CLIP"
+    ],
+    [
+      528,
+      143,
+      1,
+      144,
+      2,
+      "VAE"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.9090909090909091,
+      "offset": [
+        961.6190923289738,
+        208.18218714886243
+      ]
+    },
+    "groupNodes": {
+      "Mask Detailer Mine": {
+        "nodes": [
+          {
+            "type": "ToBasicPipe",
+            "pos": [
+              1010,
+              1020
+            ],
+            "size": {
+              "0": 240,
+              "1": 110
+            },
+            "flags": {},
+            "order": 10,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "model",
+                "type": "MODEL",
+                "link": null,
+                "localized_name": "model"
+              },
+              {
+                "name": "clip",
+                "type": "CLIP",
+                "link": null,
+                "localized_name": "clip"
+              },
+              {
+                "name": "vae",
+                "type": "VAE",
+                "link": null,
+                "localized_name": "vae"
+              },
+              {
+                "name": "positive",
+                "type": "CONDITIONING",
+                "link": null,
+                "localized_name": "positive"
+              },
+              {
+                "name": "negative",
+                "type": "CONDITIONING",
+                "link": null,
+                "localized_name": "negative"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "basic_pipe",
+                "type": "BASIC_PIPE",
+                "links": [],
+                "shape": 3,
+                "localized_name": "basic_pipe"
+              }
+            ],
+            "properties": {
+              "Node name for S&R": "ToBasicPipe"
+            },
+            "index": 0
+          },
+          {
+            "type": "MaskBlur+",
+            "pos": [
+              1400,
+              1030
+            ],
+            "size": {
+              "0": 210,
+              "1": 60
+            },
+            "flags": {},
+            "order": 9,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "mask",
+                "type": "MASK",
+                "link": null,
+                "localized_name": "mask"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "MASK",
+                "type": "MASK",
+                "links": [],
+                "shape": 3,
+                "slot_index": 0,
+                "localized_name": "MASK"
+              }
+            ],
+            "properties": {
+              "Node name for S&R": "MaskBlur+"
+            },
+            "widgets_values": [
+              6
+            ],
+            "index": 1
+          },
+          {
+            "type": "MaskDetailerPipe",
+            "pos": [
+              1630,
+              1030
+            ],
+            "size": {
+              "0": 400,
+              "1": 890
+            },
+            "flags": {},
+            "order": 21,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "image",
+                "type": "IMAGE",
+                "link": null,
+                "localized_name": "image"
+              },
+              {
+                "name": "mask",
+                "type": "MASK",
+                "link": null,
+                "localized_name": "mask"
+              },
+              {
+                "name": "basic_pipe",
+                "type": "BASIC_PIPE",
+                "link": null,
+                "slot_index": 2,
+                "localized_name": "basic_pipe"
+              },
+              {
+                "name": "refiner_basic_pipe_opt",
+                "type": "BASIC_PIPE",
+                "link": null,
+                "shape": 7,
+                "localized_name": "refiner_basic_pipe_opt"
+              },
+              {
+                "name": "detailer_hook",
+                "type": "DETAILER_HOOK",
+                "link": null,
+                "shape": 7,
+                "localized_name": "detailer_hook"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "image",
+                "type": "IMAGE",
+                "links": [],
+                "shape": 3,
+                "slot_index": 0,
+                "localized_name": "image"
+              },
+              {
+                "name": "cropped_refined",
+                "type": "IMAGE",
+                "links": [],
+                "shape": 6,
+                "slot_index": 1,
+                "localized_name": "cropped_refined"
+              },
+              {
+                "name": "cropped_enhanced_alpha",
+                "type": "IMAGE",
+                "links": null,
+                "shape": 6,
+                "localized_name": "cropped_enhanced_alpha"
+              },
+              {
+                "name": "basic_pipe",
+                "type": "BASIC_PIPE",
+                "links": null,
+                "shape": 3,
+                "localized_name": "basic_pipe"
+              },
+              {
+                "name": "refiner_basic_pipe_opt",
+                "type": "BASIC_PIPE",
+                "links": null,
+                "shape": 3,
+                "localized_name": "refiner_basic_pipe_opt"
+              }
+            ],
+            "properties": {
+              "Node name for S&R": "MaskDetailerPipe"
+            },
+            "widgets_values": [
+              696,
+              true,
+              1224,
+              true,
+              52,
+              "fixed",
+              4,
+              2.5,
+              "dpmpp_sde_gpu",
+              "karras",
+              0.51,
+              15,
+              1.5,
+              10,
+              0.2,
+              1,
+              1,
+              true,
+              20
+            ],
+            "index": 2
+          }
+        ],
+        "links": [
+          [
+            null,
+            1,
+            1,
+            0,
+            22,
+            "MASK"
+          ],
+          [
+            null,
+            0,
+            0,
+            3,
+            26,
+            "CONDITIONING"
+          ],
+          [
+            null,
+            0,
+            0,
+            4,
+            27,
+            "CONDITIONING"
+          ],
+          [
+            null,
+            0,
+            2,
+            0,
+            22,
+            "IMAGE"
+          ],
+          [
+            1,
+            0,
+            2,
+            1,
+            28,
+            "MASK"
+          ],
+          [
+            0,
+            0,
+            2,
+            2,
+            24,
+            "BASIC_PIPE"
+          ]
+        ],
+        "external": [
+          [
+            {
+              "type": "MaskDetailerPipe",
+              "pos": [
+                1630,
+                1030
+              ],
+              "size": {
+                "0": 400,
+                "1": 890
+              },
+              "flags": {},
+              "order": 21,
+              "mode": 0,
+              "inputs": [
+                {
+                  "name": "image",
+                  "type": "IMAGE",
+                  "link": null
+                },
+                {
+                  "name": "mask",
+                  "type": "MASK",
+                  "link": null
+                },
+                {
+                  "name": "basic_pipe",
+                  "type": "BASIC_PIPE",
+                  "link": null,
+                  "slot_index": 2
+                },
+                {
+                  "name": "refiner_basic_pipe_opt",
+                  "type": "BASIC_PIPE",
+                  "link": null
+                },
+                {
+                  "name": "detailer_hook",
+                  "type": "DETAILER_HOOK",
+                  "link": null
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "image",
+                  "type": "IMAGE",
+                  "links": [],
+                  "shape": 3,
+                  "slot_index": 0
+                },
+                {
+                  "name": "cropped_refined",
+                  "type": "IMAGE",
+                  "links": [],
+                  "shape": 6,
+                  "slot_index": 1
+                },
+                {
+                  "name": "cropped_enhanced_alpha",
+                  "type": "IMAGE",
+                  "links": null,
+                  "shape": 6
+                },
+                {
+                  "name": "basic_pipe",
+                  "type": "BASIC_PIPE",
+                  "links": null,
+                  "shape": 3
+                },
+                {
+                  "name": "refiner_basic_pipe_opt",
+                  "type": "BASIC_PIPE",
+                  "links": null,
+                  "shape": 3
+                }
+              ],
+              "properties": {
+                "Node name for S&R": "MaskDetailerPipe"
+              },
+              "widgets_values": [
+                696,
+                true,
+                1224,
+                true,
+                52,
+                "fixed",
+                4,
+                2.5,
+                "dpmpp_sde_gpu",
+                "karras",
+                0.51,
+                15,
+                1.5,
+                10,
+                0.2,
+                1,
+                1,
+                true,
+                20
+              ],
+              "index": 2
+            },
+            0,
+            "IMAGE"
+          ],
+          [
+            {
+              "type": "MaskDetailerPipe",
+              "pos": [
+                1630,
+                1030
+              ],
+              "size": {
+                "0": 400,
+                "1": 890
+              },
+              "flags": {},
+              "order": 21,
+              "mode": 0,
+              "inputs": [
+                {
+                  "name": "image",
+                  "type": "IMAGE",
+                  "link": null
+                },
+                {
+                  "name": "mask",
+                  "type": "MASK",
+                  "link": null
+                },
+                {
+                  "name": "basic_pipe",
+                  "type": "BASIC_PIPE",
+                  "link": null,
+                  "slot_index": 2
+                },
+                {
+                  "name": "refiner_basic_pipe_opt",
+                  "type": "BASIC_PIPE",
+                  "link": null
+                },
+                {
+                  "name": "detailer_hook",
+                  "type": "DETAILER_HOOK",
+                  "link": null
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "image",
+                  "type": "IMAGE",
+                  "links": [],
+                  "shape": 3,
+                  "slot_index": 0
+                },
+                {
+                  "name": "cropped_refined",
+                  "type": "IMAGE",
+                  "links": [],
+                  "shape": 6,
+                  "slot_index": 1
+                },
+                {
+                  "name": "cropped_enhanced_alpha",
+                  "type": "IMAGE",
+                  "links": null,
+                  "shape": 6
+                },
+                {
+                  "name": "basic_pipe",
+                  "type": "BASIC_PIPE",
+                  "links": null,
+                  "shape": 3
+                },
+                {
+                  "name": "refiner_basic_pipe_opt",
+                  "type": "BASIC_PIPE",
+                  "links": null,
+                  "shape": 3
+                }
+              ],
+              "properties": {
+                "Node name for S&R": "MaskDetailerPipe"
+              },
+              "widgets_values": [
+                696,
+                true,
+                1224,
+                true,
+                52,
+                "fixed",
+                4,
+                2.5,
+                "dpmpp_sde_gpu",
+                "karras",
+                0.51,
+                15,
+                1.5,
+                10,
+                0.2,
+                1,
+                1,
+                true,
+                20
+              ],
+              "index": 2
+            },
+            1,
+            "IMAGE"
+          ]
+        ],
+        "config": {
+          "0": {},
+          "1": {
+            "input": {
+              "amount": {
+                "name": "Mask Blur Amount"
+              }
+            }
+          },
+          "2": {
+            "output": {
+              "3": {
+                "visible": false
+              },
+              "4": {
+                "visible": false
+              }
+            },
+            "input": {
+              "cycle": {
+                "visible": false
+              },
+              "refiner_ratio": {
+                "visible": false
+              },
+              "drop_size": {
+                "visible": false
+              },
+              "mask_mode": {
+                "visible": false
+              },
+              "guide_size_for": {
+                "visible": false
+              },
+              "refiner_basic_pipe_opt": {
+                "visible": false
+              },
+              "detailer_hook": {
+                "visible": false
+              }
+            }
+          }
+        }
+      },
+      "Loader charged": {
+        "nodes": [
+          {
+            "type": "CheckpointLoaderSimple",
+            "pos": [
+              -400,
+              860
+            ],
+            "size": {
+              "0": 315,
+              "1": 98
+            },
+            "flags": {},
+            "order": 3,
+            "mode": 0,
+            "outputs": [
+              {
+                "name": "MODEL",
+                "type": "MODEL",
+                "links": [],
+                "shape": 3,
+                "slot_index": 0,
+                "localized_name": "MODEL"
+              },
+              {
+                "name": "CLIP",
+                "type": "CLIP",
+                "links": [],
+                "shape": 3,
+                "slot_index": 1,
+                "localized_name": "CLIP"
+              },
+              {
+                "name": "VAE",
+                "type": "VAE",
+                "links": [],
+                "shape": 3,
+                "slot_index": 2,
+                "localized_name": "VAE"
+              }
+            ],
+            "properties": {
+              "Node name for S&R": "CheckpointLoaderSimple"
+            },
+            "widgets_values": [
+              "01 - Fast\\creapromptLightning_creapromptHyperCFGV1.safetensors"
+            ],
+            "index": 0,
+            "inputs": []
+          },
+          {
+            "type": "PerturbedAttentionGuidance",
+            "pos": [
+              570,
+              610
+            ],
+            "size": {
+              "0": 315,
+              "1": 58
+            },
+            "flags": {},
+            "order": 9,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "model",
+                "type": "MODEL",
+                "link": null,
+                "localized_name": "model"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "MODEL",
+                "type": "MODEL",
+                "links": [],
+                "shape": 3,
+                "slot_index": 0,
+                "localized_name": "MODEL"
+              }
+            ],
+            "properties": {
+              "Node name for S&R": "PerturbedAttentionGuidance"
+            },
+            "widgets_values": [
+              1
+            ],
+            "index": 1
+          },
+          {
+            "type": "DifferentialDiffusion",
+            "pos": [
+              -140,
+              750
+            ],
+            "size": {
+              "0": 210,
+              "1": 26
+            },
+            "flags": {},
+            "order": 5,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "model",
+                "type": "MODEL",
+                "link": null,
+                "localized_name": "model"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "MODEL",
+                "type": "MODEL",
+                "links": [],
+                "shape": 3,
+                "slot_index": 0,
+                "localized_name": "MODEL"
+              }
+            ],
+            "properties": {
+              "Node name for S&R": "DifferentialDiffusion"
+            },
+            "index": 2
+          },
+          {
+            "type": "Automatic CFG",
+            "pos": [
+              100,
+              660
+            ],
+            "size": {
+              "0": 315,
+              "1": 82
+            },
+            "flags": {},
+            "order": 8,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "model",
+                "type": "MODEL",
+                "link": null,
+                "localized_name": "model"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "MODEL",
+                "type": "MODEL",
+                "links": [],
+                "shape": 3,
+                "slot_index": 0,
+                "localized_name": "MODEL"
+              }
+            ],
+            "properties": {
+              "Node name for S&R": "Automatic CFG"
+            },
+            "widgets_values": [
+              true,
+              true
+            ],
+            "index": 3
+          }
+        ],
+        "links": [
+          [
+            0,
+            0,
+            2,
+            0,
+            138,
+            "MODEL"
+          ],
+          [
+            2,
+            0,
+            3,
+            0,
+            140,
+            "MODEL"
+          ],
+          [
+            3,
+            0,
+            1,
+            0,
+            141,
+            "MODEL"
+          ]
+        ],
+        "external": [
+          [
+            null,
+            1,
+            "CLIP"
+          ],
+          [
+            null,
+            2,
+            "VAE"
+          ],
+          [
+            null,
+            0,
+            "MODEL"
+          ]
+        ],
+        "config": {
+          "0": {},
+          "1": {
+            "output": {
+              "0": {
+                "name": "model"
+              }
+            },
+            "input": {
+              "scale": {
+                "name": "PAG scale"
+              }
+            }
+          },
+          "2": {},
+          "3": {
+            "input": {
+              "hard_mode": {
+                "name": "AutoCFG hard mode"
+              },
+              "boost": {
+                "name": "AutoCFG boost"
+              }
+            }
+          }
+        }
+      }
+    },
+    "node_versions": {
+      "comfy-core": "0.3.18",
+      "comfyui-videohelpersuite": "1.5.8"
+    },
+    "ue_links": [],
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true
+  },
+  "version": 0.4
+}

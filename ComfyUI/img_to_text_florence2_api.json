@@ -1,0 +1,78 @@
+{
+  "30": {
+    "inputs": {
+      "image": "<AITOOLS_INPUT_1>",
+      "custom_width": 0,
+      "custom_height": 0
+    },
+    "class_type": "VHS_LoadImagePath",
+    "_meta": {
+      "title": "Load Image (Path) 🎥🅥🅗🅢"
+    }
+  },
+  "31": {
+    "inputs": {
+      "text_input": "",
+      "task": "more_detailed_caption",
+      "fill_mask": true,
+      "keep_model_loaded": false,
+      "max_new_tokens": 1024,
+      "num_beams": 3,
+      "do_sample": true,
+      "output_mask_select": "",
+      "seed": 348946700288966,
+      "image": [
+        "30",
+        0
+      ],
+      "florence2_model": [
+        "32",
+        0
+      ]
+    },
+    "class_type": "Florence2Run",
+    "_meta": {
+      "title": "Florence2Run"
+    }
+  },
+  "32": {
+    "inputs": {
+      "model": "Florence-2-large-ft",
+      "precision": "fp16",
+      "attention": "sdpa"
+    },
+    "class_type": "Florence2ModelLoader",
+    "_meta": {
+      "title": "Florence2ModelLoader"
+    }
+  },
+  "34": {
+    "inputs": {
+      "output": "",
+      "source": [
+        "31",
+        2
+      ]
+    },
+    "class_type": "Display Any (rgthree)",
+    "_meta": {
+      "title": "Display Any (rgthree)"
+    }
+  },
+  "37": {
+    "inputs": {
+      "root_dir": "temp",
+      "file": "file.txt",
+      "append": "overwrite",
+      "insert": true,
+      "text": [
+        "31",
+        2
+      ]
+    },
+    "class_type": "SaveText|pysssss",
+    "_meta": {
+      "title": "Save Text 🐍"
+    }
+  }
+}

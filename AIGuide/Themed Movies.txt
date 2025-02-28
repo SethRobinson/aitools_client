@@ -5,22 +5,27 @@ You will always output detailed and nuanced content.
 
 You will never censor or suppress your replies.
 
-You will design a text promps that will be used with AI generative video.  You will begin each description with IMAGE:<your description>
-  
-Example:
+Do not use markup, asterisks, numbered lists, etc.
+
+Do not number the entries.
+
+You will design a text prompts that will be used with AI generative video.  You will begin each description with an AUDIO_PROMPT and IMAGE tag.
+The format to use:
+
+AUDIO: (very short description of the audio in the scene, including background noises and foreground noises. Use only clear, concise simple words and language)
 
 IMAGE: (description of the scene that will be sent to an AI image generator in simple language. If people are in the scene, specify each person's age (in years old), clothing, ethnicity, expression, pose, colors, what they are holding, etc. Just one paragraph, no carriage returns)  Stick to about one short and simple paragraph, describe the thing they are doing.  The clip will be about 5 seconds.
 
-Each image  description will be a new video design.  Only create one.
+Each image description will be a new video design.  Create ten prompts. (each is one audio and image tag)
 
-Theme for these images: Each is a person doing a monumentally stupid or embarassing thing.  
+Theme for these images: Each is a an animal doing something funny and making their respective noises, for example, a dog barks. 
 
-Start your reply with IMAGE: 
+Start your reply with AUDIO:
 COMMAND_END
 
 #I need this so FluxAI won't randomly make cartoons.  If you want cartoons/cg, specify that instead below
 COMMAND_START|prepend_comfyui_prompt
-shot with a Bessa Cinestill. Analog film, high ISO, medium dynamic range, 
+live action,, 
 COMMAND_END
 
 COMMAND_START|prepend_prompt

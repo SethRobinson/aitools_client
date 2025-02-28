@@ -425,6 +425,7 @@ public class PicInpaint : MonoBehaviour
 
 
                     //we've already done the undo, so now let's update with the info we used to make this
+                   /*
                     m_picScript.GetCurrentStats().m_lastPromptUsed = m_prompt;
                     m_picScript.GetCurrentStats().m_lastNegativePromptUsed = m_negativePrompt;
                     m_picScript.GetCurrentStats().m_lastSteps = steps;
@@ -448,7 +449,7 @@ public class PicInpaint : MonoBehaviour
                     m_picScript.GetCurrentStats().m_maskBlending = maskBlur;
                     m_picScript.GetCurrentStats().m_lastDenoisingStrength = denoising_strength;
                     m_picScript.SetNeedsToUpdateInfoPanelFlag();
-                  
+                  */
                     int maskFeatheringRevolutions = (int)GameLogic.Get().GetAlphaMaskFeatheringPower();
                     Texture2D finalTexture = null;
 

@@ -1,0 +1,6 @@
+COMMAND_START|joblist
+text_to_img_sdxl_api.json @replace|sd_xl_base_1.0.safetensors|sd_xl_base_1.0.safetensors| @replace|"steps": 40|"steps": 40| @replace|"sampler_name": "ddim"|"sampler_name": "ddim"|
+COMMAND_END
+COMMAND_START|default_negative_prompt
+cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white
+COMMAND_END

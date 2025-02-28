@@ -1,0 +1,8 @@
+COMMAND_START|joblist
+-Add a dash to ignore that line or option.  Use the @replace statement below to change the model name or other things if needed. (only change the second parm in the @replace, it's a generic seach and replace on the workflow) This can be used to replace/customize any part of the API format .json workflows being sent.  If things don't work, check the ComfyUI/FullWorkflowVersion dir for versions you can drag into ComfyUI to test with.  Scroll down this window to see more.
+-To use a different Flux safetensor file, change the second flux1-dev.sft parm to the new one to replace it to. 
+text_to_img_flux_api.json @replace|flux1-dev.sft|flux1-dev.sft| @replace|"width": 1024|"width": 1024| @replace|"height": 1024|"height": 1024| @replace|"steps": 20|"steps": 20|
+COMMAND_END
+COMMAND_START|default_negative_prompt
+cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white
+COMMAND_END

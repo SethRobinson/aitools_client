@@ -9,5 +9,6 @@ xcopy /c web build\win\web\ /E /F /Y
 xcopy /c Adventure build\win\Adventure\ /E /F /Y
 xcopy /c AIGuide build\win\AIGuide\ /E /F /Y
 xcopy /c ComfyUI build\win\ComfyUI\ /E /F /Y
+xcopy /c Presets build\win\Presets\ /E /F /Y
 copy config.txt build\win
 pause

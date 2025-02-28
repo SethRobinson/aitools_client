@@ -25,120 +25,7 @@ public class WebRequestServerInfo : MonoBehaviour
     {
     }
 
-    public void StartInitialWebRequest(string httpDest, string extra)
-    {
-        StartCoroutine(GetRequest(httpDest));
-    }
-    IEnumerator GetRequest(String server)
-    {
-
-        WWWForm form = new WWWForm();
-        var finalURL = server + "/aitools/get_info.json";
-        string serverClickableURL = "<link=\"" + server + "\"><u>" + server + "</u></link>";
-        Debug.Log("Checking server "+ serverClickableURL + "...");
-    again:
-        //Create the request using a static method instead of a constructor
-
-        using (var postRequest = UnityWebRequest.Get(finalURL))
-        {
-            //Start the request with a method instead of the object itself
-            yield return postRequest.SendWebRequest();
-
-            if (postRequest.result != UnityWebRequest.Result.Success)
-            {
-                Debug.Log("Result is " + postRequest.result);
-
-                if (postRequest.result == UnityWebRequest.Result.ProtocolError)
-                {
-                    RTConsole.Log("Server " + serverClickableURL + " isn't an AI Tools variant, trying to connect as ComfyUI...");
-                    var webScript = Config.Get().CreateWebRequestObject();
-                    webScript.StartComfyUIRequest(-1, server);
-                    GameObject.Destroy(gameObject);
-                    yield break;
-                }
-
-           
-                m_timesTried++;
-                if (m_timesTried < m_timesToTry)
-                {
-                    //well, let's try again before we say we failed.
-                    Debug.Log("Checking server " + serverClickableURL + "... (try "+m_timesTried+")");
-                    goto again;
-                }
-
-                RTConsole.Log("Error connecting to server " + serverClickableURL + ". ("+ postRequest.error+ ")  Are you sure it's up and this address/port is right? It must be running with the --api parm. (and --listen if not on this machine)");
-                RTConsole.Log("Click Configuration, then Save & Apply to try again.");
-                GameLogic.Get().ShowConsole(true);
-            }
-            else
-            {
-                //converting postRequest.downloadHandler.text to a dictionary
-                //and then show all values
-           
-                var dict = Json.Deserialize(postRequest.downloadHandler.text) as Dictionary<string, object>;
-
-               /*
-                if (dict != null)
-                { 
-                    foreach (KeyValuePair<string, object> kvp in dict)
-                    {
-                        if (kvp.Value != null)
-                        {
-                            Debug.Log("Key: " + kvp.Key + " Value: " + kvp.Value.ToString());
-                        }
-                    }
-                }
-               */
-
-                //log the dict value of context
-                String serverName = dict["name"].ToString();
-                float version;
-
-                System.Single.TryParse(dict["version"].ToString(), NumberStyles.Any, CultureInfo.CurrentCulture, out version);
-
-                float requiredClient = 0;
-
-                if (dict.ContainsKey("required_client_version"))
-                {
-                    System.Single.TryParse(dict["required_client_version"].ToString(), NumberStyles.Any, CultureInfo.CurrentCulture, out requiredClient);
-
-                    if (requiredClient > Config.Get().GetVersion())
-                    {
-                        RTConsole.Log("ERROR: The server says this client (V" + Config.Get().GetVersionString() + " is oudated and we should upgrade to V" +
-                                requiredClient + " or newer.  Go upgrade! We'll try anyway though.");
-                        GameLogic.Get().ShowConsole(true);
-                    }
-                }
-
-                if (Config.Get().GetRequiredServerVersion() > version)
-                {
-                    RTConsole.Log("ERROR: The server version is outdated, we required "+ Config.Get().GetRequiredServerVersion()+ " or newer. GO UPGRADE!  Trying anyway though.");
-                    GameLogic.Get().ShowConsole(true);
-                }
-
-                RTConsole.Log("CONNECTED: "+serverClickableURL+" (" + serverName + ") V" + version + "");
-
-                List<object> gpus = dict["gpu"] as List<object>;
-                
-                for (int i=0; i < gpus.Count; i++)
-               {
-                   GPUInfo g;
-                   //error checking?  that's for wimps
-                   g = new GPUInfo();
-                   g.remoteURL = server;
-                   g.remoteGPUID = i;
-                   g.supportsAITools= true;
-                    g._requestedRendererType = RTRendererType.AI_Tools;
-                   Config.Get().AddGPU(g);
-               }
-            }
-        }
-
-        //either way, we're done with us
-        GameObject.Destroy(gameObject);
-    }
-
-    IEnumerator GetRequestToCheckForComfyUI(int gpuID, String server)
+    IEnumerator GetRequestToCheckForComfyUI(int gpuID, String server, string optionalName)
     {
 
         WWWForm form = new WWWForm();
@@ -159,7 +46,7 @@ public class WebRequestServerInfo : MonoBehaviour
 
                 if (postRequest.result == UnityWebRequest.Result.ProtocolError)
                 {
-                    RTConsole.Log("Server " + serverClickableURL + " isn't a ComfyUI server, trying to connect as vanilla Automatic1111 type...");
+                    RTConsole.Log("Server " + serverClickableURL + " isn't a ComfyUI server or is down!");
                     var webScript = Config.Get().CreateWebRequestObject();
                     webScript.StartConfigRequest(-1, server);
                     //either way, we're done with us
@@ -187,19 +74,6 @@ public class WebRequestServerInfo : MonoBehaviour
 
                 var dict = Json.Deserialize(postRequest.downloadHandler.text) as Dictionary<string, object>;
 
-                /*
-                 if (dict != null)
-                 { 
-                     foreach (KeyValuePair<string, object> kvp in dict)
-                     {
-                         if (kvp.Value != null)
-                         {
-                             Debug.Log("Key: " + kvp.Key + " Value: " + kvp.Value.ToString());
-                         }
-                     }
-                 }
-                */
-
                 //log the dict value of context
                 String serverName = "ComfyUI";
                
@@ -216,7 +90,9 @@ public class WebRequestServerInfo : MonoBehaviour
                     g.supportsAITools = false;
                     g._requestedRendererType = RTRendererType.ComfyUI;
                     g._usesDetailedPrompts = true; //we're assuming ComfyUI is always FLUX, probably a bad assumption
-                    Config.Get().AddGPU(g);
+                    g._name = optionalName;
+
+                Config.Get().AddGPU(g);
                
             }
         }
@@ -229,9 +105,9 @@ public class WebRequestServerInfo : MonoBehaviour
     {
         StartCoroutine(GetConfigRequest(gpuID, remoteURL));
     }
-    public void StartComfyUIRequest(int gpuID, string remoteURL)
+    public void StartComfyUIRequest(int gpuID, string remoteURL, string optionalName)
     {
-        StartCoroutine(GetRequestToCheckForComfyUI(gpuID, remoteURL));
+        StartCoroutine(GetRequestToCheckForComfyUI(gpuID, remoteURL, optionalName));
     }
     public void StartPopulateModelsRequest(GPUInfo g)
     {

@@ -11,8 +11,7 @@ public class ServerButtonScript : MonoBehaviour
     public TextMeshProUGUI m_text;
     int m_buttonIndex = -1;
     bool m_bIsBusy = false;
-    bool m_bSupportsAITools = true;
-
+  
     // Start is called before the first frame update
     void Start()
     {
@@ -37,17 +36,24 @@ public class ServerButtonScript : MonoBehaviour
         ServerSettingsPanel settingsPanelScript = settings.GetComponent<ServerSettingsPanel>();
         settingsPanelScript.Init(m_buttonIndex);
     }
-    public void Setup(int buttonIndex, bool bSupportsAITools, RTRendererType serverType)
+    public void Setup(GPUInfo g)
     {
-        m_serverType = serverType;
-        m_buttonIndex = buttonIndex;
-        m_bSupportsAITools = bSupportsAITools;
+        m_serverType = g._requestedRendererType;
+        m_buttonIndex = g.localGPUID;
         UpdateText();
     }
     // Update is called once per frame
    
     void UpdateText()
     {
+
+        if (!Config.Get().IsValidGPU(m_buttonIndex))
+        {
+            Debug.Log("Invalid GPU/Server");
+            return;
+        }
+     
+
         string busy = "";
         if (m_bIsBusy)
         {
@@ -55,15 +61,7 @@ public class ServerButtonScript : MonoBehaviour
         }
         string aitools = "";
        
-        
-        if (m_bSupportsAITools)
-        {
-            aitools = "AIT";
-        } else
-        {
-            aitools = "1111";
-        }
-
+       
         if (m_serverType == RTRendererType.ComfyUI)
         {
             aitools = "Comfy";
@@ -74,7 +72,14 @@ public class ServerButtonScript : MonoBehaviour
         }
 
 
-        m_text.text = aitools+" Server " + m_buttonIndex.ToString() + "" + busy;
+        m_text.text = aitools;
+
+        if (Config.Get().GetGPUInfo(m_buttonIndex)._name != "")
+        {
+            m_text.text = Config.Get().GetGPUInfo(m_buttonIndex)._name;
+        }
+
+        m_text.text += " Server " + m_buttonIndex.ToString() + "" + busy;
     }
     public void OnSetBusy(bool bBusy)
     {

@@ -1,15 +1,4 @@
 {
-  "5": {
-    "inputs": {
-      "width": 1024,
-      "height": 1024,
-      "batch_size": 1
-    },
-    "class_type": "EmptyLatentImage",
-    "_meta": {
-      "title": "Empty Latent Image"
-    }
-  },
   "6": {
     "inputs": {
       "text": "<AITOOLS_PROMPT>",
@@ -20,7 +9,7 @@
     },
     "class_type": "CLIPTextEncode",
     "_meta": {
-      "title": "CLIP Text Encode (Prompt)"
+      "title": "CLIP Text Encode (Positive Prompt)"
     }
   },
   "8": {
@@ -52,7 +41,8 @@
     "inputs": {
       "clip_name1": "t5xxl_fp16.safetensors",
       "clip_name2": "clip_l.safetensors",
-      "type": "flux"
+      "type": "flux",
+      "device": "default"
     },
     "class_type": "DualCLIPLoader",
     "_meta": {
@@ -61,7 +51,7 @@
   },
   "12": {
     "inputs": {
-      "unet_name": "flux1-schnell.sft",
+      "unet_name": "flux1-dev.sft",
       "weight_dtype": "default"
     },
     "class_type": "UNETLoader",
@@ -88,7 +78,7 @@
         0
       ],
       "latent_image": [
-        "5",
+        "27",
         0
       ]
     },
@@ -109,7 +99,7 @@
   "17": {
     "inputs": {
       "scheduler": "simple",
-      "steps": 4,
+      "steps": 20,
       "denoise": 1,
       "model": [
         "12",
@@ -128,7 +118,7 @@
         0
       ],
       "conditioning": [
-        "6",
+        "26",
         0
       ]
     },
@@ -139,7 +129,7 @@
   },
   "25": {
     "inputs": {
-      "noise_seed": 419363497099625
+      "noise_seed": 1016842837488651
     },
     "class_type": "RandomNoise",
     "_meta": {
@@ -147,6 +137,30 @@
     }
   },
   "26": {
+    "inputs": {
+      "guidance": 3.5,
+      "conditioning": [
+        "6",
+        0
+      ]
+    },
+    "class_type": "FluxGuidance",
+    "_meta": {
+      "title": "FluxGuidance"
+    }
+  },
+  "27": {
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
+    },
+    "class_type": "EmptySD3LatentImage",
+    "_meta": {
+      "title": "EmptySD3LatentImage"
+    }
+  },
+  "30": {
     "inputs": {
       "images": [
         "8",

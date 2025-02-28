@@ -6,9 +6,9 @@ using UnityEngine;
 using UnityEngine.Networking;
 using System.IO;
 using System.Runtime.InteropServices.ComTypes;
+using System.Text.RegularExpressions;
 
-
-    public class GTPChatLine
+public class GTPChatLine
     {
         public GTPChatLine(string role, string content, string internalTag = "")
         {
@@ -61,7 +61,46 @@ public class OpenAITextCompletionManager : MonoBehaviour
         textCompletionScript.SpawnChatCompleteRequest(json, OnOpenAICompletedCallback, db, openAI_APIKey);
     }
 
-   void OnOpenAICompletedCallback(RTDB db, JSONObject jsonNode, string streamedText)
+    //write a public static function that will accept Queue<GTPChatLine> lines and carefully remove the tags
+    // <think> and </think> and all text between it and returns the new Queue<GTPChatLine>
+
+    public static String RemoveThinkTagsFromString(String line)
+    {
+            // Only remove if both tags exist.
+            if (line.Contains("<think>") && line.Contains("</think>"))
+            {
+                // The (?s) inline option makes '.' match newlines as well.
+                return Regex.Replace(line, @"(?s)<think>.*?</think>", "");
+            }
+
+        return line;
+    }
+
+    public static Queue<GTPChatLine> RemoveThinkTags(Queue<GTPChatLine> lines)
+    {
+        Queue<GTPChatLine> newLines = new Queue<GTPChatLine>();
+
+        foreach (GTPChatLine obj in lines)
+        {
+            // Clone the original object so we don't modify it.
+            GTPChatLine newObj = obj.Clone();
+
+            // Only remove if both tags exist.
+            if (newObj._content.Contains("<think>") && newObj._content.Contains("</think>"))
+            {
+                // The (?s) inline option makes '.' match newlines as well.
+                newObj._content = Regex.Replace(newObj._content, @"(?s)<think>.*?</think>", "");
+            }
+            // If only one tag is present, we leave the content as is.
+            newLines.Enqueue(newObj);
+        }
+
+        return newLines;
+    }
+
+
+
+    void OnOpenAICompletedCallback(RTDB db, JSONObject jsonNode, string streamedText)
     {
 
         if (jsonNode == null)
@@ -126,12 +165,14 @@ public class OpenAITextCompletionManager : MonoBehaviour
              ""model"": ""{model}"",
              ""messages"":[{msg}],
              ""temperature"": {temperature},
-            ""max_tokens"": {max_tokens},
-             ""stream"": {bStreamText}
+            ""stream"": {bStreamText}
             }}";
 
         return json;
     }
+    //     ""reasoning_effort"":  ""medium"",
+         
+//                 ""max_tokens"": {max_tokens,
 
     IEnumerator GetRequest(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string openAI_APIKey, string endpoint)
     {

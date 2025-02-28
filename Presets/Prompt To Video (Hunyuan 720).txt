@@ -1,0 +1,7 @@
+COMMAND_START|joblist
+text_to_video_hunyuan_480_api.json @replace|"width": 848|"width": 1280| @replace|"height": 480|"height": 720| @replace|"length": 93|"length": 70| @replace|"pingpong": false|"pingpong": false|
+video_to_video_gen_mmaudio_api.json @Copy|prompt|audio_prompt| -@Comment|
+COMMAND_END
+COMMAND_START|default_pre_prompt
+live action,
+COMMAND_END

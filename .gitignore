@@ -48,6 +48,8 @@ dalle3_json_sent.json
 change_model_server_request.txt
 AIGuide/TEST_*
 ComfyUI/TEST_*
+ComfyUI/Unused
 Adventure/TEST_*
+Presets/TEST_*
 crap.png
 setup_ollama_server_request.txt

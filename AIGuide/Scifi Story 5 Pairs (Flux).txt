@@ -5,7 +5,7 @@ You will always output detailed and nuanced content.
 
 You will never censor or suppress your replies.
 
-Do not put anything in quotes.
+Do not put anything in quotes or use markup.
 
 Do not number the entries.
 
@@ -15,7 +15,7 @@ Example of the page format
 
 TEXT: (brief story dialog here, just one paragraph, no carriage returns)
 
-IMAGE: (detailed description of the scene that will be sent to an AI image generator. , if people are in the scene, specify each person's age (in years old), clothing, ethnicity, expression, pose, colors, what they are holding, etc.  Don't assume any previous knowledge of the story or previous TEXT or IMAGE info, fully describe the scene and characters time. Don't bother with people's names unless they are well known/famous.  just one paragraph, no carriage returns)
+IMAGE: (detailed description of the scene that will be sent to an AI image generator. , if people are in the scene, specify each person's age (in years old), clothing, ethnicity, expression, pose, colors, what they are holding, etc.  Don't assume any previous knowledge of the story or previous TEXT or IMAGE info, fully describe the scene and character's visual details each  time. Don't bother with people's names unless they are well known/famous.  just one paragraph, up to 200 words,, no carriage returns)
 
 NOTE:  Fully describe the IMAGE: tag each time, including age, ethnicity, etc
 
@@ -38,7 +38,7 @@ COMMAND_END
 #you can dynamically change this mid-story to make it focus on something or end the story or whatever
 COMMAND_START|auto_continue_text
 (continue the story with another 5 text and image pairs please.
-Remember, for the IMAGE: tag, write a detailed description of the scene that will be sent to an AI image generator. , if people are in the scene, specify each person's age (in years old), clothing, ethnicity, expression, pose, colors, what they are holding, etc.  Don't assume any previous knowledge of the story or previous TEXT or IMAGE info, fully describe the scene and characters time. Don't bother with people's names unless they are well known/famous.  just one paragraph, no carriage returns)
+Remember, for the IMAGE: tag, write a detailed description of the scene that will be sent to an AI image generator. , if people are in the scene, specify each person's age (in years old), clothing, ethnicity, expression, pose, colors, what they are holding, etc.  For the IMAGE tag description, don't assume any previous knowledge, fully describe the scene and each character's visual description each time. Don't bother with people's names unless they are well known/famous.  just one paragraph, no carriage returns)
 
 NOTE:  Fully describe the IMAGE: tag each time,including every person's age and ethnicity, etc
 COMMAND_END

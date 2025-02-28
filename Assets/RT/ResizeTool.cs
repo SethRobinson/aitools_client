@@ -35,41 +35,38 @@ using UnityEngine;
 public class ResizeTool
 {
 
- //copy the texture around so if it was a tile all the seams would be in the middle, makes it easy to see the problems with it
- //Pretty sure I wrote the function below? - Seth
-    public static void SetupAsTile(Texture2D texture2D,  FilterMode filter = FilterMode.Bilinear)
+    //copy the texture around so if it was a tile all the seams would be in the middle, makes it easy to see the problems with it
+    //Pretty sure I wrote the function below? - Seth
+    public static void SetupAsTile(Texture2D texture2D, FilterMode filter = FilterMode.Bilinear)
     {
-        //create a temporary RenderTexture with the target size
         int width = texture2D.width;
         int height = texture2D.height;
-        
-        RenderTexture rt = RenderTexture.GetTemporary(width, height, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Default);
 
-        //set the active RenderTexture to the temporary texture so we can read from it
+        RenderTexture rt = RenderTexture.GetTemporary(width, height, 0,
+            RenderTextureFormat.ARGB32, RenderTextureReadWrite.Default);
+
         RenderTexture.active = rt;
 
-        //Copy the texture data on the GPU - this is where the magic happens
         var vScale = new Vector2(1, 1);
         var vOffset = new Vector2(0, 0);
 
         Graphics.Blit(texture2D, rt, vScale, vOffset, 0, 0);
-        
-        //resize the texture to the target values (this sets the pixel data as undefined)
+
         texture2D.Reinitialize(width, height, texture2D.format, false);
-     
         texture2D.filterMode = filter;
 
         try
         {
-            //reads the pixel values from the temporary RenderTexture onto the resized texture
-            
-            //keep in mind Y is backwards from what you would think.  (0,0 is bottom left of image)
-            texture2D.ReadPixels(new Rect(width/2, height/2, width/2, height/2), 0, height/2); //upper left block
-            texture2D.ReadPixels(new Rect(0, height / 2, width / 2, height/2), width/2, height/2); //upper right block
-            texture2D.ReadPixels(new Rect(width/2, 0, width / 2, height / 2), 0, 0); //lower left block
-            texture2D.ReadPixels(new Rect(0, 0, width / 2, height / 2), width / 2, 0); //lower right block
+            // For a half-shift:
+            // bottom left of new texture gets upper right (quadrant D)
+            texture2D.ReadPixels(new Rect(width / 2, height / 2, width / 2, height / 2), 0, 0);
+            // bottom right gets upper left (quadrant C)
+            texture2D.ReadPixels(new Rect(0, height / 2, width / 2, height / 2), width / 2, 0);
+            // top left gets lower right (quadrant B)
+            texture2D.ReadPixels(new Rect(width / 2, 0, width / 2, height / 2), 0, height / 2);
+            // top right gets lower left (quadrant A)
+            texture2D.ReadPixels(new Rect(0, 0, width / 2, height / 2), width / 2, height / 2);
 
-            //actually upload the changed pixels to the graphics card
             texture2D.Apply();
         }
         catch
@@ -79,6 +76,7 @@ public class ResizeTool
 
         RenderTexture.ReleaseTemporary(rt);
     }
+
     //Seth wrote this (with ChatGTP help)
     public static Texture2D CropTexture(Texture2D texture, Rect cropRect)
     {

@@ -12,6 +12,21 @@ public class GenerateSettingsPanel : MonoBehaviour
     public Toggle m_cameraFollowToggle;
     public Toggle m_autoSaveToggle;
     public Toggle m_autoSavePNGToggle;
+    public Toggle m_stripThinkTagsToggle;
+
+    public CanvasGroup _canvasGroup;
+    bool m_bFirstTimeToShow = true;
+    static GenerateSettingsPanel _this;
+
+    static public GenerateSettingsPanel Get()
+    {
+        return _this;
+    }
+
+    void Awake()
+    {
+        _this = this;
+    }
 
 
     // Start is called before the first frame update
@@ -51,6 +66,38 @@ public class GenerateSettingsPanel : MonoBehaviour
 
         int.TryParse(maxPics, out result);
         GameLogic.Get().SetMaxToGenerate(result);
+    }
+
+    public void HideWindow()
+    {
+        _canvasGroup.alpha = 0;
+        _canvasGroup.interactable = false;
+        _canvasGroup.blocksRaycasts = false;
+    }
+
+    public void ShowWindow()
+    {
+        _canvasGroup.alpha = 1;
+        _canvasGroup.interactable = true;
+        _canvasGroup.blocksRaycasts = true;
+    }
+
+    public void ToggleWindow()
+    {
+        if (_canvasGroup.alpha == 0)
+        {
+            if (m_bFirstTimeToShow)
+            {
+                // LoadAndProcessConfig();
+                m_bFirstTimeToShow = false;
+            }
+
+            ShowWindow();
+        }
+        else
+        {
+            HideWindow();
+        }
     }
 
     private void OnDestroy()

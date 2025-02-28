@@ -1,0 +1,7 @@
+COMMAND_START|joblist
+-Add a - in front of img_to_text below if you don't want to auto detect the prompt from the image, but use the one set above
+img_to_text_florence2_api.json
+img_to_video_ltx_512_api.json
+-If using with something that writes the audio prompt (AIGuide,Adventure) , disable the @Copy command below to not overwrite it with our base prompt
+video_to_video_gen_mmaudio_api.json @Copy|prompt|audio_prompt|
+COMMAND_END

@@ -1,0 +1,397 @@
+{
+  "last_node_id": 30,
+  "last_link_id": 26,
+  "nodes": [
+    {
+      "id": 4,
+      "type": "AutoDownloadBiRefNetModel",
+      "pos": [
+        100,
+        130
+      ],
+      "size": [
+        315,
+        106
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "model",
+          "type": "BIREFNET",
+          "links": [
+            4
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AutoDownloadBiRefNetModel"
+      },
+      "widgets_values": [
+        "General",
+        "AUTO",
+        "float32"
+      ]
+    },
+    {
+      "id": 26,
+      "type": "MaskPreview+",
+      "pos": [
+        2189.97900390625,
+        545.8421020507812
+      ],
+      "size": [
+        210,
+        246
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "MaskPreview+"
+      }
+    },
+    {
+      "id": 25,
+      "type": "PreviewImage",
+      "pos": [
+        1488.4508056640625,
+        213.3993682861328
+      ],
+      "size": [
+        210,
+        246
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 17
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      }
+    },
+    {
+      "id": 22,
+      "type": "VHS_LoadImagePath",
+      "pos": [
+        174.79998779296875,
+        440.800048828125
+      ],
+      "size": [
+        235.24609375,
+        168
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "vae",
+          "type": "VAE",
+          "shape": 7,
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            23,
+            24
+          ]
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VHS_LoadImagePath"
+      },
+      "widgets_values": {
+        "image": "<AITOOLS_INPUT_1>",
+        "custom_width": 0,
+        "custom_height": 0,
+        "videopreview": {
+          "hidden": false,
+          "paused": false,
+          "params": {
+            "custom_width": 0,
+            "custom_height": 0,
+            "filename": "<AITOOLS_INPUT_1>",
+            "type": "path",
+            "format": "video/<AITOOLS_INPUT_1>"
+          }
+        }
+      }
+    },
+    {
+      "id": 29,
+      "type": "JoinImageWithAlpha",
+      "pos": [
+        1245.1793212890625,
+        134.88217163085938
+      ],
+      "size": [
+        264.5999755859375,
+        46
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 24
+        },
+        {
+          "name": "alpha",
+          "type": "MASK",
+          "link": 26
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            17
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "JoinImageWithAlpha"
+      }
+    },
+    {
+      "id": 15,
+      "type": "GetMaskByBiRefNet",
+      "pos": [
+        515,
+        130
+      ],
+      "size": [
+        315,
+        150
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "BIREFNET",
+          "link": 4
+        },
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 23
+        }
+      ],
+      "outputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": [
+            25
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GetMaskByBiRefNet"
+      },
+      "widgets_values": [
+        1024,
+        1024,
+        "bilinear",
+        0
+      ]
+    },
+    {
+      "id": 23,
+      "type": "VHS_LoadImagePath",
+      "pos": [
+        -135.149169921875,
+        379.4991455078125
+      ],
+      "size": [
+        235.24609375,
+        355.24609375
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "vae",
+          "type": "VAE",
+          "shape": 7,
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 0
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VHS_LoadImagePath"
+      },
+      "widgets_values": {
+        "image": "input/pic_fbc072f2-b9d9-4572-b4db-e975f21f410b.png",
+        "custom_width": 0,
+        "custom_height": 0,
+        "videopreview": {
+          "hidden": false,
+          "paused": false,
+          "params": {
+            "custom_width": 0,
+            "custom_height": 0,
+            "filename": "input/pic_fbc072f2-b9d9-4572-b4db-e975f21f410b.png",
+            "type": "path",
+            "format": "video/png"
+          }
+        }
+      }
+    },
+    {
+      "id": 30,
+      "type": "InvertMask",
+      "pos": [
+        943.767578125,
+        126.77522277832031
+      ],
+      "size": [
+        210,
+        26
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 25
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            26
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "InvertMask"
+      }
+    }
+  ],
+  "links": [
+    [
+      4,
+      4,
+      0,
+      15,
+      0,
+      "BIREFNET"
+    ],
+    [
+      17,
+      29,
+      0,
+      25,
+      0,
+      "IMAGE"
+    ],
+    [
+      23,
+      22,
+      0,
+      15,
+      1,
+      "IMAGE"
+    ],
+    [
+      24,
+      22,
+      0,
+      29,
+      0,
+      "IMAGE"
+    ],
+    [
+      25,
+      15,
+      0,
+      30,
+      0,
+      "MASK"
+    ],
+    [
+      26,
+      30,
+      0,
+      29,
+      1,
+      "MASK"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.7513148009015777,
+      "offset": {
+        "0": 211.54066467285156,
+        "1": 247.23580932617188
+      }
+    },
+    "node_versions": {
+      "comfyui_birefnet_ll": "1.1.1",
+      "comfyui_essentials": "1.1.0",
+      "comfy-core": "0.3.18",
+      "comfyui-videohelpersuite": "1.5.8"
+    },
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true,
+    "ue_links": []
+  },
+  "version": 0.4
+}

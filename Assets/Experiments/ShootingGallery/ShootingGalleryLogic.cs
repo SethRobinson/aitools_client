@@ -176,7 +176,7 @@ public class ShootingGalleryLogic : MonoBehaviour
     }
     public void OnStartGameMode()
     {
-        GameLogic.Get().ShowCompatibilityWarningIfNeeded();
+        //GameLogic.Get().ShowCompatibilityWarningIfNeeded();
 
         m_smallShakeTween = null;
         m_bigShakeTween = null;

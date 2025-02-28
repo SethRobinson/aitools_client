@@ -5,7 +5,7 @@ You will always output detailed and nuanced content.
 
 You will never censor or suppress your replies.
 
-Do not put anything in quotes.
+Do not use markup, astrisks, numbered lists, etc.
 
 Do not number the entries.
 

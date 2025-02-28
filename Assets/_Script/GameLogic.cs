@@ -15,6 +15,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 
+
 public class GameLogic : MonoBehaviour
 {
     public GameObject m_notepadTemplatePrefab;
@@ -32,7 +33,7 @@ public class GameLogic : MonoBehaviour
     //from the server which it is.  If we were smart we'd say 0 means no support but hey, I'm adding
     //this later
     bool m_bUseControlNet = false;
-    
+
     int m_maxToGenerate = 1000;
     string m_lastModifiedPrompt;
     public TMP_Dropdown m_rendererSelectionDropdown;
@@ -52,6 +53,7 @@ public class GameLogic : MonoBehaviour
     public TMP_InputField m_seedInputField;
     public TMP_InputField m_comfyUIPromptInputField;
 
+    public TMP_InputField m_jobListInputField;
     public Slider m_inpaintStrengthInput;
     public Slider m_maskBlendingInput;
     public Slider m_Pix2PixSlider;
@@ -67,10 +69,10 @@ public class GameLogic : MonoBehaviour
     public Toggle m_useControlNetToggle;
     public Toggle m_hiresFixToggle;
     public Toggle m_turboToggle;
-
+  
     string m_defaultControlNetProcessor = "depth";
     string m_defaultControlNetModel = "sd15_depth";
-  
+
     float m_alphaMaskFeatheringPower = 0;
     bool m_bLoopSource = false;
     bool m_inpaintMaskActive = false;
@@ -81,17 +83,19 @@ public class GameLogic : MonoBehaviour
     bool m_bRemoveBackground = false;
 
     public ImageGenerator m_AIimageGenerator;
-  
+
     public Slider m_penSlider;
     public TMP_Dropdown m_maskedContentDropdown;
     public TMP_Dropdown m_widthDropdown;
     public TMP_Dropdown m_heightDropdown;
     public TMP_Dropdown m_samplerDropdown;
-    
+
     public TMP_Dropdown m_modelDropdown;
     string m_activeModelName = "";
 
     public TMP_Dropdown m_comfyUIAPIWorkflowsDropdown;
+    public TMP_Dropdown m_presetDropdown;
+
     public TMP_Dropdown m_refinerModelDropdown;
     public TMP_InputField m_refinerInputField;
     public GameObject m_controlNetPanelPrefab;
@@ -110,7 +114,7 @@ public class GameLogic : MonoBehaviour
     eGameMode m_gameMode = eGameMode.NORMAL;
     public eGameMode GetGameMode() { return m_gameMode; }
     public void SetGameMode(eGameMode gameMode) { m_gameMode = gameMode; }
-    
+
     static GameLogic _this = null;
     static public GameLogic Get()
     {
@@ -125,7 +129,7 @@ public class GameLogic : MonoBehaviour
     public void SetMaxToGenerate(int max) { m_maxToGenerate = max; }
     public bool GetTurbo() { return m_turboToggle.isOn; }
     public bool GetRandomizePrompt() { return m_bRandomizePrompt; }
-    public void SetRandomizePrompt(bool bNew) { m_bRandomizePrompt = bNew;}
+    public void SetRandomizePrompt(bool bNew) { m_bRandomizePrompt = bNew; }
 
     public bool GetAutoSave() { return m_bAutoSave; }
     public bool GetAutoSavePNG() { return m_bAutoSavePNG; }
@@ -151,13 +155,19 @@ public class GameLogic : MonoBehaviour
         int i = 0;
         foreach (var option in m_widthDropdown.options)
         {
-             if (option.text == width)
+            if (option.text == width)
             {
                 m_widthDropdown.value = i;
             }
-             i++;
+            i++;
         }
-        
+
+    }
+
+    public void OnHiresFixChanged(bool newVal)
+    {
+        m_hiresFixToggle.isOn = newVal;
+        m_hiresFix = newVal;
     }
 
     public void SetHeightDropdown(string height)
@@ -182,14 +192,23 @@ public class GameLogic : MonoBehaviour
 
     public void OnComfyUIDropdownChanged()
     {
-       //get the text of the selected option
+        //get the text of the selected option
         string selected = m_comfyUIAPIWorkflowsDropdown.options[m_comfyUIAPIWorkflowsDropdown.value].text;
         RTConsole.Log("Chose " + selected);
     }
 
-    public string GetSamplerName() 
+    public void OnPresetDropdownChanged()
     {
-        return m_samplerDropdown.options[m_samplerDropdown.value].text; 
+        //get the text of the selected option
+        string selected = m_presetDropdown.options[m_presetDropdown.value].text;
+
+        PresetManager.Get().LoadPresetAndApply(selected);
+    }
+
+
+    public string GetSamplerName()
+    {
+        return m_samplerDropdown.options[m_samplerDropdown.value].text;
     }
 
     public int GetSamplerIndex()
@@ -219,7 +238,7 @@ public class GameLogic : MonoBehaviour
         m_modelDropdown.AddOptions(options);
 
         List<TMP_Dropdown.OptionData> dropList = m_modelDropdown.options;
-      //  dropList.Sort((x, y) => x.text.CompareTo(y.text));
+        //  dropList.Sort((x, y) => x.text.CompareTo(y.text));
         //dropList.Reverse();
         m_modelDropdown.options = dropList;
     }
@@ -231,7 +250,7 @@ public class GameLogic : MonoBehaviour
         m_refinerModelDropdown.AddOptions(options);
 
         List<TMP_Dropdown.OptionData> dropList = m_refinerModelDropdown.options;
-       
+
         //dropList.Sort((x, y) => x.text.CompareTo(y.text));
         //dropList.Reverse();
         m_refinerModelDropdown.options = dropList;
@@ -246,7 +265,7 @@ public class GameLogic : MonoBehaviour
     public void SetControlNetMaxModels(int max)
     {
         m_controlNetMaxModels = max;
-        
+
     }
 
     public int GetControlNetMaxModels()
@@ -261,7 +280,7 @@ public class GameLogic : MonoBehaviour
     public void AddControlNetModelDropdown(string name)
     {
         m_controlNetModelArray.Add(name);
-      
+
     }
 
     public void ClearControlNetPreprocessorsDropdown()
@@ -291,7 +310,7 @@ public class GameLogic : MonoBehaviour
     {
         name = name.ToLower();
 
-        for (int i=0; i < m_samplerDropdown.options.Count; i++)
+        for (int i = 0; i < m_samplerDropdown.options.Count; i++)
         {
             if (name == m_samplerDropdown.options[i].text.ToLower())
             {
@@ -339,12 +358,12 @@ public class GameLogic : MonoBehaviour
 
     public void SetChangeModelEnabled(bool enabled)
     {
-        m_modelDropdown.interactable= enabled;
+        m_modelDropdown.interactable = enabled;
     }
 
     public string GetActiveModelFilename()
     {
-        return m_activeModelName; 
+        return m_activeModelName;
     }
 
     public string GetActiveRefinerModelFilename()
@@ -357,7 +376,7 @@ public class GameLogic : MonoBehaviour
     {
         //return m_refinerInputField as a float, avoiding any possible errors durin conversion
         float.TryParse(m_refinerInputField.text, out float result);
-        return result;  
+        return result;
     }
     public bool IsActiveModelPix2Pix()
     {
@@ -396,6 +415,71 @@ public class GameLogic : MonoBehaviour
         RTUtil.SetActiveByNameIfExists("CamToolPanel", true);
         RTUtil.SetActiveByNameIfExists("CamToolMiniPanel", false);
     }
+
+    public string GetJobListAsSingleString()
+    {
+        return m_jobListInputField.text;
+    }
+
+    public void AddEveryItemToJobList(ref List<string> joblist)
+    {
+        List<string> jobsToAdd = GetPicJobListAsListOfStrings();
+        foreach (string job in jobsToAdd)
+        {
+            joblist.Add(job);
+        }
+        
+    }
+    public List<String> GetPicJobListAsListOfStrings()
+    {
+        List<String> list = new List<String>();
+        string[] lines = m_jobListInputField.text.Split(new string[] { "\r\n", "\n" }, StringSplitOptions.None);
+        foreach (string line in lines)
+        {
+            string trimmedItem = line.Trim();
+            if (trimmedItem.Length > 0 && trimmedItem[0] != '-' && trimmedItem[0] != '/')
+            {
+                list.Add(trimmedItem);
+            }
+        }
+        return list;
+    }
+    public void SetJobList(string joblist)
+    {
+        m_jobListInputField.text = joblist;
+
+        //move the horizontal slider to the top
+        m_jobListInputField.verticalScrollbar.value = 0;
+    }
+    public void AddJobToJobList(string job, ref string jobList)
+    {
+        if (jobList.Length > 0)
+        {
+            jobList += "\n";
+        }
+        jobList += job;
+    }
+
+    public void OnWorkFlowSet()
+    {
+        //see which workflow is active
+        string selected = m_comfyUIAPIWorkflowsDropdown.options[m_comfyUIAPIWorkflowsDropdown.value].text;
+        RTConsole.Log("Chose " + selected);
+        m_jobListInputField.text = "";
+        string temp = m_jobListInputField.text;
+        AddJobToJobList(selected, ref temp);
+        m_jobListInputField.text = temp;
+    }
+    public void OnWorkFlowAdd()
+    {
+        //see which workflow is active
+        string selected = m_comfyUIAPIWorkflowsDropdown.options[m_comfyUIAPIWorkflowsDropdown.value].text;
+        RTConsole.Log("Add Chose " + selected);
+        string temp = m_jobListInputField.text;
+        AddJobToJobList(selected, ref temp);
+        m_jobListInputField.text = temp;
+    }
+
 
     public void CheckIfSamplerIsValid()
     {
@@ -437,7 +521,7 @@ public class GameLogic : MonoBehaviour
 
         SetWidthDropdown("512");
         SetHeightDropdown("512");
-     
+
         m_activeModelName = m_modelDropdown.options[optionID].text;
 
         UpdateGUI();
@@ -463,7 +547,7 @@ public class GameLogic : MonoBehaviour
         m_negativeInputField.text = p;
     }
 
-    public List<String> GetControlNetPreprocessorArray() { return m_controlNetPreprocessorArray;  }
+    public List<String> GetControlNetPreprocessorArray() { return m_controlNetPreprocessorArray; }
     public List<String> GetControlNetModelArray() { return m_controlNetModelArray; }
 
     private void Awake()
@@ -510,7 +594,7 @@ public class GameLogic : MonoBehaviour
     public string GetCurrentControlNetModelString()
     {
         if (m_controlNetModelArray.Count == 0) return "";
-        return m_controlNetModelArray[m_controlNetModelCurIndex];   
+        return m_controlNetModelArray[m_controlNetModelCurIndex];
     }
 
     public void OnCurrentControlNetPreprocessorStringChanged(int index)
@@ -559,7 +643,7 @@ public class GameLogic : MonoBehaviour
     }
 
     public int GetCurrentControlNetModelIndex() { return m_controlNetModelCurIndex; }
-    public int GetCurrentControlNetPreprocessorIndex() { return m_controlNetPreprocessorCurIndex; } 
+    public int GetCurrentControlNetPreprocessorIndex() { return m_controlNetPreprocessorCurIndex; }
     // Use this for initialization
     public GameObject GetPicWereHoveringOver()
     {
@@ -577,17 +661,26 @@ public class GameLogic : MonoBehaviour
         return null;
     }
 
+  
+
     public void OnAddNewPicButton()
     {
-        m_AIimageGenerator.CreateNewPic();
+        GameObject go = m_AIimageGenerator.CreateNewPic();
+
     }
+
+    public void OnRunJoblistOnAll()
+    {
+        ImageGenerator.Get().RunTool1OnAllPics();
+    }
+    
     public void OnAddPicFromClipboard()
     {
         var go = m_AIimageGenerator.CreateNewPic();
         var picScript = go.GetComponent<PicMain>();
         if (picScript.LoadImageFromClipboard())
         {
-            
+
             //success
         }
     }
@@ -608,7 +701,7 @@ public class GameLogic : MonoBehaviour
     public void SetAlphaMaskFeatheringPower(float power)
     {
         m_alphaMaskFeatheringPower = power;
-        m_maskBlendingInput.value= power;
+        m_maskBlendingInput.value = power;
     }
 
     public bool GUIIsBeingUsed()
@@ -646,7 +739,7 @@ public class GameLogic : MonoBehaviour
         int gpu = Config.Get().GetFreeGPU(RTRendererType.AI_Tools, true);
         if (gpu == -1)
         {
-            
+
             RTUtil.SetActiveByNameIfExists("RTWarningSplash", true);
         }
     }
@@ -661,7 +754,7 @@ public class GameLogic : MonoBehaviour
             RTUtil.KillObjectByName(panelName);
             return;
         }
-        RTConsole.Log("Creating "+panelName);
+        RTConsole.Log("Creating " + panelName);
 
         GameObject genPanel = Instantiate(m_controlNetPanelPrefab, RTUtil.FindIncludingInactive("MainCanvas").transform);
         genPanel.name = panelName;
@@ -670,19 +763,24 @@ public class GameLogic : MonoBehaviour
 
     public void OnUseAIGuide(bool bNew)
     {
-       // m_bUseControlNet = bNew;
-       // m_useControlNetToggle.isOn = bNew;
+        // m_bUseControlNet = bNew;
+        // m_useControlNetToggle.isOn = bNew;
 
     }
-
+   
     public void OnClickedAIGuideSettingsButton()
     {
-       Debug.Log("Clicked AI guide settings");
+        Debug.Log("Clicked AI guide settings");
         const string panelName = "AIGuidePanel";
         var existing = RTUtil.FindIncludingInactive(panelName);
 
         existing.GetComponent<AIGuideManager>().ToggleWindow();
 
+        //if the window is now active, let's center it on the screen as it may be offscreen
+        if (existing.activeSelf)
+        {
+            existing.transform.position = new Vector3(Screen.width / 2, Screen.height / 2, 0);
+        }
     }
 
     public void OnClickedComfyUISettingsButton()
@@ -693,21 +791,35 @@ public class GameLogic : MonoBehaviour
         existing.GetComponent<ComfyUIPanel>().ToggleWindow();
     }
 
+    public Queue<GTPChatLine> PrepareLLMLinesForSending(Queue<GTPChatLine> lines)
+    {
+
+        if (GenerateSettingsPanel.Get().m_stripThinkTagsToggle.isOn)
+        {
+            return OpenAITextCompletionManager.RemoveThinkTags(lines);
+        }
+
+        return lines;
+
+    }
+
     public void OnClickedComfyUIOpenDirButton()
     {
         Debug.Log("Opening dir with the ComfyUI settings");
-        //string[] files = Directory.GetFiles("ComfyUI", "*.json");
-
-        //Actually, let's just open Windows Explorer into the ComfyUI folder
         System.Diagnostics.Process.Start("explorer.exe", "ComfyUI");
-
     }
+
+    public void OnClickedPresetOpenDirButton()
+    {
+        System.Diagnostics.Process.Start("explorer.exe", "Presets");
+    }
+
+
 
     public void OnClickedRescanComfyUIWorkflowsFolder()
     {
         Debug.Log("Rescanning ComfyUI workflows folder");
         LoadComfyUIWorkFlows(m_comfyUIAPIWorkflowsDropdown, false);
-
     }
 
     public bool HasControlNetSupport()
@@ -744,7 +856,18 @@ public class GameLogic : MonoBehaviour
         return m_bRemoveBackground;
     }
 
-    public void KillAllPics(bool bIncludeLockedAndBusy)
+    public void KillPicsThatAreWaitingForGPU()
+    {
+        var aiScripts = RTUtil.FindObjectOrCreate("Pics").transform.GetComponentsInChildren<PicMain>();
+        foreach (PicMain picScript in aiScripts)
+        {
+            if (picScript.IsWaitingForGPU())
+            {
+                picScript.SafelyKillThisPic();
+            }
+        }
+    }
+    public void KillAllPics(bool bBusy, bool bLocked)
     {
           Debug.Log("Clearing all pics");
 
@@ -754,38 +877,63 @@ public class GameLogic : MonoBehaviour
         {
             //why do I get an error without this cast?!
             //(script as PicTextToImage).KillIfPossible();
-            if (!picScript.IsBusy() || bIncludeLockedAndBusy)
+            if (picScript.IsBusy() && !bBusy)
+            {
+                //don't delete
+                continue;
+            }
+
+            if (picScript.GetLocked() && !bLocked)
             {
 
-                if (picScript.GetLocked() && !bIncludeLockedAndBusy)
-                {
-                    //don't kill it
-                }
-                else
-                {
-                    picScript.SafelyKillThisPic();
-                }
+                //don't delete
+                continue;
             }
+
+            picScript.SafelyKillThisPic();
+
         }
 
-        if (bIncludeLockedAndBusy)
+        if (bLocked && bBusy)
         {
             //Might as well kill any texts around too
             RTUtil.DestroyChildren(RTUtil.FindObjectOrCreate("Adventures").transform);
         }
         ImageGenerator.Get().ReorganizePics(); //defrag 'em
     }
+
     public void OnClearButtonWithShiftAllowed()
     {
-        KillAllPics(Input.GetKey(KeyCode.LeftShift)|| Input.GetKey(KeyCode.RightShift));
+
+        //if either control button is held down, run KillPicsThatAreWaitingForGPU instead
+        if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
+        {
+            KillPicsThatAreWaitingForGPU();
+            return;
+        }
+
+        KillAllPics(Input.GetKey(KeyCode.LeftShift)|| Input.GetKey(KeyCode.RightShift), false);
     }
 
     public void OnClearButton()
     {
-        KillAllPics(false);
+        KillAllPics(false, false);
     }
 
-    public string GetPrompt() { return m_prompt; }
+    public string GetModifiedGlobalPrompt()
+    {
+
+
+        if (GetComfyUIPrompt() != null && GetComfyUIPrompt().Length > 0)
+        {
+            return (GetComfyUIPrompt()+" "+ GetModifiedPrompt()).Trim();
+        }
+
+        return GetModifiedPrompt().Trim();
+    }
+
+
+public string GetPrompt() { return m_prompt; }
     public string GetComfyUIPrompt() { return m_comfyUIPrompt; }
 
     public void ResetLastModifiedPrompt()
@@ -1029,12 +1177,6 @@ public class GameLogic : MonoBehaviour
 
     }
 
-    public void OnHiresFixChanged(bool newVal)
-    {
-        m_hiresFixToggle.isOn = newVal;
-        m_hiresFix = newVal;
-    }
-
     public void OnFixFacesChanged(bool bNew)
     {
         //Debug.Log("Steps changed to " + steps);
@@ -1084,12 +1226,6 @@ public class GameLogic : MonoBehaviour
             Directory.CreateDirectory(dir);
         }
 
-        dir = @"autosave";
-        // If directory does not exist, create it
-        if (!Directory.Exists(dir))
-        {
-            Directory.CreateDirectory(dir);
-        }
 
 #if RT_NOAUDIO
 		AudioListener.pause = true;
@@ -1147,13 +1283,55 @@ public class GameLogic : MonoBehaviour
         // RTMessageManager.Get().Schedule(0, ShootingGalleryLogic.Get().OnStartGameMode);
 #endif
 
+
+    
         Config.Get().CheckForUpdate();
 
         LoadComfyUIWorkFlows(m_comfyUIAPIWorkflowsDropdown, false);
-
+   
         Config.Get().PopulateRendererDropDown(m_rendererSelectionDropdown);
+
+        m_presetDropdown.SetValueWithoutNotify(0);
+        PresetManager.Get().PopulatePresetDropdown(m_presetDropdown);
+
+        if (PresetManager.Get().DoesPresetExistByNameNotCaseSensitive("test_startup.txt"))
+        {
+            SetPresetDropdownValue("test_startup.txt");
+            PresetManager.Get().LoadPresetAndApply(GetNameOfActivePreset());
+        } else
+        {
+            if (PresetManager.Get().DoesPresetExistByNameNotCaseSensitive("startup.txt"))
+            {
+                SetPresetDropdownValue("startup.txt");
+                PresetManager.Get().LoadPresetAndApply(GetNameOfActivePreset());
+            }
+        }
+         
     }
 
+    public void SetPresetDropdownValue(string value)
+    {
+        value = value.ToLower();
+
+        //if an option of the dropdown matches the value, set it to that value
+        for (int i = 0; i < m_presetDropdown.options.Count; i++)
+        {
+            if (m_presetDropdown.options[i].text.ToLower() == value)
+            {
+                m_presetDropdown.value = i;
+                return;
+            }
+        }
+    }
+
+    public TMP_Dropdown GetPresetDropdown()
+    {
+        return m_presetDropdown;
+    }
+    public string GetNameOfActivePreset()
+    {
+        return m_presetDropdown.options[m_presetDropdown.value].text;
+    }
     public string GetActiveComfyUIWorkflowFileName(int serverID)
     {
 
@@ -1169,6 +1347,7 @@ public class GameLogic : MonoBehaviour
 
         return m_comfyUIAPIWorkflowsDropdown.options[m_comfyUIAPIWorkflowsDropdown.value].text;
     }
+
     public void LoadComfyUIWorkFlows(TMP_Dropdown dropdown, bool bIsOverrideSettingsPanel)
     {
         // First, delete everything from the dropdown
@@ -1186,11 +1365,11 @@ public class GameLogic : MonoBehaviour
             string name = Path.GetFileName(file);
             options.Add(name);
 
-            // If name has nf4 in it, set that as the default selection
-            if (name.ToUpper().Contains("NF4"))
-            {
-                defaultIndex = options.Count - 1;
-            }
+            //// If name has nf4 in it, set that as the default selection
+            //if (name.ToUpper().Contains("NF4"))
+            //{
+            //    defaultIndex = options.Count - 1;
+            //}
         }
 
         // Add options to the dropdown
@@ -1210,6 +1389,7 @@ public class GameLogic : MonoBehaviour
 
         }
     }
+
     void OnApplicationQuit() 
 	{
         // Make sure prefs are saved before quitting.
@@ -1220,8 +1400,22 @@ public class GameLogic : MonoBehaviour
         di.Delete(true);
         //        NetworkTransport.Shutdown();
         print("QUITTING!");
+
+        //Also delete temp files used for debugging if they exist
+        RTUtil.DeleteFileIfItExists("text_completion_sent.json");
+        RTUtil.DeleteFileIfItExists("textgen_json_received.json");
+        RTUtil.DeleteFileIfItExists("comfyui_workflow_to_send.json");
+        RTUtil.DeleteFileIfItExists("comfyui_workflow_to_send_api.json");
+        RTUtil.DeleteFileIfItExists("setup_ollama_server_request.txt");
+        RTUtil.DeleteFileIfItExists("dalle3_json_received.json");
+        RTUtil.DeleteFileIfItExists("dalle3_json_sent.json");
+        RTUtil.DeleteFileIfItExists("json_to_send.json");
+        RTUtil.DeleteFileIfItExists("claude_json_received.json");
+        RTUtil.DeleteFileIfItExists("last_error_returned.json");
+
+        
     }
-    
+
     private void OnDestroy()
     {
         print("Game logic destroyed");
@@ -1233,7 +1427,6 @@ public class GameLogic : MonoBehaviour
         RTQuickMessageManager.Get().ShowMessage("Click Configuration, then Apply to try to reconnect to servers");
 //        Config.Get().ConnectToServers();
     }
-
 
     public void SlowZoomChange(float zoomSpeed)
     {
@@ -1303,7 +1496,9 @@ public class GameLogic : MonoBehaviour
                 Input.GetKeyDown(KeyCode.I)
                 ||
                 Input.GetKeyDown(KeyCode.P)
-                
+            ||
+               Input.GetKeyDown(KeyCode.H)
+             
             )
         {
             if (GUIIsBeingUsed()) return;
@@ -1327,8 +1522,14 @@ public class GameLogic : MonoBehaviour
                     picMaskScript.OnToggleMaskViewButton();
                 }
 
+                if (Input.GetKeyDown(KeyCode.H))
+                {
+                    if (picScript.IsMovie())
+                    {
+                        picMovieScript.OnSetHidden();
+                    }
+                }
 
-          
 
                 if (Input.GetKeyDown(KeyCode.P))
                 {
@@ -1344,7 +1545,7 @@ public class GameLogic : MonoBehaviour
                     }
                     else
                     {
-                        picScript.OnInpaintButton();
+                        //picScript.OnInpaintButton();
                     }
                 }
              
@@ -1385,4 +1586,6 @@ public class GameLogic : MonoBehaviour
         existing.GetComponent<ModelModManager>().ToggleWindow();
     }
 
+    //run this function when the user shuts down the app
+   
 }

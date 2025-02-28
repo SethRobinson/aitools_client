@@ -1294,7 +1294,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 129.64, y: -3.730003}
+  m_AnchoredPosition: {x: 125.64, y: -3.730003}
   m_SizeDelta: {x: 21.818, y: 30.815}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &3808828288570753681
@@ -1732,7 +1732,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 0}
+  m_AnchoredPosition: {x: 0.6, y: 0}
   m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &1168964927446101636
@@ -2703,8 +2703,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 20, y: 5}
+  m_AnchoredPosition: {x: 0.102, y: 0.0816}
+  m_SizeDelta: {x: 5.224, y: 2.9591}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!23 &2197218201334816122
 MeshRenderer:
@@ -2798,8 +2798,8 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 5
-  m_fontSizeBase: 5
+  m_fontSize: 4
+  m_fontSizeBase: 4
   m_fontWeight: 400
   m_enableAutoSizing: 0
   m_fontSizeMin: 18
@@ -2814,7 +2814,7 @@ MonoBehaviour:
   m_lineSpacingMax: 0
   m_paragraphSpacing: 0
   m_charWidthMaxAdj: 0
-  m_TextWrappingMode: 0
+  m_TextWrappingMode: 1
   m_wordWrappingRatios: 0.4
   m_overflowMode: 0
   m_linkedTextComponent: {fileID: 0}
@@ -2836,7 +2836,7 @@ MonoBehaviour:
   m_VertexBufferAutoSizeReduction: 0
   m_useMaxVisibleDescender: 1
   m_pageToDisplay: 1
-  m_margin: {x: 7.5841913, y: 2.0206141, z: 7.7045507, w: 1.6337266}
+  m_margin: {x: 0.11453462, y: 0.061360598, z: 0.05121517, w: 0.08265114}
   m_isUsingLegacyAnimationComponent: 0
   m_isVolumetricText: 0
   _SortingLayer: 0
@@ -3958,8 +3958,8 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7592574692101798387}
-        m_TargetAssemblyTypeName: Pic, Assembly-CSharp
-        m_MethodName: OnInpaintButton
+        m_TargetAssemblyTypeName: PicMain, Assembly-CSharp
+        m_MethodName: OnTool1Button
         m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
@@ -3981,8 +3981,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: edd328fb144e819498d395172c8823a0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _text: 'Runs inpaint (aka img2img) on this pic.  Use the ! button to do batch mode,
-    much more exciting. (Hotkey: I)'
+  _text: Runs the ComfyUI script set on Tool 1
 --- !u!1 &4585877088190574024
 GameObject:
   m_ObjectHideFlags: 0
@@ -4187,7 +4186,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: img2img
+  m_text: Run Joblist
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -4214,8 +4213,8 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 24
-  m_fontSizeBase: 24
+  m_fontSize: 17
+  m_fontSizeBase: 17
   m_fontWeight: 400
   m_enableAutoSizing: 0
   m_fontSizeMin: 18
@@ -4712,7 +4711,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: edd328fb144e819498d395172c8823a0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _text: Saves this image out as bmp (will include any mask as an alpha channel)
+  _text: Saves this image or movie to the output dir.  (if image will save as .bmp
+    and include the mask as an alpha channel)
 --- !u!1 &5452831084607668466
 GameObject:
   m_ObjectHideFlags: 0
@@ -5088,7 +5088,7 @@ MonoBehaviour:
   m_ReadOnly: 1
   m_RichText: 1
   m_GlobalFontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
-  m_OnFocusSelectAll: 1
+  m_OnFocusSelectAll: 0
   m_ResetOnDeActivation: 1
   m_KeepTextSelectionVisible: 0
   m_RestoreOriginalTextOnEscape: 1
@@ -5372,7 +5372,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 125.37, y: -3.730003}
+  m_AnchoredPosition: {x: 129.85, y: -3.730003}
   m_SizeDelta: {x: 21.818, y: 30.815}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &7463410580519133172
@@ -6475,6 +6475,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   m_spriteMask: {fileID: 3844373893019588335}
   m_pic: {fileID: 7682216214389019077}
+  m_movieScript: {fileID: 1784631072771005334}
   m_targetRectScript: {fileID: 1951205564152288769}
   m_brushSizeLineRenderer: {fileID: 392027027224173761}
 --- !u!114 &1951205564152288769

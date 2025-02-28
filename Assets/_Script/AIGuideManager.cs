@@ -68,7 +68,7 @@ public class AIGuideManager : MonoBehaviour
     public Toggle m_BoldCheckbox;
     string m_statusStopMessage = "";
     public TMP_Dropdown m_llmSelectionDropdown;
-    public TMP_Dropdown m_rendererSelectionDropdown;
+    //public TMP_Dropdown m_rendererSelectionDropdown;
     private string _textToProcessForPics;
     public TMP_Dropdown m_textFontDropdown;
     public TMP_Dropdown m_titleFontDropdown;
@@ -121,8 +121,14 @@ public class AIGuideManager : MonoBehaviour
         _inputPromptOutput.text += text;
 
         //make _inputPromptOutput scroll to the bottom
-        _inputPromptOutputScrollRect.value = 1;  // Scrolls back to the top
 
+        //If left mouse isn't down, scroll
+        if (!Input.GetMouseButton(0))
+        {
+            _inputPromptOutput.caretPosition = _inputPromptOutput.text.Length;
+            _inputPromptOutputScrollRect.value = 1;
+        }
+      
         accumulatedText += text;
         m_totalPromptReceived += text;
 
@@ -188,7 +194,7 @@ public class AIGuideManager : MonoBehaviour
 
         SpawnLLMRequest(lines);
         SetStartTextOnStartButton(false);
-        RTQuickMessageManager.Get().ShowMessage("Contacting LLM...", 1);
+       // RTQuickMessageManager.Get().ShowMessage("Contacting LLM...", 1);
 
         //Convert _stopAfterTextInput to an int
         int stopAfter;
@@ -214,6 +220,10 @@ public class AIGuideManager : MonoBehaviour
 
     public void SpawnLLMRequest(Queue<GTPChatLine> lines)
     {
+
+        lines = GameLogic.Get().PrepareLLMLinesForSending(lines);
+         
+
         if (m_llmSelectionDropdown.value == (int)LLM_Type.OpenAI_API)
         {
             string json = _openAITextCompletionManager.BuildChatCompleteJSON(lines, m_max_tokens, m_extractor.Temperature, Config.Get().GetOpenAI_APIModel(), true);
@@ -372,11 +382,11 @@ public class AIGuideManager : MonoBehaviour
             m_bCreatedRandomAutoSaveFolder = false;
         }
 
-        RTQuickMessageManager.Get().ShowMessage("Contacting LLM...", 1);
+       // RTQuickMessageManager.Get().ShowMessage("Contacting LLM...", 1);
         SetStatus("Sent request to LLM, waiting for reply", true);
     }
 
-    public System.Collections.IEnumerator AddPicture(string text, string imagePrompt, string title, int idx, RTRendererType requestedRender)
+    public System.Collections.IEnumerator AddPicture(string text, string imagePrompt, string title, int idx, RTRendererType requestedRender, string audio)
     {
 
         //Debug.Log("Text: " + text);
@@ -390,21 +400,46 @@ public class AIGuideManager : MonoBehaviour
         picMain.ClearRenderingCallbacks();
 
         PicTextToImage textToImage = pic.GetComponent<PicTextToImage>();
-        textToImage.SetPrompt(GameLogic.Get().GetPrompt() + " " + imagePrompt);
 
-        textToImage.SetNegativePrompt(GameLogic.Get().GetNegativePrompt());
+        /*
+         if (!Config.Get().DoesGPUExistForThatRenderer(GameLogic.Get().GetGlobalRenderer()))
+         {
+             //display an error message
+             RTQuickMessageManager.Get().ShowMessage("That renderer type seems to be missing currently!  Scheduling anyway");
+         }
+         */
 
-        if (!Config.Get().DoesGPUExistForThatRenderer((RTRendererType)m_rendererSelectionDropdown.value))
+        //we'll customize the very first job
+
+        List<string> jobsTodo = GameLogic.Get().GetPicJobListAsListOfStrings();
+        
+        
+        if (jobsTodo.Count == 0)
         {
-            //display an error message
-            RTQuickMessageManager.Get().ShowMessage("That renderer type seems to be missing currently!  Scheduling anyway");
+            RTQuickMessageManager.Get().ShowMessage("Add jobs to do!");
+            yield return null;
         }
 
-        ScheduledGPUEvent e = picMain.OnRenderButton(imagePrompt);
-        e.promptOverride = GameLogic.Get().GetPrompt() + " " + imagePrompt;
-        e.requestedDetailedPrompt = GameLogic.Get().GetComfyUIPrompt() + " " + imagePrompt;
-        e.requestedRenderer = requestedRender;
-        picMain.PassInTempInfo(e);
+        PicJob jobDefaultInfoToStartWith = new PicJob();
+      
+        jobDefaultInfoToStartWith._requestedPrompt = imagePrompt;
+       
+        if (GameLogic.Get().GetComfyUIPrompt() != null)
+        {
+            jobDefaultInfoToStartWith._requestedPrompt = GameLogic.Get().GetComfyUIPrompt() + " " + imagePrompt;
+        }
+        jobDefaultInfoToStartWith._requestedNegativePrompt = GameLogic.Get().GetNegativePrompt();
+        if (audio == "")
+        {
+            audio = Config.Get().GetDefaultAudioPrompt();
+        }
+        jobDefaultInfoToStartWith._requestedAudioPrompt = audio;
+        jobDefaultInfoToStartWith._requestedAudioNegativePrompt = Config.Get().GetDefaultAudioNegativePrompt();
+        jobDefaultInfoToStartWith.requestedRenderer = requestedRender;
+      
+        picMain.AddJobListWithStartingJobInfo(jobDefaultInfoToStartWith, jobsTodo);
+        //picMain.PassInTempInfoPicJob(picJob);
+        
 
         picMain.SetStatusMessage("AI guided\n(waiting)");
         yield return null;
@@ -521,6 +556,7 @@ public class AIGuideManager : MonoBehaviour
         string text = "";
         string imagePrompt = ""; // Initialize imagePrompt to avoid an uninitialized variable error
         string title = "";
+        string audio = "";
 
         string forceKey = "";
 
@@ -580,6 +616,21 @@ public class AIGuideManager : MonoBehaviour
                 title = value;
 
             }
+            else if (key == "audio")
+            {
+                //remove any possible line feeds in front of the data in value
+                value = value.TrimStart();
+
+                //if value is blank, set value to the contents of the next line. Let's artifically advance the foreach to the next line
+                if (value.Length == 0)
+                {
+                    forceKey = key;
+                    continue;
+                }
+
+                audio = value;
+
+            }
             else if (key == "image_prompt" || key == "image")
             {
                 //if value is blank, set value to the contents of the next line. Let's artifically advance the foreach to the next line
@@ -599,7 +650,7 @@ public class AIGuideManager : MonoBehaviour
 
                 for (int i = 0; i < count; i++)
                 {
-                    StartCoroutine(AddPicture(text, imagePrompt, title, _curPicIdx++, (RTRendererType)m_rendererSelectionDropdown.value));
+                    StartCoroutine(AddPicture(text, imagePrompt, title, _curPicIdx++, GameLogic.Get().GetGlobalRenderer(), audio));
                     yield return null;
                 }
 
@@ -611,7 +662,7 @@ public class AIGuideManager : MonoBehaviour
                         if (Config.Get().GetGPUInfo(i)._bIsActive && Config.Get().GetGPUInfo(i).isLocal && !Config.Get().IsGPUBusy(i))
                         {
                             StartCoroutine(AddPicture(text, imagePrompt, title, _curPicIdx++,
-                                Config.Get().GetGPUInfo(i)._requestedRendererType));
+                                Config.Get().GetGPUInfo(i)._requestedRendererType, audio));
                             yield return null;
                         }
                     }
@@ -620,6 +671,7 @@ public class AIGuideManager : MonoBehaviour
                 text = "";
                 imagePrompt = "";
                 title = "";
+                audio = "";
             }
         }
     }
@@ -835,8 +887,6 @@ public class AIGuideManager : MonoBehaviour
         }
         */
 
-
-
         string reply;
 
         if (jsonNode == null)
@@ -1051,7 +1101,7 @@ public class AIGuideManager : MonoBehaviour
         PopulateProfilesDropDown();
 
 
-        Config.Get().PopulateRendererDropDown(m_rendererSelectionDropdown);
+        //Config.Get().PopulateRendererDropDown(m_rendererSelectionDropdown);
     }
 
     public string GetActiveProfileTextFileName()
@@ -1107,8 +1157,6 @@ public class AIGuideManager : MonoBehaviour
             return;
         }
         ProcessConfigText(configTxt);
-
-
     }
 
     public void ProcessConfigText(string configTxt)
@@ -1125,6 +1173,7 @@ public class AIGuideManager : MonoBehaviour
         _autoContinueTextInput.text = m_extractor.AutoContinueText;
 
         GameLogic.Get().SetPrompt(m_extractor.PrependPrompt);
+        GameLogic.Get().SetNegativePrompt(m_extractor.NegativePrompt);
         GameLogic.Get().SetComfyUIPrompt(m_extractor.PrependComfyUIPrompt);
         m_AddBordersCheckbox.isOn = m_extractor.AddBorders;
         m_OverlayTextCheckbox.isOn = m_extractor.OverlayText;
@@ -1228,11 +1277,8 @@ public class AIGuideManager : MonoBehaviour
         {
             if (m_autoModeCheckbox.isOn)
             {
-
-               
                 OnLLMContinueButton();
             }
-            
         }
 
 

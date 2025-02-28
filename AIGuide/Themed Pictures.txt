@@ -9,7 +9,7 @@ You will design a text prompt that will be used with Flux or other image/movie g
   
 Example:
 
-IMAGE: (description of the scene that will be sent to an AI image generator in simple language. If people are in the scene, specify each person's age (in years old), clothing, ethnicity, expression, pose, colors, what they are holding, etc. Just one paragraph, no carriage returns)  Stick to about one short paragraph.
+IMAGE: (description of the scene that will be sent to an AI image generator in simple language. If people are in the scene, specify each person's age (in years old), clothing, ethnicity, expression, pose, colors, what they are holding, etc. Just one paragraph, no carriage returns)  Stick to one paragraph per prompt.  Generate ten unique prompts.
 
 Each image will be a new, unique idea.
 
@@ -30,7 +30,7 @@ COMMAND_END
 #you can dynamically change this mid-story to make it focus on something or end the story or whatever
 COMMAND_START|auto_continue_text
 (continue with another image design)
-Remember, write a detailed description of the scene that will be sent to an AI image generator. , if people are in the scene, specify each person's age (in years old), clothing, ethnicity, expression, pose, colors, what they are holding, etc.  Don't assume any previous knowledge of previous IMAGE info, Just one paragraph, no carriage returns)
+Remember, write a detailed description of the scene that will be sent to an AI image generator. , if people are in the scene, specify each person's age (in years old), clothing, ethnicity, expression, pose, colors, what they are holding, etc.  Don't assume any previous knowledge of previous IMAGE info, Just one paragraph per prompt, no carriage returns)
 COMMAND_END
 
 #This is what we show the user for their first prompt

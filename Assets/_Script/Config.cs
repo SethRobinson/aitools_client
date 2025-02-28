@@ -18,12 +18,12 @@ public enum LLM_Type
 
 public enum RTRendererType
 {
+    ComfyUI,
+    OpenAI_Dalle_3, //openai DALL-E,
     Any_Local,
     A1111,
     AI_Tools,
-    ComfyUI,
-    AI_Tools_or_A1111, //(this means either A1111 or AIT)
-    OpenAI_Dalle_3 //openai DALL-E
+    AI_Tools_or_A1111 //(this means either A1111 or AIT)
 }
 
 public class GPUInfo
@@ -36,11 +36,29 @@ public class GPUInfo
     public bool supportsAITools = false;
     public ServerButtonScript buttonScript = null;
     public bool serverIsWindows = false;
-    public RTRendererType _requestedRendererType = RTRendererType.A1111;
+    public RTRendererType _requestedRendererType = RTRendererType.ComfyUI;
     public bool isLocal = true; //false would mean an unlimited API like OpenAI's Dalle3.  Local means TextGen WebUI, AI Tools server or ComfyUI (doesn't actually have to be local)
     public bool _usesDetailedPrompts = false; //simple is the default
     public int _comfyUIWorkFlowOverride = -1;
     public bool _bIsActive = true;
+    public string _jobListOverride = "";
+    public string _name = ""; //if blank, we'll use our own
+
+    public List<String> GetPicJobListAsListOfStrings()
+    {
+        List<String> list = new List<String>();
+        string[] lines = _jobListOverride.Split(new string[] { "\r\n", "\n" }, StringSplitOptions.None);
+        foreach (string line in lines)
+        {
+            string trimmedItem = line.Trim();
+            if (trimmedItem.Length > 0 && trimmedItem[0] != '-' && trimmedItem[0] != '/')
+            {
+                list.Add(trimmedItem);
+            }
+        }
+        return list;
+    }
+
 }
 
 
@@ -75,6 +93,9 @@ public class Config : MonoBehaviour
     string _anthropicAI_APIModel;
     string _anthropicAI_APIEndpoint;
     string _genericLLMMode;
+    string _defaultAudioPrompt;
+    string _defaultAudioNegativePrompt;
+    bool m_bIsFirstTimeLoadingConfig = true;
     Boolean m_genericServerIsOllama = false;
     public string GetAISystemWord() { return m_systemName; }
     public string GetAIUserWord() { return m_userName; }
@@ -89,11 +110,14 @@ public class Config : MonoBehaviour
     public string GetOpenAI_APIKey() { return _openAI_APIKey; }
     public string GetOpenAI_APIModel() { return _openAI_APIModel; }
     public string GetElevenLabs_APIKey() { return _elevenLabs_APIKey; }
+    public string GetDefaultAudioPrompt() { return _defaultAudioPrompt; }
+    public string GetDefaultAudioNegativePrompt() { return _defaultAudioNegativePrompt; }
+
     public string GetElevenLabs_voiceID() { return _elevenLabs_voiceID; }
     public List<LLMParm> GetLLMParms() { return m_llmParms; }
     public string GetGenericLLMMode() { return _genericLLMMode; }
-
-    float m_version = 0.96f;
+  
+    float m_version = 2.00f;
     string m_imageEditorPathAndExe = "none set";
     public string GetVersionString() { return m_version.ToString("0.00"); }
     public float GetVersion() { return m_version; }
@@ -117,10 +141,13 @@ public class Config : MonoBehaviour
      _elevenLabs_APIKey = "";
      _elevenLabs_voiceID = "";
      _jpgSaveQuality = 80;
-      _texgen_webui_APIKey = "none";
-      _genericLLMMode = "chat-instruct";
-         _anthropicAI_APIKey = "";
+     _texgen_webui_APIKey = "none";
+     _genericLLMMode = "chat-instruct";
+     _anthropicAI_APIKey = "";
      _anthropicAI_APIModel = "claude-3-5-sonnet-latest";
+     _defaultAudioPrompt = "audio that perfectly matches the onscreen action";
+     _defaultAudioNegativePrompt = "music";
+
      _anthropicAI_APIEndpoint = "https://api.anthropic.com/v1/complete";
      m_llmParms = new List<LLMParm>();
      m_llmParms.Clear();
@@ -140,7 +167,7 @@ public class Config : MonoBehaviour
     {
         RTAudioManager.Get().AddClipsToLibrary(m_audioClips);
 
-        ConnectToServers();
+       ConnectToServers();
     }
 
     public void ConnectToServers()
@@ -159,18 +186,16 @@ public class Config : MonoBehaviour
             m_configText = @"#add as many add_server commands as you want, just replace the localhost:7860 part with the
 #server name/ip and port.  You can control any number of renderer servers at the same time.
 
-#Supported server types:  Seth's AI Tools, A1111, ComfyUI supported.  For Dalle-3, don't set here, just enter your OpenAI key below.
+#This is where you add rendering servers. (ComfyUI servers run with --listen parm)  For Dalle-3, don't set here, just enter your OpenAI key below.
 
-#Uncomment below and put your renderer server.  Add more add_server commands to add as many as you want.
-#add_server|http://localhost:7860
+#Uncomment below and put your renderer server.  Add more add_server commands to add as many as you want.  The second parm is
+#an optional name so you can keep track of which server has which video card.
+#add_server|http://localhost:7860|5090!|
 
 #Set the below path and .exe to an image editor to use the Edit option. Changed files will auto
 #update in here.
 
 set_image_editor|C:\Program Files\Adobe\Adobe Photoshop 2025\Photoshop.exe
-
-#set_default_sampler|DDIM
-#set_default_steps|50
 
 #To generate text with the AI Guide features, you need at least one LLM. (or all, you can switch between them in the app)
 
@@ -190,9 +215,10 @@ set_generic_llm_mode|chat-instruct|
 #this is needed if using an ollama server, otherwise you'll see a ""model is required"" error.  Note that might cause the model to be loaded which means a huge delay at first.
 add_generic_llm_parm|model|""llama3.3""|#needed for ollama, the model you want to use
 #add_generic_llm_parm|num_ctx|131072|#needed for ollama, the context size you want the model to load with (we'll create a custom profile with an _ait extension)
+#add_generic_llm_parm|temperature|1.0|#allows you to globally override LLM temperatures
 #add_generic_llm_parm|max_tokens|4096|
 
-#somethings you could play with
+#some things you could play with
 #add_generic_llm_parm|stop|[""<`eot_id`>"", ""<`eom_id`>"", ""<`end_header_id`>""]|#Note that ` gets turned into |
 #add_generic_llm_parm|stopping_strings|[""<`eot_id`>"", ""<`eom_id`>"", ""<`end_header_id`>""]|
 
@@ -202,12 +228,15 @@ add_generic_llm_parm|model|""llama3.3""|#needed for ollama, the model you want t
 #set_generic_llm_system_keyword|system|#default is system
 #set_generic_llm_assistant_keyword|assistant|#default is assistant
 #set_generic_llm_user_keyword|user|#default is user
-
-            
+      
 #Anthropic LLM
 set_anthropic_ai_key|<key goes here>|
-set_anthropic_ai_model|claude-3-5-sonnet-latest|
+set_anthropic_ai_model|claude-3-7-sonnet-latest|
 set_anthropic_ai_endpoint|https://api.anthropic.com/v1/messages|
+
+#if you're using a ComfyUI workflow that creates audio, and you don't have AITOOLS_AUDIO_PROMPT or AITOOLS_AUDIO_NEGATIVE_PROMPT set in the ComfyUI workflow, these are used as defaults:
+set_default_audio_prompt|audio that perfectly matches the onscreen action|
+set_default_audio_negative_prompt|music|
 
 ";
             
@@ -222,10 +251,17 @@ set_anthropic_ai_endpoint|https://api.anthropic.com/v1/messages|
         //populate the list based on the enums from RTServerType
         rendererSelectionDropdown.ClearOptions();
         List<string> options = new List<string>();
+        int count = 0;
         foreach (RTRendererType r in System.Enum.GetValues(typeof(RTRendererType)))
         {
             string option = r.ToString().Replace("_", " "); // Replace underscore with space
             options.Add(option);
+
+            count++;
+            if (count == 2)
+            {
+                break; //hack to not show the rest of the types, I don't use them anymore
+            }
         }
         rendererSelectionDropdown.AddOptions(options);
     }
@@ -442,7 +478,7 @@ set_anthropic_ai_endpoint|https://api.anthropic.com/v1/messages|
         var panel = RTUtil.FindIncludingInactive("Panel");
         var buttonObj = Instantiate(m_serverButtonPrefab, panel.transform);
         g.buttonScript = buttonObj.GetComponent<ServerButtonScript>();
-        g.buttonScript.Setup(g.localGPUID, g.supportsAITools, g._requestedRendererType);
+        g.buttonScript.Setup(g);
         buttonObj.name = "ServerButtonPrefab"; //don't change, we delete these by this exact name
         //move it down
         float spacerY = -20;
@@ -570,7 +606,7 @@ set_anthropic_ai_endpoint|https://api.anthropic.com/v1/messages|
     public void ProcessConfigString(string newConfig)
     {
         SetDefaults();
-        ImageGenerator.Get().ShutdownAllGPUProcesses();
+        //ImageGenerator.Get().ShutdownAllGPUProcesses();
         m_safetyFilter = false;
 
         //reset old config. This will likely do bad things if you're using GPUs at the time of loading
@@ -606,14 +642,16 @@ set_anthropic_ai_endpoint|https://api.anthropic.com/v1/messages|
                     {
                         extra = words[2];
                     }
-                    webScript.StartInitialWebRequest(words[1], extra);
+
+                    webScript.StartComfyUIRequest(-1, words[1], extra);
                 } else
                 if (words[0] == "set_default_sampler")
                 {
                     GameLogic.Get().SetSamplerByName(words[1]);
                     m_defaultSampler = words[1];
-                   
-                } else
+                }
+                else
+                    
                 if (words[0] == "set_default_steps")
                 {
                     int steps;
@@ -727,6 +765,15 @@ set_anthropic_ai_endpoint|https://api.anthropic.com/v1/messages|
 
                 }
                 else
+                if (words[0] == "set_default_audio_prompt")
+                {
+                    _defaultAudioPrompt = words[1];
+                }
+                else if (words[0] == "set_default_negative_audio_prompt")
+                {
+                    _defaultAudioNegativePrompt = words[1];
+                }
+                else
                 {
                     //Debug.Log("Processing " + line);
                 }
@@ -744,6 +791,8 @@ set_anthropic_ai_endpoint|https://api.anthropic.com/v1/messages|
             webScript.StartSetupOLlamaServer(_texgen_webui_address,m_llmParms);
 
         }
+
+        m_bIsFirstTimeLoadingConfig = false;
     }
 
     public void SendRequestToAllServers(string optionKey, string optionValue)
@@ -783,8 +832,11 @@ set_anthropic_ai_endpoint|https://api.anthropic.com/v1/messages|
 
     public string GetServerNameByGPUID(int gpuID)
     {
-        if (gpuID < 0 || gpuID >= m_gpuInfo.Count) return "(no GPUID)";
-        return m_gpuInfo[gpuID]._requestedRendererType.ToString();
+        if (gpuID < 0 || gpuID >= m_gpuInfo.Count) return "(none)";
+        
+        if (m_gpuInfo[gpuID]._name.Length > 0) return m_gpuInfo[gpuID]._name+" Server " +m_gpuInfo[gpuID].localGPUID;
+
+        return "Server " + m_gpuInfo[gpuID].localGPUID;
     }
     public string GetServerAddressByGPUID(int gpuID)
     {

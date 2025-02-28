@@ -3,10 +3,9 @@ using System.IO;
 using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
-
 using TMPro;
 using UnityEngine.UI;
-using UnityEngine.Rendering;
+
 
 //enum of types of chat roles, system, user, and assistant
 public enum ChatRole
@@ -38,6 +37,7 @@ public class TextFileConfigExtractor
     public string StartMsg { get; private set; }
     public float Temperature { get; private set; }
     public string PrependPrompt { get; private set; }
+    public string NegativePrompt { get; private set; }
     public string PrependComfyUIPrompt { get; private set; }
     public string SystemReminder { get; private set; }
 
@@ -70,6 +70,7 @@ public class TextFileConfigExtractor
                 { "auto_continue_text", (ce, data) => ce.AutoContinueText = data },
                 { "start_msg", (ce, data) => ce.StartMsg = data },
                 { "prepend_prompt", (ce, data) => ce.PrependPrompt = data },
+                { "negative_prompt", (ce, data) => ce.NegativePrompt = data },
                 { "prepend_comfyui_prompt", (ce, data) => ce.PrependComfyUIPrompt = data },
                 { "temperature", (ce, data) => ce.Temperature = float.Parse(data.Trim()) },
                 { "add_borders", (ce, data) => ce.AddBorders = ParseBool(data) },
@@ -196,7 +197,7 @@ public class AdventureLogic : MonoBehaviour
     public TMP_InputField m_reminderCountInputField;
     public TMP_InputField m_LLMAtOnceInputField;
     public TMP_Dropdown m_llmSelectionDropdown;
-    public TMP_Dropdown m_rendererSelectionDropdown;
+    //public TMP_Dropdown m_rendererSelectionDropdown;
     int m_totalLLMGenerationCounter = 0;
 
     public AdventureMode GetMode()
@@ -244,7 +245,7 @@ public class AdventureLogic : MonoBehaviour
     {
         m_globalPromptManager = gameObject.AddComponent<GPTPromptManager>();
         PopulateProfilesDropDown();
-        Config.Get().PopulateRendererDropDown(m_rendererSelectionDropdown);
+        //Config.Get().PopulateRendererDropDown(m_rendererSelectionDropdown);
     }
     
     public bool IsActive()
@@ -346,7 +347,7 @@ public class AdventureLogic : MonoBehaviour
         //clear all the text objects
         RTUtil.DestroyChildren(RTUtil.FindObjectOrCreate("Adventures").transform);
         //clear all pics
-        GameLogic.Get().KillAllPics(true);
+        GameLogic.Get().KillAllPics(true, true);
         m_globalPromptManager.Reset();
         m_totalLLMGenerationCounter = 0;
         _generationInfo = new List<GenerationInfo>();
@@ -441,35 +442,20 @@ public class AdventureLogic : MonoBehaviour
     {
 
         GameLogic.Get().SetToolsVisible(false);
-        //ImageGenerator.Get().SetGenerate(false);
-        // GameLogic.Get().OnClearButton();
-
-        // GameLogic.Get().OnFixFacesChanged(false); //don't want faces on our Adventure
-        //GameLogic.Get().SetInpaintStrength(1.0f);
         GameLogic.Get().SetSeed(-1); //make sure it's random
-        //GameLogic.Get().SetAlphaMaskFeatheringPower(20);
-        //GameLogic.Get().SetMaskContentByName("latent noise");
         RTUtil.FindObjectOrCreate("AdventureGUI").SetActive(true);
         m_oldBGColor = Camera.allCameras[0].backgroundColor;
         Camera.allCameras[0].backgroundColor = Color.black;
-
-        //save the json request, we can re-use it for each Adventure
-        // m_json = GamePicManager.Get().BuildJSonRequestForInpaint("Adventure, top view",  m_negativePrompt, m_templateTexture, m_alphaTexture, false);
 
         _bIsActive = true;
       
         if (!m_ranFirstTimeStuff)
         {
             m_ranFirstTimeStuff = true;
-
-            // LoadAndRunAdventure(GetActiveAdventureTextFileName());
-
             //Set camera x/y and "size" to 2, don't change its z
             Vector3 vOriginalCamPos = Camera.main.transform.position;
-
             Camera.main.transform.position = new Vector3(0.1308768f, 1.20859f, vOriginalCamPos.z);
             Camera.main.orthographicSize = 2;
-
         }
 
         m_configText = LoadConfig(GetActiveAdventureTextFileName());
@@ -493,7 +479,7 @@ public class AdventureLogic : MonoBehaviour
 
     public RTRendererType GetRenderer()
     {
-        return (RTRendererType)m_rendererSelectionDropdown.value;
+        return GameLogic.Get().GetGlobalRenderer();
     }
     public void OnEndGameMode()
     {
@@ -515,7 +501,6 @@ public class AdventureLogic : MonoBehaviour
 
         //set default position, without changing its z
         go.transform.position = new Vector3(1, 0.5f, go.transform.position.z);
-
 
         AdventureText at = go.GetComponent<AdventureText>();
         at.SetText(text);

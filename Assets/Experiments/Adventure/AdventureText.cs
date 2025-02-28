@@ -7,7 +7,6 @@ using UnityEngine.UI;
 using System.Text;
 using System;
 
-
 public class AdventureText : MonoBehaviour
 {
     public TMP_InputField inputField; // Reference to the TextMeshPro InputField
@@ -24,6 +23,8 @@ public class AdventureText : MonoBehaviour
     int _imagesRenderedOnThisLine;
     string _lastPicTextRenderedDetailed = "";
     string _lastPicTextRenderedSimple = "";
+    string _lastAudioPrompt = "";
+    string _lastAudioNegativePrompt = "";
     bool _bFoundAndProcessedPics;
     string m_configName = "";
     float _directionMult = 1.0f;
@@ -55,7 +56,6 @@ public class AdventureText : MonoBehaviour
     public bool GetDontSendTextToLLM()
     {
         return _bDontSendTextToLLM;
-
     }
     void SetTryAgainWait(float seconds)
     {
@@ -509,13 +509,19 @@ public class AdventureText : MonoBehaviour
         }
     }
 
-    public (string visualsText, string simpleVisualsText) GetPicFromText(ref string text, bool bFileIsComplete)
+    public (string visualsText, string simpleVisualsText, string audioPrompt, string audioNegativePrompt) GetPicFromText(ref string text, bool bFileIsComplete)
     {
         List<string> lines = new List<string>(text.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None));
         StringBuilder visualComfyUIText = new StringBuilder();
         StringBuilder visualText = new StringBuilder();
         bool bFoundStartComfyUIVisuals = false;
         bool bFoundStartVisuals = false;
+        const string audioPromptTag = "AUDIO_PROMPT:";
+        const string audioPromptNegativeTag = "AUDIO_NEGATIVE_PROMPT:";
+
+        string defaultAudioPrompt = Config.Get().GetDefaultAudioPrompt();
+        string defaultAudioNegativePrompt = Config.Get().GetDefaultAudioNegativePrompt();
+
 
         for (int i = 0; i < lines.Count; i++)
         {
@@ -536,6 +542,22 @@ public class AdventureText : MonoBehaviour
                     bFoundStartVisuals = true;
                     continue;
                 }
+
+                //check for AUDIO_PROMPT: tag, if exists, grab all text on that line after it and put it into a string
+               
+                if (trimmedLine.StartsWith(audioPromptTag))
+                {
+                    //remove the AUDIO_PROMPT: part
+                    defaultAudioPrompt = trimmedLine.Substring(audioPromptTag.Length);
+                    continue;
+                }
+
+                if (trimmedLine.StartsWith(audioPromptNegativeTag))
+                {
+                    //remove the AUDIO_PROMPT: part
+                    defaultAudioNegativePrompt = trimmedLine.Substring(audioPromptNegativeTag.Length);
+                    continue;
+                }
             }
             else if (bFoundStartComfyUIVisuals)
             {
@@ -544,6 +566,16 @@ public class AdventureText : MonoBehaviour
                 {
                     _bFoundAndProcessedPics = true;
                     bFoundStartComfyUIVisuals = false; // Reset the flag after finding END_VISUALS
+                    continue;
+                }
+
+                if (trimmedLine.StartsWith(audioPromptTag))
+                {
+                    //it's in the wrong place, but hey, AI can be dumb
+                    //remove the AUDIO_PROMPT: part
+                    _bFoundAndProcessedPics = true;
+                    bFoundStartComfyUIVisuals = false; // Reset the flag after finding END_VISUALS
+                    defaultAudioPrompt = trimmedLine.Substring(audioPromptTag.Length);
                     continue;
                 }
 
@@ -564,7 +596,7 @@ public class AdventureText : MonoBehaviour
         }
 
         // return what we found
-        return (visualComfyUIText.ToString(), visualText.ToString());
+        return (visualComfyUIText.ToString(), visualText.ToString(), defaultAudioPrompt, defaultAudioNegativePrompt);
     }
 
     void ProcessFinalText(string streamedText, bool bInitialScan)
@@ -573,11 +605,19 @@ public class AdventureText : MonoBehaviour
 
         UpdateInputFieldText();
 
+        if (GenerateSettingsPanel.Get().m_stripThinkTagsToggle.isOn)
+        {
+            streamedText = OpenAITextCompletionManager.RemoveThinkTagsFromString(streamedText);
+            //also remove line feeds before and after the text
+            streamedText = streamedText.Trim();
+            inputField.text = streamedText;
+        }
+
         if (!_bFoundAndProcessedPics)
             {
                 string temp = streamedText;
                 //  the last text/image combo would have been ignored, so let's process it now
-                var (picTextDetailed, picTextSimple) = GetPicFromText(ref temp, true);
+                var (picTextDetailed, picTextSimple, audioPrompt, audioNegativePrompt) = GetPicFromText(ref temp, true);
                 _bFoundAndProcessedPics = true;
 
                     
@@ -589,7 +629,8 @@ public class AdventureText : MonoBehaviour
                         //render for each of the desired forced pics
                         for (int i = 0; i < AdventureLogic.Get().GetRenderCount(); i++)
                         {
-                            RenderPic(picTextDetailed, picTextSimple, AdventureLogic.Get().GetRenderer());
+                            RenderPic(picTextDetailed, picTextSimple, AdventureLogic.Get().GetRenderer(),
+                                audioPrompt, audioNegativePrompt);
                         }
                     }
 
@@ -597,12 +638,14 @@ public class AdventureText : MonoBehaviour
 
                     _lastPicTextRenderedDetailed = picTextDetailed;
                     _lastPicTextRenderedSimple = picTextSimple;
-                }
+                    _lastAudioPrompt = audioPrompt;
+                    _lastAudioNegativePrompt = audioNegativePrompt;
             }
-       
+            }
+
         //let's add our original prompt to it, I assume that's what we want
-        inputField.text = streamedText;
-      
+        // inputField.text = streamedText;
+
         if (_bAddedFinishedTextToPrompt)
         {
             m_promptManager.RemoveLastInteractionIfItExists();
@@ -659,7 +702,7 @@ public class AdventureText : MonoBehaviour
             (_lastPicTextRenderedSimple != null && _lastPicTextRenderedSimple.Length > 0)
             )
         {
-            RenderPic(_lastPicTextRenderedDetailed, _lastPicTextRenderedSimple, renderer);
+            RenderPic(_lastPicTextRenderedDetailed, _lastPicTextRenderedSimple, renderer, _lastAudioPrompt, _lastAudioNegativePrompt);
         }
     }
 
@@ -688,19 +731,19 @@ public class AdventureText : MonoBehaviour
         string tempText = inputField.text;
 
         //  the last text/image combo would have been ignored, so let's process it now
-        (_lastPicTextRenderedDetailed, _lastPicTextRenderedSimple) = GetPicFromText(ref tempText, true);
+        (_lastPicTextRenderedDetailed, _lastPicTextRenderedSimple, _lastAudioPrompt, _lastAudioNegativePrompt) = GetPicFromText(ref tempText, true);
         ProcessFinalText(tempText, false);
 
     }
-    public void RenderPic(string picTextComfyUI, string picText, RTRendererType desiredRenderer)
+    public void RenderPic(string picTextComfyUI, string picText, RTRendererType desiredRenderer, string audioPrompt, string audioNegativePrompt)
     {
         //RTConsole.Log("SPAWNING PIC");
         GameObject pic = ImageGenerator.Get().CreateNewPic();
-        PicMain picScript = pic.GetComponent<PicMain>();
+        PicMain picMain = pic.GetComponent<PicMain>();
         PicTextToImage scriptAI = pic.GetComponent<PicTextToImage>();
         PicUpscale processAI = pic.GetComponent<PicUpscale>();
         _imagesRenderedOnThisLine++;
-        picScript.SetStatusMessage("Waiting for GPU...");
+        picMain.SetStatusMessage("Waiting for GPU...");
        
         if (AdventureLogic.Get().GetMode() == AdventureMode.CHOOSE_YOUR_OWN_ADVENTURE)
         {
@@ -711,30 +754,37 @@ public class AdventureText : MonoBehaviour
             {
                 pic.transform.position = new Vector3(pic.transform.position.x + (1.0f * _picsSpawned.Count) , pic.transform.position.y, pic.transform.position.z);
             }
-
         }
         else
         {
             pic.transform.position = new Vector3(transform.position.x + ((5.12f * _imagesRenderedOnThisLine) * _directionMult), transform.position.y, pic.transform.position.z);
         }
 
-        var e = new ScheduledGPUEvent();
-        e.mode = "render";
-        e.targetObj = pic;
-        e.requestedSimplePrompt = GameLogic.Get().GetPrompt() + " " + picText;
-        e.requestedDetailedPrompt = GameLogic.Get().GetComfyUIPrompt()+" "+picTextComfyUI;
+        List<string> jobsTodo = GameLogic.Get().GetPicJobListAsListOfStrings();
 
-        //trim the whitespace from the strings above
-        e.requestedSimplePrompt = e.requestedSimplePrompt.Trim();
-        e.requestedDetailedPrompt = e.requestedDetailedPrompt.Trim();
+        if (jobsTodo.Count == 0)
+        {
+            RTQuickMessageManager.Get().ShowMessage("Add jobs to do!");
+            return;
+        }
 
-        e.requestedRenderer = desiredRenderer;
-        picScript.PassInTempInfo(e);
+        PicJob jobDefaultInfoToStartWith = new PicJob();
 
+        jobDefaultInfoToStartWith._requestedPrompt = picTextComfyUI;
+        
+        if (jobDefaultInfoToStartWith._requestedPrompt == "")
+        {
+            jobDefaultInfoToStartWith._requestedPrompt = picText;
+        }
+      
+        jobDefaultInfoToStartWith._requestedNegativePrompt = GameLogic.Get().GetNegativePrompt();
+        jobDefaultInfoToStartWith._requestedAudioPrompt = audioPrompt;
+        jobDefaultInfoToStartWith._requestedAudioNegativePrompt = audioNegativePrompt;
+        jobDefaultInfoToStartWith.requestedRenderer = desiredRenderer;
+        picMain.AddJobListWithStartingJobInfo(jobDefaultInfoToStartWith, jobsTodo);
         //add its PicMain to our list
-        _picsSpawned.Add(picScript);
+        _picsSpawned.Add(picMain);
 
-        ImageGenerator.Get().ScheduleGPURequest(e);
     }
 
     public void OnStreamingTextCallback(string text)
@@ -788,7 +838,10 @@ public class AdventureText : MonoBehaviour
        // Debug.Log("Contacting TexGen WebUI asking for chat style response at " + Config.Get()._texgen_webui_address); ;
 
         Queue<GTPChatLine> lines = m_promptManager.BuildPromptChat(0);
-      
+
+        lines = GameLogic.Get().PrepareLLMLinesForSending(lines);
+
+
         RTDB db = new RTDB();
 
         if (AdventureLogic.Get().GetLLMType() == LLM_Type.GenericLLM_API)

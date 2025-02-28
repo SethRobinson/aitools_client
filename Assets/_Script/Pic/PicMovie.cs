@@ -13,9 +13,13 @@ public class PicMovie : MonoBehaviour
     public Renderer _renderer;
     string m_fileName;
     float _updateTimerSeconds = 0.0f;
-    float _updateIntervalSeconds = 1;
+    float _updateIntervalSeconds = 0.1f;
     public PicMain _picMainScript;
-
+    Vector2Int m_movieSize = new Vector2Int(0, 0);
+    bool m_bAutoDeleteFileWhenDone = true;
+    bool _bDidCleanupSoAllowReload = false;
+    bool _bIsHidden = false;
+   
     // Start is called before the first frame update
     void Start()
     {
@@ -23,8 +27,34 @@ public class PicMovie : MonoBehaviour
         {
             _videoPlayer = gameObject.AddComponent<VideoPlayer>();
         }
+
+        // Option 1: Using an AudioSource
+       
+        /*
+        AudioSource audioSource = gameObject.GetComponent<AudioSource>();
+        if (audioSource == null)
+        {
+            audioSource = gameObject.AddComponent<AudioSource>();
+        }
+        _videoPlayer.audioOutputMode = VideoAudioOutputMode.AudioSource;
+        _videoPlayer.SetTargetAudioSource(0, audioSource);
+        */
+
+        // Option 2: If you prefer direct audio output, comment out the above lines and use:
+         _videoPlayer.audioOutputMode = VideoAudioOutputMode.Direct;
+    }
+    public void OnSetHidden()
+    {
+        _bIsHidden = true;
+        _renderer.enabled = false;
+
     }
 
+    public void SetAutoDeleteFileWhenDone(bool bAutoDelete)
+    {
+        m_bAutoDeleteFileWhenDone = bAutoDelete;
+    }
+    public Vector2Int GetMovieSize() { return m_movieSize; }
     public void TogglePlay()
     {
         if (!IsMovie())
@@ -50,6 +80,15 @@ public class PicMovie : MonoBehaviour
         }
     }
 
+    public string GetFileName()
+    {
+        return m_fileName;
+    }
+
+    public string GetFileNameWithoutPath()
+    {
+        return System.IO.Path.GetFileName(m_fileName);
+    }
     public string GetFileExtensionOfMovie()
     {
         return System.IO.Path.GetExtension(m_fileName);
@@ -93,52 +132,84 @@ public class PicMovie : MonoBehaviour
         RTUtil.CopyFile(m_fileName, path);
 
     }
+
+
+  
     public void DeleteMovieIfNeeded()
     {
-        if (m_fileName != null && m_fileName.Length > 0)
+        if (m_bAutoDeleteFileWhenDone)
         {
-            //delete the file
-            if (GameLogic.Get().GetAutoSave() || GameLogic.Get().GetAutoSavePNG())
+            if (m_fileName != null && m_fileName.Length > 0)
             {
-                //keep the file
-            }
-            else
-            {
-                RTUtil.DeleteFileIfItExists(m_fileName);
+                //delete the file
+                if (GameLogic.Get().GetAutoSave() || GameLogic.Get().GetAutoSavePNG())
+                {
+                    //keep the file
+                }
+                else
+                {
+                    RTUtil.DeleteFileIfItExists(m_fileName);
+                }
             }
         }
     }
     private void OnDestroy()
     {
-        DeleteMovieIfNeeded();
-        // Clean up video player events
-        if (_videoPlayer != null)
-        {
-            _videoPlayer.prepareCompleted -= OnVideoPrepared;
-            _videoPlayer.errorReceived -= OnVideoError;
-            _videoPlayer.Stop();
-        }
-
-        // Release render texture
-        if (_renderTexture != null)
-        {
-            _renderTexture.Release();
-            Destroy(_renderTexture);
-        }
+        KillMovie();
     }
     // Update is called once per frame
 
     public void Update()
     {
+
+
+
+        //if app doesn't have focus, exit
+        if (!Application.isFocused)
+        {
+            return;
+        }
+
+        if (_bIsHidden)
+        {
+            if (!Input.GetKey(KeyCode.H))
+            {
+                //no longer hidden
+                _renderer.enabled = true;
+
+            }
+        }
+
         //see if it's time to update
         if (_updateTimerSeconds  < Time.time)
         {
             _updateTimerSeconds  = Time.time + _updateIntervalSeconds;
 
+            bool isVisible = _picMainScript.IsVisible();
+
             //if we have a valid movie filename, but it isn't loaded/playing, let's load and play it now
-            if (m_fileName != null && m_fileName.Length > 0 && _renderTexture == null && _picMainScript.IsVisible())
+            if (_bDidCleanupSoAllowReload && m_fileName != null && m_fileName.Length > 0 && _renderTexture == null && isVisible)
             {
                 PlayMovie(m_fileName);
+                _bDidCleanupSoAllowReload = false;
+            }
+
+            if (_videoPlayer.isPlaying)
+            {
+                GameObject go = GameLogic.Get().GetPicWereHoveringOver();
+                if (go == gameObject)
+                {
+                    //we're hovering over this pic
+                    _videoPlayer.SetDirectAudioMute(0, false);
+
+                }
+                else
+                {
+                    //we're not hovering over this pic, so let's hide the movie
+                    _videoPlayer.SetDirectAudioMute(0, true);
+                }
+
+
             }
         }
 
@@ -147,6 +218,21 @@ public class PicMovie : MonoBehaviour
     public bool IsMovie()
     {
         return _movieObject.activeSelf;
+    }
+
+    public void KillMovie()
+    {
+        DeleteMovieIfNeeded();
+        // Clean up video player events
+        CleanupVideoResources();
+        //reset defaults
+        _bDidCleanupSoAllowReload = false;
+        m_bAutoDeleteFileWhenDone = true;
+        m_fileName = null;
+        m_movieSize = new Vector2Int(0, 0);
+        _movieObject.SetActive(false);
+
+
     }
 
     private void CleanupVideoResources()
@@ -161,16 +247,17 @@ public class PicMovie : MonoBehaviour
             _renderTexture.Release();
             Destroy(_renderTexture);
             _renderTexture = null;
+            _bDidCleanupSoAllowReload = true;
         }
 
         // Clear material reference
-        if (_renderer.material != _materialTemplate)
+        if (_renderer.material != _materialTemplate && _renderer.material != null)
         {
             Destroy(_renderer.material);
             _renderer.material = null;
         }
 
-        System.GC.Collect();
+     // System.GC.Collect();
     }
 
     private void OnVideoLoop(VideoPlayer source)
@@ -217,6 +304,16 @@ public class PicMovie : MonoBehaviour
 
     public void PlayMovie(string filename)
     {
+        if (!Application.isFocused || !_picMainScript.IsVisible())
+        {
+        
+            m_fileName = filename;
+            _movieObject.SetActive(true);
+
+            _bDidCleanupSoAllowReload = true;
+            return; //don't play it now
+        }
+
         try
         {
             if (RTUtil.IsMemoryLow())
@@ -238,13 +335,19 @@ public class PicMovie : MonoBehaviour
             _videoPlayer.url = filename;
             _videoPlayer.isLooping = true;
             _videoPlayer.playOnAwake = false;  // Changed to false
-
+            
             _videoPlayer.prepareCompleted -= OnVideoPrepared;
             _videoPlayer.prepareCompleted += OnVideoPrepared;
             _videoPlayer.errorReceived -= OnVideoError;
             _videoPlayer.errorReceived += OnVideoError;
             _videoPlayer.loopPointReached -= OnVideoLoop;
             _videoPlayer.loopPointReached += OnVideoLoop;
+            //_videoPlayer.EnableAudioTrack(0, true);
+            _videoPlayer.controlledAudioTrackCount = 1;
+            //Debug.Log("Audio track count: " + _videoPlayer.audioTrackCount);
+            //_videoPlayer.SetDirectAudioMute(0, false);
+            //_videoPlayer.SetDirectAudioVolume(0, 1.0f);
+            
 
             _videoPlayer.Prepare();
         }
@@ -265,10 +368,9 @@ public class PicMovie : MonoBehaviour
     public void UnloadTheMovieToSaveMemory()
     {
         CleanupVideoResources();
+        _bDidCleanupSoAllowReload = true;
     }
 
-
-    
     private void HandleVideoError(string message)
     {
         // Debug.LogError($"VideoPlayer error for {_videoPlayer.url}: {message}");
@@ -301,7 +403,7 @@ public class PicMovie : MonoBehaviour
             }
             newMaterial.mainTexture = _renderTexture;
             _renderer.material = newMaterial;
-
+            m_movieSize = new Vector2Int((int)source.width, (int)source.height);
             float videoWidth = source.width;
             float videoHeight = source.height;
             Vector3 scale = _movieObject.transform.localScale;

@@ -1,100 +1,55 @@
-
-# Seth's AI Tools: A Unity based front-end that talks to various AI APIs to do experimental things like generate Twine games, quizzes, posters and more.
+# Seth's AI Tools: A Unity based front-end for ComfyUI and Ollama (and others) that does things like generate photos and movies, Twine games, quizzes, posters and more.
 
 License:  BSD style attribution, see LICENSE.md
 
 <p float="left">
-<a href="Media/ai_tools_ai_guide.jpg"><img align="top" src="Media/ai_tools_ai_guide.jpg"></a>
+<a href="Media/aitools_v2_aiguide.png"><img align="top" src="Media/aitools_v2_aiguide.png"></a>
 </p>
 
-# Download the latest [AI Tools Client (Windows, 62 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip)
+## Download the latest version: V2.00 (Feb 25th, 2025) [AI Tools Client (Windows, 62 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip)
 
-To use this, you'll need to connect to something that can generate images, and hopefully an LLM too.  A single OpenAI key is enough to do a lot (LLM and Dale3 rendering), you can also use Claude (via API key), or your own local servers.  You can mix and match by connecting to local or remote ComfyUI servers for rendering as well as Ollama, Text Generation WebUI and TabbyAPI servers for LLMs.
+Need an old version? The last pre-V2 version (that still supports Auto1111) can be downloaded [here](https://www.rtsoft.com/files/SethsAIToolsWindowsV095.zip).
 
-Note:  A1111 as well as [Seth's modified version](https://github.com/SethRobinson/aitools_server) are being phased out in favor of just focusing on ComfyUI as the rendering backend due to its power and flexibility.  They still work for now though.
+To use this, you'll need to connect to something that can generate images, and hopefully an LLM too.  A single OpenAI key is enough to do a lot (LLM and Dale3 rendering), you can also use Claude (via API key), or best yet, your own local ComfyUI server(s) and Ollama.
 
-https://github.com/user-attachments/assets/a4d0f2db-79f6-46f1-8229-28e93e8053bc
+## Features
 
-# Features #
+- It's not a web app, it's a native locally run Windows .exe
+- It's kind of like lego, is can run ComfyUI workflows that chain together.  You need to understand ComyUI and workflow tweaking as you'll still need to install all the needed plugins and models there.
+- Drag and drop images in as well as paste images from the windows clipboard
+- Built-in image processing like cropping and resizing, mask painting
+- Pan/zoom with thousands of images on the screen
+- Built to utilize many ComfyUI servers at once
+- Privacy respected - does not phone home or collect any statistics, purely local usage. (it does check a single file on github.com to check for newer versions, but that's it)
+- Includes "experiments", little built-in games and apps designed to test AI
+- AI Guide feature harnesses the power of AI to create motivational posters, illustrated stories or whatever
+- Adventure mode has presets to various modes - generate ready to upload illustrated web quiz from prompt, simple Twine game project from a prompt, and "Adventure", a sort of illustrated AI Dungeon type of toy
+- Includes presets and workflows for Flux, SDXL, Hunyuan, Wan 2.1, MMAudio, SAM2, BiRef
+- By default strips<think> tags when continuing LLM work for Deepseek/thinking models
+- For developers, using Unity and C# to do powerful things with AI instead of banging your head against the wall with ComfyUI workflows and python is pretty sweet
+- You can drag in a bunch of pictures and have it turn them into tiny movies with sound.  How cool is that?
 
-* It's not a web app, it's a native locally run Windows .exe
-* Live update integration (image and masking) with Photoshop or other image editors
-* text to image, img2img, image interrogation, face fixing, upscaling, tiled texture generation with preview, automasking of subject, background removal
-* Drag and drop images in as well as paste images from the windows clipboard
-* Built-in image processing like cropping and resizing
-* Pan/zoom with thousands of images on the screen
-* Mask painting with controllable brush size
-* Option to automatically save all generations, with accompanying .txt file that includes all settings
-* Supports pix2pix and ControlNet (For ControlNet, the server requires [Mikubill's sd-webui-controlnet extension](https://github.com/Mikubill/sd-webui-controlnet)) and its models to be installed, otherwise the option is grayed out
-* Can utilize multiple servers (three video cards on one machine? Run three servers!) allowing seamless use of all GPUs for ultra fast generation and a single click to change the active model
-* Neat workflow that allows evolving images with loopback while live-selecting the best alternatives to shape the image in real-time
-* Privacy respected - does not phone home or collect any statistics, purely local usage. (it does check a single file on github.com to check for newer versions, but that's it)
-* Includes "experiments", little built-in games and apps designed to test using AI/SD for specific things: CrazyCam is a realtime webcam filter with 30+ presets, Shooting Gallery tests realtime craetion of sprites during a game, etc
-* AI Guide feature harnesses the power of AI to create motivational posters, illustrated stories or whatever
-* Adventure mode has presets to various modes - generate ready to upload illustrated web quiz from prompt, simple Twine game project from a prompt, and "Adventure", a sort of illustrated AI Dungeon type of toy
-* Experimental video support (Includes ComfyUI workflows that can generate videos via Hunyuan or LTX.  Still basic support, but we can view them just like the images)
+## Recent changes
+
+- I ripped out the A1111 support, it's ComfyUI all the way now.  It's a big step and it broke things, so the paintball game and pizza thing are removed.  Most of the other things still work.  Crazy Camera sort of works, I fix it up later when I need it, it works using the new workflow/joblist system but it's too slow. I've versions to V2 to make it clear it's not the old version anymore.
+- Introduces a whole new preset "joblist" system that strings together ComfyUI workflows, there are too many changes to list.  Making your own presets and worklows should be much simpler now.
+- This project is entirely for fun, please pardon the lack of documentation and ease of use.  I'll try to help if you post problems here as issues or in the discussion area though!
+
+## Known issues
+
+- I suspect certain workflows won't work on Windows because I have a subdir in the model filename and the whole "/" vs "\" thing rears its ugly head.  Why wouldn't ComfyUI fix those based on the system it's running on?  Anyway, you can either use a @replace to fix them in AITools, or edit the workflow's .json with a text editor, or drag the workflow into ComfyUI and edit the path there.  I only test on Windows, with the servers running on Ubuntu.
+- Lack of documentation etc due to laziness
+- CrazyCam (where the webcam is being used for realtime image processing) is half broken and slow
+- Expect things to break and change, it's very alpha and probably always will be
+- Probably a ton of bugs, I haven't tested it much
+- The SDXL Inpainting ComfyUI workflow sometimes fails, tweaking the alpha mask fixes it, no idea what's up but it's not happening on my app's side
+- The SAM2 based "select things by name" segmentation is pretty sketch, best I could find though.  Also, it can only select ONE thing in the image, I don't see a way to fix it without writing a custom node.  Use the including BiRef workflow instead if you can, it can only do "foreground" and "background" but it works much better in general.
+- It can use all of OpenAI's APIs unless you set it to o1-mini, OpenAI doesn't like the format and gives an error.  gpt-4o and o3-mini work fine so whatever I guess.
 
 
-## Current version: **V0.96** (released Jan 28th 2025) ##
-
-**Recent changes**:
-
-* FEAT: early support added for AI generated video! (well, mp4s created in ComfyUI with Hunyuan and LTX)  While you can see them in the app, and click S button to save them in output, not much else is supported (for example, the AI Guide and Adventure stuff works with them, but exporting for web doesn't work right for them) In the future, you'll probably be able to to image to video or video to video, but right now none of the image controls do anything to a video
-* Time taken now shows minutes and seconds instead of just seconds
-* Integration with ComfyUI improved, now shows progress of steps and renders will properly cancel themselves if their pic window is closed (that started to matter when you're talking about a ten minute video renders...)
-* Added set_generic_llm_system_keyword (and assistant & user) in Config.txt, if the LLM you're using doesn't work right, you can try changing the keywords, different llms are trained to work with different words
-* Some misc changes to improve LLM compatibility (some have rules like you can't have a user prompt before an assistant prompt, ect)
-* ComfyUI workflow feature: If <AITOOLS_PROMPT> is found anywhere in the workflow, it is replaced with the prompt.  All included ComfyUI workflows have been updated to use this format
-* There is a new ComfyUI gear/settings button, for now it just lets you set the frames to render (only will apply when movies workflows are used)
-* Added "Stop after <num>" control to both AIGuide and Adventure mode, so you can say, do 100 (or however many) llm generations (and all associated pics/movies) and have it shut itself off automatically
-* I no longer include the non "API" version ComfyUI workflows, ComfyUI can now load the API versions directly just fine (drag and drop into ComfyUI) so keeping the non-api version around isn't needed
-* Updated to Unity 6, I did this because I thought I needed to for wepb support, but I ended up not using it and forgot I updated, now I'm sort of stuck because I don't want to redo the GUI additions I added.  Unity 6 sort of sucks because the licensing changed, but for free stuff like this it doesn't matter I guess
-* Added some a few more ComfyUI workflows, AIGuide templates, Adventure templates.  I haven't used A1111 in months so I'm not even sure if the A1111 integration still works (probably does tho).  I kind of just add/work on whatever I need at the time, sorry!
-
-V0.92:
-* Fixed a bug with certain GUI settings windows not working sometimes
-* Fixed Hunyuan workflow, it was giving ComfyUI errors because an update from a few days ago added required parms
-* Each server now has a little settings button that allows you to override which ComfyUI workflow that specific server will use
-
-V0.93:
-* Fixed compatibility with text-generation-webui's API, forgot I broke it a while back, oops
-
-V0.94:
-
-* Video memory management implemented, will unload videos that aren't on the screen if needed and load them when they are
-* Fixed issue where some video aspect ratios wouldn't be correct when displayed
-* Updated hunyuan workflows (as if anyone can keep up with how often these things change) and added a new one for "fast".  (drag into comfy and do install missing nodes, then try to run them to see what models they need)
-* Adventure mode "Export" options for the quiz and twine game now work with video too
-* AIGuide response text scroll bar works better while it's streaming llm data in
-* BUGFIX: "?" Info panel now scrolls with auto-selecting its text
-* BUGFIX: Temperature setting in Adventure settings .txt files actually has an effect on the llm now
-* The log.txt file is now written in the same dir as the .exe, previously it was in some hard to find spot in /users/<username> etc.
-
-V0.95: (Jan 13th, 2025)
-
-* Better error reporting with LLMs
-* Console scrollbar works better
-* Added support for Ollama server (Added "add_generic_llm_parm" command to config.txt, so add_generic_llm_parm|model|"llama3.3"| can be added so it works with Ollama servers (they need to know which model to use).  This would also allow you to add other custom openai api style parms if needed).
-Also, the default config sets parms for context.  I also added "add_generic_llm_parm|num_ctx|131072|" and "add_generic_llm_parm|max_tokens|4096".  You can add more as needed, but those make ollama work great with llama3.3.  Keep in mind non instruct (or chat-instruct) models like mixtral won't work well.
-* Config.txt now sets default parms before every load, previously, if you removed for example, a command to set the llm api key, it would still be in memory until the next restart instead of being set to "none" by default
-* BUGFIX: Fixed issue where a textbox could have text overwriting itself in a buggy way
-* BUGFIX: Fixed issue where Dalle3 could be used even if "Local only" renderers were selected, during the time config was re-initted and there were no local renderers with tasks waiting to render
-* BUGFIX: Special characters in the prompt (including ") no longer break the render on ComfyUI, oops
-* Some ai guide/adventure profiles have dropped the "simple description", I'm not really planning to supporting A1111 anymore, I think ComfyUI only is the future for the visual rendering.  Some features like AI Camera and the paintball demo still require it as I haven't created Comfy workflows (and may never) as this entire project just kind of gets updated to work with what I want to play with at the time
-* Added some new ComfyUI workflows that use WaveSpeed (it's fast), you'll need the Comfy-WaveSpeed node installed to use 'em
-* Fixed Japanese fonts (any special fonts need to be added as fallback fonts to the default ones, that had gotten removed when I updated to Unity 6 I guess)
-* Added a folder icon by the ComfyUI workflow selector, it just opens file explorer into that dir, makes it easier to hand edit or add a new workflow by cut and pasting an old one
-* Added a "Rescan ComfyUI workflow folder" button to the ComfyUI settings dialog, so you don't have to restart the .exe after adding a new workflow
-* Added support for ComfyUI negative prompts, any workflow that has <AITOOLS_NEGATIVE_PROMPT> in it will be set the current active negative prompt.  However, none of my Flux/Hunyuan prompt workflows even have a place to put in a negative prompt, although I know it is possible (kind of a hack though?) so if you find a workflow that does have one, you can just replace it with <AITOOLS_NEGATIVE_PROMPT>  and it should work. I did add it to the ltx video one though.
-* Server/GPUs now have a checkbox so you can disable one temporarily if need be, old method was having to edit the config.txt and apply which would stop renders in progress.  Server properties dialog now shows its remote URL as well
-
-V0.96: (Jan 13th, 2025)
-
-* BUGFIX: Setting the "num_ctx" context length as shown in the config.txt actually works for Ollama now
-* AI Guide images created before a renderer is available now properly queue up instead of just being weird black images that can never be rendered.  So if you were limited on VRAM you could create a bunch of things with the LLM only, then load the ComfyUI renderer later to render them (apply the config again and it will detect it without restarting the app)
-* Some minor tweaks to comfy and adventure profiles
 
 You only need to download [the zip](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) and run the .exe to use this, However, the source might be useful to generate a build for other platforms, fork or steal pieces to use for yourself.  Go ahead!
+
 # Screenshots
 
 <a href="Media/ai_tools_dungeons_generate.png"><img src="Media/ai_tools_dungeons_generate.png" width="300"></a>
@@ -103,7 +58,7 @@ You only need to download [the zip](https://www.rtsoft.com/files/SethsAIToolsWin
 <a href="Media/ait_quiz_kyoto.png"><img src="Media/ait_quiz_kyoto.png" width="300"></a>
 <a href="Media/ai_tools_birdy_to_bird.jpg"><img src="Media/ai_tools_birdy_to_bird.jpg" width="300"></a>
 
-# Media (mostlyoutdated videos of the app) #
+# Media (mostly outdated videos of the app) #
 
 <a href="https://www.youtube.com/watch?v=2TB4f8ojKYo"><img align="top" src="Media/apple_youtube_thumbnail.png" width=300></a>
 <a href="https://www.youtube.com/watch?v=3PmZ_9QfrE0"><img align="top" src="Media/remove_bg_youtube.png" width=300></a>
@@ -112,28 +67,23 @@ You only need to download [the zip](https://www.rtsoft.com/files/SethsAIToolsWin
 <a href="https://www.youtube.com/watch?v=YQMWflU1v-U"><img align="top" src="Media/aiguide_youtube.png" width=300></a>
 # Setup #
 
-If using AUTOMATIC1111's Stable Diffusion WebUI, make sure it has been started with the --api parm.  (additionally, with the --listen parm if it isn't on the local machine)
+Your ComfyUI server needs to be started using the --listen parm, so the API can be accessed.  
 
-On Windows, an easy way to do that is to edit webui-user.bat and add them after the "set COMMANDLINE_ARGS=" part.  Start the server by double clicking webui-user.bat.
+After running it, a config.txt will be made. There is an config edit button inside the app, your config will look like this:
 
-Next run aitools_client.exe.  Click on the "Configuration" button and a text editor will open with the default settings:
-
-```bash
 #add as many add_server commands as you want, just replace the localhost:7860 part with the
 #server name/ip and port.  You can control any number of renderer servers at the same time.
 
-#Supported server types:  Seth's AI Tools, A1111, ComfyUI supported.  For Dalle-3, don't set here, just enter your OpenAI key below.
+#This is where you add rendering servers. (ComfyUI servers run with --listen parm)  For Dalle-3, don't set here, just enter your OpenAI key below.
 
-#Uncomment below and put your renderer server.  Add more add_server commands to add as many as you want.
-#add_server|http://localhost:7860
+#Uncomment below and put your renderer server.  Add more add_server commands to add as many as you want.  The second parm is
+#an optional name so you can keep track of which server has which video card.
+#add_server|http://localhost:7860|5090!|
 
 #Set the below path and .exe to an image editor to use the Edit option. Changed files will auto
 #update in here.
 
 set_image_editor|C:\Program Files\Adobe\Adobe Photoshop 2025\Photoshop.exe
-
-#set_default_sampler|DDIM
-#set_default_steps|50
 
 #To generate text with the AI Guide features, you need at least one LLM. (or all, you can switch between them in the app)
 
@@ -151,11 +101,12 @@ set_generic_llm_api_key|none|
 set_generic_llm_mode|chat-instruct|
 
 #this is needed if using an ollama server, otherwise you'll see a "model is required" error.  Note that might cause the model to be loaded which means a huge delay at first.
-add_generic_llm_parm|model|"llama3.3"|
-add_generic_llm_parm|num_ctx|131072|#needed for ollama, the context the model supports
-add_generic_llm_parm|max_tokens|4096|
+add_generic_llm_parm|model|"llama3.3"|#needed for ollama, the model you want to use
+#add_generic_llm_parm|num_ctx|131072|#needed for ollama, the context size you want the model to load with (we'll create a custom profile with an _ait extension)
+#add_generic_llm_parm|temperature|1.0|#allows you to globally override LLM temperatures
+#add_generic_llm_parm|max_tokens|4096|
 
-#somethings you could play with
+#some things you could play with
 #add_generic_llm_parm|stop|["<`eot_id`>", "<`eom_id`>", "<`end_header_id`>"]|#Note that ` gets turned into |
 #add_generic_llm_parm|stopping_strings|["<`eot_id`>", "<`eom_id`>", "<`end_header_id`>"]|
 
@@ -165,49 +116,55 @@ add_generic_llm_parm|max_tokens|4096|
 #set_generic_llm_system_keyword|system|#default is system
 #set_generic_llm_assistant_keyword|assistant|#default is assistant
 #set_generic_llm_user_keyword|user|#default is user
-
-            
+      
 #Anthropic LLM
 set_anthropic_ai_key|<key goes here>|
-set_anthropic_ai_model|claude-3-5-sonnet-latest|
+set_anthropic_ai_model|claude-3-7-sonnet-latest|
 set_anthropic_ai_endpoint|https://api.anthropic.com/v1/messages|
-```
 
-# Setting up with ComfyUI (for FLUX images, Hunyuan video or any custom workflow)
+#if you're using a ComfyUI workflow that creates audio, and you don't have AITOOLS_AUDIO_PROMPT or AITOOLS_AUDIO_NEGATIVE_PROMPT set in the ComfyUI workflow, these are used as defaults:
+set_default_audio_prompt|audio that perfectly matches the onscreen action|
+set_default_audio_negative_prompt|music|
+
+
+
+# Setting up with ComfyUI (for FLUX images, Wan 2.1, Hunyuan video or any custom workflow)
 
 First, install [ComfyUI](https://github.com/comfyanonymous/ComfyUI) and get it rendering stuff in Flux and/or Hunyuan using tutorials out there.
 
-Actually, maybe ignore the link above as you probably want something will run on your 3090 or 4090 (I guess there are ways to get going on weaker cards too but..) I used these [download links/workflow](https://www.cognibuild.ai/hunyuan-gguf-necessary-models) for gguf, there is a [tutorial video](https://www.youtube.com/watch?v=CZKZIPGef6s) to go with it but I didn't really use that as I installed to a linux server.
+**Don't move on until it's working and you can generate images (Flux is good) and/or videos in ComfyUI directly**!
 
-**Don't move on until it's working and you can generate images and/or videos in ComfyUI directly**! (without AITools)
+Next, just for a test to make sure the workflows included with AITools are going to work, inside ComfyUI's web GUI, drag in aitools_client/ComfyUI/FullWorkflowVersions/text_to_img_flux.json or any others.  The neat thing about ComfyUI is it will read this and convert it to its visual workflow format, ready to run.  (you might want to change the prompt from <AITOOLS_PROMPT> to something else during testing here) - Click Queue.  Does it work?  Oh, if you see an Image Loader set to the file "<AITOOLS_INPUT_1>" you'll need to change that to a file on your ComfyUI server if you want to test.
 
-Next, just for a test to make sure the workflows included with AITools are going to work, inside ComfyUI's web GUI, drag in aitools_client/ComfyUI/flux_api.json or maybe video_hunyuan_t2v_480_api.json.  The neat thing about ComfyUI is it will read this and convert it to its visual workflow format, ready to run.  (you might want to change the prompt from <AITOOLS_PROMPT> to something else during testing here) - Click Queue.  Does it work? If so, you're done, just go run AITools, it should work. 
+You'll probably see a bunch of red nodes and errors - no problem!  Make sure you have ComfyUI-Manager installed, you can use it to install any missing nodes.  You'll probably have to track down various model files though, but at least when you try to render it will shows exactly the filenames that are missing. (look for red boxes around certain nodes)
 
-Make sure you have ComfyUI-Manager installed, you can use it to install any missing nodes.  You'll probably have to track down various model files though, but at least when you try to render it will shows exactly the filenames that are missing. (look for red boxes around certain nodes)
+Adjust it until it works (change paths or models or whatever you need, you could even start with a totally different workflow you found somewhere else), and make sure the prompt is set to <AITOOLS_PROMPT>.  (<AITOOLS_NEGATIVE_PROMPT> can be used if your workflow has a place for that too)  Then do Workflow->Export (API) if you wanted to save your own.  Note:  **You need to have enabled "Dev mode" in the ComfyUI settings to see the "Export (API)" option.**
 
-Adjust it until it works (change paths or models or whatever you need, you could even start with a totally different workflow you found somewhere else), and make sure the prompt is set to <AITOOLS_PROMPT>.  (<AITOOLS_NEGATIVE_PROMPT> can be used if your workflow has a place for that too)  Then do Workflow->Export (API).
-
-You can now add/overwrite that in your aitools_client/ComfyUI dir.  Inside of AITools, select that workflow under the ComfyUI workflows dropdown list.  It should now render right!  Images/videos are auto detected when being displayed.  AITools is will dynamically modify the workflow when using it by changing <AITOOLS_PROMPT>, and also the total length of frames if applicable (for videos).  Not much else right now, so to even change the resolution you need to modify the workflow as described.  (or faster, just use a text editor on the .json directly)
+So you don't have to create custom workflows for every checkpoint/filesize etc, you can use AITools' "@replace" to change any part of a workflow before it's sent to ComfyUI's API.  You'll see it used in various presets.
 
 Check discussions for some more info [here](https://github.com/SethRobinson/aitools_client/discussions/18)
 
-
 # Building from source
 
-* Requires Unity 6+
-* Open the scene "Main" and click play to run
-* Assets/GUI/GOTHIC.TFF and Assets/GUI/times.ttf are not included and might break the build because I was having trouble and switched some settings around that might require them now (dynamic vs static TMPro font settings...)
+- Requires Unity 6+
+- Open the scene "Main" and click play to run
+- Assets/GUI/GOTHIC.TFF and Assets/GUI/times.ttf are not included and might break the build because I was having trouble and switched some settings around that might require them now (dynamic vs static TMPro font settings...)
 
 ---
 
 Credits and links
 
 - Audio: "Chee Zee Jungle"
+
 Kevin MacLeod (incompetech.com)
+
 Licensed under Creative Commons: By Attribution 3.0
+
 http://creativecommons.org/licenses/by/3.0/
+
 - NotoSansCJKjp-VF font licensed under the Open Font License (OFL)
 - Audio: JOHN_MICHEL_CELLO-BACH_AVE_MARIA.mp3 performed by John Michel. Licensed under Creative Commons: By Attribution 3.0
+
 http://creativecommons.org/licenses/by/3.0/
 
 - Written by Seth A. Robinson (seth@rtsoft.com) twitter: @rtsoft - [Codedojo](https://www.codedojo.com), Seth's blog

@@ -12,7 +12,8 @@
     "inputs": {
       "clip_name1": "clip_l.safetensors",
       "clip_name2": "llava_llama3_fp8_scaled.safetensors",
-      "type": "hunyuan_video"
+      "type": "hunyuan_video",
+      "device": "default"
     },
     "class_type": "DualCLIPLoader",
     "_meta": {
@@ -134,8 +135,8 @@
   },
   "45": {
     "inputs": {
-      "width": 1280,
-      "height": 720,
+      "width": 848,
+      "height": 480,
       "length": 93,
       "batch_size": 1
     },

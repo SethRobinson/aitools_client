@@ -13,7 +13,7 @@ echo Building project...
 :del /Q Assets\RT\RTNetworkServer.cs
 
 :%UNITY_EXE% -quit -batchmode -logFile log.txt -buildWindows64Player build/win/%APP_NAME%.exe -projectPath %cd%
-%UNITY_EXE% -quit -batchmode -logFile log.txt -executeMethod Win64Builder.BuildRelease -projectPath %cd%
+%UNITY_EXE% -quit -batchmode -logFile log.txt -executeMethod Win64Builder.BuildRelease -projectPath %cd% -activeBuildProfile "Assets/Settings/Build Profiles/ReleaseBuildProfile.asset"
 echo Finished building.
 if not exist build/win/%APP_NAME%.exe (
 echo Error with build!
@@ -23,15 +23,15 @@ pause
 )
 
 call UpdateBuildDirConfigFiles.bat
-del build\win\Adventure\test_*.txt
-del build\win\Adventure\TEST_*.txt
-del build\win\AIGuide\TEST_*.txt
-del build\win\AIGuide\test_*.txt
+del build\win\Adventure\test*.txt
+del build\win\AIGuide\TEST*.txt
 del build\win\config.txt
-del build\win\ComfyUI\test_*.json
-del build\win\ComfyUI\TEST_*.json
-del build\win\ComfyUI\workflow\test_*.json
-del build\win\ComfyUI\workflow\TEST_*.json
+del build\win\ComfyUI\test*.json
+del build\win\ComfyUI\TEST*.json
+del build\win\ComfyUI\workflow\test*.json
+del build\win\Presets\TEST*.txt
+
+rd /s /q build\win\ComfyUI\Unused
 
 
 call %RT_PROJECTS%\Signing\sign.bat "build/win/%APP_NAME%.exe" "Seth's AI Tools"

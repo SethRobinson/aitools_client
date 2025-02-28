@@ -73,11 +73,17 @@ public class PicGenerator : MonoBehaviour
             //tell it what to do ASAP
             PicMask picMaskScript = go.GetComponent<PicMask>();
             picMaskScript.SetMaskVisible(false); //hard to see if this is on
-            
-            var e = new ScheduledGPUEvent();
-            e.mode = "inpaint";
-            e.targetObj = go;
-            ImageGenerator.Get().ScheduleGPURequest(e);
+
+            //var e = new ScheduledGPUEvent();
+            //e.mode = "inpaint";
+            //e.targetObj = go;
+            //ImageGenerator.Get().ScheduleGPURequest(e);
+
+
+            //Run our active joblist on this new object
+            PicMain picScript = go.GetComponent<PicMain>();
+            picScript.OnTool1(); //this will run the active joblist, as well as update its prompt
+
 
             if (!m_bDidTagObjectToBeNewSource)
             {

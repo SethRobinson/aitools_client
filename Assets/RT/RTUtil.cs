@@ -253,6 +253,7 @@ public static class Tex2DExtension
 
     }
 
+
     //do something like the above function, but we set a rect area instead of a circle
     public static void SetPixelsWithinRect(this Texture2D tex, int x, int y, int width, int height, Color color)
     {
@@ -619,6 +620,46 @@ public static class Tex2DExtension
         
 
         dest.Apply();
+    }
+
+
+    public static bool HasAlphaData(this Texture2D tex)
+    {
+        //go through the image and check for any alpha
+        for (int x = 0; x < tex.width; x++)
+        {
+            for (int y = 0; y < tex.height; y++)
+            {
+                if (tex.GetPixel(x, y).a < 1.0f)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+    public static Texture2D CombineTexturesForAlpha(Texture2D colorTexture, Texture2D alphaTexture)
+    {
+        int width = colorTexture.width;
+        int height = colorTexture.height;
+        Texture2D combinedTexture = new Texture2D(width, height, TextureFormat.RGBA32, false);
+
+        Color[] colorPixels = colorTexture.GetPixels();
+        Color[] alphaPixels = alphaTexture.GetPixels();
+
+        for (int i = 0; i < colorPixels.Length; i++)
+        {
+            Color pixel = colorPixels[i];
+            // Assuming your alpha texture is grayscale, any channel works (e.g., red)
+            pixel.a = 1-alphaPixels[i].r;
+            colorPixels[i] = pixel;
+        }
+
+        combinedTexture.SetPixels(colorPixels);
+        combinedTexture.Apply();
+
+        return combinedTexture;
     }
 
 }

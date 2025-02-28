@@ -1,0 +1,113 @@
+{
+  "83": {
+    "inputs": {
+      "frame_rate": [
+        "87",
+        5
+      ],
+      "loop_count": 0,
+      "filename_prefix": "MMaudio",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": false,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": false,
+      "images": [
+        "86",
+        0
+      ],
+      "audio": [
+        "90",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  },
+  "84": {
+    "inputs": {
+      "mmaudio_model": "mmaudio_large_44k_v2_fp16.safetensors",
+      "base_precision": "fp16"
+    },
+    "class_type": "MMAudioModelLoader",
+    "_meta": {
+      "title": "MMAudio ModelLoader"
+    }
+  },
+  "85": {
+    "inputs": {
+      "vae_model": "mmaudio_vae_44k_fp16.safetensors",
+      "synchformer_model": "mmaudio_synchformer_fp16.safetensors",
+      "clip_model": "apple_DFN5B-CLIP-ViT-H-14-384_fp16.safetensors",
+      "mode": "44k",
+      "precision": "fp16"
+    },
+    "class_type": "MMAudioFeatureUtilsLoader",
+    "_meta": {
+      "title": "MMAudio FeatureUtilsLoader"
+    }
+  },
+  "86": {
+    "inputs": {
+      "video": "<AITOOLS_INPUT_1>",
+      "force_rate": 0,
+      "custom_width": 0,
+      "custom_height": 0,
+      "frame_load_cap": 0,
+      "skip_first_frames": 0,
+      "select_every_nth": 1,
+      "format": "AnimateDiff"
+    },
+    "class_type": "VHS_LoadVideoPath",
+    "_meta": {
+      "title": "Load Video (Path) 🎥🅥🅗🅢"
+    }
+  },
+  "87": {
+    "inputs": {
+      "video_info": [
+        "86",
+        3
+      ]
+    },
+    "class_type": "VHS_VideoInfo",
+    "_meta": {
+      "title": "Video Info 🎥🅥🅗🅢"
+    }
+  },
+  "90": {
+    "inputs": {
+      "duration": [
+        "87",
+        7
+      ],
+      "steps": 25,
+      "cfg": 4.5,
+      "seed": 671944552064410,
+      "prompt": "<AITOOLS_AUDIO_PROMPT>",
+      "negative_prompt": "<AITOOLS_AUDIO_NEGATIVE_PROMPT>",
+      "mask_away_clip": false,
+      "force_offload": true,
+      "mmaudio_model": [
+        "84",
+        0
+      ],
+      "feature_utils": [
+        "85",
+        0
+      ],
+      "images": [
+        "86",
+        0
+      ]
+    },
+    "class_type": "MMAudioSampler",
+    "_meta": {
+      "title": "MMAudio Sampler"
+    }
+  }
+}

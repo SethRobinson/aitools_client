@@ -1,0 +1,9 @@
+COMMAND_START|joblist
+-Can remove the - below so the @resize works if you need it
+
+img_to_img_automask_sub_biref_api.json -@resize_if_larger|x|1024|y|1024|aspect_correct|1|
+
+COMMAND_END
+COMMAND_START|default_negative_prompt
+cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white
+COMMAND_END

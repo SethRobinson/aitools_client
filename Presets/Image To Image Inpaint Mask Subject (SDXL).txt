@@ -1,0 +1,7 @@
+COMMAND_START|joblist
+img_to_img_automask_sub_biref_api.json @resize_if_larger|x|1024|y|1024|aspect_correct|1|
+img_to_img_inpaint_sdxl_api.json @no_undo @replace|SD1.5/dreamshaper_8Inpainting.safetensors|SD1.5/dreamshaper_8Inpainting.safetensors| @replace|"guidance": 30|"guidance": 30| @replace|"steps": 20|"steps": 20| @replace|"denoise": 0.5|"denoise": 0.5| @replace|"inpaint_model": false|"inpaint_model": false|
+COMMAND_END
+COMMAND_START|default_negative_prompt
+cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white
+COMMAND_END

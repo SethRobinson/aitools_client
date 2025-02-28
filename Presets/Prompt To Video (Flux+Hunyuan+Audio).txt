@@ -1,0 +1,9 @@
+COMMAND_START|joblist
+text_to_img_flux_api.json @replace|flux1-dev.sft|flux1-dev.sft|
+img_to_video_hunyuan_api.json
+-If using with something that writes the audio prompt (AIGuide,Advenure) , disable the @Copy command below to not overwrite it with our base prompt
+video_to_video_gen_mmaudio_api.json @Copy|prompt|audio_prompt| -@Comment| MMaudio creates sound to go with the video but uh... it's not great.  We use the prompt as the audio prompt.
+COMMAND_END
+COMMAND_START|default_negative_prompt
+cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white
+COMMAND_END

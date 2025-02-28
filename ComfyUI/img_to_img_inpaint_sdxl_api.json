@@ -1,0 +1,181 @@
+{
+  "26": {
+    "inputs": {
+      "text": "<AITOOLS_PROMPT>",
+      "clip": [
+        "143:0",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "27": {
+    "inputs": {
+      "text": "<AITOOLS_NEGATIVE_PROMPT>",
+      "clip": [
+        "143:0",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "29": {
+    "inputs": {
+      "images": [
+        "144:2",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Final Preview"
+    }
+  },
+  "145": {
+    "inputs": {
+      "image": "<AITOOLS_INPUT_1>",
+      "custom_width": 0,
+      "custom_height": 0
+    },
+    "class_type": "VHS_LoadImagePath",
+    "_meta": {
+      "title": "Load Image (Path) 🎥🅥🅗🅢"
+    }
+  },
+  "143:0": {
+    "inputs": {
+      "ckpt_name": "SD1.5/dreamshaper_8Inpainting.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load Checkpoint"
+    }
+  },
+  "143:1": {
+    "inputs": {
+      "scale": 1,
+      "model": [
+        "143:3",
+        0
+      ]
+    },
+    "class_type": "PerturbedAttentionGuidance",
+    "_meta": {
+      "title": "PerturbedAttentionGuidance"
+    }
+  },
+  "143:2": {
+    "inputs": {
+      "model": [
+        "143:0",
+        0
+      ]
+    },
+    "class_type": "DifferentialDiffusion",
+    "_meta": {
+      "title": "Differential Diffusion"
+    }
+  },
+  "143:3": {
+    "inputs": {
+      "hard_mode": true,
+      "boost": true,
+      "model": [
+        "143:2",
+        0
+      ]
+    },
+    "class_type": "Automatic CFG",
+    "_meta": {
+      "title": "Automatic CFG"
+    }
+  },
+  "144:0": {
+    "inputs": {
+      "model": [
+        "143:1",
+        0
+      ],
+      "clip": [
+        "143:0",
+        1
+      ],
+      "vae": [
+        "143:0",
+        2
+      ],
+      "positive": [
+        "26",
+        0
+      ],
+      "negative": [
+        "27",
+        0
+      ]
+    },
+    "class_type": "ToBasicPipe",
+    "_meta": {
+      "title": "ToBasicPipe"
+    }
+  },
+  "144:1": {
+    "inputs": {
+      "amount": 6,
+      "device": "auto",
+      "mask": [
+        "145",
+        1
+      ]
+    },
+    "class_type": "MaskBlur+",
+    "_meta": {
+      "title": "🔧 Mask Blur"
+    }
+  },
+  "144:2": {
+    "inputs": {
+      "guide_size": 512,
+      "guide_size_for": true,
+      "max_size": 1024,
+      "mask_mode": true,
+      "seed": 58357322079275,
+      "steps": 20,
+      "cfg": 8,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "denoise": 0.5,
+      "feather": 5,
+      "crop_factor": 3,
+      "drop_size": 10,
+      "refiner_ratio": 0.2,
+      "batch_size": 1,
+      "cycle": 1,
+      "inpaint_model": true,
+      "noise_mask_feather": 20,
+      "bbox_fill": false,
+      "contour_fill": true,
+      "image": [
+        "145",
+        0
+      ],
+      "mask": [
+        "144:1",
+        0
+      ],
+      "basic_pipe": [
+        "144:0",
+        0
+      ]
+    },
+    "class_type": "MaskDetailerPipe",
+    "_meta": {
+      "title": "MaskDetailer (pipe)"
+    }
+  }
+}

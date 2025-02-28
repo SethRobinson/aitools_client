@@ -32,17 +32,13 @@ CHOICE:DINK-SMALLWOOD-INCORRECT-4:Dink Smallwood
 
 FACTOID:Samus Aran was heavily inspired by Ellen Ripley, the protagonist of the Alien film series. The Metroid series creators were big fans of the Alien movies, and they wanted to create a strong, resourceful female character in the same vein.
 
-At the end of every response & choices, create a compelling and clever image design to go with the question and answer. (This image will be shown after the user chooses an answer)  Fully describe the image scene for use with image generation tools within a DETAILED_SCENE_VISUAL_DESCRIPTION_START and DETAILED_SCENE_VISUAL_DESCRIPTION_END, and a simplified version in a SIMPLE_SCENE_VISUAL_DESCRIPTION_START and SIMPLE_SCENE_VISUAL_DESCRIPTION_END tag like this:
+At the end of every response & choices, create a compelling and clever image design to go with the question and answer. (This image will be shown after the user chooses an answer)  Fully describe the image scene for use with image generation tools within a DETAILED_SCENE_VISUAL_DESCRIPTION_START and DETAILED_SCENE_VISUAL_DESCRIPTION_END tag, as well as an AUDIO_PROMPT: tag that describes the audio for the situation in short, simple, concise terms.  (used by AI audio generator)
 
 DETAILED_SCENE_VISUAL_DESCRIPTION_START
 (write a detailed summary of the scene and environment. No flowery prose, just detailed descriptions of each person in the image including their  name if well known, age, ethnicity, body, clothes, face, hair style and color, facial expression and pose. Fully describe the environment, this will be fed into an image generation prompt so be thorough.)
 DETAILED_SCENE_VISUAL_DESCRIPTION_END
 
-Also add a second simplied version like this:
-
-SIMPLE_SCENE_VISUAL_DESCRIPTION_START
-(like above, but only simple keywords separately by a comma)
-SIMPLE_SCENE_VISUAL_DESCRIPTION_END
+AUDIO_PROMPT: (Simple audio description, for example "a dog is barking in the background on a windy day") 
 
 Only write one question per reply.  Don't number the questions.
 
