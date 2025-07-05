@@ -1,0 +1,91 @@
+# AI Integration Patterns
+
+## ComfyUI Integration
+
+### Workflow Management
+- Workflows are stored in [ComfyUI/](mdc:ComfyUI/) directory
+- Use [ComfyUIConverter.cs](mdc:Assets/_Script/ComfyUIConverter.cs) for workflow processing
+- Template replacement uses `<AITOOLS_PROMPT>`, `<AITOOLS_NEGATIVE_PROMPT>`, `<AITOOLS_INPUT_1>` placeholders
+- Use `@replace` syntax in presets for dynamic parameter substitution
+
+### API Communication
+- All ComfyUI communication goes through HTTP API
+- Servers must be started with `--listen` parameter
+- Use [WebRequestServerInfo.cs](mdc:Assets/_Script/WebRequestServerInfo.cs) for server management
+- Handle workflow execution states: queued, processing, completed, failed
+
+### File Handling
+- Use [ComfyUIFileUploader.cs](mdc:Assets/RT/AI/ComfyUIFileUploader.cs) for image uploads
+- Support drag-and-drop and clipboard paste
+- Handle image formats: PNG, JPG, BMP
+- Process masks and control images for inpainting
+
+## LLM Integration
+
+### OpenAI Integration
+- Use [OpenAITextCompletionManager.cs](mdc:Assets/RT/AI/OpenAITextCompletionManager.cs)
+- Supports GPT-4, GPT-4o, o1-mini models
+- Handles streaming responses for real-time updates
+- Strips `<think>` tags for DeepSeek models
+
+### Anthropic Integration
+- Use [AnthropicAITextCompletionManager.cs](mdc:Assets/RT/AI/AnthropicAITextCompletionManager.cs)
+- Supports Claude models via API
+- Uses streaming download handler for responses
+
+### Generic LLM Support
+- Configure via `config.txt` for local or remote LLMs
+- Supports Ollama, text-generation-webui, TabbyAPI formats
+- Handle different model parameter requirements
+- Support custom system/assistant/user keywords
+
+## Image Generation Pipeline
+
+### Text-to-Image
+- Use [PicTextToImage.cs](mdc:Assets/_Script/Pic/PicTextToImage.cs) for generation
+- Support multiple models: Flux, SDXL, Hunyuan, Wan 2.1
+- Handle different aspect ratios and sizes
+- Manage generation parameters: steps, CFG, seed
+
+### Inpainting
+- Use [PicInpaint.cs](mdc:Assets/_Script/Pic/PicInpaint.cs) for image editing
+- Support mask generation and painting
+- Handle different inpainting models and workflows
+- Process background and subject separation
+
+### Upscaling
+- Use [PicUpscale.cs](mdc:Assets/_Script/Pic/PicUpscale.cs) for image enhancement
+- Support various upscaling models
+- Handle different output sizes and quality settings
+
+## Error Handling
+
+### API Failures
+- Implement retry logic for transient failures
+- Provide user feedback for different error types
+- Log detailed error information for debugging
+- Handle rate limits and timeouts gracefully
+
+### Workflow Validation
+- Validate JSON structure before sending to ComfyUI
+- Check for required nodes and parameters
+- Verify model file paths and availability
+- Handle missing custom nodes gracefully
+
+## Configuration Management
+
+### Server Configuration
+- Support multiple ComfyUI servers simultaneously
+- Track server capabilities and model availability
+- Handle server health monitoring
+- Support server-specific settings and overrides
+
+### Model Management
+- Use [ModelModManager.cs](mdc:Assets/_Script/ModelModManager.cs) for model switching
+- Support model-specific parameter presets
+- Handle model loading and unloading
+- Track model performance and usage statistics
+description:
+globs:
+alwaysApply: false
+---

@@ -1,0 +1,121 @@
+# Build and Deployment Guide
+
+## Build Scripts
+
+### Windows Build
+- Use [BuildWin64.bat](mdc:BuildWin64.bat) for Windows standalone builds
+- Configure build settings in Unity Project Settings
+- Handle version numbering and build dates
+- Support both development and release builds
+
+### WebGL Build
+- Use [BuildWebGL.bat](mdc:BuildWebGL.bat) for web deployment
+- Configure WebGL templates in `Assets/WebGLTemplates/`
+- Handle asset optimization for web delivery
+- Support different deployment targets
+
+### Build Automation
+- Use [BuildAndPlayWin64Game.bat](mdc:BuildAndPlayWin64Game.bat) for development workflow
+- Implement [BuildAndUploadWebGL.bat](mdc:BuildAndUploadWebGL.bat) for deployment
+- Handle build verification and testing
+- Support automated version management
+
+## Configuration Management
+
+### Build Profiles
+- Use Unity Build Profiles for different configurations
+- Configure platform-specific settings
+- Handle asset inclusion/exclusion
+- Support development vs production builds
+
+### Version Management
+- Use [SetBuildDate.cs](mdc:Assets/_Script/SetBuildDate.cs) for version tracking
+- Implement [RTBuildInfo.cs](mdc:Assets/_Script/RTBuildInfo.cs) for build information
+- Handle version checking and updates
+- Support beta and release channels
+
+## Deployment Process
+
+### Windows Distribution
+- Package as standalone executable
+- Include all required dependencies
+- Handle installer creation and distribution
+- Support automatic updates
+
+### Web Deployment
+- Optimize assets for web delivery
+- Handle CDN distribution
+- Implement proper caching strategies
+- Support different hosting environments
+
+### Package Management
+- Use [Packages/manifest.json](mdc:Packages/manifest.json) for Unity packages
+- Handle third-party dependencies
+- Support package version management
+- Implement proper package updates
+
+## Development Workflow
+
+### Local Development
+- Use Unity Editor for development
+- Implement hot reloading where possible
+- Handle asset hot-swapping
+- Support rapid iteration cycles
+
+### Testing
+- Implement automated testing where possible
+- Handle different platform testing
+- Support performance testing
+- Implement user acceptance testing
+
+### Version Control
+- Use Git for source control
+- Handle large binary assets properly
+- Implement proper branching strategy
+- Support collaborative development
+
+## Performance Optimization
+
+### Build Optimization
+- Minimize build size through asset optimization
+- Handle texture compression and formats
+- Implement proper asset bundling
+- Support platform-specific optimizations
+
+### Runtime Performance
+- Optimize startup time
+- Handle memory management
+- Implement proper garbage collection
+- Support performance profiling
+
+## Security Considerations
+
+### API Key Management
+- Handle API keys securely
+- Implement proper key rotation
+- Support environment-specific configurations
+- Handle key validation and verification
+
+### Network Security
+- Implement proper HTTPS usage
+- Handle certificate validation
+- Support secure communication protocols
+- Implement proper error handling for security failures
+
+## Monitoring and Logging
+
+### Build Monitoring
+- Track build success/failure rates
+- Monitor build times and performance
+- Handle build artifact management
+- Support build history and rollback
+
+### Runtime Monitoring
+- Implement proper logging
+- Handle error reporting and analytics
+- Support performance monitoring
+- Implement user feedback collection
+description:
+globs:
+alwaysApply: false
+---

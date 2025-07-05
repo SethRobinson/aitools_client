@@ -1,0 +1,127 @@
+# UI Patterns and GUI Components
+
+## GUI Component Organization
+
+### Panel Structure
+- Use descriptive suffixes for panel classes: `ServerSettingsPanel`, `GenerateSettingsPanel`
+- Each panel should handle its own state and validation
+- Use [ControlNetSettingsPanel.cs](mdc:Assets/_Script/GUI/ControlNetSettingsPanel.cs) as reference for complex panels
+- Implement proper cleanup in `OnDestroy()` methods
+
+### Slider Components
+- Create dedicated slider classes for specific parameters
+- Use [ControlNetGuidanceSlider.cs](mdc:Assets/_Script/GUI/ControlNetGuidanceSlider.cs) pattern
+- Implement value validation and range checking
+- Provide real-time feedback for parameter changes
+
+### Input Fields
+- Use TextMeshPro input fields for text input
+- Implement proper validation and formatting
+- Handle special characters and encoding
+- Support undo/redo functionality
+
+## UI State Management
+
+### Panel Visibility
+- Use `SetActive()` for showing/hiding panels
+- Implement smooth transitions when possible
+- Handle focus management between panels
+- Preserve state when switching between modes
+
+### Data Binding
+- Update UI elements when underlying data changes
+- Use events to notify UI of state changes
+- Implement proper observer patterns
+- Avoid direct manipulation of UI elements from business logic
+
+### User Input Handling
+- Validate input before processing
+- Provide immediate feedback for invalid input
+- Use tooltips and help text for complex features
+- Implement proper keyboard navigation
+
+## Image Display and Interaction
+
+### Image Viewing
+- Support pan and zoom functionality
+- Handle different image formats and sizes
+- Implement efficient image caching
+- Support multiple image selection
+
+### Drag and Drop
+- Use [DragAndDropHandler.cs](mdc:Assets/_Script/DragAndDropHandler.cs) for file handling
+- Support clipboard paste operations
+- Validate file types before processing
+- Provide visual feedback during drag operations
+
+### Image Editing
+- Implement brush tools for mask painting
+- Support selection and cropping tools
+- Handle undo/redo for editing operations
+- Provide real-time preview of changes
+
+## Settings and Configuration UI
+
+### Server Management
+- Display server status and health
+- Allow adding/removing servers dynamically
+- Show server capabilities and models
+- Handle connection errors gracefully
+
+### Preset Management
+- Use [PresetManager.cs](mdc:Assets/_Script/PresetManager.cs) for preset operations
+- Support saving and loading presets
+- Allow preset editing and customization
+- Provide preset categorization and search
+
+### Model Selection
+- Display available models with previews
+- Show model capabilities and parameters
+- Handle model switching and loading
+- Track model usage statistics
+
+## Responsive Design
+
+### Layout Adaptation
+- Use Unity's layout system for responsive design
+- Handle different screen resolutions
+- Support window resizing
+- Implement proper anchoring and scaling
+
+### Performance Optimization
+- Use object pooling for frequently created UI elements
+- Implement lazy loading for large lists
+- Optimize image rendering and caching
+- Minimize UI updates during heavy operations
+
+## Accessibility
+
+### Keyboard Navigation
+- Support Tab key navigation
+- Implement proper focus management
+- Provide keyboard shortcuts for common actions
+- Handle Enter and Escape key properly
+
+### Visual Feedback
+- Use consistent color schemes and icons
+- Provide clear visual states for buttons and inputs
+- Implement loading indicators for long operations
+- Use animations sparingly and purposefully
+
+## Error Handling in UI
+
+### User Feedback
+- Display clear error messages
+- Provide suggestions for fixing issues
+- Use different message types: info, warning, error
+- Implement proper error recovery options
+
+### Loading States
+- Show progress indicators for long operations
+- Allow cancellation of operations
+- Provide estimated completion times
+- Handle timeout scenarios gracefully
+description:
+globs:
+alwaysApply: false
+---

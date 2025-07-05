@@ -1,0 +1,54 @@
+# Seth's AI Tools - Unity Project Overview
+
+This is a Unity-based front-end for ComfyUI and Ollama that generates photos, movies, Twine games, quizzes, posters and more. The project is a native Windows .exe application that connects to AI services.
+
+## Main Entry Points
+
+- [GameLogic.cs](mdc:Assets/_Script/GameLogic.cs) - Main game logic and application flow
+- [Config.cs](mdc:Assets/_Script/Config.cs) - Configuration management and settings
+- [PicMain.cs](mdc:Assets/_Script/Pic/PicMain.cs) - Core image generation and processing
+- [AIGuideManager.cs](mdc:Assets/_Script/AIGuideManager.cs) - AI Guide feature for creating content
+
+## Key Directories
+
+### Core Scripts
+- `Assets/_Script/` - Main application scripts
+- `Assets/_Script/GUI/` - User interface components
+- `Assets/_Script/Pic/` - Image generation and processing
+- `Assets/RT/` - Runtime utilities and core systems
+- `Assets/RT/AI/` - AI service integrations (OpenAI, Anthropic, ComfyUI)
+
+### Experiments
+- `Assets/Experiments/` - Built-in games and test applications
+- `Assets/Experiments/Adventure/` - Twine game generation
+- `Assets/Experiments/ShootingGallery/` - AI-powered shooting gallery
+- `Assets/Experiments/CrazyCam/` - Real-time webcam processing
+- `Assets/Experiments/Pizza/` - Image processing experiments
+
+### Configuration
+- [config.txt](mdc:config.txt) - Application configuration file
+- `ComfyUI/` - ComfyUI workflow templates and presets
+- `Presets/` - User-created presets and settings
+
+## Architecture
+
+The application follows a modular Unity architecture:
+- **GameLogic**: Central coordinator and state management
+- **PicMain**: Image generation pipeline and UI
+- **AIGuideManager**: Content creation features
+- **RT Utilities**: Core runtime systems and utilities
+- **AI Integrations**: Service-specific managers for different AI providers
+
+## Key Features
+
+- ComfyUI workflow execution and management
+- Multiple AI service support (OpenAI, Anthropic, local LLMs)
+- Image generation, editing, and processing
+- Content creation (stories, quizzes, games)
+- Real-time webcam processing
+- Drag-and-drop image handling
+- Preset system for workflows and settings
+description:
+globs:
+alwaysApply: false
+---

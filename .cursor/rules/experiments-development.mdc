@@ -1,0 +1,126 @@
+# Experiments Development Guide
+
+## Experiment Structure
+
+### Directory Organization
+- Each experiment should have its own directory under `Assets/Experiments/`
+- Include scripts, prefabs, audio, and assets in the experiment directory
+- Use descriptive names: `ShootingGallery/`, `CrazyCam/`, `Adventure/`
+
+### Core Components
+- Create a main logic script for the experiment
+- Use [BreakoutLogic.cs](mdc:Assets/Experiments/Breakout/BreakoutLogic.cs) as reference
+- Implement proper cleanup and state management
+- Handle integration with the main application
+
+## AI Integration in Experiments
+
+### Image Generation
+- Use the main image generation pipeline from [PicMain.cs](mdc:Assets/_Script/Pic/PicMain.cs)
+- Access AI services through the established managers
+- Handle generation requests and responses properly
+- Implement proper error handling for AI failures
+
+### Real-time Processing
+- Use [CrazyCamLogic.cs](mdc:Assets/Experiments/CrazyCam/CrazyCamLogic.cs) pattern for webcam processing
+- Implement efficient frame capture and processing
+- Handle different webcam resolutions and formats
+- Manage processing pipeline performance
+
+### Content Generation
+- Use [AIGuideManager.cs](mdc:Assets/_Script/AIGuideManager.cs) for text generation
+- Implement story generation for adventure games
+- Handle quiz generation and validation
+- Support multiple content types and formats
+
+## Game Development Patterns
+
+### Input Handling
+- Use Unity's Input System for consistent input handling
+- Support both mouse and keyboard input
+- Implement proper input validation and filtering
+- Handle input during AI processing delays
+
+### Audio Integration
+- Use [RTAudioManager.cs](mdc:Assets/RT/RTAudioManager.cs) for audio playback
+- Support dynamic audio generation and playback
+- Handle audio synchronization with visual elements
+- Implement proper audio resource management
+
+### Visual Effects
+- Use Unity's particle system for effects
+- Implement smooth transitions and animations
+- Handle different screen resolutions and aspect ratios
+- Optimize rendering for performance
+
+## Experiment-Specific Patterns
+
+### Shooting Gallery
+- Use [ShootingGallery/](mdc:Assets/Experiments/ShootingGallery/) as reference
+- Implement target spawning and management
+- Handle collision detection and scoring
+- Support different difficulty levels and modes
+
+### Adventure Mode
+- Use [Adventure/](mdc:Assets/Experiments/Adventure/) for story generation
+- Implement Twine export functionality
+- Handle branching story logic
+- Support image generation for story scenes
+
+### CrazyCam
+- Implement real-time image processing
+- Handle webcam input and output
+- Manage processing pipeline performance
+- Support different filter and effect modes
+
+## Integration with Main Application
+
+### State Management
+- Communicate with main application state
+- Handle experiment-specific settings
+- Implement proper cleanup when switching experiments
+- Preserve experiment state when possible
+
+### Resource Management
+- Use shared resources efficiently
+- Handle memory management for large assets
+- Implement proper resource cleanup
+- Support resource preloading for performance
+
+### Error Handling
+- Handle AI service failures gracefully
+- Provide user feedback for errors
+- Implement fallback behaviors
+- Log errors for debugging
+
+## Performance Considerations
+
+### Optimization
+- Use object pooling for frequently created objects
+- Implement efficient rendering for real-time applications
+- Handle memory management for large image sets
+- Optimize AI request batching
+
+### Scalability
+- Support different hardware capabilities
+- Handle varying AI service response times
+- Implement progressive loading for large content
+- Support multiple simultaneous operations
+
+## Testing and Debugging
+
+### Development Tools
+- Use Unity's debug tools for development
+- Implement logging for AI interactions
+- Create test scenarios for different conditions
+- Support development vs production modes
+
+### User Experience
+- Provide clear instructions and feedback
+- Handle loading states and transitions
+- Implement proper error recovery
+- Support accessibility features
+description:
+globs:
+alwaysApply: false
+---

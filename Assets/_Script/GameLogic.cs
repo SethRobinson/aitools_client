@@ -1412,8 +1412,10 @@ public string GetPrompt() { return m_prompt; }
         RTUtil.DeleteFileIfItExists("json_to_send.json");
         RTUtil.DeleteFileIfItExists("claude_json_received.json");
         RTUtil.DeleteFileIfItExists("last_error_returned.json");
+        RTUtil.DeleteFileIfItExists("json_error.json");
+       
 
-        
+
     }
 
     private void OnDestroy()

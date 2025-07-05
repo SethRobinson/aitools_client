@@ -106,6 +106,10 @@ add_generic_llm_parm|model|"llama3.3"|#needed for ollama, the model you want to 
 #add_generic_llm_parm|temperature|1.0|#allows you to globally override LLM temperatures
 #add_generic_llm_parm|max_tokens|4096|
 
+# Ollama optimization settings (new in v2.01)
+#add_generic_llm_parm|use_ollama_defaults|true|#skip creating custom profile and use Ollama's optimized defaults
+#add_generic_llm_parm|skip_ait_suffix|true|#don't append _ait to model names, use original model directly
+
 #some things you could play with
 #add_generic_llm_parm|stop|["<`eot_id`>", "<`eom_id`>", "<`end_header_id`>"]|#Note that ` gets turned into |
 #add_generic_llm_parm|stopping_strings|["<`eot_id`>", "<`eom_id`>", "<`end_header_id`>"]|

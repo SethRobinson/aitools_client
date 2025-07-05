@@ -1,0 +1,135 @@
+# Configuration Management
+
+## Configuration File Structure
+
+### Main Configuration
+- Use [config.txt](mdc:config.txt) as the primary configuration file
+- Follow the established format with `key|value|` syntax
+- Support comments with `#` prefix
+- Handle configuration validation and defaults
+
+### Configuration Categories
+
+#### Server Configuration
+- `add_server|url|name|` - Add ComfyUI servers
+- `set_image_editor|path|` - Configure external image editor
+- Support multiple server configurations
+- Handle server health monitoring
+
+#### AI Service Configuration
+- `set_openai_gpt4_key|key|` - OpenAI API configuration
+- `set_anthropic_ai_key|key|` - Anthropic API configuration
+- `set_generic_llm_address|address|` - Local LLM configuration
+- Support multiple AI service providers
+
+#### Model Configuration
+- `add_generic_llm_parm|key|value|` - LLM parameters
+- Handle model-specific settings
+- Support temperature, context size, and other parameters
+- Configure model loading and unloading
+
+## Configuration Management
+
+### Loading and Parsing
+- Use [Config.cs](mdc:Assets/_Script/Config.cs) for configuration handling
+- Implement proper parsing and validation
+- Handle missing or invalid configuration values
+- Provide default values for missing settings
+
+### Dynamic Configuration
+- Support runtime configuration changes
+- Handle configuration updates without restart
+- Implement configuration validation
+- Support configuration backup and restore
+
+### User Interface
+- Provide configuration editing interface
+- Validate user input before saving
+- Handle configuration errors gracefully
+- Support configuration import/export
+
+## Preset Management
+
+### Preset Structure
+- Store presets in [Presets/](mdc:Presets/) directory
+- Use descriptive file names with `.txt` extension
+- Include preset metadata and descriptions
+- Support preset categorization and tags
+
+### Preset Operations
+- Use [PresetManager.cs](mdc:Assets/_Script/PresetManager.cs) for preset handling
+- Support saving and loading presets
+- Handle preset editing and customization
+- Implement preset search and filtering
+
+### Preset Integration
+- Integrate presets with ComfyUI workflows
+- Support preset parameter substitution
+- Handle preset validation and compatibility
+- Support preset versioning and updates
+
+## Workflow Configuration
+
+### ComfyUI Workflows
+- Store workflows in [ComfyUI/](mdc:ComfyUI/) directory
+- Use JSON format for workflow definitions
+- Support workflow template replacement
+- Handle workflow validation and execution
+
+### Workflow Parameters
+- Use `@replace` syntax for dynamic parameters
+- Support parameter validation and constraints
+- Handle parameter inheritance and overrides
+- Implement parameter presets and defaults
+
+### Workflow Management
+- Support workflow versioning and updates
+- Handle workflow compatibility checking
+- Implement workflow backup and restore
+- Support workflow sharing and distribution
+
+## Security and Privacy
+
+### API Key Management
+- Store API keys securely
+- Support key rotation and updates
+- Handle key validation and verification
+- Implement proper key access controls
+
+### Privacy Protection
+- Respect user privacy settings
+- Handle data retention policies
+- Support local-only operation modes
+- Implement proper data cleanup
+
+## Error Handling
+
+### Configuration Errors
+- Validate configuration on startup
+- Provide clear error messages
+- Support configuration recovery
+- Handle missing or corrupted files
+
+### Validation
+- Implement comprehensive validation
+- Check for required fields and values
+- Validate URL formats and connectivity
+- Handle configuration conflicts
+
+## Performance Considerations
+
+### Configuration Loading
+- Optimize configuration file parsing
+- Implement configuration caching
+- Handle large configuration files
+- Support incremental configuration updates
+
+### Memory Management
+- Minimize memory usage for configuration
+- Implement proper cleanup for unused settings
+- Handle configuration object lifecycle
+- Support configuration garbage collection
+description:
+globs:
+alwaysApply: false
+---

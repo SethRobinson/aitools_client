@@ -11,24 +11,17 @@
       "title": "Load WanVideo T5 TextEncoder"
     }
   },
-  "13": {
-    "inputs": {
-      "model_name": "open-clip-xlm-roberta-large-vit-huge-14_fp16.safetensors",
-      "precision": "fp16",
-      "load_device": "offload_device"
-    },
-    "class_type": "LoadWanVideoClipTextEncoder",
-    "_meta": {
-      "title": "Load WanVideo Clip TextEncoder"
-    }
-  },
   "16": {
     "inputs": {
       "positive_prompt": "<AITOOLS_PROMPT>",
-      "negative_prompt": "bad quality video",
+      "negative_prompt": "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走",
       "force_offload": true,
       "t5": [
         "11",
+        0
+      ],
+      "model_to_offload": [
+        "22",
         0
       ]
     },
@@ -37,52 +30,15 @@
       "title": "WanVideo TextEncode"
     }
   },
-  "17": {
-    "inputs": {
-      "generation_width": 512,
-      "generation_height": 512,
-      "num_frames": 81,
-      "force_offload": true,
-      "noise_aug_strength": 0,
-      "latent_strength": 1,
-      "clip_embed_strength": 1,
-      "clip": [
-        "13",
-        0
-      ],
-      "image": [
-        "37",
-        0
-      ],
-      "vae": [
-        "21",
-        0
-      ]
-    },
-    "class_type": "WanVideoImageClipEncode",
-    "_meta": {
-      "title": "WanVideo ImageClip Encode"
-    }
-  },
-  "21": {
-    "inputs": {
-      "model_name": "wanvideo/Wan2_1_VAE_bf16.safetensors",
-      "precision": "bf16"
-    },
-    "class_type": "WanVideoVAELoader",
-    "_meta": {
-      "title": "WanVideo VAE Loader"
-    }
-  },
   "22": {
     "inputs": {
       "model": "WanVideo/Wan2_1-I2V-14B-480P_fp8_e4m3fn.safetensors",
-      "base_precision": "bf16",
+      "base_precision": "fp16",
       "quantization": "fp8_e4m3fn",
       "load_device": "offload_device",
       "attention_mode": "sdpa",
       "block_swap_args": [
-        "32",
+        "39",
         0
       ]
     },
@@ -93,14 +49,16 @@
   },
   "27": {
     "inputs": {
-      "steps": 10,
+      "steps": 25,
       "cfg": 6,
       "shift": 5,
-      "seed": 1057359483639286,
+      "seed": 1057359483639287,
       "force_offload": true,
-      "scheduler": "dpm++",
+      "scheduler": "unipc",
       "riflex_freq_index": 0,
       "denoise_strength": 1,
+      "batched_cfg": "",
+      "rope_function": "comfy",
       "model": [
         "22",
         0
@@ -110,7 +68,15 @@
         0
       ],
       "image_embeds": [
-        "17",
+        "63",
+        0
+      ],
+      "feta_args": [
+        "55",
+        0
+      ],
+      "teacache_args": [
+        "52",
         0
       ]
     },
@@ -121,13 +87,13 @@
   },
   "28": {
     "inputs": {
-      "enable_vae_tiling": true,
+      "enable_vae_tiling": false,
       "tile_x": 272,
       "tile_y": 272,
       "tile_stride_x": 144,
       "tile_stride_y": 128,
       "vae": [
-        "21",
+        "38",
         0
       ],
       "samples": [
@@ -144,14 +110,14 @@
     "inputs": {
       "frame_rate": 16,
       "loop_count": 0,
-      "filename_prefix": "WanVideo2_1",
+      "filename_prefix": "WanVideoWrapper_I2V",
       "format": "video/h264-mp4",
       "pix_fmt": "yuv420p",
       "crf": 19,
-      "save_metadata": false,
+      "save_metadata": true,
       "trim_to_audio": false,
       "pingpong": false,
-      "save_output": false,
+      "save_output": true,
       "images": [
         "28",
         0
@@ -162,15 +128,6 @@
       "title": "Video Combine 🎥🅥🅗🅢"
     }
   },
-  "32": {
-    "inputs": {
-      "blocks_to_swap": 10
-    },
-    "class_type": "WanVideoBlockSwap",
-    "_meta": {
-      "title": "WanVideo BlockSwap"
-    }
-  },
   "35": {
     "inputs": {
       "backend": "inductor",
@@ -178,14 +135,156 @@
       "mode": "default",
       "dynamic": false,
       "dynamo_cache_size_limit": 64,
-      "compile_transformer_blocks": true
+      "compile_transformer_blocks_only": true,
+      "dynamo_recompile_limit": 128
     },
     "class_type": "WanVideoTorchCompileSettings",
     "_meta": {
       "title": "WanVideo Torch Compile Settings"
     }
   },
-  "37": {
+  "38": {
+    "inputs": {
+      "model_name": "wanvideo/Wan2_1_VAE_bf16.safetensors",
+      "precision": "bf16"
+    },
+    "class_type": "WanVideoVAELoader",
+    "_meta": {
+      "title": "WanVideo VAE Loader"
+    }
+  },
+  "39": {
+    "inputs": {
+      "blocks_to_swap": 10,
+      "offload_img_emb": false,
+      "offload_txt_emb": false,
+      "use_non_blocking": true,
+      "vace_blocks_to_swap": 0
+    },
+    "class_type": "WanVideoBlockSwap",
+    "_meta": {
+      "title": "WanVideo BlockSwap"
+    }
+  },
+  "45": {
+    "inputs": {
+      "offload_percent": 1
+    },
+    "class_type": "WanVideoVRAMManagement",
+    "_meta": {
+      "title": "WanVideo VRAM Management"
+    }
+  },
+  "52": {
+    "inputs": {
+      "rel_l1_thresh": 0.25,
+      "start_step": 1,
+      "end_step": -1,
+      "cache_device": "offload_device",
+      "use_coefficients": "true",
+      "mode": "e"
+    },
+    "class_type": "WanVideoTeaCache",
+    "_meta": {
+      "title": "WanVideo TeaCache"
+    }
+  },
+  "55": {
+    "inputs": {
+      "weight": 2,
+      "start_percent": 0,
+      "end_percent": 1
+    },
+    "class_type": "WanVideoEnhanceAVideo",
+    "_meta": {
+      "title": "WanVideo Enhance-A-Video"
+    }
+  },
+  "59": {
+    "inputs": {
+      "clip_name": "clip_vision_h.safetensors"
+    },
+    "class_type": "CLIPVisionLoader",
+    "_meta": {
+      "title": "Load CLIP Vision"
+    }
+  },
+  "63": {
+    "inputs": {
+      "width": [
+        "66",
+        1
+      ],
+      "height": [
+        "66",
+        2
+      ],
+      "num_frames": 81,
+      "noise_aug_strength": 0.030000000000000006,
+      "start_latent_strength": 1,
+      "end_latent_strength": 1,
+      "force_offload": true,
+      "fun_or_fl2v_model": false,
+      "vae": [
+        "38",
+        0
+      ],
+      "clip_embeds": [
+        "65",
+        0
+      ],
+      "start_image": [
+        "66",
+        0
+      ]
+    },
+    "class_type": "WanVideoImageToVideoEncode",
+    "_meta": {
+      "title": "WanVideo ImageToVideo Encode"
+    }
+  },
+  "65": {
+    "inputs": {
+      "strength_1": 1,
+      "strength_2": 1,
+      "crop": "center",
+      "combine_embeds": "average",
+      "force_offload": true,
+      "tiles": 0,
+      "ratio": 0.20000000000000004,
+      "clip_vision": [
+        "59",
+        0
+      ],
+      "image_1": [
+        "66",
+        0
+      ]
+    },
+    "class_type": "WanVideoClipVisionEncode",
+    "_meta": {
+      "title": "WanVideo ClipVision Encode"
+    }
+  },
+  "66": {
+    "inputs": {
+      "width": 624,
+      "height": 624,
+      "upscale_method": "lanczos",
+      "keep_proportion": false,
+      "divisible_by": 16,
+      "crop": "disabled",
+      "image": [
+        "68",
+        0
+      ]
+    },
+    "class_type": "ImageResizeKJ",
+    "_meta": {
+      "title": "Resize Image"
+    }
+  },
+  "68": {
     "inputs": {
       "image": "<AITOOLS_INPUT_1>",
       "custom_width": 0,

@@ -360,7 +360,6 @@ public class PicTextToImage : MonoBehaviour
     {
         m_comfyUIPromptID = "";
 
-        WWWForm form = new WWWForm();
 
         String finalURL;
 
@@ -445,8 +444,10 @@ public class PicTextToImage : MonoBehaviour
         catch (Exception ex)
         {
             RTConsole.Log($"Failed to parse JSON: {ex.Message}");
+            //write out .json to "json_error.json" for debugging
+            File.WriteAllText("json_error.json", comfyUIGraphJSon);
             m_bIsGenerating = false;
-            m_picScript.SetStatusMessage("Bad json, can't parse reply");
+            m_picScript.SetStatusMessage("Bad json, can't parse reply. Check json_error.json for more info.");
             CloseWebSocket();
 
             // Clean up state

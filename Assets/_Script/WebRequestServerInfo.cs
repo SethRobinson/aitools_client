@@ -860,6 +860,16 @@ public class WebRequestServerInfo : MonoBehaviour
         //remove quotes from the model string
         model = model.Replace("\"", "");
 
+        // Check if we should skip profile creation and use Ollama defaults
+        bool useOllamaDefaults = Config.Get().GetGenericLLMParm("use_ollama_defaults", parms) == "true";
+        
+        if (useOllamaDefaults)
+        {
+            RTConsole.Log("Using Ollama default settings for model: " + model);
+            Config.Get().SetGenericLLMIsOllama(true);
+            GameObject.Destroy(gameObject);
+            yield break;
+        }
 
         if (ctx.Length > 0)
         {

@@ -10,6 +10,12 @@ public class StreamingDownloadHandler : DownloadHandlerScript
     private StringBuilder stringBuilder = new StringBuilder();
     private string incompleteChunk = "";
     private bool isErrorResponse = false;
+    
+    // Add buffering for performance
+    private StringBuilder updateBuffer = new StringBuilder();
+    private float lastUpdateTime = 0f;
+    private const float UPDATE_INTERVAL = 0.05f; // Update UI at most 20 times per second
+    private bool hasBufferedContent = false;
 
     protected override string GetText()
     {
@@ -24,6 +30,7 @@ public class StreamingDownloadHandler : DownloadHandlerScript
     public StreamingDownloadHandler(Action<string> textChunkUpdateCallback) : base(new byte[1024])
     {
         m_textChunkUpdateCallback = textChunkUpdateCallback;
+        lastUpdateTime = Time.time;
     }
 
     protected override bool ReceiveData(byte[] data, int dataLength)
@@ -53,10 +60,28 @@ public class StreamingDownloadHandler : DownloadHandlerScript
 
         // Otherwise process as normal streaming chunk
         ProcessChunk(text);
+        
+        // Check if we should flush the buffer
+        if (hasBufferedContent && (Time.time - lastUpdateTime) >= UPDATE_INTERVAL)
+        {
+            FlushUpdateBuffer();
+        }
+        
         return true;
     }
+    
+    private void FlushUpdateBuffer()
+    {
+        if (updateBuffer.Length > 0)
+        {
+            string content = updateBuffer.ToString();
+            updateBuffer.Clear();
+            MainThreadDispatcher.Enqueue(() => m_textChunkUpdateCallback(content));
+            lastUpdateTime = Time.time;
+            hasBufferedContent = false;
+        }
+    }
 
-    // Rest of your existing ProcessChunk and ProcessJsonChunk methods remain exactly the same
     protected void ProcessChunk(string chunk)
     {
         chunk = incompleteChunk + chunk; // Prepend any previously incomplete chunk
@@ -118,7 +143,9 @@ public class StreamingDownloadHandler : DownloadHandlerScript
                 if (content != null)
                 {
                     stringBuilder.Append(content);
-                    MainThreadDispatcher.Enqueue(() => m_textChunkUpdateCallback(content));
+                    // Buffer the update instead of sending immediately
+                    updateBuffer.Append(content);
+                    hasBufferedContent = true;
                 }
             }
         }
@@ -130,6 +157,8 @@ public class StreamingDownloadHandler : DownloadHandlerScript
 
     protected override void CompleteContent()
     {
+        // Flush any remaining buffered content
+        FlushUpdateBuffer();
         Debug.Log("Download complete!");
     }
 

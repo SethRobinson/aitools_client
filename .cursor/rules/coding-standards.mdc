@@ -1,0 +1,91 @@
+# Unity C# Coding Standards
+
+## Naming Conventions
+
+### Classes and Files
+- Use PascalCase for class names: `PicMain`, `GameLogic`, `AIGuideManager`
+- File names should match class names exactly: `PicMain.cs` for `PicMain` class
+- GUI components should end with descriptive suffixes: `ServerSettingsPanel`, `GenerateSettingsPanel`
+
+### Methods and Properties
+- Use PascalCase for public methods and properties: `GenerateImage()`, `CurrentPreset`
+- Use camelCase for private fields: `private string currentPrompt`
+- Use descriptive names that indicate purpose: `LoadComfyUIWorkflow()`, `ProcessImageWithMask()`
+
+### Variables
+- Use camelCase for local variables and private fields
+- Use descriptive names: `imageGenerator`, `workflowManager`, `currentServer`
+- Boolean variables should be questions: `isProcessing`, `hasValidConfig`, `canGenerate`
+
+## Code Organization
+
+### File Structure
+- Keep classes focused on single responsibility
+- Group related functionality in directories: `GUI/`, `Pic/`, `AI/`
+- Use namespaces to organize related classes
+
+### Method Organization
+- Public methods first, then private methods
+- Group related methods together
+- Use regions for large classes: `#region Image Processing`, `#region UI Updates`
+
+### Comments and Documentation
+- Use XML documentation for public methods
+- Add inline comments for complex logic
+- Document AI service integrations and workflow parameters
+
+## Unity-Specific Patterns
+
+### MonoBehaviour Lifecycle
+- Use `Start()` for initialization
+- Use `Update()` sparingly, prefer event-driven approaches
+- Use `OnDestroy()` for cleanup
+
+### Coroutines
+- Use for async operations: `StartCoroutine(GenerateImageAsync())`
+- Name coroutines with "Async" suffix: `LoadWorkflowAsync()`
+
+### Event Handling
+- Use UnityEvents for UI interactions
+- Use C# events for custom game events
+- Follow Unity's event naming: `OnButtonClick()`, `OnImageGenerated()`
+
+## Error Handling
+
+### Try-Catch Blocks
+- Use try-catch for external API calls
+- Log errors with context: `Debug.LogError($"Failed to load workflow: {ex.Message}")`
+- Provide user-friendly error messages
+
+### Null Checks
+- Always check for null before using objects
+- Use null-conditional operators when appropriate: `workflow?.Execute()`
+- Validate configuration before operations
+
+## Performance Considerations
+
+### Memory Management
+- Dispose of resources properly
+- Use object pooling for frequently created objects
+- Avoid allocations in Update loops
+
+### UI Updates
+- Batch UI updates when possible
+- Use `Canvas.ForceUpdateCanvases()` sparingly
+- Consider using `LayoutRebuilder` for dynamic layouts
+
+## AI Integration Patterns
+
+### Service Managers
+- Create dedicated managers for each AI service
+- Use interfaces for common operations
+- Handle API rate limits and timeouts gracefully
+
+### Workflow Management
+- Validate workflow JSON before execution
+- Use template replacement for dynamic parameters
+- Handle workflow execution states properly
+description:
+globs:
+alwaysApply: false
+---

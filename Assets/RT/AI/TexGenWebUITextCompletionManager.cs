@@ -110,25 +110,46 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
 
      
         string extra = "";
+        bool useOllamaDefaults = false;
+        bool skipAitSuffix = false;
+        
         //for each parms, add it to extra with a comma in front
         if (parms != null)
         {
             foreach (LLMParm parm in parms)
             {
+                if (parm._key == "use_ollama_defaults" && parm._value == "true")
+                {
+                    useOllamaDefaults = true;
+                    continue;
+                }
+                
+                if (parm._key == "skip_ait_suffix" && parm._value == "true")
+                {
+                    skipAitSuffix = true;
+                    continue;
+                }
 
                 if (parm._key == "model")
                 {
                     //special handling, remove the quotes
                     string valueTemp = parm._value;
                     valueTemp = valueTemp.Replace("\"", "");
-                    //if ollama, append _ait to the model
-                    if (bIsOllama)
+                    //if ollama, append _ait to the model (unless we're using defaults)
+                    if (bIsOllama && !useOllamaDefaults && !skipAitSuffix)
                     {
                         valueTemp += "_ait";
                     }
                     extra += $",\"{parm._key}\": \"{valueTemp}\"\r\n";
                     continue;
                 }
+                
+                // Skip temperature if using Ollama defaults
+                if (parm._key == "temperature" && useOllamaDefaults && bIsOllama)
+                {
+                    continue;
+                }
+                
                 extra += $",\"{parm._key}\": {parm._value}\r\n";
             }
         }
@@ -136,24 +157,31 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
         //replace all ` in extra to |
         extra = extra.Replace("`", "|");
 
-        //I removed these, they should be passed in as  List<LLMParm> now
-        //        ""max_tokens"": { max_new_tokens},
-        //           ""num_ctx"": 131072
-
-        // extra = ",\"stopping_strings\": [ \"\\n\" ],\r\n    \"stop\": [ \"\\n\" ]";
-        //32768
-        //  ""instruction_template"": ""Alpaca""
-        string json =
-         $@"{{
-             ""messages"":[{msg}],
-             ""mode"": ""{mode}"",
-             ""temperature"": {temperature},
-             ""stream"": {bStreamText}
-             {extra}
-          
-         }}";
-
-        return json;
+        // Build JSON with minimal parameters for Ollama when using defaults
+        if (bIsOllama && useOllamaDefaults)
+        {
+            string json =
+             $@"{{
+                 ""messages"":[{msg}],
+                 ""stream"": {bStreamText}
+                 {extra}
+             }}";
+            return json;
+        }
+        else
+        {
+            // Original behavior for non-Ollama or when not using defaults
+            string json =
+             $@"{{
+                 ""messages"":[{msg}],
+                 ""mode"": ""{mode}"",
+                 ""temperature"": {temperature},
+                 ""stream"": {bStreamText}
+                 {extra}
+              
+             }}";
+            return json;
+        }
     }
 
     //  ""instructi

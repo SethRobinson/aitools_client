@@ -1,0 +1,130 @@
+# Quick Reference Guide
+
+## Common Development Tasks
+
+### Adding New AI Service
+1. Create new manager in `Assets/RT/AI/` following existing patterns
+2. Add configuration options to [config.txt](mdc:config.txt)
+3. Update [Config.cs](mdc:Assets/_Script/Config.cs) for parsing
+4. Integrate with [GameLogic.cs](mdc:Assets/_Script/GameLogic.cs)
+
+### Creating New GUI Panel
+1. Create script in `Assets/_Script/GUI/` following naming convention
+2. Reference [ControlNetSettingsPanel.cs](mdc:Assets/_Script/GUI/ControlNetSettingsPanel.cs) for structure
+3. Add to main UI hierarchy in Unity Editor
+4. Handle state management and cleanup
+
+### Adding New Image Processing Feature
+1. Create script in `Assets/_Script/Pic/` following existing patterns
+2. Integrate with [PicMain.cs](mdc:Assets/_Script/Pic/PicMain.cs)
+3. Add UI controls in appropriate GUI panel
+4. Handle ComfyUI workflow integration
+
+### Creating New Experiment
+1. Create directory in `Assets/Experiments/`
+2. Add main logic script following [BreakoutLogic.cs](mdc:Assets/Experiments/Breakout/BreakoutLogic.cs) pattern
+3. Include assets, audio, and prefabs in experiment directory
+4. Integrate with main application state
+
+## Key File Locations
+
+### Core Application
+- Main logic: [GameLogic.cs](mdc:Assets/_Script/GameLogic.cs)
+- Configuration: [Config.cs](mdc:Assets/_Script/Config.cs)
+- Image processing: [PicMain.cs](mdc:Assets/_Script/Pic/PicMain.cs)
+- AI Guide: [AIGuideManager.cs](mdc:Assets/_Script/AIGuideManager.cs)
+
+### AI Services
+- OpenAI: [OpenAITextCompletionManager.cs](mdc:Assets/RT/AI/OpenAITextCompletionManager.cs)
+- Anthropic: [AnthropicAITextCompletionManager.cs](mdc:Assets/RT/AI/AnthropicAITextCompletionManager.cs)
+- ComfyUI: [ComfyUIFileUploader.cs](mdc:Assets/RT/AI/ComfyUIFileUploader.cs)
+
+### Utilities
+- Runtime utilities: [RTUtil.cs](mdc:Assets/RT/RTUtil.cs)
+- Audio management: [RTAudioManager.cs](mdc:Assets/RT/RTAudioManager.cs)
+- Input handling: [InputActions.cs](mdc:Assets/RT/InputActions.cs)
+
+### Configuration Files
+- Application config: [config.txt](mdc:config.txt)
+- Unity packages: [Packages/manifest.json](mdc:Packages/manifest.json)
+- Build scripts: [BuildWin64.bat](mdc:BuildWin64.bat), [BuildWebGL.bat](mdc:BuildWebGL.bat)
+
+## Common Patterns
+
+### Workflow Integration
+```csharp
+// Load workflow from ComfyUI directory
+string workflowJson = File.ReadAllText("ComfyUI/workflow.json");
+// Replace template parameters
+workflowJson = workflowJson.Replace("<AITOOLS_PROMPT>", userPrompt);
+// Send to ComfyUI server
+await SendWorkflowToServer(workflowJson);
+```
+
+### Configuration Access
+```csharp
+// Get configuration value
+string apiKey = Config.GetString("set_openai_gpt4_key");
+// Set configuration value
+Config.SetString("set_openai_gpt4_key", newKey);
+```
+
+### UI Panel Management
+```csharp
+// Show/hide panel
+serverSettingsPanel.SetActive(true);
+// Update UI elements
+promptInput.text = currentPrompt;
+// Handle user input
+promptInput.onValueChanged.AddListener(OnPromptChanged);
+```
+
+### Error Handling
+```csharp
+try {
+    await GenerateImage(prompt);
+} catch (Exception ex) {
+    Debug.LogError($"Image generation failed: {ex.Message}");
+    ShowErrorMessage("Failed to generate image. Please try again.");
+}
+```
+
+## Build and Deployment
+
+### Windows Build
+```batch
+# Run Windows build
+BuildWin64.bat
+# Build and play for development
+BuildAndPlayWin64Game.bat
+```
+
+### WebGL Build
+```batch
+# Build for web
+BuildWebGL.bat
+# Build and upload
+BuildAndUploadWebGL.bat
+```
+
+### Configuration
+- Edit [config.txt](mdc:config.txt) for server and API settings
+- Add presets to [Presets/](mdc:Presets/) directory
+- Store ComfyUI workflows in [ComfyUI/](mdc:ComfyUI/) directory
+
+## Testing and Debugging
+
+### Unity Editor
+- Open scene "Main" to run in editor
+- Use Unity Console for debugging
+- Check [Logs/](mdc:Logs/) directory for application logs
+
+### Common Issues
+- ComfyUI server not running: Check `--listen` parameter
+- API key errors: Verify configuration in [config.txt](mdc:config.txt)
+- Workflow failures: Check JSON syntax and node availability
+- Performance issues: Monitor memory usage and optimize assets
+description:
+globs:
+alwaysApply: false
+---
