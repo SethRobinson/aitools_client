@@ -112,6 +112,20 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
         string extra = "";
         bool useOllamaDefaults = false;
         bool skipAitSuffix = false;
+        bool hasNumCtx = false;
+        
+        // Check if num_ctx is set in parms
+        if (parms != null)
+        {
+            foreach (LLMParm parm in parms)
+            {
+                if (parm._key == "num_ctx" && parm._value.Length > 0)
+                {
+                    hasNumCtx = true;
+                    break;
+                }
+            }
+        }
         
         //for each parms, add it to extra with a comma in front
         if (parms != null)
@@ -135,8 +149,8 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
                     //special handling, remove the quotes
                     string valueTemp = parm._value;
                     valueTemp = valueTemp.Replace("\"", "");
-                    //if ollama, append _ait to the model (unless we're using defaults)
-                    if (bIsOllama && !useOllamaDefaults && !skipAitSuffix)
+                    //if ollama, append _ait to the model only when num_ctx is set
+                    if (bIsOllama && !useOllamaDefaults && !skipAitSuffix && hasNumCtx)
                     {
                         valueTemp += "_ait";
                     }
@@ -269,9 +283,9 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
     IEnumerator GetRequestStreaming(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string serverAddress, string apiCommandURL,
      Action<string> updateChunkCallback, string APIkey = "none")
     {
-#if UNITY_STANDALONE && !RT_RELEASE
+//#if UNITY_STANDALONE && !RT_RELEASE
         File.WriteAllText("text_completion_sent.json", json);
-#endif
+//#endif
 
         string url = serverAddress + apiCommandURL;
         m_connectionActive = true;

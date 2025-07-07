@@ -871,6 +871,16 @@ public class WebRequestServerInfo : MonoBehaviour
             yield break;
         }
 
+        // If num_ctx is not set, don't create a custom profile
+        if (ctx.Length == 0)
+        {
+            RTConsole.Log("Ollama detected - Using default model profile for: " + model + " (no num_ctx specified)");
+            Config.Get().SetGenericLLMIsOllama(true);
+            GameObject.Destroy(gameObject);
+            yield break;
+        }
+
+        // Only create custom profile when num_ctx is set
         if (ctx.Length > 0)
         {
             json =

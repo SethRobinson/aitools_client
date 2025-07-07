@@ -8,6 +8,7 @@ using static System.Net.WebRequestMethods;
 using UnityEditor;
 using TMPro;
 using System;
+using System.Security.Policy;
 
 public enum LLM_Type
 {
@@ -88,6 +89,7 @@ public class Config : MonoBehaviour
     string _elevenLabs_voiceID;
     int _jpgSaveQuality;
     public string _texgen_webui_APIKey;
+    public string _ollama_endpoint;
 
     string _anthropicAI_APIKey;
     string _anthropicAI_APIModel;
@@ -127,7 +129,6 @@ public class Config : MonoBehaviour
     public List<AudioClip> m_audioClips;
     public GameObject m_serverButtonPrefab;
     public GameObject m_noServersButtonPrefab;
-
     void SetDefaults()
     {
      m_assistantName = "assistant";
@@ -138,7 +139,9 @@ public class Config : MonoBehaviour
      _openAI_APIModel = "gpt-4o";
      _texgen_webui_address = "localhost:5000";
     _openai_gpt4_endpoint = "https://api.openai.com/v1/chat/completions";
-     _elevenLabs_APIKey = "";
+    _ollama_endpoint = "/api/chat";
+
+        _elevenLabs_APIKey = "";
      _elevenLabs_voiceID = "";
      _jpgSaveQuality = 80;
      _texgen_webui_APIKey = "none";

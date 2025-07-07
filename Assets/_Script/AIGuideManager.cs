@@ -240,7 +240,7 @@ public class AIGuideManager : MonoBehaviour
             string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, m_max_tokens, m_extractor.Temperature, Config.Get().GetGenericLLMMode(), true, Config.Get().GetLLMParms(), Config.Get().GetGenericLLMIsOllama());
 
             RTDB db = new RTDB();
-            _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, Config.Get()._texgen_webui_address, "/v1/chat/completions", OnStreamingTextCallback,true,
+            _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, Config.Get()._texgen_webui_address, Config.Get()._ollama_endpoint, OnStreamingTextCallback,true,
                 Config.Get()._texgen_webui_APIKey);
         }
 

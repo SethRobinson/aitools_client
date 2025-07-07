@@ -847,7 +847,7 @@ public class AdventureText : MonoBehaviour
         if (AdventureLogic.Get().GetLLMType() == LLM_Type.GenericLLM_API)
         {
             string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, 4096, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetGenericLLMMode(), true, Config.Get().GetLLMParms(), Config.Get().GetGenericLLMIsOllama());
-            _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, Config.Get()._texgen_webui_address, "/v1/chat/completions", OnStreamingTextCallback, true, Config.Get()._texgen_webui_APIKey);
+            _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, Config.Get()._texgen_webui_address, Config.Get()._ollama_endpoint, OnStreamingTextCallback, true, Config.Get()._texgen_webui_APIKey);
             SetLLMActive(true);
         }
         
