@@ -47,7 +47,7 @@ public class StreamingDownloadHandler : DownloadHandlerScript
         // Debug logging for Ollama responses
         if (Config.Get() != null && Config.Get().GetGenericLLMIsOllama())
         {
-            Debug.Log($"Ollama raw response: {text}");
+            //Debug.Log($"Ollama raw response: {text}");
         }
 
         // Check if this might be an error response (only check first chunk)

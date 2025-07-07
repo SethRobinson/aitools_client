@@ -175,7 +175,33 @@ public class AdventureText : MonoBehaviour
         {
             RenderAnotherPic(AdventureLogic.Get().GetRenderer());
             AdventureLogic.Get().SetLastPicTextAndOwner(this);
+        } else
+        {
+            //show a message to the screen
+            RTQuickMessageManager.Get().ShowMessage("No existing pic tags.  Choose +APic to generate one via LLM.");
         }
+    }
+
+    public void OnAutoRenderButton()
+    {
+
+        //let's create a pic with a custom joblist text
+        GameObject pic = ImageGenerator.Get().CreateNewPic();
+        PicMain picMain = pic.GetComponent<PicMain>();
+        PicTextToImage scriptAI = pic.GetComponent<PicTextToImage>();
+        PicUpscale processAI = pic.GetComponent<PicUpscale>();
+
+        PicJob jobDefaultInfoToStartWith = new PicJob();
+
+        jobDefaultInfoToStartWith._requestedPrompt = GameLogic.Get().GetModifiedGlobalPrompt();
+        jobDefaultInfoToStartWith._requestedNegativePrompt = GameLogic.Get().GetNegativePrompt();
+        jobDefaultInfoToStartWith._requestedAudioPrompt = Config.Get().GetDefaultAudioPrompt();
+        jobDefaultInfoToStartWith._requestedAudioNegativePrompt = Config.Get().GetDefaultAudioNegativePrompt();
+        jobDefaultInfoToStartWith.requestedRenderer = RTRendererType.ComfyUI;
+
+        picMain.AddJobListWithStartingJobInfo(jobDefaultInfoToStartWith, GameLogic.Get().GetPicJobListAsListOfStrings());
+
+
     }
 
     public void SetIsSelected()

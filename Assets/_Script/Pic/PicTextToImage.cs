@@ -360,7 +360,6 @@ public class PicTextToImage : MonoBehaviour
     {
         m_comfyUIPromptID = "";
 
-
         String finalURL;
 
         int genWidth = GameLogic.Get().GetGenWidth();

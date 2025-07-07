@@ -30,7 +30,6 @@ public enum eSpatialOrganizationMethod
 }
 
 
-
 public class TextFileConfigExtractor
 {
     public string BaseContext { get; private set; }

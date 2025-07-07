@@ -9,6 +9,8 @@ using System.Linq;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq.Expressions;
+using UnityEngine.ProBuilder.MeshOperations;
+using SimpleJSON;
 
 public class PicJobData
 {
@@ -36,6 +38,9 @@ public class PicJob
     public string _requestedPrompt = "";
     public string _requestedNegativePrompt = "";
     public string _requestedSegmentationPrompt = "";
+    public string _requestedLLMPrompt = "";
+    public string _requestedLLMReply = "";
+
     public RTRendererType requestedRenderer = RTRendererType.ComfyUI;
     public int _serverID = -1;
     public List<PicJobData> _data = new List<PicJobData>();
@@ -107,7 +112,9 @@ public class PicMain : MonoBehaviour
     List<PicJob> m_picJobs = new List<PicJob>();
     List<PicJob> _jobHistory = new List<PicJob>();
     PicJob m_jobDefaultInfo = null;
-    
+
+    public TexGenWebUITextCompletionManager _texGenWebUICompletionManager;
+    public GPTPromptManager _promptManager;
 
     string m_mediaRemoteFilename = ""; //sometimes media has no name because it was generated, but we need to know the filename for sending/loading remotely on ComfyUI
 
@@ -130,7 +137,7 @@ public class PicMain : MonoBehaviour
 
     public AIGuideManager.PassedInfo m_aiPassedInfo; //a misc place to store things the AI guide wants to
     bool m_waitingForPicJob = false;
-
+    bool _llmIsActive = false;
     public void SetMediaRemoteFilename(string fname)
     {
         m_mediaRemoteFilename = fname;
@@ -348,6 +355,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         if (m_picGeneratorScript.GetIsGenerating()) return true;
         if (m_picJobs.Count > 0) return true;
         if (m_jobList.Count > 0) return true;
+        //if (_llmIsActive) return true;
         return false;
     }
 
@@ -363,6 +371,8 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         if (m_picInpaintScript.IsBusy()) return true;
         if (m_picUpscaleScript.IsBusy()) return true;
         if (m_waitingForPicJob) return true;
+        if (_llmIsActive) return true;
+
         return false;
     }
 
@@ -385,6 +395,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         if (m_picInpaintScript.IsBusy()) m_picInpaintScript.SetForceFinish(true);
         if (m_picUpscaleScript.IsBusy()) m_picUpscaleScript.SetForceFinish(true);
         if (m_picGenerateMaskScript != null && m_picGenerateMaskScript.IsBusy()) m_picGenerateMaskScript.SetForceFinish(true);
+        _llmIsActive = false;
 
         ClearJobs();
     }
@@ -1910,6 +1921,11 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         if (source == "negative_prompt") temp = job._requestedNegativePrompt;
         if (source == "audio_negative_prompt") temp = job._requestedAudioNegativePrompt;
         if (source == "segmentation_prompt") temp = job._requestedSegmentationPrompt;
+        if (source == "llm_prompt") temp = job._requestedLLMPrompt;
+        if (source == "llm_reply")
+        {
+            temp = job._requestedLLMReply;
+        }
 
         if (temp == "")
         {
@@ -1921,6 +1937,8 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         if (dest == "negative_prompt") job._requestedNegativePrompt = temp;
         if (dest == "audio_negative_prompt") job._requestedAudioNegativePrompt = temp;
         if (dest == "segmentation_prompt") job._requestedSegmentationPrompt = temp;
+        if (dest == "llm_prompt") job._requestedLLMPrompt = temp;
+        if (dest == "llm_reply") job._requestedLLMReply = temp;
     }
 
     public void SetNoUndo(bool bNoUndo)
@@ -2000,6 +2018,57 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 }
 
 
+    void OnTexGenCompletedCallback(RTDB db, JSONObject jsonNode, string streamedText)
+    {
+        SetLLMActive(false);
+        m_waitingForPicJob = false;
+
+        if (jsonNode == null && streamedText.Length == 0)
+        {
+            //must have been an error
+            string error = db.GetStringWithDefault("msg", "Unknown");
+
+
+            //check to see if "429" is inside the string error
+            if (error.Contains("429"))
+            {
+                RTConsole.Log("LLM reports too many requests, waiting 5 seconds to try again: " + error);
+               // SetTryAgainWait(5);
+            }
+            else
+            {
+                RTConsole.Log("Error talking to the LLM: " + error);
+                RTQuickMessageManager.Get().ShowMessage(error);
+                GameLogic.Get().ShowConsole(true);
+                //SetAuto(false); //don't let it continue doing crap
+            }
+            return;
+        }
+
+        if (jsonNode != null)
+        {
+            RTConsole.LogError("Error, we only support streaming text now");
+            return;
+
+        }
+
+        m_curEvent.m_picJob._requestedLLMReply = streamedText.Trim();
+    }
+
+    public void SetLLMActive(bool bActive)
+    {
+        if (bActive == _llmIsActive) return;
+
+
+        _llmIsActive = bActive;
+    }
+
+
+
+    public void OnStreamingTextCallback(string text)
+    {
+        //we could get the streaming data here, but for now let's just ignore and handle things when done in OnTexGenCompletedCallback
+    }
 
     public void UpdateJobs()
     {
@@ -2009,7 +2078,6 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
         if (!StillHasJobActivityToDo()) return;
 
-        
         int serverID = Config.Get().GetFreeGPU(RTRendererType.ComfyUI, false);
 
         if (serverID == -1)
@@ -2055,9 +2123,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 }
 
             }
-            else
-
-            if (job._job == "upload_to_comfy")
+            else  if (job._job == "upload_to_comfy")
             {
                 //add a file to the ComfyUI server
                 ComfyUIFileUploader uploaderScript = ComfyUIFileUploader.CreateObject();
@@ -2098,10 +2164,26 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                     m_mediaRemoteFilename = remoteFileName;
                     uploaderScript.UploadFileInMemory(serverID, pngBytes, remoteFileName, OnUploadFinished);
                 }
+            } else  if (job._job == "call_llm")
+            {
+
+                _promptManager = new GPTPromptManager();
+                _promptManager.SetBaseSystemPrompt(job._requestedLLMPrompt);
+
+                //add a file to the ComfyUI server
+                RTDB db = new RTDB();
+
+                SetStatusMessage("Running LLM...");
+                string json = _texGenWebUICompletionManager.BuildForInstructJSON(_promptManager.BuildPromptChat(), 4096, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetGenericLLMMode(), true, Config.Get().GetLLMParms(), Config.Get().GetGenericLLMIsOllama());
+                _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, Config.Get()._texgen_webui_address, Config.Get()._ollama_endpoint, OnStreamingTextCallback, true, Config.Get()._texgen_webui_APIKey);
+                SetLLMActive(true);
+
+                // uploaderScript.UploadFileInMemory(serverID, pngBytes, remoteFileName, OnUploadFinished);
+
             }
-        }
-        else
-        {
+        }  else
+    {
+       
             if (m_jobList.Count > 0)
             {
                 //convert the joblist into a real Job
@@ -2144,6 +2226,13 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 //separate m_jobList[0] into a vector of strings separated by space
                 string[] words = m_jobList[0].Split('@');
                 job._workflow = words[0];
+
+                //remove whitespace from each word in "words"
+                for (int j = 0; j < words.Length; j++)
+                {
+                    words[j] = words[j].Trim();
+                }
+
 
                 bool bSkipNextParm = false;
 
@@ -2250,10 +2339,30 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                         job._parm_1_string = "temp/<MEDIA_FILENAME>"; //it will get replaced with the actual movie name later
                     }
                 }
+                //if first first word is "command", we'll ignore it
 
-                SetJobWithInfoFromCur(ref job);
-                m_picJobs.Add(job);
-                //remove the first string in m_joblist
+                if (words[0] != "command")
+                {
+                    if (words[0] == "call_llm")
+                    {
+                        SetJobWithInfoFromCur(ref job);
+                        job._job = "call_llm"; //we'll call the LLM with this job
+                        m_picJobs.Add(job);
+
+                    }
+                    else
+                    {
+                        //default handling
+                        SetJobWithInfoFromCur(ref job);
+                        m_picJobs.Add(job);
+                    }
+                    //remove the first string in m_joblist
+                }  else
+                {
+                    m_curEvent.m_picJob = job;
+         
+                }
+
                 m_jobList.RemoveAt(0);
                 UpdateJobs();
             }
@@ -2348,20 +2457,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
     public void PassInTempInfo(RTRendererType requestedRenderer, int gpuID)
     {
-      /*
-        GetCurrentStats().m_lastPromptUsed = m_picTextToImageScript.GetPrompt();
-        GetCurrentStats().m_requestedRenderer = requestedRenderer;
-        GetCurrentStats().m_lastNegativePromptUsed = GameLogic.Get().GetNegativePrompt();
-      */
-       
-        /*
-        GetCurrentStats().m_gpu = gpuID;
-        if (_jobHistory.Count > 0)
-        {
-            _jobHistory[_jobHistory.Count - 1]._infoGPUUsed = gpuID;
-        }
-        SetNeedsToUpdateInfoPanelFlag();
-        */
+    
     }
 
 }
