@@ -185,21 +185,9 @@ public class AdventureText : MonoBehaviour
     public void OnAutoRenderButton()
     {
 
-        //let's create a pic with a custom joblist text
-        GameObject pic = ImageGenerator.Get().CreateNewPic();
-        PicMain picMain = pic.GetComponent<PicMain>();
-        PicTextToImage scriptAI = pic.GetComponent<PicTextToImage>();
-        PicUpscale processAI = pic.GetComponent<PicUpscale>();
+        RenderPic(_lastPicTextRenderedDetailed, _lastPicTextRenderedSimple, AdventureLogic.Get().GetRenderer(),
+            _lastAudioPrompt, _lastAudioNegativePrompt, true);
 
-        PicJob jobDefaultInfoToStartWith = new PicJob();
-
-        jobDefaultInfoToStartWith._requestedPrompt = GameLogic.Get().GetModifiedGlobalPrompt();
-        jobDefaultInfoToStartWith._requestedNegativePrompt = GameLogic.Get().GetNegativePrompt();
-        jobDefaultInfoToStartWith._requestedAudioPrompt = Config.Get().GetDefaultAudioPrompt();
-        jobDefaultInfoToStartWith._requestedAudioNegativePrompt = Config.Get().GetDefaultAudioNegativePrompt();
-        jobDefaultInfoToStartWith.requestedRenderer = RTRendererType.ComfyUI;
-
-        picMain.AddJobListWithStartingJobInfo(jobDefaultInfoToStartWith, GameLogic.Get().GetPicJobListAsListOfStrings());
 
 
     }
@@ -656,7 +644,7 @@ public class AdventureText : MonoBehaviour
                         for (int i = 0; i < AdventureLogic.Get().GetRenderCount(); i++)
                         {
                             RenderPic(picTextDetailed, picTextSimple, AdventureLogic.Get().GetRenderer(),
-                                audioPrompt, audioNegativePrompt);
+                                audioPrompt, audioNegativePrompt, false);
                         }
                     }
 
@@ -728,7 +716,7 @@ public class AdventureText : MonoBehaviour
             (_lastPicTextRenderedSimple != null && _lastPicTextRenderedSimple.Length > 0)
             )
         {
-            RenderPic(_lastPicTextRenderedDetailed, _lastPicTextRenderedSimple, renderer, _lastAudioPrompt, _lastAudioNegativePrompt);
+            RenderPic(_lastPicTextRenderedDetailed, _lastPicTextRenderedSimple, renderer, _lastAudioPrompt, _lastAudioNegativePrompt, false);
         }
     }
 
@@ -761,7 +749,7 @@ public class AdventureText : MonoBehaviour
         ProcessFinalText(tempText, false);
 
     }
-    public void RenderPic(string picTextComfyUI, string picText, RTRendererType desiredRenderer, string audioPrompt, string audioNegativePrompt)
+    public void RenderPic(string picTextComfyUI, string picText, RTRendererType desiredRenderer, string audioPrompt, string audioNegativePrompt, bool bAutoPic)
     {
         //RTConsole.Log("SPAWNING PIC");
         GameObject pic = ImageGenerator.Get().CreateNewPic();
@@ -769,7 +757,6 @@ public class AdventureText : MonoBehaviour
         PicTextToImage scriptAI = pic.GetComponent<PicTextToImage>();
         PicUpscale processAI = pic.GetComponent<PicUpscale>();
         _imagesRenderedOnThisLine++;
-        picMain.SetStatusMessage("Waiting for GPU...");
        
         if (AdventureLogic.Get().GetMode() == AdventureMode.CHOOSE_YOUR_OWN_ADVENTURE)
         {
@@ -786,31 +773,67 @@ public class AdventureText : MonoBehaviour
             pic.transform.position = new Vector3(transform.position.x + ((5.12f * _imagesRenderedOnThisLine) * _directionMult), transform.position.y, pic.transform.position.z);
         }
 
+
+            picMain.SetStatusMessage("Waiting for GPU...");
+
+
+    
+
+            PicJob jobDefaultInfoToStartWith = new PicJob();
+
+            jobDefaultInfoToStartWith._requestedPrompt = picTextComfyUI;
+
+            if (jobDefaultInfoToStartWith._requestedPrompt == "")
+            {
+                jobDefaultInfoToStartWith._requestedPrompt = picText;
+            }
+
+            jobDefaultInfoToStartWith._requestedNegativePrompt = GameLogic.Get().GetNegativePrompt();
+            jobDefaultInfoToStartWith._requestedAudioPrompt = audioPrompt;
+            jobDefaultInfoToStartWith._requestedAudioNegativePrompt = audioNegativePrompt;
+            jobDefaultInfoToStartWith.requestedRenderer = desiredRenderer;
+
         List<string> jobsTodo = GameLogic.Get().GetPicJobListAsListOfStrings();
 
+        if (bAutoPic)
+        {
+            string fileToLoad = "test_autopic.txt";
+            PresetFileConfigExtractor preset = new PresetFileConfigExtractor();
+
+            //allow autopic to create an image by summary
+            GPTPromptManager tempPrompt = new GPTPromptManager();
+            tempPrompt.CloneFrom(m_promptManager);
+            tempPrompt.SetBaseSystemPrompt("Your job is to look at the following text/story and describe an image of the last scene in detail, so that it can be rendered by a text-to-image AI.  Do not include any choices or options.\n\n<STORY START>");
+            tempPrompt.AddInteraction(Config.Get().GetAIAssistantWord(), "<STORY END> Please describe the last scene in detail, so that it can be rendered by a text-to-image AI.  Do not include any choices or options or new story. Be brief.\n\n");
+
+            Queue<GTPChatLine> lines = tempPrompt.BuildPromptChat(0);
+
+            lines = GameLogic.Get().PrepareLLMLinesForSending(lines);
+
+            jobDefaultInfoToStartWith._requestedLLMPrompt = _texGenWebUICompletionManager.BuildForInstructJSON(lines, 4096, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetGenericLLMMode(), true, Config.Get().GetLLMParms(), Config.Get().GetGenericLLMIsOllama());
+            if (PresetManager.Get().DoesPresetExistByNameNotCaseSensitive(fileToLoad))
+            {
+                preset = PresetManager.Get().LoadPreset(fileToLoad);
+            }
+            else
+            {
+                preset = PresetManager.Get().LoadPreset("autopic.txt");
+            }
+
+            jobsTodo = GameLogic.Get().GetPicJobListAsListOfStrings(preset.JobList);
+        }
+        
         if (jobsTodo.Count == 0)
         {
-            RTQuickMessageManager.Get().ShowMessage("Add jobs to do!");
-            return;
-        }
-
-        PicJob jobDefaultInfoToStartWith = new PicJob();
-
-        jobDefaultInfoToStartWith._requestedPrompt = picTextComfyUI;
-        
-        if (jobDefaultInfoToStartWith._requestedPrompt == "")
-        {
-            jobDefaultInfoToStartWith._requestedPrompt = picText;
+              RTQuickMessageManager.Get().ShowMessage("Add jobs to do!");
+              return;
         }
       
-        jobDefaultInfoToStartWith._requestedNegativePrompt = GameLogic.Get().GetNegativePrompt();
-        jobDefaultInfoToStartWith._requestedAudioPrompt = audioPrompt;
-        jobDefaultInfoToStartWith._requestedAudioNegativePrompt = audioNegativePrompt;
-        jobDefaultInfoToStartWith.requestedRenderer = desiredRenderer;
-        picMain.AddJobListWithStartingJobInfo(jobDefaultInfoToStartWith, jobsTodo);
-        //add its PicMain to our list
-        _picsSpawned.Add(picMain);
 
+        picMain.AddJobListWithStartingJobInfo(jobDefaultInfoToStartWith, jobsTodo);
+            //add its PicMain to our list
+            _picsSpawned.Add(picMain);
+       
     }
 
     public void OnStreamingTextCallback(string text)

@@ -195,7 +195,6 @@ public class AdventureLogic : MonoBehaviour
 
     public TMP_InputField m_reminderCountInputField;
     public TMP_InputField m_LLMAtOnceInputField;
-    public TMP_Dropdown m_llmSelectionDropdown;
     //public TMP_Dropdown m_rendererSelectionDropdown;
     int m_totalLLMGenerationCounter = 0;
 
@@ -206,8 +205,9 @@ public class AdventureLogic : MonoBehaviour
 
     public LLM_Type GetLLMType()
     {
-        return (LLM_Type)m_llmSelectionDropdown.value;
+        return (LLM_Type)GameLogic.Get().GetLLMSelection().value;
     }
+
     bool _bIsActive = false;
     public UnityEngine.UI.Toggle m_genExtraToggle;
     public string GetAdventureName() { return "My Adventure"; }

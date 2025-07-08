@@ -67,8 +67,6 @@ public class AIGuideManager : MonoBehaviour
     public Toggle m_generateExtraCheckbox;
     public Toggle m_BoldCheckbox;
     string m_statusStopMessage = "";
-    public TMP_Dropdown m_llmSelectionDropdown;
-    //public TMP_Dropdown m_rendererSelectionDropdown;
     private string _textToProcessForPics;
     public TMP_Dropdown m_textFontDropdown;
     public TMP_Dropdown m_titleFontDropdown;
@@ -224,7 +222,7 @@ public class AIGuideManager : MonoBehaviour
         lines = GameLogic.Get().PrepareLLMLinesForSending(lines);
          
 
-        if (m_llmSelectionDropdown.value == (int)LLM_Type.OpenAI_API)
+        if (GameLogic.Get().GetLLMSelection().value == (int)LLM_Type.OpenAI_API)
         {
             string json = _openAITextCompletionManager.BuildChatCompleteJSON(lines, m_max_tokens, m_extractor.Temperature, Config.Get().GetOpenAI_APIModel(), true);
             RTDB db = new RTDB();
@@ -232,10 +230,9 @@ public class AIGuideManager : MonoBehaviour
             _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnGTP4CompletedCallback, db, Config.Get().GetOpenAI_APIKey(), Config.Get()._openai_gpt4_endpoint, OnStreamingTextCallback, true);
         }
 
-        if (m_llmSelectionDropdown.value == (int)LLM_Type.GenericLLM_API)
+        if (GameLogic.Get().GetLLMSelection().value == (int)LLM_Type.GenericLLM_API)
         {
             Debug.Log("Contacting TexGen WebUI asking for chat style response at " + Config.Get()._texgen_webui_address); ;
-
 
             string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, m_max_tokens, m_extractor.Temperature, Config.Get().GetGenericLLMMode(), true, Config.Get().GetLLMParms(), Config.Get().GetGenericLLMIsOllama());
 
@@ -244,7 +241,7 @@ public class AIGuideManager : MonoBehaviour
                 Config.Get()._texgen_webui_APIKey);
         }
 
-        if (m_llmSelectionDropdown.value == (int)LLM_Type.Anthropic_API)
+        if (GameLogic.Get().GetLLMSelection().value == (int)LLM_Type.Anthropic_API)
         {
             Debug.Log("Contacting TexGen WebUI asking for chat style response at " + Config.Get().GetAnthropicAI_APIEndpoint()); ;
 
@@ -256,7 +253,6 @@ public class AIGuideManager : MonoBehaviour
         }
 
         m_bTalkingToLLM = true;
-
     }
 
     bool IsRequestActive()
@@ -323,7 +319,7 @@ public class AIGuideManager : MonoBehaviour
 
         m_bIsPossibleToContinue = false;
 
-        if (m_llmSelectionDropdown.value == (int)LLM_Type.OpenAI_API)
+        if (GameLogic.Get().GetLLMSelection().value == (int)LLM_Type.OpenAI_API)
         {
 
             if (Config.Get().GetOpenAI_APIKey().Length < 15)
@@ -335,7 +331,7 @@ public class AIGuideManager : MonoBehaviour
             }
         }
 
-        if (m_llmSelectionDropdown.value == (int)LLM_Type.Anthropic_API)
+        if (GameLogic.Get().GetLLMSelection().value == (int)LLM_Type.Anthropic_API)
         {
 
             if (Config.Get().GetAnthropicAI_APIKey().Length < 15)

@@ -104,11 +104,17 @@ public class GameLogic : MonoBehaviour
     List<String> m_controlNetModelArray = new List<String>();
     int m_controlNetPreprocessorCurIndex;
     int m_controlNetModelCurIndex;
+    public TMP_Dropdown m_llmSelectionDropdown;
 
     public enum eGameMode
     {
         NORMAL,
         EXPERIMENT
+    }
+
+    public TMP_Dropdown GetLLMSelection()
+    {
+        return m_llmSelectionDropdown;
     }
 
     eGameMode m_gameMode = eGameMode.NORMAL;
@@ -430,6 +436,21 @@ public class GameLogic : MonoBehaviour
         }
         
     }
+    public List<String> GetPicJobListAsListOfStrings(string jobtext)
+    {
+        List<String> list = new List<String>();
+        string[] lines = jobtext.Split(new string[] { "\r\n", "\n" }, StringSplitOptions.None);
+        foreach (string line in lines)
+        {
+            string trimmedItem = line.Trim();
+            if (trimmedItem.Length > 0 && trimmedItem[0] != '-' && trimmedItem[0] != '/')
+            {
+                list.Add(trimmedItem);
+            }
+        }
+        return list;
+    }
+
     public List<String> GetPicJobListAsListOfStrings()
     {
         List<String> list = new List<String>();

@@ -19,6 +19,7 @@ GUIDELINES:
 * Use direct and explicit language to describe what happens. 
 * Keep flowery prose and grandiose language to a minimum. 
 * Do not use markup, asterisks, or numbered lists
+* Instead of offering them multiple choices, let them just free form type what they want to do.
 
 Now the user will tell you what kind of adventure/story to make and may provide additional instructions, follow them exactly.
 COMMAND_END
