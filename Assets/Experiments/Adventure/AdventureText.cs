@@ -184,12 +184,8 @@ public class AdventureText : MonoBehaviour
 
     public void OnAutoRenderButton()
     {
-
         RenderPic(_lastPicTextRenderedDetailed, _lastPicTextRenderedSimple, AdventureLogic.Get().GetRenderer(),
             _lastAudioPrompt, _lastAudioNegativePrompt, true);
-
-
-
     }
 
     public void SetIsSelected()
@@ -618,6 +614,7 @@ public class AdventureText : MonoBehaviour
         //text was streamed, we handle it differently
 
         UpdateInputFieldText();
+        bool bRenderAutoPics = false;
 
         if (GenerateSettingsPanel.Get().m_stripThinkTagsToggle.isOn)
         {
@@ -628,51 +625,63 @@ public class AdventureText : MonoBehaviour
         }
 
         if (!_bFoundAndProcessedPics)
+        {
+            string temp = streamedText;
+            //  the last text/image combo would have been ignored, so let's process it now
+            var (picTextDetailed, picTextSimple, audioPrompt, audioNegativePrompt) = GetPicFromText(ref temp, true);
+            _bFoundAndProcessedPics = true;
+
+
+            if (picTextDetailed.Length > 0 || picTextSimple.Length > 0)
             {
-                string temp = streamedText;
-                //  the last text/image combo would have been ignored, so let's process it now
-                var (picTextDetailed, picTextSimple, audioPrompt, audioNegativePrompt) = GetPicFromText(ref temp, true);
-                _bFoundAndProcessedPics = true;
 
-                    
-                if (picTextDetailed.Length > 0 || picTextSimple.Length > 0)
+                if (AdventureLogic.Get().GetRenderCount() > 0)
                 {
-
-                    if (AdventureLogic.Get().GetRenderCount() > 0)
+                    //render for each of the desired forced pics
+                    for (int i = 0; i < AdventureLogic.Get().GetRenderCount(); i++)
                     {
-                        //render for each of the desired forced pics
-                        for (int i = 0; i < AdventureLogic.Get().GetRenderCount(); i++)
-                        {
-                            RenderPic(picTextDetailed, picTextSimple, AdventureLogic.Get().GetRenderer(),
-                                audioPrompt, audioNegativePrompt, false);
-                        }
+                        RenderPic(picTextDetailed, picTextSimple, AdventureLogic.Get().GetRenderer(),
+                            audioPrompt, audioNegativePrompt, false);
                     }
+                }
 
-                    AdventureLogic.Get().SetLastPicTextAndOwner(this);
+                AdventureLogic.Get().SetLastPicTextAndOwner(this);
 
-                    _lastPicTextRenderedDetailed = picTextDetailed;
-                    _lastPicTextRenderedSimple = picTextSimple;
-                    _lastAudioPrompt = audioPrompt;
-                    _lastAudioNegativePrompt = audioNegativePrompt;
+                _lastPicTextRenderedDetailed = picTextDetailed;
+                _lastPicTextRenderedSimple = picTextSimple;
+                _lastAudioPrompt = audioPrompt;
+                _lastAudioNegativePrompt = audioNegativePrompt;
             }
+            else
+            {
+                bRenderAutoPics = true;
             }
 
-        //let's add our original prompt to it, I assume that's what we want
-        // inputField.text = streamedText;
+            //let's add our original prompt to it, I assume that's what we want
+            // inputField.text = streamedText;
 
-        if (_bAddedFinishedTextToPrompt)
-        {
-            m_promptManager.RemoveLastInteractionIfItExists();
-        } else
-        {
-            AdventureLogic.Get().GetGlobalPromptManager().AddInteraction(Config.Get().GetAIAssistantWord(), streamedText);
+            if (_bAddedFinishedTextToPrompt)
+            {
+                m_promptManager.RemoveLastInteractionIfItExists();
+            }
+            else
+            {
+                AdventureLogic.Get().GetGlobalPromptManager().AddInteraction(Config.Get().GetAIAssistantWord(), streamedText);
 
+            }
+            m_promptManager.AddInteraction(Config.Get().GetAIAssistantWord(), streamedText);
+            ProcessChoices();
+
+            _bAddedFinishedTextToPrompt = true;
+
+            //no pics found.  Should we use the LLM to create a description to render?  We'll check to see how many images have been set to render
+            if (bRenderAutoPics && AdventureLogic.Get().GetRenderCount() > 0)
+            {
+                //render for each of
+                OnAutoRenderButton();
+
+            }
         }
-        m_promptManager.AddInteraction(Config.Get().GetAIAssistantWord(), streamedText);
-        ProcessChoices();
-
-        _bAddedFinishedTextToPrompt = true;
-
     }
     void OnTexGenCompletedCallback(RTDB db, JSONObject jsonNode, string streamedText)
     {
@@ -737,7 +746,6 @@ public class AdventureText : MonoBehaviour
   
     public void OnTextWasEdited()
     {
-
         if (IsBusy()) return;
 
         RTConsole.Log("Text was edited");
@@ -747,6 +755,33 @@ public class AdventureText : MonoBehaviour
         //  the last text/image combo would have been ignored, so let's process it now
         (_lastPicTextRenderedDetailed, _lastPicTextRenderedSimple, _lastAudioPrompt, _lastAudioNegativePrompt) = GetPicFromText(ref tempText, true);
         ProcessFinalText(tempText, false);
+    }
+
+    public void AutoPicFinishedScriptCallback(GameObject picGO)
+    {
+        PicMain picMain = picGO.GetComponent<PicMain>();
+
+        string reply = picMain.m_lastLLMReply;
+
+        //let's render more images with this, based on how many GPUs are free
+        if (reply == null || reply.Length == 0)
+        {
+            RTConsole.LogError("No reply from script, can't render images");
+            return;
+        }
+        //we need to clear picMain.m_onFinishedRenderingCallback
+        picMain.m_onFinishedRenderingCallback = null;
+        picMain.m_onFinishedScriptCallback = null;
+
+        //have our LLM picwindow also render
+        picMain.AddJobList(GameLogic.Get().GetPicJobListAsListOfStrings());
+        
+        //for each in AdventureLogic.Get().GetRenderCount() we'll do a renderpic call
+        for (int i = 0; i < AdventureLogic.Get().GetRenderCount()-1; i++)
+        {
+            //we'll use the reply as the pic text
+            RenderPic(reply, reply, AdventureLogic.Get().GetRenderer(), _lastAudioPrompt, _lastAudioNegativePrompt, false);
+        }
 
     }
     public void RenderPic(string picTextComfyUI, string picText, RTRendererType desiredRenderer, string audioPrompt, string audioNegativePrompt, bool bAutoPic)
@@ -773,12 +808,7 @@ public class AdventureText : MonoBehaviour
             pic.transform.position = new Vector3(transform.position.x + ((5.12f * _imagesRenderedOnThisLine) * _directionMult), transform.position.y, pic.transform.position.z);
         }
 
-
             picMain.SetStatusMessage("Waiting for GPU...");
-
-
-    
-
             PicJob jobDefaultInfoToStartWith = new PicJob();
 
             jobDefaultInfoToStartWith._requestedPrompt = picTextComfyUI;
@@ -793,24 +823,18 @@ public class AdventureText : MonoBehaviour
             jobDefaultInfoToStartWith._requestedAudioNegativePrompt = audioNegativePrompt;
             jobDefaultInfoToStartWith.requestedRenderer = desiredRenderer;
 
-        List<string> jobsTodo = GameLogic.Get().GetPicJobListAsListOfStrings();
+            List<string> jobsTodo = GameLogic.Get().GetPicJobListAsListOfStrings();
 
         if (bAutoPic)
         {
             string fileToLoad = "test_autopic.txt";
             PresetFileConfigExtractor preset = new PresetFileConfigExtractor();
+            picMain._promptManager.CloneFrom(m_promptManager);
 
-            //allow autopic to create an image by summary
-            GPTPromptManager tempPrompt = new GPTPromptManager();
-            tempPrompt.CloneFrom(m_promptManager);
-            tempPrompt.SetBaseSystemPrompt("Your job is to look at the following text/story and describe an image of the last scene in detail, so that it can be rendered by a text-to-image AI.  Do not include any choices or options.\n\n<STORY START>");
-            tempPrompt.AddInteraction(Config.Get().GetAIAssistantWord(), "<STORY END> Please describe the last scene in detail, so that it can be rendered by a text-to-image AI.  Do not include any choices or options or new story. Be brief.\n\n");
+            //now, we're going to have it run our script, but we'd like a notification when the script finishes
+            picMain.m_onFinishedScriptCallback += this.AutoPicFinishedScriptCallback;
 
-            Queue<GTPChatLine> lines = tempPrompt.BuildPromptChat(0);
 
-            lines = GameLogic.Get().PrepareLLMLinesForSending(lines);
-
-            jobDefaultInfoToStartWith._requestedLLMPrompt = _texGenWebUICompletionManager.BuildForInstructJSON(lines, 4096, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetGenericLLMMode(), true, Config.Get().GetLLMParms(), Config.Get().GetGenericLLMIsOllama());
             if (PresetManager.Get().DoesPresetExistByNameNotCaseSensitive(fileToLoad))
             {
                 preset = PresetManager.Get().LoadPreset(fileToLoad);

@@ -121,7 +121,8 @@ public class PicMain : MonoBehaviour
     bool m_bNeedsToUpdateInfoPanel = false;
 
     public Action<GameObject> m_onFinishedRenderingCallback;
-
+    public Action<GameObject> m_onFinishedScriptCallback;
+    public string m_lastLLMReply = "";
     public Camera m_camera;
     List<string> m_jobList = new List<string>();
     bool m_allowServerJobOverrides = true;
@@ -138,6 +139,11 @@ public class PicMain : MonoBehaviour
     public AIGuideManager.PassedInfo m_aiPassedInfo; //a misc place to store things the AI guide wants to
     bool m_waitingForPicJob = false;
     bool _llmIsActive = false;
+    public void SetPromptManager(GPTPromptManager promptManager)
+    {
+        _promptManager = promptManager;
+    }   
+
     public void SetMediaRemoteFilename(string fname)
     {
         m_mediaRemoteFilename = fname;
@@ -1834,8 +1840,6 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     {
         m_waitingForPicJob = false;
         m_curEvent.m_picJob._timeOfEnd = Time.realtimeSinceStartup;
-
-      
         SetNeedsToUpdateInfoPanelFlag();
     }
 
@@ -2033,7 +2037,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             if (error.Contains("429"))
             {
                 RTConsole.Log("LLM reports too many requests, waiting 5 seconds to try again: " + error);
-               // SetTryAgainWait(5);
+                // SetTryAgainWait(5);
             }
             else
             {
@@ -2053,6 +2057,8 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         }
 
         m_curEvent.m_picJob._requestedLLMReply = streamedText.Trim();
+        m_lastLLMReply = m_curEvent.m_picJob._requestedLLMReply;
+
     }
 
     public void SetLLMActive(bool bActive)
@@ -2166,10 +2172,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 }
             } else  if (job._job == "call_llm")
             {
-
-                _promptManager = new GPTPromptManager();
-                _promptManager.SetBaseSystemPrompt(job._requestedLLMPrompt);
-
+     
                 //add a file to the ComfyUI server
                 RTDB db = new RTDB();
 
@@ -2204,7 +2207,6 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 {
                     workFlowNameWithoutTest = workFlowNameWithoutTest.Substring(5);
                 }
-
 
                 PicJob job = new PicJob();
                 job = m_curEvent.m_picJob.Clone();
@@ -2264,7 +2266,6 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                         bSkipNextParm = true;
                     }
 
-
                     //this must be a command.  Split it up by | character
                     string[] commandParts = words[i].Split('|');
                     if (commandParts.Length >= 1)
@@ -2282,10 +2283,37 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                             picJobData._parm2 = commandParts[2];
                         }
 
+                        
 
                         if (picJobData._name.ToLower() == "copy")
                         {
                             DoVarCopy(ref job, picJobData._parm1, picJobData._parm2);
+                        } else
+                        if (picJobData._name.ToLower() == "llm_prompt_reset")
+                        {
+                            _promptManager.Reset();
+                        }
+                        else
+                        if (picJobData._name.ToLower() == "llm_prompt_set_base_prompt")
+                        {
+                            _promptManager.SetBaseSystemPrompt(picJobData._parm1);
+                        }
+                        else
+                        if (picJobData._name.ToLower() == "llm_prompt_pop_first")
+                        {
+                            _promptManager.PopFirstInteraction();
+                        }
+                        else
+                        if (picJobData._name.ToLower() == "llm_prompt_add_from_assistant")
+                        {
+                            _promptManager.AddInteraction(Config.Get().GetAIAssistantWord(), picJobData._parm1);
+                        } else if (picJobData._name.ToLower() == "llm_prompt_add_from_user")
+                        {
+                            _promptManager.AddInteraction("user", picJobData._parm1);
+                        }
+                        else if(picJobData._name.ToLower() == "llm_prompt_add_to_last_interaction")
+                        {
+                            _promptManager.AppendToLastInteraction(" " + picJobData._parm1);
                         }
                         else if (picJobData._name.ToLower() == "fill_mask_if_blank")
                         {
@@ -2364,7 +2392,24 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 }
 
                 m_jobList.RemoveAt(0);
-                UpdateJobs();
+
+                if (m_jobList.Count == 0)
+                {
+                    //guess we're done.  Do any callbacks we need to
+                    if (m_onFinishedScriptCallback != null)
+                    {
+                        m_onFinishedScriptCallback.Invoke(gameObject);
+                    }
+
+                    SetNeedsToUpdateInfoPanelFlag();
+                    SetStatusMessage("LLM reply received");
+
+                }
+                else
+                {
+                    UpdateJobs();
+                }
+                
             }
         }
     }

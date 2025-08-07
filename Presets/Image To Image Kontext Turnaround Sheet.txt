@@ -1,0 +1,11 @@
+COMMAND_START|joblist
+-Note:  If you want to use a different lora, change the second kontext/kontext-turnaround-sheet-v1.safetensors below to it so it will get replaced in the json that is sent
+
+img_to_img_kontext_lora_api.json @replace|kontext/kontext-turnaround-sheet-v1.safetensors|kontext/kontext-turnaround-sheet-v1.safetensors|
+COMMAND_END
+COMMAND_START|default_prompt
+reate turnaround sheet of this exact character, 5 full-body poses on pure white background: front view, 3/4 left, left profile, back view, right profile, 3/4 right — evenly spaced in a clean horizontal row, consistent lighting and style, no background noise, no shadows, same proportions and detailing across all views
+COMMAND_END
+COMMAND_START|default_negative_prompt
+blurry, illustration, drawing, horror
+COMMAND_END

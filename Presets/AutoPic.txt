@@ -1,0 +1,19 @@
+COMMAND_START|joblist
+-llm_manager has info on the active story and has preset the llm_prompt, so we don't want to init it
+-command @llm_prompt_reset
+
+command @llm_prompt_pop_first
+command @llm_prompt_pop_first
+
+command @llm_prompt_set_base_prompt|Your job is to look at the following text/story and describe in text the image of the last scene so that it can be rendered by a text-to-image AI.  Do not include any choices or options.|
+command @llm_prompt_add_from_user|Please describe the preceding scene so that it can be rendered by a text-to-image AI.  Be brief, but include the nationality, age, clothing and scene and poses.  Do not use formatting or titles, just put it all in one paragraph.|
+
+call_llm
+command @copy|llm_reply|prompt|
+COMMAND_END
+COMMAND_START|default_negative_prompt
+cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white
+COMMAND_END
+COMMAND_START|default_pre_prompt
+live action,
+COMMAND_END

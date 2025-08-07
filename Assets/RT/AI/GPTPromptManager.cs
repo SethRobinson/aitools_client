@@ -167,6 +167,18 @@ public class GPTPromptManager : MonoBehaviour
         textCompletionScript.SpawnChatCompleteRequest(json, myCallback, db, openAI_APIKey);
     }
     //  Queue<GTPChatLine> _interactions = new Queue<GTPChatLine>();
+
+    public GTPChatLine PopFirstInteraction()
+    {
+        //return the first interaction in the queue and remove it, if it exists
+        if (_interactions.Count == 0)
+        {
+            return null;
+        }
+        GTPChatLine firstInteraction = _interactions.Dequeue();
+        return firstInteraction;
+    }
+
     public GTPChatLine GetLastInteraction()
     {
         if (_interactions.Count == 0)
@@ -176,7 +188,19 @@ public class GPTPromptManager : MonoBehaviour
         
         //return the newest thing added
         return _interactions.LastOrDefault();
-   }
+    }
+
+    public void AppendToLastInteraction(string text)
+    {
+        if (_interactions.Count == 0)
+        {
+            return;
+        }
+
+        //return the newest thing added
+        _interactions.LastOrDefault()._content += text;
+    }
+
 
     public Queue<GTPChatLine> BuildPromptChat(int linesToIgnoreAtTheEnd = 0)
     {

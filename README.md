@@ -6,7 +6,12 @@ License:  BSD style attribution, see LICENSE.md
 <a href="Media/aitools_v2_aiguide.png"><img align="top" src="Media/aitools_v2_aiguide.png"></a>
 </p>
 
-## Download the latest version: V2.00 (Feb 25th, 2025) [AI Tools Client (Windows, 62 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip)
+
+## August 7th 2025: For now, this project is no longer being publicly updated.  Workflows I created only months ago are breaking due to the constant changes in ComfyUI, its plugins, the models, etc.  As a result, only the workflows that I personally need at the moment are likely to be working right.  
+
+## The effort required to make this project stable and useful for anyone but me has reached a high enough level that it just doesn't make sense to bother updating here anymore.
+
+## Download the latest (last?) public version: V2.01 (Aug 7th, 2025) [AI Tools Client (Windows, 62 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip)
 
 Need an old version? The last pre-V2 version (that still supports Auto1111) can be downloaded [here](https://www.rtsoft.com/files/SethsAIToolsWindowsV095.zip).
 
@@ -31,9 +36,10 @@ To use this, you'll need to connect to something that can generate images, and h
 
 ## Recent changes
 
-- I ripped out the A1111 support, it's ComfyUI all the way now.  It's a big step and it broke things, so the paintball game and pizza thing are removed.  Most of the other things still work.  Crazy Camera sort of works, I fix it up later when I need it, it works using the new workflow/joblist system but it's too slow. I've versions to V2 to make it clear it's not the old version anymore.
-- Introduces a whole new preset "joblist" system that strings together ComfyUI workflows, there are too many changes to list.  Making your own presets and worklows should be much simpler now.
-- This project is entirely for fun, please pardon the lack of documentation and ease of use.  I'll try to help if you post problems here as issues or in the discussion area though!
+- Presets have new features to make them more like scripts, for example, you can now invoke the LLM to change/write text, resize images, copy the prompt text to the audio prompt text, stuff like that.  Nothing is documented and it's complicated to use
+- Adventure mode has a button that takes the active story and dynamically uses the active LLM to create an image prompt.  (AutoPic.txt is the script that the button runs)
+- New ComfyUI workflows were added for Kontext and Wan 2.2, I'm sure they are already out of date
+- This will probably be the last public update, it's just too hard to keep everything running for general use
 
 ## Known issues
 

@@ -6363,6 +6363,7 @@ GameObject:
   - component: {fileID: 5621681297462154405}
   - component: {fileID: 1784631072771005334}
   - component: {fileID: 899732769392999353}
+  - component: {fileID: 7241926569584848730}
   m_Layer: 0
   m_Name: DefaultPicPreFab
   m_TagString: Untagged
@@ -6444,7 +6445,7 @@ MonoBehaviour:
   m_infoPanelScript: {fileID: 8820353743284542758}
   m_picMovie: {fileID: 1784631072771005334}
   _texGenWebUICompletionManager: {fileID: 899732769392999353}
-  _promptManager: {fileID: 0}
+  _promptManager: {fileID: 7241926569584848730}
   m_camera: {fileID: 0}
 --- !u!114 &3139769949643608530
 MonoBehaviour:
@@ -6599,6 +6600,18 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 7d6666af08b998e40b390bc1a72fcdcc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!114 &7241926569584848730
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7592781632933292165}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ca2cdeeb05a624a489e17093cb1046fd, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
 --- !u!1 &7664929661124860893

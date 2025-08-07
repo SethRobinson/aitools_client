@@ -119,7 +119,7 @@ public class Config : MonoBehaviour
     public List<LLMParm> GetLLMParms() { return m_llmParms; }
     public string GetGenericLLMMode() { return _genericLLMMode; }
   
-    float m_version = 2.00f;
+    float m_version = 2.01f;
     string m_imageEditorPathAndExe = "none set";
     public string GetVersionString() { return m_version.ToString("0.00"); }
     public float GetVersion() { return m_version; }
@@ -139,7 +139,7 @@ public class Config : MonoBehaviour
      _openAI_APIModel = "gpt-4o";
      _texgen_webui_address = "localhost:5000";
     _openai_gpt4_endpoint = "https://api.openai.com/v1/chat/completions";
-    _ollama_endpoint = "/api/chat";
+    _ollama_endpoint = "/v1/chat/completions";
 
         _elevenLabs_APIKey = "";
      _elevenLabs_voiceID = "";
