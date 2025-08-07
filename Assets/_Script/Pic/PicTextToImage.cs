@@ -376,16 +376,127 @@ public class PicTextToImage : MonoBehaviour
 
         workflowFileName = m_scheduledEvent.workflow;
 
-        bool bError = false;
-
-        string comfyUIGraphJSon = LoadComfyUIJSon(workflowFileName, out bError);
-
-        if (bError)
+        // Check for cached API version first
+        string cachedApiPath = "ComfyUI/" + workflowFileName.Replace(".json", "_cached_api_version.json");
+        string comfyUIGraphJSon = "";
+        bool bNeedsConversion = false;
+        
+        // If a manual _api.json exists, use that instead
+        if (!workflowFileName.Contains("_api.json"))
         {
+            string manualApiPath = "ComfyUI/" + workflowFileName.Replace(".json", "_api.json");
+            if (File.Exists(manualApiPath))
+            {
+                RTConsole.Log($"Using manual API version: {manualApiPath}");
+                workflowFileName = workflowFileName.Replace(".json", "_api.json");
+                cachedApiPath = ""; // Don't need cache
+            }
+        }
+        
+        // Try to use cached version if it exists and is newer than source
+        if (!string.IsNullOrEmpty(cachedApiPath) && File.Exists(cachedApiPath))
+        {
+            string sourcePath = "ComfyUI/" + workflowFileName;
+            if (File.Exists(sourcePath) && 
+                File.GetLastWriteTime(cachedApiPath) > File.GetLastWriteTime(sourcePath))
+            {
+                RTConsole.Log($"Using cached API version: {Path.GetFileName(cachedApiPath)}");
+                try
+                {
+                    using (System.IO.StreamReader reader = new System.IO.StreamReader(cachedApiPath))
+                    {
+                        comfyUIGraphJSon = reader.ReadToEnd();
+                    }
+                }
+                catch (Exception e)
+                {
+                    RTConsole.Log($"Failed to read cached file: {e.Message}");
+                    comfyUIGraphJSon = ""; // Will fall back to loading original
+                }
+            }
+        }
+        
+        // If we don't have cached version, load the original
+        if (string.IsNullOrEmpty(comfyUIGraphJSon))
+        {
+            bool bError = false;
+            comfyUIGraphJSon = LoadComfyUIJSon(workflowFileName, out bError);
 
-            FinishUpEverything(false);
-            m_picScript.SetStatusMessage("Workflow .json not found");
-            yield break;
+            if (bError)
+            {
+                FinishUpEverything(false);
+                m_picScript.SetStatusMessage("Workflow .json not found");
+                yield break;
+            }
+            
+            // Check if this needs conversion (has "nodes" array = full workflow format)
+            if (!workflowFileName.Contains("_api.json") && !workflowFileName.Contains("_cached_api_version.json"))
+            {
+                try
+                {
+                    JSONNode testNode = JSON.Parse(comfyUIGraphJSon);
+                    if (testNode["nodes"] != null)
+                    {
+                        bNeedsConversion = true;
+                        RTConsole.Log($"Workflow {workflowFileName} needs API conversion");
+                    }
+                }
+                catch (Exception)
+                {
+                    // If can't parse, we'll try to use as-is
+                    RTConsole.Log($"Could not parse workflow {workflowFileName} to check format, using as-is");
+                }
+            }
+        }
+        
+        // Convert if needed
+        if (bNeedsConversion && !string.IsNullOrEmpty(cachedApiPath))
+        {
+            m_picScript.SetStatusMessage("Converting workflow to API format...");
+            
+            // Create JSON payload for conversion
+            string convertPayload = comfyUIGraphJSon;
+            
+            using (var convertRequest = UnityWebRequest.PostWwwForm(url + "/workflow/convert", "POST"))
+            {
+                byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(convertPayload);
+                convertRequest.uploadHandler = new UploadHandlerRaw(bodyRaw);
+                convertRequest.downloadHandler = new DownloadHandlerBuffer();
+                convertRequest.SetRequestHeader("Content-Type", "application/json");
+                
+                yield return convertRequest.SendWebRequest();
+                
+                if (convertRequest.result == UnityWebRequest.Result.Success)
+                {
+                    comfyUIGraphJSon = convertRequest.downloadHandler.text;
+                    RTConsole.Log($"Successfully converted workflow to API format");
+                    
+                    // Cache the converted version
+                    try
+                    {
+                        // Ensure directory exists
+                        string cacheDir = Path.GetDirectoryName(cachedApiPath);
+                        if (!Directory.Exists(cacheDir))
+                        {
+                            Directory.CreateDirectory(cacheDir);
+                        }
+                        
+                        File.WriteAllText(cachedApiPath, comfyUIGraphJSon);
+                        RTConsole.Log($"Cached API version to: {Path.GetFileName(cachedApiPath)}");
+                    }
+                    catch (Exception e)
+                    {
+                        RTConsole.Log($"Failed to cache converted workflow: {e.Message}");
+                    }
+                }
+                else
+                {
+                    RTConsole.Log($"Failed to convert workflow: {convertRequest.error}");
+                    RTConsole.Log($"Server may not have the /workflow/convert endpoint installed");
+                    RTConsole.Log("Attempting to use workflow as-is (may fail if not in API format)");
+                    // Continue with original - it might work if it's already in API format
+                }
+            }
         }
         //any custom replace commands in the job._data?
         if (m_scheduledEvent.m_picJob._data.Count > 0)
@@ -471,22 +582,12 @@ public class PicTextToImage : MonoBehaviour
             ModifyJsonValue(jsonNode, "frames_number", JSONNode.Parse(frameCountOverRide.ToString()), false); //ltx
         }
 
-        //if jsonNode has a node called last_node_id, we'll need to convert it to api format
-
+        // Convert modified JSON back to string for sending
         StringBuilder sb = new StringBuilder();
         jsonNode.WriteToStringBuilder(sb, 0, 0, JSONTextMode.Indent);
         string modifiedJsonString = sb.ToString();
 
-        /*
-        if (jsonNode["last_node_id"] != null)
-        {
-            RTConsole.Log("No _api in the filename, so assuming we need to convert the workflow to API format");
-            File.WriteAllText("comfyui_workflow_to_send.json", modifiedJsonString);
-
-            modifiedJsonString = ComfyUIConverter.ConvertWorkflow(modifiedJsonString);
-        
-        }
-        */
+        // Write debug file for troubleshooting
         File.WriteAllText("comfyui_workflow_to_send_api.json", modifiedJsonString);
 
 
