@@ -1,3 +1,7 @@
+---
+alwaysApply: false
+description: Unity C# coding conventions and patterns used throughout this project.
+---
 # Unity C# Coding Standards
 
 ## Naming Conventions
@@ -85,7 +89,10 @@
 - Validate workflow JSON before execution
 - Use template replacement for dynamic parameters
 - Handle workflow execution states properly
-description:
-globs:
-alwaysApply: false
----
+
+## File Access Restrictions
+
+- **NEVER** read or write any file that starts with `test_`, `Test_`, or `TEST_` (case-insensitive)
+- This includes files like `test_*.cs`, `TEST_*.txt`, `Test_*.json`, etc.
+- Skip these files when searching or processing directories
+- This restriction applies to all file operations in the codebase

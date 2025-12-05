@@ -1,8 +1,6 @@
-﻿using UnityEngine;
+﻿using System;
 using System.Collections;
-using System.IO;
-using System.Linq.Expressions;
-using System;
+using UnityEngine;
 
 public class CameraManager : MonoBehaviour
 {
@@ -13,26 +11,54 @@ public class CameraManager : MonoBehaviour
     private MeshRenderer m_meshRenderer;
 
     public static CameraManager _this;
-    // Use this for initialization
     public Action<WebCamTexture> OnCameraStartedCallback;
     public Action<WebCamDevice[]> OnCameraInfoAvailableCallback;
     public Action<WebCamTexture> OnCameraDisplayedNewFrameCallback;
     float _restartCameraTimer;
 
     bool m_camStarted = false;
+
+    // Requested capture settings (can be changed before starting)
+    private int _requestedWidth = 1280;
+    private int _requestedHeight = 720;
+    private int _requestedFPS = 30;
+
     private void Awake()
     {
-        _this = this; 
-    }
-    public int GetCurrentCameraIndex() { return _currentCameraIndex; }
-    public static CameraManager Get()
-    {
-        return _this;
+        _this = this;
     }
 
-    void Start()
+    public WebCamTexture GetWebCamTexture() { return _texture; }
+    public static CameraManager Get() => _this;
+    public int GetCurrentCameraIndex() { return _currentCameraIndex; }
+    public bool IsOn() { return _texture != null; }
+
+    public void SetRequestedResolution(int width, int height, int fps = 30)
     {
-        
+        _requestedWidth = Mathf.Max(1, width);
+        _requestedHeight = Mathf.Max(1, height);
+        _requestedFPS = Mathf.Max(1, fps);
+
+        // If the camera is already running, restart to apply
+        if (_texture != null)
+        {
+            StopCamera();
+            _restartCameraTimer = Time.time + 0.1f;
+        }
+    }
+
+    // Returns Unity-reported resolutions when available (iOS/Android typically).
+    public Resolution[] GetAvailableResolutions(int deviceIndex)
+    {
+        if (deviceIndex < 0 || deviceIndex >= WebCamTexture.devices.Length) return null;
+        return WebCamTexture.devices[deviceIndex].availableResolutions;
+    }
+
+    // Actual active resolution after Play()
+    public Vector2Int GetActiveResolution()
+    {
+        if (_texture == null) return new Vector2Int(0, 0);
+        return new Vector2Int(_texture.width, _texture.height);
     }
 
     public void InitCamera(MeshRenderer meshrendererToUse)
@@ -40,26 +66,19 @@ public class CameraManager : MonoBehaviour
         m_meshRenderer = meshrendererToUse;
         StartCoroutine(InitWebcams());
     }
-    public bool IsOn()
-    {
-        return _texture != null;
-    }
 
     public void SetCameraByIndex(int index)
     {
-
-        if (index != _currentCameraIndex) 
-        { 
-           _currentCameraIndex= index;
+        if (index != _currentCameraIndex)
+        {
+            _currentCameraIndex = index;
             StopCamera();
-
             _restartCameraTimer = Time.time + 1;
-
         }
     }
-private IEnumerator InitWebcams()
-    {
 
+    private IEnumerator InitWebcams()
+    {
         yield return Application.RequestUserAuthorization(UserAuthorization.WebCam);
         if (Application.HasUserAuthorization(UserAuthorization.WebCam))
         {
@@ -71,46 +90,42 @@ private IEnumerator InitWebcams()
 
                 if (devices[cameraIndex].availableResolutions != null)
                 {
-                    //available on iOS/Android only I guess
                     foreach (Resolution res in devices[cameraIndex].availableResolutions)
                     {
                         Debug.Log("Res: X: " + res.width + " : Y: " + res.height + " FPS: " + res.refreshRateRatio);
                     }
                 }
-
             }
-            if (OnCameraInfoAvailableCallback != null)
-                OnCameraInfoAvailableCallback.Invoke(devices);
-
+            OnCameraInfoAvailableCallback?.Invoke(devices);
         }
         else
         {
             RTConsole.Log("no webcams found");
         }
 
-       _restartCameraTimer= Time.time + 1;
+        _restartCameraTimer = Time.time + 1;
     }
 
     public void StartCamera()
     {
         Debug.Log($"USER PERMISSION {Application.HasUserAuthorization(UserAuthorization.WebCam)}");
-        //Debug.Log($"DEVICES AMOUNT {WebCamTexture.devices.Length}");
         m_camStarted = false;
 
         if (WebCamTexture.devices.Length > 0 && _currentCameraIndex < WebCamTexture.devices.Length)
         {
             WebCamDevice device = WebCamTexture.devices[_currentCameraIndex];
-            _texture = new WebCamTexture(device.name);
-            //_display.texture = _texture;
-          
+
+            // Request a specific resolution/FPS (Unity picks the closest supported)
+            _texture = new WebCamTexture(device.name, _requestedWidth, _requestedHeight, _requestedFPS);
+
             m_meshRenderer.material.mainTexture = _texture;
-           _texture.Play();
-            Debug.Log($"START PLAYING!");
-        } else
+            _texture.Play();
+            Debug.Log($"START PLAYING requested {_requestedWidth}x{_requestedHeight}@{_requestedFPS}fps");
+        }
+        else
         {
             Debug.Log("Unable to start camera device id " + _currentCameraIndex + ", there are only " + WebCamTexture.devices.Length + " devices");
         }
-
     }
 
     public void StopCamera()
@@ -119,38 +134,23 @@ private IEnumerator InitWebcams()
         {
             _texture.Stop();
             _texture = null;
-
-            //OnCameraStartedCallback = null;
             m_camStarted = false;
             _restartCameraTimer = 0;
         }
     }
 
-    //Texture2D tex = new Texture2D(webcamTexture.width, webcamTexture.height, TextureFormat.RGB24, false);
-    //tex.SetPixels(webcamTexture.GetPixels());
-    //    tex.Apply();
-
     private void OnDestroy()
     {
-        // Deactivate our camera
         StopCamera();
     }
 
     public void GrabFrame()
     {
         Texture2D texture = new Texture2D(_texture.width, _texture.height, TextureFormat.ARGB32, false);
-
-        //Save the image to the Texture2D
         texture.SetPixels(_texture.GetPixels());
         texture.Apply();
-
-        //Encode it as a PNG.
         byte[] bytes = texture.EncodeToPNG();
-
-        //Save it in a file.
-       // File.WriteAllBytes("crap.png", bytes);
-
-        //StartCoroutine(PythonManager.Get().ProcessFrame());
+        // File.WriteAllBytes("crap.png", bytes);
     }
 
     private void Update()
@@ -163,37 +163,22 @@ private IEnumerator InitWebcams()
                 if (_texture.didUpdateThisFrame)
                 {
                     m_camStarted = true;
-                    if (OnCameraStartedCallback != null)
-                        OnCameraStartedCallback.Invoke(_texture);
+                    OnCameraStartedCallback?.Invoke(_texture);
+                    Debug.Log($"Camera active at {_texture.width}x{_texture.height} ({_texture.deviceName})");
                 }
-            } else
-            {
-                //cam is running normally
-               
-                if (OnCameraDisplayedNewFrameCallback != null)
-                    OnCameraDisplayedNewFrameCallback.Invoke(_texture);
-
             }
-
-        } else
-        {
-            if (_restartCameraTimer != 0)
+            else
             {
-                if (_restartCameraTimer < Time.time)
-                {
-                    StartCamera();
-                    _restartCameraTimer = 0;
-                }
+                OnCameraDisplayedNewFrameCallback?.Invoke(_texture);
             }
         }
-
-        //if (Input.GetKeyDown(KeyCode.S))
-        //{
-
-        //    Debug.Log("Screenshot!");
-        //    GrabFrame();
-
-        //}
+        else
+        {
+            if (_restartCameraTimer != 0 && _restartCameraTimer < Time.time)
+            {
+                StartCamera();
+                _restartCameraTimer = 0;
+            }
+        }
     }
-
 }

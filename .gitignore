@@ -53,3 +53,8 @@ Adventure/TEST_*
 Presets/TEST_*
 crap.png
 setup_ollama_server_request.txt
+.cursor/rules/*
+test_*
+.cursorignore
+Assets/Experiments/CrazyCam/BLOODY.TTF
+Assets/Experiments/CrazyCam/BLOODY.TTF.meta

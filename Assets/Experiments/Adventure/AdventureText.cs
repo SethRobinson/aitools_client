@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using UnityEngine.UI;
 using System.Text;
 using System;
+using System.Text.RegularExpressions;
 
 public class AdventureText : MonoBehaviour
 {
@@ -134,6 +135,11 @@ public class AdventureText : MonoBehaviour
         {
             inputFieldRectTransform = inputField.GetComponent<RectTransform>();
         }
+        // Ensure rich text is enabled for the display component
+        if (inputField != null && inputField.textComponent != null)
+        {
+            inputField.textComponent.richText = true;
+        }
         // Add listener to handle text changes
         inputField.onValueChanged.AddListener(ResizeInputField);
 
@@ -151,7 +157,8 @@ public class AdventureText : MonoBehaviour
         //remove last interaction from gptprompt
         if (m_promptManager.GetLastInteraction() != null)
         {
-            m_promptManager.GetLastInteraction()._content = inputField.text;
+            // Sanitize any TMP markup before storing back for LLM context
+            m_promptManager.GetLastInteraction()._content = OpenAITextCompletionManager.RemoveTMPTagsFromString(inputField.text);
         }
 
         //re add our inputfield text
@@ -223,11 +230,13 @@ public class AdventureText : MonoBehaviour
     public void SetText(string text)
     {
         //set the text
-        inputField.text = text;
+        inputField.text = ConvertMarkdownToTMP(text);
     }
     public void AddText(string newText)
     {
         inputField.text += newText;
+        // Re-run formatting across full text to catch spans that cross append boundaries
+        inputField.text = ConvertMarkdownToTMP(inputField.text);
         ResizeInputField(inputField.text);
     }
 
@@ -621,7 +630,7 @@ public class AdventureText : MonoBehaviour
             streamedText = OpenAITextCompletionManager.RemoveThinkTagsFromString(streamedText);
             //also remove line feeds before and after the text
             streamedText = streamedText.Trim();
-            inputField.text = streamedText;
+            inputField.text = ConvertMarkdownToTMP(streamedText);
         }
 
         if (!_bFoundAndProcessedPics)
@@ -837,11 +846,11 @@ public class AdventureText : MonoBehaviour
 
             if (PresetManager.Get().DoesPresetExistByNameNotCaseSensitive(fileToLoad))
             {
-                preset = PresetManager.Get().LoadPreset(fileToLoad);
+                preset = PresetManager.Get().LoadPreset(fileToLoad, PresetManager.Get().GetActivePreset());
             }
             else
             {
-                preset = PresetManager.Get().LoadPreset("autopic.txt");
+                preset = PresetManager.Get().LoadPreset("autopic.txt", PresetManager.Get().GetActivePreset());
             }
 
             jobsTodo = GameLogic.Get().GetPicJobListAsListOfStrings(preset.JobList);
@@ -873,6 +882,8 @@ public class AdventureText : MonoBehaviour
     private void UpdateInputFieldText()
     {
         inputField.text += accumulatedText.ToString();
+        // Re-apply formatting to the entire text to support matches spanning chunks
+        inputField.text = ConvertMarkdownToTMP(inputField.text);
         accumulatedText.Clear();
         lastUpdateTime = Time.time;
     }
@@ -881,6 +892,23 @@ public class AdventureText : MonoBehaviour
     {
         m_vanillaStatusMsg = status;
         _statusText.text = m_name + ": " + m_vanillaStatusMsg; // + " - " + m_configName;
+    }
+
+    // Convert lightweight markdown emphasis markers to TMP rich text for display
+    private string ConvertMarkdownToTMP(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+
+      // Replace bold with double asterisks or underscores first
+        text = Regex.Replace(text, "\\*\\*(.+?)\\*\\*", "<b>$1</b>", RegexOptions.Singleline);
+        //text = Regex.Replace(text, "__(.+?)__", "<b>$1</b>", RegexOptions.Singleline);
+
+        // Then replace single asterisk or underscore wrapped segments, avoiding overlaps with doubles
+        //text = Regex.Replace(text, "(?<!\\*)\\*(?!\\s)(.+?)(?<!\\s)\\*(?!\\*)", "<b>$1</b>", RegexOptions.Singleline);
+        //text = Regex.Replace(text, "(?<!_)_(?!\\s)(.+?)(?<!\\s)_(?!_)", "<b>$1</b>", RegexOptions.Singleline);
+
+     
+        return text;
     }
     public void SetLLMActive(bool bActive)
     {
@@ -919,8 +947,11 @@ public class AdventureText : MonoBehaviour
 
         if (AdventureLogic.Get().GetLLMType() == LLM_Type.GenericLLM_API)
         {
-            string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, 4096, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetGenericLLMMode(), true, Config.Get().GetLLMParms(), Config.Get().GetGenericLLMIsOllama());
-            _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, Config.Get()._texgen_webui_address, Config.Get()._ollama_endpoint, OnStreamingTextCallback, true, Config.Get()._texgen_webui_APIKey);
+            string suggestedEndpoint;
+            string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, 4096, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetGenericLLMMode(), true, Config.Get().GetLLMParms(), Config.Get().GetGenericLLMIsOllama(), Config.Get().GetGenericLLMIsLlamaCpp());
+            // Use the suggested endpoint (might be /v1/completions for special templates)
+            string endpoint = Config.Get().GetGenericLLMIsOllama() ? Config.Get()._ollama_endpoint : suggestedEndpoint;
+            _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, Config.Get()._texgen_webui_address, endpoint, OnStreamingTextCallback, true, Config.Get()._texgen_webui_APIKey);
             SetLLMActive(true);
         }
         

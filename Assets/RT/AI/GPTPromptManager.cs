@@ -148,6 +148,16 @@ public class GPTPromptManager : MonoBehaviour
         }
     }
      
+
+    public string GetAllText()
+    {
+        string allText = _baseSystemPrompt + "\n" + _journalSystemPrompt + "\n";
+        foreach (GTPChatLine interaction in _interactions)
+        {
+            allText += interaction._role + ": " + interaction._content + "\n";
+        }
+        return allText;
+    }
     public void SummarizeHistoryIntoJournal(string openAI_APIKey, Action<RTDB, JSONObject, string> myCallback)
     {
 
@@ -164,6 +174,7 @@ public class GPTPromptManager : MonoBehaviour
         RTDB db = new RTDB();
 
         TrimInteractionsToLastNLines(_interactionsToKeepWhenBuildingJournal);
+        
         textCompletionScript.SpawnChatCompleteRequest(json, myCallback, db, openAI_APIKey);
     }
     //  Queue<GTPChatLine> _interactions = new Queue<GTPChatLine>();

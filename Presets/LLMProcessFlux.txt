@@ -1,0 +1,15 @@
+COMMAND_START|joblist
+-this script is called when the user hits the prompt process button
+command @llm_prompt_reset
+command @copy|none|requirements|
+command @llm_prompt_set_base_prompt|Please rewrite and enhance the text from the user to be a detailed image prompt for FLUX text to image renderer.  Return only a single paragraph not longer than 400 words.  Don't use markup. include nationality, age, clothing, poses, camera direction, etc. Obviously don't use the word FLUX in the description.|
+command @llm_prompt_add_from_user|global_prompt|
+call_llm
+command @copy|llm_reply|global_prompt|
+COMMAND_END
+COMMAND_START|default_negative_prompt
+cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white
+COMMAND_END
+COMMAND_START|default_pre_prompt
+live action,
+COMMAND_END

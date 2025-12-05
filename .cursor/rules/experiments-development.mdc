@@ -1,3 +1,7 @@
+---
+alwaysApply: false
+description: Guidance for creating and integrating experiments (Adventure, ShootingGallery, CrazyCam) with the main app.
+---
 # Experiments Development Guide
 
 ## Experiment Structure
@@ -12,6 +16,11 @@
 - Use [BreakoutLogic.cs](mdc:Assets/Experiments/Breakout/BreakoutLogic.cs) as reference
 - Implement proper cleanup and state management
 - Handle integration with the main application
+- Current experiments:
+  - **Adventure**: [AdventureLogic.cs](mdc:Assets/Experiments/Adventure/AdventureLogic.cs) - Interactive story generation with Twine export
+  - **ShootingGallery**: [ShootingGalleryLogic.cs](mdc:Assets/Experiments/ShootingGallery/ShootingGalleryLogic.cs) - AI-powered shooting gallery game
+  - **CrazyCam**: [CrazyCamLogic.cs](mdc:Assets/Experiments/CrazyCam/CrazyCamLogic.cs) - Real-time webcam processing
+  - **Pizza**: [PizzaLogic.cs](mdc:Assets/Experiments/Pizza/PizzaLogic.cs) - Image processing experiments
 
 ## AI Integration in Experiments
 
@@ -24,8 +33,9 @@
 ### Real-time Processing
 - Use [CrazyCamLogic.cs](mdc:Assets/Experiments/CrazyCam/CrazyCamLogic.cs) pattern for webcam processing
 - Implement efficient frame capture and processing
-- Handle different webcam resolutions and formats
+- Handle different webcam resolutions and formats (configure via `set_crazycam_capture|width|height|fps|` in config.txt)
 - Manage processing pipeline performance
+- Note: CrazyCam crops webcam frames to match target aspect ratio (gen width/height) before resizing to avoid squishing
 
 ### Content Generation
 - Use [AIGuideManager.cs](mdc:Assets/_Script/AIGuideManager.cs) for text generation
@@ -62,16 +72,20 @@
 - Support different difficulty levels and modes
 
 ### Adventure Mode
-- Use [Adventure/](mdc:Assets/Experiments/Adventure/) for story generation
-- Implement Twine export functionality
+- Use [AdventureLogic.cs](mdc:Assets/Experiments/Adventure/AdventureLogic.cs) for story generation
+- Implement Twine export functionality ([AdventureExportTwine.cs](mdc:Assets/Experiments/Adventure/AdventureExportTwine.cs))
+- Implement quiz export functionality ([AdventureExportQuiz.cs](mdc:Assets/Experiments/Adventure/AdventureExportQuiz.cs))
 - Handle branching story logic
 - Support image generation for story scenes
+- Export templates stored in `Adventure/` directory
 
 ### CrazyCam
-- Implement real-time image processing
+- Implement real-time image processing via [CrazyCamLogic.cs](mdc:Assets/Experiments/CrazyCam/CrazyCamLogic.cs)
 - Handle webcam input and output
 - Manage processing pipeline performance
-- Support different filter and effect modes
+- Support different filter and effect modes (snapshot presets for transformations)
+- Configure capture settings in config.txt: `set_crazycam_capture|width|height|fps|`
+- Uses audio feedback (snap.wav, heartbeat.wav, image_reveal.wav)
 
 ## Integration with Main Application
 
@@ -120,7 +134,3 @@
 - Handle loading states and transitions
 - Implement proper error recovery
 - Support accessibility features
-description:
-globs:
-alwaysApply: false
----

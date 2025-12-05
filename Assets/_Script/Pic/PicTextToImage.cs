@@ -232,7 +232,7 @@ public class PicTextToImage : MonoBehaviour
         {
             var rand = new System.Random();
             //let's set it to our own random so we know what it is later
-            m_seed = Math.Abs(rand.NextLong());
+            m_seed = Math.Abs(rand.Next()); //I used to use NextLong but some generators actually can't handle it or something
         }
 
 
@@ -319,7 +319,8 @@ public class PicTextToImage : MonoBehaviour
                 if (node[key][keyToFind] != null)
                 {
                     node[key][keyToFind] = newValue;
-                    return true;
+                    //return true;
+                    //keep looking for more
                 }
                 // Recursively search in nested objects
                 if (FindAndReplaceValue(node[key], keyToFind, newValue))
@@ -481,6 +482,7 @@ public class PicTextToImage : MonoBehaviour
                             Directory.CreateDirectory(cacheDir);
                         }
                         
+                        // Just save the raw response without any formatting
                         File.WriteAllText(cachedApiPath, comfyUIGraphJSon);
                         RTConsole.Log($"Cached API version to: {Path.GetFileName(cachedApiPath)}");
                     }
@@ -492,6 +494,8 @@ public class PicTextToImage : MonoBehaviour
                 else
                 {
                     RTConsole.Log($"Failed to convert workflow: {convertRequest.error}");
+                    //Also show it to the user's screen
+                    RTQuickMessageManager.Get().ShowMessage($"Failed to convert workflow: {convertRequest.error}");
                     RTConsole.Log($"Server may not have the /workflow/convert endpoint installed");
                     RTConsole.Log("Attempting to use workflow as-is (may fail if not in API format)");
                     // Continue with original - it might work if it's already in API format
@@ -584,7 +588,10 @@ public class PicTextToImage : MonoBehaviour
 
         // Convert modified JSON back to string for sending
         StringBuilder sb = new StringBuilder();
-        jsonNode.WriteToStringBuilder(sb, 0, 0, JSONTextMode.Indent);
+        // Force inline to false to ensure proper formatting for debug file
+        if (jsonNode != null)
+            jsonNode.Inline = false;
+        jsonNode.WriteToStringBuilder(sb, 0, 2, JSONTextMode.Indent);
         string modifiedJsonString = sb.ToString();
 
         // Write debug file for troubleshooting

@@ -1,0 +1,3 @@
+COMMAND_START|joblist
+text_to_img_qwen_fp8.json @replace|"width": 1328|"width": 1328| @replace|"height": 1328|"height": 1328| @replace|"steps": 20|"steps": 20|
+COMMAND_END

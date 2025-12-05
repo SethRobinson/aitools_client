@@ -95,3 +95,9 @@ Key classes:
 - The app strips `<think>` tags by default for reasoning models
 - Uses BSD-style license requiring attribution
 - Privacy-focused: no telemetry, only version checking
+
+### File Access Restrictions
+
+- **NEVER** read or write any file that starts with `test_`, `Test_`, or `TEST_` (case-insensitive)
+- This includes files like `test_*.cs`, `TEST_*.txt`, `Test_*.json`, etc.
+- Skip these files when searching or processing directories

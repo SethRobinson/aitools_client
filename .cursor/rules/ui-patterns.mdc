@@ -1,16 +1,26 @@
+---
+alwaysApply: false
+description: UI architecture and component patterns for panels, inputs, state management, and performance.
+---
 # UI Patterns and GUI Components
 
 ## GUI Component Organization
 
 ### Panel Structure
-- Use descriptive suffixes for panel classes: `ServerSettingsPanel`, `GenerateSettingsPanel`
+- Use descriptive suffixes for panel classes: `ServerSettingsPanel`, `GenerateSettingsPanel`, `ControlNetSettingsPanel`
 - Each panel should handle its own state and validation
 - Use [ControlNetSettingsPanel.cs](mdc:Assets/_Script/GUI/ControlNetSettingsPanel.cs) as reference for complex panels
+- Use [ServerSettingsPanel.cs](mdc:Assets/_Script/GUI/ServerSettingsPanel.cs) for server configuration
+- Use [GenerateSettingsPanel.cs](mdc:Assets/_Script/GUI/GenerateSettingsPanel.cs) for generation parameters
 - Implement proper cleanup in `OnDestroy()` methods
 
 ### Slider Components
 - Create dedicated slider classes for specific parameters
 - Use [ControlNetGuidanceSlider.cs](mdc:Assets/_Script/GUI/ControlNetGuidanceSlider.cs) pattern
+- Use [ControlNetWeightSlider.cs](mdc:Assets/_Script/GUI/ControlNetWeightSlider.cs) for weight parameters
+- Use [TextStrengthSlider.cs](mdc:Assets/_Script/GUI/TextStrengthSlider.cs) for text strength
+- Use [InpaintStrengthSlider.cs](mdc:Assets/_Script/GUI/InpaintStrengthSlider.cs) for inpainting strength
+- Use [PenSizeSlider.cs](mdc:Assets/_Script/GUI/PenSizeSlider.cs) for brush size
 - Implement value validation and range checking
 - Provide real-time feedback for parameter changes
 
@@ -121,7 +131,3 @@
 - Allow cancellation of operations
 - Provide estimated completion times
 - Handle timeout scenarios gracefully
-description:
-globs:
-alwaysApply: false
----

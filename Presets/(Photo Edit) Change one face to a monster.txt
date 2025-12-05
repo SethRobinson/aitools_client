@@ -1,13 +1,16 @@
 COMMAND_START|joblist
 -Note:  The sam2 segmentation workflow requires that the segmentation_prompt is set to what we want the alpha channel to be on.  We directly set it with the @copy command below
 
-img_to_img_automask_segmentation_one_sam2_api.json @copy|face|segmentation_prompt| @resize_if_larger|x|1024|y|1024|aspect_correct|1|
+img_to_img_automask_segmentation_one_sam2.json @copy|face|segmentation_prompt| @resize_if_larger|x|1024|y|1024|aspect_correct|1|
 
-img_to_img_inpaint_sdxl_api.json  @replace|SD1.5/dreamshaper_8Inpainting.safetensors|SD1.5/dreamshaper_8Inpainting.safetensors| @replace|"guidance": 30|"guidance": 30| @replace|"steps": 20|"steps": 20| @replace|"denoise": 0.5|"denoise": 0.8| @replace|"inpaint_model": true|"inpaint_model": true| @no_undo
+img_to_img_inpaint_sdxl.json  @replace|SD1.5/dreamshaper_8Inpainting.safetensors|SD1.5/dreamshaper_8Inpainting.safetensors| @replace|"guidance": 30|"guidance": 30| @replace|"steps": 20|"steps": 20| @replace|"denoise": 0.5|"denoise": 0.8| @replace|"inpaint_model": true|"inpaint_model": true| @no_undo
 COMMAND_END
 COMMAND_START|default_prompt
 A ((scary monster)) with a human body
 COMMAND_END
 COMMAND_START|default_negative_prompt
 cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white
+COMMAND_END
+COMMAND_START|default_pre_prompt
+shot with a Bessa Cinestill. Analog film, high ISO, medium dynamic range,
 COMMAND_END

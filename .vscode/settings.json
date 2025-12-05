@@ -1,0 +1,7 @@
+{
+  "cursor.cpp.disablePreviewContextFetching": true,
+  "cursor.context.providers.file.deny": [
+    "**/test_*",
+    "**/test_*.*"
+  ]
+}

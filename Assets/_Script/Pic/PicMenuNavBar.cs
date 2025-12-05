@@ -39,6 +39,11 @@ public class PicMenuNavBar : MonoBehaviour
         //_navBar.AddOption("Render w/ AIT/A1111", _picMain.OnRenderWithAITOrA1111, "Works if you have a AI Tools or A1111 server");
         _navBar.AddOption("Render w/ ComfyUI", _picMain.OnRenderWithComfyUI, "Works if you have a ComfyUI server defined in your config");
         _navBar.AddOption("Render w/ Dalle 3", _picMain.OnRenderWithDalle3Button, "Hope you entered your OpenAI key and have cash in it");
+        _navBar.AddOption("Copy to Temp Pic 1", _picMain.OnSetTemp1Button, "Set image to temp pic 1, useful to hold for more complicated scripting");
+        _navBar.AddOption("Get Prompt From Image", _picMain.OnGetPromptFromImageButton, "Click to run the Image To Prompt preset");
+
+
+
     }
 
 }

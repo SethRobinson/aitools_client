@@ -1,9 +1,3 @@
 COMMAND_START|joblist
-img_to_text_florence2_api.json
-COMMAND_END
-COMMAND_START|default_negative_prompt
-cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white
-COMMAND_END
-COMMAND_START|default_pre_prompt
-live video,
+img_to_text_florence2.json
 COMMAND_END

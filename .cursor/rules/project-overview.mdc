@@ -1,54 +1,88 @@
+---
+alwaysApply: true
+description: High-level project structure, entry points, and key directories for Seth's AI Tools Unity project.
+---
 # Seth's AI Tools - Unity Project Overview
 
-This is a Unity-based front-end for ComfyUI and Ollama that generates photos, movies, Twine games, quizzes, posters and more. The project is a native Windows .exe application that connects to AI services.
+This is a Unity-based front-end for ComfyUI and Ollama that generates photos, movies, Twine games, quizzes, posters and more. The project is a native Windows .exe application (v2.00+) that connects to AI services. Requires Unity 6+.
 
 ## Main Entry Points
 
-- [GameLogic.cs](mdc:Assets/_Script/GameLogic.cs) - Main game logic and application flow
-- [Config.cs](mdc:Assets/_Script/Config.cs) - Configuration management and settings
-- [PicMain.cs](mdc:Assets/_Script/Pic/PicMain.cs) - Core image generation and processing
-- [AIGuideManager.cs](mdc:Assets/_Script/AIGuideManager.cs) - AI Guide feature for creating content
+- [GameLogic.cs](mdc:Assets/_Script/GameLogic.cs) - Central coordinator managing UI state, renderer selection, workflow/preset systems, and coordination between ImageGenerator and AI services
+- [Config.cs](mdc:Assets/_Script/Config.cs) - Configuration management, server connections, API keys, LLM parameters, multiple GPU/server configurations
+- [ImageGenerator.cs](mdc:Assets/_Script/ImageGenerator.cs) - Core image generation orchestration, manages generation queue, ComfyUI workflow execution, coordinates with PicMain
+- [PicMain.cs](mdc:Assets/_Script/Pic/PicMain.cs) - Core image/movie display and processing, handles PicJob queue, workflow execution, file operations
+- [AIGuideManager.cs](mdc:Assets/_Script/AIGuideManager.cs) - AI Guide feature for creating themed content (stories, movies, quizzes, posters)
 
 ## Key Directories
 
 ### Core Scripts
-- `Assets/_Script/` - Main application scripts
-- `Assets/_Script/GUI/` - User interface components
-- `Assets/_Script/Pic/` - Image generation and processing
-- `Assets/RT/` - Runtime utilities and core systems
-- `Assets/RT/AI/` - AI service integrations (OpenAI, Anthropic, ComfyUI)
+- `Assets/_Script/` - Main application logic
+- `Assets/_Script/GUI/` - UI components and controls (panels, sliders, input fields)
+- `Assets/_Script/Pic/` - Image/movie handling and display components
+  - `PicTextToImage.cs` - Text-to-image generation
+  - `PicInpaint.cs` - Inpainting operations
+  - `PicUpscale.cs` - Image upscaling
+  - `PicMovie.cs` - Video/movie playback and processing
+  - `PicInterrogate.cs` - Image interrogation (captioning)
+  - `PicGenerateMask.cs` - Automatic mask generation
+- `Assets/RT/` - Reusable toolkit components (utilities, audio, input)
+- `Assets/RT/AI/` - AI service integrations
+  - `OpenAITextCompletionManager.cs` - OpenAI API (GPT-4o, o3-mini)
+  - `AnthropicAITextCompletionManager.cs` - Anthropic API (Claude)
+  - `TexGenWebUITextCompletionManager.cs` - Generic LLM (Ollama, TextGen WebUI, TabbyAPI)
+  - `ComfyUIFileUploader.cs` - ComfyUI file uploads
+  - `Dalle3Manager.cs` - OpenAI DALL-E 3 integration
+  - `GPTPromptManager.cs` - LLM prompt construction
 
 ### Experiments
-- `Assets/Experiments/` - Built-in games and test applications
-- `Assets/Experiments/Adventure/` - Twine game generation
-- `Assets/Experiments/ShootingGallery/` - AI-powered shooting gallery
-- `Assets/Experiments/CrazyCam/` - Real-time webcam processing
+- `Assets/Experiments/Adventure/` - Interactive story generation with Twine export
+- `Assets/Experiments/ShootingGallery/` - AI-powered shooting gallery game
+- `Assets/Experiments/CrazyCam/` - Real-time webcam processing with AI filters
 - `Assets/Experiments/Pizza/` - Image processing experiments
+- `Assets/Experiments/Breakout/` - Breakout game example
 
 ### Configuration
-- [config.txt](mdc:config.txt) - Application configuration file
-- `ComfyUI/` - ComfyUI workflow templates and presets
-- `Presets/` - User-created presets and settings
+- [config.txt](mdc:config.txt) - Application configuration file (server URLs, API keys, settings)
+- `ComfyUI/` - ComfyUI workflow JSON files (text-to-image, img-to-img, video generation, etc.)
+- `Presets/` - User-created presets that chain workflows together
+- `AIGuide/` - AIGuide configuration templates for themed content generation
 
 ## Architecture
 
 The application follows a modular Unity architecture:
-- **GameLogic**: Central coordinator and state management
-- **PicMain**: Image generation pipeline and UI
-- **AIGuideManager**: Content creation features
-- **RT Utilities**: Core runtime systems and utilities
+- **GameLogic**: Central coordinator and state management, UI parameter handling
+- **ImageGenerator**: Generation queue management, GPU event scheduling, workflow orchestration
+- **PicMain**: Image/movie display pipeline, job queue, file operations
+- **AIGuideManager**: Content creation features using LLMs
+- **RT Utilities**: Core runtime systems (audio, input, utilities)
 - **AI Integrations**: Service-specific managers for different AI providers
+
+## Renderer Types
+
+Supported via `RTRendererType` enum in [Config.cs](mdc:Assets/_Script/Config.cs):
+- `ComfyUI` - Primary renderer, supports custom workflows
+- `OpenAI_Dalle_3` - OpenAI DALL-E 3 API
+- `Any_Local` - Any local renderer (ComfyUI, A1111, AI_Tools)
+- `A1111` - Legacy Automatic1111 support (deprecated in v2.00)
+- `AI_Tools` - AI Tools server
+- `AI_Tools_or_A1111` - Either AI Tools or A1111
 
 ## Key Features
 
-- ComfyUI workflow execution and management
-- Multiple AI service support (OpenAI, Anthropic, local LLMs)
-- Image generation, editing, and processing
-- Content creation (stories, quizzes, games)
-- Real-time webcam processing
-- Drag-and-drop image handling
-- Preset system for workflows and settings
-description:
-globs:
-alwaysApply: false
----
+- **ComfyUI Integration**: Workflow execution, file uploads, multiple server support
+- **Image Generation**: Text-to-image, img-to-img, inpainting, upscaling, ControlNet
+- **Video Generation**: Text-to-video, video-to-video, video with audio (MMAudio)
+- **LLM Integration**: OpenAI, Anthropic, and generic LLM APIs (Ollama, TextGen WebUI, TabbyAPI)
+- **Content Creation**: Stories, quizzes, games, posters, themed movies via AIGuide
+- **Real-time Processing**: Webcam processing (CrazyCam), live image generation
+- **Interactive Experiments**: Adventure mode, Shooting Gallery, CrazyCam
+- **Preset System**: Chain multiple workflows together with parameter substitution
+- **Drag-and-drop**: Image handling, file operations, clipboard support
+
+## Important Restrictions
+
+- **NEVER** read or write any file that starts with `test_`, `Test_`, or `TEST_` (case-insensitive)
+- This includes files like `test_*.cs`, `TEST_*.txt`, `Test_*.json`, etc.
+- Skip these files when searching or processing directories
+

@@ -38,10 +38,11 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
 
         string prompt = "crap";
 
-        string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, m_max_tokens, m_extractor.Temperature, Config.Get().GetGenericLLMMode(), true, Config.Get().GetLLMParms());
+        string suggestedEndpoint;
+        string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, m_max_tokens, m_extractor.Temperature, Config.Get().GetGenericLLMMode(), true, Config.Get().GetLLMParms(), Config.Get().GetGenericLLMIsOllama(), Config.Get().GetGenericLLMIsLlamaCpp());
         RTDB db = new RTDB();
 
-        textCompletionScript.SpawnChatCompleteRequest(json, OnCompletedCallback, db, serverAddress, "/v1/completions");
+        textCompletionScript.SpawnChatCompleteRequest(json, OnCompletedCallback, db, serverAddress, suggestedEndpoint);
     }
 
     */
@@ -88,18 +89,175 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
 
   
     // ""name1"": ""Jeff"",
-    public string BuildForInstructJSON(Queue<GTPChatLine> lines, int max_new_tokens = 100, float temperature = 1.3f, string mode = "instruct", bool stream = false, List<LLMParm> parms = null, bool bIsOllama = false)
+    public string BuildForInstructJSON(Queue<GTPChatLine> lines, out string suggestedEndpoint, int max_new_tokens = 100, float temperature = 1.3f, string mode = "instruct", bool stream = false, List<LLMParm> parms = null, bool bIsOllama = false, bool bIsLlamaCpp = false)
     {
+        // Initialize the suggested endpoint to default (chat completions)
+        suggestedEndpoint = "/v1/chat/completions";
+        
         string msg = "";
-
-        //go through each object in lines
-        foreach (GTPChatLine obj in lines)
+        string modelName = "";
+        
+        // Get model name from parms for template detection
+        if (parms != null)
         {
-            if (msg.Length > 0)
+            foreach (LLMParm parm in parms)
             {
-                msg += ",\n";
+                if (parm._key == "model")
+                {
+                    modelName = parm._value.Replace("\"", "").ToLower();
+                    break;
+                }
             }
-            msg += "{\"role\": \"" + obj._role + "\", \"content\": \"" + SimpleJSON.JSONNode.Escape(obj._content) + "\"}";
+        }
+        
+        // Detect template type for llama.cpp servers
+        bool useGLMTemplate = false;
+        bool useChatMLTemplate = false;
+        bool useLlama2Template = false;
+        bool useLlama3Template = false;
+        
+        if (bIsLlamaCpp && !string.IsNullOrEmpty(modelName))
+        {
+            // Check for GLM models
+            if (modelName.Contains("glm"))
+            {
+                useGLMTemplate = true;
+                RTConsole.Log("Detected GLM model, using GLM chat template");
+            }
+            // Check for Mistral/Mixtral models (use ChatML)
+            else if (modelName.Contains("mistral") || modelName.Contains("mixtral"))
+            {
+                useChatMLTemplate = true;
+                RTConsole.Log("Detected Mistral/Mixtral model, using ChatML template");
+            }
+            // Check for Llama-2 models
+            else if (modelName.Contains("llama-2") || modelName.Contains("llama2"))
+            {
+                useLlama2Template = true;
+                RTConsole.Log("Detected Llama-2 model, using Llama-2 template");
+            }
+            // Check for Llama-3 models
+            else if (modelName.Contains("llama-3") || modelName.Contains("llama3"))
+            {
+                useLlama3Template = true;
+                RTConsole.Log("Detected Llama-3 model, using Llama-3 template");
+            }
+        }
+        
+        // Build prompt based on detected template
+        if (useGLMTemplate)
+        {
+            // Build GLM-style prompt for completions endpoint
+            string glmPrompt = "[gMASK]<sop>";
+            
+            foreach (GTPChatLine obj in lines)
+            {
+                if (obj._role == "system" || obj._role == Config.Get().GetAISystemWord())
+                {
+                    glmPrompt += "<|system|>\n" + obj._content + "\n";
+                }
+                else if (obj._role == "user" || obj._role == Config.Get().GetAIUserWord())
+                {
+                    glmPrompt += "<|user|>\n" + obj._content + "\n";
+                }
+                else if (obj._role == "assistant" || obj._role == Config.Get().GetAIAssistantWord())
+                {
+                    glmPrompt += "<|assistant|>\n" + obj._content + "\n";
+                }
+            }
+            
+            // End with assistant tag for completion
+            glmPrompt += "<|assistant|>\n";
+            
+            // Return as completions-style JSON (will be handled specially)
+            msg = glmPrompt;
+        }
+        else if (useChatMLTemplate)
+        {
+            // Build ChatML-style prompt for completions endpoint
+            string chatmlPrompt = "";
+            
+            foreach (GTPChatLine obj in lines)
+            {
+                if (obj._role == "system" || obj._role == Config.Get().GetAISystemWord())
+                {
+                    chatmlPrompt += "<|im_start|>system\n" + obj._content + "<|im_end|>\n";
+                }
+                else if (obj._role == "user" || obj._role == Config.Get().GetAIUserWord())
+                {
+                    chatmlPrompt += "<|im_start|>user\n" + obj._content + "<|im_end|>\n";
+                }
+                else if (obj._role == "assistant" || obj._role == Config.Get().GetAIAssistantWord())
+                {
+                    chatmlPrompt += "<|im_start|>assistant\n" + obj._content + "<|im_end|>\n";
+                }
+            }
+            
+            // End with assistant tag for completion
+            chatmlPrompt += "<|im_start|>assistant\n";
+            
+            msg = chatmlPrompt;
+        }
+        else if (useLlama2Template)
+        {
+            // Build Llama-2 style prompt
+            string llama2Prompt = "";
+            
+            foreach (GTPChatLine obj in lines)
+            {
+                if (obj._role == "system" || obj._role == Config.Get().GetAISystemWord())
+                {
+                    llama2Prompt += "<<SYS>>\n" + obj._content + "\n<</SYS>>\n\n";
+                }
+                else if (obj._role == "user" || obj._role == Config.Get().GetAIUserWord())
+                {
+                    llama2Prompt += "[INST] " + obj._content + " [/INST]\n";
+                }
+                else if (obj._role == "assistant" || obj._role == Config.Get().GetAIAssistantWord())
+                {
+                    llama2Prompt += obj._content + "\n";
+                }
+            }
+            
+            msg = llama2Prompt;
+        }
+        else if (useLlama3Template)
+        {
+            // Build Llama-3 style prompt
+            string llama3Prompt = "";
+            
+            foreach (GTPChatLine obj in lines)
+            {
+                if (obj._role == "system" || obj._role == Config.Get().GetAISystemWord())
+                {
+                    llama3Prompt += "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n" + obj._content + "<|eot_id|>";
+                }
+                else if (obj._role == "user" || obj._role == Config.Get().GetAIUserWord())
+                {
+                    llama3Prompt += "<|start_header_id|>user<|end_header_id|>\n\n" + obj._content + "<|eot_id|>";
+                }
+                else if (obj._role == "assistant" || obj._role == Config.Get().GetAIAssistantWord())
+                {
+                    llama3Prompt += "<|start_header_id|>assistant<|end_header_id|>\n\n" + obj._content + "<|eot_id|>";
+                }
+            }
+            
+            // End with assistant header for completion
+            llama3Prompt += "<|start_header_id|>assistant<|end_header_id|>\n\n";
+            
+            msg = llama3Prompt;
+        }
+        else
+        {
+            // Default chat completions format
+            foreach (GTPChatLine obj in lines)
+            {
+                if (msg.Length > 0)
+                {
+                    msg += ",\n";
+                }
+                msg += "{\"role\": \"" + obj._role + "\", \"content\": \"" + SimpleJSON.JSONNode.Escape(obj._content) + "\"}";
+            }
         }
 
         string bStreamText = "false";
@@ -164,16 +322,58 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
                     continue;
                 }
                 
-                extra += $",\"{parm._key}\": {parm._value}\r\n";
+                // Skip certain auto-detected parameters that shouldn't be sent in requests
+                if (parm._key == "model_id" || parm._key == "n_vocab" || parm._key == "n_embd" || 
+                    parm._key == "n_params" || parm._key == "n_ctx_train")
+                {
+                    // These are informational parameters from llama.cpp detection, not for sending
+                    continue;
+                }
+                
+                // Check if this parameter value looks like a string that needs quoting
+                // (contains forward slashes, backslashes, or starts with a letter/slash)
+                if (parm._value.Contains("/") || parm._value.Contains("\\") || 
+                    (parm._value.Length > 0 && (char.IsLetter(parm._value[0]) || parm._value[0] == '/')))
+                {
+                    // This is likely a string value that needs proper JSON escaping
+                    string escapedValue = SimpleJSON.JSONNode.Escape(parm._value);
+                    extra += $",\"{parm._key}\": \"{escapedValue}\"\r\n";
+                }
+                else
+                {
+                    // Numeric or already properly formatted JSON value
+                    extra += $",\"{parm._key}\": {parm._value}\r\n";
+                }
             }
         }
 
         //replace all ` in extra to |
         extra = extra.Replace("`", "|");
 
-        // Build JSON with minimal parameters for Ollama when using defaults
-        if (bIsOllama && useOllamaDefaults)
+        // Check if we're using a special template that requires completions endpoint
+        bool useCompletionsEndpoint = useGLMTemplate || useChatMLTemplate || useLlama2Template || useLlama3Template;
+        
+        if (useCompletionsEndpoint)
         {
+            // Set the suggested endpoint to completions
+            suggestedEndpoint = "/v1/completions";
+            
+            // Build completions-style JSON for llama.cpp with special templates
+            // Escape the prompt properly for JSON
+            string escapedPrompt = SimpleJSON.JSONNode.Escape(msg);
+          //  ""temperature"": { temperature},
+       
+            string json =
+             $@"{{
+                 ""prompt"": ""{escapedPrompt}"",
+                 ""stream"": {bStreamText}
+                 {extra}
+             }}";
+            return json;
+        }
+        else if (bIsOllama && useOllamaDefaults)
+        {
+            // Build JSON with minimal parameters for Ollama when using defaults
             string json =
              $@"{{
                  ""messages"":[{msg}],
@@ -185,11 +385,12 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
         else
         {
             // Original behavior for non-Ollama or when not using defaults
+       //     ""temperature"": { temperature},
+       
             string json =
              $@"{{
                  ""messages"":[{msg}],
                  ""mode"": ""{mode}"",
-                 ""temperature"": {temperature},
                  ""stream"": {bStreamText}
                  {extra}
               

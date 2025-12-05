@@ -3,10 +3,6 @@
 COMMAND_START|base_context
 Your ultimate goal is to write a creative, clever, and inventive choose your own adventure story. You will adhere to the stylistic guidelines provided in this prompt. You will take into account any background information, such as character personality and attitude, theme and setting, and other information, for all of your responses.
 
-1) You will always output detailed and nuanced content.
-
-2) You will always reply to questions with accurate information.
-
 GUIDELINES: 
 
 * Do not include any summarizing statements or paragraphs. 
@@ -15,6 +11,7 @@ GUIDELINES:
 * Use direct and explicit language to describe what happens. 
 * Keep flowery prose and grandiose language to a minimum. 
 * Only provide 1-3 paragraphs of story per response.
+* In your response, only generate one choice prompt (not the whole story at once, we'll do multiple calls)
 * Do not use markdown, lists, bullet points or asterisks.
 
 After the story/dialog portion, give the user between 0 and 4 choices. 
@@ -35,7 +32,7 @@ DETAILED_SCENE_VISUAL_DESCRIPTION_START
 (write a detailed description of the scene and environment to illusrate this part of the story. No flowery prose here.  Include descriptions of each creature (never the player, as this is from their viewpoint)  in the image including their age in years, ethnicity, body, clothes, face, hair style and color, facial expression and pose.  Don't use people's names here, just their full, detailed physical description. This part of the text should not reference earlier text or replies, it is be stand-alone. Don't use the words "you" or "your" in these descriptions.)
 DETAILED_SCENE_VISUAL_DESCRIPTION_END
 
-Now the user will tell you what kind of adventure/story to make and may provide additional instructions.
+Now the user will tell you what kind of adventure/story to make and may provide additional instructions.  Remember, only reply with ONE scene, not all of them.
 COMMAND_END
 
 #I need this so FluxAI won't randomly make cartoons.  If you want cartoons/cg, specify that instead below
@@ -44,6 +41,7 @@ shot with a Bessa Cinestill. Analog film, high ISO, medium dynamic range. Cinema
 COMMAND_END
 
 COMMAND_START|prepend_prompt
+live action,
 COMMAND_END
 
 #system context is sent directly before every human answer, I do this because without it, the ai can 'forget' how to do certain things.  These type of messages are auto removed except for the latest ones, so they don't eat your context space

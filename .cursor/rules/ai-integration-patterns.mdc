@@ -1,12 +1,24 @@
+---
+globs: Assets/RT/AI/**,Assets/_Script/**
+description: Patterns for integrating ComfyUI, OpenAI, Anthropic, and generic LLMs.
+alwaysApply: false
+---
 # AI Integration Patterns
 
 ## ComfyUI Integration
 
 ### Workflow Management
-- Workflows are stored in [ComfyUI/](mdc:ComfyUI/) directory
+- Workflows are stored in [ComfyUI/](mdc:ComfyUI/) directory as JSON files
 - Use [ComfyUIConverter.cs](mdc:Assets/_Script/ComfyUIConverter.cs) for workflow processing
-- Template replacement uses `<AITOOLS_PROMPT>`, `<AITOOLS_NEGATIVE_PROMPT>`, `<AITOOLS_INPUT_1>` placeholders
+- Template replacement uses placeholders:
+  - `<AITOOLS_PROMPT>` - Main prompt
+  - `<AITOOLS_NEGATIVE_PROMPT>` - Negative prompt
+  - `<AITOOLS_INPUT_1>` through `<AITOOLS_INPUT_N>` - Additional inputs
+  - `<AITOOLS_AUDIO_PROMPT>` - Audio description for video
+  - `<AITOOLS_AUDIO_NEGATIVE_PROMPT>` - Audio negative prompt
 - Use `@replace` syntax in presets for dynamic parameter substitution
+- Workflows must have ComfyUI Dev mode enabled to export API format
+- Common workflows: text-to-image (Flux, SDXL), img-to-img, inpainting, video generation, image interrogation
 
 ### API Communication
 - All ComfyUI communication goes through HTTP API
@@ -34,29 +46,45 @@
 - Uses streaming download handler for responses
 
 ### Generic LLM Support
+- Use [TexGenWebUITextCompletionManager.cs](mdc:Assets/RT/AI/TexGenWebUITextCompletionManager.cs) for generic LLM support
 - Configure via `config.txt` for local or remote LLMs
 - Supports Ollama, text-generation-webui, TabbyAPI formats
-- Handle different model parameter requirements
+- Handle different model parameter requirements via `add_generic_llm_parm|key|value|`
 - Support custom system/assistant/user keywords
+- Configure endpoints: `set_generic_llm_address|address|`, `set_ollama_endpoint|address|`
 
 ## Image Generation Pipeline
 
 ### Text-to-Image
 - Use [PicTextToImage.cs](mdc:Assets/_Script/Pic/PicTextToImage.cs) for generation
-- Support multiple models: Flux, SDXL, Hunyuan, Wan 2.1
-- Handle different aspect ratios and sizes
-- Manage generation parameters: steps, CFG, seed
+- Support multiple models: Flux, SDXL, Hunyuan, Wan 2.1, Qwen, ChromaHD, ZImage
+- Handle different aspect ratios and sizes (configurable via gen width/height)
+- Manage generation parameters: steps, CFG scale, seed, sampler
+- Support DALL-E 3 via [Dalle3Manager.cs](mdc:Assets/RT/AI/Dalle3Manager.cs)
 
 ### Inpainting
 - Use [PicInpaint.cs](mdc:Assets/_Script/Pic/PicInpaint.cs) for image editing
-- Support mask generation and painting
-- Handle different inpainting models and workflows
+- Support mask generation ([PicGenerateMask.cs](mdc:Assets/_Script/Pic/PicGenerateMask.cs)) and manual painting
+- Handle different inpainting models and workflows (Flux, SDXL)
 - Process background and subject separation
+- Support automatic mask generation (BiRefNet, SAM2, segmentation)
 
 ### Upscaling
 - Use [PicUpscale.cs](mdc:Assets/_Script/Pic/PicUpscale.cs) for image enhancement
 - Support various upscaling models
 - Handle different output sizes and quality settings
+
+### Image-to-Image
+- Support pix2pix workflows
+- Handle ControlNet integration for guided generation
+- Process img-to-img with various models (Flux, SDXL, Qwen)
+
+### Video Generation
+- Use [PicMovie.cs](mdc:Assets/_Script/Pic/PicMovie.cs) for video playback and processing
+- Support text-to-video workflows (Wan 2.2 Fast)
+- Support video-to-video generation
+- Support video with audio generation (MMAudio)
+- Workflows: `text_to_vid_wan22_fast.json`, `img_to_video_wan22_fast.json`, `video_to_video_gen_mmaudio.json`
 
 ## Error Handling
 
@@ -85,7 +113,4 @@
 - Support model-specific parameter presets
 - Handle model loading and unloading
 - Track model performance and usage statistics
-description:
-globs:
-alwaysApply: false
----
+- Support pix2pix models (special handling required, incompatible with ControlNet)

@@ -1,0 +1,215 @@
+#Config file for an adventure mode profile.  It controls what we send to the LLM and whatnot
+
+COMMAND_START|base_context
+Your ultimate goal is to write a creative, clever, and inventive choose your own adventure story. You will adhere to the stylistic guidelines provided in this prompt. You will take into account any background information, such as character personality and attitude, theme and setting, and other information, for all of your responses.  While you can do some general long term planning, you'll generate one response at a time.
+
+GUIDELINES: 
+
+* Do not include any summarizing statements or paragraphs. 
+* In the narration, refer to the user in the second person
+* Only provide 1-3 paragraphs of story per response
+* Do not use bullet points anywhere.
+* Whenever a new character is introduced, always specify in detail their physical characteristics, clothing, body type, hair style, etc.
+
+The user will tell you what kind of adventure/story to make and provide additional new instructions when needed.
+
+After the story portion, give the user between 0 and 4 choices.   (If no choices, the story is over, and you should end with GAME OVER - YOU FAILED or GAME OVER - YOU WON! depending on the circumstance)
+
+Example of how the choices should look - CHOICE: followed by a ChoiceID and number of total choices given so far, increment this number by one, so the same number is never used twice across the story replies.
+
+CHOICE:RUN-AWAY-WILL_DIE-1:Run away, attempting to outdistance the monster
+CHOICE:FIGHT-MONSTER-WILL-DIE-2:Attack the monster with your silver dagger
+CHOICE:USE-INVISIBILITY-POTION-3:Quaff the tiny red potion the old man gave you
+
+The story should be over after Choice ID numbers are over 30, at that time try to wrap up the story.
+
+A full example:
+
+As you stroll down Main Street USA under the dimming Californian sky, the lights of Disneyland twinkle like stars, beckoning you to experience their magic. Your heart races with excitement, but something underlying tingles your nerves with unease. The joyful clamor is punctuated by a shiver-inducing scream slicing through the air. In front of you lies the ghostly Pirates of the Caribbean ride, renowned for its lifelike animatronics and whimsical tunes. As you step into the queue, you are handed a strange glowing amulet by the cast member guiding you to your boat.
+
+As the ride starts, the jovial sound of “Yo Ho” fills the air. But as your boat ventures deeper into the mock cavern, the musky aroma of chlorinated water gives way to the metallic scent of blood. Around you, animatronic pirates come to life, their rusty blades shining ominously, accompanied by feral grins that seem far too real. A skeleton pirate assumes the wheel, his empty eye sockets sparking to life with malevolence as he steers the craft into a chilling chamber.
+
+CHOICE:DODGE-ANIMATRONICS-WILL-DIE-1:Dodge and attempt to swim out through the cavernous water
+CHOICE:USE-AMULET-2:Use the glowing amulet as instructed by the mysterious cast member
+CHOICE:ATTACK-ANIMATRONICS-WILL-DIE-3:Grab a loose piece of wood and attempt to fend off the animatronics
+
+Now the user will tell you what kind of adventure/story to make.  Again, make sure one of the options you list does NOT have "WILL-DIE" in it so the player can keep playing until the game is won.
+COMMAND_END
+
+COMMAND_START|prepend_prompt
+Live action,  
+COMMAND_END
+
+#system context is sent directly before every human answer, I do this because without it, the ai can 'forget' how to do certain things.  These type of messages are auto removed except for the latest ones, so they don't eat your context space
+
+COMMAND_START|system_reminder
+If the above option chosen has WILL_DIE in its title, you must kill the player and give no choices in this reply.  Otherwise, keep in mind in the options given, all but one will kill the player must have WILL_DIE in the ChoiceID.
+
+Make sure the player always has a path possible to go forward until the game is "won".
+
+When dying, make each death creative and unique.  Keep changing up the characters/location so it doesn't get boring.  Don't stay in the same area too long.  Avoid repetition, keep things fresh.
+COMMAND_END
+
+#when "auto" is used, this will be reply given to the llm between its generations.  (keep in mind the system_reminder may also be added)
+#note: in CHOOSE_YOUR_OWN_ADVENTURE auto_continue_text is overriden with "choices", so your setting isn't used at all
+COMMAND_START|auto_continue_text
+(continue the story please)
+COMMAND_END
+
+#This is what we show the user for their first prompt
+COMMAND_START|start_msg
+
+Note: Click Export to create a Twine project (.twii file) with images in the output dir.  You'll need to import with Twine, then Build to that same directory to play the adventure.
+
+What should this story be about?
+
+Try cutting and pasting this input in to get started (modify as needed):
+
+The player is an American male who is walking around Disneyland.  This is a horror game where classic characters and rides kill you, lots of blood, gore and adult language. A dramatic tale, you might make friends of other interesting survivors or find their dead bodies.  Use environmental story telling.  When presenting the player with options to choose, the bad choices (most of them?) should result in death. He'll need to use his wits to choose the correct options.  Make sure in your ChoiceIDs to mark bad choices with the _WILL_DIE inside of its name, so you know it will kill the player later when you're asked to write dialogs.
+
+At the start, state a clear goal for the player to achieve to win - for example, rescue your daughter and escape Disneyland.  Use witty intelligent writing.  Dark subtle comedy.  Use foreshadowing.  Use adult humor and situations.  Make sure it's possible to win. Create an interesting, sprawling, connected story with interesting characters and a clear ending. Make use of character's famous phrases and quotes to make things funny.
+COMMAND_END
+
+COMMAND_START|default_input
+COMMAND_END
+COMMAND_SET|mode|CHOOSE_YOUR_OWN_ADVENTURE|#Choose your own adventure mode, it will generate the entire adventure at once
+COMMAND_SET|spatial_organization_method|TREE_BY_GENERATION|#VERTICAL, TREE_SPLIT or TREE_BY_GENERATION
+COMMAND_SET|image_text_overlay|AI Generated|#text drawn at the bottom of images on export
+
+COMMAND_START|twine_start
+:: StoryTitle
+_INSERT_TITLE_
+
+:: StoryData
+{
+  "ifid": "_INSERT_GUID_",
+  "format": "Harlowe",
+  "format-version": "3.3.9",
+  "start": "ADVENTURE-START",
+  "zoom": 1
+}
+COMMAND_END
+
+COMMAND_START|twine_passage
+:: _PASSAGE_NAME_ {}
+<div class="content-container"><div class="image-container">
+_INSERT_IMAGES_</div><div class="dialog">
+_INSERT_TEXT_
+_INSERT_CHOICES_
+</div></div>
+COMMAND_END
+
+COMMAND_START|twine_image
+<img src="_IMAGE_FILENAME_">
+COMMAND_END
+
+COMMAND_START|twine_video
+<img src="_IMAGE_FILENAME_">
+<video autoplay loop muted playsinline> <source src="_IMAGE_FILENAME_" type="video/mp4"> </video>
+COMMAND_END
+
+
+COMMAND_START|twine_end
+:: StoryStylesheet [stylesheet]
+/* Custom inline style for dialogue text */
+.dialogue {
+    color: #cfd700;
+    font-style: italic;
+    font-weight: bold;
+    display: inline;
+}
+
+/* Remove any unwanted block artifacts */
+.dialogue::before {
+    content: "";
+    display: none;
+}
+
+/* General passage text styling */
+tw-passage {
+    color: #f5f5f5;
+    font-family: 'Georgia', serif;
+    line-height: 1.6em;
+}
+
+/* Styling for choice links */
+tw-link, .enchantment-link {
+    color: #26a69a;
+    text-decoration: none;
+    border-bottom: 2px solid #26a69a;
+    padding-bottom: 2px;
+    transition: color 0.2s ease, border-bottom-color 0.2s ease;
+}
+
+tw-link:hover, .enchantment-link:hover {
+    color: #00796b;
+    border-bottom-color: #00796b;
+}
+
+/* General styling */
+.content-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1em;
+}
+
+/* Image and Video container styles */
+.image-container {
+    width: 100%;
+    margin: 0 auto;
+}
+
+/* Common styles for both images and videos */
+.image-container img,
+.image-container video {
+    max-width: 100%;
+    height: auto;
+    transition: max-width 0.2s ease;
+    padding: 2%;
+    display: block;
+    margin: 0 auto;
+}
+
+/* Specific video styling */
+.image-container video {
+    background-color: #000;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+/* Mobile-specific styling */
+@media (min-width: 1px) {
+    tw-story {
+        padding: 0% 5% 0% 15%;
+        background-color: #000000;
+        color: #f5f5f5;
+    }
+}
+
+@media (min-width: 1200px) {
+    .content-container {
+        flex-direction: row;
+        align-items: flex-start;
+    }
+
+    .dialog {
+        flex: 1;
+        order: 1;
+    }
+
+    .image-container {
+        flex-basis: 50%;
+        order: 2;
+        text-align: right;
+    }
+}
+
+/* Ensure videos maintain aspect ratio */
+.image-container video {
+    aspect-ratio: 16/9;
+    object-fit: contain;
+}
+COMMAND_END
+#if there are no choices, let's add a button to start over as pressing F5 to reload won't actually do it
+COMMAND_START|twine_text_if_no_choices
+(link:"Start Over")[(goto:"ADVENTURE-START")]
+COMMAND_END

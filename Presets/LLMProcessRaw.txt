@@ -1,0 +1,15 @@
+COMMAND_START|joblist
+-this script is called when the user hits the prompt process button
+command @llm_prompt_reset
+command @copy|none|requirements|
+command @llm_prompt_set_base_prompt|global_prompt|
+-command @llm_prompt_add_from_user|Please describe the preceding scene so that it can be rendered by a text-to-image AI.  Be brief, but include the nationality, age, clothing and scene and poses.  Do not use formatting or titles, just put it all in one paragraph.|
+call_llm
+command @copy|llm_reply|global_prompt|
+COMMAND_END
+COMMAND_START|default_negative_prompt
+cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white
+COMMAND_END
+COMMAND_START|default_pre_prompt
+live action,
+COMMAND_END

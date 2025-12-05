@@ -1,6 +1,0 @@
-COMMAND_START|joblist
-img_to_img_sd15_lcm_api.json @replace|"steps": 2|"steps": 2| @replace|"denoise": 0.45|"denoise": 0.45| @replace|"cfg": 1|"cfg": 1|
-COMMAND_END
-COMMAND_START|default_negative_prompt
-blurry, illustration, drawing, horror
-COMMAND_END

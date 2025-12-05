@@ -1,3 +1,8 @@
+---
+globs: config.txt,Presets/**,ComfyUI/**,Assets/_Script/Config.cs
+description: Configuration, presets, and workflow management rules.
+alwaysApply: false
+---
 # Configuration Management
 
 ## Configuration File Structure
@@ -11,10 +16,12 @@
 ### Configuration Categories
 
 #### Server Configuration
-- `add_server|url|name|` - Add ComfyUI servers
-- `set_image_editor|path|` - Configure external image editor
-- Support multiple server configurations
-- Handle server health monitoring
+- `add_server|url|name|` - Add ComfyUI servers (name is optional)
+- `set_image_editor|path|` - Configure external image editor (e.g., Photoshop)
+- Support multiple server configurations simultaneously
+- Handle server health monitoring via [WebRequestServerInfo.cs](mdc:Assets/_Script/WebRequestServerInfo.cs)
+- Each server can have different renderer types (ComfyUI, DALL-E 3, etc.)
+- Servers must be started with `--listen` parameter for ComfyUI
 
 #### AI Service Configuration
 - `set_openai_gpt4_key|key|` - OpenAI API configuration
@@ -23,10 +30,13 @@
 - Support multiple AI service providers
 
 #### Model Configuration
-- `add_generic_llm_parm|key|value|` - LLM parameters
+- `add_generic_llm_parm|key|value|` - LLM parameters (temperature, context size, etc.)
 - Handle model-specific settings
 - Support temperature, context size, and other parameters
 - Configure model loading and unloading
+- `set_default_gen_width|width|` - Default generation width
+- `set_default_gen_height|height|` - Default generation height
+- `set_crazycam_capture|width|height|fps|` - Webcam capture settings
 
 ## Configuration Management
 
@@ -61,6 +71,8 @@
 - Support saving and loading presets
 - Handle preset editing and customization
 - Implement preset search and filtering
+- Presets chain multiple workflows together using `@replace` syntax
+- Store in [Presets/](mdc:Presets/) directory as `.txt` files
 
 ### Preset Integration
 - Integrate presets with ComfyUI workflows
@@ -129,7 +141,3 @@
 - Implement proper cleanup for unused settings
 - Handle configuration object lifecycle
 - Support configuration garbage collection
-description:
-globs:
-alwaysApply: false
----

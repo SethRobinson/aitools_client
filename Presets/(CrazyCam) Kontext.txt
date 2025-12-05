@@ -1,0 +1,6 @@
+COMMAND_START|joblist
+img_to_img_kontext_fp4.json
+COMMAND_END
+COMMAND_START|default_prompt
+Replace the background with hawaii
+COMMAND_END

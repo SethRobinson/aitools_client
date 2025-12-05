@@ -20,7 +20,7 @@ public class GameLogic : MonoBehaviour
 {
     public GameObject m_notepadTemplatePrefab;
     string m_prompt = "";
-    string m_comfyUIPrompt = "";
+    string m_comfyPrependPrompt = "";
     string m_negativePrompt = "";
     int m_steps = 50;
     long m_seed = -1;
@@ -51,7 +51,7 @@ public class GameLogic : MonoBehaviour
     public TMP_InputField m_negativeInputField;
     public TMP_InputField m_stepsInputField;
     public TMP_InputField m_seedInputField;
-    public TMP_InputField m_comfyUIPromptInputField;
+    public TMP_InputField m_comfyPrependPromptInputField;
 
     public TMP_InputField m_jobListInputField;
     public Slider m_inpaintStrengthInput;
@@ -95,6 +95,8 @@ public class GameLogic : MonoBehaviour
 
     public TMP_Dropdown m_comfyUIAPIWorkflowsDropdown;
     public TMP_Dropdown m_presetDropdown;
+    public TMP_Dropdown m_tempPresetDropdown;
+
 
     public TMP_Dropdown m_refinerModelDropdown;
     public TMP_InputField m_refinerInputField;
@@ -105,7 +107,8 @@ public class GameLogic : MonoBehaviour
     int m_controlNetPreprocessorCurIndex;
     int m_controlNetModelCurIndex;
     public TMP_Dropdown m_llmSelectionDropdown;
-
+    public GameObject m_tempPic1;
+  
     public enum eGameMode
     {
         NORMAL,
@@ -121,6 +124,7 @@ public class GameLogic : MonoBehaviour
     public eGameMode GetGameMode() { return m_gameMode; }
     public void SetGameMode(eGameMode gameMode) { m_gameMode = gameMode; }
 
+    public GameObject GetTempPic1() { return m_tempPic1; }
     static GameLogic _this = null;
     static public GameLogic Get()
     {
@@ -208,7 +212,19 @@ public class GameLogic : MonoBehaviour
         //get the text of the selected option
         string selected = m_presetDropdown.options[m_presetDropdown.value].text;
 
-        PresetManager.Get().LoadPresetAndApply(selected);
+        PresetManager.Get().LoadPresetAndApply(selected, PresetManager.Get().GetActivePreset(), true);
+    }
+
+    public void OnTempPresetDropdownChanged()
+    {
+        //get the text of the selected option
+        //string selected = m_tempPresetDropdown.options[m_tempPresetDropdown.value].text;
+
+    }
+
+    public string GetNameOfActiveTempPreset()
+    {
+        return m_tempPresetDropdown.options[m_tempPresetDropdown.value].text;
     }
 
 
@@ -434,7 +450,15 @@ public class GameLogic : MonoBehaviour
         {
             joblist.Add(job);
         }
-        
+    }
+
+    public void AddEveryTempItemToJobList(ref List<string> joblist, string presetName)
+    {
+        List<string> jobsToAdd = GetTempPicJobListAsListOfStrings(presetName);
+        foreach (string job in jobsToAdd)
+        {
+            joblist.Add(job);
+        }
     }
     public List<String> GetPicJobListAsListOfStrings(string jobtext)
     {
@@ -464,6 +488,27 @@ public class GameLogic : MonoBehaviour
             }
         }
         return list;
+    }
+
+    public List<String> GetTempPicJobListAsListOfStrings(string presetName)
+    {
+
+        //first, we need to load this into our temp extractor using the preset manager
+        PresetManager.Get().LoadPresetAndApply(presetName, PresetManager.Get().GetTempPreset(), false);
+
+        List<String> list = new List<String>();
+        string jobList = PresetManager.Get().GetTempPreset().JobList ?? string.Empty;
+        string[] lines = jobList.Split(new string[] { "\r\n", "\n" }, StringSplitOptions.None);
+        foreach (string line in lines)
+        {
+            string trimmedItem = line.Trim();
+            if (trimmedItem.Length > 0 && trimmedItem[0] != '-' && trimmedItem[0] != '/')
+            {
+                list.Add(trimmedItem);
+            }
+        }
+        return list;
+      
     }
     public void SetJobList(string joblist)
     {
@@ -558,10 +603,12 @@ public class GameLogic : MonoBehaviour
         m_inputField.text = p;
     }
 
-    public void SetComfyUIPrompt(string p)
+    public void SetComfyPrependPrompt(string p)
     {
-        m_comfyUIPromptInputField.text = p;
+        m_comfyPrependPromptInputField.text = p;
     }
+
+   
 
     public void SetNegativePrompt(string p)
     {
@@ -574,6 +621,7 @@ public class GameLogic : MonoBehaviour
     private void Awake()
     {
         _this = this;
+        UnityEngine.Random.InitState((int)System.DateTime.Now.Ticks);
 
         //I guess we're hardcoding these for now, can't get the from the API
         m_controlNetPreprocessorArray.Add("none");
@@ -817,8 +865,11 @@ public class GameLogic : MonoBehaviour
 
         if (GenerateSettingsPanel.Get().m_stripThinkTagsToggle.isOn)
         {
-            return OpenAITextCompletionManager.RemoveThinkTags(lines);
+            lines = OpenAITextCompletionManager.RemoveThinkTags(lines);
         }
+
+        // Always strip TMP markup before sending to the LLM
+        lines = OpenAITextCompletionManager.RemoveTMPTags(lines);
 
         return lines;
 
@@ -840,7 +891,7 @@ public class GameLogic : MonoBehaviour
     public void OnClickedRescanComfyUIWorkflowsFolder()
     {
         Debug.Log("Rescanning ComfyUI workflows folder");
-        LoadComfyUIWorkFlows(m_comfyUIAPIWorkflowsDropdown, false);
+        LoadComfyUIWorkFlows(m_comfyUIAPIWorkflowsDropdown);
     }
 
     public bool HasControlNetSupport()
@@ -945,9 +996,9 @@ public class GameLogic : MonoBehaviour
     {
 
 
-        if (GetComfyUIPrompt() != null && GetComfyUIPrompt().Length > 0)
+        if (GetComfyPrependPrompt() != null && GetComfyPrependPrompt().Length > 0)
         {
-            return (GetComfyUIPrompt()+" "+ GetModifiedPrompt()).Trim();
+            return (GetComfyPrependPrompt()+" "+ GetModifiedPrompt()).Trim();
         }
 
         return GetModifiedPrompt().Trim();
@@ -955,7 +1006,7 @@ public class GameLogic : MonoBehaviour
 
 
 public string GetPrompt() { return m_prompt; }
-    public string GetComfyUIPrompt() { return m_comfyUIPrompt; }
+    public string GetComfyPrependPrompt() { return m_comfyPrependPrompt; }
 
     public void ResetLastModifiedPrompt()
     {
@@ -1206,10 +1257,21 @@ public string GetPrompt() { return m_prompt; }
         //make sure the GUI button matches
         m_fixFacesToggle.isOn = bNew;
     }
-
-    public void OnComfyUIPromptChanged(string str)
+    // Allow config.txt to set default generation size
+    public void SetGenWidth(int width)
     {
-        m_comfyUIPrompt = str;
+        m_genWidth = width;
+        
+    }
+
+    public void SetGenHeight(int height)
+    {
+        m_genHeight = height;
+       
+    }
+    public void OnComfyPrependPromptChanged(string str)
+    {
+        m_comfyPrependPrompt = str;
     }
 
     public void OnPromptChanged(String str)
@@ -1302,29 +1364,32 @@ public string GetPrompt() { return m_prompt; }
         //RTMessageManager.Get().Schedule(0, PizzaLogic.Get().OnStartPizza);
         //RTMessageManager.Get().Schedule(0, BreakoutLogic.Get().OnStartBreakout);
         // RTMessageManager.Get().Schedule(0, ShootingGalleryLogic.Get().OnStartGameMode);
+
+        //RTMessageManager.Get().Schedule(1.5f, CrazyCamLogic.Get().OnStartGameMode);
 #endif
 
 
-    
+
         Config.Get().CheckForUpdate();
 
-        LoadComfyUIWorkFlows(m_comfyUIAPIWorkflowsDropdown, false);
+        LoadComfyUIWorkFlows(m_comfyUIAPIWorkflowsDropdown);
    
         Config.Get().PopulateRendererDropDown(m_rendererSelectionDropdown);
 
         m_presetDropdown.SetValueWithoutNotify(0);
         PresetManager.Get().PopulatePresetDropdown(m_presetDropdown);
+        PresetManager.Get().PopulatePresetDropdown(m_tempPresetDropdown);
 
         if (PresetManager.Get().DoesPresetExistByNameNotCaseSensitive("test_startup.txt"))
         {
             SetPresetDropdownValue("test_startup.txt");
-            PresetManager.Get().LoadPresetAndApply(GetNameOfActivePreset());
+            PresetManager.Get().LoadPresetAndApply(GetNameOfActivePreset(), PresetManager.Get().GetActivePreset(), true);
         } else
         {
             if (PresetManager.Get().DoesPresetExistByNameNotCaseSensitive("startup.txt"))
             {
                 SetPresetDropdownValue("startup.txt");
-                PresetManager.Get().LoadPresetAndApply(GetNameOfActivePreset());
+                PresetManager.Get().LoadPresetAndApply(GetNameOfActivePreset(), PresetManager.Get().GetActivePreset(), true);
             }
         }
          
@@ -1349,6 +1414,11 @@ public string GetPrompt() { return m_prompt; }
     {
         return m_presetDropdown;
     }
+    public TMP_Dropdown GetTempPresetDropdown()
+    {
+        return m_tempPresetDropdown;
+    }
+
     public string GetNameOfActivePreset()
     {
         return m_presetDropdown.options[m_presetDropdown.value].text;
@@ -1369,7 +1439,7 @@ public string GetPrompt() { return m_prompt; }
         return m_comfyUIAPIWorkflowsDropdown.options[m_comfyUIAPIWorkflowsDropdown.value].text;
     }
 
-    public void LoadComfyUIWorkFlows(TMP_Dropdown dropdown, bool bIsOverrideSettingsPanel)
+    public void LoadComfyUIWorkFlows(TMP_Dropdown dropdown)
     {
         // First, delete everything from the dropdown
         dropdown.ClearOptions();
@@ -1384,13 +1454,14 @@ public string GetPrompt() { return m_prompt; }
         {
             // Get the name of the file
             string name = Path.GetFileName(file);
-            options.Add(name);
 
-            //// If name has nf4 in it, set that as the default selection
-            //if (name.ToUpper().Contains("NF4"))
-            //{
-            //    defaultIndex = options.Count - 1;
-            //}
+            // Skip any cached API version files
+            if (name.IndexOf("cached_api_version", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                continue;
+            }
+
+            options.Add(name);
         }
 
         // Add options to the dropdown
@@ -1400,14 +1471,6 @@ public string GetPrompt() { return m_prompt; }
         if (defaultIndex != -1)
         {
             dropdown.value = defaultIndex;
-        }
-
-        if (bIsOverrideSettingsPanel)
-        {
-            //add another option called "Global default" and set that to active
-            dropdown.options.Add(new TMP_Dropdown.OptionData("Global default"));
-            dropdown.value = dropdown.options.Count - 1;
-
         }
     }
 
@@ -1596,8 +1659,6 @@ public string GetPrompt() { return m_prompt; }
             {
                  //tell it to unload
                     picScript.UnloadToSaveMemoryIfPossible();
-               
-               
             }
         }
     }
@@ -1609,6 +1670,65 @@ public string GetPrompt() { return m_prompt; }
         existing.GetComponent<ModelModManager>().ToggleWindow();
     }
 
-    //run this function when the user shuts down the app
-   
+    public void OnLLMProcessFinished(GameObject picGO)
+    {
+        //this is called when the PicMain script finishes processing the LLM raw text
+        PicMain picMain = picGO.GetComponent<PicMain>();
+        PicTextToImage scriptAI = picGO.GetComponent<PicTextToImage>();
+        Debug.Log("LLM Process finished for " + picGO.name);
+        //Now we'll set this pic to delete itself if it isn't already
+        picMain.SafelyKillThisPic();
+    }
+
+    public void RunJoblistPreset(string originaFileName)
+    {
+        //this is called when the user clicks the LLM Process Raw button
+        GameObject pic = ImageGenerator.Get().CreateNewPic();
+        PicMain picMain = pic.GetComponent<PicMain>();
+        PicTextToImage scriptAI = pic.GetComponent<PicTextToImage>();
+        PicUpscale processAI = pic.GetComponent<PicUpscale>();
+        Debug.Log("LLM Processing raw text");
+        string fileToLoad = "test_" + originaFileName;
+        PresetFileConfigExtractor preset = new PresetFileConfigExtractor();
+
+        //now, we're going to have it run our script, but we'd like a notification when the script finishes
+        picMain.m_onFinishedScriptCallback += this.OnLLMProcessFinished;
+
+        if (PresetManager.Get().DoesPresetExistByNameNotCaseSensitive(fileToLoad))
+        {
+            preset = PresetManager.Get().LoadPreset(fileToLoad, PresetManager.Get().GetTempPreset());
+        }
+        else
+        {
+            preset = PresetManager.Get().LoadPreset(originaFileName, PresetManager.Get().GetTempPreset());
+        }
+
+        PicJob jobDefaultInfoToStartWith = new PicJob();
+
+        jobDefaultInfoToStartWith._requestedPrompt = GameLogic.Get().GetPrompt();
+        jobDefaultInfoToStartWith._requestedNegativePrompt = GameLogic.Get().GetNegativePrompt();
+        jobDefaultInfoToStartWith._requestedAudioPrompt = Config.Get().GetDefaultAudioPrompt();
+        jobDefaultInfoToStartWith._requestedAudioNegativePrompt = Config.Get().GetDefaultAudioNegativePrompt();
+        jobDefaultInfoToStartWith.requestedRenderer = RTRendererType.ComfyUI;
+        picMain.SetRequirements("none"); //don't want it to "wait for GPU"
+        picMain.AddJobListWithStartingJobInfo(jobDefaultInfoToStartWith, GetPicJobListAsListOfStrings(preset.JobList));
+    }
+
+    public void OnLLMProcessRaw()
+    {
+        RunJoblistPreset("llmprocessraw.txt");
+    }
+
+    public void OnLLMProcessFlux()
+    {
+        RunJoblistPreset("llmprocessflux.txt");
+    }
+
+    public void CompactPics()
+    {
+        //let's compact the pics, this will remove any gaps in the pic list
+        Debug.Log("Compacting pics");
+        m_AIimageGenerator.ReorganizePics();
+    }
+
 }

@@ -76,7 +76,7 @@ public class ServerSettingsPanel : MonoBehaviour
             m_jobListInputField.text = "";
         }
 
-        var preset = PresetManager.Get().LoadPreset(selected);
+        var preset = PresetManager.Get().LoadPreset(selected, PresetManager.Get().GetActivePreset());
 
         m_jobListInputField.text = preset.JobList;
 

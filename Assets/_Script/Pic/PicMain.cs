@@ -139,6 +139,9 @@ public class PicMain : MonoBehaviour
     public AIGuideManager.PassedInfo m_aiPassedInfo; //a misc place to store things the AI guide wants to
     bool m_waitingForPicJob = false;
     bool _llmIsActive = false;
+    const string m_default_requirements = "gpu";
+    string m_requirements = m_default_requirements;
+
     public void SetPromptManager(GPTPromptManager promptManager)
     {
         _promptManager = promptManager;
@@ -175,6 +178,11 @@ public class PicMain : MonoBehaviour
         }
 
         MakeDraggable();
+    }
+
+    public void SetRequirements(string req)
+    {
+        m_requirements = req;
     }
     public void SetDisableUndo(bool bNew)
     {
@@ -411,6 +419,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         m_picJobs.Clear();
         m_jobList.Clear();
         m_waitingForPicJob = false;
+        m_requirements = m_default_requirements;
     }
     public bool GetLocked() { return m_bLocked; }
     public void SetLocked(bool bNew) { m_bLocked = bNew; }
@@ -913,6 +922,26 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         return go;
     }
 
+    public GameObject DuplicateToExistingPic(GameObject go)
+    {
+        PicMain targetPicScript = go.GetComponent<PicMain>();
+
+      
+        PicTargetRect targetRectScript = go.GetComponent<PicTargetRect>();
+        PicTextToImage targetTextToImageScript = go.GetComponent<PicTextToImage>();
+
+        targetPicScript.SetImage(m_pic.sprite.texture, true);
+        targetPicScript.SetMask(m_mask.sprite.texture, true);
+        targetTextToImageScript.SetSeed(m_picTextToImageScript.GetSeed()); //if we've set it, it will carry to the duplicate as well
+        targetTextToImageScript.SetTextStrength(m_picTextToImageScript.GetTextStrength()); //if we've set it, it will carry to the duplicate as well
+        targetTextToImageScript.SetPrompt(m_picTextToImageScript.GetPrompt()); //if we've set it, it will carry to the duplicate as well
+        targetTextToImageScript.SetNegativePrompt(m_picTextToImageScript.GetNegativePrompt()); //if we've set it, it will carry to the duplicate as well
+        targetRectScript.SetOffsetRect(m_targetRectScript.GetOffsetRect());
+        targetPicScript.SetCurrentEvent(m_curEvent); //copy the current event
+
+        targetPicScript._jobHistory = new List<PicJob>(_jobHistory); //copy the job history
+        return go;
+    }
     public void SetImage(Texture2D newImage, bool bDoFullCopy)
     {
         if (bDoFullCopy)
@@ -1789,6 +1818,39 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         AddJobList(jobList);
     }
 
+    public void RunPresetByName(string presetName)
+    {
+
+        if (_jobHistory.Count() == 0)
+        {
+            PicJob jobDefaultInfoToStartWith = new PicJob();
+
+            jobDefaultInfoToStartWith._requestedPrompt = GameLogic.Get().GetModifiedGlobalPrompt();
+            jobDefaultInfoToStartWith._requestedNegativePrompt = GameLogic.Get().GetNegativePrompt();
+            jobDefaultInfoToStartWith._requestedAudioPrompt = Config.Get().GetDefaultAudioPrompt();
+            jobDefaultInfoToStartWith._requestedAudioNegativePrompt = Config.Get().GetDefaultAudioNegativePrompt();
+            jobDefaultInfoToStartWith.requestedRenderer = RTRendererType.ComfyUI;
+
+            AddJobListWithStartingJobInfo(jobDefaultInfoToStartWith, GameLogic.Get().GetTempPicJobListAsListOfStrings(presetName));
+        }
+        else
+        {
+
+            //Now, we *DO* have history, but we still want to overwrite things with the latest prompts, right?
+
+            m_curEvent.m_picJob._requestedPrompt = GameLogic.Get().GetPrompt();
+            m_curEvent.m_picJob._requestedNegativePrompt = GameLogic.Get().GetNegativePrompt();
+            //m_curEvent.m_picJob._requestedAudioPrompt = Config.Get().GetDefaultAudioPrompt();
+            //m_curEvent.m_picJob._requestedAudioNegativePrompt = Config.Get().GetDefaultAudioNegativePrompt();
+            GameLogic.Get().AddEveryTempItemToJobList(ref m_jobList, presetName);
+        }
+    }
+
+    public void OnGetPromptFromImageButton()
+    {
+        RunPresetByName("Image To Prompt.txt");
+    }
+
     public void OnTool1Button()
     {
        
@@ -1803,13 +1865,31 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             RTQuickMessageManager.Get().ShowMessage("Running joblist...");
         }
     }
-
-    public void OnTool1() //dotool1
+    public void OnSetTemp1Button()
+    {
+        RTQuickMessageManager.Get().ShowMessage("Copying to temp pic 1");
+        DuplicateToExistingPic(GameLogic.Get().GetTempPic1());
+    }
+    public void OnTool2Button()
     {
 
-        //if we have no history, let's fill in some defaults
-      
+        OnTool2();
 
+        if (GetJobsLeft() == 1)
+        {
+            SetStatusMessage("Waiting for GPU...");
+        }
+        else
+        {
+            //show a message that it's been scheduled on the screen
+            RTQuickMessageManager.Get().ShowMessage("Running joblist...");
+        }
+    }
+
+    public void OnTool1() 
+    {
+       //if we have no history, let's fill in some defaults
+      
         if (_jobHistory.Count() == 0)
         {
             PicJob jobDefaultInfoToStartWith = new PicJob();
@@ -1834,6 +1914,11 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             
             GameLogic.Get().AddEveryItemToJobList(ref m_jobList);
         }
+    }
+
+    public void OnTool2()
+    {
+        RunPresetByName(GameLogic.Get().GetNameOfActiveTempPreset());
     }
 
     public void OnFinishedJob()
@@ -1913,15 +1998,16 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
        
     }
 
-
-    void DoVarCopy(ref PicJob job, string source, string dest)
+    string ConvertVarToText(ref PicJob job, string source)
     {
         string temp = "";
         string sourceOriginal = source;
         source = source.ToLower().Trim();
 
         if (source == "prompt") temp = job._requestedPrompt;
+        if (source == "global_prompt") temp = GameLogic.Get().GetPrompt();
         if (source == "audio_prompt") temp = job._requestedAudioPrompt;
+        if (source == "prepend_prompt") temp = GameLogic.Get().GetComfyPrependPrompt();
         if (source == "negative_prompt") temp = job._requestedNegativePrompt;
         if (source == "audio_negative_prompt") temp = job._requestedAudioNegativePrompt;
         if (source == "segmentation_prompt") temp = job._requestedSegmentationPrompt;
@@ -1936,13 +2022,92 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             temp = sourceOriginal; //it's not a var I guess
         }
 
+        return temp;
+    }
+
+    void DoVarCopy(ref PicJob job, string source, string dest)
+    {
+       string temp = ConvertVarToText(ref job, source);
+
+        GameObject temp1GO = null;
+
+        if (source == "image")
+        {
+            //special case, we're going to copy an entire image
+            if (dest == "temp1")
+            {
+                temp1GO = GameLogic.Get().GetTempPic1();
+            }
+
+            if (temp1GO != null)
+            {
+                
+                PicMain targetPicScript = temp1GO.GetComponent<PicMain>();
+                if (m_pic.sprite == null || m_pic.sprite.texture == null)
+                {
+                    RTQuickMessageManager.Get().BroadcastMessage("Error:  Source image to copy from is invalid");
+                    return;
+                }
+                targetPicScript.SetImage(m_pic.sprite.texture, true);
+            } else
+            {
+                RTQuickMessageManager.Get().BroadcastMessage("Error:  Unknown source image to copy from: " + source);
+            }
+        }
+
+        if (source == "temp1")
+        {
+            //special case, we're going to copy an entire image
+            if (dest == "image")
+            {
+                temp1GO = GameLogic.Get().GetTempPic1();
+            }
+
+            if (temp1GO != null)
+            {
+                //see if sourceGo has a valid pic (image) we can copy from
+                PicMain sourcePicScript = temp1GO.GetComponent<PicMain>();
+                if (sourcePicScript == null || sourcePicScript.m_pic.sprite == null || sourcePicScript.m_pic.sprite.texture == null)
+                {
+                    RTQuickMessageManager.Get().BroadcastMessage("Error:  Source image to copy from is invalid");
+                    return;
+                }
+                SetImage(sourcePicScript.m_pic.sprite.texture, true);
+            }
+            else
+            {
+                RTQuickMessageManager.Get().BroadcastMessage("Error:  Unknown source image to copy from: " + source);
+            }
+        }
+
+
         if (dest == "prompt") job._requestedPrompt = temp;
+        if (dest == "global_prompt") GameLogic.Get().SetPrompt(temp);
         if (dest == "audio_prompt") job._requestedAudioPrompt = temp;
         if (dest == "negative_prompt") job._requestedNegativePrompt = temp;
         if (dest == "audio_negative_prompt") job._requestedAudioNegativePrompt = temp;
         if (dest == "segmentation_prompt") job._requestedSegmentationPrompt = temp;
         if (dest == "llm_prompt") job._requestedLLMPrompt = temp;
         if (dest == "llm_reply") job._requestedLLMReply = temp;
+        if (dest == "requirements") m_requirements = temp;
+        if (dest == "prepend_prompt") GameLogic.Get().SetComfyPrependPrompt(temp);
+
+    }
+
+    void DoVarAdd(ref PicJob job, string source, string dest)
+    {
+        string temp = ConvertVarToText(ref job, source);
+
+        if (dest == "prompt") job._requestedPrompt += temp;
+        if (dest == "global_prompt") GameLogic.Get().SetPrompt(GameLogic.Get().GetPrompt()+ temp);
+        if (dest == "audio_prompt") job._requestedAudioPrompt += temp;
+        if (dest == "negative_prompt") job._requestedNegativePrompt += temp;
+        if (dest == "prepend_prompt") GameLogic.Get().SetComfyPrependPrompt(GameLogic.Get().GetComfyPrependPrompt() + temp);
+        if (dest == "audio_negative_prompt") job._requestedAudioNegativePrompt += temp;
+        if (dest == "segmentation_prompt") job._requestedSegmentationPrompt += temp;
+        if (dest == "llm_prompt") job._requestedLLMPrompt += temp;
+        if (dest == "llm_reply") job._requestedLLMReply += temp;
+        if (dest == "requirements") m_requirements += temp;
     }
 
     public void SetNoUndo(bool bNoUndo)
@@ -2055,6 +2220,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             return;
 
         }
+        streamedText = OpenAITextCompletionManager.RemoveThinkTagsFromString(streamedText);
 
         m_curEvent.m_picJob._requestedLLMReply = streamedText.Trim();
         m_lastLLMReply = m_curEvent.m_picJob._requestedLLMReply;
@@ -2064,8 +2230,6 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     public void SetLLMActive(bool bActive)
     {
         if (bActive == _llmIsActive) return;
-
-
         _llmIsActive = bActive;
     }
 
@@ -2074,6 +2238,16 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     public void OnStreamingTextCallback(string text)
     {
         //we could get the streaming data here, but for now let's just ignore and handle things when done in OnTexGenCompletedCallback
+    
+        //print it out though
+        if (text != null && text.Length > 0)
+        {
+            //let's add it to our label text on the pic, to give a preview of what's happening
+           
+           m_text.text += text;
+            m_genericTimerStart = 0;
+            //m_curEvent.m_picJob._requestedLLMReply += text;
+        }
     }
 
     public void UpdateJobs()
@@ -2086,14 +2260,20 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
         int serverID = Config.Get().GetFreeGPU(RTRendererType.ComfyUI, false);
 
-        if (serverID == -1)
+        if (serverID == -1 && m_requirements == "gpu")
         {
              SetStatusMessage("Waiting for GPU...");
                 //nothing available yet
             return;
+        } else
+        {
+            //I guess we don't need a serverID for what we're doing, perhaps it's an LLM or resizing job
         }
 
-        var serverInfo = Config.Get().GetGPUInfo(serverID);
+        GPUInfo serverInfo = null;
+        
+        if (serverID >= 0) Config.Get().GetGPUInfo(serverID);
+
 
         if (m_picJobs.Count > 0)
         {
@@ -2177,8 +2357,11 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 RTDB db = new RTDB();
 
                 SetStatusMessage("Running LLM...");
-                string json = _texGenWebUICompletionManager.BuildForInstructJSON(_promptManager.BuildPromptChat(), 4096, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetGenericLLMMode(), true, Config.Get().GetLLMParms(), Config.Get().GetGenericLLMIsOllama());
-                _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, Config.Get()._texgen_webui_address, Config.Get()._ollama_endpoint, OnStreamingTextCallback, true, Config.Get()._texgen_webui_APIKey);
+                string suggestedEndpoint;
+                string json = _texGenWebUICompletionManager.BuildForInstructJSON(_promptManager.BuildPromptChat(), out suggestedEndpoint, 4096, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetGenericLLMMode(), true, Config.Get().GetLLMParms(), Config.Get().GetGenericLLMIsOllama(), Config.Get().GetGenericLLMIsLlamaCpp());
+                // Use the suggested endpoint (might be /v1/completions for special templates)
+                string endpoint = Config.Get().GetGenericLLMIsOllama() ? Config.Get()._ollama_endpoint : suggestedEndpoint;
+                _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, Config.Get()._texgen_webui_address, endpoint, OnStreamingTextCallback, true, Config.Get()._texgen_webui_APIKey);
                 SetLLMActive(true);
 
                 // uploaderScript.UploadFileInMemory(serverID, pngBytes, remoteFileName, OnUploadFinished);
@@ -2192,14 +2375,13 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 //convert the joblist into a real Job
                 SetNoUndo(false);
                 //there is a chance we need to use a different workflow, if the server wants it
-                if (m_allowServerJobOverrides && serverInfo._jobListOverride != "")
+                if (serverInfo!= null && m_allowServerJobOverrides && serverInfo._jobListOverride != "")
                 {
                     m_allowServerJobOverrides = false; //once is enough
                     m_jobList.Clear();
                     AddJobList(serverInfo.GetPicJobListAsListOfStrings());
                 }
 
-                
                 string workFlowNameWithoutTest = m_jobList[0];
 
                 //remove "test_" from the front if it's there
@@ -2288,7 +2470,11 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                         if (picJobData._name.ToLower() == "copy")
                         {
                             DoVarCopy(ref job, picJobData._parm1, picJobData._parm2);
-                        } else
+                        }
+                        else if (picJobData._name.ToLower() == "add")
+                        {
+                            DoVarAdd(ref job, picJobData._parm1, picJobData._parm2);
+                        }
                         if (picJobData._name.ToLower() == "llm_prompt_reset")
                         {
                             _promptManager.Reset();
@@ -2296,7 +2482,8 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                         else
                         if (picJobData._name.ToLower() == "llm_prompt_set_base_prompt")
                         {
-                            _promptManager.SetBaseSystemPrompt(picJobData._parm1);
+
+                         _promptManager.SetBaseSystemPrompt(ConvertVarToText(ref job,  picJobData._parm1));
                         }
                         else
                         if (picJobData._name.ToLower() == "llm_prompt_pop_first")
@@ -2306,14 +2493,14 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                         else
                         if (picJobData._name.ToLower() == "llm_prompt_add_from_assistant")
                         {
-                            _promptManager.AddInteraction(Config.Get().GetAIAssistantWord(), picJobData._parm1);
+                            _promptManager.AddInteraction(Config.Get().GetAIAssistantWord(), ConvertVarToText(ref job, picJobData._parm1));
                         } else if (picJobData._name.ToLower() == "llm_prompt_add_from_user")
                         {
-                            _promptManager.AddInteraction("user", picJobData._parm1);
+                            _promptManager.AddInteraction("user", ConvertVarToText(ref job, picJobData._parm1));
                         }
                         else if(picJobData._name.ToLower() == "llm_prompt_add_to_last_interaction")
                         {
-                            _promptManager.AppendToLastInteraction(" " + picJobData._parm1);
+                            _promptManager.AppendToLastInteraction(" " + ConvertVarToText(ref job, picJobData._parm1));
                         }
                         else if (picJobData._name.ToLower() == "fill_mask_if_blank")
                         {

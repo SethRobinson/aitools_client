@@ -98,6 +98,27 @@ public class OpenAITextCompletionManager : MonoBehaviour
         return newLines;
     }
 
+    // Remove TextMeshPro markup tags that we may have injected for display (e.g., <b>...</b>)
+    public static string RemoveTMPTagsFromString(string line)
+    {
+        if (string.IsNullOrEmpty(line)) return line;
+        // Strip bold tags; extendable for other TMP tags if needed.
+        line = Regex.Replace(line, @"</?b>", "", RegexOptions.IgnoreCase);
+        return line;
+    }
+
+    public static Queue<GTPChatLine> RemoveTMPTags(Queue<GTPChatLine> lines)
+    {
+        Queue<GTPChatLine> newLines = new Queue<GTPChatLine>();
+        foreach (GTPChatLine obj in lines)
+        {
+            GTPChatLine newObj = obj.Clone();
+            newObj._content = RemoveTMPTagsFromString(newObj._content);
+            newLines.Enqueue(newObj);
+        }
+        return newLines;
+    }
+
 
 
     void OnOpenAICompletedCallback(RTDB db, JSONObject jsonNode, string streamedText)

@@ -1,3 +1,7 @@
+---
+alwaysApply: false
+description: Build and deployment guidance for Windows and WebGL, including scripts and optimization tips.
+---
 # Build and Deployment Guide
 
 ## Build Scripts
@@ -31,8 +35,9 @@
 ### Version Management
 - Use [SetBuildDate.cs](mdc:Assets/_Script/SetBuildDate.cs) for version tracking
 - Implement [RTBuildInfo.cs](mdc:Assets/_Script/RTBuildInfo.cs) for build information
-- Handle version checking and updates
+- Handle version checking and updates via [UpdateChecker.cs](mdc:Assets/_Script/UpdateChecker.cs)
 - Support beta and release channels
+- Privacy-focused: no telemetry, only version checking
 
 ## Deployment Process
 
@@ -115,7 +120,3 @@
 - Handle error reporting and analytics
 - Support performance monitoring
 - Implement user feedback collection
-description:
-globs:
-alwaysApply: false
----

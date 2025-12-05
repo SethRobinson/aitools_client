@@ -97,8 +97,14 @@ public class Config : MonoBehaviour
     string _genericLLMMode;
     string _defaultAudioPrompt;
     string _defaultAudioNegativePrompt;
+    // CrazyCam requested camera capture settings
+    int _crazyCamRequestedWidth;
+    int _crazyCamRequestedHeight;
+    int _crazyCamRequestedFPS;
     bool m_bIsFirstTimeLoadingConfig = true;
     Boolean m_genericServerIsOllama = false;
+    Boolean m_genericServerIsLlamaCpp = false;
+    Dictionary<string, object> m_llamaCppModelData = null;
     public string GetAISystemWord() { return m_systemName; }
     public string GetAIUserWord() { return m_userName; }
     public string GetAIAssistantWord() { return m_assistantName; }
@@ -114,6 +120,9 @@ public class Config : MonoBehaviour
     public string GetElevenLabs_APIKey() { return _elevenLabs_APIKey; }
     public string GetDefaultAudioPrompt() { return _defaultAudioPrompt; }
     public string GetDefaultAudioNegativePrompt() { return _defaultAudioNegativePrompt; }
+    public int GetCrazyCamRequestedWidth() { return _crazyCamRequestedWidth; }
+    public int GetCrazyCamRequestedHeight() { return _crazyCamRequestedHeight; }
+    public int GetCrazyCamRequestedFPS() { return _crazyCamRequestedFPS; }
 
     public string GetElevenLabs_voiceID() { return _elevenLabs_voiceID; }
     public List<LLMParm> GetLLMParms() { return m_llmParms; }
@@ -129,6 +138,9 @@ public class Config : MonoBehaviour
     public List<AudioClip> m_audioClips;
     public GameObject m_serverButtonPrefab;
     public GameObject m_noServersButtonPrefab;
+
+    public float _snapShotBatSoundVolumeMod = 0.3f;
+
     void SetDefaults()
     {
      m_assistantName = "assistant";
@@ -154,6 +166,11 @@ public class Config : MonoBehaviour
      _anthropicAI_APIEndpoint = "https://api.anthropic.com/v1/complete";
      m_llmParms = new List<LLMParm>();
      m_llmParms.Clear();
+
+     // Default CrazyCam capture request
+     _crazyCamRequestedWidth = 1280;
+     _crazyCamRequestedHeight = 720;
+     _crazyCamRequestedFPS = 30;
 
     }
 
@@ -606,6 +623,18 @@ set_default_audio_negative_prompt|music|
         m_genericServerIsOllama = bNew;
     }
     public bool GetGenericLLMIsOllama() { return m_genericServerIsOllama; }
+    
+    public void SetGenericLLMIsLlamaCpp(bool bNew)
+    {
+        m_genericServerIsLlamaCpp = bNew;
+    }
+    public bool GetGenericLLMIsLlamaCpp() { return m_genericServerIsLlamaCpp; }
+    
+    public void SetLlamaCppModelData(Dictionary<string, object> modelData)
+    {
+        m_llamaCppModelData = modelData;
+    }
+    public Dictionary<string, object> GetLlamaCppModelData() { return m_llamaCppModelData; }
     public void ProcessConfigString(string newConfig)
     {
         SetDefaults();
@@ -614,7 +643,8 @@ set_default_audio_negative_prompt|music|
 
         //reset old config. This will likely do bad things if you're using GPUs at the time of loading
         ClearGPU();
-        
+        CrazyCamLogic.Get().ClearSnapshotPresets();
+
         m_configText = newConfig;
 
         //process it line by line
@@ -648,6 +678,12 @@ set_default_audio_negative_prompt|music|
 
                     webScript.StartComfyUIRequest(-1, words[1], extra);
                 } else
+                if (words[0] == "add_snapshot_preset")
+                {
+                    //Debug.Log("Adding snapshot preset " +words[1]);
+                    CrazyCamLogic.Get().AddSnapshotPreset(words[1], words[2], words[3]);
+                }
+                else
                 if (words[0] == "set_default_sampler")
                 {
                     GameLogic.Get().SetSamplerByName(words[1]);
@@ -682,9 +718,24 @@ set_default_audio_negative_prompt|music|
                         g._requestedRendererType = RTRendererType.OpenAI_Dalle_3;
                         g._usesDetailedPrompts = false;
                         AddGPU(g);
-
                     }
-
+                }
+                else  // NEW: default image dimensions
+                if (words[0] == "set_default_gen_width")
+                {
+                    int width;
+                    if (int.TryParse(words[1], out width))
+                    {
+                        GameLogic.Get().SetGenWidth(width);
+                    }
+                }
+                else if (words[0] == "set_default_gen_height")
+                {
+                    int height;
+                    if (int.TryParse(words[1], out height))
+                    {
+                        GameLogic.Get().SetGenHeight(height);
+                    }
                 }
                 else
                  if (words[0] == "set_openai_gpt4_model")
@@ -744,7 +795,7 @@ set_default_audio_negative_prompt|music|
                 }
               
                 else
-
+ 
                 if (words[0] == "set_max_fps")
                 {
                     int maxFPS;
@@ -752,6 +803,25 @@ set_default_audio_negative_prompt|music|
                     int.TryParse(words[1], out maxFPS);
 
                     Application.targetFrameRate = maxFPS;
+                }
+                else if (words[0] == "set_crazycam_capture")
+                {
+                    // set_crazycam_capture|width|height|fps|
+                    int w = _crazyCamRequestedWidth;
+                    int h = _crazyCamRequestedHeight;
+                    int f = _crazyCamRequestedFPS;
+                    if (words.Length > 1) int.TryParse(words[1], out w);
+                    if (words.Length > 2) int.TryParse(words[2], out h);
+                    if (words.Length > 3) int.TryParse(words[3], out f);
+
+                    _crazyCamRequestedWidth = Mathf.Max(1, w);
+                    _crazyCamRequestedHeight = Mathf.Max(1, h);
+                    _crazyCamRequestedFPS = Mathf.Max(1, f);
+                } else if (words[0] == "set_bat_sound_volume_mod")
+                {
+                    float volMod;
+                    float.TryParse(words[1], out volMod);
+                    _snapShotBatSoundVolumeMod = volMod;
                 }
                 else if (words[0] == "add_generic_llm_parm")
                 {
@@ -786,13 +856,20 @@ set_default_audio_negative_prompt|music|
 
         //Ok, if we got here we've got all our data and can do a little extra work.
         SetGenericLLMIsOllama(false);
+        SetGenericLLMIsLlamaCpp(false);
 
-        if (_texgen_webui_address != null && _texgen_webui_address.Length > 1 && GetGenericLLMParm("model").Length > 1)
+        if (_texgen_webui_address != null && _texgen_webui_address.Length > 1)
         {
-            //Let's start a web request to see if it's a Ollama server
-            var webScript = CreateWebRequestObject();
-            webScript.StartSetupOLlamaServer(_texgen_webui_address,m_llmParms);
-
+            // First, try to detect if it's a llama.cpp server
+            var llamaCppScript = CreateWebRequestObject();
+            llamaCppScript.StartDetectLlamaCppServer(_texgen_webui_address);
+            
+            // Also check if it's an Ollama server (only if model is specified)
+            if (GetGenericLLMParm("model").Length > 1)
+            {
+                var ollamaScript = CreateWebRequestObject();
+                ollamaScript.StartSetupOLlamaServer(_texgen_webui_address, m_llmParms);
+            }
         }
 
         m_bIsFirstTimeLoadingConfig = false;
@@ -823,6 +900,7 @@ set_default_audio_negative_prompt|music|
     }
     public GPUInfo GetGPUInfo(int index) 
     {
+      
         if (index < 0)
         {
             //set assert

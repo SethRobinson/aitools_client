@@ -1,6 +1,9 @@
 COMMAND_START|joblist
-img_to_img_inpaint_sdxl_api.json @fill_mask_if_blank @replace|SD1.5/dreamshaper_8Inpainting.safetensors|SD1.5/dreamshaper_8Inpainting.safetensors| @replace|"guidance": 30|"guidance": 30| @replace|"steps": 20|"steps": 20| @replace|"denoise": 0.5|"denoise": 0.4| @replace|"inpaint_model": true|"inpaint_model": true|
+img_to_img_inpaint_sdxl.json @fill_mask_if_blank @replace|SD1.5/dreamshaper_8Inpainting.safetensors|SD1.5/dreamshaper_8Inpainting.safetensors| @replace|"guidance": 30|"guidance": 30| @replace|"steps": 20|"steps": 20| @replace|"denoise": 0.5|"denoise": 0.4| @replace|"inpaint_model": true|"inpaint_model": true|
 COMMAND_END
 COMMAND_START|default_negative_prompt
 cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white
+COMMAND_END
+COMMAND_START|default_pre_prompt
+live action,
 COMMAND_END

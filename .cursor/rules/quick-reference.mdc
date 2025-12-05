@@ -1,3 +1,7 @@
+---
+alwaysApply: false
+description: Quick reference for common development tasks, key files, and commands in this project.
+---
 # Quick Reference Guide
 
 ## Common Development Tasks
@@ -29,20 +33,35 @@
 ## Key File Locations
 
 ### Core Application
-- Main logic: [GameLogic.cs](mdc:Assets/_Script/GameLogic.cs)
-- Configuration: [Config.cs](mdc:Assets/_Script/Config.cs)
-- Image processing: [PicMain.cs](mdc:Assets/_Script/Pic/PicMain.cs)
-- AI Guide: [AIGuideManager.cs](mdc:Assets/_Script/AIGuideManager.cs)
+- Main logic: [GameLogic.cs](mdc:Assets/_Script/GameLogic.cs) - Central coordinator
+- Configuration: [Config.cs](mdc:Assets/_Script/Config.cs) - Config management, server/GPU info
+- Image generation: [ImageGenerator.cs](mdc:Assets/_Script/ImageGenerator.cs) - Generation queue orchestration
+- Image processing: [PicMain.cs](mdc:Assets/_Script/Pic/PicMain.cs) - Image/movie display and job queue
+- AI Guide: [AIGuideManager.cs](mdc:Assets/_Script/AIGuideManager.cs) - Content creation features
+
+### Image Processing Components
+- Text-to-image: [PicTextToImage.cs](mdc:Assets/_Script/Pic/PicTextToImage.cs)
+- Inpainting: [PicInpaint.cs](mdc:Assets/_Script/Pic/PicInpaint.cs)
+- Upscaling: [PicUpscale.cs](mdc:Assets/_Script/Pic/PicUpscale.cs)
+- Video/Movie: [PicMovie.cs](mdc:Assets/_Script/Pic/PicMovie.cs)
+- Interrogate: [PicInterrogate.cs](mdc:Assets/_Script/Pic/PicInterrogate.cs)
+- Mask generation: [PicGenerateMask.cs](mdc:Assets/_Script/Pic/PicGenerateMask.cs)
 
 ### AI Services
-- OpenAI: [OpenAITextCompletionManager.cs](mdc:Assets/RT/AI/OpenAITextCompletionManager.cs)
-- Anthropic: [AnthropicAITextCompletionManager.cs](mdc:Assets/RT/AI/AnthropicAITextCompletionManager.cs)
-- ComfyUI: [ComfyUIFileUploader.cs](mdc:Assets/RT/AI/ComfyUIFileUploader.cs)
+- OpenAI: [OpenAITextCompletionManager.cs](mdc:Assets/RT/AI/OpenAITextCompletionManager.cs) - GPT-4o, o3-mini
+- Anthropic: [AnthropicAITextCompletionManager.cs](mdc:Assets/RT/AI/AnthropicAITextCompletionManager.cs) - Claude
+- Generic LLM: [TexGenWebUITextCompletionManager.cs](mdc:Assets/RT/AI/TexGenWebUITextCompletionManager.cs) - Ollama, TextGen WebUI, TabbyAPI
+- DALL-E 3: [Dalle3Manager.cs](mdc:Assets/RT/AI/Dalle3Manager.cs)
+- ComfyUI: [ComfyUIFileUploader.cs](mdc:Assets/RT/AI/ComfyUIFileUploader.cs) - File uploads
+- Prompt management: [GPTPromptManager.cs](mdc:Assets/RT/AI/GPTPromptManager.cs)
 
 ### Utilities
 - Runtime utilities: [RTUtil.cs](mdc:Assets/RT/RTUtil.cs)
 - Audio management: [RTAudioManager.cs](mdc:Assets/RT/RTAudioManager.cs)
 - Input handling: [InputActions.cs](mdc:Assets/RT/InputActions.cs)
+- Preset management: [PresetManager.cs](mdc:Assets/_Script/PresetManager.cs)
+- Model management: [ModelModManager.cs](mdc:Assets/_Script/ModelModManager.cs)
+- Server info: [WebRequestServerInfo.cs](mdc:Assets/_Script/WebRequestServerInfo.cs)
 
 ### Configuration Files
 - Application config: [config.txt](mdc:config.txt)
@@ -124,7 +143,3 @@ BuildAndUploadWebGL.bat
 - API key errors: Verify configuration in [config.txt](mdc:config.txt)
 - Workflow failures: Check JSON syntax and node availability
 - Performance issues: Monitor memory usage and optimize assets
-description:
-globs:
-alwaysApply: false
----

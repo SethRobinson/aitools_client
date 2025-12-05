@@ -1,0 +1,4 @@
+# Ignore test files (any case)
+**/test_*
+**/Test_*
+**/TEST_*

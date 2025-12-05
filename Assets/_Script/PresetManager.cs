@@ -54,6 +54,14 @@ public class PresetFileConfigExtractor
         }
     }
 
+    public void Clear()
+    {
+        JobList = null;
+        default_prompt = null;
+        default_negative_prompt = null;
+        default_pre_prompt = null;
+    }
+
     private static bool ParseBool(string value)
     {
         return value.Equals("1", StringComparison.OrdinalIgnoreCase) ||
@@ -76,6 +84,7 @@ public class PresetManager : MonoBehaviour
     public GameObject _getStringPrefab;
     static PresetManager _this;
     PresetFileConfigExtractor presetFileConfig = new PresetFileConfigExtractor();
+    PresetFileConfigExtractor tempPresetFileConfig = new PresetFileConfigExtractor();
 
     private void Awake()
     {
@@ -93,38 +102,54 @@ public class PresetManager : MonoBehaviour
         
     }
 
-    public PresetFileConfigExtractor LoadPreset(string fileName)
+    public PresetFileConfigExtractor LoadPreset(string fileName, PresetFileConfigExtractor presetextractor)
     {
         string path = "Presets/" + fileName;
-        StreamReader reader = new StreamReader(path);
-        string text = reader.ReadToEnd();
-        reader.Close();
-        presetFileConfig = new PresetFileConfigExtractor();
-        presetFileConfig.ExtractInfoFromString(text);
+        using (StreamReader reader = new StreamReader(path))
+        {
+            string text = reader.ReadToEnd();
+            presetextractor.Clear();
+            presetextractor.ExtractInfoFromString(text);
+        }
 
+        return presetextractor;
+    }
+
+    public PresetFileConfigExtractor GetActivePreset()
+    {
         return presetFileConfig;
     }
-    public void LoadPresetAndApply(string fileName)
+
+    public PresetFileConfigExtractor GetTempPreset()
+    {
+        return tempPresetFileConfig;
+    }
+
+    public void LoadPresetAndApply(string fileName, PresetFileConfigExtractor presetextractor, bool applySettings)
     {
         string path = "Presets/" + fileName;
-        StreamReader reader = new StreamReader(path);
-        string text = reader.ReadToEnd();
-        reader.Close();
-        presetFileConfig = new PresetFileConfigExtractor();
-        presetFileConfig.ExtractInfoFromString(text);
-        // Apply the settings
+        using (StreamReader reader = new StreamReader(path))
+        {
+            string text = reader.ReadToEnd();
+            presetextractor.Clear();
+            presetextractor.ExtractInfoFromString(text);
+        }
 
-        if (presetFileConfig.JobList != null)
-            GameLogic.Get().SetJobList(presetFileConfig.JobList.Trim());
+        if (applySettings)
+        {
+            // Apply the settings
+            if (presetextractor.JobList != null)
+                GameLogic.Get().SetJobList(presetextractor.JobList.Trim());
 
-        if (presetFileConfig.default_prompt != null)
-            GameLogic.Get().SetPrompt(presetFileConfig.default_prompt.Trim());
+            if (presetextractor.default_prompt != null)
+                GameLogic.Get().SetPrompt(presetextractor.default_prompt.Trim());
 
-        if (presetFileConfig.default_negative_prompt != null)
-            GameLogic.Get().SetNegativePrompt(presetFileConfig.default_negative_prompt.Trim());
+            if (presetextractor.default_negative_prompt != null)
+                GameLogic.Get().SetNegativePrompt(presetextractor.default_negative_prompt.Trim());
 
-        if (presetFileConfig.default_pre_prompt != null)
-            GameLogic.Get().SetComfyUIPrompt(presetFileConfig.default_pre_prompt.Trim());
+            if (presetextractor.default_pre_prompt != null)
+                GameLogic.Get().SetComfyPrependPrompt(presetextractor.default_pre_prompt.Trim());
+        }
     }
     public void SavePreset(string fileName)
     {
@@ -140,8 +165,8 @@ public class PresetManager : MonoBehaviour
         if (GameLogic.Get().GetNegativePrompt() != "")
             writer.Write(presetFileConfig.MakeCommandChunk("default_negative_prompt", GameLogic.Get().GetNegativePrompt()));
 
-        if (GameLogic.Get().GetComfyUIPrompt() != "")
-            writer.Write(presetFileConfig.MakeCommandChunk("default_pre_prompt", GameLogic.Get().GetComfyUIPrompt()));
+        if (GameLogic.Get().GetComfyPrependPrompt() != "")
+            writer.Write(presetFileConfig.MakeCommandChunk("default_pre_prompt", GameLogic.Get().GetComfyPrependPrompt()));
 
         writer.Close();
 
@@ -206,13 +231,15 @@ public class PresetManager : MonoBehaviour
 
     public void OnClickedPresetLoad()
     {
-        LoadPresetAndApply(GameLogic.Get().GetNameOfActivePreset());
+        LoadPresetAndApply(GameLogic.Get().GetNameOfActivePreset(), GetActivePreset(), true);
         RTConsole.Log("Loaded preset " + GameLogic.Get().GetNameOfActivePreset());
     }
     public void OnClickedPresetRefresh()
     {
         PopulatePresetDropdown(GameLogic.Get().GetPresetDropdown());
-        RTQuickMessageManager.Get().ShowMessage("Reloaded presets");
+        PopulatePresetDropdown(GameLogic.Get().GetTempPresetDropdown());
+        GameLogic.Get().OnClickedRescanComfyUIWorkflowsFolder();
+        RTQuickMessageManager.Get().ShowMessage("Refreshed workflows and presets");
     }
 
     public void OnClickedPresetSave()

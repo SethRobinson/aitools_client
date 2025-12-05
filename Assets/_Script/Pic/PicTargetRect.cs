@@ -82,6 +82,8 @@ public class PicTargetRect : MonoBehaviour
     }
     public Rect ConvertPixelRectToWorldRect(Rect targetRectToDraw)
     {
+        //make sure there really is a sprite
+        if (m_picRenderer.sprite == null) return new Rect(0, 0, 0, 0);
         var picRect = m_picRenderer.sprite.textureRect;
         var spriteSize = m_picRenderer.size;
 

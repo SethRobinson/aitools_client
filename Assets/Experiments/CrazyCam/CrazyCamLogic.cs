@@ -1,10 +1,22 @@
+using System.Collections;
+
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine.UI;
 using UnityEngine;
+using DG.Tweening;
 using System.IO;
 
 //A test to see how fast we can generate images and display them
+
+public class CrazySnapshotPreset
+{
+    public string _name;
+    public string _prompt;
+    public string _processingMessage = "Haunting image...";
+
+}
+
 
 public class CrazyCamPreset
 {
@@ -31,6 +43,7 @@ public class CrazyCamPreset
     public float _controlNetWeight = 1.0f;
     public float _controlNetGuidanceEnd = 1.0f;
     public float _controlNetGuidanceStart = 0.0f; //ignored currently
+
 }
 
 public class CrazyCamLogic : MonoBehaviour
@@ -52,18 +65,27 @@ public class CrazyCamLogic : MonoBehaviour
     public const int eMaskBackgroundOnly = 2;
     bool m_renderingIsPaused = false;
     public int m_maskMode = eMaskEntireImage;
+    bool m_bGrabNextFrame = false; //only for snapshot mode
+    //the tmp font asset
+    public TMP_FontAsset _crazyCamFontAsset;
 
+    public GameObject _batPrefab;
     static CrazyCamLogic _this = null;
     List<CrazyCamPreset> m_presets;
+    List<CrazySnapshotPreset> m_snapshotPresets = new List<CrazySnapshotPreset>();
+    public TMPro.TextMeshProUGUI _hauntingTextOverlay;
 
     float m_timeBetweenPicsSeconds = 0.3f;
     float m_timer;
     float m_delayBetweenSnaps = 0;
+    bool m_bIsActive = false;
 
     private void Awake()
     {
         _this = this;
     }
+
+    public bool IsInSnapshotMode() { return true; }
 
     public static CrazyCamLogic Get() { return _this; }
 
@@ -72,9 +94,7 @@ public class CrazyCamLogic : MonoBehaviour
         m_renderingIsPaused = !m_renderingIsPaused;
 
         UpdateCrazyCamPauseButtonStatus();
-
     }
-
     public void UpdateCrazyCamPauseButtonStatus()
     {
         TMPro.TextMeshProUGUI buttonText = m_pauseButton.GetComponentInChildren<TMPro.TextMeshProUGUI>();
@@ -89,6 +109,39 @@ public class CrazyCamLogic : MonoBehaviour
             buttonText.text = "Unpause";
             // RTUtil.SetButtonColor(m_pauseButton, new Color(0, 1, 0, 1));
         }
+    }
+
+    public void ClearSnapshotPresets()
+    {
+        m_snapshotPresets.Clear();
+    }
+    public CrazySnapshotPreset AddSnapshotPreset(string presetName, string prompt, string processingText)
+    {
+        CrazySnapshotPreset preset = new CrazySnapshotPreset();
+        preset._prompt = prompt;
+        preset._processingMessage = processingText;
+        preset._name = presetName;
+        m_snapshotPresets.Add(preset);
+        return preset;
+    }
+
+    public void ClearHauntingOverlay()
+    {
+        _hauntingTextOverlay.text = "";
+    }
+
+    public void SetHauntingTextAndFadeItIn(string msg)
+    {
+        _hauntingTextOverlay.text = msg;
+        _hauntingTextOverlay.alpha = 0;
+        //Fade alpha in using Dotween
+        _hauntingTextOverlay.DOFade(1.0f, 2.0f);
+    }
+
+    public void SetHauntingFadeOut()
+    {
+        //Fade alpha out using Dotween
+        _hauntingTextOverlay.DOFade(0.0f, 2.0f);
     }
 
     public CrazyCamPreset AddPreset(string presetName, string prompt, string maskContents, float denoisingStrength, bool bFixFaces, bool bNoTranslucency, float maskBlending, int maskMode, float cfg,
@@ -181,18 +234,20 @@ public class CrazyCamLogic : MonoBehaviour
         p._useControlNet = true;
 
         */
+     
+     //   AddSnapshotPreset("Ghosts", "Without changing anything else, change the people in the image to be ghostly and translucent.", "Haunting image...");
     }
 
+    
     public void SetPresetByIndex(int index)
     {
         m_presetDropdown.value = index;
     }
+
     public void OnStartGameMode()
     {
-        //GameLogic.Get().ShowCompatibilityWarningIfNeeded();
-
         m_timer = 0;
-
+        m_bIsActive = true;
         GameLogic.Get().SetToolsVisible(false);
         ImageGenerator.Get().SetGenerate(false);
         GameLogic.Get().OnClearButton();
@@ -209,15 +264,116 @@ public class CrazyCamLogic : MonoBehaviour
         CameraManager.Get().OnCameraStartedCallback += OnCameraStarted;
         CameraManager.Get().OnCameraInfoAvailableCallback += OnCameraInfoAvailable;
         CameraManager.Get().OnCameraDisplayedNewFrameCallback += OnCameraDisplayedNewFrame;
+        // Request capture settings from config (Unity will pick closest supported)
+        CameraManager.Get().SetRequestedResolution(
+            Config.Get().GetCrazyCamRequestedWidth(),
+            Config.Get().GetCrazyCamRequestedHeight(),
+            Config.Get().GetCrazyCamRequestedFPS());
 
         CameraManager.Get().InitCamera(m_meshRenderer);
 
         SetPresetByIndex(0);
 
+        if (IsInSnapshotMode())
+        {
+            RTMessageManager.Get().Schedule(2, this.StartSnapshotSequence);
+        }
+
     }
 
+    public void CreateFlashEffect()
+    {
+        // Find the "MainCanvas"
+        Canvas mainCanvas = RTUtil.FindObjectOrCreate("MainCanvas").GetComponent<Canvas>();
+
+        GameObject flashObj = new GameObject("CameraFlash");
+        flashObj.transform.SetParent(mainCanvas.transform);
+
+        var image = flashObj.AddComponent<UnityEngine.UI.Image>();
+        image.color = Color.white;
+
+        var rectTransform = flashObj.GetComponent<RectTransform>();
+        rectTransform.anchorMin = Vector2.zero;
+        rectTransform.anchorMax = Vector2.one;
+        rectTransform.offsetMin = Vector2.zero;
+        rectTransform.offsetMax = Vector2.zero;
+
+        // Make sure it's on top
+        flashObj.transform.SetAsLastSibling();
+
+        // Flash in and out quickly
+        RTMessageManager.Get().Schedule(0.1f, (obj) => GameObject.Destroy(obj), flashObj);
+    }
+
+    public void SnapShotGrabNextFrame()
+    {
+               m_bGrabNextFrame = true; 
+    }
+
+    public void MakeCameraLive()
+    {
+
+        m_meshRenderer.material.mainTexture = CameraManager.Get().GetWebCamTexture();
+    }
+
+    public void StartSnapshotSequence()
+    {
+        if (!m_bIsActive) return;
+
+        MakeCameraLive();
+
+        int offset = 0;
+
+        for (int i = 3; i >= 1; i--)
+        {
+            RTMessageManager.Get().Schedule((offset + 4) - i, this.OnShowText, i.ToString());
+            RTMessageManager.Get().Schedule((offset + 4) - i, RTAudioManager.Get().Play, "heartbeat"); //plays crap.wav from Resources dir in 2 seconds
+        }
+
+        RTMessageManager.Get().Schedule(offset + 4, RTAudioManager.Get().Play, "snap"); //plays crap.wav from Resources dir in 2 seconds
+        RTMessageManager.Get().Schedule(offset + 4, this.CreateFlashEffect); //plays crap.wav from Resources dir in 2 seconds
+        RTMessageManager.Get().Schedule(offset + 4, this.SnapShotGrabNextFrame); //plays crap.wav from Resources dir in 2 seconds
+
+        //setup a looping sound and remember its id
+        RTMessageManager.Get().Schedule(offset + 4, RTAudioManager.Get().PlayMusic, "bats_looping", Config.Get()._snapShotBatSoundVolumeMod, 1.0f, true);
+    }
+
+    public void OnShowText(string msg)
+        {
+            //Let's create a UI text message using TMpro in the center of the screen from scratch
+            GameObject textObj = new GameObject();
+            textObj.name = "CrazyCamIntroText";
+            textObj.transform.SetParent(RTUtil.FindObjectOrCreate("MainCanvas").transform);
+        
+            var text = textObj.AddComponent<TMPro.TextMeshProUGUI>();
+            text.font = _crazyCamFontAsset;
+        
+            text.text = msg;
+            text.fontSize = 300;
+            text.alignment = TextAlignmentOptions.Center; // Use Midline for horizontal and vertical center
+            text.color = Color.darkRed;
+        
+            // Add drop shadow for better readability
+            var shadow = textObj.AddComponent<UnityEngine.UI.Shadow>();
+            shadow.effectColor = new Color(0, 0, 0, 0.8f);
+            shadow.effectDistance = new Vector2(4, -4);
+        
+            // Set up RectTransform for proper centering
+            var rectTransform = text.GetComponent<RectTransform>();
+            rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
+            rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+            rectTransform.pivot = new Vector2(0.5f, 0.5f);
+            rectTransform.sizeDelta = new Vector2(800, 200);
+            rectTransform.anchoredPosition = new Vector2(0, 0);
+        
+            RTMessageManager.Get().Schedule(1, (obj) => GameObject.Destroy(obj), textObj);
+    }
     public void OnEndGameMode()
     {
+        RTMessageManager.Get().RemoveScheduledCalls((System.Action<Vector3, Vector3, float>)CreateBat);
+        RTMessageManager.Get().RemoveScheduledCalls(SnapShotGrabNextFrame);
+
+        m_bIsActive = false;
         CameraManager.Get().OnCameraStartedCallback -= OnCameraStarted;
         CameraManager.Get().OnCameraInfoAvailableCallback -= OnCameraInfoAvailable;
         CameraManager.Get().OnCameraDisplayedNewFrameCallback -= OnCameraDisplayedNewFrame;
@@ -231,6 +387,13 @@ public class CrazyCamLogic : MonoBehaviour
 
         //        RTMessageManager.Get().Schedule(0.3f, RTUtil.KillAllObjectsByNameWrapper, null, "RTToolTipPrefab", true, 0);
         RTMessageManager.Get().Schedule(0.3f, (name, bIsWildcardString) => RTUtil.KillAllObjectsByName(null, name, bIsWildcardString), "RTToolTipPrefab", true);
+
+        ClearAllBats();
+        m_bGrabNextFrame = false;
+        MakeCameraLive();
+        SetHauntingFadeOut();
+        RTAudioManager.Get().StopMusic();
+
     }
 
     void SetCamDropdownByIndex(int index)
@@ -318,7 +481,8 @@ public class CrazyCamLogic : MonoBehaviour
         {
             if (GameLogic.Get().GetActiveModelFilename().Contains(preset._modelRequirements))
             {
-            } else
+            }
+            else
             {
                 RTQuickMessageManager.Get().ShowMessage("Warning:  You should switch to a SD model with " + preset._modelRequirements + " in the filename!");
             }
@@ -359,6 +523,35 @@ public class CrazyCamLogic : MonoBehaviour
 
         m_processedRenderer.gameObject.transform.parent.localScale = processedVScale;
     }
+    public void OnSnapShotModeImageRenderFinished(GameObject picGameObject)
+    {
+
+        PicMain picMain = picGameObject.GetComponent<PicMain>();
+        Texture2D tex = new Texture2D(picMain.m_pic.sprite.texture.width, picMain.m_pic.sprite.texture.height, TextureFormat.ARGB32, false);
+        tex.SetPixels(picMain.m_pic.sprite.texture.GetPixels());
+        tex.Apply();
+        ResizeTool.Resize(tex, GameLogic.Get().GetGenWidth(), GameLogic.Get().GetGenHeight(), true);
+
+        //m_processedRenderer.material.mainTexture = tex;
+
+        m_meshRenderer.material.mainTexture = tex;
+
+        //oh, let's kill the pic too
+        GameObject.Destroy(picGameObject);
+        RTMessageManager.Get().Schedule(7, this.StartSnapshotSequence);
+        ClearAllBats();
+        RTAudioManager.Get().StopMusic();
+        SetHauntingFadeOut();
+        RTMessageManager.Get().Schedule(0, RTAudioManager.Get().Play, "image_reveal"); //plays crap.wav from Resources dir in 2 seconds
+
+        if (m_autoSaveImages)
+        {
+            //generate a random filename UUID
+            string fileName = Config.Get().GetBaseFileDir("/" + Config._saveDirName + "/") + "crazyCam_" + System.Guid.NewGuid() + ".png";
+            File.WriteAllBytes(fileName, tex.EncodeToPNG());
+        }
+
+    }
 
     public void OnImageRenderFinished(GameObject picGameObject)
     {
@@ -367,24 +560,6 @@ public class CrazyCamLogic : MonoBehaviour
 
         PicMain picMain = picGameObject.GetComponent<PicMain>();
 
-        //if m_autoSaveImages is checked, save the image
-        if (m_autoSaveImages.isOn)
-        {
-            //string tempDir = Application.dataPath;
-            ////get the Assets dir, but strip off the word Assets
-            //tempDir = tempDir.Replace('/', '\\');
-            //tempDir = tempDir.Substring(0, tempDir.LastIndexOf('\\'));
-            ////tack on subdir if needed
-            //tempDir = tempDir + "/" + Config._saveDirName;
-            ////reconvert to \\ (I assume this code would have to change if it wasn't Windows... uhh
-            //tempDir = tempDir.Replace('/', '\\');
-            //string fileName = tempDir + "\\CrazyCam_" + System.DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss") + ".png";
-
-            //RTConsole.Log("Saving image to " + fileName);
-            //File.WriteAllBytes(fileName, tex.EncodeToPNG());
-        }
-
-        //Debug.Log("Got image");
         // I need to do something like this: m_processedRenderer.material.mainTexture = picMain.m_pic.sprite.texture; but I need to make sure I own the texture, otherwise
         //when the sprite is destroyed, it will destroy my texture
         //so I need to make a copy of the texture
@@ -392,55 +567,186 @@ public class CrazyCamLogic : MonoBehaviour
         tex.SetPixels(picMain.m_pic.sprite.texture.GetPixels());
         tex.Apply();
         ResizeTool.Resize(tex, GameLogic.Get().GetGenWidth(), GameLogic.Get().GetGenHeight(), true);
-
         m_processedRenderer.material.mainTexture = tex;
 
+      
+        if (m_autoSaveImages)
+        {
+            //generate a random filename UUID
+            string fileName = Config.Get().GetBaseFileDir("/" + Config._saveDirName + "/") + "crazyCam_" + System.Guid.NewGuid() + ".png";
+            File.WriteAllBytes(fileName, tex.EncodeToPNG());
+
+        }
         //oh, let's kill the pic too
         GameObject.Destroy(picGameObject);
-        //float timeTaken = Time.time - db.GetFloat("startTime");
-
-        /*
-        RTDB db = new RTDB();
-        db.Set("startTime", Time.time);
-        */
-
-        if (m_delayBetweenSnaps == 0)
-        {
-        //    m_timeBetweenPicsSeconds = timeTaken / Config.Get().GetGPUCount();
-        }
-        //Debug.Log(timeTaken);
     }
 
-
-    void OnCameraDisplayedNewFrame(WebCamTexture webCamTex)
+    void CreateBat(Vector3 vStartingPos, Vector3 vTargetPos, float animationDuration)
     {
-        //Debug.Log("NEW FRAME");
 
-        if (m_timer > Time.time) return; //we don't want to show pics this fast
-        if (!Config.Get().IsAnyGPUFree()) return;
-        if (m_renderingIsPaused) return;
+        if (!m_bIsActive) return;
 
-        m_timer = Time.time + m_timeBetweenPicsSeconds;
+        Transform parentObj = RTUtil.FindObjectOrCreate("CrazyCamMode").transform;
+
+        //let's instaniate our _batPrefab here
+        var obj = GameObject.Instantiate(_batPrefab);
+        obj.transform.SetParent(parentObj);
+
+        obj.transform.localPosition = vStartingPos;
+
+        //Call SetTarget on Bat script on obj
+        var bat = obj.GetComponent<Bat>();
+        bat.FlyTo(vStartingPos, vTargetPos, animationDuration, false);
+    }
+
+    public void ClearAllBats()
+    {
+        StartCoroutine(ClearAllBatsCoroutine());
+    }
+
+    private IEnumerator ClearAllBatsCoroutine()
+    {
+        Transform parentObj = RTUtil.FindObjectOrCreate("CrazyCamMode").transform;
+
+        // Get all Bat components from children
+        Bat[] bats = parentObj.GetComponentsInChildren<Bat>();
+
+        if (bats.Length == 0)
+            yield break;
+
+        // Calculate delay between each bat to spread over 1 second
+        float totalDuration = 0.4f;
+        float delayPerBat = totalDuration / (float)bats.Length;
+
+        foreach (Bat bat in bats)
+        {
+            if (bat != null)
+            {
+                bat.FlyAway();
+                yield return new WaitForSeconds(delayPerBat);
+            }
+        }
+    }
+
+    void CreateFilmDevelopmentEffect()
+    {
+
+        if (!m_bIsActive) return;
+
+        // Get the texture from the mesh renderer
+        Texture texture = m_meshRenderer.material.mainTexture;
+        if (texture == null) return;
+
+        // Create a 3D quad in world space
+        GameObject overlayObj = new GameObject("FilmDevelopmentEffect");
+
+        // Add a mesh renderer and mesh filter
+        var meshFilter = overlayObj.AddComponent<MeshFilter>();
+        var meshRenderer = overlayObj.AddComponent<MeshRenderer>();
+
+        // Create a quad mesh
+        var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        meshFilter.mesh = quad.GetComponent<MeshFilter>().mesh;
+        GameObject.Destroy(quad);
+
+        // Calculate the aspect ratio from the texture
+        float aspectRatio = (float)texture.width / (float)texture.height;
+
+        // Position it at the same location as the camera mesh renderer
+        overlayObj.transform.position = m_meshRenderer.transform.position;
+        overlayObj.transform.rotation = m_meshRenderer.transform.rotation;
+
+        // Scale it to match the texture aspect ratio
+        Vector3 scale = m_meshRenderer.transform.parent.parent.localScale;
+        scale.x = scale.y * aspectRatio; // Adjust width based on height and aspect ratio
+        overlayObj.transform.localScale = scale;
+
+        // Create a material with the overlay color
+        Material overlayMaterial = new Material(Shader.Find("Standard"));
+        overlayMaterial.color = new Color(1, 0, 0, 0.5f);
+        overlayMaterial.SetFloat("_Mode", 3); // Transparent mode
+        overlayMaterial.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+        overlayMaterial.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+        overlayMaterial.SetInt("_ZWrite", 0);
+        overlayMaterial.DisableKeyword("_ALPHATEST_ON");
+        overlayMaterial.EnableKeyword("_ALPHABLEND_ON");
+        overlayMaterial.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+        overlayMaterial.renderQueue = 3000;
+
+        meshRenderer.material = overlayMaterial;
+
+        // Position it slightly in front of the camera mesh
+        overlayObj.transform.Translate(0, 0, -0.01f);
+
+        //RTMessageManager.Get().Schedule(1.0f, (obj) => GameObject.Destroy(obj), overlayObj);
+
+        //ok,  now that we know the rect and position...
+
+        //calculate the world rect of the overlayObj
+        Rect worldRectOfOverlay = new Rect(overlayObj.transform.position.x - (overlayObj.transform.localScale.x / 2),
+            overlayObj.transform.position.y - (overlayObj.transform.localScale.y / 2),
+            overlayObj.transform.localScale.x,
+            overlayObj.transform.localScale.y);
+
+
+        float chunksWidth = 20;
+        float chunksHeight = 10;
+        Transform parentObj = RTUtil.FindObjectOrCreate("CrazyCamMode").transform;
+
+        float gapX = (overlayObj.transform.localScale.x / chunksWidth);
+        float gapY = (overlayObj.transform.localScale.y / chunksHeight);
+
+        Vector3 vStartingPos = new Vector3(-5.0f, 5.0f, 0.27f);
         
-        //RTDB db = new RTDB();
-        //db.Set("startTime", Time.time);
-        //let's remember how long it takes from start to finish to extract from webcam, get it inpainted, and display it
-     
+        float animationDuration = 10.0f;
+
+        for (float x = 0; x < overlayObj.transform.localScale.x; )
+        {
+            for (float y = 0; y < overlayObj.transform.localScale.y; )
+            {
+                y += gapY;
+                Vector3 vTargetPos = new Vector3(worldRectOfOverlay.xMin + x + (gapX / 2), worldRectOfOverlay.yMin + y + ((gapY / 2) * -1.0f), 0.27f);
+                 float batSpeed = 1.0f;
+
+                float seconds = animationDuration * (x / overlayObj.transform.localScale.x);
+                //let's also smooth out the seconds using the Y
+                seconds += gapX * (y / overlayObj.transform.localScale.y);
+                
+                //add some slight randomness to the target pos and speed
+                vTargetPos += new Vector3(Random.Range(-0.1f, 0.1f), Random.Range(-0.1f, 0.1f), 0);
+                batSpeed += Random.Range(-0.2f, 0.2f);
+
+                //randomize their size too
+
+                RTMessageManager.Get().Schedule(seconds, this.CreateBat, vStartingPos, vTargetPos, batSpeed);
+             }
+            x += gapX;
+        }
+
+
+        //oh, let's kill the overlayObj
+        GameObject.Destroy(overlayObj);
+    }
+
+    void GrabCurrentCameraImageAndProcessIt(WebCamTexture webCamTex)
+    {
         float aspectRatio = (float)webCamTex.width / (float)webCamTex.height;
         float targetAspectRatio = (float)GameLogic.Get().GetGenWidth() / (float)GameLogic.Get().GetGenHeight();
 
         Rect rect;
-        if (aspectRatio > 1)
+        if (aspectRatio > targetAspectRatio)
         {
-            float newWidth = webCamTex.height * aspectRatio;
-            float excessWidth = (newWidth - webCamTex.height) / 2;
-            rect = new Rect(excessWidth, 0, webCamTex.height, webCamTex.height);
+            // Camera feed is wider than target: crop width
+            float cropWidth = webCamTex.height * targetAspectRatio;
+            float x = (webCamTex.width - cropWidth) * 0.5f;
+            rect = new Rect(x, 0, cropWidth, webCamTex.height);
         }
         else
         {
-            float newHeight = webCamTex.width / aspectRatio;
-            float excessHeight = (newHeight - webCamTex.width) / 2;
-            rect = new Rect(0, excessHeight, webCamTex.width, webCamTex.width);
+            // Camera feed is taller than target: crop height
+            float cropHeight = webCamTex.width / targetAspectRatio;
+            float y = (webCamTex.height - cropHeight) * 0.5f;
+            rect = new Rect(0, y, webCamTex.width, cropHeight);
         }
 
         //Debug.Log("Tex of "+webCamTex.width+","+webCamTex.height+" squared to Rect: " + rect);
@@ -448,18 +754,25 @@ public class CrazyCamLogic : MonoBehaviour
         Texture2D texture = new Texture2D((int)rect.width, (int)rect.height, TextureFormat.RGB24, false);
 
         texture.SetPixels(webCamTex.GetPixels((int)rect.x, (int)rect.y, (int)rect.width, (int)rect.height));
-       
-        
         texture.Apply();
+        
         ResizeTool.Resize(texture, GameLogic.Get().GetGenWidth(), GameLogic.Get().GetGenHeight(), true);
-      
+
+
+        if (IsInSnapshotMode())
+        {
+            //in snapshot mode, we want to see the original image until the processed one is ready
+            m_meshRenderer.material.mainTexture = texture;
+
+            CreateFilmDevelopmentEffect();
+        }
 
         //Encode it as a PNG.
         //byte[] bytes = texture.EncodeToPNG();
 
         bool bOperateOnSubjectMaskOnly = false;
         bool bReverseMask = false;
-        
+
         switch (m_maskMode)
         {
             case eMaskEntireImage:
@@ -477,31 +790,35 @@ public class CrazyCamLogic : MonoBehaviour
                 bReverseMask = true;
                 break;
 
-          
-               // Debug.Log("Error, bad mask type");
-
         }
-
-        //var json = GamePicManager.Get().BuildJSonRequestForInpaint(GameLogic.Get().GetPrompt(), GameLogic.Get().GetNegativePrompt(), texture, null, false, bOperateOnSubjectMaskOnly,
-        //    m_noTranslucencyToggle.isOn, bReverseMask, GameLogic.Get().GetUseControlNet());
 
         int gpu = Config.Get().GetFreeGPU(RTRendererType.Any_Local);
         if (gpu != -1)
         {
-            //GamePicManager.Get().SpawnInpaintRequest(json, OnImageRenderFinished, db, gpu);
-
+     
             List<string> jobsTodo = GameLogic.Get().GetPicJobListAsListOfStrings();
             if (jobsTodo.Count == 0)
             {
                 RTQuickMessageManager.Get().ShowMessage("Add jobs to do!");
                 return;
-                //yield return null;
             }
 
             PicJob jobDefaultInfoToStartWith = new PicJob();
 
             jobDefaultInfoToStartWith._requestedPrompt = GameLogic.Get().GetModifiedGlobalPrompt();
 
+            if (jobDefaultInfoToStartWith._requestedPrompt == "")
+            {
+                //let's trandomly set the prompt from one of the snapshot presets
+                if (m_snapshotPresets.Count > 0)
+                {
+                    int randomIndex = Random.Range(0, m_snapshotPresets.Count);
+                    var preset = m_snapshotPresets[randomIndex];
+                    jobDefaultInfoToStartWith._requestedPrompt = preset._prompt;
+                    //RTQuickMessageManager.Get().ShowMessage(preset._name + ": " + preset._prompt);
+                    SetHauntingTextAndFadeItIn(preset._processingMessage);
+                }
+            }
             string audio = "";
 
             if (audio == "")
@@ -521,14 +838,44 @@ public class CrazyCamLogic : MonoBehaviour
             picMain.SetStatusMessage("AI guided\n(waiting)");
 
             //oh, we want to know when it's done so we can grab the resulting image out of it
-            pic.GetComponent<PicMain>().m_onFinishedRenderingCallback += OnImageRenderFinished;
 
+            if (IsInSnapshotMode())
+            {
+                pic.GetComponent<PicMain>().m_onFinishedRenderingCallback += OnSnapShotModeImageRenderFinished;
+            }
+            else
+            {
+                pic.GetComponent<PicMain>().m_onFinishedRenderingCallback += OnImageRenderFinished;
+            }
         }
+    }
+    void OnCameraDisplayedNewFrame(WebCamTexture webCamTex)
+    {
+        //Debug.Log("NEW FRAME");
+
+        if (m_timer > Time.time) return; //we don't want to show pics this fast
+        if (!Config.Get().IsAnyGPUFree()) return;
+        if (m_renderingIsPaused) return;
+
+        m_timer = Time.time + m_timeBetweenPicsSeconds;
+
+        if (IsInSnapshotMode())
+        {
+            if (m_bGrabNextFrame)
+            {
+                GrabCurrentCameraImageAndProcessIt(webCamTex);
+                m_bGrabNextFrame = false;
+            }
+        } else
+        {
+            GrabCurrentCameraImageAndProcessIt(webCamTex);
+        }
+       
     }
 
     void Update()
     {
-      
+
     }
 
 }

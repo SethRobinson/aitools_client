@@ -1,7 +1,0 @@
-COMMAND_START|joblist
-text_to_video_wan22_5B_api.json
-
-COMMAND_END
-COMMAND_START|default_negative_prompt
-cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white
-COMMAND_END

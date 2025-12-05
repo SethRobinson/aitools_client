@@ -1,0 +1,12 @@
+COMMAND_START|joblist
+img_to_img_kontext_fp4.json
+COMMAND_END
+COMMAND_START|default_prompt
+img_to_img_kontext_fp4.json
+COMMAND_END
+COMMAND_START|default_negative_prompt
+cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white
+COMMAND_END
+COMMAND_START|default_pre_prompt
+live action,
+COMMAND_END

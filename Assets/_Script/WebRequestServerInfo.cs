@@ -25,6 +25,22 @@ public class WebRequestServerInfo : MonoBehaviour
     {
     }
 
+    // Normalizes certain verbose GPU names to preferred short forms for UI display
+    private string NormalizeGPUName(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return name;
+
+        if (name.Contains("NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition") ||
+            name.Contains("NVIDIA RTX PRO 6000 Blackwell Max-Q") ||
+            name.Contains("RTX PRO 6000 Blackwell Max-Q Workstation Edition") ||
+            name.Contains("RTX PRO 6000 Blackwell Max-Q"))
+        {
+            return "RTX PRO 6000";
+        }
+
+        return name;
+    }
+
     IEnumerator GetRequestToCheckForComfyUI(int gpuID, String server, string optionalName)
     {
 
@@ -32,6 +48,82 @@ public class WebRequestServerInfo : MonoBehaviour
         var finalURL = server + "/prompt";
         string serverClickableURL = "<link=\"" + server + "\"><u>" + server + "</u></link>";
         Debug.Log("Checking server " + serverClickableURL + "...");
+        
+        // First, try to get system stats to extract GPU name
+        string gpuNameFromStats = "";
+        var statsURL = server + "/system_stats";
+        using (var statsRequest = UnityWebRequest.Get(statsURL))
+        {
+            yield return statsRequest.SendWebRequest();
+            
+            if (statsRequest.result == UnityWebRequest.Result.Success)
+            {
+                try
+                {
+                    // Parse the system_stats response
+                    var statsDict = Json.Deserialize(statsRequest.downloadHandler.text) as Dictionary<string, object>;
+                    if (statsDict != null && statsDict.ContainsKey("devices"))
+                    {
+                        var devices = statsDict["devices"] as List<object>;
+                        if (devices != null && devices.Count > 0)
+                        {
+                            // Get the first device
+                            var firstDevice = devices[0] as Dictionary<string, object>;
+                            if (firstDevice != null && firstDevice.ContainsKey("name"))
+                            {
+                                string fullDeviceName = firstDevice["name"].ToString();
+                                // Extract just the GPU model name (e.g., "NVIDIA GeForce RTX 4090" from "cuda:0 NVIDIA GeForce RTX 4090 : cudaMallocAsync")
+                                // Split by space and look for the GPU model
+                                string[] parts = fullDeviceName.Split(' ');
+                                // Skip "cuda:0" and find the actual GPU name
+                                if (parts.Length > 1)
+                                {
+                                    // Find where NVIDIA/AMD/Intel starts and take from there
+                                    int startIdx = -1;
+                                    for (int i = 0; i < parts.Length; i++)
+                                    {
+                                        if (parts[i].Contains("NVIDIA") || parts[i].Contains("AMD") || parts[i].Contains("Intel"))
+                                        {
+                                            startIdx = i;
+                                            break;
+                                        }
+                                    }
+                                    
+                                    if (startIdx >= 0)
+                                    {
+                                        // Take everything from GPU vendor to before the colon (if present)
+                                        List<string> gpuParts = new List<string>();
+                                        for (int i = startIdx; i < parts.Length; i++)
+                                        {
+                                            if (parts[i].Contains(":"))
+                                                break;
+                                            // Skip "NVIDIA", "GeForce", and "PCIe" to make the name shorter
+                                            if (parts[i] != "NVIDIA" && parts[i] != "GeForce" && parts[i] != "PCIe")
+                                            {
+                                                gpuParts.Add(parts[i]);
+                                            }
+                                        }
+                                        gpuNameFromStats = string.Join(" ", gpuParts);
+                                    }
+                                }
+                                
+                                gpuNameFromStats = NormalizeGPUName(gpuNameFromStats);
+                                Debug.Log("Detected GPU from system_stats: " + gpuNameFromStats);
+                            }
+                        }
+                    }
+                }
+                catch (Exception e)
+                {
+                    Debug.Log("Error parsing system_stats: " + e.Message);
+                }
+            }
+            else
+            {
+                Debug.Log("Could not fetch system_stats from " + statsURL + " - will use default name");
+            }
+        }
+        
     again:
         //Create the request using a static method instead of a constructor
 
@@ -76,7 +168,23 @@ public class WebRequestServerInfo : MonoBehaviour
 
                 //log the dict value of context
                 String serverName = "ComfyUI";
-               
+                
+                // Priority: 1) Optional name from config, 2) GPU name from stats, 3) empty
+                string nameToUse = "";
+                if (!string.IsNullOrEmpty(optionalName))
+                {
+                    nameToUse = optionalName;
+                    serverName = optionalName;
+                }
+                else if (!string.IsNullOrEmpty(gpuNameFromStats))
+                {
+                    nameToUse = gpuNameFromStats;
+                    serverName = gpuNameFromStats;
+                }
+
+                // Final normalization pass for display name
+                nameToUse = NormalizeGPUName(nameToUse);
+                serverName = NormalizeGPUName(serverName);
 
                 RTConsole.Log("CONNECTED: " + serverClickableURL + " (" + serverName + ") ");
 
@@ -90,7 +198,7 @@ public class WebRequestServerInfo : MonoBehaviour
                     g.supportsAITools = false;
                     g._requestedRendererType = RTRendererType.ComfyUI;
                     g._usesDetailedPrompts = true; //we're assuming ComfyUI is always FLUX, probably a bad assumption
-                    g._name = optionalName;
+                    g._name = nameToUse;
 
                 Config.Get().AddGPU(g);
                
@@ -850,7 +958,125 @@ public class WebRequestServerInfo : MonoBehaviour
     {
         StartCoroutine(GetRequestToCreateOllamaProfile(httpDest, parms));
     }
+    
+    public void StartDetectLlamaCppServer(string httpDest)
+    {
+        StartCoroutine(GetRequestToDetectLlamaCpp(httpDest));
+    }
 
+    IEnumerator GetRequestToDetectLlamaCpp(string httpDest)
+    {
+        // Try to access the /models endpoint which is specific to llama.cpp server
+        var finalURL = httpDest + "/models";
+        
+        using (var getRequest = UnityWebRequest.Get(finalURL))
+        {
+            yield return getRequest.SendWebRequest();
+            
+            if (getRequest.result == UnityWebRequest.Result.Success)
+            {
+                try
+                {
+                    // Parse the response
+                    var responseDict = Json.Deserialize(getRequest.downloadHandler.text) as Dictionary<string, object>;
+                    
+                    // Check if response has the expected llama.cpp structure
+                    if (responseDict != null && responseDict.ContainsKey("models") && responseDict.ContainsKey("data"))
+                    {
+                        // This is a llama.cpp server
+                        Config.Get().SetGenericLLMIsLlamaCpp(true);
+                        
+                        // Store the model data for later use
+                        Config.Get().SetLlamaCppModelData(responseDict);
+                        
+                        // Extract and add parameters to m_llmParms
+                        var llmParms = Config.Get().GetLLMParms();
+                        
+                        // Log some useful information and extract model name
+                        var models = responseDict["models"] as List<object>;
+                        if (models != null && models.Count > 0)
+                        {
+                            var firstModel = models[0] as Dictionary<string, object>;
+                            if (firstModel != null && firstModel.ContainsKey("name"))
+                            {
+                                string modelName = firstModel["name"].ToString();
+                                RTConsole.Log($"llama.cpp server detected at {httpDest} with model: {modelName}");
+                                
+                                // Add or update the model parameter
+                                llmParms.RemoveAll(p => p._key == "model");
+                                var modelParm = new LLMParm();
+                                modelParm._key = "model";
+                                modelParm._value = modelName;
+                                llmParms.Add(modelParm);
+                            }
+                        }
+                        
+                        // Also check the data array for additional model info
+                        var dataArray = responseDict["data"] as List<object>;
+                        if (dataArray != null && dataArray.Count > 0)
+                        {
+                            var firstData = dataArray[0] as Dictionary<string, object>;
+                            if (firstData != null)
+                            {
+                                // Add model ID if available
+                                if (firstData.ContainsKey("id"))
+                                {
+                                    llmParms.RemoveAll(p => p._key == "model_id");
+                                    var idParm = new LLMParm();
+                                    idParm._key = "model_id";
+                                    idParm._value = firstData["id"].ToString();
+                                    llmParms.Add(idParm);
+                                }
+                                
+                                // Extract meta information - iterate through all meta fields
+                                if (firstData.ContainsKey("meta"))
+                                {
+                                    var meta = firstData["meta"] as Dictionary<string, object>;
+                                    if (meta != null)
+                                    {
+                                        // Iterate through all meta fields and add them to llmParms
+                                        foreach (var kvp in meta)
+                                        {
+                                            // Remove existing param with same key
+                                            llmParms.RemoveAll(p => p._key == kvp.Key);
+                                            
+                                            // Add new param
+                                            var parm = new LLMParm();
+                                            parm._key = kvp.Key;
+                                            parm._value = kvp.Value.ToString();
+                                            llmParms.Add(parm);
+                                            
+                                            // Log important ones
+                                            if (kvp.Key == "n_ctx_train")
+                                            {
+                                                RTConsole.Log($"Model context size: {kvp.Value}");
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        RTConsole.Log($"Server at {httpDest} is not detected as llama.cpp (missing expected fields)");
+                    }
+                }
+                catch (Exception e)
+                {
+                    Debug.Log($"Error parsing llama.cpp response: {e.Message}");
+                }
+            }
+            else
+            {
+                // Not a llama.cpp server or endpoint not available
+                RTConsole.Log($"Server at {httpDest} is not detected as llama.cpp (no /models endpoint)");
+            }
+        }
+        
+        GameObject.Destroy(gameObject);
+    }
+    
     IEnumerator GetRequestToCreateOllamaProfile(string httpDest, List<LLMParm> parms)
     {
         string model = Config.Get().GetGenericLLMParm("model", parms);
@@ -863,7 +1089,7 @@ public class WebRequestServerInfo : MonoBehaviour
         // Check if we should skip profile creation and use Ollama defaults
         bool useOllamaDefaults = Config.Get().GetGenericLLMParm("use_ollama_defaults", parms) == "true";
         
-        if (useOllamaDefaults)
+        if (useOllamaDefaults && ctx.Length == 0)
         {
             RTConsole.Log("Using Ollama default settings for model: " + model);
             Config.Get().SetGenericLLMIsOllama(true);

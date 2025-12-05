@@ -6,7 +6,7 @@ using UnityEngine.UI;
 using System.IO;
 using System;
 using System.Linq;
-
+using System.Text;
 public class AIGuideManager : MonoBehaviour
 {
 
@@ -98,6 +98,16 @@ public class AIGuideManager : MonoBehaviour
     public TMP_FontAsset[] m_fontArray;
     public GameObject m_notepadTemplatePrefab; //(attach to RTNotepad prefab)
     bool m_bFirstTimeToShow = true;
+
+    // Streaming UI buffers (add near other fields)
+    private readonly StringBuilder _uiBuffer = new StringBuilder(4096);
+    private readonly StringBuilder _streamBuffer = new StringBuilder(1024);
+    [SerializeField] private int _uiVisibleCharLimit = 20000;   // tail chars to render in the InputField
+    [SerializeField] private float _uiFlushInterval = 0.03f;    // ~33ms
+    private float _nextUIFlushTime;
+    private bool _pendingUIFlush;
+    private bool _autoScrollPending;
+
     void Awake()
     {
         _this = this;
@@ -112,34 +122,61 @@ public class AIGuideManager : MonoBehaviour
         m_timeThatAnimStarted = Time.time;
     }
 
-    public void OnStreamingTextCallback(string text)
+    private void FlushStreamingUI(bool force)
     {
+        if (!_pendingUIFlush && !force) return;
+        if (!force && Time.unscaledTime < _nextUIFlushTime) return;
 
-        //_inputPromptOutput.text is a TMPro.TMP_InputField and accumulatedText is a string
-        _inputPromptOutput.text += text;
+        string chunk = _streamBuffer.ToString();
+        if (chunk.Length == 0 && !force) return;
 
-        //make _inputPromptOutput scroll to the bottom
+        _streamBuffer.Length = 0;
+        _nextUIFlushTime = Time.unscaledTime + _uiFlushInterval;
 
-        //If left mouse isn't down, scroll
-        if (!Input.GetMouseButton(0))
-        {
-            _inputPromptOutput.caretPosition = _inputPromptOutput.text.Length;
-            _inputPromptOutputScrollRect.value = 1;
-        }
-      
-        accumulatedText += text;
-        m_totalPromptReceived += text;
+        // Keep full transcript separate from the rendered tail
+        m_totalPromptReceived += chunk;
+        accumulatedText += chunk;
 
+        // Parse for picture blocks once per flush
         string picText = GetPicFromText(ref accumulatedText);
-
         if (picText.Length != 0)
         {
             _textToProcessForPics = picText;
             StartCoroutine(ProcessTextFileBasic());
         }
-        //Debug.Log(text);
 
-        //Did we receive enough text to find a text/image pair to render?
+        // Maintain a bounded UI buffer (render tail only for performance)
+        _uiBuffer.Append(chunk);
+        if (_uiBuffer.Length > _uiVisibleCharLimit)
+        {
+            _uiBuffer.Remove(0, _uiBuffer.Length - _uiVisibleCharLimit);
+        }
+
+        // Cheap update (no events)
+        _inputPromptOutput.SetTextWithoutNotify(_uiBuffer.ToString());
+
+        if (_autoScrollPending)
+        {
+            // Let the InputField auto-scroll to caret; no Scrollbar writes
+            _inputPromptOutput.caretPosition = _inputPromptOutput.text.Length;
+            _inputPromptOutput.MoveTextEnd(false);
+            _autoScrollPending = false;
+        }
+
+        _pendingUIFlush = _streamBuffer.Length > 0;
+    }
+
+    public void OnStreamingTextCallback(string text)
+    {
+        // Buffer incoming text; throttle UI updates to reduce GC/layout churn
+        _streamBuffer.Append(text);
+        _pendingUIFlush = true;
+
+        // Only auto-scroll if the user isn't dragging
+        if (!Input.GetMouseButton(0))
+        {
+            _autoScrollPending = true;
+        }
     }
 
     public void SetupRandomAutoSaveFolder()
@@ -185,6 +222,13 @@ public class AIGuideManager : MonoBehaviour
         _inputPromptOutputScrollRect.value = 0.0f;  // Scrolls back to the top
 
         accumulatedText = "";
+
+        // Clear streaming buffers
+        _uiBuffer.Clear();
+        _streamBuffer.Clear();
+        _pendingUIFlush = false;
+        _autoScrollPending = false;
+
 
         Debug.Log("Getting additional responses from " + Config.Get()._texgen_webui_address); ;
         _promptManager.AddInteraction("user", _autoContinueTextInput.text);
@@ -234,10 +278,13 @@ public class AIGuideManager : MonoBehaviour
         {
             Debug.Log("Contacting TexGen WebUI asking for chat style response at " + Config.Get()._texgen_webui_address); ;
 
-            string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, m_max_tokens, m_extractor.Temperature, Config.Get().GetGenericLLMMode(), true, Config.Get().GetLLMParms(), Config.Get().GetGenericLLMIsOllama());
+            string suggestedEndpoint;
+            string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, m_max_tokens, m_extractor.Temperature, Config.Get().GetGenericLLMMode(), true, Config.Get().GetLLMParms(), Config.Get().GetGenericLLMIsOllama(), Config.Get().GetGenericLLMIsLlamaCpp());
 
             RTDB db = new RTDB();
-            _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, Config.Get()._texgen_webui_address, Config.Get()._ollama_endpoint, OnStreamingTextCallback,true,
+            // Use the suggested endpoint (might be /v1/completions for special templates)
+            string endpoint = Config.Get().GetGenericLLMIsOllama() ? Config.Get()._ollama_endpoint : suggestedEndpoint;
+            _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, Config.Get()._texgen_webui_address, endpoint, OnStreamingTextCallback,true,
                 Config.Get()._texgen_webui_APIKey);
         }
 
@@ -271,6 +318,8 @@ public class AIGuideManager : MonoBehaviour
     }
     public void OnLLMStartButton()
     {
+       
+
 
         if (IsRequestActive())
         {
@@ -363,10 +412,13 @@ public class AIGuideManager : MonoBehaviour
 
         if (true)
         {
-            //_inputPromptOutput.text = "";
             _inputPromptOutput.text += m_textToPrependToGeneration.text;
-            //move view to the top of the textbox as it might be scrolled down before we erased the text
-            //_inputPromptOutputScrollRect.value = 0.0f;  // Scrolls back to the top
+
+            // Keep UI buffer in sync with the initial seed
+            _uiBuffer.Clear();
+            _uiBuffer.Append(_inputPromptOutput.text);
+            _autoScrollPending = true;
+            _pendingUIFlush = true; // ensure a flush soon
         }
 
         if (m_autoSave.isOn || m_autoSaveJPG.isOn)
@@ -420,9 +472,9 @@ public class AIGuideManager : MonoBehaviour
       
         jobDefaultInfoToStartWith._requestedPrompt = imagePrompt;
        
-        if (GameLogic.Get().GetComfyUIPrompt() != null)
+        if (GameLogic.Get().GetComfyPrependPrompt() != null)
         {
-            jobDefaultInfoToStartWith._requestedPrompt = GameLogic.Get().GetComfyUIPrompt() + " " + imagePrompt;
+            jobDefaultInfoToStartWith._requestedPrompt = GameLogic.Get().GetComfyPrependPrompt() + " " + imagePrompt;
         }
         jobDefaultInfoToStartWith._requestedNegativePrompt = GameLogic.Get().GetNegativePrompt();
         if (audio == "")
@@ -676,7 +728,6 @@ public class AIGuideManager : MonoBehaviour
     //This is called by the ProcessReponse button from the GUI
     public void OnProcessOutput()
     {
-
         if (m_autoSave.isOn || m_autoSaveJPG.isOn)
         {
             SetupRandomAutoSaveFolder();
@@ -686,20 +737,18 @@ public class AIGuideManager : MonoBehaviour
             m_bCreatedRandomAutoSaveFolder = false;
         }
 
-        //the user might have cut and pasted text in, so let's figure it out again //OPTIMIZE;  We could just detect the paste...
-        if (FigureOutResponseTextType(_inputPromptOutput.text) == ResponseTextType.text)
-        {
-            _textToProcessForPics = _inputPromptOutput.text;
+        // Use the full transcript, not the (bounded) UI text
+        var source = m_totalPromptReceived;
 
-            //processing as text, no fancy json being used
+        if (FigureOutResponseTextType(source) == ResponseTextType.text)
+        {
+            _textToProcessForPics = source;
             StartCoroutine(ProcessTextFileBasic());
         }
         else
         {
-            //using json, gp4 is good at this
-            //StartCoroutine(ProcessJSONFile());
+            // StartCoroutine(ProcessJSONFile());
         }
-
     }
 
     public void OnTurnOffSmoothing(GameObject entity)
@@ -1096,9 +1145,12 @@ public class AIGuideManager : MonoBehaviour
         PopulateDropdownWithFonts(m_titleFontDropdown, 1);
         PopulateProfilesDropDown();
 
-
-        //Config.Get().PopulateRendererDropDown(m_rendererSelectionDropdown);
+        // Optional: turn off rich text parsing in the output field if not needed
+        if (_inputPromptOutput != null && _inputPromptOutput.textComponent != null)
+            _inputPromptOutput.textComponent.richText = false;
     }
+    //Config.Get().PopulateRendererDropDown(m_rendererSelectionDropdown);
+
 
     public string GetActiveProfileTextFileName()
     {
@@ -1170,7 +1222,7 @@ public class AIGuideManager : MonoBehaviour
 
         GameLogic.Get().SetPrompt(m_extractor.PrependPrompt);
         GameLogic.Get().SetNegativePrompt(m_extractor.NegativePrompt);
-        GameLogic.Get().SetComfyUIPrompt(m_extractor.PrependComfyUIPrompt);
+        GameLogic.Get().SetComfyPrependPrompt(m_extractor.PrependComfyUIPrompt);
         m_AddBordersCheckbox.isOn = m_extractor.AddBorders;
         m_OverlayTextCheckbox.isOn = m_extractor.OverlayText;
         m_BoldCheckbox.isOn = m_extractor.UseBoldFont;
@@ -1252,6 +1304,10 @@ public class AIGuideManager : MonoBehaviour
     }
     void Update()
     {
+
+        FlushStreamingUI(false);
+
+
         if (m_ShowStatusAnim)
         {
             if (m_statusAnimTimer < Time.time)
