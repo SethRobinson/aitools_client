@@ -1,5 +1,14 @@
 {
   "dependencies": {
+    "com.boxqkrtm.ide.cursor": {
+      "version": "https://github.com/boxqkrtm/com.unity.ide.cursor.git",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {
+        "com.unity.test-framework": "1.1.9"
+      },
+      "hash": "53e1baac3cde90c46934f82ee1d61802d2bd6651"
+    },
     "com.unity.2d.sprite": {
       "version": "1.0.0",
       "depth": 0,

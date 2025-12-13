@@ -58,3 +58,4 @@ test_*
 .cursorignore
 Assets/Experiments/CrazyCam/BLOODY.TTF
 Assets/Experiments/CrazyCam/BLOODY.TTF.meta
+comfyui_workflow_to_send_api.json
