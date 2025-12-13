@@ -20,6 +20,7 @@ MonoBehaviour:
     rid: 1507367284670464065
   m_OverrideGlobalSceneList: 0
   m_Scenes: []
+  m_HasScriptingDefines: 0
   m_ScriptingDefines: []
   m_PlayerSettingsYaml:
     m_Settings:
@@ -95,6 +96,7 @@ MonoBehaviour:
     - line: '|   androidStartInFullscreen: 1'
     - line: '|   androidRenderOutsideSafeArea: 1'
     - line: '|   androidUseSwappy: 0'
+    - line: '|   androidDisplayOptions: 1'
     - line: '|   androidBlitType: 0'
     - line: '|   androidResizeableActivity: 0'
     - line: '|   androidDefaultWindowWidth: 1920'
@@ -111,6 +113,7 @@ MonoBehaviour:
     - line: '|   muteOtherAudioSources: 0'
     - line: '|   Prepare IOS For Recording: 0'
     - line: '|   Force IOS Speakers When Recording: 0'
+    - line: '|   audioSpatialExperience: 0'
     - line: '|   deferSystemGesturesMode: 0'
     - line: '|   hideHomeButton: 0'
     - line: '|   submitAnalytics: 0'
@@ -157,6 +160,7 @@ MonoBehaviour:
     - line: '|   switchNVNMaxPublicSamplerIDCount: 0'
     - line: '|   switchMaxWorkerMultiple: 8'
     - line: '|   switchNVNGraphicsFirmwareMemory: 32'
+    - line: '|   switchGraphicsJobsSyncAfterKick: 1'
     - line: '|   vulkanNumSwapchainBuffers: 3'
     - line: '|   vulkanEnableSetSRGBWrite: 0'
     - line: '|   vulkanEnablePreTransform: 0'
@@ -166,33 +170,7 @@ MonoBehaviour:
     - line: '|   visionOSBundleVersion: 1.0'
     - line: '|   tvOSBundleVersion: 1.0'
     - line: '|   bundleVersion: 1.0'
-    - line: '|   preloadedAssets:'
-    - line: '|   - {instanceID: 0}'
-    - line: '|   - {instanceID: 0}'
-    - line: '|   - {instanceID: 0}'
-    - line: '|   - {instanceID: 0}'
-    - line: '|   - {instanceID: 0}'
-    - line: '|   - {instanceID: 0}'
-    - line: '|   - {instanceID: 0}'
-    - line: '|   - {instanceID: 0}'
-    - line: '|   - {instanceID: 0}'
-    - line: '|   - {instanceID: 0}'
-    - line: '|   - {instanceID: 0}'
-    - line: '|   - {instanceID: 0}'
-    - line: '|   - {instanceID: 0}'
-    - line: '|   - {instanceID: 0}'
-    - line: '|   - {instanceID: 0}'
-    - line: '|   - {instanceID: 0}'
-    - line: '|   - {instanceID: 0}'
-    - line: '|   - {instanceID: 0}'
-    - line: '|   - {instanceID: 0}'
-    - line: '|   - {instanceID: 0}'
-    - line: '|   - {instanceID: 0}'
-    - line: '|   - {instanceID: 0}'
-    - line: '|   - {instanceID: 0}'
-    - line: '|   - {instanceID: 0}'
-    - line: '|   - {instanceID: 0}'
-    - line: '|   - {instanceID: 0}'
+    - line: '|   preloadedAssets: []'
     - line: '|   metroInputSource: 0'
     - line: '|   wsaTransparentSwapchain: 0'
     - line: '|   m_HolographicPauseOnTrackingLoss: 1'
@@ -224,9 +202,10 @@ MonoBehaviour:
     - line: '|     tvOS: 0'
     - line: '|   overrideDefaultApplicationIdentifier: 0'
     - line: '|   AndroidBundleVersionCode: 1'
-    - line: '|   AndroidMinSdkVersion: 23'
+    - line: '|   AndroidMinSdkVersion: 25'
     - line: '|   AndroidTargetSdkVersion: 0'
     - line: '|   AndroidPreferredInstallLocation: 1'
+    - line: '|   AndroidPreferredDataLocation: 1'
     - line: '|   aotOptions: '
     - line: '|   stripEngineCode: 1'
     - line: '|   iPhoneStrippingLevel: 0'
@@ -241,11 +220,11 @@ MonoBehaviour:
     - line: '|   VertexChannelCompressionMask: 214'
     - line: '|   iPhoneSdkVersion: 988'
     - line: '|   iOSSimulatorArchitecture: 0'
-    - line: '|   iOSTargetOSVersionString: 13.0'
+    - line: '|   iOSTargetOSVersionString: 15.0'
     - line: '|   tvOSSdkVersion: 0'
     - line: '|   tvOSSimulatorArchitecture: 0'
     - line: '|   tvOSRequireExtendedGameController: 0'
-    - line: '|   tvOSTargetOSVersionString: 13.0'
+    - line: '|   tvOSTargetOSVersionString: 15.0'
     - line: '|   VisionOSSdkVersion: 0'
     - line: '|   VisionOSTargetOSVersionString: 1.0'
     - line: '|   uIPrerenderedIcon: 0'
@@ -315,6 +294,7 @@ MonoBehaviour:
     - line: '|   useCustomGradleSettingsTemplate: 0'
     - line: '|   useCustomProguardFile: 0'
     - line: '|   AndroidTargetArchitectures: 5'
+    - line: '|   AndroidAllowedArchitectures: -1'
     - line: '|   AndroidSplashScreenScale: 0'
     - line: '|   androidSplashScreen: {instanceID: 0}'
     - line: '|   AndroidKeystoreName: ''{inproject}: '''
@@ -324,6 +304,9 @@ MonoBehaviour:
     - line: '|   AndroidBuildApkPerCpuArchitecture: 0'
     - line: '|   AndroidTVCompatibility: 1'
     - line: '|   AndroidIsGame: 1'
+    - line: '|   androidAppCategory: 3'
+    - line: '|   useAndroidAppCategory: 1'
+    - line: '|   androidAppCategoryOther: '
     - line: '|   AndroidEnableTango: 0'
     - line: '|   androidEnableBanner: 1'
     - line: '|   androidUseLowAccuracyLocation: 0'
@@ -618,7 +601,7 @@ MonoBehaviour:
     - line: '|   locationUsageDescription: '
     - line: '|   microphoneUsageDescription: '
     - line: '|   bluetoothUsageDescription: '
-    - line: '|   macOSTargetOSVersion: 11.0'
+    - line: '|   macOSTargetOSVersion: 12.0'
     - line: '|   switchNMETAOverride: '
     - line: '|   switchNetLibKey: '
     - line: '|   switchSocketMemoryPoolSize: 6144'
@@ -1021,6 +1004,8 @@ MonoBehaviour:
     - line: '|   androidVulkanDenyFilterList: []'
     - line: '|   androidVulkanAllowFilterList: []'
     - line: '|   androidVulkanDeviceFilterListAsset: {instanceID: 0}'
+    - line: '|   d3d12DeviceFilterListAsset: {instanceID: 0}'
+    - line: '|   allowedHttpConnections: 3'
     - line: '| '
   references:
     version: 2
@@ -1039,6 +1024,9 @@ MonoBehaviour:
         m_ExplicitArrayBoundsChecks: 0
         m_CompressionType: 0
         m_InstallInBuildFolder: 0
+        m_InsightsSettingsContainer:
+          m_BuildProfileEngineDiagnosticsState: 2
+        m_AdaptivePerformanceEnabled: 0
         m_WindowsBuildAndRunDeployTarget: 0
         m_Architecture: 0
         m_CreateSolution: 0

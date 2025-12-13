@@ -118,6 +118,8 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
         
         if (bIsLlamaCpp && !string.IsNullOrEmpty(modelName))
         {
+
+            /*
             // Check for GLM models
             if (modelName.Contains("glm"))
             {
@@ -142,6 +144,8 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
                 useLlama3Template = true;
                 RTConsole.Log("Detected Llama-3 model, using Llama-3 template");
             }
+            */
+
         }
         
         // Build prompt based on detected template
