@@ -494,8 +494,21 @@ public class PicTextToImage : MonoBehaviour
                 else
                 {
                     RTConsole.Log($"Failed to convert workflow: {convertRequest.error}");
-                    //Also show it to the user's screen
-                    RTQuickMessageManager.Get().ShowMessage($"Failed to convert workflow: {convertRequest.error}");
+                    
+                    // Check if it's a 405 Method Not Allowed error (endpoint not installed)
+                    bool is405Error = convertRequest.responseCode == 405 || 
+                                     (convertRequest.error != null && (convertRequest.error.Contains("405") || convertRequest.error.Contains("Method Not Allowed")));
+                    
+                    if (is405Error)
+                    {
+                        ShowWorkflowConverterInstallDialog(workflowFileName);
+                    }
+                    else
+                    {
+                        //Other error, show quick message
+                        RTQuickMessageManager.Get().ShowMessage($"Failed to convert workflow: {convertRequest.error}");
+                    }
+                    
                     RTConsole.Log($"Server may not have the /workflow/convert endpoint installed");
                     RTConsole.Log("Attempting to use workflow as-is (may fail if not in API format)");
                     // Continue with original - it might work if it's already in API format
@@ -1360,6 +1373,24 @@ public class PicTextToImage : MonoBehaviour
                 yield return null; // wait a frame to lessen the jerkiness
             }
         }
+    }
+
+    private void ShowWorkflowConverterInstallDialog(string workflowFileName)
+    {
+        string bodyText = $"The workflow <b>{workflowFileName}</b> needs conversion, but the converter endpoint is not installed on your ComfyUI server.\n\n" +
+            "<b>To install:</b>\n\n" +
+            "1. Open <b>ComfyUI Manager</b> in your ComfyUI\n" +
+            "2. Click <b>'Custom Nodes Manager'</b>\n" +
+            "3. Search for <b>'Workflow to API Converter'</b>\n" +
+            "4. Click <b>Install</b>\n" +
+            "5. <b>Restart</b> your ComfyUI server";
+
+        RTSimpleMessageDialog.ShowWithLink(
+            "ComfyUI Custom Node Required",
+            bodyText,
+            "github.com/SethRobinson/comfyui-workflow-to-api-converter-endpoint",
+            "https://github.com/SethRobinson/comfyui-workflow-to-api-converter-endpoint"
+        );
     }
 
 }
