@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using UnityEngine;
 using SimpleJSON;
 using TMPro;
@@ -472,9 +472,14 @@ public class AIGuideManager : MonoBehaviour
       
         jobDefaultInfoToStartWith._requestedPrompt = imagePrompt;
        
-        if (GameLogic.Get().GetComfyPrependPrompt() != null)
+        if (GameLogic.Get().GetComfyPrependPrompt() != null && GameLogic.Get().GetComfyPrependPrompt().Length > 0)
         {
-            jobDefaultInfoToStartWith._requestedPrompt = GameLogic.Get().GetComfyPrependPrompt() + " " + imagePrompt;
+            jobDefaultInfoToStartWith._requestedPrompt = GameLogic.Get().GetComfyPrependPrompt() + " " + jobDefaultInfoToStartWith._requestedPrompt;
+        }
+
+        if (GameLogic.Get().GetComfyAppendPrompt() != null && GameLogic.Get().GetComfyAppendPrompt().Length > 0)
+        {
+            jobDefaultInfoToStartWith._requestedPrompt = jobDefaultInfoToStartWith._requestedPrompt + " " + GameLogic.Get().GetComfyAppendPrompt();
         }
         jobDefaultInfoToStartWith._requestedNegativePrompt = GameLogic.Get().GetNegativePrompt();
         if (audio == "")
@@ -1223,6 +1228,7 @@ public class AIGuideManager : MonoBehaviour
         GameLogic.Get().SetPrompt(m_extractor.PrependPrompt);
         GameLogic.Get().SetNegativePrompt(m_extractor.NegativePrompt);
         GameLogic.Get().SetComfyPrependPrompt(m_extractor.PrependComfyUIPrompt);
+        GameLogic.Get().SetComfyAppendPrompt(m_extractor.AppendComfyUIPrompt);
         m_AddBordersCheckbox.isOn = m_extractor.AddBorders;
         m_OverlayTextCheckbox.isOn = m_extractor.OverlayText;
         m_BoldCheckbox.isOn = m_extractor.UseBoldFont;

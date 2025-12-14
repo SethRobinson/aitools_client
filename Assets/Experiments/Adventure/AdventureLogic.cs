@@ -36,8 +36,10 @@ public class TextFileConfigExtractor
     public string StartMsg { get; private set; }
     public float Temperature { get; private set; }
     public string PrependPrompt { get; private set; }
+    public string AppendPrompt { get; private set; }
     public string NegativePrompt { get; private set; }
     public string PrependComfyUIPrompt { get; private set; }
+    public string AppendComfyUIPrompt { get; private set; }
     public string SystemReminder { get; private set; }
 
     public string AutoContinueText { get; private set; }
@@ -69,8 +71,11 @@ public class TextFileConfigExtractor
                 { "auto_continue_text", (ce, data) => ce.AutoContinueText = data },
                 { "start_msg", (ce, data) => ce.StartMsg = data },
                 { "prepend_prompt", (ce, data) => ce.PrependPrompt = data },
+                { "append_prompt", (ce, data) => ce.AppendPrompt = data },
                 { "negative_prompt", (ce, data) => ce.NegativePrompt = data },
-                 { "temperature", (ce, data) => ce.Temperature = float.Parse(data.Trim()) },
+                { "prepend_comfyui_prompt", (ce, data) => ce.PrependComfyUIPrompt = data },
+                { "append_comfyui_prompt", (ce, data) => ce.AppendComfyUIPrompt = data },
+                { "temperature", (ce, data) => ce.Temperature = float.Parse(data.Trim()) },
                 { "add_borders", (ce, data) => ce.AddBorders = ParseBool(data) },
                 { "overlay_text", (ce, data) => ce.OverlayText = ParseBool(data) },
                 { "default_input", (ce, data) => ce.DefaultInput = data },
@@ -367,6 +372,7 @@ public class AdventureLogic : MonoBehaviour
         extractor = new TextFileConfigExtractor();
         extractor.ExtractInfoFromString(m_configText);
          GameLogic.Get().SetComfyPrependPrompt(extractor.PrependPrompt);
+         GameLogic.Get().SetComfyAppendPrompt(extractor.AppendPrompt);
 
         AdventureText aText = AddText(extractor.StartMsg);
         aText.SetDontSendTextToLLM(true);

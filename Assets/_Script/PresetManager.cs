@@ -12,6 +12,7 @@ public class PresetFileConfigExtractor
     public string default_prompt { get; private set; }
     public string default_negative_prompt { get; private set; }
     public string default_pre_prompt { get; private set; }
+    public string default_post_prompt { get; private set; }
 
     //this is kind of a lazy catch all for everything I need from config files.  They don't all have to be in a single .txt file
   
@@ -20,7 +21,8 @@ public class PresetFileConfigExtractor
                 { "joblist", (ce, data) => ce.JobList = data },
                 { "default_prompt", (ce, data) => ce.default_prompt = data },
                 { "default_negative_prompt", (ce, data) => ce.default_negative_prompt = data },
-              { "default_pre_prompt", (ce, data) => ce.default_pre_prompt = data }
+                { "default_pre_prompt", (ce, data) => ce.default_pre_prompt = data },
+                { "default_post_prompt", (ce, data) => ce.default_post_prompt = data }
            };
 
     public void ExtractInfoFromString(string text)
@@ -60,6 +62,7 @@ public class PresetFileConfigExtractor
         default_prompt = null;
         default_negative_prompt = null;
         default_pre_prompt = null;
+        default_post_prompt = null;
     }
 
     private static bool ParseBool(string value)
@@ -149,6 +152,9 @@ public class PresetManager : MonoBehaviour
 
             if (presetextractor.default_pre_prompt != null)
                 GameLogic.Get().SetComfyPrependPrompt(presetextractor.default_pre_prompt.Trim());
+
+            if (presetextractor.default_post_prompt != null)
+                GameLogic.Get().SetComfyAppendPrompt(presetextractor.default_post_prompt.Trim());
         }
     }
     public void SavePreset(string fileName)
@@ -167,6 +173,9 @@ public class PresetManager : MonoBehaviour
 
         if (GameLogic.Get().GetComfyPrependPrompt() != "")
             writer.Write(presetFileConfig.MakeCommandChunk("default_pre_prompt", GameLogic.Get().GetComfyPrependPrompt()));
+
+        if (GameLogic.Get().GetComfyAppendPrompt() != "")
+            writer.Write(presetFileConfig.MakeCommandChunk("default_post_prompt", GameLogic.Get().GetComfyAppendPrompt()));
 
         writer.Close();
 

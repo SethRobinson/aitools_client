@@ -21,6 +21,7 @@ public class GameLogic : MonoBehaviour
     public GameObject m_notepadTemplatePrefab;
     string m_prompt = "";
     string m_comfyPrependPrompt = "";
+    string m_comfyAppendPrompt = "";
     string m_negativePrompt = "";
     int m_steps = 50;
     long m_seed = -1;
@@ -52,6 +53,7 @@ public class GameLogic : MonoBehaviour
     public TMP_InputField m_stepsInputField;
     public TMP_InputField m_seedInputField;
     public TMP_InputField m_comfyPrependPromptInputField;
+    public TMP_InputField m_comfyAppendPromptInputField;
 
     public TMP_InputField m_jobListInputField;
     public Slider m_inpaintStrengthInput;
@@ -608,7 +610,10 @@ public class GameLogic : MonoBehaviour
         m_comfyPrependPromptInputField.text = p;
     }
 
-   
+    public void SetComfyAppendPrompt(string p)
+    {
+        m_comfyAppendPromptInputField.text = p;
+    }
 
     public void SetNegativePrompt(string p)
     {
@@ -994,19 +999,25 @@ public class GameLogic : MonoBehaviour
 
     public string GetModifiedGlobalPrompt()
     {
-
+        string result = GetModifiedPrompt();
 
         if (GetComfyPrependPrompt() != null && GetComfyPrependPrompt().Length > 0)
         {
-            return (GetComfyPrependPrompt()+" "+ GetModifiedPrompt()).Trim();
+            result = GetComfyPrependPrompt() + " " + result;
         }
 
-        return GetModifiedPrompt().Trim();
+        if (GetComfyAppendPrompt() != null && GetComfyAppendPrompt().Length > 0)
+        {
+            result = result + " " + GetComfyAppendPrompt();
+        }
+
+        return result.Trim();
     }
 
 
 public string GetPrompt() { return m_prompt; }
     public string GetComfyPrependPrompt() { return m_comfyPrependPrompt; }
+    public string GetComfyAppendPrompt() { return m_comfyAppendPrompt; }
 
     public void ResetLastModifiedPrompt()
     {
@@ -1272,6 +1283,11 @@ public string GetPrompt() { return m_prompt; }
     public void OnComfyPrependPromptChanged(string str)
     {
         m_comfyPrependPrompt = str;
+    }
+
+      public void OnComfyAppendPromptChanged(string str)
+    {
+        m_comfyAppendPrompt = str;
     }
 
     public void OnPromptChanged(String str)

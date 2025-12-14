@@ -61,3 +61,4 @@ Assets/Experiments/CrazyCam/BLOODY.TTF.meta
 comfyui_workflow_to_send_api.json
 openai_image_json_received.json
 openai_image_json_sent.json
+openai_image_last_error_returned.json

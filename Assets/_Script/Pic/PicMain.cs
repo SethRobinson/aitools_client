@@ -1635,8 +1635,9 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             }
             else
             {
-
                 SetStatusMessage("" + db.GetString("msg"));
+                // Mark job as finished so the pic is no longer considered busy
+                OnFinishedRenderingWorkflow(false);
             }
             return;
         }
@@ -1665,6 +1666,9 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         SetNeedsToUpdateInfoPanelFlag();
         AutoSaveImageIfNeeded();
         
+        // Mark job as finished so the pic is no longer considered busy
+        OnFinishedRenderingWorkflow(true);
+
         if (m_onFinishedRenderingCallback != null)
             m_onFinishedRenderingCallback.Invoke(gameObject);
     }
@@ -2008,6 +2012,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         if (source == "global_prompt") temp = GameLogic.Get().GetPrompt();
         if (source == "audio_prompt") temp = job._requestedAudioPrompt;
         if (source == "prepend_prompt") temp = GameLogic.Get().GetComfyPrependPrompt();
+        if (source == "append_prompt") temp = GameLogic.Get().GetComfyAppendPrompt();
         if (source == "negative_prompt") temp = job._requestedNegativePrompt;
         if (source == "audio_negative_prompt") temp = job._requestedAudioNegativePrompt;
         if (source == "segmentation_prompt") temp = job._requestedSegmentationPrompt;
@@ -2091,6 +2096,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         if (dest == "llm_reply") job._requestedLLMReply = temp;
         if (dest == "requirements") m_requirements = temp;
         if (dest == "prepend_prompt") GameLogic.Get().SetComfyPrependPrompt(temp);
+        if (dest == "append_prompt") GameLogic.Get().SetComfyAppendPrompt(temp);
 
     }
 
@@ -2103,6 +2109,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         if (dest == "audio_prompt") job._requestedAudioPrompt += temp;
         if (dest == "negative_prompt") job._requestedNegativePrompt += temp;
         if (dest == "prepend_prompt") GameLogic.Get().SetComfyPrependPrompt(GameLogic.Get().GetComfyPrependPrompt() + temp);
+        if (dest == "append_prompt") GameLogic.Get().SetComfyAppendPrompt(GameLogic.Get().GetComfyAppendPrompt() + temp);
         if (dest == "audio_negative_prompt") job._requestedAudioNegativePrompt += temp;
         if (dest == "segmentation_prompt") job._requestedSegmentationPrompt += temp;
         if (dest == "llm_prompt") job._requestedLLMPrompt += temp;
