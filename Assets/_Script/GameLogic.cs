@@ -1491,8 +1491,8 @@ public string GetPrompt() { return m_prompt; }
         RTUtil.DeleteFileIfItExists("comfyui_workflow_to_send.json");
         RTUtil.DeleteFileIfItExists("comfyui_workflow_to_send_api.json");
         RTUtil.DeleteFileIfItExists("setup_ollama_server_request.txt");
-        RTUtil.DeleteFileIfItExists("dalle3_json_received.json");
-        RTUtil.DeleteFileIfItExists("dalle3_json_sent.json");
+        RTUtil.DeleteFileIfItExists("openai_image_json_received.json");
+        RTUtil.DeleteFileIfItExists("openai_image_json_sent.json");
         RTUtil.DeleteFileIfItExists("json_to_send.json");
         RTUtil.DeleteFileIfItExists("claude_json_received.json");
         RTUtil.DeleteFileIfItExists("last_error_returned.json");

@@ -418,9 +418,9 @@ public class ImageGenerator : MonoBehaviour
         var picMain = e.targetObj.GetComponent<PicMain>();
         picMain.PassInTempInfo(gpuInfo._requestedRendererType, gpuToUse);
 
-        if (gpuInfo._requestedRendererType == RTRendererType.OpenAI_Dalle_3)
+        if (gpuInfo._requestedRendererType == RTRendererType.OpenAI_Image)
         {
-            picMain.OnRenderWithDalle3();
+            picMain.OnRenderWithOpenAIImage();
         }
         else
         {
@@ -441,7 +441,7 @@ public class ImageGenerator : MonoBehaviour
         {
             int gpuToUse = Config.Get().GetFreeGPU();
 
-            if (GameLogic.Get().GetGlobalRenderer() == RTRendererType.OpenAI_Dalle_3)
+            if (GameLogic.Get().GetGlobalRenderer() == RTRendererType.OpenAI_Image)
             {
                 //special case
                 gpuToUse = Config.Get().GetFirstGPUIncludingOpenAI();

@@ -132,7 +132,7 @@ public class PicMain : MonoBehaviour
     string m_editFilename = "";
     bool m_bLocked;
     bool m_bDisableUndo;
-    float m_genericTimerStart = 0; //used to countdown for Dalle3
+    float m_genericTimerStart = 0; //used to countdown for OpenAI Image API
     string m_genericTimerText = "Waiting...";
     bool m_noUndo = false;
 
@@ -1560,9 +1560,9 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
   
 
-    public void OnRenderWithDalle3Button()
+    public void OnRenderWithOpenAIImageButton()
     {
-       OnRenderWithDalle3();
+       OnRenderWithOpenAIImage();
     }
 
     public void StartGenericTimer(string text)
@@ -1577,24 +1577,24 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         m_genericTimerStart = 0;
     }
 
-    public void OnRenderWithDalle3()
+    public void OnRenderWithOpenAIImage()
     {
        
         var e = new ScheduledGPUEvent();
-        GetCurrentStats().m_requestedRenderer = RTRendererType.OpenAI_Dalle_3;
+        GetCurrentStats().m_requestedRenderer = RTRendererType.OpenAI_Image;
 
         //let's set the GPUID for the heck of it
 
-        GetCurrentStats().m_gpu = Config.Get().GetFreeGPU(RTRendererType.OpenAI_Dalle_3, true);
+        GetCurrentStats().m_gpu = Config.Get().GetFreeGPU(RTRendererType.OpenAI_Image, true);
 
         if (GetCurrentStats().m_gpu == -1)
         {
             //write message they can see
-            RTQuickMessageManager.Get().ShowMessage("No Dalle-3 server is connected to, check your config");
+            RTQuickMessageManager.Get().ShowMessage("No OpenAI Image server is connected to, check your config");
             return;
         }
 
-        SetStatusMessage("Waiting for Dalle3...");
+        SetStatusMessage("Waiting for OpenAI...");
 
         //if prompt is null, we'll set it
         if (m_picTextToImageScript.GetPrompt() == null || m_picTextToImageScript.GetPrompt().Length < 1)
@@ -1602,36 +1602,36 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             m_picTextToImageScript.SetPrompt(GameLogic.Get().GetPrompt());
         }
 
-        Dalle3Manager dalle3Script = gameObject.GetComponent<Dalle3Manager>();
+        Dalle3Manager openAIImageScript = gameObject.GetComponent<Dalle3Manager>();
 
-        if (dalle3Script == null)
+        if (openAIImageScript == null)
         {
-            Debug.Log("Adding dalle3 script");
-            dalle3Script = gameObject.AddComponent<Dalle3Manager>();
+            Debug.Log("Adding OpenAI Image script");
+            openAIImageScript = gameObject.AddComponent<Dalle3Manager>();
         }
 
-        string json = dalle3Script.BuildJSON(m_picTextToImageScript.GetPrompt(), "dall-e-3");
+        string json = openAIImageScript.BuildJSON(m_picTextToImageScript.GetPrompt(), "gpt-image-1");
 
         //test
         RTDB db = new RTDB();
-        dalle3Script.SpawnRequest(json, OnDalle3CompletedCallback, db, Config.Get().GetOpenAI_APIKey());
+        openAIImageScript.SpawnRequest(json, OnOpenAIImageCompletedCallback, db, Config.Get().GetOpenAI_APIKey());
 
         //Oh, let's start a timer
-        StartGenericTimer("Dalle3...");
+        StartGenericTimer("OpenAI Image...");
     }
 
-    public void OnDalle3CompletedCallback(RTDB db, Texture2D texture)
+    public void OnOpenAIImageCompletedCallback(RTDB db, Texture2D texture)
     {
         StopGenericTimer();
         if (texture == null)
         {
-            Debug.Log("Error getting dalle image: " + db.GetString("msg"));
+            Debug.Log("Error getting OpenAI image: " + db.GetString("msg"));
 
             //if 429 (Too Many Requests) is in the text we'll wait and try again
             if (db.GetString("msg").Contains("429"))
             {
                Debug.Log("Got 429, waiting 5 seconds and trying again");
-               RTMessageManager.Get().Schedule(UnityEngine.Random.Range(5.0f, 10.0f), OnRenderWithDalle3);
+               RTMessageManager.Get().Schedule(UnityEngine.Random.Range(5.0f, 10.0f), OnRenderWithOpenAIImage);
             }
             else
             {
@@ -1657,10 +1657,10 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         GetCurrentStats().m_tiling = false;
         GetCurrentStats().m_fixFaces = false;
         GetCurrentStats().m_lastSeed = 0;
-        GetCurrentStats().m_lastModel = "Dalle 3";
+        GetCurrentStats().m_lastModel = "OpenAI Image";
         GetCurrentStats().m_bUsingControlNet = false;
         GetCurrentStats().m_bUsingPix2Pix = false;
-        GetCurrentStats().m_lastOperation = "Dalle 3";
+        GetCurrentStats().m_lastOperation = "OpenAI Image";
         */
         SetNeedsToUpdateInfoPanelFlag();
         AutoSaveImageIfNeeded();
@@ -1670,9 +1670,9 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     }
     void RemoveScheduledCalls()
     {
-        RTMessageManager.Get().Schedule(UnityEngine.Random.Range(5.0f, 10.0f), OnRenderWithDalle3);
+        RTMessageManager.Get().Schedule(UnityEngine.Random.Range(5.0f, 10.0f), OnRenderWithOpenAIImage);
 
-        RTMessageManager.Get().RemoveScheduledCalls((System.Action)OnRenderWithDalle3);
+        RTMessageManager.Get().RemoveScheduledCalls((System.Action)OnRenderWithOpenAIImage);
     }
     public void OnRenderWithAITOrA1111()
     {
@@ -1829,7 +1829,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             jobDefaultInfoToStartWith._requestedNegativePrompt = GameLogic.Get().GetNegativePrompt();
             jobDefaultInfoToStartWith._requestedAudioPrompt = Config.Get().GetDefaultAudioPrompt();
             jobDefaultInfoToStartWith._requestedAudioNegativePrompt = Config.Get().GetDefaultAudioNegativePrompt();
-            jobDefaultInfoToStartWith.requestedRenderer = RTRendererType.ComfyUI;
+            jobDefaultInfoToStartWith.requestedRenderer = GameLogic.Get().GetGlobalRenderer();
 
             AddJobListWithStartingJobInfo(jobDefaultInfoToStartWith, GameLogic.Get().GetTempPicJobListAsListOfStrings(presetName));
         }
@@ -1898,7 +1898,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             jobDefaultInfoToStartWith._requestedNegativePrompt = GameLogic.Get().GetNegativePrompt();
             jobDefaultInfoToStartWith._requestedAudioPrompt = Config.Get().GetDefaultAudioPrompt();
             jobDefaultInfoToStartWith._requestedAudioNegativePrompt = Config.Get().GetDefaultAudioNegativePrompt();
-            jobDefaultInfoToStartWith.requestedRenderer = RTRendererType.ComfyUI;
+            jobDefaultInfoToStartWith.requestedRenderer = GameLogic.Get().GetGlobalRenderer();
            
             AddJobListWithStartingJobInfo(jobDefaultInfoToStartWith, GameLogic.Get().GetPicJobListAsListOfStrings());
         }
@@ -2258,7 +2258,18 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
         if (!StillHasJobActivityToDo()) return;
 
-        int serverID = Config.Get().GetFreeGPU(RTRendererType.ComfyUI, false);
+        // Determine which renderer type is needed for the pending job
+        RTRendererType neededRenderer = GameLogic.Get().GetGlobalRenderer();
+        if (m_jobDefaultInfo != null)
+        {
+            neededRenderer = m_jobDefaultInfo.requestedRenderer;
+        }
+        else if (m_picJobs.Count > 0)
+        {
+            neededRenderer = m_picJobs[0].requestedRenderer;
+        }
+
+        int serverID = Config.Get().GetFreeGPU(neededRenderer, false);
 
         if (serverID == -1 && m_requirements == "gpu")
         {
@@ -2285,7 +2296,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
             ProcessJobIntoFinal(ref job);
 
-            if (job._job == "run_workflow" || job._job == "run_dalle")
+            if (job._job == "run_workflow" || job._job == "run_dalle" || job._job == "run_openai_image")
             {
                 SetStatusMessage("Waiting for GPU to\nrun workflow...");
 

@@ -5,6 +5,7 @@ using System.IO;
 using UnityEngine;
 using UnityEngine.Networking;
 
+// Note: Class name kept as Dalle3Manager for backwards compatibility, but now uses OpenAI's gpt-image-1 API
 public class Dalle3Manager : MonoBehaviour
 {
  
@@ -17,22 +18,22 @@ public class Dalle3Manager : MonoBehaviour
    void ExampleOfUse()
     {
 
-        Dalle3Manager dalle3Script = gameObject.GetComponent<Dalle3Manager>();
+        Dalle3Manager openAIImageScript = gameObject.GetComponent<Dalle3Manager>();
         string prompt = "a cat reading a book";
-        string json = dalle3Script.BuildJSON(prompt);
+        string json = openAIImageScript.BuildJSON(prompt);
 
         string openAIKey = "put it here";
 
         //test
         RTDB db = new RTDB();
-        dalle3Script.SpawnRequest(json, OnDalle3CompletedCallback, db, openAIKey);
+        openAIImageScript.SpawnRequest(json, OnOpenAIImageCompletedCallback, db, openAIKey);
     }
 
-    void OnDalle3CompletedCallback(RTDB db, Texture2D tex)
+    void OnOpenAIImageCompletedCallback(RTDB db, Texture2D tex)
     {
         if (tex == null)
         {
-            Debug.Log("Error getting dalle image: "+db.GetString("msg"));
+            Debug.Log("Error getting OpenAI image: "+db.GetString("msg"));
             return;
         }
 
@@ -50,15 +51,15 @@ public class Dalle3Manager : MonoBehaviour
 
     //*  EXAMPLE END */
 
-    public string BuildJSON(string prompt, string model = "dall-e-2")
+    public string BuildJSON(string prompt, string model = "gpt-image-1")
     {
         string json = $@"{{
        
             ""prompt"": ""{ SimpleJSON.JSONNode.Escape(prompt)}"",
             ""model"": ""{model}"",
             ""n"": 1,
-            ""quality"": ""hd"",
-            ""response_format"": ""b64_json"",
+            ""quality"": ""high"",
+            ""output_format"": ""png"",
             ""size"": ""1024x1024""
 
 
@@ -78,7 +79,7 @@ public class Dalle3Manager : MonoBehaviour
         string url = $"https://api.openai.com/v1/images/generations";
 
 #if UNITY_STANDALONE && !RT_RELEASE 
-        File.WriteAllText("dalle3_json_sent.json", json);
+        File.WriteAllText("openai_image_json_sent.json", json);
 
 #endif
         using (var postRequest = UnityWebRequest.PostWwwForm(url, "POST"))
@@ -97,7 +98,7 @@ public class Dalle3Manager : MonoBehaviour
                 string msg = postRequest.error;
                 Debug.Log(msg);
                 //Debug.Log(postRequest.downloadHandler.text);
-                 File.WriteAllText("dalle_last_error_returned.json", postRequest.downloadHandler.text);
+                 File.WriteAllText("openai_image_last_error_returned.json", postRequest.downloadHandler.text);
                 db.Set("status", "failed");
                 db.Set("msg", msg);
                 myCallback.Invoke(db, null);
@@ -110,7 +111,7 @@ public class Dalle3Manager : MonoBehaviour
 
 #if UNITY_STANDALONE && !RT_RELEASE 
        //         Debug.Log("TTS Form upload complete! Downloaded " + postRequest.downloadedBytes);
-                File.WriteAllBytes("dalle3_json_received.json", postRequest.downloadHandler.data);
+                File.WriteAllBytes("openai_image_json_received.json", postRequest.downloadHandler.data);
 #endif
 
                 //convert the json to a texture2d

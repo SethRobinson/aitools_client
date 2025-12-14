@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using System.IO;
@@ -20,7 +20,7 @@ public enum LLM_Type
 public enum RTRendererType
 {
     ComfyUI,
-    OpenAI_Dalle_3, //openai DALL-E,
+    OpenAI_Image, //openai gpt-image-1 (formerly DALL-E)
     Any_Local,
     A1111,
     AI_Tools,
@@ -38,7 +38,7 @@ public class GPUInfo
     public ServerButtonScript buttonScript = null;
     public bool serverIsWindows = false;
     public RTRendererType _requestedRendererType = RTRendererType.ComfyUI;
-    public bool isLocal = true; //false would mean an unlimited API like OpenAI's Dalle3.  Local means TextGen WebUI, AI Tools server or ComfyUI (doesn't actually have to be local)
+    public bool isLocal = true; //false would mean an unlimited API like OpenAI's Image API.  Local means TextGen WebUI, AI Tools server or ComfyUI (doesn't actually have to be local)
     public bool _usesDetailedPrompts = false; //simple is the default
     public int _comfyUIWorkFlowOverride = -1;
     public bool _bIsActive = true;
@@ -206,7 +206,7 @@ public class Config : MonoBehaviour
             m_configText = @"#add as many add_server commands as you want, just replace the localhost:7860 part with the
 #server name/ip and port.  You can control any number of renderer servers at the same time.
 
-#This is where you add rendering servers. (ComfyUI servers run with --listen parm)  For Dalle-3, don't set here, just enter your OpenAI key below.
+#This is where you add rendering servers. (ComfyUI servers run with --listen parm)  For OpenAI Image, don't set here, just enter your OpenAI key below.
 
 #Uncomment below and put your renderer server.  Add more add_server commands to add as many as you want.  The second parm is
 #an optional name so you can keep track of which server has which video card.
@@ -219,7 +219,7 @@ set_image_editor|C:\Program Files\Adobe\Adobe Photoshop 2025\Photoshop.exe
 
 #To generate text with the AI Guide features, you need at least one LLM. (or all, you can switch between them in the app)
 
-#OPENAI (works for LLM and Dalle-3 as renderer)
+#OPENAI (works for LLM and OpenAI Image as renderer)
 set_openai_gpt4_key|<key goes here>|
 set_openai_gpt4_model|gpt-4o|
 set_openai_gpt4_endpoint|https://api.openai.com/v1/chat/completions|
@@ -715,7 +715,7 @@ set_default_audio_negative_prompt|music|
                         g.remoteURL = "https://platform.openai.com/usage"; //not used
                         g.supportsAITools = false;
                         g.isLocal = false;
-                        g._requestedRendererType = RTRendererType.OpenAI_Dalle_3;
+                        g._requestedRendererType = RTRendererType.OpenAI_Image;
                         g._usesDetailedPrompts = false;
                         AddGPU(g);
                     }

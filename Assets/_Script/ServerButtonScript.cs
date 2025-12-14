@@ -66,9 +66,9 @@ public class ServerButtonScript : MonoBehaviour
         {
             aitools = "Comfy";
         } else
-        if (m_serverType == RTRendererType.OpenAI_Dalle_3)
+        if (m_serverType == RTRendererType.OpenAI_Image)
         {
-            aitools = "Dalle-3";
+            aitools = "OpenAI Image";
         }
 
 
