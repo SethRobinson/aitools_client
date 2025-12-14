@@ -397,16 +397,20 @@ public class AdventureLogic : MonoBehaviour
         return m_profileDropdown.options[m_profileDropdown.value].text;
     }
 
+    RTNotepad m_activeProfileNotepad; // Keep reference for reload functionality
+
     public void OnProfileEditButton()
     {
 
-        RTNotepad notepadScript = RTNotepad.OpenFile(m_configText, m_notepadTemplatePrefab);
+        m_activeProfileNotepad = RTNotepad.OpenFile(m_configText, m_notepadTemplatePrefab);
 
-        notepadScript.m_onClickedSavedCallback += OnProfileSaved;
-        notepadScript.m_onClickedCancelCallback += OnProfileCanceled;
+        m_activeProfileNotepad.m_onClickedSavedCallback += OnProfileSaved;
+        m_activeProfileNotepad.m_onClickedCancelCallback += OnProfileCanceled;
 
-        notepadScript.SetApplyButtonVisible(true);
-        notepadScript.m_onClickedApplyCallback += OnProfileApply;
+        m_activeProfileNotepad.SetApplyButtonVisible(true);
+        m_activeProfileNotepad.m_onClickedApplyCallback += OnProfileApply;
+        m_activeProfileNotepad.m_onClickedOpenExternalCallback += OnProfileOpenExternal;
+        m_activeProfileNotepad.m_onClickedReloadCallback += OnProfileReload;
     }
 
     void OnProfileSaved(string text)
@@ -415,14 +419,35 @@ public class AdventureLogic : MonoBehaviour
         //Debug.Log("They clicked save.  Text entered: " + text);
         SaveConfig(text, GetActiveAdventureTextFileName());
         UpdateAdventureFile(text);
+        m_activeProfileNotepad = null;
     }
     void OnProfileCanceled(string text)
     {
-
+        m_activeProfileNotepad = null;
     }
     void OnProfileApply(string text)
     {
         UpdateAdventureFile(text);
+    }
+
+    void OnProfileOpenExternal(string text)
+    {
+        // Save current state to disk first so external editor sees latest changes
+        SaveConfig(text, GetActiveAdventureTextFileName());
+        
+        // Open the adventure file with default text editor
+        string filePath = Path.GetFullPath(Path.Combine("Adventure", GetActiveAdventureTextFileName()));
+        System.Diagnostics.Process.Start(filePath);
+    }
+
+    void OnProfileReload(string text)
+    {
+        // Reload adventure file from disk into the notepad
+        if (m_activeProfileNotepad != null)
+        {
+            string freshText = LoadConfig(GetActiveAdventureTextFileName());
+            m_activeProfileNotepad.SetText(freshText);
+        }
     }
     void PopulateProfilesDropDown()
     {

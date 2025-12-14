@@ -1136,11 +1136,15 @@ public string GetPrompt() { return m_prompt; }
         }
     }
 
+    RTNotepad m_activeConfigNotepad; // Keep reference for reload functionality
+
     public void OnConfigButton()
     {
-        RTNotepad notepadScript = RTNotepad.OpenFile(Config.Get().GetConfigText(), m_notepadTemplatePrefab);
-        notepadScript.m_onClickedSavedCallback += OnConfigSaved;
-        notepadScript.m_onClickedCancelCallback += OnConfigCanceled;
+        m_activeConfigNotepad = RTNotepad.OpenFile(Config.Get().GetConfigText(), m_notepadTemplatePrefab);
+        m_activeConfigNotepad.m_onClickedSavedCallback += OnConfigSaved;
+        m_activeConfigNotepad.m_onClickedCancelCallback += OnConfigCanceled;
+        m_activeConfigNotepad.m_onClickedOpenExternalCallback += OnConfigOpenExternal;
+        m_activeConfigNotepad.m_onClickedReloadCallback += OnConfigReload;
     }
 
     void OnConfigSaved(string text)
@@ -1148,12 +1152,43 @@ public string GetPrompt() { return m_prompt; }
        
         Config.Get().ProcessConfigString(text);
         Config.Get().SaveConfigToFile(); //it might have changed.
+        m_activeConfigNotepad = null;
 
         //Debug.Log("They clicked save.  Text entered: " + text);
     }
     void OnConfigCanceled(string text)
     {
+        m_activeConfigNotepad = null;
         //Debug.Log("They clicked cancel.  Text entered: " + text);
+    }
+
+    void OnConfigOpenExternal(string text)
+    {
+        // Save current state to disk first so external editor sees latest changes
+        Config.Get().ProcessConfigString(text);
+        Config.Get().SaveConfigToFile();
+        
+        // Open config.txt with default text editor
+        System.Diagnostics.Process.Start("config.txt");
+    }
+
+    void OnConfigReload(string text)
+    {
+        // Reload config.txt from disk into the notepad
+        if (m_activeConfigNotepad != null)
+        {
+            string freshConfig = Config.Get().GetConfigText();
+            // Re-read from file to get any external changes
+            try
+            {
+                freshConfig = System.IO.File.ReadAllText("config.txt");
+            }
+            catch (System.Exception e)
+            {
+                RTConsole.Log("Failed to reload config.txt: " + e.Message);
+            }
+            m_activeConfigNotepad.SetText(freshConfig);
+        }
     }
 
     public void SetTextStrength(float str)

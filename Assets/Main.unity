@@ -23614,23 +23614,24 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   m_text: 'ComfyUI has has this neat thing where you can build a node-based rendering
-    setup, then export as API, and this app can send that API, get stuff rendered,
-    and download the thing generated.
+    setup, then export the workflow, and this app can use that to get stuff rendered
+    by ComfyUI, and download the thing generated.
 
 
-    You can add more workflows by putting
-    them in AI Tools'' ComfyUI directory, and they will show up in the drop down. 
-    Right before rendering, we dynamically modify a few things - one is the prompt,
-    obviously that needs to change.  A second thing is the "length", something you
-    might want to change when rendering Hunyuan videos.  It probably makes sense
-    to allow changing render sizes and other things, but I''m too lazyso far.  You
-    can manually edit the workflow jsons in a text editor (or in ComfyUI) though.
+    You can add more workflows
+    by putting them in AI Tools'' ComfyUI directory, they will show up in the drop
+    down.  Right before rendering, we dynamically modify a few things - one is the
+    prompt, obviously that needs to change.
 
 
-    Oh,
-    for movies, we can only show .mp4, not webp.  So if you''re using webp, change
-    to using Video Combiner (Install VHS in ComfyUI, you might have to enable "Advanced
-    preview" in its ComfyUI settings too.'
+    A workflow not working?  Drag the
+    .json file into ComfyUI and test it there.  Export it back and overwrite our
+    version.
+
+
+    Oh, for movies, we can only show .mp4, not webp.  So if you''re
+    using webp, change to using Video Combiner (Install VHS in ComfyUI, you might
+    have to enable "Advanced preview" in its ComfyUI settings too.'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -45840,7 +45841,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -67.09584, y: -120.9}
+  m_AnchoredPosition: {x: -67.09584, y: -176.7}
   m_SizeDelta: {x: 387.6783, y: 30}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1157415085
@@ -58661,7 +58662,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 104.42, y: -250.9}
+  m_AnchoredPosition: {x: 107, y: -310.1}
   m_SizeDelta: {x: 199.4, y: 15.532}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1453247401
@@ -74748,7 +74749,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 278.1023, y: -396.7475}
+  m_AnchoredPosition: {x: 533, y: -529}
   m_SizeDelta: {x: 548.4136, y: 411.9249}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1918595039
@@ -77610,7 +77611,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 242.4, y: -255.9}
+  m_AnchoredPosition: {x: 244.97995, y: -315.1}
   m_SizeDelta: {x: 62.547897, y: 30}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1974500772

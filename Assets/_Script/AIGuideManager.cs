@@ -315,6 +315,9 @@ public class AIGuideManager : MonoBehaviour
         notepadScript.m_onClickedCancelCallback += OnProfileCanceled;
         notepadScript.SetSaveButtonVisible(false);
         notepadScript.m_onClickedApplyCallback += OnProfileApply;
+        // Hide external editor buttons - this is just viewing LLM output, not a file
+        notepadScript.SetOpenExternalButtonVisible(false);
+        notepadScript.SetReloadButtonVisible(false);
     }
     public void OnLLMStartButton()
     {
@@ -1099,13 +1102,17 @@ public class AIGuideManager : MonoBehaviour
     }
 
 
+    RTNotepad m_activeProfileNotepad; // Keep reference for reload functionality
+
     public void OnProfileEditButton()
     {
-        RTNotepad notepadScript = RTNotepad.OpenFile(LoadGuideProfile(GetActiveProfileTextFileName()), m_notepadTemplatePrefab);
-        notepadScript.m_onClickedSavedCallback += OnProfileSaved;
-        notepadScript.m_onClickedCancelCallback += OnProfileCanceled;
-        notepadScript.SetApplyButtonVisible(true);
-        notepadScript.m_onClickedApplyCallback += OnProfileApply;
+        m_activeProfileNotepad = RTNotepad.OpenFile(LoadGuideProfile(GetActiveProfileTextFileName()), m_notepadTemplatePrefab);
+        m_activeProfileNotepad.m_onClickedSavedCallback += OnProfileSaved;
+        m_activeProfileNotepad.m_onClickedCancelCallback += OnProfileCanceled;
+        m_activeProfileNotepad.SetApplyButtonVisible(true);
+        m_activeProfileNotepad.m_onClickedApplyCallback += OnProfileApply;
+        m_activeProfileNotepad.m_onClickedOpenExternalCallback += OnProfileOpenExternal;
+        m_activeProfileNotepad.m_onClickedReloadCallback += OnProfileReload;
     }
 
     void OnProfileSaved(string text)
@@ -1113,15 +1120,37 @@ public class AIGuideManager : MonoBehaviour
         //Debug.Log("They clicked save.  Text entered: " + text);
         SaveGuideProfile(text, GetActiveProfileTextFileName());
         ProcessConfigText(text);
+        m_activeProfileNotepad = null;
     }
 
     void OnProfileCanceled(string text)
     {
         Debug.Log("They clicked cancel.  Text entered: " + text);
+        m_activeProfileNotepad = null;
     }
     void OnProfileApply(string text)
     {
         ProcessConfigText(text);
+    }
+
+    void OnProfileOpenExternal(string text)
+    {
+        // Save current state to disk first so external editor sees latest changes
+        SaveGuideProfile(text, GetActiveProfileTextFileName());
+        
+        // Open the profile file with default text editor
+        string filePath = System.IO.Path.GetFullPath(System.IO.Path.Combine("AIGuide", GetActiveProfileTextFileName()));
+        System.Diagnostics.Process.Start(filePath);
+    }
+
+    void OnProfileReload(string text)
+    {
+        // Reload profile from disk into the notepad
+        if (m_activeProfileNotepad != null)
+        {
+            string freshText = LoadGuideProfile(GetActiveProfileTextFileName());
+            m_activeProfileNotepad.SetText(freshText);
+        }
     }
     void PopulateProfilesDropDown()
     {
