@@ -109,14 +109,59 @@ public class Config : MonoBehaviour
     public string GetAIUserWord() { return m_userName; }
     public string GetAIAssistantWord() { return m_assistantName; }
 
-    public string GetAnthropicAI_APIKey() { return _anthropicAI_APIKey; }
-    public string GetAnthropicAI_APIModel() { return _anthropicAI_APIModel; }
-    public string GetAnthropicAI_APIEndpoint() { return _anthropicAI_APIEndpoint; }
+    public string GetAnthropicAI_APIKey() 
+    { 
+        var mgr = LLMSettingsManager.Get();
+        if (mgr != null)
+        {
+            string key = mgr.GetAPIKey(LLMProvider.Anthropic);
+            if (!string.IsNullOrEmpty(key)) return key;
+        }
+        return _anthropicAI_APIKey; 
+    }
+    public string GetAnthropicAI_APIModel() 
+    { 
+        var mgr = LLMSettingsManager.Get();
+        if (mgr != null)
+        {
+            string model = mgr.GetModel(LLMProvider.Anthropic);
+            if (!string.IsNullOrEmpty(model)) return model;
+        }
+        return _anthropicAI_APIModel; 
+    }
+    public string GetAnthropicAI_APIEndpoint() 
+    { 
+        var mgr = LLMSettingsManager.Get();
+        if (mgr != null)
+        {
+            string endpoint = mgr.GetEndpoint(LLMProvider.Anthropic);
+            if (!string.IsNullOrEmpty(endpoint)) return endpoint;
+        }
+        return _anthropicAI_APIEndpoint; 
+    }
 
     string m_defaultSampler = "DPM++ 2M";
     static public string _saveDirName = "output"; //where to save files, relative to the app's root
-    public string GetOpenAI_APIKey() { return _openAI_APIKey; }
-    public string GetOpenAI_APIModel() { return _openAI_APIModel; }
+    public string GetOpenAI_APIKey() 
+    { 
+        var mgr = LLMSettingsManager.Get();
+        if (mgr != null)
+        {
+            string key = mgr.GetAPIKey(LLMProvider.OpenAI);
+            if (!string.IsNullOrEmpty(key)) return key;
+        }
+        return _openAI_APIKey; 
+    }
+    public string GetOpenAI_APIModel() 
+    { 
+        var mgr = LLMSettingsManager.Get();
+        if (mgr != null)
+        {
+            string model = mgr.GetModel(LLMProvider.OpenAI);
+            if (!string.IsNullOrEmpty(model)) return model;
+        }
+        return _openAI_APIModel; 
+    }
     public string GetElevenLabs_APIKey() { return _elevenLabs_APIKey; }
     public string GetDefaultAudioPrompt() { return _defaultAudioPrompt; }
     public string GetDefaultAudioNegativePrompt() { return _defaultAudioNegativePrompt; }
@@ -125,7 +170,20 @@ public class Config : MonoBehaviour
     public int GetCrazyCamRequestedFPS() { return _crazyCamRequestedFPS; }
 
     public string GetElevenLabs_voiceID() { return _elevenLabs_voiceID; }
-    public List<LLMParm> GetLLMParms() { return m_llmParms; }
+    public List<LLMParm> GetLLMParms() 
+    { 
+        var mgr = LLMSettingsManager.Get();
+        if (mgr != null)
+        {
+            var provider = mgr.GetActiveProvider();
+            if (provider == LLMProvider.Ollama || provider == LLMProvider.LlamaCpp)
+            {
+                var parms = mgr.GetExtraParams(provider);
+                if (parms != null && parms.Count > 0) return parms;
+            }
+        }
+        return m_llmParms; 
+    }
     public string GetGenericLLMMode() { return _genericLLMMode; }
   
     float m_version = 2.12f;
@@ -187,7 +245,23 @@ public class Config : MonoBehaviour
     {
         RTAudioManager.Get().AddClipsToLibrary(m_audioClips);
 
+        // Initialize LLM Settings Manager (new system)
+        InitializeLLMSettingsManager();
+
        ConnectToServers();
+    }
+
+    /// <summary>
+    /// Initialize the LLMSettingsManager component.
+    /// </summary>
+    private void InitializeLLMSettingsManager()
+    {
+        // Check if already exists
+        if (LLMSettingsManager.Get() == null)
+        {
+            // Add the manager component to this game object
+            gameObject.AddComponent<LLMSettingsManager>();
+        }
     }
 
     public void ConnectToServers()
@@ -623,13 +697,29 @@ set_default_audio_negative_prompt|music|
     {
         m_genericServerIsOllama = bNew;
     }
-    public bool GetGenericLLMIsOllama() { return m_genericServerIsOllama; }
-    
+    public bool GetGenericLLMIsOllama() 
+    { 
+        var mgr = LLMSettingsManager.Get();
+        if (mgr != null && mgr.GetActiveProvider() == LLMProvider.Ollama)
+        {
+            return true;
+        }
+        return m_genericServerIsOllama; 
+    }
+
     public void SetGenericLLMIsLlamaCpp(bool bNew)
     {
         m_genericServerIsLlamaCpp = bNew;
     }
-    public bool GetGenericLLMIsLlamaCpp() { return m_genericServerIsLlamaCpp; }
+    public bool GetGenericLLMIsLlamaCpp() 
+    { 
+        var mgr = LLMSettingsManager.Get();
+        if (mgr != null && mgr.GetActiveProvider() == LLMProvider.LlamaCpp)
+        {
+            return true;
+        }
+        return m_genericServerIsLlamaCpp; 
+    }
     
     public void SetLlamaCppModelData(Dictionary<string, object> modelData)
     {

@@ -1565,6 +1565,42 @@ public string GetPrompt() { return m_prompt; }
 //        Config.Get().ConnectToServers();
     }
 
+    /// <summary>
+    /// Called when the LLM Settings button is clicked. Opens the LLM settings panel.
+    /// </summary>
+    public void OnLLMSettingsButtonClicked()
+    {
+        LLMSettingsPanel.Toggle();
+    }
+
+    /// <summary>
+    /// Get the currently active LLM provider from the new LLM settings system.
+    /// </summary>
+    public LLMProvider GetActiveLLMProvider()
+    {
+        var manager = LLMSettingsManager.Get();
+        if (manager != null)
+        {
+            return manager.GetActiveProvider();
+        }
+        // Fallback to dropdown if manager not available
+        return (LLMProvider)m_llmSelectionDropdown.value;
+    }
+
+    /// <summary>
+    /// Get the legacy LLM_Type for backward compatibility with existing code.
+    /// </summary>
+    public LLM_Type GetActiveLLMType()
+    {
+        var manager = LLMSettingsManager.Get();
+        if (manager != null)
+        {
+            return manager.GetLegacyLLMType();
+        }
+        // Fallback to dropdown
+        return (LLM_Type)m_llmSelectionDropdown.value;
+    }
+
     public void SlowZoomChange(float zoomSpeed)
     {
         var cam = RTUtil.FindObjectOrCreate("Camera").GetComponent<Camera>();

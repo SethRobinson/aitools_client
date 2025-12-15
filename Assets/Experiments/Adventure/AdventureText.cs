@@ -942,31 +942,65 @@ public class AdventureText : MonoBehaviour
 
         lines = GameLogic.Get().PrepareLLMLinesForSending(lines);
 
-
         RTDB db = new RTDB();
 
-        if (AdventureLogic.Get().GetLLMType() == LLM_Type.GenericLLM_API)
-        {
-            string suggestedEndpoint;
-            string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, 4096, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetGenericLLMMode(), true, Config.Get().GetLLMParms(), Config.Get().GetGenericLLMIsOllama(), Config.Get().GetGenericLLMIsLlamaCpp());
-            // Use the suggested endpoint (might be /v1/completions for special templates)
-            string endpoint = Config.Get().GetGenericLLMIsOllama() ? Config.Get()._ollama_endpoint : suggestedEndpoint;
-            _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, Config.Get()._texgen_webui_address, endpoint, OnStreamingTextCallback, true, Config.Get()._texgen_webui_APIKey);
-            SetLLMActive(true);
-        }
-        
-        if (AdventureLogic.Get().GetLLMType() == LLM_Type.OpenAI_API)
-        {
-            string json = _openAITextCompletionManager.BuildChatCompleteJSON(lines, 4096, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetOpenAI_APIModel(), true);
-            _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db,  Config.Get().GetOpenAI_APIKey(), Config.Get()._openai_gpt4_endpoint, OnStreamingTextCallback, true);
-            SetLLMActive(true);
-        }
+        // Use new LLM provider system if available
+        LLMProvider provider = AdventureLogic.Get().GetLLMProvider();
 
-        if (AdventureLogic.Get().GetLLMType() == LLM_Type.Anthropic_API)
+        switch (provider)
         {
-            string json = _anthropicAITextCompletionManager.BuildChatCompleteJSON(lines, 4096, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetAnthropicAI_APIModel(), true);
-            _anthropicAITextCompletionManager.SpawnChatCompletionRequest(json, OnTexGenCompletedCallback, db, Config.Get().GetAnthropicAI_APIKey(), Config.Get().GetAnthropicAI_APIEndpoint(), OnStreamingTextCallback, true);
-            SetLLMActive(true);
+            case LLMProvider.OpenAI:
+                {
+                    string json = _openAITextCompletionManager.BuildChatCompleteJSON(lines, 4096, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetOpenAI_APIModel(), true);
+                    _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, Config.Get().GetOpenAI_APIKey(), Config.Get()._openai_gpt4_endpoint, OnStreamingTextCallback, true);
+                    SetLLMActive(true);
+                }
+                break;
+
+            case LLMProvider.Anthropic:
+                {
+                    string json = _anthropicAITextCompletionManager.BuildChatCompleteJSON(lines, 4096, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetAnthropicAI_APIModel(), true);
+                    _anthropicAITextCompletionManager.SpawnChatCompletionRequest(json, OnTexGenCompletedCallback, db, Config.Get().GetAnthropicAI_APIKey(), Config.Get().GetAnthropicAI_APIEndpoint(), OnStreamingTextCallback, true);
+                    SetLLMActive(true);
+                }
+                break;
+
+            case LLMProvider.LlamaCpp:
+                {
+                    string suggestedEndpoint;
+                    string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, 4096, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetGenericLLMMode(), true, Config.Get().GetLLMParms(), false, true);
+                    
+                    string serverAddress = Config.Get()._texgen_webui_address;
+                    var mgr = LLMSettingsManager.Get();
+                    if (mgr != null)
+                    {
+                        var settings = mgr.GetProviderSettings(LLMProvider.LlamaCpp);
+                        if (!string.IsNullOrEmpty(settings.endpoint)) serverAddress = settings.endpoint;
+                    }
+                    
+                    _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, serverAddress, suggestedEndpoint, OnStreamingTextCallback, true, Config.Get()._texgen_webui_APIKey);
+                    SetLLMActive(true);
+                }
+                break;
+
+            case LLMProvider.Ollama:
+                {
+                    string suggestedEndpoint;
+                    string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, 4096, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetGenericLLMMode(), true, Config.Get().GetLLMParms(), true, false);
+                    
+                    string serverAddress = Config.Get()._texgen_webui_address;
+                    var mgr = LLMSettingsManager.Get();
+                    if (mgr != null)
+                    {
+                        var settings = mgr.GetProviderSettings(LLMProvider.Ollama);
+                        if (!string.IsNullOrEmpty(settings.endpoint)) serverAddress = settings.endpoint;
+                    }
+                    
+                    string endpoint = Config.Get()._ollama_endpoint;
+                    _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, serverAddress, endpoint, OnStreamingTextCallback, true, Config.Get()._texgen_webui_APIKey);
+                    SetLLMActive(true);
+                }
+                break;
         }
     }
 

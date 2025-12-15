@@ -209,7 +209,26 @@ public class AdventureLogic : MonoBehaviour
 
     public LLM_Type GetLLMType()
     {
+        // Use new LLM settings system if available
+        var mgr = LLMSettingsManager.Get();
+        if (mgr != null)
+        {
+            return mgr.GetLegacyLLMType();
+        }
         return (LLM_Type)GameLogic.Get().GetLLMSelection().value;
+    }
+
+    /// <summary>
+    /// Get the active LLM provider using the new system.
+    /// </summary>
+    public LLMProvider GetLLMProvider()
+    {
+        var mgr = LLMSettingsManager.Get();
+        if (mgr != null)
+        {
+            return mgr.GetActiveProvider();
+        }
+        return (LLMProvider)GameLogic.Get().GetLLMSelection().value;
     }
 
     bool _bIsActive = false;

@@ -262,44 +262,125 @@ public class AIGuideManager : MonoBehaviour
 
     public void SpawnLLMRequest(Queue<GTPChatLine> lines)
     {
-
         lines = GameLogic.Get().PrepareLLMLinesForSending(lines);
-         
+        
+        // Use new LLM settings system if available, fall back to legacy
+        var llmManager = LLMSettingsManager.Get();
+        LLMProvider activeProvider = llmManager != null ? llmManager.GetActiveProvider() : 
+            (LLMProvider)GameLogic.Get().GetLLMSelection().value;
 
-        if (GameLogic.Get().GetLLMSelection().value == (int)LLM_Type.OpenAI_API)
+        switch (activeProvider)
         {
-            string json = _openAITextCompletionManager.BuildChatCompleteJSON(lines, m_max_tokens, m_extractor.Temperature, Config.Get().GetOpenAI_APIModel(), true);
-            RTDB db = new RTDB();
-            RTConsole.Log("Contacting GPT4 at " + Config.Get()._openai_gpt4_endpoint + " with " + json.Length + " bytes...");
-            _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnGTP4CompletedCallback, db, Config.Get().GetOpenAI_APIKey(), Config.Get()._openai_gpt4_endpoint, OnStreamingTextCallback, true);
-        }
-
-        if (GameLogic.Get().GetLLMSelection().value == (int)LLM_Type.GenericLLM_API)
-        {
-            Debug.Log("Contacting TexGen WebUI asking for chat style response at " + Config.Get()._texgen_webui_address); ;
-
-            string suggestedEndpoint;
-            string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, m_max_tokens, m_extractor.Temperature, Config.Get().GetGenericLLMMode(), true, Config.Get().GetLLMParms(), Config.Get().GetGenericLLMIsOllama(), Config.Get().GetGenericLLMIsLlamaCpp());
-
-            RTDB db = new RTDB();
-            // Use the suggested endpoint (might be /v1/completions for special templates)
-            string endpoint = Config.Get().GetGenericLLMIsOllama() ? Config.Get()._ollama_endpoint : suggestedEndpoint;
-            _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, Config.Get()._texgen_webui_address, endpoint, OnStreamingTextCallback,true,
-                Config.Get()._texgen_webui_APIKey);
-        }
-
-        if (GameLogic.Get().GetLLMSelection().value == (int)LLM_Type.Anthropic_API)
-        {
-            Debug.Log("Contacting TexGen WebUI asking for chat style response at " + Config.Get().GetAnthropicAI_APIEndpoint()); ;
-
-            string json = _anthropicAITextCompletionManager.BuildChatCompleteJSON(lines, m_max_tokens, m_extractor.Temperature, Config.Get().GetAnthropicAI_APIModel(), true);
-
-            RTDB db = new RTDB();
-            _anthropicAITextCompletionManager.SpawnChatCompletionRequest(json, OnTexGenCompletedCallback, db, Config.Get().GetAnthropicAI_APIKey(), Config.Get().GetAnthropicAI_APIEndpoint(), OnStreamingTextCallback,
-                true);
+            case LLMProvider.OpenAI:
+                SpawnOpenAIRequest(lines);
+                break;
+            case LLMProvider.Anthropic:
+                SpawnAnthropicRequest(lines);
+                break;
+            case LLMProvider.LlamaCpp:
+                SpawnLlamaCppRequest(lines);
+                break;
+            case LLMProvider.Ollama:
+                SpawnOllamaRequest(lines);
+                break;
         }
 
         m_bTalkingToLLM = true;
+    }
+
+    private void SpawnOpenAIRequest(Queue<GTPChatLine> lines)
+    {
+        string apiKey = Config.Get().GetOpenAI_APIKey();
+        string model = Config.Get().GetOpenAI_APIModel();
+        string endpoint = Config.Get()._openai_gpt4_endpoint;
+
+        // Override with LLMSettingsManager if available
+        var mgr = LLMSettingsManager.Get();
+        if (mgr != null)
+        {
+            var settings = mgr.GetProviderSettings(LLMProvider.OpenAI);
+            if (!string.IsNullOrEmpty(settings.apiKey)) apiKey = settings.apiKey;
+            if (!string.IsNullOrEmpty(settings.selectedModel)) model = settings.selectedModel;
+            if (!string.IsNullOrEmpty(settings.endpoint)) endpoint = settings.endpoint;
+        }
+
+        string json = _openAITextCompletionManager.BuildChatCompleteJSON(lines, m_max_tokens, m_extractor.Temperature, model, true);
+        RTDB db = new RTDB();
+        RTConsole.Log("Contacting OpenAI at " + endpoint + " with " + json.Length + " bytes...");
+        _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnGTP4CompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
+    }
+
+    private void SpawnAnthropicRequest(Queue<GTPChatLine> lines)
+    {
+        string apiKey = Config.Get().GetAnthropicAI_APIKey();
+        string model = Config.Get().GetAnthropicAI_APIModel();
+        string endpoint = Config.Get().GetAnthropicAI_APIEndpoint();
+
+        // Override with LLMSettingsManager if available
+        var mgr = LLMSettingsManager.Get();
+        if (mgr != null)
+        {
+            var settings = mgr.GetProviderSettings(LLMProvider.Anthropic);
+            if (!string.IsNullOrEmpty(settings.apiKey)) apiKey = settings.apiKey;
+            if (!string.IsNullOrEmpty(settings.selectedModel)) model = settings.selectedModel;
+            if (!string.IsNullOrEmpty(settings.endpoint)) endpoint = settings.endpoint;
+        }
+
+        RTConsole.Log("Contacting Anthropic at " + endpoint);
+        string json = _anthropicAITextCompletionManager.BuildChatCompleteJSON(lines, m_max_tokens, m_extractor.Temperature, model, true);
+        RTDB db = new RTDB();
+        _anthropicAITextCompletionManager.SpawnChatCompletionRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
+    }
+
+    private void SpawnLlamaCppRequest(Queue<GTPChatLine> lines)
+    {
+        string serverAddress = Config.Get()._texgen_webui_address;
+        string apiKey = Config.Get()._texgen_webui_APIKey;
+
+        // Override with LLMSettingsManager if available
+        var mgr = LLMSettingsManager.Get();
+        if (mgr != null)
+        {
+            var settings = mgr.GetProviderSettings(LLMProvider.LlamaCpp);
+            if (!string.IsNullOrEmpty(settings.endpoint)) serverAddress = settings.endpoint;
+            if (!string.IsNullOrEmpty(settings.apiKey)) apiKey = settings.apiKey;
+        }
+
+        RTConsole.Log("Contacting llama.cpp at " + serverAddress);
+
+        string suggestedEndpoint;
+        string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, m_max_tokens, m_extractor.Temperature, 
+            Config.Get().GetGenericLLMMode(), true, Config.Get().GetLLMParms(), false, true);
+
+        RTDB db = new RTDB();
+        _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, serverAddress, suggestedEndpoint, 
+            OnStreamingTextCallback, true, apiKey);
+    }
+
+    private void SpawnOllamaRequest(Queue<GTPChatLine> lines)
+    {
+        string serverAddress = Config.Get()._texgen_webui_address;
+        string apiKey = Config.Get()._texgen_webui_APIKey;
+        string ollamaEndpoint = Config.Get()._ollama_endpoint;
+
+        // Override with LLMSettingsManager if available
+        var mgr = LLMSettingsManager.Get();
+        if (mgr != null)
+        {
+            var settings = mgr.GetProviderSettings(LLMProvider.Ollama);
+            if (!string.IsNullOrEmpty(settings.endpoint)) serverAddress = settings.endpoint;
+            if (!string.IsNullOrEmpty(settings.apiKey)) apiKey = settings.apiKey;
+        }
+
+        RTConsole.Log("Contacting Ollama at " + serverAddress);
+
+        string suggestedEndpoint;
+        string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, m_max_tokens, m_extractor.Temperature, 
+            Config.Get().GetGenericLLMMode(), true, Config.Get().GetLLMParms(), true, false);
+
+        RTDB db = new RTDB();
+        _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, serverAddress, ollamaEndpoint, 
+            OnStreamingTextCallback, true, apiKey);
     }
 
     bool IsRequestActive()
@@ -371,25 +452,26 @@ public class AIGuideManager : MonoBehaviour
 
         m_bIsPossibleToContinue = false;
 
-        if (GameLogic.Get().GetLLMSelection().value == (int)LLM_Type.OpenAI_API)
-        {
+        // Validate API keys for the active provider
+        var llmManager = LLMSettingsManager.Get();
+        LLMProvider activeProvider = llmManager != null ? llmManager.GetActiveProvider() : 
+            (LLMProvider)GameLogic.Get().GetLLMSelection().value;
 
+        if (activeProvider == LLMProvider.OpenAI)
+        {
             if (Config.Get().GetOpenAI_APIKey().Length < 15)
             {
-                RTConsole.Log("Error:  You need to set the GPT4 API key in your config.txt! (example: set_openai_gpt4_key|<key goes here>| ) ");
-                //open the console
+                RTConsole.Log("Error: You need to set the OpenAI API key! Use the LLM Settings button or config.txt");
                 GameLogic.Get().ShowConsole(true);
                 return;
             }
         }
 
-        if (GameLogic.Get().GetLLMSelection().value == (int)LLM_Type.Anthropic_API)
+        if (activeProvider == LLMProvider.Anthropic)
         {
-
             if (Config.Get().GetAnthropicAI_APIKey().Length < 15)
             {
-                RTConsole.Log("Error: You need to set the Anthropic key in your config.txt!");
-                //open the console
+                RTConsole.Log("Error: You need to set the Anthropic API key! Use the LLM Settings button or config.txt");
                 GameLogic.Get().ShowConsole(true);
                 return;
             }
