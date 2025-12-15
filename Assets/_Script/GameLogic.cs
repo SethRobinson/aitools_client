@@ -52,9 +52,9 @@ public class GameLogic : MonoBehaviour
     public TMP_InputField m_negativeInputField;
     public TMP_InputField m_stepsInputField;
     public TMP_InputField m_seedInputField;
-    public TMP_InputField m_comfyPrependPromptInputField;
+    public TMP_Text m_activeLLMLabel;
     public TMP_InputField m_comfyAppendPromptInputField;
-
+    public TMP_InputField m_comfyPrependPromptInputField;
     public TMP_InputField m_jobListInputField;
     public Slider m_inpaintStrengthInput;
     public Slider m_maskBlendingInput;
@@ -110,6 +110,11 @@ public class GameLogic : MonoBehaviour
     int m_controlNetModelCurIndex;
     public TMP_Dropdown m_llmSelectionDropdown;
     public GameObject m_tempPic1;
+
+    // On startup, GameLogic may initialize before LLMSettingsManager exists/loads settings.
+    // We'll retry briefly so the Tools panel label reflects the real active LLM.
+    private int _activeLLMLabelInitTries = 0;
+    private const int ACTIVE_LLM_LABEL_MAX_INIT_TRIES = 30; // ~7.5 seconds at 0.25s interval
   
     public enum eGameMode
     {
@@ -1443,7 +1448,38 @@ public string GetPrompt() { return m_prompt; }
                 PresetManager.Get().LoadPresetAndApply(GetNameOfActivePreset(), PresetManager.Get().GetActivePreset(), true);
             }
         }
-         
+        
+        // Keep the "Active LLM" label on the Tools panel in sync with current LLM settings.
+        BindActiveLLMLabelUpdates();
+        UpdateActiveLLMLabel();
+
+        // If the LLM settings manager isn't ready yet, retry until it is (or we time out).
+        if (LLMSettingsManager.Get() == null)
+        {
+            _activeLLMLabelInitTries = 0;
+            CancelInvoke(nameof(TryUpdateActiveLLMLabelAfterLLMManagerInit));
+            InvokeRepeating(nameof(TryUpdateActiveLLMLabelAfterLLMManagerInit), 0.1f, 0.25f);
+        }
+
+    }
+
+    private void TryUpdateActiveLLMLabelAfterLLMManagerInit()
+    {
+        _activeLLMLabelInitTries++;
+
+        if (LLMSettingsManager.Get() != null)
+        {
+            UpdateActiveLLMLabel();
+            CancelInvoke(nameof(TryUpdateActiveLLMLabelAfterLLMManagerInit));
+            return;
+        }
+
+        if (_activeLLMLabelInitTries >= ACTIVE_LLM_LABEL_MAX_INIT_TRIES)
+        {
+            // Give up; whatever we have is the best we can do.
+            UpdateActiveLLMLabel();
+            CancelInvoke(nameof(TryUpdateActiveLLMLabelAfterLLMManagerInit));
+        }
     }
 
     public void SetPresetDropdownValue(string value)
@@ -1571,6 +1607,74 @@ public string GetPrompt() { return m_prompt; }
     public void OnLLMSettingsButtonClicked()
     {
         LLMSettingsPanel.Toggle();
+    }
+
+    private void BindActiveLLMLabelUpdates()
+    {
+        if (m_llmSelectionDropdown != null)
+        {
+            m_llmSelectionDropdown.onValueChanged.RemoveListener(OnLegacyLLMDropdownChanged);
+            m_llmSelectionDropdown.onValueChanged.AddListener(OnLegacyLLMDropdownChanged);
+        }
+    }
+
+    private void OnLegacyLLMDropdownChanged(int _)
+    {
+        // Only matters if the new LLM settings manager isn't present; otherwise LLMSettingsManager drives the active provider.
+        UpdateActiveLLMLabel();
+    }
+
+    public void UpdateActiveLLMLabel()
+    {
+        if (m_activeLLMLabel == null) return;
+
+        string label = "None";
+
+        var mgr = LLMSettingsManager.Get();
+        if (mgr != null)
+        {
+            var provider = mgr.GetActiveProvider();
+            string providerName = GetLLMProviderDisplayName(provider);
+            string model = mgr.GetModel(provider);
+
+            if (!string.IsNullOrEmpty(providerName))
+            {
+                // Format as:
+                // <provider>
+                // <model>
+                // If model is empty (possible for local providers), show "Default".
+                label = providerName + "\n" + (string.IsNullOrEmpty(model) ? "Default" : model);
+            }
+        }
+        else if (m_llmSelectionDropdown != null && m_llmSelectionDropdown.options != null && m_llmSelectionDropdown.options.Count > 0)
+        {
+            int idx = Mathf.Clamp(m_llmSelectionDropdown.value, 0, m_llmSelectionDropdown.options.Count - 1);
+            string optionText = m_llmSelectionDropdown.options[idx]?.text;
+            if (!string.IsNullOrEmpty(optionText))
+            {
+                // Legacy fallback: we only know the provider name here.
+                label = optionText + "\n";
+            }
+        }
+
+        m_activeLLMLabel.text = label;
+    }
+
+    private static string GetLLMProviderDisplayName(LLMProvider provider)
+    {
+        switch (provider)
+        {
+            case LLMProvider.OpenAI:
+                return "OpenAI";
+            case LLMProvider.Anthropic:
+                return "Anthropic";
+            case LLMProvider.LlamaCpp:
+                return "llama.cpp";
+            case LLMProvider.Ollama:
+                return "Ollama";
+            default:
+                return "";
+        }
     }
 
     /// <summary>

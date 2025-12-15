@@ -549,6 +549,10 @@ public class LLMSettingsPanel : MonoBehaviour
         _ollamaUI.ApplyToSettings(_workingSettings.ollama);
 
         LLMSettingsManager.Get().ApplySettings(_workingSettings);
+        if (GameLogic.Get() != null)
+        {
+            GameLogic.Get().UpdateActiveLLMLabel();
+        }
         RTQuickMessageManager.Get().ShowMessage("LLM settings saved");
         Hide();
     }

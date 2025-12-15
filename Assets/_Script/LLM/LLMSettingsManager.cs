@@ -16,6 +16,16 @@ public class LLMSettingsManager : MonoBehaviour
 
     private const string SETTINGS_FILE_NAME = "llm_settings.txt";
 
+    /// <summary>
+    /// Fired when LLM settings that affect runtime behavior/UI have changed (active provider, model list, etc).
+    /// </summary>
+    public event Action SettingsChanged;
+
+    private void NotifySettingsChanged()
+    {
+        SettingsChanged?.Invoke();
+    }
+
     public static LLMSettingsManager Get()
     {
         return _instance;
@@ -206,6 +216,7 @@ public class LLMSettingsManager : MonoBehaviour
     {
         _settings = newSettings;
         SaveSettings();
+        NotifySettingsChanged();
     }
 
     /// <summary>
@@ -234,6 +245,7 @@ public class LLMSettingsManager : MonoBehaviour
     public void SetActiveProvider(LLMProvider provider)
     {
         _settings.activeProvider = provider;
+        NotifySettingsChanged();
     }
 
     /// <summary>
@@ -331,6 +343,7 @@ public class LLMSettingsManager : MonoBehaviour
     {
         _settings.ollama.availableModels = new List<string>(models);
         SaveSettings();
+        NotifySettingsChanged();
     }
 
     /// <summary>
