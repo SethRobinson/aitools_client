@@ -71,14 +71,12 @@ public class LLMSettings
         {
             enabled = true,
             apiKey = "",
-            endpoint = "https://api.openai.com/v1/chat/completions",
-            selectedModel = "gpt-4.1",
+            endpoint = "https://api.openai.com/v1/responses",
+            selectedModel = "gpt-5.2",
             availableModels = new List<string>
             {
-                "gpt-4.1",
-                "gpt-4.1-mini",
-                "o3",
-                "o4-mini"
+                "gpt-5.2",
+                "gpt-5.2-pro"
             }
         };
 
@@ -88,13 +86,12 @@ public class LLMSettings
             enabled = true,
             apiKey = "",
             endpoint = "https://api.anthropic.com/v1/messages",
-            selectedModel = "claude-sonnet-4-5-20250929",
+            selectedModel = "claude-sonnet-4-5",
             availableModels = new List<string>
             {
-                "claude-opus-4-5-20250929",
-                "claude-sonnet-4-5-20250929",
-                "claude-haiku-4-5-20251001",
-                "claude-opus-4-1-20250805"
+                "claude-sonnet-4-5",
+                "claude-haiku-4-5",
+                "claude-opus-4-5"
             }
         };
 

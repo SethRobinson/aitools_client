@@ -88123,6 +88123,11 @@ PrefabInstance:
       propertyPath: m_AnchoredPosition.y
       value: 70.34912
       objectReference: {fileID: 0}
+    - target: {fileID: 5990901311521399903, guid: f13496bcc6225004ebb72d41e2bd85b8,
+        type: 3}
+      propertyPath: 'm_ActiveFontFeatures.Array.data[0]'
+      value: 1801810542
+      objectReference: {fileID: 0}
     - target: {fileID: 8335936608596666549, guid: f13496bcc6225004ebb72d41e2bd85b8,
         type: 3}
       propertyPath: m_text
@@ -88280,7 +88285,12 @@ PrefabInstance:
     - target: {fileID: 8335936609186416022, guid: f13496bcc6225004ebb72d41e2bd85b8,
         type: 3}
       propertyPath: m_IsActive
-      value: 0
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 8335936610144237881, guid: f13496bcc6225004ebb72d41e2bd85b8,
+        type: 3}
+      propertyPath: 'm_ActiveFontFeatures.Array.data[0]'
+      value: 1801810542
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
