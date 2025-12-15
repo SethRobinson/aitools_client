@@ -160,36 +160,113 @@ public class OpenAITextCompletionManager : MonoBehaviour
     }
 
     //Build OpenAI.com API request json
-    public string BuildChatCompleteJSON(Queue<GTPChatLine> lines, int max_tokens = 100, float temperature = 1.3f, string model = "gpt-3.5-turbo", bool stream = false)
+    // useResponsesAPI: set to true for OpenAI Responses API (/v1/responses), false for Chat Completions API (/v1/chat/completions)
+    // isReasoningModel: include reasoning block for reasoning models (gpt-5.2/gpt-5.2-pro)
+    // includeTemperature: some models (gpt-5-mini/nano) do not support temperature at all
+    public string BuildChatCompleteJSON(Queue<GTPChatLine> lines, int max_tokens = 100, float temperature = 1.3f, string model = "gpt-3.5-turbo", bool stream = false, bool useResponsesAPI = false, bool isReasoningModel = false, bool includeTemperature = true, string reasoningEffort = null)
     {
+        string bStreamText = stream ? "true" : "false";
 
-        string msg = "";
-
-        string bStreamText = "false";
-        if (stream)
+        if (useResponsesAPI)
         {
-            bStreamText = "true";
-        }
+            // Responses API format: uses "input" instead of "messages", and "instructions" for system messages
+            string instructions = "";
+            string inputMessages = "";
 
-        //go through each object in lines
-        foreach (GTPChatLine obj in lines)
-        {
-            if (msg.Length > 0)
+            foreach (GTPChatLine obj in lines)
             {
-                msg += ",\n";
+                if (obj._role == "system")
+                {
+                    // System messages go into the instructions parameter
+                    if (instructions.Length > 0)
+                    {
+                        instructions += "\n\n";
+                    }
+                    instructions += obj._content;
+                }
+                else
+                {
+                    // User and assistant messages go into the input array
+                    if (inputMessages.Length > 0)
+                    {
+                        inputMessages += ",\n";
+                    }
+                    inputMessages += "{\"role\": \"" + obj._role + "\", \"content\": \"" + SimpleJSON.JSONNode.Escape(obj._content) + "\"}";
+                }
             }
-            msg += "{\"role\": \"" + obj._role + "\", \"content\": \"" + SimpleJSON.JSONNode.Escape(obj._content) + "\"}";
-        }
 
-        string json =
-         $@"{{
+            // Build JSON with proper comma handling for optional parameters
+            string json;
+            string reasoningPart = "";
+            string temperaturePart = "";
+            
+            if (!string.IsNullOrEmpty(reasoningEffort))
+            {
+                reasoningPart = $@"""reasoning"": {{""effort"": ""{reasoningEffort}""}},";
+            }
+            
+            if (includeTemperature)
+            {
+                temperaturePart = $@"""temperature"": {temperature},";
+            }
+            
+            if (instructions.Length > 0)
+            {
+                json = $@"{{
              ""model"": ""{model}"",
-             ""messages"":[{msg}],
-             ""temperature"": {temperature},
+             ""instructions"": ""{SimpleJSON.JSONNode.Escape(instructions)}"",
+             ""input"": [{inputMessages}],
+             {reasoningPart}
+             {temperaturePart}
             ""stream"": {bStreamText}
             }}";
+            }
+            else
+            {
+                json = $@"{{
+             ""model"": ""{model}"",
+             ""input"": [{inputMessages}],
+             {reasoningPart}
+             {temperaturePart}
+            ""stream"": {bStreamText}
+            }}";
+            }
+            
+            // Clean up any trailing commas before closing braces
+            json = json.Replace(",\n            \"stream\"", "\n            \"stream\"");
+            json = json.Replace(",\n            }", "\n            }");
 
-        return json;
+            return json;
+        }
+        else
+        {
+            // Chat Completions API format: uses "messages"
+            string msg = "";
+
+            foreach (GTPChatLine obj in lines)
+            {
+                if (msg.Length > 0)
+                {
+                    msg += ",\n";
+                }
+                msg += "{\"role\": \"" + obj._role + "\", \"content\": \"" + SimpleJSON.JSONNode.Escape(obj._content) + "\"}";
+            }
+
+            string temperaturePart = includeTemperature ? $@"""temperature"": {temperature}," : "";
+            
+            string json =
+             $@"{{
+             ""model"": ""{model}"",
+             ""messages"":[{msg}],
+             {temperaturePart}
+            ""stream"": {bStreamText}
+            }}";
+            
+            // Clean up any trailing commas
+            json = json.Replace(",\n            \"stream\"", "\n            \"stream\"");
+
+            return json;
+        }
     }
     //     ""reasoning_effort"":  ""medium"",
          
@@ -309,9 +386,29 @@ public class OpenAITextCompletionManager : MonoBehaviour
             {
                 string msg = _currentRequest.error;
                 Debug.Log(msg);
-                //Debug.Log(_currentRequest.downloadHandler.text);
+                
+                // Try to get error response body from streaming handler first
+                string errorBody = downloadHandler.GetContentAsString();
+                
+                // If streaming handler doesn't have it, try accessing the response directly
+                if (string.IsNullOrEmpty(errorBody) && _currentRequest.downloadHandler != null)
+                {
+                    // For non-streaming errors, the downloadHandler might have the text
+                    try
+                    {
+                        errorBody = _currentRequest.downloadHandler.text;
+                    }
+                    catch { }
+                }
+                
+                if (string.IsNullOrEmpty(errorBody))
+                {
+                    errorBody = "(No response body)";
+                }
+                Debug.Log("Error response body: " + errorBody);
+                
                 //#if UNITY_STANDALONE && !RT_RELEASE
-                File.WriteAllText("last_error_returned.json", _currentRequest.downloadHandler.text);
+                File.WriteAllText("last_error_returned.json", errorBody);
                 //#endif
                 m_connectionActive = false;
 

@@ -170,7 +170,8 @@ public class GPTPromptManager : MonoBehaviour
 
         OpenAITextCompletionManager textCompletionScript = gameObject.GetComponent<OpenAITextCompletionManager>();
 
-        string json = textCompletionScript.BuildChatCompleteJSON(lines, 1500, 0.2f, "gpt-4");
+        // Using Chat Completions API format (default endpoint)
+        string json = textCompletionScript.BuildChatCompleteJSON(lines, 1500, 0.2f, "gpt-4", false, false);
         RTDB db = new RTDB();
 
         TrimInteractionsToLastNLines(_interactionsToKeepWhenBuildingJournal);

@@ -292,19 +292,78 @@ public class AIGuideManager : MonoBehaviour
     {
         string apiKey = Config.Get().GetOpenAI_APIKey();
         string model = Config.Get().GetOpenAI_APIModel();
-        string endpoint = Config.Get()._openai_gpt4_endpoint;
 
-        // Override with LLMSettingsManager if available
+        // Override with LLMSettingsManager if available (model & key only; endpoint is hardcoded per model)
         var mgr = LLMSettingsManager.Get();
         if (mgr != null)
         {
             var settings = mgr.GetProviderSettings(LLMProvider.OpenAI);
             if (!string.IsNullOrEmpty(settings.apiKey)) apiKey = settings.apiKey;
             if (!string.IsNullOrEmpty(settings.selectedModel)) model = settings.selectedModel;
-            if (!string.IsNullOrEmpty(settings.endpoint)) endpoint = settings.endpoint;
         }
 
-        string json = _openAITextCompletionManager.BuildChatCompleteJSON(lines, m_max_tokens, m_extractor.Temperature, model, true);
+        // All GPT-5 models use Responses API - just with different parameters
+        bool useResponsesAPI = false;
+        bool isReasoningModel = false;
+        bool includeTemperature = true;
+        string reasoningEffort = null;
+        string endpoint;
+
+        if (model.Contains("gpt-5"))
+        {
+            // All GPT-5 models use Responses API
+            useResponsesAPI = true;
+            endpoint = "https://api.openai.com/v1/responses";
+            
+            if (model.Contains("gpt-5.2-pro"))
+            {
+                // Pro reasoning model: high reasoning effort, no temperature
+                isReasoningModel = true;
+                includeTemperature = false;
+                reasoningEffort = "high";
+            }
+            else if (model.Contains("gpt-5.2"))
+            {
+                // Base 5.2 reasoning model: medium reasoning effort, no temperature
+                isReasoningModel = true;
+                includeTemperature = false;
+                reasoningEffort = "medium";
+            }
+            else if (model.Contains("gpt-5-mini") || model.Contains("gpt-5-nano"))
+            {
+                // Mini/nano: Use Chat Completions API (they may not fully support Responses API)
+                useResponsesAPI = false;
+                isReasoningModel = false;
+                includeTemperature = false;  // Fixed temp=1, don't send parameter
+                reasoningEffort = null;
+                endpoint = "https://api.openai.com/v1/chat/completions";
+            }
+            else
+            {
+                // Base gpt-5: no reasoning, allow temperature
+                isReasoningModel = false;
+                includeTemperature = true;
+            }
+        }
+        else
+        {
+            // Non-GPT-5 models: use Chat Completions API
+            useResponsesAPI = false;
+            isReasoningModel = false;
+            includeTemperature = true;
+            endpoint = "https://api.openai.com/v1/chat/completions";
+        }
+
+        string json = _openAITextCompletionManager.BuildChatCompleteJSON(
+            lines,
+            m_max_tokens,
+            m_extractor.Temperature,
+            model,
+            true,
+            useResponsesAPI,
+            isReasoningModel,
+            includeTemperature,
+            reasoningEffort);
         RTDB db = new RTDB();
         RTConsole.Log("Contacting OpenAI at " + endpoint + " with " + json.Length + " bytes...");
         _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnGTP4CompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);

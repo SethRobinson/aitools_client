@@ -99,11 +99,13 @@ public class StreamingDownloadHandler : DownloadHandlerScript
         try
         {
             JSONNode rootNode = JSON.Parse(jsonChunk);
+            string content = null;
+
+            // Try Chat Completions API format first (choices[0].delta.content)
             if (rootNode["choices"] != null && rootNode["choices"].Count > 0)
             {
                 // Try to get content from the 'delta' structure
                 JSONNode deltaNode = rootNode["choices"][0]["delta"];
-                string content = null;
 
                 if (deltaNode != null && deltaNode["content"] != null)
                 {
@@ -114,12 +116,67 @@ public class StreamingDownloadHandler : DownloadHandlerScript
                 {
                     content = rootNode["choices"][0]["text"];
                 }
-
-                if (content != null)
+            }
+            // Try Responses API format (response.output_text.delta event with delta field)
+            else if (rootNode["type"] != null)
+            {
+                string eventType = rootNode["type"];
+                
+                // Handle response.output_text.delta event
+                if (eventType == "response.output_text.delta")
                 {
-                    stringBuilder.Append(content);
-                    MainThreadDispatcher.Enqueue(() => m_textChunkUpdateCallback(content));
+                    if (rootNode["delta"] != null)
+                    {
+                        content = rootNode["delta"];
+                    }
                 }
+                // Handle response.content_part.delta event (alternative format)
+                else if (eventType == "response.content_part.delta")
+                {
+                    if (rootNode["delta"] != null && rootNode["delta"]["text"] != null)
+                    {
+                        content = rootNode["delta"]["text"];
+                    }
+                }
+                // Handle response.output_text.done event (final chunk)
+                else if (eventType == "response.output_text.done")
+                {
+                    // This is the completion event, no content to extract
+                }
+                // Handle response.done event (final event)
+                else if (eventType == "response.done")
+                {
+                    // This is the completion event, no content to extract
+                }
+                // Ignore known status/lifecycle events
+                else if (eventType == "response.in_progress" || 
+                         eventType == "response.created" || 
+                         eventType == "response.output_item.added" ||
+                         eventType == "response.content_part.added" ||
+                         eventType == "response.output_item.done" ||
+                         eventType == "response.content_part.done" ||
+                         eventType == "response.queued" ||
+                         eventType == "response.reasoning.delta" ||
+                         eventType == "response.reasoning.done")
+                {
+                    // Status/lifecycle events, no content to extract
+                }
+                // Log unknown event types for debugging
+                else
+                {
+                    Debug.Log($"Unknown Responses API event type: {eventType}\nChunk: {jsonChunk}");
+                }
+            }
+            // If we got a chunk but couldn't parse it, log it
+            else if (!string.IsNullOrEmpty(jsonChunk) && jsonChunk.Trim() != "{}")
+            {
+                Debug.Log($"Unrecognized response format:\nChunk: {jsonChunk}");
+            }
+
+            if (content != null)
+            {
+                stringBuilder.Append(content);
+                MainThreadDispatcher.Enqueue(() => m_textChunkUpdateCallback(content));
             }
         }
         catch (Exception ex)

@@ -951,8 +951,72 @@ public class AdventureText : MonoBehaviour
         {
             case LLMProvider.OpenAI:
                 {
-                    string json = _openAITextCompletionManager.BuildChatCompleteJSON(lines, 4096, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetOpenAI_APIModel(), true);
-                    _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, Config.Get().GetOpenAI_APIKey(), Config.Get()._openai_gpt4_endpoint, OnStreamingTextCallback, true);
+                    string model = Config.Get().GetOpenAI_APIModel();
+                    string apiKey = Config.Get().GetOpenAI_APIKey();
+
+                    // All GPT-5 models use Responses API - just with different parameters
+                    bool useResponsesAPI = false;
+                    bool isReasoningModel = false;
+                    bool includeTemperature = true;
+                    string reasoningEffort = null;
+                    string endpoint;
+
+                    if (model.Contains("gpt-5"))
+                    {
+                        // All GPT-5 models use Responses API
+                        useResponsesAPI = true;
+                        endpoint = "https://api.openai.com/v1/responses";
+                        
+                        if (model.Contains("gpt-5.2-pro"))
+                        {
+                            // Pro reasoning model: high reasoning effort, no temperature
+                            isReasoningModel = true;
+                            includeTemperature = false;
+                            reasoningEffort = "high";
+                        }
+                        else if (model.Contains("gpt-5.2"))
+                        {
+                            // Base 5.2 reasoning model: medium reasoning effort, no temperature
+                            isReasoningModel = true;
+                            includeTemperature = false;
+                            reasoningEffort = "medium";
+                        }
+                        else if (model.Contains("gpt-5-mini") || model.Contains("gpt-5-nano"))
+                        {
+                            // Mini/nano: Use Chat Completions API (they may not fully support Responses API)
+                            useResponsesAPI = false;
+                            isReasoningModel = false;
+                            includeTemperature = false;  // Fixed temp=1, don't send parameter
+                            reasoningEffort = null;
+                            endpoint = "https://api.openai.com/v1/chat/completions";
+                        }
+                        else
+                        {
+                            // Base gpt-5: no reasoning, allow temperature
+                            isReasoningModel = false;
+                            includeTemperature = true;
+                        }
+                    }
+                    else
+                    {
+                        // Non-GPT-5 models: use Chat Completions API
+                        useResponsesAPI = false;
+                        isReasoningModel = false;
+                        includeTemperature = true;
+                        endpoint = "https://api.openai.com/v1/chat/completions";
+                    }
+
+                    string json = _openAITextCompletionManager.BuildChatCompleteJSON(
+                        lines,
+                        4096,
+                        AdventureLogic.Get().GetExtractor().Temperature,
+                        model,
+                        true,
+                        useResponsesAPI,
+                        isReasoningModel,
+                        includeTemperature,
+                        reasoningEffort);
+                    _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
                     SetLLMActive(true);
                 }
                 break;
