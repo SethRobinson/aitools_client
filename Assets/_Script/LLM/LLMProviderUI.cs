@@ -26,6 +26,8 @@ public class LLMProviderUI
     private static readonly Color SectionBg = new Color(1f, 1f, 1f, 0f); // let parent panel show through
     private static readonly Color HeaderColor = new Color(0f, 0.45f, 0.70f, 1f); // keep the blue section heading
     private static readonly Color LabelColor = new Color(0.19607843f, 0.19607843f, 0.19607843f, 1f);
+    // Match the LLMSettingsPanel control surface tint so inputs/dropdowns remain distinct
+    // from the darker panel background.
     private static readonly Color ButtonBg = new Color(1f, 1f, 1f, 1f);
     private static readonly Color InputBg = new Color(1f, 1f, 1f, 1f);
     private static readonly Color TextDark = new Color(0.19607843f, 0.19607843f, 0.19607843f, 1f);

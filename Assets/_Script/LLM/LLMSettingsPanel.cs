@@ -35,17 +35,24 @@ public class LLMSettingsPanel : MonoBehaviour
     // - Title text is black
     // - Body text is dark gray (~0.196)
     // Slightly darker gray surfaces than pure white (per request), but still consistent with existing UI style.
-    private static readonly Color PanelBg = new Color(0.88f, 0.88f, 0.88f, 0.97f);
-    private static readonly Color HeaderBg = new Color(0.84f, 0.84f, 0.84f, 1f);
-    private static readonly Color FooterBg = new Color(0.84f, 0.84f, 0.84f, 1f);
-    private static readonly Color RowBg = new Color(0.90f, 0.90f, 0.90f, 1f);
+    // NOTE: These values are intentionally darker than UI-default light gray so this panel
+    // matches the rest of the app's main UI panels.
+    private static readonly Color PanelBg = new Color(0.80f, 0.80f, 0.82f, 1f);
+    private static readonly Color HeaderBg = new Color(0.75f, 0.75f, 0.77f, 1f);
+    private static readonly Color FooterBg = new Color(0.75f, 0.75f, 0.77f, 1f);
+    private static readonly Color RowBg = new Color(0.82f, 0.82f, 0.84f, 1f);
     private static readonly Color ButtonPrimary = new Color(1f, 1f, 1f, 1f);
     private static readonly Color ButtonSecondary = new Color(1f, 1f, 1f, 1f);
-    private static readonly Color InputFieldBg = new Color(0.97f, 0.97f, 0.97f, 1f);
-    private static readonly Color TextDark = new Color(0.19607843f, 0.19607843f, 0.19607843f, 1f);
+    // White so dropdowns/inputs pop against the background.
+    private static readonly Color InputFieldBg = new Color(1f, 1f, 1f, 1f);
+    private static readonly Color TextDark = new Color(0,0,0, 1f);
     private static readonly Color TextTitle = new Color(0f, 0f, 0f, 1f);
     private static readonly Color TextPlaceholder = new Color(0.19607843f, 0.19607843f, 0.19607843f, 0.5f);
     private static readonly Color BackdropBg = new Color(0.12f, 0.12f, 0.12f, 0.65f);
+
+    // If true, show a dark backdrop and block clicks to underlying UI (modal behavior).
+    // Default is false per request: do NOT dim the screen behind the panel.
+    private const bool UseModalBackdrop = false;
 
     public static void Show()
     {
@@ -325,27 +332,40 @@ public class LLMSettingsPanel : MonoBehaviour
                 continue;
             }
 
+            // Check if this image is part of a dropdown template (not our main panel's viewport/content).
+            bool isInsideDropdownTemplate = false;
+            Transform parent = img.transform.parent;
+            while (parent != null)
+            {
+                string parentName = parent.name.ToLowerInvariant();
+                if (parentName.Contains("template") && parent.GetComponentInParent<TMP_Dropdown>() != null)
+                {
+                    isInsideDropdownTemplate = true;
+                    break;
+                }
+                parent = parent.parent;
+            }
+
             // Dropdown option list surfaces should be flat (no rounded rect / sliced sprite)
             // to match the rest of the app's dropdown lists.
-            bool isDropdownListSurface =
-                n.Contains("template") ||
-                n.Contains("viewport") ||
-                n.Contains("item background") ||
-                n.Contains("dropdown list") ||
-                n.Contains("content");
+            bool isDropdownListSurface = isInsideDropdownTemplate &&
+                (n.Contains("template") ||
+                 n.Contains("viewport") ||
+                 n.Contains("item background") ||
+                 n.Contains("dropdown list") ||
+                 n.Contains("content"));
 
             if (isDropdownListSurface)
             {
-                ApplySolidBackground(img, new Color(0.92f, 0.92f, 0.92f, 1f));
+                // Keep dropdown list surface readable on top of PanelBg.
+                ApplySolidBackground(img, new Color(1f, 1f, 1f, 1f));
                 continue;
             }
 
             // For control backgrounds created via TMP_DefaultControls, ensure we use the same UI sprite + white fill.
             bool isControlRoot = img.GetComponent<TMP_InputField>() != null || img.GetComponent<TMP_Dropdown>() != null;
-            bool isDropdownTemplateSurface =
-                n.Contains("template") || n.Contains("viewport") || n.Contains("item background") || n.Contains("content");
 
-            if (isControlRoot || isDropdownTemplateSurface)
+            if (isControlRoot)
             {
                 ApplyUISprite(img);
                 img.color = InputFieldBg;
@@ -457,7 +477,7 @@ public class LLMSettingsPanel : MonoBehaviour
 
         _panelRoot.AddComponent<GraphicRaycaster>();
 
-        // Darken the background behind the modal, matching the rest of the app's dialog behavior.
+        // Optional modal backdrop (disabled by default).
         var backdrop = new GameObject("Backdrop");
         backdrop.transform.SetParent(_panelRoot.transform, false);
         var backdropRt = backdrop.AddComponent<RectTransform>();
@@ -466,8 +486,10 @@ public class LLMSettingsPanel : MonoBehaviour
         backdropRt.offsetMin = Vector2.zero;
         backdropRt.offsetMax = Vector2.zero;
         var backdropImg = backdrop.AddComponent<Image>();
-        backdropImg.color = BackdropBg;
-        backdropImg.raycastTarget = true; // block clicks to underlying UI while the modal is open
+        backdropImg.color = UseModalBackdrop ? BackdropBg : Color.clear;
+        // Non-modal: don't dim and don't block clicks to underlying UI.
+        backdropImg.raycastTarget = UseModalBackdrop;
+        backdropImg.enabled = UseModalBackdrop;
 
         // Main panel
         var main = new GameObject("MainPanel");
