@@ -85,25 +85,28 @@ public class Config : MonoBehaviour
     string _openAI_APIModel;
     public string _texgen_webui_address;
     public string _openai_gpt4_endpoint;
-    string _elevenLabs_APIKey ;
-    string _elevenLabs_voiceID;
-    int _jpgSaveQuality;
-    public string _texgen_webui_APIKey;
-    public string _ollama_endpoint;
 
+     public string _ollama_endpoint;
+  public string _texgen_webui_APIKey;
+   
     string _anthropicAI_APIKey;
     string _anthropicAI_APIModel;
     string _anthropicAI_APIEndpoint;
     string _genericLLMMode;
+
+  Boolean m_genericServerIsOllama = false;
+    Boolean m_genericServerIsLlamaCpp = false;
+    string _elevenLabs_APIKey ;
+    string _elevenLabs_voiceID;
+    int _jpgSaveQuality;
+  
     string _defaultAudioPrompt;
     string _defaultAudioNegativePrompt;
     // CrazyCam requested camera capture settings
     int _crazyCamRequestedWidth;
     int _crazyCamRequestedHeight;
     int _crazyCamRequestedFPS;
-    bool m_bIsFirstTimeLoadingConfig = true;
-    Boolean m_genericServerIsOllama = false;
-    Boolean m_genericServerIsLlamaCpp = false;
+  
     Dictionary<string, object> m_llamaCppModelData = null;
     public string GetAISystemWord() { return m_systemName; }
     public string GetAIUserWord() { return m_userName; }
@@ -757,24 +760,7 @@ set_default_audio_negative_prompt|music|
                 if (words[0] == "set_image_editor")
                 {
                     m_imageEditorPathAndExe = words[1];
-                } else
-
-                    
-                if (words[0] == "set_openai_gpt4_key")
-                {
-                    _openAI_APIKey = words[1];
-                    if (_openAI_APIKey.Length > 30)
-                    {
-                        //Could be a valid key.  Create virtual GPU for it
-                        GPUInfo g = new GPUInfo();
-                        g.remoteURL = "https://platform.openai.com/usage"; //not used
-                        g.supportsAITools = false;
-                        g.isLocal = false;
-                        g._requestedRendererType = RTRendererType.OpenAI_Image;
-                        g._usesDetailedPrompts = false;
-                        AddGPU(g);
-                    }
-                }
+                } 
                 else  // NEW: default image dimensions
                 if (words[0] == "set_default_gen_width")
                 {
@@ -927,7 +913,6 @@ set_default_audio_negative_prompt|music|
             }
         }
 
-        m_bIsFirstTimeLoadingConfig = false;
     }
 
     public void SendRequestToAllServers(string optionKey, string optionValue)
