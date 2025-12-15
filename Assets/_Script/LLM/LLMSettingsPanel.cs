@@ -26,16 +26,26 @@ public class LLMSettingsPanel : MonoBehaviour
 
     private const float PANEL_WIDTH = 640f;
     private const float PANEL_HEIGHT = 520f;
-    private const float HEADER_HEIGHT = 32f;
-    private const float FOOTER_HEIGHT = 54f;
+    private const float HEADER_HEIGHT = 40f;
+    private const float FOOTER_HEIGHT = 60f;
+    private const float BaseFontSize = 14f;
 
-    // Theme (rough match for existing UI)
-    private static readonly Color PanelBg = new Color(0.18f, 0.18f, 0.18f, 1f);
-    private static readonly Color HeaderBg = new Color(0.35f, 0.42f, 0.50f, 1f);
-    private static readonly Color FooterBg = new Color(0.24f, 0.24f, 0.24f, 1f);
-    private static readonly Color RowBg = new Color(0.28f, 0.32f, 0.38f, 1f);
-    private static readonly Color ButtonPrimary = new Color(0.30f, 0.40f, 0.50f, 1f);
-    private static readonly Color ButtonSecondary = new Color(0.35f, 0.35f, 0.35f, 1f);
+    // Theme - pulled from existing UI prefabs / Main.unity:
+    // - Panel backgrounds are white with slight alpha (uses built-in UI sprite 10907)
+    // - Title text is black
+    // - Body text is dark gray (~0.196)
+    // Slightly darker gray surfaces than pure white (per request), but still consistent with existing UI style.
+    private static readonly Color PanelBg = new Color(0.88f, 0.88f, 0.88f, 0.97f);
+    private static readonly Color HeaderBg = new Color(0.84f, 0.84f, 0.84f, 1f);
+    private static readonly Color FooterBg = new Color(0.84f, 0.84f, 0.84f, 1f);
+    private static readonly Color RowBg = new Color(0.90f, 0.90f, 0.90f, 1f);
+    private static readonly Color ButtonPrimary = new Color(1f, 1f, 1f, 1f);
+    private static readonly Color ButtonSecondary = new Color(1f, 1f, 1f, 1f);
+    private static readonly Color InputFieldBg = new Color(0.97f, 0.97f, 0.97f, 1f);
+    private static readonly Color TextDark = new Color(0.19607843f, 0.19607843f, 0.19607843f, 1f);
+    private static readonly Color TextTitle = new Color(0f, 0f, 0f, 1f);
+    private static readonly Color TextPlaceholder = new Color(0.19607843f, 0.19607843f, 0.19607843f, 0.5f);
+    private static readonly Color BackdropBg = new Color(0.12f, 0.12f, 0.12f, 0.65f);
 
     public static void Show()
     {
@@ -84,86 +94,356 @@ public class LLMSettingsPanel : MonoBehaviour
         return new TMP_DefaultControls.Resources();
     }
 
-    private void ApplyFontAndColor(GameObject go)
+    private static Sprite _checkmarkSprite;
+    private static Sprite _dropdownArrowSprite;
+    private static Sprite _uiBackgroundSprite;
+    private static Color? _checkmarkColor;
+    private static Color? _dropdownArrowColor;
+    private static bool _spritesCached;
+
+    private static bool _inputStyleCached;
+    private static Color _cachedSelectionColor = new Color(0.25f, 0.5f, 1f, 0.35f);
+    private static Color _cachedCaretColor = new Color(0.19607843f, 0.19607843f, 0.19607843f, 1f);
+    private static int _cachedCaretWidth = 2;
+
+    internal static void ConfigureInputFieldVisuals(TMP_InputField input, TMP_FontAsset fontOrNull)
     {
-        foreach (var t in go.GetComponentsInChildren<TextMeshProUGUI>(true))
+        if (input == null) return;
+
+        CacheInputStyleFromExistingInputField();
+
+        if (input.textComponent != null)
         {
-            t.font = _font;
-            t.fontSize = Mathf.Max(12, t.fontSize);
-            t.color = Color.white;
+            if (fontOrNull != null)
+                input.textComponent.font = fontOrNull;
+            input.textComponent.fontSize = BaseFontSize;
+            input.textComponent.color = TextDark;
+
+            // Prevent caret from getting clipped/invisible at the far right edge for long strings (e.g. endpoints).
+            var m = input.textComponent.margin;
+            input.textComponent.margin = new Vector4(m.x, m.y, Mathf.Max(m.z, 10f), m.w);
         }
 
-        // Restyle default control Images so nothing is white-on-white.
-        // TMP_DefaultControls creates white Image components; we force a dark theme here.
+        input.customCaretColor = true;
+        // Be explicit (don't rely on cached values) - we want visible caret + selection even during early boot.
+        input.caretColor = _cachedCaretColor.a <= 0.001f ? TextDark : _cachedCaretColor;
+        input.caretWidth = _cachedCaretWidth > 0 ? _cachedCaretWidth : 2;
+        input.selectionColor = _cachedSelectionColor.a <= 0.05f ? new Color(0.25f, 0.5f, 1f, 0.40f) : _cachedSelectionColor;
+
+        if (input.placeholder is TextMeshProUGUI ph)
+        {
+            if (fontOrNull != null)
+                ph.font = fontOrNull;
+            ph.fontSize = BaseFontSize;
+            ph.color = TextPlaceholder;
+        }
+    }
+
+    private void EnsureInputFieldFixer(TMP_InputField input)
+    {
+        if (input == null) return;
+
+        var fixer = input.GetComponent<LLMInputFieldVisualFixer>();
+        if (fixer == null)
+            fixer = input.gameObject.AddComponent<LLMInputFieldVisualFixer>();
+
+        fixer.Set(input, _font);
+    }
+
+    /// <summary>
+    /// Find and cache sprites from an existing TMP_Dropdown in the scene.
+    /// This reuses the same Checkmark and DropdownArrow sprites that other UI uses.
+    /// </summary>
+    private static void CacheSpritesFromExistingDropdown()
+    {
+        if (_spritesCached) return;
+
+        // IMPORTANT:
+        // On first open, FindAnyObjectByType may return the dropdown we just created in this panel,
+        // which often has null sprites (TMP_DefaultControls.Resources is empty). If we cache those,
+        // selection/checkmarks will be invisible until something later forces a refresh.
+        // So we scan all dropdowns and pick one OUTSIDE of this panel that has real sprites.
+        TMP_Dropdown best = null;
+        foreach (var dd in Resources.FindObjectsOfTypeAll<TMP_Dropdown>())
+        {
+            if (dd == null) continue;
+            if (_panelRoot != null && dd.transform.IsChildOf(_panelRoot.transform)) continue;
+
+            var ddImg = dd.GetComponent<Image>();
+            var arrowImg = dd.transform.Find("Arrow")?.GetComponent<Image>();
+            Sprite arrowSprite = arrowImg != null ? arrowImg.sprite : null;
+
+            Sprite checkSprite = null;
+            Color? checkColor = null;
+            if (dd.template != null)
+            {
+                foreach (var img in dd.template.GetComponentsInChildren<Image>(true))
+                {
+                    if (img != null && img.gameObject.name.Contains("Checkmark") && img.sprite != null)
+                    {
+                        checkSprite = img.sprite;
+                        checkColor = img.color;
+                        break;
+                    }
+                }
+            }
+
+            // Prefer a dropdown that has both arrow + checkmark sprites, plus a background sprite.
+            bool hasBg = ddImg != null && ddImg.sprite != null;
+            bool hasArrow = arrowSprite != null;
+            bool hasCheck = checkSprite != null;
+            if (hasBg && hasArrow && hasCheck)
+            {
+                best = dd;
+                break;
+            }
+
+            // Fallback: keep the best partial match (background + arrow at least).
+            if (best == null && hasBg && hasArrow)
+                best = dd;
+        }
+
+        if (best == null)
+        {
+            // Don't mark cached; try again later (e.g. after UI finishes booting).
+            return;
+        }
+
+        // Cache background sprite used by the existing UI dropdown (usually the built-in UI background)
+        var ddBg = best.GetComponent<Image>();
+        if (ddBg != null && ddBg.sprite != null)
+            _uiBackgroundSprite = ddBg.sprite;
+
+        // Find the Arrow image in the existing dropdown
+        var arrowTransform = best.transform.Find("Arrow");
+        if (arrowTransform != null)
+        {
+            var arrowImg = arrowTransform.GetComponent<Image>();
+            if (arrowImg != null && arrowImg.sprite != null)
+            {
+                _dropdownArrowSprite = arrowImg.sprite;
+                _dropdownArrowColor = arrowImg.color;
+            }
+        }
+
+        // Find the Checkmark in the template
+        if (best.template != null)
+        {
+            var checkmarks = best.template.GetComponentsInChildren<Image>(true);
+            foreach (var img in checkmarks)
+            {
+                if (img.gameObject.name.Contains("Checkmark") && img.sprite != null)
+                {
+                    _checkmarkSprite = img.sprite;
+                    _checkmarkColor = img.color;
+                    break;
+                }
+            }
+        }
+
+        // Only lock caching once we have the important sprites.
+        if (_uiBackgroundSprite != null && _dropdownArrowSprite != null && _checkmarkSprite != null)
+            _spritesCached = true;
+    }
+
+    private static void CacheInputStyleFromExistingInputField()
+    {
+        if (_inputStyleCached) return;
+
+        foreach (var input in Resources.FindObjectsOfTypeAll<TMP_InputField>())
+        {
+            if (input == null) continue;
+            if (_panelRoot != null && input.transform.IsChildOf(_panelRoot.transform)) continue;
+
+            // Use the first real input field we find.
+            _cachedSelectionColor = input.selectionColor;
+            _cachedCaretWidth = input.caretWidth;
+            _cachedCaretColor = input.customCaretColor ? input.caretColor : _cachedCaretColor;
+            _inputStyleCached = true;
+            break;
+        }
+    }
+
+    private static void ApplyUISprite(Image img)
+    {
+        if (img == null) return;
+        CacheSpritesFromExistingDropdown();
+        if (_uiBackgroundSprite != null)
+        {
+            img.sprite = _uiBackgroundSprite;
+            img.type = Image.Type.Sliced;
+        }
+    }
+
+    private static void ApplySolidBackground(Image img, Color color)
+    {
+        if (img == null) return;
+        img.sprite = null;
+        img.type = Image.Type.Simple;
+        img.color = color;
+    }
+
+    private void ApplyFontAndColor(GameObject go)
+    {
+        // Cache sprites from existing dropdowns in the scene
+        CacheSpritesFromExistingDropdown();
+        CacheInputStyleFromExistingInputField();
+
+        foreach (var t in go.GetComponentsInChildren<TextMeshProUGUI>(true))
+        {
+            if (_font != null)
+                t.font = _font;
+            t.fontSize = Mathf.Max(BaseFontSize, t.fontSize);
+            t.color = TextDark;
+        }
+
+        // Restyle default control Images to match existing UI.
         foreach (var img in go.GetComponentsInChildren<Image>(true))
         {
             string n = img.gameObject.name.ToLowerInvariant();
 
-            // Selection/check visuals
+            // Selection checkmark - use sprite from existing UI
             if (n.Contains("checkmark"))
             {
-                img.color = new Color(0.50f, 0.75f, 1.00f, 1f);
+                if (_checkmarkSprite != null)
+                    img.sprite = _checkmarkSprite;
+                img.color = _checkmarkColor ?? img.color;
                 continue;
             }
 
             if (n.Contains("handle"))
             {
-                img.color = new Color(0.45f, 0.45f, 0.50f, 1f);
                 continue;
             }
 
-            // Arrow icon (if present as Image)
+            // Arrow icon - use sprite from existing UI
             if (n.Contains("arrow"))
             {
-                img.color = new Color(0.75f, 0.75f, 0.75f, 1f);
+                if (_dropdownArrowSprite != null)
+                    img.sprite = _dropdownArrowSprite;
+                img.color = _dropdownArrowColor ?? img.color;
                 continue;
             }
 
-            // Everything else becomes a dark surface.
-            // (This covers InputField/Dropdown root backgrounds, template backgrounds, item backgrounds, etc.)
-            img.color = new Color(0.15f, 0.15f, 0.17f, 1f);
+            // Dropdown option list surfaces should be flat (no rounded rect / sliced sprite)
+            // to match the rest of the app's dropdown lists.
+            bool isDropdownListSurface =
+                n.Contains("template") ||
+                n.Contains("viewport") ||
+                n.Contains("item background") ||
+                n.Contains("dropdown list") ||
+                n.Contains("content");
+
+            if (isDropdownListSurface)
+            {
+                ApplySolidBackground(img, new Color(0.92f, 0.92f, 0.92f, 1f));
+                continue;
+            }
+
+            // For control backgrounds created via TMP_DefaultControls, ensure we use the same UI sprite + white fill.
+            bool isControlRoot = img.GetComponent<TMP_InputField>() != null || img.GetComponent<TMP_Dropdown>() != null;
+            bool isDropdownTemplateSurface =
+                n.Contains("template") || n.Contains("viewport") || n.Contains("item background") || n.Contains("content");
+
+            if (isControlRoot || isDropdownTemplateSurface)
+            {
+                ApplyUISprite(img);
+                img.color = InputFieldBg;
+            }
         }
 
-        // InputField placeholder text is often dark by default.
+        // InputField text colors for existing UI theme
         foreach (var input in go.GetComponentsInChildren<TMP_InputField>(true))
         {
-            if (input.textComponent != null)
-            {
-                input.textComponent.font = _font;
-                input.textComponent.fontSize = 12;
-                input.textComponent.color = Color.white;
-            }
-
-            if (input.placeholder is TextMeshProUGUI ph)
-            {
-                ph.font = _font;
-                ph.fontSize = 12;
-                ph.color = new Color(0.55f, 0.55f, 0.55f, 1f);
-            }
+            // Apply now, and also install a fixer that reapplies on enable/select.
+            ConfigureInputFieldVisuals(input, _font);
+            EnsureInputFieldFixer(input);
         }
 
-        // Dropdown item labels are often dark by default.
+        // If TMP has already spawned selection caret graphics, ensure they match our caret color (especially on first open).
+        foreach (var caret in go.GetComponentsInChildren<TMP_SelectionCaret>(true))
+        {
+            caret.color = _cachedCaretColor.a <= 0.001f ? TextDark : _cachedCaretColor;
+        }
+
+        // Dropdown text colors for light theme
         foreach (var dd in go.GetComponentsInChildren<TMP_Dropdown>(true))
         {
             if (dd.captionText != null)
             {
                 dd.captionText.font = _font;
-                dd.captionText.fontSize = 12;
-                dd.captionText.color = Color.white;
+                dd.captionText.fontSize = BaseFontSize;
+                dd.captionText.color = TextDark;
             }
             if (dd.itemText != null)
             {
                 dd.itemText.font = _font;
-                dd.itemText.fontSize = 12;
-                dd.itemText.color = Color.white;
+                dd.itemText.fontSize = BaseFontSize;
+                dd.itemText.color = TextDark;
             }
         }
+    }
+
+    private System.Collections.IEnumerator RestyleNextFrame()
+    {
+        // Wait one frame so TMP can finish internal initialization/layout,
+        // then restyle again (fixes "first open after app start" missing caret/selection).
+        yield return null;
+        if (_panelRoot != null)
+            ApplyFontAndColor(_panelRoot);
+
+        // IMPORTANT:
+        // On first open after app start, TMP_InputField can end up with caret/selection visuals not fully initialized
+        // until the containing provider section is disabled/enabled once (which is what "switch provider" does).
+        // We replicate that lifecycle here once to ensure caret + selection work immediately.
+        if (_panelRoot != null)
+            ForceReinitializeTMPInputFields();
+
+        // If sprite caching failed during early boot, try one more time shortly after.
+        yield return new WaitForSeconds(0.05f);
+        if (_panelRoot != null)
+        {
+            ApplyFontAndColor(_panelRoot);
+            ForceReinitializeTMPInputFields();
+        }
+    }
+
+    private void ForceReinitializeTMPInputFields()
+    {
+        // Force TMP to rebuild caret/selection internals by toggling the component.
+        // This mirrors what happens when switching providers (sections disable/enable).
+        foreach (var input in _panelRoot.GetComponentsInChildren<TMP_InputField>(true))
+        {
+            if (input == null) continue;
+
+            bool wasEnabled = input.enabled;
+            input.enabled = false;
+            input.enabled = true;
+
+            // Reapply our visuals after TMP's OnEnable runs.
+            ConfigureInputFieldVisuals(input, _font);
+            EnsureInputFieldFixer(input);
+
+            // Force text geometry/caret layout update.
+            input.ForceLabelUpdate();
+
+            // Ensure any spawned caret graphic uses our caret color.
+            foreach (var caret in input.GetComponentsInChildren<TMP_SelectionCaret>(true))
+                caret.color = input.caretColor;
+
+            // Preserve original enabled state if it was disabled for some reason.
+            if (!wasEnabled)
+                input.enabled = false;
+        }
+
+        Canvas.ForceUpdateCanvases();
     }
 
     private void CreateUI()
     {
         _font = FindFont();
         _workingSettings = LLMSettingsManager.Get().GetSettingsClone();
+        CacheSpritesFromExistingDropdown();
 
         // Canvas
         var canvas = _panelRoot.AddComponent<Canvas>();
@@ -177,6 +457,18 @@ public class LLMSettingsPanel : MonoBehaviour
 
         _panelRoot.AddComponent<GraphicRaycaster>();
 
+        // Darken the background behind the modal, matching the rest of the app's dialog behavior.
+        var backdrop = new GameObject("Backdrop");
+        backdrop.transform.SetParent(_panelRoot.transform, false);
+        var backdropRt = backdrop.AddComponent<RectTransform>();
+        backdropRt.anchorMin = Vector2.zero;
+        backdropRt.anchorMax = Vector2.one;
+        backdropRt.offsetMin = Vector2.zero;
+        backdropRt.offsetMax = Vector2.zero;
+        var backdropImg = backdrop.AddComponent<Image>();
+        backdropImg.color = BackdropBg;
+        backdropImg.raycastTarget = true; // block clicks to underlying UI while the modal is open
+
         // Main panel
         var main = new GameObject("MainPanel");
         main.transform.SetParent(_panelRoot.transform, false);
@@ -185,7 +477,9 @@ public class LLMSettingsPanel : MonoBehaviour
         _mainPanel.anchorMax = new Vector2(0.5f, 0.5f);
         _mainPanel.pivot = new Vector2(0.5f, 0.5f);
         _mainPanel.sizeDelta = new Vector2(PANEL_WIDTH, PANEL_HEIGHT);
-        main.AddComponent<Image>().color = PanelBg;
+        var panelImg = main.AddComponent<Image>();
+        ApplyUISprite(panelImg);
+        panelImg.color = PanelBg;
 
         CreateHeader();
         RectTransform contentRoot = CreateContentRoot();
@@ -194,6 +488,9 @@ public class LLMSettingsPanel : MonoBehaviour
         BuildContent(contentRoot);
 
         RefreshFromSettings();
+
+        // Ensure initial open gets correct caret/selection styling even during early boot.
+        StartCoroutine(RestyleNextFrame());
     }
 
     private void CreateHeader()
@@ -206,7 +503,9 @@ public class LLMSettingsPanel : MonoBehaviour
         rt.pivot = new Vector2(0.5f, 1);
         rt.sizeDelta = new Vector2(0, HEADER_HEIGHT);
         rt.anchoredPosition = Vector2.zero;
-        header.AddComponent<Image>().color = HeaderBg;
+        var headerImg = header.AddComponent<Image>();
+        ApplyUISprite(headerImg);
+        headerImg.color = HeaderBg;
 
         header.AddComponent<PanelDragHandler>().SetTarget(_mainPanel);
 
@@ -222,9 +521,9 @@ public class LLMSettingsPanel : MonoBehaviour
         var title = titleObj.AddComponent<TextMeshProUGUI>();
         title.text = "LLM Settings";
         title.font = _font;
-        title.fontSize = 15;
+        title.fontSize = 18;
         title.fontStyle = FontStyles.Bold;
-        title.color = Color.white;
+        title.color = TextTitle;
         title.alignment = TextAlignmentOptions.MidlineLeft;
 
         // Close button
@@ -253,7 +552,7 @@ public class LLMSettingsPanel : MonoBehaviour
         var xTxt = xObj.AddComponent<TextMeshProUGUI>();
         xTxt.text = "X";
         xTxt.font = _font;
-        xTxt.fontSize = 13;
+        xTxt.fontSize = 15;
         xTxt.color = Color.white;
         xTxt.alignment = TextAlignmentOptions.Center;
     }
@@ -280,7 +579,9 @@ public class LLMSettingsPanel : MonoBehaviour
         rt.pivot = new Vector2(0.5f, 0);
         rt.sizeDelta = new Vector2(0, FOOTER_HEIGHT);
         rt.anchoredPosition = Vector2.zero;
-        footer.AddComponent<Image>().color = FooterBg;
+        var footerImg = footer.AddComponent<Image>();
+        ApplyUISprite(footerImg);
+        footerImg.color = FooterBg;
 
         CreateFooterButton(footer.transform, "Save", ButtonPrimary, -70f, OnSaveClicked);
         CreateFooterButton(footer.transform, "Cancel", ButtonSecondary, 70f, Hide);
@@ -298,10 +599,23 @@ public class LLMSettingsPanel : MonoBehaviour
         rt.sizeDelta = new Vector2(110, 32);
 
         var img = btn.AddComponent<Image>();
+        ApplyUISprite(img);
         img.color = bg;
         var button = btn.AddComponent<Button>();
         button.targetGraphic = img;
         button.onClick.AddListener(onClick);
+
+        // Match existing UI button tint behavior
+        button.colors = new ColorBlock
+        {
+            normalColor = Color.white,
+            highlightedColor = new Color(0.9607843f, 0.9607843f, 0.9607843f, 1f),
+            pressedColor = new Color(0.78431374f, 0.78431374f, 0.78431374f, 1f),
+            selectedColor = new Color(0.9607843f, 0.9607843f, 0.9607843f, 1f),
+            disabledColor = new Color(0.78431374f, 0.78431374f, 0.78431374f, 0.5019608f),
+            colorMultiplier = 1f,
+            fadeDuration = 0.1f
+        };
 
         var txtObj = new GameObject("Text");
         txtObj.transform.SetParent(btn.transform, false);
@@ -314,9 +628,9 @@ public class LLMSettingsPanel : MonoBehaviour
         var tmp = txtObj.AddComponent<TextMeshProUGUI>();
         tmp.font = _font;
         tmp.text = text;
-        tmp.fontSize = 13;
+        tmp.fontSize = 15;
         tmp.fontStyle = FontStyles.Bold;
-        tmp.color = Color.white;
+        tmp.color = TextTitle;
         tmp.alignment = TextAlignmentOptions.Center;
     }
 
@@ -346,6 +660,7 @@ public class LLMSettingsPanel : MonoBehaviour
         vpRt.offsetMin = Vector2.zero;
         vpRt.offsetMax = new Vector2(-22, 0);
         var vpImg = viewport.AddComponent<Image>();
+        ApplyUISprite(vpImg);
         vpImg.color = PanelBg;
         var mask = viewport.AddComponent<Mask>();
         mask.showMaskGraphic = true;
@@ -425,13 +740,15 @@ public class LLMSettingsPanel : MonoBehaviour
 
     private void CreateActiveProviderRow(Transform parent)
     {
-        const float rowHeight = 32f;
+        const float rowHeight = 40f;
         const float labelWidth = 140f;
         const float pad = 12f;
 
         var row = new GameObject("ActiveProviderRow");
         row.transform.SetParent(parent, false);
-        row.AddComponent<Image>().color = RowBg;
+        var rowImg = row.AddComponent<Image>();
+        ApplyUISprite(rowImg);
+        rowImg.color = RowBg;
         var rowLE = row.AddComponent<LayoutElement>();
         rowLE.preferredHeight = rowHeight;
 
@@ -451,8 +768,8 @@ public class LLMSettingsPanel : MonoBehaviour
         var label = labelObj.AddComponent<TextMeshProUGUI>();
         label.font = _font;
         label.text = "Active Provider:";
-        label.fontSize = 13;
-        label.color = Color.white;
+        label.fontSize = 15;
+        label.color = TextDark;
         label.alignment = TextAlignmentOptions.MidlineLeft;
 
         // Dropdown (TMP_DefaultControls)
@@ -488,16 +805,16 @@ public class LLMSettingsPanel : MonoBehaviour
         if (_activeProviderDropdown.captionText != null)
         {
             _activeProviderDropdown.captionText.font = _font;
-            _activeProviderDropdown.captionText.fontSize = 12;
-            _activeProviderDropdown.captionText.color = Color.white;
+            _activeProviderDropdown.captionText.fontSize = BaseFontSize;
+            _activeProviderDropdown.captionText.color = TextDark;
         }
 
         // Ensure item text uses our font
         if (_activeProviderDropdown.itemText != null)
         {
             _activeProviderDropdown.itemText.font = _font;
-            _activeProviderDropdown.itemText.fontSize = 12;
-            _activeProviderDropdown.itemText.color = Color.white;
+            _activeProviderDropdown.itemText.fontSize = BaseFontSize;
+            _activeProviderDropdown.itemText.color = TextDark;
         }
     }
 
@@ -505,6 +822,8 @@ public class LLMSettingsPanel : MonoBehaviour
     {
         _workingSettings.activeProvider = (LLMProvider)index;
         UpdateVisibleProvider();
+        if (_panelRoot != null)
+            ApplyFontAndColor(_panelRoot);
     }
 
     private void UpdateVisibleProvider()
@@ -606,5 +925,54 @@ public class PanelDragHandler : MonoBehaviour, IDragHandler, IBeginDragHandler
             eventData.pressEventCamera,
             out Vector2 localPoint);
         _target.anchoredPosition = localPoint + _dragOffset;
+    }
+}
+
+/// <summary>
+/// Ensures TMP_InputField caret + selection remain visible on the first open after app start.
+/// TMP can overwrite some visuals during initialization; reapplying on enable/select fixes it reliably.
+/// </summary>
+public class LLMInputFieldVisualFixer : MonoBehaviour, ISelectHandler
+{
+    private TMP_InputField _input;
+    private TMP_FontAsset _font;
+
+    public void Set(TMP_InputField input, TMP_FontAsset font)
+    {
+        _input = input;
+        _font = font;
+    }
+
+    private void OnEnable()
+    {
+        LLMSettingsPanel.ConfigureInputFieldVisuals(_input, _font);
+        StartCoroutine(ReapplyAfterTMPInit());
+    }
+
+    public void OnSelect(BaseEventData eventData)
+    {
+        LLMSettingsPanel.ConfigureInputFieldVisuals(_input, _font);
+        StartCoroutine(ReapplyAfterTMPInit());
+
+        // Ensure TMP is in "active editing" state immediately (helps caret creation on first open).
+        if (_input != null)
+            _input.ActivateInputField();
+    }
+
+    private System.Collections.IEnumerator ReapplyAfterTMPInit()
+    {
+        // TMP often creates its caret graphic late (end of frame). Reapply after it exists.
+        yield return null;
+
+        LLMSettingsPanel.ConfigureInputFieldVisuals(_input, _font);
+
+        // If TMP has spawned a TMP_SelectionCaret graphic, ensure it uses our caret color.
+        if (_input != null)
+        {
+            foreach (var caret in _input.GetComponentsInChildren<TMP_SelectionCaret>(true))
+            {
+                caret.color = _input.caretColor;
+            }
+        }
     }
 }

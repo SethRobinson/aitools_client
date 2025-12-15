@@ -21,12 +21,16 @@ public class LLMProviderUI
     private readonly TMP_DefaultControls.Resources _tmpResources;
     private readonly Action<GameObject> _styleApplier;
 
-    private static readonly Color SectionBg = new Color(0.20f, 0.20f, 0.22f, 1f);
-    private static readonly Color HeaderColor = new Color(0.50f, 0.75f, 1.00f, 1f);
-    private static readonly Color LabelColor = new Color(0.75f, 0.75f, 0.75f, 1f);
-    private static readonly Color ButtonBg = new Color(0.30f, 0.45f, 0.60f, 1f);
+    // Theme pulled from existing UI: white surfaces + dark text
+    // (Panel/backplate sprite is applied by LLMSettingsPanel.ApplyFontAndColor via TMP_DefaultControls styling.)
+    private static readonly Color SectionBg = new Color(1f, 1f, 1f, 0f); // let parent panel show through
+    private static readonly Color HeaderColor = new Color(0f, 0.45f, 0.70f, 1f); // keep the blue section heading
+    private static readonly Color LabelColor = new Color(0.19607843f, 0.19607843f, 0.19607843f, 1f);
+    private static readonly Color ButtonBg = new Color(1f, 1f, 1f, 1f);
+    private static readonly Color InputBg = new Color(1f, 1f, 1f, 1f);
+    private static readonly Color TextDark = new Color(0.19607843f, 0.19607843f, 0.19607843f, 1f);
 
-    private const float RowHeight = 34f;
+    private const float RowHeight = 40f;
     private const float LabelWidth = 110f;
 
     public LLMProviderUI(LLMProvider provider, TMP_FontAsset font, TMP_DefaultControls.Resources tmpResources, Action<GameObject> styleApplier)
@@ -41,6 +45,7 @@ public class LLMProviderUI
     {
         sectionRoot = new GameObject(_provider + "Section");
         sectionRoot.transform.SetParent(parent, false);
+        // Keep a transparent image so layout/background remains consistent if needed, but don't tint the panel.
         sectionRoot.AddComponent<Image>().color = SectionBg;
 
         var vlg = sectionRoot.AddComponent<VerticalLayoutGroup>();
@@ -93,9 +98,9 @@ public class LLMProviderUI
         inputGo.name = "Input_" + labelText;
         inputGo.transform.SetParent(row.transform, false);
         _styleApplier?.Invoke(inputGo);
-        // Ensure the root background isn't white even if child naming differs.
+        // Ensure the root background matches light theme
         var inputRootImg = inputGo.GetComponent<Image>();
-        if (inputRootImg != null) inputRootImg.color = new Color(0.15f, 0.15f, 0.17f, 1f);
+        if (inputRootImg != null) inputRootImg.color = InputBg;
 
         var inputRt = inputGo.GetComponent<RectTransform>();
         inputRt.anchorMin = new Vector2(0, 0);
@@ -111,14 +116,14 @@ public class LLMProviderUI
             if (input.textComponent != null)
             {
                 input.textComponent.font = _font;
-                input.textComponent.fontSize = 12;
-                input.textComponent.color = Color.white;
+                input.textComponent.fontSize = 14;
+                input.textComponent.color = TextDark;
             }
             if (input.placeholder is TextMeshProUGUI ph)
             {
                 ph.font = _font;
-                ph.fontSize = 12;
-                ph.color = new Color(0.55f, 0.55f, 0.55f, 1f);
+                ph.fontSize = 14;
+                ph.color = new Color(0.45f, 0.45f, 0.50f, 1f);
             }
         }
 
@@ -135,9 +140,9 @@ public class LLMProviderUI
         ddGo.name = "ModelDropdown";
         ddGo.transform.SetParent(row.transform, false);
         _styleApplier?.Invoke(ddGo);
-        // Ensure the root background isn't white even if child naming differs.
+        // Ensure the root background matches light theme
         var ddRootImg = ddGo.GetComponent<Image>();
-        if (ddRootImg != null) ddRootImg.color = new Color(0.15f, 0.15f, 0.17f, 1f);
+        if (ddRootImg != null) ddRootImg.color = InputBg;
 
         var ddRt = ddGo.GetComponent<RectTransform>();
         ddRt.anchorMin = new Vector2(0, 0);
@@ -155,14 +160,14 @@ public class LLMProviderUI
             if (modelDropdown.captionText != null)
             {
                 modelDropdown.captionText.font = _font;
-                modelDropdown.captionText.fontSize = 12;
-                modelDropdown.captionText.color = Color.white;
+                modelDropdown.captionText.fontSize = 14;
+                modelDropdown.captionText.color = TextDark;
             }
             if (modelDropdown.itemText != null)
             {
                 modelDropdown.itemText.font = _font;
-                modelDropdown.itemText.fontSize = 12;
-                modelDropdown.itemText.color = Color.white;
+                modelDropdown.itemText.fontSize = 14;
+                modelDropdown.itemText.color = TextDark;
             }
 
             if (modelDropdown.template != null)
@@ -244,7 +249,7 @@ public class LLMProviderUI
         var tmp = txtObj.AddComponent<TextMeshProUGUI>();
         tmp.font = _font;
         tmp.fontSize = 11;
-        tmp.color = Color.white;
+        tmp.color = Color.black;
         tmp.alignment = TextAlignmentOptions.Center;
         tmp.text = text;
 
