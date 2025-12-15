@@ -1579,18 +1579,30 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
     public void OnRenderWithOpenAIImage()
     {
-       
         var e = new ScheduledGPUEvent();
         GetCurrentStats().m_requestedRenderer = RTRendererType.OpenAI_Image;
 
-        //let's set the GPUID for the heck of it
+        // First check if an OpenAI API key is configured
+        string apiKey = Config.Get().GetOpenAI_APIKey();
+        if (string.IsNullOrEmpty(apiKey) || apiKey.Length < 10)
+        {
+            RTQuickMessageManager.Get().ShowMessage("OpenAI API key not set. Go to LLM Settings and add your OpenAI API key.", 5);
+            SetStatusMessage("No OpenAI API key");
+            OnFinishedRenderingWorkflow(false);
+            return;
+        }
+
+        // Try to add OpenAI Image GPU if not already added (in case key was added after startup)
+        Config.Get().TryAddOpenAIImageGPU();
 
         GetCurrentStats().m_gpu = Config.Get().GetFreeGPU(RTRendererType.OpenAI_Image, true);
 
         if (GetCurrentStats().m_gpu == -1)
         {
-            //write message they can see
-            RTQuickMessageManager.Get().ShowMessage("No OpenAI Image server is connected to, check your config");
+            // This shouldn't happen if API key is set, but just in case
+            RTQuickMessageManager.Get().ShowMessage("OpenAI Image not available. Check LLM Settings for your API key.", 5);
+            SetStatusMessage("OpenAI Image unavailable");
+            OnFinishedRenderingWorkflow(false);
             return;
         }
 
@@ -1612,9 +1624,8 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
         string json = openAIImageScript.BuildJSON(m_picTextToImageScript.GetPrompt(), "gpt-image-1");
 
-        //test
         RTDB db = new RTDB();
-        openAIImageScript.SpawnRequest(json, OnOpenAIImageCompletedCallback, db, Config.Get().GetOpenAI_APIKey());
+        openAIImageScript.SpawnRequest(json, OnOpenAIImageCompletedCallback, db, apiKey);
 
         //Oh, let's start a timer
         StartGenericTimer("OpenAI Image...");
@@ -1625,17 +1636,25 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         StopGenericTimer();
         if (texture == null)
         {
-            Debug.Log("Error getting OpenAI image: " + db.GetString("msg"));
+            string errorMsg = db.GetString("msg");
+            Debug.Log("Error getting OpenAI image: " + errorMsg);
 
             //if 429 (Too Many Requests) is in the text we'll wait and try again
-            if (db.GetString("msg").Contains("429"))
+            if (errorMsg.Contains("429"))
             {
                Debug.Log("Got 429, waiting 5 seconds and trying again");
                RTMessageManager.Get().Schedule(UnityEngine.Random.Range(5.0f, 10.0f), OnRenderWithOpenAIImage);
             }
+            else if (errorMsg.Contains("401") || errorMsg.Contains("Unauthorized"))
+            {
+                // API key is invalid
+                RTQuickMessageManager.Get().ShowMessage("OpenAI API key is invalid. Check LLM Settings.", 5);
+                SetStatusMessage("Invalid API key");
+                OnFinishedRenderingWorkflow(false);
+            }
             else
             {
-                SetStatusMessage("" + db.GetString("msg"));
+                SetStatusMessage("" + errorMsg);
                 // Mark job as finished so the pic is no longer considered busy
                 OnFinishedRenderingWorkflow(false);
             }
@@ -2276,12 +2295,32 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             neededRenderer = m_picJobs[0].requestedRenderer;
         }
 
+        // Special handling for OpenAI_Image - try to add GPU if API key exists
+        if (neededRenderer == RTRendererType.OpenAI_Image)
+        {
+            Config.Get().TryAddOpenAIImageGPU();
+        }
+
         int serverID = Config.Get().GetFreeGPU(neededRenderer, false);
 
         if (serverID == -1 && m_requirements == "gpu")
         {
-             SetStatusMessage("Waiting for GPU...");
-                //nothing available yet
+            // Special handling for OpenAI_Image - show helpful error message
+            if (neededRenderer == RTRendererType.OpenAI_Image)
+            {
+                string apiKey = Config.Get().GetOpenAI_APIKey();
+                if (string.IsNullOrEmpty(apiKey) || apiKey.Length < 10)
+                {
+                    RTQuickMessageManager.Get().ShowMessage("OpenAI API key not set. Go to LLM Settings and add your OpenAI API key.", 5);
+                    SetStatusMessage("No OpenAI API key");
+                    ClearJobs();
+                    OnFinishedRenderingWorkflow(false);
+                    return;
+                }
+            }
+            
+            SetStatusMessage("Waiting for GPU...");
+            //nothing available yet
             return;
         } else
         {

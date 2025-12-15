@@ -443,8 +443,62 @@ public class ImageGenerator : MonoBehaviour
 
             if (GameLogic.Get().GetGlobalRenderer() == RTRendererType.OpenAI_Image)
             {
-                //special case
-                gpuToUse = Config.Get().GetFirstGPUIncludingOpenAI();
+                // Try to add OpenAI GPU if not registered (in case API key was added after startup)
+                Config.Get().TryAddOpenAIImageGPU();
+                
+                // Check if an OpenAI_Image GPU specifically exists
+                int openAIGpu = Config.Get().GetFreeGPU(RTRendererType.OpenAI_Image, true);
+                
+                if (openAIGpu == -1)
+                {
+                    // No OpenAI GPU - check if API key is missing and show error
+                    string apiKey = Config.Get().GetOpenAI_APIKey();
+                    if (string.IsNullOrEmpty(apiKey) || apiKey.Length < 10)
+                    {
+                        RTQuickMessageManager.Get().ShowMessage("OpenAI API key not set. Go to LLM Settings and add your OpenAI API key.", 5);
+                    }
+                    else
+                    {
+                        RTQuickMessageManager.Get().ShowMessage("OpenAI Image not available. Try restarting the app.", 5);
+                    }
+                    
+                    // Fail all queued events that require OpenAI Image
+                    LinkedList<ScheduledGPUEvent> remainingEvents = new LinkedList<ScheduledGPUEvent>();
+                    while (m_gpuEventList.Count > 0)
+                    {
+                        var evt = m_gpuEventList.First.Value;
+                        m_gpuEventList.RemoveFirst();
+                        
+                        // Check if this event needs OpenAI Image
+                        bool needsOpenAI = evt.requestedRenderer == RTRendererType.OpenAI_Image ||
+                                           (evt.requestedRenderer == RTRendererType.Any_Local && 
+                                            GameLogic.Get().GetGlobalRenderer() == RTRendererType.OpenAI_Image);
+                        
+                        if (needsOpenAI && evt.targetObj != null)
+                        {
+                            var picMain = evt.targetObj.GetComponent<PicMain>();
+                            if (picMain != null)
+                            {
+                                picMain.SetStatusMessage("No OpenAI API key");
+                                picMain.OnFinishedRenderingWorkflow(false);
+                            }
+                        }
+                        else
+                        {
+                            // Keep non-OpenAI events
+                            remainingEvents.AddLast(evt);
+                        }
+                    }
+                    
+                    // Restore non-OpenAI events
+                    foreach (var evt in remainingEvents)
+                    {
+                        m_gpuEventList.AddLast(evt);
+                    }
+                    return;
+                }
+                
+                gpuToUse = openAIGpu;
             }
 
             if (gpuToUse == -1)

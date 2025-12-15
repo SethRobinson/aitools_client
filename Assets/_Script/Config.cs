@@ -303,6 +303,49 @@ set_default_audio_negative_prompt|music|
 
         RTQuickMessageManager.Get().ShowMessage("Connecting...");
         ProcessConfigString(m_configText);
+        
+        // After processing config, check if we should add an OpenAI Image GPU
+        TryAddOpenAIImageGPU();
+    }
+
+    /// <summary>
+    /// Checks if an OpenAI API key is available and adds a virtual OpenAI_Image GPU if needed.
+    /// This allows using the OpenAI Image renderer without needing an add_server command.
+    /// </summary>
+    public void TryAddOpenAIImageGPU()
+    {
+        // Check if we already have an OpenAI_Image GPU
+        for (int i = 0; i < GetGPUCount(); i++)
+        {
+            if (GetGPUInfo(i)._requestedRendererType == RTRendererType.OpenAI_Image)
+            {
+                Debug.Log("TryAddOpenAIImageGPU: Already have OpenAI_Image GPU at index " + i);
+                return; // Already have one
+            }
+        }
+
+        // Check if OpenAI API key is available
+        string apiKey = GetOpenAI_APIKey();
+        Debug.Log("TryAddOpenAIImageGPU: API key length = " + (apiKey != null ? apiKey.Length.ToString() : "null"));
+        
+        if (!string.IsNullOrEmpty(apiKey) && apiKey.Length > 10)
+        {
+            // Add a virtual OpenAI_Image GPU
+            GPUInfo gpuInfo = new GPUInfo();
+            gpuInfo._requestedRendererType = RTRendererType.OpenAI_Image;
+            gpuInfo.isLocal = false; // OpenAI API is not local
+            gpuInfo.remoteURL = "https://api.openai.com";
+            gpuInfo._name = "OpenAI Image";
+            gpuInfo._bIsActive = true;
+            AddGPU(gpuInfo);
+            
+            Debug.Log("TryAddOpenAIImageGPU: Added OpenAI Image GPU successfully");
+            RTConsole.Log("Added OpenAI Image GPU (API key found)");
+        }
+        else
+        {
+            Debug.Log("TryAddOpenAIImageGPU: No valid API key found, cannot add OpenAI GPU");
+        }
     }
 
     public void PopulateRendererDropDown(TMP_Dropdown rendererSelectionDropdown)
@@ -355,9 +398,22 @@ set_default_audio_negative_prompt|music|
 
     public int GetFirstGPUIncludingOpenAI()
     {
-        for (int i = 0; i < GetGPUCount();)
+        // First, prefer an OpenAI_Image GPU if available
+        for (int i = 0; i < GetGPUCount(); i++)
         {
-            return i;
+            if (GetGPUInfo(i)._requestedRendererType == RTRendererType.OpenAI_Image && GetGPUInfo(i)._bIsActive)
+            {
+                return i;
+            }
+        }
+        
+        // If no OpenAI GPU found, return first available GPU
+        for (int i = 0; i < GetGPUCount(); i++)
+        {
+            if (GetGPUInfo(i)._bIsActive)
+            {
+                return i;
+            }
         }
 
         return -1;
