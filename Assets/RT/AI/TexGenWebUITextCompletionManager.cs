@@ -7,6 +7,7 @@ using UnityEngine.Networking;
 using System.IO;
 
 
+[System.Serializable]
 public class LLMParm
 {
     public string _key;

@@ -178,7 +178,8 @@ public class Config : MonoBehaviour
             var provider = mgr.GetActiveProvider();
             if (provider == LLMProvider.Ollama || provider == LLMProvider.LlamaCpp)
             {
-                var parms = mgr.GetExtraParams(provider);
+                // Use GetLLMParms which includes the model parameter
+                var parms = mgr.GetLLMParms(provider);
                 if (parms != null && parms.Count > 0) return parms;
             }
         }

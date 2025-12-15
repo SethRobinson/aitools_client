@@ -313,6 +313,45 @@ public class LLMSettingsManager : MonoBehaviour
     }
 
     /// <summary>
+    /// Get all LLM parameters for a specific provider, including the model.
+    /// This is used for building API requests.
+    /// </summary>
+    public List<LLMParm> GetLLMParms(LLMProvider provider)
+    {
+        var settings = _settings.GetProviderSettings(provider);
+        var result = new List<LLMParm>();
+
+        // Add the model if it's set
+        if (!string.IsNullOrEmpty(settings.selectedModel))
+        {
+            result.Add(new LLMParm { _key = "model", _value = settings.selectedModel });
+        }
+
+        // Add all extra parameters (null check for deserialization safety)
+        if (settings.extraParams != null)
+        {
+            foreach (var parm in settings.extraParams)
+            {
+                // Don't add duplicate model parameter
+                if (parm._key != "model")
+                {
+                    result.Add(new LLMParm { _key = parm._key, _value = parm._value });
+                }
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Get all LLM parameters for the active provider, including the model.
+    /// </summary>
+    public List<LLMParm> GetLLMParms()
+    {
+        return GetLLMParms(_settings.activeProvider);
+    }
+
+    /// <summary>
     /// Check if the active provider is Ollama.
     /// </summary>
     public bool IsOllama()
