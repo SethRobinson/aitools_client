@@ -293,47 +293,10 @@ public class Config : MonoBehaviour
 #Optional:
 set_image_editor|C:\Program Files\Adobe\Adobe Photoshop 2025\Photoshop.exe
 
-#To generate text with the AI Guide features, you need at least one LLM. (or all, you can switch between them in the app)
-
-#OPENAI (works for LLM and OpenAI Image as renderer)
-set_openai_gpt4_key|<key goes here>|
-set_openai_gpt4_model|gpt-4o|
-set_openai_gpt4_endpoint|https://api.openai.com/v1/chat/completions|
-
-#address of your generic LLM to use, can be local, on your LAN, remote, etc (text-generation-webui or TabbyAPI API format)
-set_generic_llm_address|localhost:5000|
-#if your generic LLM needs a key, enter it here (or leave as ""none"")
-set_generic_llm_api_key|none|
-
-#what we tell the model to use. If you notice the llm is forgetting things or messing up, your model might not be an instruct-compatible model, try llama 3.3 with Ollama as a test.
-set_generic_llm_mode|chat-instruct|
-
-#this is needed if using an ollama server, otherwise you'll see a ""model is required"" error.  Note that might cause the model to be loaded which means a huge delay at first.
-add_generic_llm_parm|model|""llama3.3""|#needed for ollama, the model you want to use
-#add_generic_llm_parm|num_ctx|131072|#needed for ollama, the context size you want the model to load with (we'll create a custom profile with an _ait extension)
-#add_generic_llm_parm|temperature|1.0|#allows you to globally override LLM temperatures
-#add_generic_llm_parm|max_tokens|4096|
-
-#some things you could play with
-#add_generic_llm_parm|stop|[""<`eot_id`>"", ""<`eom_id`>"", ""<`end_header_id`>""]|#Note that ` gets turned into |
-#add_generic_llm_parm|stopping_strings|[""<`eot_id`>"", ""<`eom_id`>"", ""<`end_header_id`>""]|
-
-#the following allow you to override the default system, assistant, and user keywords for the generic LLM, if needed.  
-#different LLMs are trained on different words, if the llm server you use doesn't hide this from you, you might notice weird
-#or buggy behavior if these aren't changed to match what that specific llm wants
-#set_generic_llm_system_keyword|system|#default is system
-#set_generic_llm_assistant_keyword|assistant|#default is assistant
-#set_generic_llm_user_keyword|user|#default is user
-      
-#Anthropic LLM
-set_anthropic_ai_key|<key goes here>|
-set_anthropic_ai_model|claude-3-7-sonnet-latest|
-set_anthropic_ai_endpoint|https://api.anthropic.com/v1/messages|
 
 #if you're using a ComfyUI workflow that creates audio, and you don't have AITOOLS_AUDIO_PROMPT or AITOOLS_AUDIO_NEGATIVE_PROMPT set in the ComfyUI workflow, these are used as defaults:
 set_default_audio_prompt|audio that perfectly matches the onscreen action|
 set_default_audio_negative_prompt|music|
-
 ";
             
         }

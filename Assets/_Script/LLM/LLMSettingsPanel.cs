@@ -605,11 +605,12 @@ public class LLMSettingsPanel : MonoBehaviour
         ApplyUISprite(footerImg);
         footerImg.color = FooterBg;
 
-        CreateFooterButton(footer.transform, "Save", ButtonPrimary, -70f, OnSaveClicked);
-        CreateFooterButton(footer.transform, "Cancel", ButtonSecondary, 70f, Hide);
+        CreateFooterButton(footer.transform, "Apply and close", ButtonPrimary, -135f, 130f, OnApplyAndCloseClicked);
+        CreateFooterButton(footer.transform, "Apply", ButtonPrimary, 10f, 90f, OnApplyClicked);
+        CreateFooterButton(footer.transform, "Cancel", ButtonSecondary, 120f, 90f, Hide);
     }
 
-    private void CreateFooterButton(Transform parent, string text, Color bg, float xOffset, UnityEngine.Events.UnityAction onClick)
+    private void CreateFooterButton(Transform parent, string text, Color bg, float xOffset, float width, UnityEngine.Events.UnityAction onClick)
     {
         var btn = new GameObject("Btn_" + text);
         btn.transform.SetParent(parent, false);
@@ -618,7 +619,7 @@ public class LLMSettingsPanel : MonoBehaviour
         rt.anchorMax = new Vector2(0.5f, 0.5f);
         rt.pivot = new Vector2(0.5f, 0.5f);
         rt.anchoredPosition = new Vector2(xOffset, 0);
-        rt.sizeDelta = new Vector2(110, 32);
+        rt.sizeDelta = new Vector2(width, 32);
 
         var img = btn.AddComponent<Image>();
         ApplyUISprite(img);
@@ -882,7 +883,7 @@ public class LLMSettingsPanel : MonoBehaviour
         });
     }
 
-    private void OnSaveClicked()
+    private void ApplySettings()
     {
         _openAIUI.ApplyToSettings(_workingSettings.openAI);
         _anthropicUI.ApplyToSettings(_workingSettings.anthropic);
@@ -895,6 +896,16 @@ public class LLMSettingsPanel : MonoBehaviour
             GameLogic.Get().UpdateActiveLLMLabel();
         }
         RTQuickMessageManager.Get().ShowMessage("LLM settings saved");
+    }
+
+    private void OnApplyClicked()
+    {
+        ApplySettings();
+    }
+
+    private void OnApplyAndCloseClicked()
+    {
+        ApplySettings();
         Hide();
     }
 
