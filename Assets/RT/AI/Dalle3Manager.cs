@@ -61,8 +61,6 @@ public class Dalle3Manager : MonoBehaviour
             ""quality"": ""high"",
             ""output_format"": ""png"",
             ""size"": ""1024x1024""
-
-
     }}";
 
         return json;

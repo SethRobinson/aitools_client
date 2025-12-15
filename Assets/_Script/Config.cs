@@ -208,13 +208,14 @@ public class Config : MonoBehaviour
 
 #This is where you add rendering servers. (ComfyUI servers run with --listen parm)  For OpenAI Image, don't set here, just enter your OpenAI key below.
 
-#Uncomment below and put your renderer server.  Add more add_server commands to add as many as you want.  The second parm is
-#an optional name so you can keep track of which server has which video card.
-#add_server|http://localhost:7860|5090!|
+#Uncomment below and put your renderer server.  Add more add_server commands to add as many as you want, to control multiple servers.
+#(I run 8 ComfyUI servers from the same directory on a linux server, each runnings on its own port with its own video card and it works great)
+#add_server|http://localhost:7860|
 
 #Set the below path and .exe to an image editor to use the Edit option. Changed files will auto
 #update in here.
 
+#Optional:
 set_image_editor|C:\Program Files\Adobe\Adobe Photoshop 2025\Photoshop.exe
 
 #To generate text with the AI Guide features, you need at least one LLM. (or all, you can switch between them in the app)
