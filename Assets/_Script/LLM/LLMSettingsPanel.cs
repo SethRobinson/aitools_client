@@ -751,7 +751,9 @@ public class LLMSettingsPanel : MonoBehaviour
         _anthropicUI.Build(content.transform, _workingSettings.anthropic, false);
 
         _llamaCppUI = new LLMProviderUI(LLMProvider.LlamaCpp, _font, BuildTMPResources(), ApplyFontAndColor);
-        _llamaCppUI.Build(content.transform, _workingSettings.llamaCpp, false);
+        _llamaCppUI.Build(content.transform, _workingSettings.llamaCpp, true);
+        if (_llamaCppUI.refreshModelsButton != null)
+            _llamaCppUI.refreshModelsButton.onClick.AddListener(OnRefreshLlamaCppModel);
 
         _ollamaUI = new LLMProviderUI(LLMProvider.Ollama, _font, BuildTMPResources(), ApplyFontAndColor);
         _ollamaUI.Build(content.transform, _workingSettings.ollama, true);
@@ -847,6 +849,12 @@ public class LLMSettingsPanel : MonoBehaviour
         UpdateVisibleProvider();
         if (_panelRoot != null)
             ApplyFontAndColor(_panelRoot);
+        
+        // Auto-refresh llama.cpp model when switching to it
+        if ((LLMProvider)index == LLMProvider.LlamaCpp)
+        {
+            AutoRefreshLlamaCppModel();
+        }
     }
 
     private void UpdateVisibleProvider()
@@ -880,6 +888,68 @@ public class LLMSettingsPanel : MonoBehaviour
             _workingSettings.ollama.availableModels = models;
             _ollamaUI.UpdateModelDropdown(models, _workingSettings.ollama.selectedModel);
             RTQuickMessageManager.Get().ShowMessage("Found " + models.Count + " models");
+        });
+    }
+
+    private void OnRefreshLlamaCppModel()
+    {
+        RefreshLlamaCppModelInternal(true);
+    }
+
+    /// <summary>
+    /// Auto-refresh llama.cpp model silently (no message on start, only on completion).
+    /// </summary>
+    private void AutoRefreshLlamaCppModel()
+    {
+        RefreshLlamaCppModelInternal(false);
+    }
+
+    private void RefreshLlamaCppModelInternal(bool showStartMessage)
+    {
+        string endpoint = _llamaCppUI.endpointInput != null ? _llamaCppUI.endpointInput.text : _workingSettings.llamaCpp.endpoint;
+        
+        if (string.IsNullOrEmpty(endpoint) || endpoint.Length < 5)
+        {
+            return; // No endpoint configured
+        }
+        
+        if (showStartMessage)
+        {
+            RTQuickMessageManager.Get().ShowMessage("Fetching llama.cpp model info...");
+        }
+
+        LlamaCppModelFetcher.Fetch(endpoint, (modelInfo, error) =>
+        {
+            if (!string.IsNullOrEmpty(error))
+            {
+                if (showStartMessage)
+                {
+                    RTQuickMessageManager.Get().ShowMessage("Error: " + error);
+                }
+                return;
+            }
+
+            if (modelInfo == null || string.IsNullOrEmpty(modelInfo.modelName))
+            {
+                if (showStartMessage)
+                {
+                    RTQuickMessageManager.Get().ShowMessage("No model found");
+                }
+                return;
+            }
+
+            // Update settings with the model info
+            _workingSettings.llamaCpp.availableModels = new List<string> { modelInfo.modelName };
+            _workingSettings.llamaCpp.selectedModel = modelInfo.modelName;
+            _llamaCppUI.UpdateModelDropdown(_workingSettings.llamaCpp.availableModels, modelInfo.modelName);
+            
+            // Also update the manager so it persists
+            LLMSettingsManager.Get().SetLlamaCppModelInfo(modelInfo);
+            
+            if (showStartMessage)
+            {
+                RTQuickMessageManager.Get().ShowMessage("Found model: " + modelInfo.modelName);
+            }
         });
     }
 
@@ -922,6 +992,12 @@ public class LLMSettingsPanel : MonoBehaviour
         _ollamaUI?.UpdateFromSettings(_workingSettings.ollama);
 
         UpdateVisibleProvider();
+        
+        // Auto-refresh llama.cpp model if it's the active provider
+        if (_workingSettings.activeProvider == LLMProvider.LlamaCpp)
+        {
+            AutoRefreshLlamaCppModel();
+        }
     }
 
     private void Update()

@@ -983,11 +983,8 @@ public class WebRequestServerInfo : MonoBehaviour
                     // Check if response has the expected llama.cpp structure
                     if (responseDict != null && responseDict.ContainsKey("models") && responseDict.ContainsKey("data"))
                     {
-                        // This is a llama.cpp server
-                        Config.Get().SetGenericLLMIsLlamaCpp(true);
-                        
-                        // Store the model data for later use
-                        Config.Get().SetLlamaCppModelData(responseDict);
+                        // NOTE: llama.cpp detection is now handled by LLMSettingsManager.
+                        // This old detection code remains for legacy config.txt compatibility.
                         
                         // Extract and add parameters to m_llmParms
                         var llmParms = Config.Get().GetLLMParms();
@@ -1092,7 +1089,7 @@ public class WebRequestServerInfo : MonoBehaviour
         if (useOllamaDefaults && ctx.Length == 0)
         {
             RTConsole.Log("Using Ollama default settings for model: " + model);
-            Config.Get().SetGenericLLMIsOllama(true);
+            // NOTE: Ollama detection is now handled by LLMSettingsManager
             GameObject.Destroy(gameObject);
             yield break;
         }
@@ -1101,7 +1098,7 @@ public class WebRequestServerInfo : MonoBehaviour
         if (ctx.Length == 0)
         {
             RTConsole.Log("Ollama detected - Using default model profile for: " + model + " (no num_ctx specified)");
-            Config.Get().SetGenericLLMIsOllama(true);
+            // NOTE: Ollama detection is now handled by LLMSettingsManager
             GameObject.Destroy(gameObject);
             yield break;
         }
@@ -1167,7 +1164,7 @@ public class WebRequestServerInfo : MonoBehaviour
                     if (rootNode["status"].Value == "success")
                     {
                         RTConsole.Log("Ollama detected - Created/recreated an Ollama llm profile called " + model + Config.GetOllamaModelExt() + " on " + httpDest + ". (this allows us to control its context and other settings - if the model specified doesn't exist, you'll get an error later)"); // + postRequest.downloadHandler.text
-                        Config.Get().SetGenericLLMIsOllama(true);
+                        // NOTE: Ollama detection is now handled by LLMSettingsManager
                     }
                     else
                     {

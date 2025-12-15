@@ -334,23 +334,16 @@ public class AIGuideManager : MonoBehaviour
 
     private void SpawnLlamaCppRequest(Queue<GTPChatLine> lines)
     {
-        string serverAddress = Config.Get()._texgen_webui_address;
-        string apiKey = Config.Get()._texgen_webui_APIKey;
-
-        // Override with LLMSettingsManager if available
         var mgr = LLMSettingsManager.Get();
-        if (mgr != null)
-        {
-            var settings = mgr.GetProviderSettings(LLMProvider.LlamaCpp);
-            if (!string.IsNullOrEmpty(settings.endpoint)) serverAddress = settings.endpoint;
-            if (!string.IsNullOrEmpty(settings.apiKey)) apiKey = settings.apiKey;
-        }
+        var settings = mgr.GetProviderSettings(LLMProvider.LlamaCpp);
+        string serverAddress = settings.endpoint;
+        string apiKey = settings.apiKey;
 
         RTConsole.Log("Contacting llama.cpp at " + serverAddress);
 
         string suggestedEndpoint;
         string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, m_max_tokens, m_extractor.Temperature, 
-            Config.Get().GetGenericLLMMode(), true, Config.Get().GetLLMParms(), false, true);
+            Config.Get().GetGenericLLMMode(), true, mgr.GetLLMParms(LLMProvider.LlamaCpp), false, true);
 
         RTDB db = new RTDB();
         _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, serverAddress, suggestedEndpoint, 
@@ -359,24 +352,17 @@ public class AIGuideManager : MonoBehaviour
 
     private void SpawnOllamaRequest(Queue<GTPChatLine> lines)
     {
-        string serverAddress = Config.Get()._texgen_webui_address;
-        string apiKey = Config.Get()._texgen_webui_APIKey;
-        string ollamaEndpoint = Config.Get()._ollama_endpoint;
-
-        // Override with LLMSettingsManager if available
         var mgr = LLMSettingsManager.Get();
-        if (mgr != null)
-        {
-            var settings = mgr.GetProviderSettings(LLMProvider.Ollama);
-            if (!string.IsNullOrEmpty(settings.endpoint)) serverAddress = settings.endpoint;
-            if (!string.IsNullOrEmpty(settings.apiKey)) apiKey = settings.apiKey;
-        }
+        var settings = mgr.GetProviderSettings(LLMProvider.Ollama);
+        string serverAddress = settings.endpoint;
+        string apiKey = settings.apiKey;
+        string ollamaEndpoint = "/v1/chat/completions";
 
         RTConsole.Log("Contacting Ollama at " + serverAddress);
 
         string suggestedEndpoint;
         string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, m_max_tokens, m_extractor.Temperature, 
-            Config.Get().GetGenericLLMMode(), true, Config.Get().GetLLMParms(), true, false);
+            Config.Get().GetGenericLLMMode(), true, mgr.GetLLMParms(LLMProvider.Ollama), true, false);
 
         RTDB db = new RTDB();
         _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, serverAddress, ollamaEndpoint, 

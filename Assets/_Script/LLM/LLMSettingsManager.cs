@@ -15,6 +15,9 @@ public class LLMSettingsManager : MonoBehaviour
     private bool _hasMigratedFromConfig = false;
 
     private const string SETTINGS_FILE_NAME = "llm_settings.txt";
+    
+    // llama.cpp model info (fetched from server, not persisted)
+    private LlamaCppModelFetcher.LlamaCppModelInfo _llamaCppModelInfo;
 
     /// <summary>
     /// Fired when LLM settings that affect runtime behavior/UI have changed (active provider, model list, etc).
@@ -63,6 +66,67 @@ public class LLMSettingsManager : MonoBehaviour
         }
 
         _isInitialized = true;
+        
+        // Auto-refresh model info for the active provider on startup
+        RefreshActiveProviderModelOnStartup();
+    }
+
+    /// <summary>
+    /// Refresh model info for the active provider on startup.
+    /// This ensures the active LLM label shows current info without opening settings.
+    /// </summary>
+    private void RefreshActiveProviderModelOnStartup()
+    {
+        if (_settings.activeProvider == LLMProvider.LlamaCpp)
+        {
+            RefreshLlamaCppModel((info, error) =>
+            {
+                if (info != null)
+                {
+                    // Update the active LLM label in GameLogic
+                    if (GameLogic.Get() != null)
+                    {
+                        GameLogic.Get().UpdateActiveLLMLabel();
+                    }
+                }
+            });
+        }
+        else if (_settings.activeProvider == LLMProvider.Ollama)
+        {
+            // For Ollama, refresh the model list
+            RefreshOllamaModels((models, error) =>
+            {
+                if (models != null && models.Count > 0)
+                {
+                    if (GameLogic.Get() != null)
+                    {
+                        GameLogic.Get().UpdateActiveLLMLabel();
+                    }
+                }
+            });
+        }
+    }
+
+    /// <summary>
+    /// Refresh Ollama models from the configured endpoint.
+    /// </summary>
+    public void RefreshOllamaModels(Action<List<string>, string> onComplete = null)
+    {
+        string endpoint = _settings.ollama.endpoint;
+        if (string.IsNullOrEmpty(endpoint) || endpoint.Length < 5)
+        {
+            onComplete?.Invoke(null, "No Ollama endpoint configured");
+            return;
+        }
+
+        OllamaModelFetcher.Fetch(endpoint, (models, error) =>
+        {
+            if (models != null && models.Count > 0)
+            {
+                SetOllamaModels(models);
+            }
+            onComplete?.Invoke(models, error);
+        });
     }
 
     /// <summary>
@@ -462,5 +526,56 @@ public class LLMSettingsManager : MonoBehaviour
     public string GetOllamaBaseUrl()
     {
         return _settings.ollama.endpoint.TrimEnd('/');
+    }
+
+    /// <summary>
+    /// Set llama.cpp model info from server.
+    /// </summary>
+    public void SetLlamaCppModelInfo(LlamaCppModelFetcher.LlamaCppModelInfo modelInfo)
+    {
+        _llamaCppModelInfo = modelInfo;
+        
+        // Update settings with model name
+        if (modelInfo != null && !string.IsNullOrEmpty(modelInfo.modelName))
+        {
+            _settings.llamaCpp.selectedModel = modelInfo.modelName;
+            if (!_settings.llamaCpp.availableModels.Contains(modelInfo.modelName))
+            {
+                _settings.llamaCpp.availableModels.Clear();
+                _settings.llamaCpp.availableModels.Add(modelInfo.modelName);
+            }
+            SaveSettings();
+            NotifySettingsChanged();
+        }
+    }
+
+    /// <summary>
+    /// Get llama.cpp model info.
+    /// </summary>
+    public LlamaCppModelFetcher.LlamaCppModelInfo GetLlamaCppModelInfo()
+    {
+        return _llamaCppModelInfo;
+    }
+
+    /// <summary>
+    /// Fetch llama.cpp model info from the configured endpoint.
+    /// </summary>
+    public void RefreshLlamaCppModel(Action<LlamaCppModelFetcher.LlamaCppModelInfo, string> onComplete = null)
+    {
+        string endpoint = _settings.llamaCpp.endpoint;
+        if (string.IsNullOrEmpty(endpoint) || endpoint.Length < 5)
+        {
+            onComplete?.Invoke(null, "No llama.cpp endpoint configured");
+            return;
+        }
+
+        LlamaCppModelFetcher.Fetch(endpoint, (info, error) =>
+        {
+            if (info != null)
+            {
+                SetLlamaCppModelInfo(info);
+            }
+            onComplete?.Invoke(info, error);
+        });
     }
 }

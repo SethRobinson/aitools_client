@@ -2375,11 +2375,17 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 RTDB db = new RTDB();
 
                 SetStatusMessage("Running LLM...");
+                var mgr = LLMSettingsManager.Get();
+                var activeProvider = mgr.GetActiveProvider();
+                bool isOllama = activeProvider == LLMProvider.Ollama;
+                bool isLlamaCpp = activeProvider == LLMProvider.LlamaCpp;
+                var settings = mgr.GetProviderSettings(activeProvider);
+                
                 string suggestedEndpoint;
-                string json = _texGenWebUICompletionManager.BuildForInstructJSON(_promptManager.BuildPromptChat(), out suggestedEndpoint, 4096, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetGenericLLMMode(), true, Config.Get().GetLLMParms(), Config.Get().GetGenericLLMIsOllama(), Config.Get().GetGenericLLMIsLlamaCpp());
+                string json = _texGenWebUICompletionManager.BuildForInstructJSON(_promptManager.BuildPromptChat(), out suggestedEndpoint, 4096, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetGenericLLMMode(), true, mgr.GetLLMParms(), isOllama, isLlamaCpp);
                 // Use the suggested endpoint (might be /v1/completions for special templates)
-                string endpoint = Config.Get().GetGenericLLMIsOllama() ? Config.Get()._ollama_endpoint : suggestedEndpoint;
-                _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, Config.Get()._texgen_webui_address, endpoint, OnStreamingTextCallback, true, Config.Get()._texgen_webui_APIKey);
+                string endpoint = isOllama ? "/v1/chat/completions" : suggestedEndpoint;
+                _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, settings.endpoint, endpoint, OnStreamingTextCallback, true, settings.apiKey);
                 SetLLMActive(true);
 
                 // uploaderScript.UploadFileInMemory(serverID, pngBytes, remoteFileName, OnUploadFinished);

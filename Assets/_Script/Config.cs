@@ -94,8 +94,6 @@ public class Config : MonoBehaviour
     string _anthropicAI_APIEndpoint;
     string _genericLLMMode;
 
-  Boolean m_genericServerIsOllama = false;
-    Boolean m_genericServerIsLlamaCpp = false;
     string _elevenLabs_APIKey ;
     string _elevenLabs_voiceID;
     int _jpgSaveQuality;
@@ -107,7 +105,6 @@ public class Config : MonoBehaviour
     int _crazyCamRequestedHeight;
     int _crazyCamRequestedFPS;
   
-    Dictionary<string, object> m_llamaCppModelData = null;
     public string GetAISystemWord() { return m_systemName; }
     public string GetAIUserWord() { return m_userName; }
     public string GetAIAssistantWord() { return m_assistantName; }
@@ -660,39 +657,23 @@ set_default_audio_negative_prompt|music|
         webScript.StartInitialWebRequest();
     }
 
-    public void SetGenericLLMIsOllama(bool bNew)
-    {
-        m_genericServerIsOllama = bNew;
-    }
+    /// <summary>
+    /// Check if the active LLM provider is Ollama. Now delegates to LLMSettingsManager.
+    /// </summary>
     public bool GetGenericLLMIsOllama() 
     { 
         var mgr = LLMSettingsManager.Get();
-        if (mgr != null && mgr.GetActiveProvider() == LLMProvider.Ollama)
-        {
-            return true;
-        }
-        return m_genericServerIsOllama; 
+        return mgr != null && mgr.GetActiveProvider() == LLMProvider.Ollama;
     }
 
-    public void SetGenericLLMIsLlamaCpp(bool bNew)
-    {
-        m_genericServerIsLlamaCpp = bNew;
-    }
+    /// <summary>
+    /// Check if the active LLM provider is llama.cpp. Now delegates to LLMSettingsManager.
+    /// </summary>
     public bool GetGenericLLMIsLlamaCpp() 
     { 
         var mgr = LLMSettingsManager.Get();
-        if (mgr != null && mgr.GetActiveProvider() == LLMProvider.LlamaCpp)
-        {
-            return true;
-        }
-        return m_genericServerIsLlamaCpp; 
+        return mgr != null && mgr.GetActiveProvider() == LLMProvider.LlamaCpp;
     }
-    
-    public void SetLlamaCppModelData(Dictionary<string, object> modelData)
-    {
-        m_llamaCppModelData = modelData;
-    }
-    public Dictionary<string, object> GetLlamaCppModelData() { return m_llamaCppModelData; }
     public void ProcessConfigString(string newConfig)
     {
         SetDefaults();
@@ -895,24 +876,7 @@ set_default_audio_negative_prompt|music|
         }
 
 
-        //Ok, if we got here we've got all our data and can do a little extra work.
-        SetGenericLLMIsOllama(false);
-        SetGenericLLMIsLlamaCpp(false);
-
-        if (_texgen_webui_address != null && _texgen_webui_address.Length > 1)
-        {
-            // First, try to detect if it's a llama.cpp server
-            var llamaCppScript = CreateWebRequestObject();
-            llamaCppScript.StartDetectLlamaCppServer(_texgen_webui_address);
-            
-            // Also check if it's an Ollama server (only if model is specified)
-            if (GetGenericLLMParm("model").Length > 1)
-            {
-                var ollamaScript = CreateWebRequestObject();
-                ollamaScript.StartSetupOLlamaServer(_texgen_webui_address, m_llmParms);
-            }
-        }
-
+        // LLM server detection is now handled by LLMSettingsManager
     }
 
     public void SendRequestToAllServers(string optionKey, string optionValue)
