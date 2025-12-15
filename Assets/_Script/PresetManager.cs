@@ -251,6 +251,12 @@ public class PresetManager : MonoBehaviour
         RTQuickMessageManager.Get().ShowMessage("Refreshed workflows and presets");
     }
 
+        public void OnClickedPresetRefreshComfyUIWorkflows()
+    {
+        GameLogic.Get().OnClickedRescanComfyUIWorkflowsFolder();
+        RTQuickMessageManager.Get().ShowMessage("Refreshed ComfyUI workflows");
+    }
+
     public void OnClickedPresetSave()
     {
         GameObject getStringGO = Instantiate(_getStringPrefab);
