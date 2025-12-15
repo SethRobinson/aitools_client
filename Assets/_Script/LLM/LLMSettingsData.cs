@@ -66,33 +66,25 @@ public class LLMSettings
     {
         var settings = new LLMSettings();
 
-        // OpenAI defaults
+        // OpenAI defaults - models loaded from model_data.json
+        var modelData = LLMModelData.Load();
         settings.openAI = new LLMProviderSettings
         {
             enabled = true,
             apiKey = "",
-            endpoint = "https://api.openai.com/v1/responses",
-            selectedModel = "gpt-5.2",
-            availableModels = new List<string>
-            {
-                "gpt-5.2",
-                "gpt-5.2-pro"
-            }
+            endpoint = modelData.openAI.defaultEndpoint,
+            selectedModel = modelData.openAI.models.Count > 0 ? modelData.openAI.models[0] : "",
+            availableModels = new List<string>() // Will be populated from model_data.json
         };
 
-        // Anthropic defaults
+        // Anthropic defaults - models loaded from model_data.json
         settings.anthropic = new LLMProviderSettings
         {
             enabled = true,
             apiKey = "",
-            endpoint = "https://api.anthropic.com/v1/messages",
-            selectedModel = "claude-sonnet-4-5",
-            availableModels = new List<string>
-            {
-                "claude-sonnet-4-5",
-                "claude-haiku-4-5",
-                "claude-opus-4-5"
-            }
+            endpoint = modelData.anthropic.defaultEndpoint,
+            selectedModel = modelData.anthropic.models.Count > 0 ? modelData.anthropic.models[0] : "",
+            availableModels = new List<string>() // Will be populated from model_data.json
         };
 
         // llama.cpp defaults

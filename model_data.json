@@ -1,0 +1,17 @@
+{
+    "openAI": {
+        "defaultEndpoint": "https://api.openai.com/v1/responses",
+        "models": [
+            "gpt-5.2",
+            "gpt-5.2-pro"
+        ]
+    },
+    "anthropic": {
+        "defaultEndpoint": "https://api.anthropic.com/v1/messages",
+        "models": [
+            "claude-sonnet-4-5",
+            "claude-haiku-4-5",
+            "claude-opus-4-5"
+        ]
+    }
+}

@@ -14,7 +14,8 @@ public class LLMSettingsManager : MonoBehaviour
     private bool _isInitialized = false;
     private bool _hasMigratedFromConfig = false;
 
-    private const string SETTINGS_FILE_NAME = "llm_settings.txt";
+    private const string SETTINGS_FILE_NAME = "config_llm.txt";
+    private const string OLD_SETTINGS_FILE_NAME = "llm_settings.txt"; // For migration
     
     // llama.cpp model info (fetched from server, not persisted)
     private LlamaCppModelFetcher.LlamaCppModelInfo _llamaCppModelInfo;
@@ -53,6 +54,20 @@ public class LLMSettingsManager : MonoBehaviour
     {
         if (_isInitialized) return;
 
+        // Check for migration from old file name
+        if (!File.Exists(SETTINGS_FILE_NAME) && File.Exists(OLD_SETTINGS_FILE_NAME))
+        {
+            try
+            {
+                File.Move(OLD_SETTINGS_FILE_NAME, SETTINGS_FILE_NAME);
+                RTConsole.Log("LLMSettingsManager: Migrated " + OLD_SETTINGS_FILE_NAME + " to " + SETTINGS_FILE_NAME);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("LLMSettingsManager: Failed to rename settings file: " + e.Message);
+            }
+        }
+
         if (File.Exists(SETTINGS_FILE_NAME))
         {
             LoadSettings();
@@ -62,6 +77,7 @@ public class LLMSettingsManager : MonoBehaviour
             // First run - create defaults and try to migrate from config.txt
             _settings = LLMSettings.CreateDefault();
             MigrateFromConfig();
+            ApplyModelDataToSettings(); // Merge models from model_data.json
             SaveSettings();
         }
 
@@ -213,7 +229,7 @@ public class LLMSettingsManager : MonoBehaviour
             }
 
             _hasMigratedFromConfig = true;
-            RTConsole.Log("LLMSettingsManager: Migrated settings from config.txt to llm_settings.txt");
+            RTConsole.Log("LLMSettingsManager: Migrated settings from config.txt to " + SETTINGS_FILE_NAME);
         }
         catch (Exception e)
         {
@@ -247,12 +263,58 @@ public class LLMSettingsManager : MonoBehaviour
                 _settings = LLMSettings.CreateDefault();
             }
 
+            // Always apply models from model_data.json for OpenAI and Anthropic
+            ApplyModelDataToSettings();
+
             RTConsole.Log("LLMSettingsManager: Loaded settings from " + SETTINGS_FILE_NAME);
         }
         catch (Exception e)
         {
             Debug.LogWarning("LLMSettingsManager: Error loading settings: " + e.Message);
             _settings = LLMSettings.CreateDefault();
+        }
+    }
+
+    /// <summary>
+    /// Apply model data from model_data.json to OpenAI and Anthropic settings.
+    /// This ensures users get updated models when upgrading without losing their API keys.
+    /// </summary>
+    private void ApplyModelDataToSettings()
+    {
+        var modelData = LLMModelData.Load();
+
+        // Update OpenAI available models and endpoint from model_data.json
+        _settings.openAI.availableModels = new List<string>(modelData.openAI.models);
+        if (string.IsNullOrEmpty(_settings.openAI.endpoint))
+        {
+            _settings.openAI.endpoint = modelData.openAI.defaultEndpoint;
+        }
+        // If selected model isn't in the list, default to first available
+        if (!string.IsNullOrEmpty(_settings.openAI.selectedModel) && 
+            !_settings.openAI.availableModels.Contains(_settings.openAI.selectedModel))
+        {
+            // Keep their selection even if not in default list - they may have typed a custom model
+        }
+        else if (string.IsNullOrEmpty(_settings.openAI.selectedModel) && _settings.openAI.availableModels.Count > 0)
+        {
+            _settings.openAI.selectedModel = _settings.openAI.availableModels[0];
+        }
+
+        // Update Anthropic available models and endpoint from model_data.json
+        _settings.anthropic.availableModels = new List<string>(modelData.anthropic.models);
+        if (string.IsNullOrEmpty(_settings.anthropic.endpoint))
+        {
+            _settings.anthropic.endpoint = modelData.anthropic.defaultEndpoint;
+        }
+        // If selected model isn't in the list, default to first available
+        if (!string.IsNullOrEmpty(_settings.anthropic.selectedModel) && 
+            !_settings.anthropic.availableModels.Contains(_settings.anthropic.selectedModel))
+        {
+            // Keep their selection even if not in default list - they may have typed a custom model
+        }
+        else if (string.IsNullOrEmpty(_settings.anthropic.selectedModel) && _settings.anthropic.availableModels.Count > 0)
+        {
+            _settings.anthropic.selectedModel = _settings.anthropic.availableModels[0];
         }
     }
 
