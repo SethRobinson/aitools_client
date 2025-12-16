@@ -976,8 +976,18 @@ public class PicTextToImage : MonoBehaviour
                                             }
                                             else
                                             {
-                                                Debug.Log("Unknown file type: " + extension);
+                                                string errorMsg = $"Unknown/unsupported file type: {extension} (file: {filename})";
+                                                Debug.LogWarning(errorMsg);
+                                                RTConsole.Log(errorMsg);
+                                                RTQuickMessageManager.Get().ShowMessage(errorMsg);
                                                 CloseWebSocket();
+                                                if (Config.Get().IsValidGPU(m_gpu))
+                                                {
+                                                    Config.Get().SetGPUBusy(m_gpu, false);
+                                                }
+                                                m_bIsGenerating = false;
+                                                m_picScript.SetStatusMessage("Unknown file type");
+                                                m_picScript.OnFinishedRenderingWorkflow(false);
                                                 yield break;
                                             }
                                         }
@@ -1018,6 +1028,36 @@ public class PicTextToImage : MonoBehaviour
                                 }
                             }
 
+                        }
+
+                        // If we reach here, status is "success" but we couldn't find any usable output
+                        // This can happen when:
+                        // 1) All nodes were cached (outputs:{})
+                        // 2) The workflow uses PreviewImage instead of SaveImage node
+                        // 3) All output files were filtered (e.g., ait_ignore)
+                        // 4) The workflow doesn't output an image/video/text file
+                        {
+                            string workflowName = m_scheduledEvent?.workflow ?? "unknown workflow";
+                            string errorMsg = outputsNode.Count == 0
+                                ? $"ComfyUI workflow '{workflowName}' succeeded but returned no outputs. " +
+                                  "This usually means all nodes were cached (try changing an input slightly), " +
+                                  "or the workflow uses PreviewImage instead of SaveImage node."
+                                : $"ComfyUI workflow '{workflowName}' succeeded but no usable outputs were found. " +
+                                  $"Outputs had {outputsNode.Count} node(s) but none contained usable image/video/text files. " +
+                                  "Check if workflow outputs are marked with 'ait_ignore' or have unsupported formats.";
+                            Debug.LogError(errorMsg);
+                            RTConsole.Log(errorMsg);
+                            RTQuickMessageManager.Get().ShowMessage("Workflow has no usable outputs - check console");
+
+                            CloseWebSocket();
+                            if (Config.Get().IsValidGPU(m_gpu))
+                            {
+                                Config.Get().SetGPUBusy(m_gpu, false);
+                            }
+                            m_bIsGenerating = false;
+                            m_picScript.SetStatusMessage("No outputs");
+                            m_picScript.OnFinishedRenderingWorkflow(false);
+                            yield break;
                         }
                     }
                     else if (statusNode["status_str"] == "error")

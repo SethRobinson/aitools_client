@@ -1461,6 +1461,9 @@ public string GetPrompt() { return m_prompt; }
             InvokeRepeating(nameof(TryUpdateActiveLLMLabelAfterLLMManagerInit), 0.1f, 0.25f);
         }
 
+
+        //let's add text saying "This is a temp pic" to our temp pic1 that will overlay it
+        m_tempPic1.GetComponent<PicMain>().AddTextLabelToImage("TempPic1 (used with job scripts sometimes)");
     }
 
     private void TryUpdateActiveLLMLabelAfterLLMManagerInit()

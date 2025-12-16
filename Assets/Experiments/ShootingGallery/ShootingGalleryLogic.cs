@@ -176,12 +176,12 @@ public class ShootingGalleryLogic : MonoBehaviour
     }
     public void OnStartGameMode()
     {
-        //GameLogic.Get().ShowCompatibilityWarningIfNeeded();
-
         m_smallShakeTween = null;
         m_bigShakeTween = null;
         m_mode = eMode.MODE_ON;
+        
         GameLogic.Get().SetGameMode(GameLogic.eGameMode.EXPERIMENT);
+        
         GameLogic.Get().SetToolsVisible(false);
         ImageGenerator.Get().SetGenerate(false);
         GameLogic.Get().OnClearButton();

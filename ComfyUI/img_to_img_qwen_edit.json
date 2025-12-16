@@ -284,7 +284,7 @@
         }
       },
       "widgets_values": [
-        705197378612460,
+        1067732735450671,
         "randomize",
         4,
         1,
@@ -736,7 +736,7 @@
         }
       },
       "widgets_values": [
-        851501708686397,
+        1017284832792758,
         "randomize",
         4,
         1,
@@ -1680,7 +1680,7 @@
         2640
       ],
       "size": [
-        243.02987670898438,
+        251.6705078125,
         110
       ],
       "flags": {},
@@ -1737,9 +1737,9 @@
         }
       ],
       "properties": {
+        "proxyWidgets": [],
         "cnr_id": "comfy-core",
         "ver": "0.3.63",
-        "proxyWidgets": [],
         "ue_properties": {
           "widget_ue_connectable": {},
           "version": "7.2.2",
@@ -2141,40 +2141,6 @@
       "widgets_values": []
     },
     {
-      "id": 390,
-      "type": "PreviewImage",
-      "pos": [
-        1448.1239013671875,
-        -14.353325843811035
-      ],
-      "size": [
-        140,
-        26
-      ],
-      "flags": {},
-      "order": 42,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "images",
-          "type": "IMAGE",
-          "link": 614
-        }
-      ],
-      "outputs": [],
-      "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.3.64",
-        "Node name for S&R": "PreviewImage",
-        "ue_properties": {
-          "widget_ue_connectable": {},
-          "input_ue_unconnectable": {},
-          "version": "7.2.2"
-        }
-      },
-      "widgets_values": []
-    },
-    {
       "id": 110,
       "type": "TextEncodeQwenImageEditPlus",
       "pos": [
@@ -2245,6 +2211,40 @@
       "bgcolor": "#335"
     },
     {
+      "id": 390,
+      "type": "PreviewImage",
+      "pos": [
+        1448.1239013671875,
+        -14.353325843811035
+      ],
+      "size": [
+        566.1793925432344,
+        371.91554844966555
+      ],
+      "flags": {},
+      "order": 42,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 614
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.64",
+        "Node name for S&R": "PreviewImage",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.2.2"
+        }
+      },
+      "widgets_values": []
+    },
+    {
       "id": 389,
       "type": "VHS_LoadImagePath",
       "pos": [
@@ -2252,7 +2252,7 @@
         558.5082397460938
       ],
       "size": [
-        235.24609375,
+        240.5986328125,
         126
       ],
       "flags": {},
@@ -2841,10 +2841,10 @@
             "localized_name": "latent_2",
             "label": "image1_latent",
             "shape": 7,
-            "pos": {
-              "0": 1010,
-              "1": 3081
-            }
+            "pos": [
+              1010,
+              3081
+            ]
           },
           {
             "id": "77c58bb5-ff18-42da-998f-9c6dd32ba314",
@@ -2855,10 +2855,10 @@
               603
             ],
             "label": "image2_latent",
-            "pos": {
-              "0": 1010,
-              "1": 3101
-            }
+            "pos": [
+              1010,
+              3101
+            ]
           },
           {
             "id": "4c787c91-a6db-4015-8f8a-e53ca592b8af",
@@ -2869,10 +2869,10 @@
               605
             ],
             "label": "image3_latent",
-            "pos": {
-              "0": 1010,
-              "1": 3121
-            }
+            "pos": [
+              1010,
+              3121
+            ]
           },
           {
             "id": "d468a361-7bd5-4684-b7d5-1839f74049ab",
@@ -2882,10 +2882,10 @@
               606
             ],
             "label": "positive",
-            "pos": {
-              "0": 1010,
-              "1": 3141
-            }
+            "pos": [
+              1010,
+              3141
+            ]
           },
           {
             "id": "d9e2ab28-0900-4d02-9da2-2f5c54767c56",
@@ -2895,10 +2895,10 @@
               609
             ],
             "label": "negative",
-            "pos": {
-              "0": 1010,
-              "1": 3161
-            }
+            "pos": [
+              1010,
+              3161
+            ]
           }
         ],
         "outputs": [
@@ -2911,10 +2911,10 @@
             ],
             "localized_name": "CONDITIONING_1",
             "label": "positive",
-            "pos": {
-              "0": 1370,
-              "1": 3111
-            }
+            "pos": [
+              1370,
+              3111
+            ]
           },
           {
             "id": "51726711-cbe7-4b1a-8c61-8828efd94366",
@@ -2924,10 +2924,10 @@
               601
             ],
             "label": "negative",
-            "pos": {
-              "0": 1370,
-              "1": 3131
-            }
+            "pos": [
+              1370,
+              3131
+            ]
           }
         ],
         "widgets": [],
@@ -3349,7 +3349,8 @@
         ],
         "extra": {
           "ue_links": [],
-          "links_added_by_ue": []
+          "links_added_by_ue": [],
+          "workflowRendererVersion": "LG"
         }
       }
     ]
@@ -3357,19 +3358,20 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 1.4078579568280185,
+      "scale": 0.7946991138481949,
       "offset": [
-        573.3942523855752,
-        -153.0663452102121
+        1159.5393069553788,
+        121.34017133665066
       ]
     },
-    "frontendVersion": "1.27.10",
+    "frontendVersion": "1.34.8",
     "ue_links": [],
     "links_added_by_ue": [],
     "VHS_latentpreview": false,
     "VHS_latentpreviewrate": 0,
     "VHS_MetadataImage": true,
-    "VHS_KeepIntermediate": true
+    "VHS_KeepIntermediate": true,
+    "workflowRendererVersion": "LG"
   },
   "version": 0.4
 }
