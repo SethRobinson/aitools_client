@@ -64,3 +64,4 @@ openai_image_json_sent.json
 openai_image_last_error_returned.json
 llm_settings.txt
 config_llm.txt
+ComfyUI/*_cached_api*

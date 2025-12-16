@@ -1,0 +1,481 @@
+{
+  "id": "9e5b67d0-53dc-42aa-bdb7-541f1939e114",
+  "revision": 0,
+  "last_node_id": 19,
+  "last_link_id": 33,
+  "nodes": [
+    {
+      "id": 12,
+      "type": "LoadSAM3Model",
+      "pos": [
+        589.3057099628915,
+        124.10210545715735
+      ],
+      "size": [
+        270,
+        82
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "sam3_model",
+          "type": "SAM3_MODEL",
+          "links": [
+            21
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-sam3",
+        "ver": "82c8e4f88a6c0a9242712b827e05f5e67c4a90a7",
+        "Node name for S&R": "LoadSAM3Model",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.5.2",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "models/sam3/sam3.pt",
+        ""
+      ]
+    },
+    {
+      "id": 17,
+      "type": "SegsToCombinedMask",
+      "pos": [
+        1570.7496040916408,
+        -15.1273572772309
+      ],
+      "size": [
+        217.7505859375,
+        26
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "segs",
+          "type": "SEGS",
+          "link": 28
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            29
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-impact-pack",
+        "ver": "8.28.0",
+        "Node name for S&R": "SegsToCombinedMask",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 16,
+      "type": "MaskToSEGS",
+      "pos": [
+        1263.3861164929458,
+        54.292898173467435
+      ],
+      "size": [
+        270,
+        154
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 27
+        }
+      ],
+      "outputs": [
+        {
+          "name": "SEGS",
+          "type": "SEGS",
+          "links": [
+            28
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-impact-pack",
+        "ver": "8.28.0",
+        "Node name for S&R": "MaskToSEGS",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": [
+        true,
+        3,
+        false,
+        10,
+        false
+      ]
+    },
+    {
+      "id": 18,
+      "type": "JoinImageWithAlpha",
+      "pos": [
+        1664.645275334291,
+        114.97321018577942
+      ],
+      "size": [
+        185.8609375,
+        46
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 33
+        },
+        {
+          "name": "alpha",
+          "type": "MASK",
+          "link": 29
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            31
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.4.0",
+        "Node name for S&R": "JoinImageWithAlpha",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 19,
+      "type": "PreviewImage",
+      "pos": [
+        2027.5844267616499,
+        77.19179700676268
+      ],
+      "size": [
+        590.9836561569,
+        369.4818558190038
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 31
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.4.0",
+        "Node name for S&R": "PreviewImage",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 15,
+      "type": "VHS_LoadImagePath",
+      "pos": [
+        737.0868249029271,
+        478.07382605218237
+      ],
+      "size": [
+        240.5986328125,
+        126
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "vae",
+          "shape": 7,
+          "type": "VAE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            32,
+            33
+          ]
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-videohelpersuite",
+        "ver": "1.7.8",
+        "Node name for S&R": "VHS_LoadImagePath",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.5.2"
+        }
+      },
+      "widgets_values": {
+        "image": "<AITOOLS_INPUT_1>",
+        "custom_width": 0,
+        "custom_height": 0,
+        "videopreview": {
+          "hidden": false,
+          "paused": false,
+          "params": {
+            "custom_width": 0,
+            "custom_height": 0,
+            "filename": "<AITOOLS_INPUT_1>",
+            "type": "path",
+            "format": "video/<AITOOLS_INPUT_1>"
+          }
+        }
+      }
+    },
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [
+        416.0892827960127,
+        318.761796932343
+      ],
+      "size": [
+        274.080078125,
+        314
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 4,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.72",
+        "Node name for S&R": "LoadImage",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.5.2",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "example_image.jpg",
+        "image"
+      ]
+    },
+    {
+      "id": 13,
+      "type": "SAM3Grounding",
+      "pos": [
+        921.0206799155256,
+        127.5149432108375
+      ],
+      "size": [
+        278.08203125,
+        190
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "sam3_model",
+          "type": "SAM3_MODEL",
+          "link": 21
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 32
+        },
+        {
+          "name": "positive_boxes",
+          "shape": 7,
+          "type": "SAM3_BOXES_PROMPT",
+          "link": null
+        },
+        {
+          "name": "negative_boxes",
+          "shape": 7,
+          "type": "SAM3_BOXES_PROMPT",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "masks",
+          "type": "MASK",
+          "links": [
+            27
+          ]
+        },
+        {
+          "name": "visualization",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "boxes",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "scores",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-sam3",
+        "ver": "82c8e4f88a6c0a9242712b827e05f5e67c4a90a7",
+        "Node name for S&R": "SAM3Grounding",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.5.2",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        0.2,
+        "<AITOOLS_SEGMENTATION_PROMPT>",
+        -1,
+        false
+      ]
+    }
+  ],
+  "links": [
+    [
+      21,
+      12,
+      0,
+      13,
+      0,
+      "SAM3_MODEL"
+    ],
+    [
+      27,
+      13,
+      0,
+      16,
+      0,
+      "MASK"
+    ],
+    [
+      28,
+      16,
+      0,
+      17,
+      0,
+      "SEGS"
+    ],
+    [
+      29,
+      17,
+      0,
+      18,
+      1,
+      "MASK"
+    ],
+    [
+      31,
+      18,
+      0,
+      19,
+      0,
+      "IMAGE"
+    ],
+    [
+      32,
+      15,
+      0,
+      13,
+      1,
+      "IMAGE"
+    ],
+    [
+      33,
+      15,
+      0,
+      18,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.7627768444385482,
+      "offset": [
+        -280.633707241676,
+        221.88080166234428
+      ]
+    },
+    "frontendVersion": "1.34.8",
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true,
+    "workflowRendererVersion": "LG",
+    "ue_links": [],
+    "links_added_by_ue": []
+  },
+  "version": 0.4
+}
