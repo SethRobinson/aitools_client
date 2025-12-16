@@ -605,7 +605,7 @@ public class LLMSettingsPanel : MonoBehaviour
         ApplyUISprite(footerImg);
         footerImg.color = FooterBg;
 
-        CreateFooterButton(footer.transform, "Apply and close", ButtonPrimary, -135f, 130f, OnApplyAndCloseClicked);
+        CreateFooterButton(footer.transform, "Apply and close", ButtonPrimary, -135f, 180f, OnApplyAndCloseClicked);
         CreateFooterButton(footer.transform, "Apply", ButtonPrimary, 10f, 90f, OnApplyClicked);
         CreateFooterButton(footer.transform, "Cancel", ButtonSecondary, 120f, 90f, Hide);
     }
