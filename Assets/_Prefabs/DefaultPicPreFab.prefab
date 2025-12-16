@@ -1844,7 +1844,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: edd328fb144e819498d395172c8823a0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _text: Runs the Temp joblist on this pic
+  _text: Runs the Temp job script on this pic
 --- !u!1 &1632314091474187303
 GameObject:
   m_ObjectHideFlags: 0
@@ -4277,7 +4277,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: edd328fb144e819498d395172c8823a0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _text: Runs the Main Joblist on this pic
+  _text: Runs the Main Job Script on this pic
 --- !u!1 &4585877088190574024
 GameObject:
   m_ObjectHideFlags: 0

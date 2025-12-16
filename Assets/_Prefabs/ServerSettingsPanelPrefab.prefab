@@ -66,7 +66,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: The joblist, if not blank, this will be used instead of the global one
+  m_text: The job script, if not blank, this will be used instead of the global one
     for this server specifically.
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -1682,7 +1682,7 @@ MonoBehaviour:
 
 
     Selecting
-    a preset will have this joblist overide the main one, just for this server.'
+    a preset will have this job script override the main one, just for this server.'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -2256,7 +2256,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: edd328fb144e819498d395172c8823a0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _text: The job List, you can select a preset above, or directly edit this
+  _text: The job script, you can select a preset above, or directly edit this
 --- !u!114 &2369070648493369586
 MonoBehaviour:
   m_ObjectHideFlags: 0

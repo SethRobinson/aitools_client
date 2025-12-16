@@ -1885,7 +1885,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         } else
         {
             //show a message that it's been scheduled on the screen
-            RTQuickMessageManager.Get().ShowMessage("Running joblist...");
+            RTQuickMessageManager.Get().ShowMessage("Running job script...");
         }
     }
     public void OnSetTemp1Button()
@@ -1905,7 +1905,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         else
         {
             //show a message that it's been scheduled on the screen
-            RTQuickMessageManager.Get().ShowMessage("Running joblist...");
+            RTQuickMessageManager.Get().ShowMessage("Running job script...");
         }
     }
 
@@ -2588,7 +2588,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                     else
                     {
                         //show error
-                        RTConsole.Log("Error parsing command: " + words[i]+" in joblist line "+ m_jobList[0]);    
+                        RTConsole.Log("Error parsing command: " + words[i]+" in job script line "+ m_jobList[0]);    
                     }
                 }
 

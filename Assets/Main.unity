@@ -3437,7 +3437,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Paste to main joblist
+  m_text: Paste to main job script
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -13050,8 +13050,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: edd328fb144e819498d395172c8823a0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _text: Loads preset joblist from the Presets dir into the main joblist.  Careful,
-    any non blank values its been set with will overwrite current stuff.
+  _text: Loads preset job script from the Presets dir into the main job script. 
+    Careful, any non blank values its been set with will overwrite current stuff.
 --- !u!114 &314388407
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -18204,7 +18204,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Main Joblist
+  m_text: Main Job Script
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -33341,9 +33341,9 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Enter joblist, generally this means a single or multiple ComfyUI workflow
+  m_text: Enter job script, generally this means a single or multiple ComfyUI workflow
     .json files,<BR>with extra parms that do fancy stuff or replace parms if needed. 
-    Click "Generate" to run, or the "Run Joblist"<BR>button on an existing image.
+    Click "Generate" to run, or the "Run Job Script"<BR>button on an existing image.
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -34230,7 +34230,7 @@ MonoBehaviour:
       m_Calls: []
   m_text: 'Main
 
-    Joblist'
+    Job Script'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -34362,7 +34362,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: edd328fb144e819498d395172c8823a0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _text: Save current joblist as a preset. It will ask for the name to use.
+  _text: Save current job script as a preset. It will ask for the name to use.
 --- !u!114 &866089965
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -35178,7 +35178,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Run Joblist On All
+  m_text: Run Job Script On All
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -43486,8 +43486,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 1118.2, y: -218.43}
-  m_SizeDelta: {x: 116.4764, y: 25.317}
+  m_AnchoredPosition: {x: 1112, y: -218.43}
+  m_SizeDelta: {x: 128.9, y: 25.317}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1117112545
 MonoBehaviour:
@@ -43501,8 +43501,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: edd328fb144e819498d395172c8823a0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _text: Appends the joblist to every active pic.  You can drag in a bunch of pics,
-    then operate on all of them.
+  _text: Appends the job script to every active pic.  You can drag in a bunch of
+    pics, then operate on all of them.
 --- !u!114 &1117112546
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -49747,8 +49747,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: edd328fb144e819498d395172c8823a0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _text: Set's the temp preset.  This is used if you click "Apply temp joblist" on
-    a pic
+  _text: Set's the temp preset.  This is used if you click "Apply temp job script"
+    on a pic
 --- !u!114 &1251356103
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -53640,7 +53640,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Temp Joblist
+  m_text: Temp Job Script
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -59780,8 +59780,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 1156.3, y: -163.11003}
-  m_SizeDelta: {x: 115.3255, y: 25.349}
+  m_AnchoredPosition: {x: 1144.1694, y: -163.11003}
+  m_SizeDelta: {x: 139.5868, y: 25.349}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1508861675
 MonoBehaviour:
@@ -59795,7 +59795,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: edd328fb144e819498d395172c8823a0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _text: Click to add this workflow to the Job List
+  _text: Click to add this workflow to the Job Script
 --- !u!114 &1508861676
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -68700,8 +68700,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 991.46, y: -166.30997}
-  m_SizeDelta: {x: 251.93, y: 17.589}
+  m_AnchoredPosition: {x: 965.9398, y: -166.30997}
+  m_SizeDelta: {x: 200.8896, y: 17.589}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1776567424
 MonoBehaviour:
@@ -68723,7 +68723,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: ComfyUI workflows (to add to your joblist)
+  m_text: ComfyUI workflows (to add to your job script)
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -68750,8 +68750,8 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 12
-  m_fontSizeBase: 12
+  m_fontSize: 10
+  m_fontSizeBase: 10
   m_fontWeight: 400
   m_enableAutoSizing: 0
   m_fontSizeMin: 18
@@ -81542,7 +81542,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: edd328fb144e819498d395172c8823a0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _text: Click to clear the job list and set only this workflow
+  _text: Click to clear the job script and set only this workflow
 --- !u!114 &2102049677
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -82760,7 +82760,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 1079.3163, y: -78.2}
+  m_AnchoredPosition: {x: 1079.3163, y: -84.8}
   m_SizeDelta: {x: 160, y: 20}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &2127522124
