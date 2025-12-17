@@ -125,7 +125,7 @@ public class PicMain : MonoBehaviour
     public string m_lastLLMReply = "";
     public Camera m_camera;
     List<string> m_jobList = new List<string>();
-    bool m_allowServerJobOverrides = true;
+    public bool m_allowServerJobOverrides = true;
     UndoEvent m_undoevent = new UndoEvent();
     UndoEvent m_curEvent = new UndoEvent(); //useful for just saving the current status, makes it easy to copy to/from a real undo event
     bool m_isDestroyed;
@@ -2335,7 +2335,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
         GPUInfo serverInfo = null;
         
-        if (serverID >= 0) Config.Get().GetGPUInfo(serverID);
+        if (serverID >= 0) serverInfo = Config.Get().GetGPUInfo(serverID);
 
         // Check if the next job is an LLM call and if we can initiate it in Adventure mode
         if (m_picJobs.Count > 0 && m_picJobs[0]._job == "call_llm")
@@ -2455,9 +2455,13 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 //there is a chance we need to use a different workflow, if the server wants it
                 if (serverInfo!= null && m_allowServerJobOverrides && serverInfo._jobListOverride != "")
                 {
-                    m_allowServerJobOverrides = false; //once is enough
-                    m_jobList.Clear();
-                    AddJobList(serverInfo.GetPicJobListAsListOfStrings());
+                    List<string> serverJobList = serverInfo.GetPicJobListAsListOfStrings();
+                    if (serverJobList.Count > 0)
+                    {
+                        m_allowServerJobOverrides = false; //once is enough
+                        m_jobList.Clear();
+                        AddJobList(serverJobList);
+                    }
                 }
 
                 string workFlowNameWithoutTest = m_jobList[0];

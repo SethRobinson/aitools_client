@@ -233,6 +233,8 @@ public class AdventureLogic : MonoBehaviour
 
     bool _bIsActive = false;
     public UnityEngine.UI.Toggle m_genExtraToggle;
+    public Toggle m_genUniqueAPicsToggle;
+    public bool GetGenUniqueAPics() { return m_genUniqueAPicsToggle != null && m_genUniqueAPicsToggle.isOn; }
     public string GetAdventureName() { return "My Adventure"; }
     int _llmRequestCount = 0;
     int GetMaxLLMRequestsDesiredAtOnce()

@@ -700,9 +700,19 @@ public class AdventureText : MonoBehaviour
             //no pics found.  Should we use the LLM to create a description to render?  We'll check to see how many images have been set to render
             if (bRenderAutoPics && AdventureLogic.Get().GetRenderCount() > 0)
             {
-                //render for each of
-                OnAutoRenderButton();
-
+                if (AdventureLogic.Get().GetGenUniqueAPics())
+                {
+                    //spawn a separate APic for each render count, so each gets a unique LLM description
+                    for (int i = 0; i < AdventureLogic.Get().GetRenderCount(); i++)
+                    {
+                        OnAutoRenderButton();
+                    }
+                }
+                else
+                {
+                    //single APic, then duplicate the result for additional renders
+                    OnAutoRenderButton();
+                }
             }
         }
     }
@@ -796,14 +806,21 @@ public class AdventureText : MonoBehaviour
         picMain.m_onFinishedRenderingCallback = null;
         picMain.m_onFinishedScriptCallback = null;
 
+        //re-enable server job overrides now that autopic script is done
+        picMain.m_allowServerJobOverrides = true;
+
         //have our LLM picwindow also render
         picMain.AddJobList(GameLogic.Get().GetPicJobListAsListOfStrings());
         
-        //for each in AdventureLogic.Get().GetRenderCount() we'll do a renderpic call
-        for (int i = 0; i < AdventureLogic.Get().GetRenderCount()-1; i++)
+        //spawn additional images with the same description, unless we're doing unique APics (each APic handles itself)
+        if (!AdventureLogic.Get().GetGenUniqueAPics())
         {
-            //we'll use the reply as the pic text
-            RenderPic(reply, reply, AdventureLogic.Get().GetRenderer(), _lastAudioPrompt, _lastAudioNegativePrompt, false);
+            //for each in AdventureLogic.Get().GetRenderCount() we'll do a renderpic call
+            for (int i = 0; i < AdventureLogic.Get().GetRenderCount()-1; i++)
+            {
+                //we'll use the reply as the pic text
+                RenderPic(reply, reply, AdventureLogic.Get().GetRenderer(), _lastAudioPrompt, _lastAudioNegativePrompt, false);
+            }
         }
 
     }
@@ -853,6 +870,7 @@ public class AdventureText : MonoBehaviour
             string fileToLoad = "test_autopic.txt";
             PresetFileConfigExtractor preset = new PresetFileConfigExtractor();
             picMain._promptManager.CloneFrom(m_promptManager);
+            picMain.m_allowServerJobOverrides = false;
 
             //now, we're going to have it run our script, but we'd like a notification when the script finishes
             picMain.m_onFinishedScriptCallback += this.AutoPicFinishedScriptCallback;
