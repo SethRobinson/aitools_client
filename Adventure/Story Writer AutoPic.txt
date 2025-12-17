@@ -41,5 +41,7 @@ COMMAND_END
 
 #This is what we show the user for their first prompt
 COMMAND_START|start_msg
+(Note: This preset uses AutoPics, which means instead of generating the image description WITH the story, we send the story to our LLM to get an image description when we need them.  It seems to give better results and variety)
+
 What should this story be about? (Enter in the textbox at the bottom of the screen and press ENTER)
 COMMAND_END
