@@ -13,6 +13,8 @@ public class PresetFileConfigExtractor
     public string default_negative_prompt { get; private set; }
     public string default_pre_prompt { get; private set; }
     public string default_post_prompt { get; private set; }
+    public string summarize_prompt { get; private set; }
+    public int recent_interactions { get; private set; }
 
     //this is kind of a lazy catch all for everything I need from config files.  They don't all have to be in a single .txt file
   
@@ -22,7 +24,9 @@ public class PresetFileConfigExtractor
                 { "default_prompt", (ce, data) => ce.default_prompt = data },
                 { "default_negative_prompt", (ce, data) => ce.default_negative_prompt = data },
                 { "default_pre_prompt", (ce, data) => ce.default_pre_prompt = data },
-                { "default_post_prompt", (ce, data) => ce.default_post_prompt = data }
+                { "default_post_prompt", (ce, data) => ce.default_post_prompt = data },
+                { "summarize_prompt", (ce, data) => ce.summarize_prompt = data },
+                { "recent_interactions", (ce, data) => ce.recent_interactions = int.TryParse(data, out int val) ? val : 0 }
            };
 
     public void ExtractInfoFromString(string text)
@@ -63,6 +67,8 @@ public class PresetFileConfigExtractor
         default_negative_prompt = null;
         default_pre_prompt = null;
         default_post_prompt = null;
+        summarize_prompt = null;
+        recent_interactions = 0;
     }
 
     private static bool ParseBool(string value)

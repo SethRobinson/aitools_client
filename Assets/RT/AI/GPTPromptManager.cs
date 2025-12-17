@@ -158,6 +158,34 @@ public class GPTPromptManager : MonoBehaviour
         }
         return allText;
     }
+
+    // Returns formatted text for the last N interactions, or all if n <= 0
+    public string GetLastNInteractionsAsText(int n)
+    {
+        string allText = _baseSystemPrompt + "\n" + _journalSystemPrompt + "\n";
+        
+        if (n <= 0 || n >= _interactions.Count)
+        {
+            // Return all interactions
+            foreach (GTPChatLine interaction in _interactions)
+            {
+                allText += interaction._role + ": " + interaction._content + "\n";
+            }
+        }
+        else
+        {
+            // Return only the last N interactions
+            var interactionsList = _interactions.ToList();
+            int startIndex = interactionsList.Count - n;
+            for (int i = startIndex; i < interactionsList.Count; i++)
+            {
+                allText += interactionsList[i]._role + ": " + interactionsList[i]._content + "\n";
+            }
+        }
+        
+        return allText;
+    }
+
     public void SummarizeHistoryIntoJournal(string openAI_APIKey, Action<RTDB, JSONObject, string> myCallback)
     {
 

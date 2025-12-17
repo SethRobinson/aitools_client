@@ -48,6 +48,12 @@ public class AdventureText : MonoBehaviour
     string m_name = "?";
     string _factoid = "";
     bool _bDontSendTextToLLM = false;
+    string _textToAppendAfterResponse = "";
+
+    public void SetTextToAppendAfterResponse(string text)
+    {
+        _textToAppendAfterResponse = text;
+    }
 
     public void SetDontSendTextToLLM(bool bNew)
     {
@@ -668,6 +674,14 @@ public class AdventureText : MonoBehaviour
 
             //let's add our original prompt to it, I assume that's what we want
             // inputField.text = streamedText;
+
+            // Append any pending text (e.g., recent interactions for summarize feature)
+            if (!string.IsNullOrEmpty(_textToAppendAfterResponse))
+            {
+                streamedText += _textToAppendAfterResponse;
+                inputField.text += ConvertMarkdownToTMP(_textToAppendAfterResponse);
+                _textToAppendAfterResponse = ""; // Clear after use
+            }
 
             if (_bAddedFinishedTextToPrompt)
             {
