@@ -278,25 +278,27 @@ public class Config : MonoBehaviour
         m_configText = LoadConfigFromFile();
         if (string.IsNullOrEmpty(m_configText))
         {
-            m_configText = @"#add as many add_server commands as you want, just replace the localhost:7860 part with the
-#server name/ip and port.  You can control any number of renderer servers at the same time.
+            m_configText = @"#Seth's AI Tools config file
 
-#This is where you add rendering servers. (ComfyUI servers run with --listen parm)  For OpenAI Image, don't set here, just enter your OpenAI key below.
+#This is where you add your ComfyUI server(s).   (run 'em with the --listen parm)
 
-#Uncomment below and put your renderer server.  Add more add_server commands to add as many as you want, to control multiple servers.
-#(I run 8 ComfyUI servers from the same directory on a linux server, each runnings on its own port with its own video card and it works great)
-#add_server|http://localhost:7860|
+#I run 8 ComfyUI servers from the same directory on a linux server, each runnings
+# on its own port with its own video card and it works great.
+
+add_server|http://localhost:7860|
+
+#Add more add_server commands like this, uncomment below
+#add_server|http://localhost:7861|
 
 #Set the below path and .exe to an image editor to use the Edit option. Changed files will auto
-#update in here.
+#update in here. (optional)
 
-#Optional:
-set_image_editor|C:\Program Files\Adobe\Adobe Photoshop 2025\Photoshop.exe
+set_image_editor|C:\Program Files\Adobe\Adobe Photoshop 2026\Photoshop.exe
 
-
-#if you're using a ComfyUI workflow that creates audio, and you don't have AITOOLS_AUDIO_PROMPT or AITOOLS_AUDIO_NEGATIVE_PROMPT set in the ComfyUI workflow, these are used as defaults:
 set_default_audio_prompt|audio that perfectly matches the onscreen action|
 set_default_audio_negative_prompt|music|
+
+#note:  LLM settings are now controlled in a different area, click the 'LLM Settings' button on the main tool panel to access it.
 ";
             
         }
