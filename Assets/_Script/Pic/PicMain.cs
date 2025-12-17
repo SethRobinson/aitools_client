@@ -2257,6 +2257,12 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     {
         if (bActive == _llmIsActive) return;
         _llmIsActive = bActive;
+        
+        // Track LLM requests in Adventure mode to honor the "LLMs at once" limit
+        if (AdventureLogic.Get().IsActive())
+        {
+            AdventureLogic.Get().ModLLMRequestCount(bActive ? 1 : -1);
+        }
     }
 
 
@@ -2331,6 +2337,15 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         
         if (serverID >= 0) Config.Get().GetGPUInfo(serverID);
 
+        // Check if the next job is an LLM call and if we can initiate it in Adventure mode
+        if (m_picJobs.Count > 0 && m_picJobs[0]._job == "call_llm")
+        {
+            if (AdventureLogic.Get().IsActive() && !AdventureLogic.Get().CanInitNewLLMRequest())
+            {
+                SetStatusMessage("Waiting for LLM slot...");
+                return;
+            }
+        }
 
         if (m_picJobs.Count > 0)
         {
