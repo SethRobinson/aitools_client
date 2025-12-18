@@ -409,7 +409,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         if (m_picInpaintScript.IsBusy()) m_picInpaintScript.SetForceFinish(true);
         if (m_picUpscaleScript.IsBusy()) m_picUpscaleScript.SetForceFinish(true);
         if (m_picGenerateMaskScript != null && m_picGenerateMaskScript.IsBusy()) m_picGenerateMaskScript.SetForceFinish(true);
-        _llmIsActive = false;
+        SetLLMActive(false); // Use SetLLMActive to properly release the Adventure mode slot
 
         ClearJobs();
     }
@@ -1734,6 +1734,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     }
     public void ClearErrorsAndJobs()
     {
+        SetLLMActive(false); // Release LLM slot if this pic was using one
         ClearJobs();
         SetStatusMessage("");
         if (IsBusy())
@@ -2237,6 +2238,16 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 GameLogic.Get().ShowConsole(true);
                 //SetAuto(false); //don't let it continue doing crap
             }
+            
+            // Show error on the pic and clean up properly
+            SetStatusMessage("LLM Error");
+            ClearJobs();
+            
+            // Invoke the script callback so any waiting code gets notified of the failure
+            if (m_onFinishedScriptCallback != null)
+            {
+                m_onFinishedScriptCallback.Invoke(gameObject);
+            }
             return;
         }
 
@@ -2250,6 +2261,18 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
         m_curEvent.m_picJob._requestedLLMReply = streamedText.Trim();
         m_lastLLMReply = m_curEvent.m_picJob._requestedLLMReply;
+        
+        // Check if all jobs are now complete
+        if (!StillHasJobActivityToDo())
+        {
+            SetNeedsToUpdateInfoPanelFlag();
+            SetStatusMessage("LLM reply received");
+            
+            if (m_onFinishedScriptCallback != null)
+            {
+                m_onFinishedScriptCallback.Invoke(gameObject);
+            }
+        }
 
     }
 
@@ -2663,15 +2686,23 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
                 if (m_jobList.Count == 0)
                 {
-                    //guess we're done.  Do any callbacks we need to
-                    if (m_onFinishedScriptCallback != null)
+                    // Check if all jobs (including pending PicJobs) are done
+                    if (m_picJobs.Count == 0)
                     {
-                        m_onFinishedScriptCallback.Invoke(gameObject);
+                        // All jobs truly complete - invoke callback
+                        SetNeedsToUpdateInfoPanelFlag();
+                        SetStatusMessage("LLM reply received");
+                        
+                        if (m_onFinishedScriptCallback != null)
+                        {
+                            m_onFinishedScriptCallback.Invoke(gameObject);
+                        }
                     }
-
-                    SetNeedsToUpdateInfoPanelFlag();
-                    SetStatusMessage("LLM reply received");
-
+                    else
+                    {
+                        // Still have PicJobs to execute, continue processing
+                        UpdateJobs();
+                    }
                 }
                 else
                 {
@@ -2685,6 +2716,9 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     private void OnDestroy()
     {
        InvalidateExportedEditFile();
+
+        // Release LLM slot if this pic was using one
+        SetLLMActive(false);
 
         if (m_pic.sprite && m_pic.sprite.texture)
         {
