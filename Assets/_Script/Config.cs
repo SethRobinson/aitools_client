@@ -20,7 +20,7 @@ public enum LLM_Type
 public enum RTRendererType
 {
     ComfyUI,
-    OpenAI_Image, //openai gpt-image-1 (formerly DALL-E)
+    OpenAI_Image, //openai gpt-image
     Any_Local,
     A1111,
     AI_Tools,

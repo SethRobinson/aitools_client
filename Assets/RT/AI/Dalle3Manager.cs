@@ -51,7 +51,7 @@ public class Dalle3Manager : MonoBehaviour
 
     //*  EXAMPLE END */
 
-    public string BuildJSON(string prompt, string model = "gpt-image-1-5")
+    public string BuildJSON(string prompt, string model = "gpt-image-1.5")
     {
         string json = $@"{{
        
