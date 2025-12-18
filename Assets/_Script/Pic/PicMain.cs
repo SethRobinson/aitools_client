@@ -2437,9 +2437,8 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 
                 string suggestedEndpoint;
                 string json = _texGenWebUICompletionManager.BuildForInstructJSON(_promptManager.BuildPromptChat(), out suggestedEndpoint, 4096, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetGenericLLMMode(), true, mgr.GetLLMParms(), isOllama, isLlamaCpp);
-                // Use the suggested endpoint (might be /v1/completions for special templates)
-                string endpoint = isOllama ? "/v1/chat/completions" : suggestedEndpoint;
-                _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, settings.endpoint, endpoint, OnStreamingTextCallback, true, settings.apiKey);
+                // Use the suggested endpoint (might be /api/chat for Ollama, /v1/completions for special templates)
+                _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, settings.endpoint, suggestedEndpoint, OnStreamingTextCallback, true, settings.apiKey);
                 SetLLMActive(true);
 
                 // uploaderScript.UploadFileInMemory(serverID, pngBytes, remoteFileName, OnUploadFinished);

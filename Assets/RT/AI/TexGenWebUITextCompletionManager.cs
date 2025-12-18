@@ -273,24 +273,11 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
 
      
         string extra = "";
+        string ollamaOptions = ""; // For Ollama-specific options like num_ctx
         bool useOllamaDefaults = false;
-        bool skipAitSuffix = false;
-        bool hasNumCtx = false;
+        string numCtxValue = "";
         
-        // Check if num_ctx is set in parms
-        if (parms != null)
-        {
-            foreach (LLMParm parm in parms)
-            {
-                if (parm._key == "num_ctx" && parm._value.Length > 0)
-                {
-                    hasNumCtx = true;
-                    break;
-                }
-            }
-        }
-        
-        //for each parms, add it to extra with a comma in front
+        // First pass: collect special flags and num_ctx
         if (parms != null)
         {
             foreach (LLMParm parm in parms)
@@ -298,12 +285,34 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
                 if (parm._key == "use_ollama_defaults" && parm._value == "true")
                 {
                     useOllamaDefaults = true;
+                }
+                else if (parm._key == "num_ctx" && parm._value.Length > 0)
+                {
+                    numCtxValue = parm._value;
+                }
+            }
+        }
+        
+        // Build Ollama options object if num_ctx is set
+        if (bIsOllama && !string.IsNullOrEmpty(numCtxValue))
+        {
+            ollamaOptions = $",\"options\": {{\"num_ctx\": {numCtxValue}}}";
+        }
+        
+        //for each parms, add it to extra with a comma in front
+        if (parms != null)
+        {
+            foreach (LLMParm parm in parms)
+            {
+                // Skip internal flags that shouldn't be sent
+                if (parm._key == "use_ollama_defaults" || parm._key == "skip_ait_suffix")
+                {
                     continue;
                 }
                 
-                if (parm._key == "skip_ait_suffix" && parm._value == "true")
+                // For Ollama, num_ctx goes in options object, not as a top-level parameter
+                if (parm._key == "num_ctx" && bIsOllama)
                 {
-                    skipAitSuffix = true;
                     continue;
                 }
 
@@ -312,11 +321,7 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
                     //special handling, remove the quotes
                     string valueTemp = parm._value;
                     valueTemp = valueTemp.Replace("\"", "");
-                    //if ollama, append _ait to the model only when num_ctx is set
-                    if (bIsOllama && !useOllamaDefaults && !skipAitSuffix && hasNumCtx)
-                    {
-                        valueTemp += "_ait";
-                    }
+                    // No longer append _ait suffix - we use options.num_ctx instead
                     extra += $",\"{parm._key}\": \"{valueTemp}\"\r\n";
                     continue;
                 }
@@ -376,20 +381,24 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
              }}";
             return json;
         }
-        else if (bIsOllama && useOllamaDefaults)
+        else if (bIsOllama)
         {
-            // Build JSON with minimal parameters for Ollama when using defaults
+            // Use Ollama's native /api/chat endpoint which supports options.num_ctx
+            suggestedEndpoint = "/api/chat";
+            
+            // Build JSON for Ollama's native API format
             string json =
              $@"{{
                  ""messages"":[{msg}],
                  ""stream"": {bStreamText}
                  {extra}
+                 {ollamaOptions}
              }}";
             return json;
         }
         else
         {
-            // Original behavior for non-Ollama or when not using defaults
+            // Original behavior for non-Ollama
        //     ""temperature"": { temperature},
        
             string json =

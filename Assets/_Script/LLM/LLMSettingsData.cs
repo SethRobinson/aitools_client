@@ -25,6 +25,11 @@ public class LLMProviderSettings
     public string selectedModel = "";
     public List<string> availableModels = new List<string>();
     public List<LLMParm> extraParams = new List<LLMParm>();
+    
+    // Ollama-specific: context length settings
+    public bool overrideContextLength = false; // If false, use Ollama's default context
+    public int contextLength = 8192; // Default 8k context when overriding
+    public int maxContextLength = 131072; // Max allowed (will be updated from model info)
 
     public LLMProviderSettings Clone()
     {
@@ -35,7 +40,10 @@ public class LLMProviderSettings
             endpoint = this.endpoint,
             selectedModel = this.selectedModel,
             availableModels = new List<string>(this.availableModels),
-            extraParams = new List<LLMParm>()
+            extraParams = new List<LLMParm>(),
+            overrideContextLength = this.overrideContextLength,
+            contextLength = this.contextLength,
+            maxContextLength = this.maxContextLength
         };
 
         foreach (var parm in this.extraParams)

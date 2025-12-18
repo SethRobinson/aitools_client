@@ -285,10 +285,10 @@ public class Config : MonoBehaviour
 #I run 8 ComfyUI servers from the same directory on a linux server, each runnings
 # on its own port with its own video card and it works great.
 
-add_server|http://localhost:7860|
+add_server|http://localhost:8000|
 
 #Add more add_server commands like this, uncomment below
-#add_server|http://localhost:7861|
+#add_server|http://localhost:8001|
 
 #Set the below path and .exe to an image editor to use the Edit option. Changed files will auto
 #update in here. (optional)
@@ -1026,5 +1026,4 @@ set_default_audio_negative_prompt|music|
         return false;
     }
     static public Config Get() { return _this; }
-    static public string GetOllamaModelExt() { return "_ait"; }
 }

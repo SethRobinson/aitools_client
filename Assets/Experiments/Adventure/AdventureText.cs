@@ -1082,8 +1082,8 @@ public class AdventureText : MonoBehaviour
                     string suggestedEndpoint;
                     string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, 4096, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetGenericLLMMode(), true, mgr.GetLLMParms(LLMProvider.Ollama), true, false);
                     
-                    string endpoint = "/v1/chat/completions";
-                    _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, settings.endpoint, endpoint, OnStreamingTextCallback, true, settings.apiKey);
+                    // Use suggestedEndpoint which is /api/chat for Ollama (supports options.num_ctx)
+                    _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, settings.endpoint, suggestedEndpoint, OnStreamingTextCallback, true, settings.apiKey);
                     SetLLMActive(true);
                 }
                 break;

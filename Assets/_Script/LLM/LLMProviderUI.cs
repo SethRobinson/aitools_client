@@ -15,6 +15,21 @@ public class LLMProviderUI
     public TMP_InputField endpointInput;
     public TMP_Dropdown modelDropdown;
     public Button refreshModelsButton;
+    
+    // Ollama-specific controls
+    public Toggle overrideContextToggle;
+    public Slider contextSlider;
+    public TextMeshProUGUI contextValueLabel;
+    public TextMeshProUGUI modelInfoLabel;
+    private GameObject _contextSliderRow; // Reference to hide/show based on toggle
+    
+    // Cached model info for VRAM estimation
+    private OllamaModelInfo _cachedModelInfo;
+    private int _currentContextValue = 8192;
+    private bool _overrideContext = false;
+    
+    // Callback for when model selection changes (for Ollama to fetch model info)
+    public event Action<string> OnModelChanged;
 
     private readonly LLMProvider _provider;
     private readonly TMP_FontAsset _font;
@@ -69,6 +84,17 @@ public class LLMProviderUI
         endpointInput = CreateInputRow(sectionRoot.transform, "Endpoint:", settings.endpoint, "http://localhost:8080", false);
 
         CreateModelRow(sectionRoot.transform, settings, showRefreshButton);
+
+        // Add Ollama-specific context length controls
+        if (_provider == LLMProvider.Ollama)
+        {
+            _overrideContext = settings.overrideContextLength;
+            _currentContextValue = settings.contextLength;
+            CreateOverrideContextRow(sectionRoot.transform, settings);
+            CreateContextSliderRow(sectionRoot.transform, settings);
+            CreateModelInfoRow(sectionRoot.transform);
+            UpdateContextControlsVisibility();
+        }
 
         return sectionRoot;
     }
@@ -174,6 +200,9 @@ public class LLMProviderUI
 
             if (modelDropdown.template != null)
                 modelDropdown.template.sizeDelta = new Vector2(modelDropdown.template.sizeDelta.x, 180f);
+            
+            // Add change listener
+            modelDropdown.onValueChanged.AddListener(OnModelDropdownChanged);
         }
 
         if (showRefreshButton)
@@ -266,6 +295,21 @@ public class LLMProviderUI
             endpointInput.text = settings.endpoint;
         if (modelDropdown != null)
             UpdateModelDropdown(settings.availableModels, settings.selectedModel);
+        
+        // Ollama-specific
+        if (_provider == LLMProvider.Ollama)
+        {
+            _overrideContext = settings.overrideContextLength;
+            _currentContextValue = settings.contextLength;
+            if (overrideContextToggle != null)
+                overrideContextToggle.isOn = settings.overrideContextLength;
+            if (contextSlider != null)
+            {
+                contextSlider.value = ContextToSliderValue(settings.contextLength);
+                UpdateContextLabel();
+            }
+            UpdateContextControlsVisibility();
+        }
     }
 
     public void ApplyToSettings(LLMProviderSettings settings)
@@ -276,6 +320,18 @@ public class LLMProviderUI
             settings.endpoint = endpointInput.text;
         if (modelDropdown != null && modelDropdown.options != null && modelDropdown.options.Count > 0)
             settings.selectedModel = modelDropdown.options[modelDropdown.value].text;
+        
+        // Ollama-specific
+        if (_provider == LLMProvider.Ollama)
+        {
+            settings.overrideContextLength = _overrideContext;
+            if (contextSlider != null)
+            {
+                settings.contextLength = _currentContextValue;
+                if (_cachedModelInfo != null)
+                    settings.maxContextLength = (int)_cachedModelInfo.contextLength;
+            }
+        }
     }
 
     public void UpdateModelDropdown(List<string> models, string selectedModel)
@@ -295,6 +351,24 @@ public class LLMProviderUI
         modelDropdown.value = idx >= 0 ? idx : 0;
         modelDropdown.RefreshShownValue();
     }
+    
+    private void OnModelDropdownChanged(int index)
+    {
+        if (modelDropdown == null || modelDropdown.options == null || modelDropdown.options.Count == 0)
+            return;
+        
+        string modelName = modelDropdown.options[index].text;
+        if (modelName != "(no models)")
+        {
+            // Clear cached model info when model changes
+            _cachedModelInfo = null;
+            UpdateContextLabel();
+            UpdateModelInfoDisplay();
+            
+            // Fire the event for the parent to fetch model info
+            OnModelChanged?.Invoke(modelName);
+        }
+    }
 
     private string GetProviderDisplayName()
     {
@@ -307,4 +381,369 @@ public class LLMProviderUI
             _ => _provider.ToString()
         };
     }
+
+    #region Ollama Context Slider
+
+    // Context length steps in tokens (logarithmic-ish scale matching Ollama's UI)
+    private static readonly int[] ContextSteps = new int[]
+    {
+        2048,    // 2k
+        4096,    // 4k
+        8192,    // 8k
+        16384,   // 16k
+        32768,   // 32k
+        65536,   // 64k
+        131072,  // 128k
+        262144   // 256k
+    };
+
+    private void CreateOverrideContextRow(Transform parent, LLMProviderSettings settings)
+    {
+        var row = CreateRowContainer(parent, "OverrideContext");
+        
+        // Checkbox + label
+        var toggleContainer = new GameObject("ToggleContainer");
+        toggleContainer.transform.SetParent(row.transform, false);
+        var containerRt = toggleContainer.AddComponent<RectTransform>();
+        containerRt.anchorMin = Vector2.zero;
+        containerRt.anchorMax = Vector2.one;
+        containerRt.offsetMin = Vector2.zero;
+        containerRt.offsetMax = Vector2.zero;
+        
+        // Create toggle
+        var toggleGo = new GameObject("Toggle");
+        toggleGo.transform.SetParent(toggleContainer.transform, false);
+        var toggleRt = toggleGo.AddComponent<RectTransform>();
+        toggleRt.anchorMin = new Vector2(0, 0.5f);
+        toggleRt.anchorMax = new Vector2(0, 0.5f);
+        toggleRt.pivot = new Vector2(0, 0.5f);
+        toggleRt.sizeDelta = new Vector2(20, 20);
+        toggleRt.anchoredPosition = new Vector2(0, 0);
+        
+        // Background
+        var bgGo = new GameObject("Background");
+        bgGo.transform.SetParent(toggleGo.transform, false);
+        var bgRt = bgGo.AddComponent<RectTransform>();
+        bgRt.anchorMin = Vector2.zero;
+        bgRt.anchorMax = Vector2.one;
+        bgRt.offsetMin = Vector2.zero;
+        bgRt.offsetMax = Vector2.zero;
+        var bgImg = bgGo.AddComponent<Image>();
+        bgImg.color = InputBg;
+        
+        // Checkmark
+        var checkGo = new GameObject("Checkmark");
+        checkGo.transform.SetParent(bgGo.transform, false);
+        var checkRt = checkGo.AddComponent<RectTransform>();
+        checkRt.anchorMin = new Vector2(0.1f, 0.1f);
+        checkRt.anchorMax = new Vector2(0.9f, 0.9f);
+        checkRt.offsetMin = Vector2.zero;
+        checkRt.offsetMax = Vector2.zero;
+        var checkTmp = checkGo.AddComponent<TextMeshProUGUI>();
+        checkTmp.font = _font;
+        checkTmp.fontSize = 14;
+        checkTmp.color = new Color(0.2f, 0.5f, 0.2f, 1f);
+        checkTmp.alignment = TextAlignmentOptions.Center;
+        checkTmp.text = "✓";
+        
+        overrideContextToggle = toggleGo.AddComponent<Toggle>();
+        overrideContextToggle.targetGraphic = bgImg;
+        overrideContextToggle.graphic = checkTmp;
+        overrideContextToggle.isOn = settings.overrideContextLength;
+        overrideContextToggle.onValueChanged.AddListener(OnOverrideContextChanged);
+        
+        // Label
+        var labelObj = new GameObject("Label");
+        labelObj.transform.SetParent(toggleContainer.transform, false);
+        var labelRt = labelObj.AddComponent<RectTransform>();
+        labelRt.anchorMin = new Vector2(0, 0);
+        labelRt.anchorMax = new Vector2(1, 1);
+        labelRt.offsetMin = new Vector2(28, 0);
+        labelRt.offsetMax = new Vector2(0, 0);
+        
+        var labelTmp = labelObj.AddComponent<TextMeshProUGUI>();
+        labelTmp.font = _font;
+        labelTmp.fontSize = 12;
+        labelTmp.color = LabelColor;
+        labelTmp.alignment = TextAlignmentOptions.MidlineLeft;
+        labelTmp.text = "Override context length";
+    }
+    
+    private void OnOverrideContextChanged(bool value)
+    {
+        _overrideContext = value;
+        UpdateContextControlsVisibility();
+    }
+    
+    private void UpdateContextControlsVisibility()
+    {
+        if (_contextSliderRow != null)
+        {
+            _contextSliderRow.SetActive(_overrideContext);
+        }
+    }
+
+    private void CreateContextSliderRow(Transform parent, LLMProviderSettings settings)
+    {
+        // Create a taller row to accommodate tick labels above slider
+        var row = new GameObject("Row_Context");
+        row.transform.SetParent(parent, false);
+        _contextSliderRow = row; // Save reference for visibility control
+        var rowRt = row.AddComponent<RectTransform>();
+        rowRt.sizeDelta = new Vector2(0, 70f);
+        var rowLE = row.AddComponent<LayoutElement>();
+        rowLE.preferredHeight = 70f;
+
+        // Use full width for slider (checkbox already explains what this is)
+        float sliderLeftOffset = 8;
+        float sliderRightPad = 8;
+        
+        // Tick labels above the slider
+        var tickContainer = new GameObject("TickLabels");
+        tickContainer.transform.SetParent(row.transform, false);
+        var tickRt = tickContainer.AddComponent<RectTransform>();
+        tickRt.anchorMin = new Vector2(0, 1);
+        tickRt.anchorMax = new Vector2(1, 1);
+        tickRt.pivot = new Vector2(0.5f, 1);
+        tickRt.offsetMin = new Vector2(sliderLeftOffset, 0);
+        tickRt.offsetMax = new Vector2(-sliderRightPad, 0);
+        tickRt.sizeDelta = new Vector2(0, 14);
+        tickRt.anchoredPosition = new Vector2(0, -2); // Closer to top
+        
+        // Add tick labels for each context step
+        string[] tickLabels = { "2k", "4k", "8k", "16k", "32k", "64k", "128k", "256k" };
+        for (int i = 0; i < tickLabels.Length; i++)
+        {
+            var tickLabelObj = new GameObject("Tick_" + tickLabels[i]);
+            tickLabelObj.transform.SetParent(tickContainer.transform, false);
+            var tickLabelRt = tickLabelObj.AddComponent<RectTransform>();
+            
+            float normalizedPos = (float)i / (tickLabels.Length - 1);
+            tickLabelRt.anchorMin = new Vector2(normalizedPos, 0);
+            tickLabelRt.anchorMax = new Vector2(normalizedPos, 1);
+            tickLabelRt.pivot = new Vector2(0.5f, 0.5f);
+            tickLabelRt.sizeDelta = new Vector2(40, 16);
+            tickLabelRt.anchoredPosition = Vector2.zero;
+            
+            var tickTmp = tickLabelObj.AddComponent<TextMeshProUGUI>();
+            tickTmp.font = _font;
+            tickTmp.fontSize = 10;
+            tickTmp.color = new Color(0.4f, 0.4f, 0.45f, 1f);
+            tickTmp.alignment = TextAlignmentOptions.Center;
+            tickTmp.text = tickLabels[i];
+        }
+
+        // Slider in the middle
+        var sliderContainer = new GameObject("SliderContainer");
+        sliderContainer.transform.SetParent(row.transform, false);
+        var containerRt = sliderContainer.AddComponent<RectTransform>();
+        containerRt.anchorMin = new Vector2(0, 0.5f);
+        containerRt.anchorMax = new Vector2(1, 0.5f);
+        containerRt.pivot = new Vector2(0.5f, 0.5f);
+        containerRt.offsetMin = new Vector2(sliderLeftOffset, 0);
+        containerRt.offsetMax = new Vector2(-sliderRightPad, 0);
+        containerRt.sizeDelta = new Vector2(0, 12);
+        containerRt.anchoredPosition = new Vector2(0, 8); // Shifted up for clearance below
+
+        // Create slider
+        var sliderGo = new GameObject("Slider");
+        sliderGo.transform.SetParent(sliderContainer.transform, false);
+        var sliderRt = sliderGo.AddComponent<RectTransform>();
+        sliderRt.anchorMin = Vector2.zero;
+        sliderRt.anchorMax = Vector2.one;
+        sliderRt.offsetMin = Vector2.zero;
+        sliderRt.offsetMax = Vector2.zero;
+
+        // Background track
+        var bgGo = new GameObject("Background");
+        bgGo.transform.SetParent(sliderGo.transform, false);
+        var bgRt = bgGo.AddComponent<RectTransform>();
+        bgRt.anchorMin = new Vector2(0, 0.4f);
+        bgRt.anchorMax = new Vector2(1, 0.6f);
+        bgRt.offsetMin = Vector2.zero;
+        bgRt.offsetMax = Vector2.zero;
+        var bgImg = bgGo.AddComponent<Image>();
+        bgImg.color = new Color(0.6f, 0.6f, 0.65f, 1f);
+
+        // Fill area
+        var fillAreaGo = new GameObject("Fill Area");
+        fillAreaGo.transform.SetParent(sliderGo.transform, false);
+        var fillAreaRt = fillAreaGo.AddComponent<RectTransform>();
+        fillAreaRt.anchorMin = new Vector2(0, 0.4f);
+        fillAreaRt.anchorMax = new Vector2(1, 0.6f);
+        fillAreaRt.offsetMin = new Vector2(0, 0);
+        fillAreaRt.offsetMax = new Vector2(0, 0);
+
+        var fillGo = new GameObject("Fill");
+        fillGo.transform.SetParent(fillAreaGo.transform, false);
+        var fillRt = fillGo.AddComponent<RectTransform>();
+        fillRt.anchorMin = Vector2.zero;
+        fillRt.anchorMax = new Vector2(0, 1);
+        fillRt.sizeDelta = Vector2.zero;
+        var fillImg = fillGo.AddComponent<Image>();
+        fillImg.color = new Color(0.25f, 0.55f, 0.85f, 1f);
+
+        // Handle slide area
+        var handleAreaGo = new GameObject("Handle Slide Area");
+        handleAreaGo.transform.SetParent(sliderGo.transform, false);
+        var handleAreaRt = handleAreaGo.AddComponent<RectTransform>();
+        handleAreaRt.anchorMin = Vector2.zero;
+        handleAreaRt.anchorMax = Vector2.one;
+        handleAreaRt.offsetMin = Vector2.zero;
+        handleAreaRt.offsetMax = Vector2.zero;
+
+        var handleGo = new GameObject("Handle");
+        handleGo.transform.SetParent(handleAreaGo.transform, false);
+        var handleRt = handleGo.AddComponent<RectTransform>();
+        handleRt.sizeDelta = new Vector2(10, 12); // Small handle to avoid overlapping labels
+        var handleImg = handleGo.AddComponent<Image>();
+        handleImg.color = new Color(0.3f, 0.3f, 0.35f, 1f); // Darker handle for visibility
+
+        // Configure slider
+        contextSlider = sliderGo.AddComponent<Slider>();
+        contextSlider.fillRect = fillRt;
+        contextSlider.handleRect = handleRt;
+        contextSlider.minValue = 0;
+        contextSlider.maxValue = ContextSteps.Length - 1;
+        contextSlider.wholeNumbers = true;
+        contextSlider.value = ContextToSliderValue(settings.contextLength);
+        contextSlider.onValueChanged.AddListener(OnContextSliderChanged);
+
+        // Value + VRAM label below the slider
+        var valueLabelObj = new GameObject("ValueLabel");
+        valueLabelObj.transform.SetParent(row.transform, false);
+        var valueRt = valueLabelObj.AddComponent<RectTransform>();
+        valueRt.anchorMin = new Vector2(0, 0);
+        valueRt.anchorMax = new Vector2(1, 0);
+        valueRt.pivot = new Vector2(0, 0);
+        valueRt.offsetMin = new Vector2(sliderLeftOffset, 2);
+        valueRt.offsetMax = new Vector2(-sliderRightPad, 0);
+        valueRt.sizeDelta = new Vector2(0, 14);
+
+        contextValueLabel = valueLabelObj.AddComponent<TextMeshProUGUI>();
+        contextValueLabel.font = _font;
+        contextValueLabel.fontSize = 11;
+        contextValueLabel.color = LabelColor;
+        contextValueLabel.alignment = TextAlignmentOptions.MidlineLeft;
+        
+        UpdateContextLabel();
+    }
+
+    private void CreateModelInfoRow(Transform parent)
+    {
+        var row = CreateRowContainer(parent, "ModelInfo");
+        row.GetComponent<LayoutElement>().preferredHeight = 50f;
+
+        modelInfoLabel = row.AddComponent<TextMeshProUGUI>();
+        modelInfoLabel.font = _font;
+        modelInfoLabel.fontSize = 11;
+        modelInfoLabel.color = new Color(0.35f, 0.35f, 0.4f, 1f);
+        modelInfoLabel.alignment = TextAlignmentOptions.TopLeft;
+        modelInfoLabel.enableWordWrapping = true;
+        modelInfoLabel.text = "Select a model and click Refresh to see model details.";
+    }
+
+    private int ContextToSliderValue(int context)
+    {
+        for (int i = ContextSteps.Length - 1; i >= 0; i--)
+        {
+            if (context >= ContextSteps[i])
+                return i;
+        }
+        return 0;
+    }
+
+    private int SliderValueToContext(float sliderValue)
+    {
+        int idx = Mathf.Clamp(Mathf.RoundToInt(sliderValue), 0, ContextSteps.Length - 1);
+        return ContextSteps[idx];
+    }
+
+    private void OnContextSliderChanged(float value)
+    {
+        _currentContextValue = SliderValueToContext(value);
+        UpdateContextLabel();
+    }
+
+    private void UpdateContextLabel()
+    {
+        if (contextValueLabel == null) return;
+        
+        string ctxStr = "Selected: " + FormatContextSize(_currentContextValue) + " tokens";
+        
+        if (_cachedModelInfo != null)
+        {
+            ctxStr += "  •  " + _cachedModelInfo.GetVRAMEstimateString(_currentContextValue);
+        }
+        
+        contextValueLabel.text = ctxStr;
+    }
+
+    private string FormatContextSize(int tokens)
+    {
+        if (tokens >= 1024 * 1024)
+            return $"{tokens / (1024 * 1024)}M";
+        if (tokens >= 1024)
+            return $"{tokens / 1024}k";
+        return tokens.ToString();
+    }
+
+    /// <summary>
+    /// Update the cached model info and refresh the UI display.
+    /// </summary>
+    public void SetModelInfo(OllamaModelInfo info)
+    {
+        _cachedModelInfo = info;
+        UpdateContextLabel();
+        UpdateModelInfoDisplay();
+    }
+
+    private void UpdateModelInfoDisplay()
+    {
+        if (modelInfoLabel == null) return;
+        
+        if (_cachedModelInfo == null)
+        {
+            modelInfoLabel.text = "Select a model and click Refresh to see model details.";
+            return;
+        }
+
+        string infoText = "";
+        
+        if (!string.IsNullOrEmpty(_cachedModelInfo.family))
+            infoText += $"Family: {_cachedModelInfo.family}";
+        
+        if (!string.IsNullOrEmpty(_cachedModelInfo.parameterSize))
+        {
+            if (infoText.Length > 0) infoText += "  •  ";
+            infoText += $"Size: {_cachedModelInfo.parameterSize}";
+        }
+        
+        if (!string.IsNullOrEmpty(_cachedModelInfo.quantizationLevel))
+        {
+            if (infoText.Length > 0) infoText += "  •  ";
+            infoText += $"Quant: {_cachedModelInfo.quantizationLevel}";
+        }
+        
+        if (_cachedModelInfo.contextLength > 0)
+        {
+            if (infoText.Length > 0) infoText += "\n";
+            infoText += $"Max context: {FormatContextSize((int)_cachedModelInfo.contextLength)}";
+        }
+        
+        if (string.IsNullOrEmpty(infoText))
+            infoText = "Model info loaded.";
+        
+        modelInfoLabel.text = infoText;
+    }
+
+    /// <summary>
+    /// Get the current context length value from the slider.
+    /// </summary>
+    public int GetContextLength()
+    {
+        return _currentContextValue;
+    }
+
+    #endregion
 }

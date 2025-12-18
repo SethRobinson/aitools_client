@@ -17604,8 +17604,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: -24.669434, y: 521.8788}
-  m_SizeDelta: {x: 0, y: 0}
+  m_AnchoredPosition: {x: -13, y: 0}
+  m_SizeDelta: {x: -26, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &448982118
 MonoBehaviour:
@@ -88524,17 +88524,18 @@ PrefabInstance:
     - target: {fileID: 8335936608596666549, guid: f13496bcc6225004ebb72d41e2bd85b8,
         type: 3}
       propertyPath: m_text
-      value: "This is a front that uses ComfyUI and LLMs together to do fun things.\n\nSome
-        shortcuts/controls to know:\n\n\u2022 Pan around -  Hold down right mouse
-        button.  To zoom, use the mouse wheel\n\u2022 Middle Mouse Button + Drag
-        to move pics around\n\u2022 Drawing masks - Left mouse button to add to selection,
-        hold Alt to remove\n\u2022 Show/hide mask - M.  You can also use Ctrl-I to
-        inverse the selection mask\n\u2022 U for Undo, P to pause/resume movie (cursor
-        must be over the image/movie)\n\u2022 Hold H while on a movie to hide it\n\nComyUI
-        issues?  Drag workflows from the ComfyUI/FullWorkflowVersions directory into
-        ComfyUI and and use the install missing node feature.\n\nClick the Configuration
-        button to setup where your ComfyUI server(s) is/are.  Click LLM Settings
-        to setup the LLM parts.\n\nSeth's source code to this Unity project is <link=\"https://github.com/SethRobinson/aitools_client\"><u>on
+      value: "This is a Unity engine based app that uses ComfyUI and LLMs together
+        to do fun things.\n\nSome shortcuts/controls to know:\n\n\u2022 Pan around
+        -  Hold down right mouse button.  To zoom, use the mouse wheel\n\u2022 Middle
+        Mouse Button + Drag to move pics around\n\u2022 Drawing masks - Left mouse
+        button to add to selection, hold Alt to remove\n\u2022 Show/hide mask - M. 
+        You can also use Ctrl-I to inverse the selection mask\n\u2022 U for Undo,
+        P to pause/resume movie (cursor must be over the image/movie)\n\u2022 Hold
+        H while on a movie to hide it\n\nComyUI issues?  Drag workflows from the
+        ComfyUI/FullWorkflowVersions directory into ComfyUI and and use the install
+        missing node feature.\n\nClick the Configuration button to setup where your
+        ComfyUI server(s) is/are.  Click LLM Settings to setup the LLM parts.\n\nSeth's
+        source code to this Unity project is <link=\"https://github.com/SethRobinson/aitools_client\"><u>on
         github</u></link>.  Please make an account and post there if you have any
         problems or questions."
       objectReference: {fileID: 0}

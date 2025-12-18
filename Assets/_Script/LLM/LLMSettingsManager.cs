@@ -453,13 +453,19 @@ public class LLMSettingsManager : MonoBehaviour
             result.Add(new LLMParm { _key = "model", _value = settings.selectedModel });
         }
 
+        // For Ollama, add context length as num_ctx parameter only if override is enabled
+        if (provider == LLMProvider.Ollama && settings.overrideContextLength && settings.contextLength > 0)
+        {
+            result.Add(new LLMParm { _key = "num_ctx", _value = settings.contextLength.ToString() });
+        }
+
         // Add all extra parameters (null check for deserialization safety)
         if (settings.extraParams != null)
         {
             foreach (var parm in settings.extraParams)
             {
-                // Don't add duplicate model parameter
-                if (parm._key != "model")
+                // Don't add duplicate model or num_ctx parameter
+                if (parm._key != "model" && parm._key != "num_ctx")
                 {
                     result.Add(new LLMParm { _key = parm._key, _value = parm._value });
                 }
@@ -574,7 +580,7 @@ public class LLMSettingsManager : MonoBehaviour
                 return endpoint;
 
             case LLMProvider.Ollama:
-                // Ollama uses /v1/chat/completions for OpenAI-compatible API
+                // Return base URL only - endpoint path (/api/chat) is set by BuildForInstructJSON
                 return endpoint.TrimEnd('/');
 
             default:

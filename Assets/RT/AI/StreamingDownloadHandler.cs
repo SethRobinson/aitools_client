@@ -56,7 +56,7 @@ public class StreamingDownloadHandler : DownloadHandlerScript
         return true;
     }
 
-    // Rest of your existing ProcessChunk and ProcessJsonChunk methods remain exactly the same
+    // Process streaming chunks - supports both SSE format (data: {...}) and NDJSON format ({...})
     protected void ProcessChunk(string chunk)
     {
         chunk = incompleteChunk + chunk; // Prepend any previously incomplete chunk
@@ -64,27 +64,48 @@ public class StreamingDownloadHandler : DownloadHandlerScript
 
         for (int i = 0; i < parts.Length - 1; i++) // Process all parts except the last one
         {
-            string part = parts[i];
+            string part = parts[i].Trim();
             if (!string.IsNullOrWhiteSpace(part))
             {
-                // Ensure it starts with "data: " to consider it a valid JSON chunk
+                // SSE format: "data: {...}"
                 if (part.StartsWith("data: "))
                 {
                     string jsonPart = part.Substring(6); // Remove "data: " prefix
-                    ProcessJsonChunk(jsonPart);
+                    if (jsonPart != "[DONE]")
+                    {
+                        ProcessJsonChunk(jsonPart);
+                    }
+                }
+                // NDJSON format (Ollama native): "{...}" - starts with { and ends with }
+                else if (part.StartsWith("{") && part.EndsWith("}"))
+                {
+                    ProcessJsonChunk(part);
                 }
             }
         }
 
         // Handle the last part: it could be a complete or incomplete chunk
-        string lastPart = parts[parts.Length - 1];
+        string lastPart = parts[parts.Length - 1].Trim();
         if (lastPart.EndsWith("}")) // A simple check to assume completeness
         {
             if (lastPart.StartsWith("data: "))
             {
                 string jsonPart = lastPart.Substring(6); // Remove "data: " prefix
-                ProcessJsonChunk(jsonPart);
+                if (jsonPart != "[DONE]")
+                {
+                    ProcessJsonChunk(jsonPart);
+                }
                 incompleteChunk = ""; // Reset incomplete chunk as it's now processed
+            }
+            else if (lastPart.StartsWith("{"))
+            {
+                // NDJSON format (Ollama native)
+                ProcessJsonChunk(lastPart);
+                incompleteChunk = ""; // Reset incomplete chunk as it's now processed
+            }
+            else
+            {
+                incompleteChunk = lastPart;
             }
         }
         else
@@ -101,8 +122,14 @@ public class StreamingDownloadHandler : DownloadHandlerScript
             JSONNode rootNode = JSON.Parse(jsonChunk);
             string content = null;
 
-            // Try Chat Completions API format first (choices[0].delta.content)
-            if (rootNode["choices"] != null && rootNode["choices"].Count > 0)
+            // Try Ollama native /api/chat format first (message.content)
+            // Format: {"message":{"role":"assistant","content":"text"},"done":false}
+            if (rootNode["message"] != null && rootNode["message"]["content"] != null)
+            {
+                content = rootNode["message"]["content"];
+            }
+            // Try Chat Completions API format (choices[0].delta.content)
+            else if (rootNode["choices"] != null && rootNode["choices"].Count > 0)
             {
                 // Try to get content from the 'delta' structure
                 JSONNode deltaNode = rootNode["choices"][0]["delta"];

@@ -759,6 +759,7 @@ public class LLMSettingsPanel : MonoBehaviour
         _ollamaUI.Build(content.transform, _workingSettings.ollama, true);
         if (_ollamaUI.refreshModelsButton != null)
             _ollamaUI.refreshModelsButton.onClick.AddListener(OnRefreshOllamaModels);
+        _ollamaUI.OnModelChanged += OnOllamaModelChanged;
 
         UpdateVisibleProvider();
     }
@@ -855,6 +856,13 @@ public class LLMSettingsPanel : MonoBehaviour
         {
             AutoRefreshLlamaCppModel();
         }
+        
+        // Auto-fetch Ollama model info when switching to it
+        if ((LLMProvider)index == LLMProvider.Ollama && 
+            !string.IsNullOrEmpty(_workingSettings.ollama.selectedModel))
+        {
+            FetchOllamaModelInfo();
+        }
     }
 
     private void UpdateVisibleProvider()
@@ -888,7 +896,46 @@ public class LLMSettingsPanel : MonoBehaviour
             _workingSettings.ollama.availableModels = models;
             _ollamaUI.UpdateModelDropdown(models, _workingSettings.ollama.selectedModel);
             RTQuickMessageManager.Get().ShowMessage("Found " + models.Count + " models");
+            
+            // Fetch model info for the selected model
+            FetchOllamaModelInfo(endpoint);
         });
+    }
+    
+    private void FetchOllamaModelInfo(string endpoint = null, string modelName = null)
+    {
+        if (endpoint == null)
+            endpoint = _ollamaUI.endpointInput != null ? _ollamaUI.endpointInput.text : _workingSettings.ollama.endpoint;
+        
+        if (string.IsNullOrEmpty(modelName))
+        {
+            if (_ollamaUI.modelDropdown != null && _ollamaUI.modelDropdown.options.Count > 0)
+                modelName = _ollamaUI.modelDropdown.options[_ollamaUI.modelDropdown.value].text;
+        }
+        
+        if (string.IsNullOrEmpty(modelName) || modelName == "(no models)")
+            return;
+        
+        OllamaModelInfoFetcher.Fetch(endpoint, modelName, (info, error) =>
+        {
+            if (!string.IsNullOrEmpty(error))
+            {
+                Debug.LogWarning("Failed to fetch Ollama model info: " + error);
+                return;
+            }
+
+            if (info != null)
+            {
+                _ollamaUI.SetModelInfo(info);
+                _workingSettings.ollama.maxContextLength = (int)info.contextLength;
+            }
+        });
+    }
+    
+    private void OnOllamaModelChanged(string modelName)
+    {
+        // When the model changes in the dropdown, fetch the model info
+        FetchOllamaModelInfo(null, modelName);
     }
 
     private void OnRefreshLlamaCppModel()
@@ -997,6 +1044,13 @@ public class LLMSettingsPanel : MonoBehaviour
         if (_workingSettings.activeProvider == LLMProvider.LlamaCpp)
         {
             AutoRefreshLlamaCppModel();
+        }
+        
+        // Auto-fetch Ollama model info if Ollama is the active provider and has a selected model
+        if (_workingSettings.activeProvider == LLMProvider.Ollama && 
+            !string.IsNullOrEmpty(_workingSettings.ollama.selectedModel))
+        {
+            FetchOllamaModelInfo();
         }
     }
 

@@ -415,7 +415,6 @@ public class AIGuideManager : MonoBehaviour
         var settings = mgr.GetProviderSettings(LLMProvider.Ollama);
         string serverAddress = settings.endpoint;
         string apiKey = settings.apiKey;
-        string ollamaEndpoint = "/v1/chat/completions";
 
         RTConsole.Log("Contacting Ollama at " + serverAddress);
 
@@ -424,7 +423,8 @@ public class AIGuideManager : MonoBehaviour
             Config.Get().GetGenericLLMMode(), true, mgr.GetLLMParms(LLMProvider.Ollama), true, false);
 
         RTDB db = new RTDB();
-        _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, serverAddress, ollamaEndpoint, 
+        // Use suggestedEndpoint which is /api/chat for Ollama (supports options.num_ctx)
+        _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, serverAddress, suggestedEndpoint, 
             OnStreamingTextCallback, true, apiKey);
     }
 
