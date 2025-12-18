@@ -1,6 +1,0 @@
-COMMAND_START|joblist
-img_to_img_inpaint_automask_bg_sdxl.json @replace|SD1.5/dreamshaper_8Inpainting.safetensors|SD1.5/dreamshaper_8Inpainting.safetensors| @replace|"guidance": 30|"guidance": 30| @replace|"steps": 10|"steps": 10| @replace|"denoise": 0.5|"denoise": 0.5| @replace|"inpaint_model": true|"inpaint_model": true| @replace|512|512| @no_undo
-COMMAND_END
-COMMAND_START|default_negative_prompt
-cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white
-COMMAND_END

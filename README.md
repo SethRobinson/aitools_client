@@ -7,11 +7,13 @@ License:  BSD style attribution, see LICENSE.md
 </p>
 
 
-## Download the latest public version: V2.12 (Dec 12th, 2025) [AI Tools Client (Windows, 62 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip)
+## Download the latest public version: V2.12 (Dec 18th, 2025) [AI Tools Client (Windows, 62 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip)
 
 Need an old version? The last pre-V2 version (that still supports Auto1111) can be downloaded [here](https://www.rtsoft.com/files/SethsAIToolsWindowsV095.zip).
 
-To use this, you'll need to connect to something that can generate images, and hopefully an LLM too.
+NOTE: This software is hard to use because it kind of assumes you already know a lot of about ComfyUI and how to use local LLMs like llama.cpp. 
+
+If this is all weird and strange, this is probably not the place for you to start.  Although, you could just enter an OpenAI API key for both image creation and LLM I guess and this app could do some funs tuff, but the main point of this is to do everything in your home lab locally.
 
 ## Features
 
@@ -22,26 +24,28 @@ To use this, you'll need to connect to something that can generate images, and h
 - Pan/zoom with thousands of images on the screen
 - Built to utilize many ComfyUI servers at once
 - Privacy respected - does not phone home or collect any statistics, purely local usage. (it does check a single file on github.com to check for newer versions, but that's it)
-- Includes "experiments", little built-in games and apps designed to test AI
+- Includes "experiments", little built-in games and apps designed to test AI. May be broken
 - AI Guide feature harnesses the power of AI to create motivational posters, illustrated stories or whatever
 - Adventure mode has presets to various modes - generate ready to upload illustrated web quiz from prompt, simple Twine game project from a prompt, and "Adventure", a sort of illustrated AI Dungeon type of toy
-- Includes presets and workflows I currently find useful -  I keep delete the old outdated ones, but you can always make your own
-- By default strips<think> tags when continuing LLM work for Deepseek/thinking models
 
 
 ## Recent changes
 
-* A lot of misc improvements, the biggest one being we only work with full workflows now, no more needing API versions
-* Improved llama.cpp support
+* A Christmas miracle, I actually updated!  I figured enough changed that people might want to try it, although I'm still kind of not planning to seriously support this as it's just too niche and hard to make easy to use
+* We can now only work with *normal ComfyUI workflows*, hallelujah! No more "API" version exporting!
+* Adventure mode now has story and interactive story "AutoPic" modes, it's a newer technique that works better, instead of generating image data with the story, it separately automatically generates image descriptions based on the story. (conrolled with AutoPic.txt)
+* Erased a lot of presets and added some new ones, the main ones I use these days are Z-Image and Wan
+* CrazyCam is replaced by "SpookyCam", a photobooth thing I made, check the preset for it for more info.  Normal crazycam is too broken to use right now
+ * LLM support overhauled, it now has a fully GUI based config and improved support for llama.cpp and Ollama
+ * While local AI is the main target, ChatGPT 5.2, GPT Image 1.5, Claude 4.5, etc. are also supported (requires API keys to use)
+
 
 ## Known issues
 
-- Lack of documentation etc due to laziness
-- CrazyCam (where the webcam is being used for realtime image processing) is broken, it actually runs a halloween photobooth thing currently, sorry
+- CrazyCam disabled
+- A lot of the mask/editing stuff I haven't used in a while, not sure if it still works
 - Things tend to get broken if I haven't used that particular feature in a while.  It's probably the app, not you
 
-
-You only need to download [the zip](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) and run the .exe to use this, However, the source might be useful to generate a build for other platforms, fork or steal pieces to use for yourself.  Go ahead!
 
 # Screenshots
 
@@ -82,9 +86,24 @@ So you don't have to create custom workflows for every checkpoint/filesize etc, 
 
 Check discussions for some more info [here](https://github.com/SethRobinson/aitools_client/discussions/18)
 
+# List of keywords that can be used in ComfyUI workflows so AITools can modify things
+
+<AITOOLS_PROMPT> Main prompt used to generate whatever (image or movie)
+<AITOOLS_NEGATIVE_PROMPT> Some image generators use this, but a lot ignore it
+<AITOOLS_AUDIO_PROMPT> Audio prompt for audio things later
+<AITOOLS_AUDIO_NEGATIVE_PROMPT> This would be for what you DON'T want to hear, like to make sure there isn't music in the audio
+<AITOOLS_SEGMENTATION_PROMPT> For SAM3 segmentation - like "head" and the head gets selected
+<AITOOLS_INPUT_1> This is for an image.  Use Load Image (Path) (a V.H.S. node) and this can be used anywhere a normal image is needed.
+
+# List of Job Script commands
+
+* Coming someday
+
 # Building from source
 
-- Requires Unity 6+
+You only need to download [the zip](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) and run the .exe to use this, However, the source might be useful to generate a build for other platforms, fork or steal pieces to use for yourself.  Go ahead!
+
+- Requires Unity 6000.3.1f+
 - Open the scene "Main" and click play to run
 - Assets/GUI/GOTHIC.TFF and Assets/GUI/times.ttf are not included and might break the build because I was having trouble and switched some settings around that might require them now (dynamic vs static TMPro font settings...)
 
@@ -106,4 +125,4 @@ http://creativecommons.org/licenses/by/3.0/
 http://creativecommons.org/licenses/by/3.0/
 
 - Written by Seth A. Robinson (seth@rtsoft.com) twitter: @rtsoft - [Codedojo](https://www.codedojo.com), Seth's blog
-- Special thanks to the awesome people working on AUTOMATIC1111's [stable-diffusion-webui](https://github.com/AUTOMATIC1111/stable-diffusion-webui) project
+- Special thanks to the [ComfyUI](https://github.com/comfyanonymous/ComfyUI) and [llama.cpp](https://github.com/ggml-org/llama.cpp)

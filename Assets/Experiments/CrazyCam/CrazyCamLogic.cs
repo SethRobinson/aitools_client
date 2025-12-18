@@ -79,13 +79,16 @@ public class CrazyCamLogic : MonoBehaviour
     float m_timer;
     float m_delayBetweenSnaps = 0;
     bool m_bIsActive = false;
+    bool m_bInSnapshotMode = true;
 
     private void Awake()
     {
         _this = this;
     }
 
-    public bool IsInSnapshotMode() { return true; }
+    public bool IsInSnapshotMode() { return m_bInSnapshotMode ; }
+    public void SetInSnapshotMode(bool bNew) { m_bInSnapshotMode = bNew; }
+
 
     public static CrazyCamLogic Get() { return _this; }
 

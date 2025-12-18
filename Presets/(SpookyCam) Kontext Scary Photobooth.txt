@@ -1,0 +1,13 @@
+COMMAND_START|joblist
+#this is very hacked in, am the screensize has to be 1080p.  Set this as the main job script (with a blank prompt), then
+#click Spooky Cam and select yoru camera.  If it works, it's a cool photobooth kind of thing.  If it doesn't, well, yeah this
+#was pretty sketch, wait for this feature to get fixed up someday.  Oh, Crazy Cam mode is compeltely disabled right now.
+
+#Oh, the animatio/sound timing was setup to work with a 5090 in a public demo I did
+#sfx and art was partially AI generated
+
+img_to_img_kontext.json
+COMMAND_END
+COMMAND_START|default_negative_prompt
+cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white
+COMMAND_END

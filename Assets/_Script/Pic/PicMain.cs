@@ -1622,7 +1622,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             openAIImageScript = gameObject.AddComponent<Dalle3Manager>();
         }
 
-        string json = openAIImageScript.BuildJSON(m_picTextToImageScript.GetPrompt(), "gpt-image-1");
+        string json = openAIImageScript.BuildJSON(m_picTextToImageScript.GetPrompt(), "gpt-image-1-5");
 
         RTDB db = new RTDB();
         openAIImageScript.SpawnRequest(json, OnOpenAIImageCompletedCallback, db, apiKey);
