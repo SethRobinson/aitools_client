@@ -1,0 +1,28 @@
+#configuration file for crazy cam/photo booth/spooky cam stuff
+
+#for crazy cam
+add_snapshot_preset|Ghostly|Without changing anything else in the image, make the people in the image translucent scary ghouls.|Haunting image...|
+add_snapshot_preset|Skeletal|Without changing anything else in the image, make the people in the image realistic and scary skeletons.|Cursing image...|
+add_snapshot_preset|Zombies|Without changing anything else in the image, make the people in the image realistic scary zombified version of themselves|Braining image...|
+add_snapshot_preset|Doggy|Without changing anything else in the image, make the people's heads in the image turn into photo realistic white/brown cavalier dog heads|Letting the dogs out...|
+add_snapshot_preset|Hellish|Without changing anything else in the image, change the background to be hell, and the peoples clothes to be on fire.|Heating things up...|
+add_snapshot_preset|Spooky|Without changing anything else in the image, modify the clothing to be stylish vampire clothes.|Biting the neck...|
+add_snapshot_preset|Monsters|Without changing anything else in the image, modify the faces to be different famous monsters.|It's a bash... a monster bash!|
+
+# CrazyCam capture settings (width|height|fps). The app will choose the closest supported mode.
+set_crazycam_capture|1280|720|30|
+
+#after capturing from the camera, we rescale it before getting it processed:
+
+set_default_gen_width|1024|
+set_default_gen_height|576|
+
+#set_default_gen_width|1280|
+#set_default_gen_height|720|
+
+#set_default_gen_width|1152|
+#set_default_gen_height|648|
+
+#set_default_gen_width|1216|
+#set_default_gen_height|684|
+ 

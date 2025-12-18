@@ -73,6 +73,7 @@ public class Config : MonoBehaviour
     static Config _this;
     string m_configText; //later move this to a config.txt or something
     const string m_configFileName = "config.txt";
+    const string m_crazyCamConfigFileName = "config_cam.txt";
     bool m_safetyFilter = false;
     float m_requiredServerVersion = 0.46f;
 
@@ -278,7 +279,10 @@ public class Config : MonoBehaviour
         m_configText = LoadConfigFromFile();
         if (string.IsNullOrEmpty(m_configText))
         {
-            m_configText = @"#Seth's AI Tools config file
+            m_configText = @"#Seth's AI Tools general config file
+
+#Note: For CrazyCam/photobooth specific settings, see config_cam.txt
+#For LLM settings, see the LLM Settings panel on the main tool panel.
 
 #This is where you add your ComfyUI server(s).   (run 'em with the --listen parm)
 
@@ -298,13 +302,15 @@ set_image_editor|C:\Program Files\Adobe\Adobe Photoshop 2026\Photoshop.exe
 set_default_audio_prompt|audio that perfectly matches the onscreen action|
 set_default_audio_negative_prompt|music|
 
-#note:  LLM settings are now controlled in a different area, click the 'LLM Settings' button on the main tool panel to access it.
 ";
             
         }
 
         RTQuickMessageManager.Get().ShowMessage("Connecting...");
         ProcessConfigString(m_configText);
+        
+        // Load CrazyCam-specific config from separate file
+        LoadCrazyCamConfig();
     }
 
     /// <summary>
@@ -682,6 +688,100 @@ set_default_audio_negative_prompt|music|
         
         return config;
     }
+
+    /// <summary>
+    /// Load and process CrazyCam-specific configuration from config_cam.txt
+    /// This handles: add_snapshot_preset, set_crazycam_capture, set_default_gen_width, 
+    /// set_default_gen_height, set_bat_sound_volume_mod
+    /// </summary>
+    void LoadCrazyCamConfig()
+    {
+        if (!System.IO.File.Exists(m_crazyCamConfigFileName))
+        {
+            RTConsole.Log("No " + m_crazyCamConfigFileName + " file found, using defaults for CrazyCam settings.");
+            return;
+        }
+
+        try
+        {
+            string configText;
+            using (StreamReader reader = new StreamReader(m_crazyCamConfigFileName))
+            {
+                configText = reader.ReadToEnd();
+            }
+
+            ProcessCrazyCamConfigString(configText);
+            RTConsole.Log("Loaded CrazyCam config from " + m_crazyCamConfigFileName);
+        }
+        catch (IOException ioex)
+        {
+            RTConsole.Log("Couldn't read " + m_crazyCamConfigFileName + ": " + ioex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Process CrazyCam-specific configuration commands
+    /// </summary>
+    void ProcessCrazyCamConfigString(string configText)
+    {
+        using (var reader = new StringReader(configText))
+        {
+            for (string line = reader.ReadLine(); line != null; line = reader.ReadLine())
+            {
+                string[] words = line.Trim().Split('|');
+                
+                if (words[0].StartsWith("#") || string.IsNullOrWhiteSpace(words[0]))
+                {
+                    continue; // Skip comments and empty lines
+                }
+
+                if (words[0] == "add_snapshot_preset")
+                {
+                    if (words.Length >= 4)
+                    {
+                        CrazyCamLogic.Get().AddSnapshotPreset(words[1], words[2], words[3]);
+                    }
+                }
+                else if (words[0] == "set_crazycam_capture")
+                {
+                    // set_crazycam_capture|width|height|fps|
+                    int w = _crazyCamRequestedWidth;
+                    int h = _crazyCamRequestedHeight;
+                    int f = _crazyCamRequestedFPS;
+                    if (words.Length > 1) int.TryParse(words[1], out w);
+                    if (words.Length > 2) int.TryParse(words[2], out h);
+                    if (words.Length > 3) int.TryParse(words[3], out f);
+
+                    _crazyCamRequestedWidth = Mathf.Max(1, w);
+                    _crazyCamRequestedHeight = Mathf.Max(1, h);
+                    _crazyCamRequestedFPS = Mathf.Max(1, f);
+                }
+                else if (words[0] == "set_default_gen_width")
+                {
+                    int width;
+                    if (int.TryParse(words[1], out width))
+                    {
+                        GameLogic.Get().SetGenWidth(width);
+                    }
+                }
+                else if (words[0] == "set_default_gen_height")
+                {
+                    int height;
+                    if (int.TryParse(words[1], out height))
+                    {
+                        GameLogic.Get().SetGenHeight(height);
+                    }
+                }
+                else if (words[0] == "set_bat_sound_volume_mod")
+                {
+                    float volMod;
+                    float.TryParse(words[1], out volMod);
+                    _snapShotBatSoundVolumeMod = volMod;
+                }
+            }
+        }
+    }
+
     void ClearGPU()
     {
         m_gpuInfo = new List<GPUInfo>();
