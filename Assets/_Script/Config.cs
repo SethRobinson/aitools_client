@@ -305,9 +305,6 @@ set_default_audio_negative_prompt|music|
 
         RTQuickMessageManager.Get().ShowMessage("Connecting...");
         ProcessConfigString(m_configText);
-        
-        // After processing config, check if we should add an OpenAI Image GPU
-        TryAddOpenAIImageGPU();
     }
 
     /// <summary>
@@ -935,6 +932,9 @@ set_default_audio_negative_prompt|music|
 
 
         // LLM server detection is now handled by LLMSettingsManager
+        
+        // After processing config, check if we should add an OpenAI Image GPU
+        TryAddOpenAIImageGPU();
     }
 
     public void SendRequestToAllServers(string optionKey, string optionValue)
