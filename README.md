@@ -31,7 +31,7 @@ If this is all weird and strange, this is probably not the place for you to star
 
 ## Recent changes
 
-* A Christmas miracle, I actually updated!  I figured enough changed that people might want to try it, although I'm still kind of not planning to seriously support this as it's just too niche and hard to make easy to use
+* A Christmas miracle, I actually updated this!  I figured enough changed that people might want to try it, although I'm still kind of not planning to seriously support this as it's just too niche and hard to make easy to use
 * We can now only work with *normal ComfyUI workflows*, hallelujah! No more "API" version exporting!
 * Adventure mode now has story and interactive story "AutoPic" modes, it's a newer technique that works better, instead of generating image data with the story, it separately automatically generates image descriptions based on the story. (conrolled with AutoPic.txt)
 * Erased a lot of presets and added some new ones, the main ones I use these days are Z-Image and Wan

@@ -1637,15 +1637,23 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         if (texture == null)
         {
             string errorMsg = db.GetString("msg");
-            Debug.Log("Error getting OpenAI image: " + errorMsg);
+            string httpError = db.GetStringWithDefault("http_error", "");
+            
+            // Log full error details to console
+            RTConsole.Log("OpenAI Image Error: " + errorMsg);
+            if (!string.IsNullOrEmpty(httpError) && httpError != errorMsg)
+            {
+                RTConsole.Log("HTTP Error: " + httpError);
+            }
 
             //if 429 (Too Many Requests) is in the text we'll wait and try again
-            if (errorMsg.Contains("429"))
+            if (errorMsg.Contains("429") || httpError.Contains("429"))
             {
                Debug.Log("Got 429, waiting 5 seconds and trying again");
                RTMessageManager.Get().Schedule(UnityEngine.Random.Range(5.0f, 10.0f), OnRenderWithOpenAIImage);
             }
-            else if (errorMsg.Contains("401") || errorMsg.Contains("Unauthorized"))
+            else if (errorMsg.Contains("401") || errorMsg.Contains("Unauthorized") || 
+                     httpError.Contains("401") || httpError.Contains("Unauthorized"))
             {
                 // API key is invalid
                 RTQuickMessageManager.Get().ShowMessage("OpenAI API key is invalid. Check LLM Settings.", 5);
@@ -1654,7 +1662,22 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             }
             else
             {
-                SetStatusMessage("" + errorMsg);
+                // For moderation blocked, show a cleaner message
+                string displayMsg = errorMsg;
+                if (errorMsg.Contains("safety system") || errorMsg.Contains("moderation"))
+                {
+                    // Extract key part of message and make it more readable
+                    displayMsg = "Content blocked by\nOpenAI safety filter";
+                    RTQuickMessageManager.Get().ShowMessage(errorMsg, 8); // Show full message in popup
+                }
+                else if (displayMsg.Length > 100)
+                {
+                    // Truncate very long messages for display, but show full in popup
+                    RTQuickMessageManager.Get().ShowMessage(errorMsg, 8);
+                    displayMsg = displayMsg.Substring(0, 100) + "...";
+                }
+                
+                SetStatusMessage(displayMsg);
                 // Mark job as finished so the pic is no longer considered busy
                 OnFinishedRenderingWorkflow(false);
             }

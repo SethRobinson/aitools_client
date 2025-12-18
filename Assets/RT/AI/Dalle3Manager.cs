@@ -93,12 +93,49 @@ public class Dalle3Manager : MonoBehaviour
 
             if (postRequest.result != UnityWebRequest.Result.Success)
             { 
-                string msg = postRequest.error;
-                Debug.Log(msg);
-                //Debug.Log(postRequest.downloadHandler.text);
-                 File.WriteAllText("openai_image_last_error_returned.json", postRequest.downloadHandler.text);
+                string httpError = postRequest.error;
+                string responseBody = postRequest.downloadHandler.text;
+                
+                Debug.Log("OpenAI Image HTTP Error: " + httpError);
+                Debug.Log("OpenAI Image Response: " + responseBody);
+                
+#if UNITY_STANDALONE && !RT_RELEASE 
+                File.WriteAllText("openai_image_last_error_returned.json", responseBody);
+#endif
+                
+                // Try to parse the actual error message from OpenAI's response
+                string displayMsg = httpError;
+                try
+                {
+                    if (!string.IsNullOrEmpty(responseBody))
+                    {
+                        JSONNode errorJson = JSON.Parse(responseBody);
+                        if (errorJson != null && errorJson["error"] != null)
+                        {
+                            string errorMessage = errorJson["error"]["message"];
+                            string errorCode = errorJson["error"]["code"];
+                            
+                            if (!string.IsNullOrEmpty(errorMessage))
+                            {
+                                displayMsg = errorMessage;
+                                Debug.Log("OpenAI Image Error Message: " + errorMessage);
+                            }
+                            if (!string.IsNullOrEmpty(errorCode))
+                            {
+                                Debug.Log("OpenAI Image Error Code: " + errorCode);
+                            }
+                        }
+                    }
+                }
+                catch (Exception e)
+                {
+                    Debug.Log("Failed to parse OpenAI error response: " + e.Message);
+                }
+                
                 db.Set("status", "failed");
-                db.Set("msg", msg);
+                db.Set("msg", displayMsg);
+                db.Set("http_error", httpError);
+                db.Set("response_body", responseBody);
                 myCallback.Invoke(db, null);
             }
             else
