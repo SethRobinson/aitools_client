@@ -12889,7 +12889,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d845674649ef18844ba3195912a2a19c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _texgen_webui_address: localhost:5000
+  _texgen_webui_address: localhost:8080
   _openai_gpt4_endpoint: https://api.openai.com/v1/chat/completions
   _ollama_endpoint: 
   _texgen_webui_APIKey: none

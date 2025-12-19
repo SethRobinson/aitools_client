@@ -209,7 +209,7 @@ public class Config : MonoBehaviour
 
      _openAI_APIKey = "";
      _openAI_APIModel = "gpt-4o";
-     _texgen_webui_address = "localhost:5000";
+     _texgen_webui_address = "localhost:8080";
     _openai_gpt4_endpoint = "https://api.openai.com/v1/chat/completions";
     _ollama_endpoint = "/v1/chat/completions";
 
@@ -288,7 +288,10 @@ public class Config : MonoBehaviour
 
 #I run 8 ComfyUI servers from the same directory on a linux server, each runnings
 # on its own port with its own video card and it works great.
+#If it's running on another machine, don't forget to run with the --listen parm so it can
+#be accessed from other machines. (for windows, change 'Listen Address' in the ComfyUI GUI from 127.0.0.1 to 0.0.0.0)
 
+#default port is usually 8000 or 8188
 add_server|http://localhost:8000|
 
 #Add more add_server commands like this, uncomment below

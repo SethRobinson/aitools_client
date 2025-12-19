@@ -155,7 +155,7 @@ public class WebRequestServerInfo : MonoBehaviour
                     goto again;
                 }
 
-                RTConsole.Log("Error connecting to server " + serverClickableURL + ". (" + postRequest.error + ")  Are you sure it's up and this address/port is right? It must be running with the --api parm. (and --listen if not on this machine)");
+                RTConsole.Log("Error connecting to server " + serverClickableURL + ". (" + postRequest.error + ")  Are you sure it's up and this address/port is right?  (If not on this machine, it needs the --listen parm too probably)");
                 RTConsole.Log("Click Configuration, then Save & Apply to try again.");
                 GameLogic.Get().ShowConsole(true);
             }
@@ -283,7 +283,7 @@ public class WebRequestServerInfo : MonoBehaviour
                     RTConsole.Log("Getting config from " + serverClickableURL + "... (try " + m_timesTried + ")");
                     goto again;
                 }
-                RTConsole.Log("Error getting config from server " + serverClickableURL + ". (" + postRequest.error + ")  Are you sure it's up and this address/port is right? It must be running with the --api parm. (and --listen if not on this machine)");
+                RTConsole.Log("Error getting config from server " + serverClickableURL + ". (" + postRequest.error + ")  Are you sure it's up and this address/port is right? (If not on this machine, it needs the --listen parm too probably)");
                 RTConsole.Log("Click Configuration, then Save & Apply to try again.");
                 GameLogic.Get().ShowConsole(true);
             }
@@ -369,7 +369,7 @@ public class WebRequestServerInfo : MonoBehaviour
                     Debug.Log("Getting models from server " + serverClickableURL + "... (try " + m_timesTried + ")");
                     goto again;
                 }
-                RTConsole.Log("Error getting models from server " + serverClickableURL + ". (" + postRequest.error + ")  Are you sure it's up and this address/port is right? It must be running with the --api parm. (and --listen if not on this machine)");
+                RTConsole.Log("Error getting models from server " + serverClickableURL + ". (" + postRequest.error + ")  Are you sure it's up and this address/port is right? (If not on this machine, it needs the --listen parm too probably)");
                 RTConsole.Log("Click Configuration, then Save & Apply to try again.");
                 GameLogic.Get().ShowConsole(true);
             }
@@ -657,7 +657,7 @@ public class WebRequestServerInfo : MonoBehaviour
                     Debug.Log("Getting samplers from server " + serverClickableURL + "... (try " + m_timesTried + ")");
                     goto again;
                 }
-                Debug.Log("Error getting samplers from server " + serverClickableURL + ". (" + postRequest.error + ")  Are you sure it's up and this address/port is right? It must be running with the --api parm. (and --listen if not on this machine)");
+                Debug.Log("Error getting samplers from server " + serverClickableURL + ". (" + postRequest.error + ")  Are you sure it's up and this address/port is right? (If not on this machine, it needs the --listen parm too probably)");
                 Debug.Log("Click Configuration, then Save & Apply to try again.");
                 GameLogic.Get().ShowConsole(true);
             }
