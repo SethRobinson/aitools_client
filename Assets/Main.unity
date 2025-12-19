@@ -7835,8 +7835,8 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 5
-  m_fontSizeBase: 5
+  m_fontSize: 8
+  m_fontSizeBase: 8
   m_fontWeight: 400
   m_enableAutoSizing: 0
   m_fontSizeMin: 18
@@ -7852,7 +7852,7 @@ MonoBehaviour:
   m_lineSpacingMax: 0
   m_paragraphSpacing: 0
   m_charWidthMaxAdj: 0
-  m_TextWrappingMode: 0
+  m_TextWrappingMode: 1
   m_wordWrappingRatios: 0.4
   m_overflowMode: 0
   m_linkedTextComponent: {fileID: 0}
@@ -41293,8 +41293,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 30.425598, y: -51.5}
-  m_SizeDelta: {x: 50.0011, y: 11.116}
+  m_AnchoredPosition: {x: 30.425598, y: -56.0862}
+  m_SizeDelta: {x: 50.0011, y: 22.1396}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1068069010
 MonoBehaviour:
@@ -52755,8 +52755,8 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 5
-  m_fontSizeBase: 5
+  m_fontSize: 8
+  m_fontSizeBase: 8
   m_fontWeight: 400
   m_enableAutoSizing: 0
   m_fontSizeMin: 18
@@ -82145,8 +82145,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 30.425598, y: -63.471}
-  m_SizeDelta: {x: 50.0011, y: 11.116}
+  m_AnchoredPosition: {x: 30.425598, y: -78.3}
+  m_SizeDelta: {x: 50.0011, y: 22.1396}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &2104646738
 MonoBehaviour:
@@ -82160,7 +82160,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: edd328fb144e819498d395172c8823a0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _text: Enhance the active prompt for Flux (LLMProcessFlux.txt)
+  _text: Enhance the active prompt (LLMProcessEnhance.txt)
 --- !u!114 &2104646739
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -82207,7 +82207,7 @@ MonoBehaviour:
       m_Calls:
       - m_Target: {fileID: 311706010}
         m_TargetAssemblyTypeName: GameLogic, Assembly-CSharp
-        m_MethodName: OnLLMProcessFlux
+        m_MethodName: OnLLMProcessEnhance
         m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
@@ -88525,24 +88525,26 @@ PrefabInstance:
         type: 3}
       propertyPath: m_text
       value: "This is a Unity engine based app that uses ComfyUI and LLMs together
-        to do fun things.\n\nSome shortcuts/controls to know:\n\n\u2022 Pan around
-        -  Hold down right mouse button.  To zoom, use the mouse wheel\n\u2022 Middle
-        Mouse Button + Drag to move pics around\n\u2022 Drawing masks - Left mouse
-        button to add to selection, hold Alt to remove\n\u2022 Show/hide mask - M. 
-        You can also use Ctrl-I to inverse the selection mask\n\u2022 U for Undo,
-        P to pause/resume movie (cursor must be over the image/movie)\n\u2022 Hold
-        H while on a movie to hide it\n\nComyUI issues?  Drag workflows from the
-        ComfyUI/FullWorkflowVersions directory into ComfyUI and and use the install
-        missing node feature.\n\nClick the Configuration button to setup where your
-        ComfyUI server(s) is/are.  Click LLM Settings to setup the LLM parts.\n\nSeth's
-        source code to this Unity project is <link=\"https://github.com/SethRobinson/aitools_client\"><u>on
+        to do fun things.\n\nTo get started: Add at least one ComfyUI server with
+        the Configuration button.  Click LLM Settings to add your local LLM info
+        (or API keys for OpenAI/Anthropic ones).\n\nSome shortcuts/controls to know:\n\n\u2022
+        Pan around -  Hold down right mouse button.  To zoom, use the mouse wheel\n\u2022
+        Middle Mouse Button + Drag to move pics around\n\u2022 Drawing masks - Left
+        mouse button to add to selection, hold Alt to remove\n\u2022 Show/hide mask
+        - M.  You can also use Ctrl-I to inverse the selection mask\n\u2022 U for
+        Undo, P to pause/resume movie (cursor must be over the image/movie)\n\u2022
+        Hold H while on a movie to hide it\n\nComyUI issues?  Drag workflows from
+        the ComfyUI directory into ComfyUI and and use the install missing node feature.\n\nClick
+        the Configuration button to setup where your ComfyUI server(s) is/are.  Click
+        LLM Settings to setup the LLM parts.\n\nSeth's source code to this Unity
+        project is <link=\"https://github.com/SethRobinson/aitools_client\"><u>on
         github</u></link>.  Please make an account and post there if you have any
         problems or questions."
       objectReference: {fileID: 0}
     - target: {fileID: 8335936608596666549, guid: f13496bcc6225004ebb72d41e2bd85b8,
         type: 3}
       propertyPath: m_fontSize
-      value: 31
+      value: 30.7
       objectReference: {fileID: 0}
     - target: {fileID: 8335936608596666549, guid: f13496bcc6225004ebb72d41e2bd85b8,
         type: 3}

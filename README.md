@@ -72,9 +72,11 @@ After running it, a config.txt will be made. There is an config edit button insi
 
 First, install [ComfyUI](https://github.com/comfyanonymous/ComfyUI) and get it rendering stuff.
 
-# Install my [Workflow to API Converter Endpoint](https://github.com/SethRobinson/comfyui-workflow-to-api-converter-endpoint) via ComfyUI Manager
+Then install my [Workflow to API Converter Endpoint](https://github.com/SethRobinson/comfyui-workflow-to-api-converter-endpoint) via ComfyUI Manager
 
-This node allows us to only work with normal workflow json files, and never have to export "API" versions.  The API conversions will happen under the hood automatically when needed, makes life much better.
+This node allows us to only work with normal workflow json files, and never have to export "API" versions.  The API conversions will happen under the hood automatically when needed, makes life much better.  Click its page above for help.
+
+It will work if you don't, but this allows modified or new workflows to work as it can convert them to "API" versions on the fly when needed.
 
 Next, just for a test to make sure the workflows included with AITools are going to work, inside ComfyUI's web GUI, drag in aitools_client/ComfyUI/FullWorkflowVersions/text_to_img_flux.json or any others.  The neat thing about ComfyUI is it will read this and convert it to its visual workflow format, ready to run.  (you might want to change the prompt from <AITOOLS_PROMPT> to something else during testing here) - Click Queue.  Does it work?  Oh, if you see an Image Loader set to the file "<AITOOLS_INPUT_1>" you'll need to change that to a file on your ComfyUI server if you want to test.
 
@@ -88,16 +90,78 @@ Check discussions for some more info [here](https://github.com/SethRobinson/aito
 
 # List of keywords that can be used in ComfyUI workflows so AITools can modify things
 
-<AITOOLS_PROMPT> Main prompt used to generate whatever (image or movie)
-<AITOOLS_NEGATIVE_PROMPT> Some image generators use this, but a lot ignore it
-<AITOOLS_AUDIO_PROMPT> Audio prompt for audio things later
-<AITOOLS_AUDIO_NEGATIVE_PROMPT> This would be for what you DON'T want to hear, like to make sure there isn't music in the audio
-<AITOOLS_SEGMENTATION_PROMPT> For SAM3 segmentation - like "head" and the head gets selected
-<AITOOLS_INPUT_1> This is for an image.  Use Load Image (Path) (a V.H.S. node) and this can be used anywhere a normal image is needed.
+| Keyword | Description |
+|---------|-------------|
+| `<AITOOLS_PROMPT>` | Main prompt used to generate whatever (image or movie) |
+| `<AITOOLS_NEGATIVE_PROMPT>` | Some image generators use this, but a lot ignore it |
+| `<AITOOLS_AUDIO_PROMPT>` | Audio prompt for audio things |
+| `<AITOOLS_AUDIO_NEGATIVE_PROMPT>` | What you DON'T want to hear (e.g., to exclude music from audio) |
+| `<AITOOLS_SEGMENTATION_PROMPT>` | For SAM3 segmentation - like "head" and the head gets selected |
+| `<AITOOLS_INPUT_1>` | For images. Use Load Image (Path) (a V.H.S. node) anywhere a normal image is needed |
 
 # List of Job Script commands
 
-* Coming someday
+Job scripts are used in presets to chain workflows and manipulate variables. Each line can contain a workflow name followed by commands separated by `@`.  It's kind of rough, but you can call LLMs with text, get something, run workflows, tweak the image and use it on other workflows, etc.
+
+## Basic Syntax
+
+```
+workflow_name.json @command|parm1|parm2| @command2|parm1|
+```
+
+Example: `img_to_img.json @copy|prompt|segmentation_prompt| @resize_if_larger|x|1024|y|1024|aspect_correct|1|`
+
+## Commands
+
+| Command | Parameters | Description |
+|---------|------------|-------------|
+| `@copy` | `source\|dest\|` | Copy text/image between variables |
+| `@add` | `source\|dest\|` | Append text to a variable |
+| `@resize_if_larger` | `x\|width\|y\|height\|aspect_correct\|0 or 1\|` | Resize image only if larger than specified |
+| `@resize` | `x\|width\|y\|height\|aspect_correct\|0 or 1\|` | Force resize to specified dimensions |
+| `@fill_mask_if_blank` | (none) | Fills the alpha mask if empty |
+| `@no_undo` | (none) | Disables undo for this operation |
+| `@llm_prompt_reset` | (none) | Reset LLM conversation history |
+| `@llm_prompt_set_base_prompt` | `text\|` | Set base system prompt for LLM |
+| `@llm_prompt_add_from_user` | `text\|` | Add user message to LLM conversation |
+| `@llm_prompt_add_from_assistant` | `text\|` | Add assistant message to LLM conversation |
+| `@llm_prompt_pop_first` | (none) | Remove first interaction from history |
+| `@llm_prompt_add_to_last_interaction` | `text\|` | Append text to last message |
+| `@Comment` | `text\|` | Human-readable comment (ignored by parser) |
+
+## Variable Names (for @copy/@add)
+
+| Variable | Description |
+|----------|-------------|
+| `prompt` | Current job's main prompt |
+| `global_prompt` | Global prompt field in UI |
+| `prepend_prompt` | Text prepended to prompts |
+| `append_prompt` | Text appended to prompts |
+| `negative_prompt` | Negative prompt for generation |
+| `audio_prompt` | Audio generation prompt |
+| `audio_negative_prompt` | Audio negative prompt |
+| `segmentation_prompt` | Prompt for SAM segmentation |
+| `llm_prompt` | Prompt sent to LLM |
+| `llm_reply` | Response received from LLM |
+| `requirements` | Requirements string |
+| `image` | Current image (for copying to temp1) |
+| `temp1` | Temporary image storage |
+
+## Special Line Prefixes
+
+| Prefix | Description |
+|--------|-------------|
+| `command` | Execute commands without running a workflow |
+| `call_llm` | Call the LLM, response stored in `llm_reply` |
+| `img_*` | Workflow that needs the current image uploaded |
+| `video_*` or `vid_*` | Workflow that needs the current video uploaded |
+
+## Disabling Commands
+
+Add `-` at the end of a command to skip the next parameter (useful for commenting out):
+```
+workflow.json -@disabled_command|parm| @enabled_command|parm|
+```
 
 # Building from source
 

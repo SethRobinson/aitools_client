@@ -1913,9 +1913,9 @@ public string GetPrompt() { return m_prompt; }
         RunJoblistPreset("llmprocessraw.txt");
     }
 
-    public void OnLLMProcessFlux()
+    public void OnLLMProcessEnhance()
     {
-        RunJoblistPreset("llmprocessflux.txt");
+        RunJoblistPreset("LLMProcessEnhance.txt");
     }
 
     public void CompactPics()

@@ -114,6 +114,8 @@ public class PicMain : MonoBehaviour
     PicJob m_jobDefaultInfo = null;
 
     public TexGenWebUITextCompletionManager _texGenWebUICompletionManager;
+    public OpenAITextCompletionManager _openAITextCompletionManager;
+    public AnthropicAITextCompletionManager _anthropicAITextCompletionManager;
     public GPTPromptManager _promptManager;
 
     string m_mediaRemoteFilename = ""; //sometimes media has no name because it was generated, but we need to know the filename for sending/loading remotely on ComfyUI
@@ -2470,24 +2472,159 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 }
             } else  if (job._job == "call_llm")
             {
+                // Ensure LLM managers exist (add components dynamically if not assigned via prefab)
+                if (_openAITextCompletionManager == null)
+                    _openAITextCompletionManager = gameObject.GetComponent<OpenAITextCompletionManager>() ?? gameObject.AddComponent<OpenAITextCompletionManager>();
+                if (_anthropicAITextCompletionManager == null)
+                    _anthropicAITextCompletionManager = gameObject.GetComponent<AnthropicAITextCompletionManager>() ?? gameObject.AddComponent<AnthropicAITextCompletionManager>();
+                if (_texGenWebUICompletionManager == null)
+                    _texGenWebUICompletionManager = gameObject.GetComponent<TexGenWebUITextCompletionManager>() ?? gameObject.AddComponent<TexGenWebUITextCompletionManager>();
      
-                //add a file to the ComfyUI server
                 RTDB db = new RTDB();
-
                 SetStatusMessage("Running LLM...");
                 var mgr = LLMSettingsManager.Get();
                 var activeProvider = mgr.GetActiveProvider();
-                bool isOllama = activeProvider == LLMProvider.Ollama;
-                bool isLlamaCpp = activeProvider == LLMProvider.LlamaCpp;
-                var settings = mgr.GetProviderSettings(activeProvider);
-                
-                string suggestedEndpoint;
-                string json = _texGenWebUICompletionManager.BuildForInstructJSON(_promptManager.BuildPromptChat(), out suggestedEndpoint, 4096, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetGenericLLMMode(), true, mgr.GetLLMParms(), isOllama, isLlamaCpp);
-                // Use the suggested endpoint (might be /api/chat for Ollama, /v1/completions for special templates)
-                _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, settings.endpoint, suggestedEndpoint, OnStreamingTextCallback, true, settings.apiKey);
-                SetLLMActive(true);
+                var lines = _promptManager.BuildPromptChat();
+                float temperature = AdventureLogic.Get().GetExtractor().Temperature;
 
-                // uploaderScript.UploadFileInMemory(serverID, pngBytes, remoteFileName, OnUploadFinished);
+                switch (activeProvider)
+                {
+                    case LLMProvider.OpenAI:
+                        {
+                            var settings = mgr.GetProviderSettings(LLMProvider.OpenAI);
+                            string apiKey = settings.apiKey;
+                            string model = settings.selectedModel;
+                            string endpoint = "https://api.openai.com/v1/chat/completions";
+                            
+                            // Check for GPT-5/Responses API models (matching AIGuideManager logic)
+                            bool useResponsesAPI = false;
+                            bool isReasoningModel = false;
+                            bool includeTemperature = true;
+                            string reasoningEffort = null;
+                            
+                            if (model.Contains("gpt-5"))
+                            {
+                                // All GPT-5 models use Responses API
+                                useResponsesAPI = true;
+                                endpoint = "https://api.openai.com/v1/responses";
+                                
+                                if (model.Contains("gpt-5.2-pro"))
+                                {
+                                    // Pro reasoning model: high reasoning effort, no temperature
+                                    isReasoningModel = true;
+                                    includeTemperature = false;
+                                    reasoningEffort = "high";
+                                }
+                                else if (model.Contains("gpt-5.2"))
+                                {
+                                    // Base 5.2 reasoning model: medium reasoning effort, no temperature
+                                    isReasoningModel = true;
+                                    includeTemperature = false;
+                                    reasoningEffort = "medium";
+                                }
+                                else if (model.Contains("gpt-5-mini") || model.Contains("gpt-5-nano"))
+                                {
+                                    // Mini/nano: Use Chat Completions API
+                                    useResponsesAPI = false;
+                                    isReasoningModel = false;
+                                    includeTemperature = false;  // Fixed temp=1, don't send parameter
+                                    reasoningEffort = null;
+                                    endpoint = "https://api.openai.com/v1/chat/completions";
+                                }
+                                else
+                                {
+                                    // Base gpt-5: no reasoning, allow temperature
+                                    isReasoningModel = false;
+                                    includeTemperature = true;
+                                }
+                            }
+                            else if (model.StartsWith("o3") || model.StartsWith("o4"))
+                            {
+                                useResponsesAPI = true;
+                                endpoint = "https://api.openai.com/v1/responses";
+                                isReasoningModel = true;
+                                includeTemperature = false;
+                                reasoningEffort = "medium";
+                            }
+                            else if (model.StartsWith("o1"))
+                            {
+                                isReasoningModel = true;
+                                includeTemperature = false;
+                            }
+                            
+                            // OpenAI APIs require at least one user message - add placeholder if missing
+                            bool hasUserMessage = false;
+                            foreach (var line in lines)
+                            {
+                                if (line._role == "user")
+                                {
+                                    hasUserMessage = true;
+                                    break;
+                                }
+                            }
+                            if (!hasUserMessage)
+                            {
+                                lines.Enqueue(new GTPChatLine("user", "Please proceed."));
+                            }
+                            
+                            string json = _openAITextCompletionManager.BuildChatCompleteJSON(
+                                lines, 4096, temperature, model, true,
+                                useResponsesAPI, isReasoningModel, includeTemperature, reasoningEffort);
+                            RTConsole.Log("Contacting OpenAI at " + endpoint);
+                            _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
+                            SetLLMActive(true);
+                        }
+                        break;
+
+                    case LLMProvider.Anthropic:
+                        {
+                            string apiKey = Config.Get().GetAnthropicAI_APIKey();
+                            string model = Config.Get().GetAnthropicAI_APIModel();
+                            string endpoint = Config.Get().GetAnthropicAI_APIEndpoint();
+                            
+                            // Override with LLMSettingsManager if available
+                            var settings = mgr.GetProviderSettings(LLMProvider.Anthropic);
+                            if (!string.IsNullOrEmpty(settings.apiKey)) apiKey = settings.apiKey;
+                            if (!string.IsNullOrEmpty(settings.selectedModel)) model = settings.selectedModel;
+                            if (!string.IsNullOrEmpty(settings.endpoint)) endpoint = settings.endpoint;
+                            
+                            RTConsole.Log("Contacting Anthropic at " + endpoint);
+                            string json = _anthropicAITextCompletionManager.BuildChatCompleteJSON(lines, 4096, temperature, model, true);
+                            _anthropicAITextCompletionManager.SpawnChatCompletionRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
+                            SetLLMActive(true);
+                        }
+                        break;
+
+                    case LLMProvider.LlamaCpp:
+                        {
+                            var settings = mgr.GetProviderSettings(LLMProvider.LlamaCpp);
+                            string serverAddress = settings.endpoint;
+                            string apiKey = settings.apiKey;
+                            
+                            RTConsole.Log("Contacting llama.cpp at " + serverAddress);
+                            string suggestedEndpoint;
+                            string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, 4096, temperature, 
+                                Config.Get().GetGenericLLMMode(), true, mgr.GetLLMParms(LLMProvider.LlamaCpp), false, true);
+                            _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, serverAddress, suggestedEndpoint, OnStreamingTextCallback, true, apiKey);
+                            SetLLMActive(true);
+                        }
+                        break;
+
+                    case LLMProvider.Ollama:
+                        {
+                            var settings = mgr.GetProviderSettings(LLMProvider.Ollama);
+                            string serverAddress = settings.endpoint;
+                            string apiKey = settings.apiKey;
+                            
+                            RTConsole.Log("Contacting Ollama at " + serverAddress);
+                            string suggestedEndpoint;
+                            string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, 4096, temperature, 
+                                Config.Get().GetGenericLLMMode(), true, mgr.GetLLMParms(LLMProvider.Ollama), true, false);
+                            _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, serverAddress, suggestedEndpoint, OnStreamingTextCallback, true, apiKey);
+                            SetLLMActive(true);
+                        }
+                        break;
+                }
 
             }
         }  else
