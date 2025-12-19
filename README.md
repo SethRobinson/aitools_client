@@ -13,12 +13,12 @@ Need an old version? The last pre-V2 version (that still supports Auto1111) can 
 
 NOTE: This software is hard to use because it kind of assumes you already know a lot of about ComfyUI and how to use local LLMs like llama.cpp. 
 
-If this is all weird and strange, this is probably not the place for you to start.  Although, you could just enter an OpenAI API key for both image creation and LLM I guess and this app could do some funs tuff, but the main point of this is to do everything in your home lab locally.
+If this is all weird and strange, this is probably not the place for you to start.  Although, you could just enter an OpenAI API key for both image creation and LLM I guess and this app could do some fun stuff, but the main point of this is to do everything in your home lab locally.
 
 ## Features
 
 - It's not a web app, it's a native locally run Windows .exe (Unity with C#)
-- It's kind of like lego, is can run ComfyUI workflows that chain together.  You need to understand ComyUI and workflow tweaking as you'll still need to install all the needed custom nodes and models there. (you do have ComfyUI Manager installed, right?!)
+- It's kind of like lego, it can run ComfyUI workflows that chain together.  You need to understand ComfyUI and workflow tweaking as you'll still need to install all the needed custom nodes and models there. (you do have ComfyUI Manager installed, right?!)
 - Drag and drop images in as well as paste images from the windows clipboard
 - Built-in image processing like cropping and resizing, mask painting
 - Pan/zoom with thousands of images on the screen
@@ -33,7 +33,7 @@ If this is all weird and strange, this is probably not the place for you to star
 
 * A Christmas miracle, I actually updated this!  I figured enough changed that people might want to try it, although I'm still kind of not planning to seriously support this as it's just too niche and hard to make easy to use
 * We can now only work with *normal ComfyUI workflows*, hallelujah! No more "API" version exporting!
-* Adventure mode now has story and interactive story "AutoPic" modes, it's a newer technique that works better, instead of generating image data with the story, it separately automatically generates image descriptions based on the story. (conrolled with AutoPic.txt)
+* Adventure mode now has story and interactive story "AutoPic" modes, it's a newer technique that works better, instead of generating image data with the story, it separately automatically generates image descriptions based on the story. (controlled with AutoPic.txt)
 * Erased a lot of presets and added some new ones, the main ones I use these days are Z-Image and Wan
 * CrazyCam is replaced by "SpookyCam", a photobooth thing I made, check the preset for it for more info.  Normal crazycam is too broken to use right now
  * LLM support overhauled, it now has a fully GUI based config and improved support for llama.cpp and Ollama
@@ -66,7 +66,7 @@ If this is all weird and strange, this is probably not the place for you to star
 
 Your ComfyUI server needs to be started using the --listen parm, so the API can be accessed.  
 
-After running it, a config.txt will be made. There is an config edit button inside the app, it's kind of self-documented, just go through it and update as neccesary.
+After running it, a config.txt will be made. There is a config edit button inside the app, it's kind of self-documented, just go through it and update as necessary.
 
 # Setting up with ComfyUI
 
@@ -189,4 +189,4 @@ http://creativecommons.org/licenses/by/3.0/
 http://creativecommons.org/licenses/by/3.0/
 
 - Written by Seth A. Robinson (seth@rtsoft.com) twitter: @rtsoft - [Codedojo](https://www.codedojo.com), Seth's blog
-- Special thanks to the [ComfyUI](https://github.com/comfyanonymous/ComfyUI) and [llama.cpp](https://github.com/ggml-org/llama.cpp)
+- Special thanks to the [ComfyUI](https://github.com/comfyanonymous/ComfyUI) and [llama.cpp](https://github.com/ggml-org/llama.cpp) projects
