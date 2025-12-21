@@ -1,0 +1,3 @@
+COMMAND_START|joblist
+img_to_img_inpaint_zimage.json
+COMMAND_END
