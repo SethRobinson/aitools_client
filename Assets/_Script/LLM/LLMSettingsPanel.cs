@@ -962,10 +962,11 @@ public class LLMSettingsPanel : MonoBehaviour
         
         if (showStartMessage)
         {
-            RTQuickMessageManager.Get().ShowMessage("Fetching llama.cpp model info...");
+            RTQuickMessageManager.Get().ShowMessage("Fetching llama.cpp models...");
         }
 
-        LlamaCppModelFetcher.Fetch(endpoint, (modelInfo, error) =>
+        // Use the new multi-model fetch to support router mode
+        LlamaCppModelFetcher.FetchModelsInfo(endpoint, (modelsInfo, error) =>
         {
             if (!string.IsNullOrEmpty(error))
             {
@@ -976,26 +977,40 @@ public class LLMSettingsPanel : MonoBehaviour
                 return;
             }
 
-            if (modelInfo == null || string.IsNullOrEmpty(modelInfo.modelName))
+            if (modelsInfo == null || modelsInfo.modelIds.Count == 0)
             {
                 if (showStartMessage)
                 {
-                    RTQuickMessageManager.Get().ShowMessage("No model found");
+                    RTQuickMessageManager.Get().ShowMessage("No models found");
                 }
                 return;
             }
 
-            // Update settings with the model info
-            _workingSettings.llamaCpp.availableModels = new List<string> { modelInfo.modelName };
-            _workingSettings.llamaCpp.selectedModel = modelInfo.modelName;
-            _llamaCppUI.UpdateModelDropdown(_workingSettings.llamaCpp.availableModels, modelInfo.modelName);
+            // Get model names (use modelNames if available, otherwise modelIds)
+            var modelList = modelsInfo.modelNames.Count > 0 ? modelsInfo.modelNames : modelsInfo.modelIds;
+            
+            // Update settings with the models
+            _workingSettings.llamaCpp.availableModels = new List<string>(modelList);
+            _workingSettings.llamaCpp.isRouterMode = modelsInfo.IsRouterMode;
+            
+            // Keep selected model if it's in the list, otherwise select first
+            if (string.IsNullOrEmpty(_workingSettings.llamaCpp.selectedModel) || 
+                !_workingSettings.llamaCpp.availableModels.Contains(_workingSettings.llamaCpp.selectedModel))
+            {
+                _workingSettings.llamaCpp.selectedModel = modelList[0];
+            }
+            
+            // Update UI
+            _llamaCppUI.UpdateModelDropdown(_workingSettings.llamaCpp.availableModels, _workingSettings.llamaCpp.selectedModel);
+            _llamaCppUI.SetRouterMode(modelsInfo.IsRouterMode, modelList.Count);
             
             // Also update the manager so it persists
-            LLMSettingsManager.Get().SetLlamaCppModelInfo(modelInfo);
+            LLMSettingsManager.Get().SetLlamaCppModels(modelsInfo);
             
             if (showStartMessage)
             {
-                RTQuickMessageManager.Get().ShowMessage("Found model: " + modelInfo.modelName);
+                string modeStr = modelsInfo.IsRouterMode ? "Router Mode" : "Single Model";
+                RTQuickMessageManager.Get().ShowMessage($"Found {modelList.Count} model(s) ({modeStr})");
             }
         });
     }

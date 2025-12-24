@@ -28,6 +28,13 @@ public class LLMProviderUI
     private int _currentContextValue = 8192;
     private bool _overrideContext = false;
     
+    // llama.cpp-specific controls
+    public Toggle thinkingModeToggle;
+    public TextMeshProUGUI serverModeLabel;
+    private GameObject _thinkingModeRow; // Reference to hide/show based on model
+    private bool _enableThinking = true;
+    private bool _isRouterMode = false;
+    
     // Callback for when model selection changes (for Ollama to fetch model info)
     public event Action<string> OnModelChanged;
 
@@ -94,6 +101,16 @@ public class LLMProviderUI
             CreateContextSliderRow(sectionRoot.transform, settings);
             CreateModelInfoRow(sectionRoot.transform);
             UpdateContextControlsVisibility();
+        }
+
+        // Add llama.cpp-specific controls
+        if (_provider == LLMProvider.LlamaCpp)
+        {
+            _enableThinking = settings.enableThinking;
+            _isRouterMode = settings.isRouterMode;
+            CreateServerModeRow(sectionRoot.transform, settings);
+            CreateThinkingModeRow(sectionRoot.transform, settings);
+            UpdateThinkingModeVisibility();
         }
 
         return sectionRoot;
@@ -310,6 +327,17 @@ public class LLMProviderUI
             }
             UpdateContextControlsVisibility();
         }
+        
+        // llama.cpp-specific
+        if (_provider == LLMProvider.LlamaCpp)
+        {
+            _enableThinking = settings.enableThinking;
+            _isRouterMode = settings.isRouterMode;
+            if (thinkingModeToggle != null)
+                thinkingModeToggle.isOn = settings.enableThinking;
+            UpdateServerModeLabel(settings);
+            UpdateThinkingModeVisibility();
+        }
     }
 
     public void ApplyToSettings(LLMProviderSettings settings)
@@ -331,6 +359,13 @@ public class LLMProviderUI
                 if (_cachedModelInfo != null)
                     settings.maxContextLength = (int)_cachedModelInfo.contextLength;
             }
+        }
+        
+        // llama.cpp-specific
+        if (_provider == LLMProvider.LlamaCpp)
+        {
+            settings.enableThinking = _enableThinking;
+            settings.isRouterMode = _isRouterMode;
         }
     }
 
@@ -364,6 +399,12 @@ public class LLMProviderUI
             _cachedModelInfo = null;
             UpdateContextLabel();
             UpdateModelInfoDisplay();
+            
+            // Update thinking mode visibility for llama.cpp (based on model name)
+            if (_provider == LLMProvider.LlamaCpp)
+            {
+                UpdateThinkingModeVisibility();
+            }
             
             // Fire the event for the parent to fetch model info
             OnModelChanged?.Invoke(modelName);
@@ -639,7 +680,7 @@ public class LLMProviderUI
         modelInfoLabel.fontSize = 11;
         modelInfoLabel.color = new Color(0.35f, 0.35f, 0.4f, 1f);
         modelInfoLabel.alignment = TextAlignmentOptions.TopLeft;
-        modelInfoLabel.enableWordWrapping = true;
+        modelInfoLabel.textWrappingMode = TextWrappingModes.Normal;
         modelInfoLabel.text = "Select a model and click Refresh to see model details.";
     }
 
@@ -743,6 +784,187 @@ public class LLMProviderUI
     public int GetContextLength()
     {
         return _currentContextValue;
+    }
+
+    #endregion
+
+    #region llama.cpp Controls
+
+    private void CreateServerModeRow(Transform parent, LLMProviderSettings settings)
+    {
+        var row = CreateRowContainer(parent, "ServerMode");
+        row.GetComponent<LayoutElement>().preferredHeight = 24f;
+
+        serverModeLabel = row.AddComponent<TextMeshProUGUI>();
+        serverModeLabel.font = _font;
+        serverModeLabel.fontSize = 11;
+        serverModeLabel.color = new Color(0.35f, 0.35f, 0.4f, 1f);
+        serverModeLabel.alignment = TextAlignmentOptions.MidlineLeft;
+        
+        UpdateServerModeLabel(settings);
+    }
+
+    private void UpdateServerModeLabel(LLMProviderSettings settings)
+    {
+        if (serverModeLabel == null) return;
+        
+        if (settings.availableModels.Count > 1)
+        {
+            serverModeLabel.text = $"Router Mode: {settings.availableModels.Count} models available";
+            serverModeLabel.color = new Color(0.2f, 0.5f, 0.3f, 1f); // Green tint for router mode
+        }
+        else if (settings.availableModels.Count == 1)
+        {
+            serverModeLabel.text = "Single Model Mode";
+            serverModeLabel.color = new Color(0.35f, 0.35f, 0.4f, 1f);
+        }
+        else
+        {
+            serverModeLabel.text = "Click Refresh to detect server mode";
+            serverModeLabel.color = new Color(0.45f, 0.45f, 0.5f, 1f);
+        }
+    }
+
+    private void CreateThinkingModeRow(Transform parent, LLMProviderSettings settings)
+    {
+        var row = CreateRowContainer(parent, "ThinkingMode");
+        _thinkingModeRow = row;
+        
+        // Checkbox + label container
+        var toggleContainer = new GameObject("ToggleContainer");
+        toggleContainer.transform.SetParent(row.transform, false);
+        var containerRt = toggleContainer.AddComponent<RectTransform>();
+        containerRt.anchorMin = Vector2.zero;
+        containerRt.anchorMax = Vector2.one;
+        containerRt.offsetMin = Vector2.zero;
+        containerRt.offsetMax = Vector2.zero;
+        
+        // Create toggle
+        var toggleGo = new GameObject("Toggle");
+        toggleGo.transform.SetParent(toggleContainer.transform, false);
+        var toggleRt = toggleGo.AddComponent<RectTransform>();
+        toggleRt.anchorMin = new Vector2(0, 0.5f);
+        toggleRt.anchorMax = new Vector2(0, 0.5f);
+        toggleRt.pivot = new Vector2(0, 0.5f);
+        toggleRt.sizeDelta = new Vector2(20, 20);
+        toggleRt.anchoredPosition = new Vector2(0, 0);
+        
+        // Background
+        var bgGo = new GameObject("Background");
+        bgGo.transform.SetParent(toggleGo.transform, false);
+        var bgRt = bgGo.AddComponent<RectTransform>();
+        bgRt.anchorMin = Vector2.zero;
+        bgRt.anchorMax = Vector2.one;
+        bgRt.offsetMin = Vector2.zero;
+        bgRt.offsetMax = Vector2.zero;
+        var bgImg = bgGo.AddComponent<Image>();
+        bgImg.color = InputBg;
+        
+        // Checkmark
+        var checkGo = new GameObject("Checkmark");
+        checkGo.transform.SetParent(bgGo.transform, false);
+        var checkRt = checkGo.AddComponent<RectTransform>();
+        checkRt.anchorMin = new Vector2(0.1f, 0.1f);
+        checkRt.anchorMax = new Vector2(0.9f, 0.9f);
+        checkRt.offsetMin = Vector2.zero;
+        checkRt.offsetMax = Vector2.zero;
+        var checkTmp = checkGo.AddComponent<TextMeshProUGUI>();
+        checkTmp.font = _font;
+        checkTmp.fontSize = 14;
+        checkTmp.color = new Color(0.2f, 0.5f, 0.2f, 1f);
+        checkTmp.alignment = TextAlignmentOptions.Center;
+        checkTmp.text = "✓";
+        
+        thinkingModeToggle = toggleGo.AddComponent<Toggle>();
+        thinkingModeToggle.targetGraphic = bgImg;
+        thinkingModeToggle.graphic = checkTmp;
+        thinkingModeToggle.isOn = settings.enableThinking;
+        thinkingModeToggle.onValueChanged.AddListener(OnThinkingModeChanged);
+        
+        // Label
+        var labelObj = new GameObject("Label");
+        labelObj.transform.SetParent(toggleContainer.transform, false);
+        var labelRt = labelObj.AddComponent<RectTransform>();
+        labelRt.anchorMin = new Vector2(0, 0);
+        labelRt.anchorMax = new Vector2(1, 1);
+        labelRt.offsetMin = new Vector2(28, 0);
+        labelRt.offsetMax = new Vector2(0, 0);
+        
+        var labelTmp = labelObj.AddComponent<TextMeshProUGUI>();
+        labelTmp.font = _font;
+        labelTmp.fontSize = 12;
+        labelTmp.color = LabelColor;
+        labelTmp.alignment = TextAlignmentOptions.MidlineLeft;
+        labelTmp.text = "Enable thinking mode (GLM/DeepSeek)";
+    }
+    
+    private void OnThinkingModeChanged(bool value)
+    {
+        _enableThinking = value;
+    }
+    
+    private void UpdateThinkingModeVisibility()
+    {
+        if (_thinkingModeRow == null) return;
+        
+        // Show thinking mode toggle only for models that support it (GLM and DeepSeek models)
+        string currentModel = GetCurrentModelName();
+        if (string.IsNullOrEmpty(currentModel))
+        {
+            _thinkingModeRow.SetActive(false);
+            return;
+        }
+        
+        string modelLower = currentModel.ToLowerInvariant();
+        bool supportsThinking = modelLower.Contains("glm") || modelLower.Contains("deepseek");
+        
+        _thinkingModeRow.SetActive(supportsThinking);
+    }
+    
+    /// <summary>
+    /// Get the currently selected model name from the dropdown.
+    /// </summary>
+    public string GetCurrentModelName()
+    {
+        if (modelDropdown == null || modelDropdown.options == null || modelDropdown.options.Count == 0)
+            return "";
+        
+        string modelName = modelDropdown.options[modelDropdown.value].text;
+        return modelName == "(no models)" ? "" : modelName;
+    }
+
+    /// <summary>
+    /// Update llama.cpp router mode state.
+    /// </summary>
+    public void SetRouterMode(bool isRouterMode, int modelCount)
+    {
+        _isRouterMode = isRouterMode;
+        if (serverModeLabel != null)
+        {
+            if (isRouterMode)
+            {
+                serverModeLabel.text = $"Router Mode: {modelCount} models available";
+                serverModeLabel.color = new Color(0.2f, 0.5f, 0.3f, 1f);
+            }
+            else if (modelCount == 1)
+            {
+                serverModeLabel.text = "Single Model Mode";
+                serverModeLabel.color = new Color(0.35f, 0.35f, 0.4f, 1f);
+            }
+            else
+            {
+                serverModeLabel.text = "No models detected";
+                serverModeLabel.color = new Color(0.5f, 0.35f, 0.35f, 1f);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Get whether thinking mode is enabled.
+    /// </summary>
+    public bool GetThinkingModeEnabled()
+    {
+        return _enableThinking;
     }
 
     #endregion

@@ -363,6 +363,58 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
         // Check if we're using a special template that requires completions endpoint
         bool useCompletionsEndpoint = useGLMTemplate || useChatMLTemplate || useLlama2Template || useLlama3Template;
         
+        // Build thinking mode parameters for llama.cpp with supported models (GLM, DeepSeek)
+        string chatTemplateKwargs = "";
+        bool isGLM = bIsLlamaCpp && !string.IsNullOrEmpty(modelName) && modelName.Contains("glm");
+        bool isDeepSeek = bIsLlamaCpp && !string.IsNullOrEmpty(modelName) && modelName.Contains("deepseek");
+        
+        if (isGLM || isDeepSeek)
+        {
+            // Check if thinking mode should be enabled or disabled
+            bool enableThinking = true;
+            var llmMgr = LLMSettingsManager.Get();
+            if (llmMgr != null)
+            {
+                enableThinking = llmMgr.GetThinkingModeEnabled(LLMProvider.LlamaCpp);
+            }
+            
+            // NOTE: Server must NOT be started with --reasoning-budget 0 for thinking to work.
+            // The default is --reasoning-budget -1 (unlimited) which is correct.
+            //
+            // We request reasoning_format: "deepseek-legacy" to ensure <think> tags appear in content
+            // (otherwise server might put thinking only in reasoning_content field which we don't parse)
+            
+            if (isGLM)
+            {
+                // GLM models use chat_template_kwargs with enable_thinking
+                if (enableThinking)
+                {
+                    chatTemplateKwargs = ",\"chat_template_kwargs\": {\"enable_thinking\": true}, \"reasoning_format\": \"deepseek-legacy\"";
+                    RTConsole.Log("GLM model '" + modelName + "': Thinking mode ENABLED");
+                }
+                else
+                {
+                    chatTemplateKwargs = ",\"chat_template_kwargs\": {\"enable_thinking\": false}";
+                    RTConsole.Log("GLM model '" + modelName + "': Thinking mode DISABLED");
+                }
+            }
+            else if (isDeepSeek)
+            {
+                // DeepSeek models use thinking: {"type": "enabled"} parameter
+                // See: https://api-docs.deepseek.com/guides/thinking_mode
+                if (enableThinking)
+                {
+                    chatTemplateKwargs = ",\"thinking\": {\"type\": \"enabled\"}, \"reasoning_format\": \"deepseek-legacy\"";
+                    RTConsole.Log("DeepSeek model '" + modelName + "': Thinking mode ENABLED");
+                }
+                else
+                {
+                    chatTemplateKwargs = ",\"thinking\": {\"type\": \"disabled\"}";
+                    RTConsole.Log("DeepSeek model '" + modelName + "': Thinking mode DISABLED");
+                }
+            }
+        }
+        
         if (useCompletionsEndpoint)
         {
             // Set the suggested endpoint to completions
@@ -398,7 +450,7 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
         }
         else
         {
-            // Original behavior for non-Ollama
+            // Original behavior for non-Ollama (includes llama.cpp)
        //     ""temperature"": { temperature},
        
             string json =
@@ -407,7 +459,7 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
                  ""mode"": ""{mode}"",
                  ""stream"": {bStreamText}
                  {extra}
-              
+                 {chatTemplateKwargs}
              }}";
             return json;
         }

@@ -30,6 +30,26 @@ public class LLMProviderSettings
     public bool overrideContextLength = false; // If false, use Ollama's default context
     public int contextLength = 8192; // Default 8k context when overriding
     public int maxContextLength = 131072; // Max allowed (will be updated from model info)
+    
+    // llama.cpp-specific: thinking mode settings (for GLM and similar models)
+    public bool enableThinking = true; // User preference for thinking mode (default: enabled)
+    
+    // llama.cpp-specific: router mode info (not persisted, runtime only)
+    [NonSerialized]
+    public bool isRouterMode = false; // True if server has multiple models available
+
+    /// <summary>
+    /// Check if the current model supports thinking mode.
+    /// Detects GLM and DeepSeek models by name.
+    /// </summary>
+    public bool SupportsThinkingMode()
+    {
+        if (string.IsNullOrEmpty(selectedModel)) return false;
+        string modelLower = selectedModel.ToLowerInvariant();
+        // GLM models (GLM-4.5, GLM-4.6, etc.)
+        // DeepSeek models (DeepSeek-R1, DeepSeek-V3, etc.)
+        return modelLower.Contains("glm") || modelLower.Contains("deepseek");
+    }
 
     public LLMProviderSettings Clone()
     {
@@ -43,7 +63,9 @@ public class LLMProviderSettings
             extraParams = new List<LLMParm>(),
             overrideContextLength = this.overrideContextLength,
             contextLength = this.contextLength,
-            maxContextLength = this.maxContextLength
+            maxContextLength = this.maxContextLength,
+            enableThinking = this.enableThinking,
+            isRouterMode = this.isRouterMode
         };
 
         foreach (var parm in this.extraParams)

@@ -2282,7 +2282,23 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             return;
 
         }
-        streamedText = OpenAITextCompletionManager.RemoveThinkTagsFromString(streamedText);
+        
+        // Log if thinking content is detected in the response
+        bool hasThinkingContent = streamedText.Contains("<think>") && streamedText.Contains("</think>");
+        if (hasThinkingContent)
+        {
+            RTConsole.Log("LLM response contains thinking tags (<think>...</think>)");
+        }
+        
+        // Respect the "Strip <think> tags" toggle setting (same as AdventureText)
+        if (GenerateSettingsPanel.Get().m_stripThinkTagsToggle.isOn)
+        {
+            if (hasThinkingContent)
+            {
+                RTConsole.Log("Stripping thinking tags from response (toggle is ON)");
+            }
+            streamedText = OpenAITextCompletionManager.RemoveThinkTagsFromString(streamedText);
+        }
 
         m_curEvent.m_picJob._requestedLLMReply = streamedText.Trim();
         m_lastLLMReply = m_curEvent.m_picJob._requestedLLMReply;

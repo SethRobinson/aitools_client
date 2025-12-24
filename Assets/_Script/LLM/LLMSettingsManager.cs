@@ -612,6 +612,35 @@ public class LLMSettingsManager : MonoBehaviour
                 _settings.llamaCpp.availableModels.Clear();
                 _settings.llamaCpp.availableModels.Add(modelInfo.modelName);
             }
+            _settings.llamaCpp.isRouterMode = false; // Single model
+            SaveSettings();
+            NotifySettingsChanged();
+        }
+    }
+
+    /// <summary>
+    /// Set llama.cpp models from router mode response.
+    /// </summary>
+    public void SetLlamaCppModels(LlamaCppModelFetcher.LlamaCppModelsInfo modelsInfo)
+    {
+        if (modelsInfo != null && modelsInfo.modelIds.Count > 0)
+        {
+            // Use model names if available, otherwise IDs
+            var modelList = modelsInfo.modelNames.Count > 0 ? modelsInfo.modelNames : modelsInfo.modelIds;
+            _settings.llamaCpp.availableModels = new List<string>(modelList);
+            _settings.llamaCpp.isRouterMode = modelsInfo.IsRouterMode;
+            
+            // Keep selected model if it's still in the list, otherwise select first
+            if (string.IsNullOrEmpty(_settings.llamaCpp.selectedModel) || 
+                !_settings.llamaCpp.availableModels.Contains(_settings.llamaCpp.selectedModel))
+            {
+                _settings.llamaCpp.selectedModel = _settings.llamaCpp.availableModels[0];
+            }
+            
+            // Also set single model info for backward compatibility
+            _llamaCppModelInfo = modelsInfo.GetFirstModel();
+            
+            RTConsole.Log($"LlamaCppModelFetcher: Set {modelList.Count} model(s), router mode: {modelsInfo.IsRouterMode}");
             SaveSettings();
             NotifySettingsChanged();
         }
@@ -627,6 +656,7 @@ public class LLMSettingsManager : MonoBehaviour
 
     /// <summary>
     /// Fetch llama.cpp model info from the configured endpoint.
+    /// Uses the new multi-model fetch to support router mode.
     /// </summary>
     public void RefreshLlamaCppModel(Action<LlamaCppModelFetcher.LlamaCppModelInfo, string> onComplete = null)
     {
@@ -637,13 +667,84 @@ public class LLMSettingsManager : MonoBehaviour
             return;
         }
 
-        LlamaCppModelFetcher.Fetch(endpoint, (info, error) =>
+        // Use the new multi-model fetch
+        LlamaCppModelFetcher.FetchModelsInfo(endpoint, (modelsInfo, error) =>
         {
-            if (info != null)
+            if (modelsInfo != null && modelsInfo.modelIds.Count > 0)
             {
-                SetLlamaCppModelInfo(info);
+                SetLlamaCppModels(modelsInfo);
+                onComplete?.Invoke(modelsInfo.GetFirstModel(), null);
             }
-            onComplete?.Invoke(info, error);
+            else
+            {
+                onComplete?.Invoke(null, error ?? "No models found");
+            }
         });
+    }
+
+    /// <summary>
+    /// Refresh llama.cpp models with full info callback.
+    /// </summary>
+    public void RefreshLlamaCppModels(Action<LlamaCppModelFetcher.LlamaCppModelsInfo, string> onComplete = null)
+    {
+        string endpoint = _settings.llamaCpp.endpoint;
+        if (string.IsNullOrEmpty(endpoint) || endpoint.Length < 5)
+        {
+            onComplete?.Invoke(null, "No llama.cpp endpoint configured");
+            return;
+        }
+
+        LlamaCppModelFetcher.FetchModelsInfo(endpoint, (modelsInfo, error) =>
+        {
+            if (modelsInfo != null && modelsInfo.modelIds.Count > 0)
+            {
+                SetLlamaCppModels(modelsInfo);
+            }
+            onComplete?.Invoke(modelsInfo, error);
+        });
+    }
+
+    /// <summary>
+    /// Get whether the llama.cpp server is in router mode (multiple models).
+    /// </summary>
+    public bool IsLlamaCppRouterMode()
+    {
+        return _settings.llamaCpp.isRouterMode;
+    }
+
+    /// <summary>
+    /// Get thinking mode enabled setting for llama.cpp.
+    /// </summary>
+    public bool GetThinkingModeEnabled()
+    {
+        return _settings.llamaCpp.enableThinking;
+    }
+
+    /// <summary>
+    /// Get thinking mode enabled for a specific provider.
+    /// </summary>
+    public bool GetThinkingModeEnabled(LLMProvider provider)
+    {
+        return _settings.GetProviderSettings(provider).enableThinking;
+    }
+
+    /// <summary>
+    /// Set thinking mode enabled for llama.cpp.
+    /// </summary>
+    public void SetThinkingModeEnabled(bool enabled)
+    {
+        _settings.llamaCpp.enableThinking = enabled;
+        SaveSettings();
+    }
+
+    /// <summary>
+    /// Check if the currently selected model supports thinking mode.
+    /// </summary>
+    public bool CurrentModelSupportsThinking()
+    {
+        if (_settings.activeProvider != LLMProvider.LlamaCpp)
+            return false;
+        
+        return _settings.llamaCpp.SupportsThinkingMode();
     }
 }

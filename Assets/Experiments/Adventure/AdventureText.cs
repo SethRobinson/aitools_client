@@ -631,8 +631,19 @@ public class AdventureText : MonoBehaviour
         UpdateInputFieldText();
         bool bRenderAutoPics = false;
 
+        // Log if thinking content is detected in the response
+        bool hasThinkingContent = streamedText.Contains("<think>") && streamedText.Contains("</think>");
+        if (hasThinkingContent)
+        {
+            RTConsole.Log("LLM response contains thinking tags (<think>...</think>)");
+        }
+
         if (GenerateSettingsPanel.Get().m_stripThinkTagsToggle.isOn)
         {
+            if (hasThinkingContent)
+            {
+                RTConsole.Log("Stripping thinking tags from display (toggle is ON - turn it OFF in Settings to see thinking)");
+            }
             streamedText = OpenAITextCompletionManager.RemoveThinkTagsFromString(streamedText);
             //also remove line feeds before and after the text
             streamedText = streamedText.Trim();
