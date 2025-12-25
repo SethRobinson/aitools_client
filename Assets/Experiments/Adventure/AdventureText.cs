@@ -31,6 +31,7 @@ public class AdventureText : MonoBehaviour
     float _directionMult = 1.0f;
     bool _bAddedFinishedTextToPrompt = false;
     bool _llmIsActive;
+    int _activeLLMInstanceID = -1; // Tracks which LLM instance is currently active
     Color _stopButtonOriginalBackgroundColor;
     public Button _stopButton;
     bool _bIsOnAuto;
@@ -970,9 +971,28 @@ public class AdventureText : MonoBehaviour
             _stopButton.GetComponent<Image>().color = _stopButtonOriginalBackgroundColor;
             SetStatus("Ready");
             AdventureLogic.Get().ModLLMRequestCount(-1);
+            
+            // Release LLM instance when done
+            ReleaseLLMInstance();
         }
         
         _llmIsActive = bActive;
+    }
+    
+    /// <summary>
+    /// Release the currently active LLM instance.
+    /// </summary>
+    private void ReleaseLLMInstance()
+    {
+        if (_activeLLMInstanceID >= 0)
+        {
+            var instanceMgr = LLMInstanceManager.Get();
+            if (instanceMgr != null)
+            {
+                instanceMgr.SetLLMBusy(_activeLLMInstanceID, false);
+            }
+            _activeLLMInstanceID = -1;
+        }
     }
 
     public void StartLLMRequest()
@@ -987,15 +1007,46 @@ public class AdventureText : MonoBehaviour
 
         RTDB db = new RTDB();
 
-        // Use new LLM provider system if available
-        LLMProvider provider = AdventureLogic.Get().GetLLMProvider();
+        // Try to use multi-instance system first (isSmallJob=false for Adventure big jobs)
+        var instanceMgr = LLMInstanceManager.Get();
+        int llmInstanceID = instanceMgr?.GetFreeLLM(isSmallJob: false) ?? -1;
+        
+        // If no free instance, try to get the least busy one that can accept big jobs
+        if (llmInstanceID < 0 && instanceMgr != null && instanceMgr.GetInstanceCount() > 0)
+        {
+            llmInstanceID = instanceMgr.GetLeastBusyLLM(isSmallJob: false);
+            RTConsole.Log($"Adventure: No free big job LLM, using least busy: {llmInstanceID}");
+        }
+        
+        LLMInstanceInfo llmInstance = llmInstanceID >= 0 ? instanceMgr?.GetInstance(llmInstanceID) : null;
+        
+        LLMProvider provider;
+        LLMProviderSettings activeSettings = null;
+        
+        if (llmInstance != null)
+        {
+            provider = llmInstance.providerType;
+            activeSettings = llmInstance.settings;
+            _activeLLMInstanceID = llmInstanceID;
+            instanceMgr.SetLLMBusy(llmInstanceID, true);
+            RTConsole.Log($"Adventure using LLM instance {llmInstanceID}: {llmInstance.name}");
+        }
+        else
+        {
+            // Fall back to legacy system only if no instances configured
+            provider = AdventureLogic.Get().GetLLMProvider();
+            _activeLLMInstanceID = -1;
+            RTConsole.Log("Adventure: No LLM instances configured, using legacy provider");
+        }
 
         switch (provider)
         {
             case LLMProvider.OpenAI:
                 {
-                    string model = Config.Get().GetOpenAI_APIModel();
-                    string apiKey = Config.Get().GetOpenAI_APIKey();
+                    string model = activeSettings?.selectedModel ?? Config.Get().GetOpenAI_APIModel();
+                    string apiKey = activeSettings?.apiKey ?? Config.Get().GetOpenAI_APIKey();
+                    if (string.IsNullOrEmpty(apiKey)) apiKey = Config.Get().GetOpenAI_APIKey();
+                    if (string.IsNullOrEmpty(model)) model = Config.Get().GetOpenAI_APIModel();
 
                     // All GPT-5 models use Responses API - just with different parameters
                     bool useResponsesAPI = false;
@@ -1066,8 +1117,15 @@ public class AdventureText : MonoBehaviour
 
             case LLMProvider.Anthropic:
                 {
-                    string json = _anthropicAITextCompletionManager.BuildChatCompleteJSON(lines, 4096, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetAnthropicAI_APIModel(), true);
-                    _anthropicAITextCompletionManager.SpawnChatCompletionRequest(json, OnTexGenCompletedCallback, db, Config.Get().GetAnthropicAI_APIKey(), Config.Get().GetAnthropicAI_APIEndpoint(), OnStreamingTextCallback, true);
+                    string model = activeSettings?.selectedModel ?? Config.Get().GetAnthropicAI_APIModel();
+                    string apiKey = activeSettings?.apiKey ?? Config.Get().GetAnthropicAI_APIKey();
+                    string endpoint = activeSettings?.endpoint ?? Config.Get().GetAnthropicAI_APIEndpoint();
+                    if (string.IsNullOrEmpty(apiKey)) apiKey = Config.Get().GetAnthropicAI_APIKey();
+                    if (string.IsNullOrEmpty(model)) model = Config.Get().GetAnthropicAI_APIModel();
+                    if (string.IsNullOrEmpty(endpoint)) endpoint = Config.Get().GetAnthropicAI_APIEndpoint();
+                    
+                    string json = _anthropicAITextCompletionManager.BuildChatCompleteJSON(lines, 4096, AdventureLogic.Get().GetExtractor().Temperature, model, true);
+                    _anthropicAITextCompletionManager.SpawnChatCompletionRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
                     SetLLMActive(true);
                 }
                 break;
@@ -1075,12 +1133,14 @@ public class AdventureText : MonoBehaviour
             case LLMProvider.LlamaCpp:
                 {
                     var mgr = LLMSettingsManager.Get();
-                    var settings = mgr.GetProviderSettings(LLMProvider.LlamaCpp);
+                    var settings = activeSettings ?? mgr?.GetProviderSettings(LLMProvider.LlamaCpp);
                     
                     string suggestedEndpoint;
-                    string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, 4096, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetGenericLLMMode(), true, mgr.GetLLMParms(LLMProvider.LlamaCpp), false, true);
+                    // Use instance LLM params if we have an active instance
+                    var llmParms = _activeLLMInstanceID >= 0 ? mgr?.GetInstanceLLMParms(_activeLLMInstanceID) : mgr?.GetLLMParms(LLMProvider.LlamaCpp);
+                    string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, 4096, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetGenericLLMMode(), true, llmParms ?? new List<LLMParm>(), false, true);
                     
-                    _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, settings.endpoint, suggestedEndpoint, OnStreamingTextCallback, true, settings.apiKey);
+                    _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, settings?.endpoint ?? "", suggestedEndpoint, OnStreamingTextCallback, true, settings?.apiKey ?? "");
                     SetLLMActive(true);
                 }
                 break;
@@ -1088,13 +1148,15 @@ public class AdventureText : MonoBehaviour
             case LLMProvider.Ollama:
                 {
                     var mgr = LLMSettingsManager.Get();
-                    var settings = mgr.GetProviderSettings(LLMProvider.Ollama);
+                    var settings = activeSettings ?? mgr?.GetProviderSettings(LLMProvider.Ollama);
                     
                     string suggestedEndpoint;
-                    string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, 4096, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetGenericLLMMode(), true, mgr.GetLLMParms(LLMProvider.Ollama), true, false);
+                    // Use instance LLM params if we have an active instance
+                    var llmParms = _activeLLMInstanceID >= 0 ? mgr?.GetInstanceLLMParms(_activeLLMInstanceID) : mgr?.GetLLMParms(LLMProvider.Ollama);
+                    string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, 4096, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetGenericLLMMode(), true, llmParms ?? new List<LLMParm>(), true, false);
                     
                     // Use suggestedEndpoint which is /api/chat for Ollama (supports options.num_ctx)
-                    _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, settings.endpoint, suggestedEndpoint, OnStreamingTextCallback, true, settings.apiKey);
+                    _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, settings?.endpoint ?? "", suggestedEndpoint, OnStreamingTextCallback, true, settings?.apiKey ?? "");
                     SetLLMActive(true);
                 }
                 break;

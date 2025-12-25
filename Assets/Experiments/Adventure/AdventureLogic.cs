@@ -251,7 +251,19 @@ public class AdventureLogic : MonoBehaviour
     public int GetLLMRequestCount() { return _llmRequestCount; }
     public bool CanInitNewLLMRequest()
     {
-        return _llmRequestCount < GetMaxLLMRequestsDesiredAtOnce();
+        // Check user-configured limit first
+        if (_llmRequestCount >= GetMaxLLMRequestsDesiredAtOnce())
+            return false;
+        
+        // Also check if any LLM instance is available for big jobs
+        var instanceMgr = LLMInstanceManager.Get();
+        if (instanceMgr != null && instanceMgr.GetInstanceCount() > 0)
+        {
+            return instanceMgr.IsAnyLLMFree(isSmallJob: false);
+        }
+        
+        // Fall back to legacy behavior (no instances configured)
+        return true;
     }
 
     public GPTPromptManager GetGlobalPromptManager() { return m_globalPromptManager; }

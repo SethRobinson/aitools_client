@@ -15,6 +15,13 @@ public class LLMSettingsPanel : MonoBehaviour
 
     private TMP_FontAsset _font;
     private LLMSettings _workingSettings;
+    
+    // Multi-instance support
+    private LLMInstancesConfig _workingInstancesConfig;
+    private LLMInstanceListUI _instanceListUI;
+    private int _selectedInstanceID = -1;
+    private TMP_Dropdown _jobModeDropdown;
+    private GameObject _jobModeRow;
 
     private RectTransform _mainPanel;
     private TMP_Dropdown _activeProviderDropdown;
@@ -25,7 +32,7 @@ public class LLMSettingsPanel : MonoBehaviour
     private LLMProviderUI _ollamaUI;
 
     private const float PANEL_WIDTH = 640f;
-    private const float PANEL_HEIGHT = 520f;
+    private const float PANEL_HEIGHT = 620f; // Increased to fit instance list
     private const float HEADER_HEIGHT = 40f;
     private const float FOOTER_HEIGHT = 60f;
     private const float BaseFontSize = 14f;
@@ -463,6 +470,18 @@ public class LLMSettingsPanel : MonoBehaviour
     {
         _font = FindFont();
         _workingSettings = LLMSettingsManager.Get().GetSettingsClone();
+        
+        // Load instances config
+        var instanceManager = LLMInstanceManager.Get();
+        if (instanceManager != null)
+        {
+            _workingInstancesConfig = instanceManager.GetConfigClone();
+        }
+        else
+        {
+            _workingInstancesConfig = LLMInstancesConfig.CreateDefault();
+        }
+        
         CacheSpritesFromExistingDropdown();
 
         // Canvas
@@ -740,7 +759,16 @@ public class LLMSettingsPanel : MonoBehaviour
         scrollbar.targetGraphic = handleImg;
         scrollRect.verticalScrollbar = scrollbar;
 
-        // Row: Active provider (explicit layout)
+        // Instance list at the top
+        _instanceListUI = new LLMInstanceListUI(_font, ApplyFontAndColor);
+        _instanceListUI.Build(content.transform, _workingInstancesConfig);
+        _instanceListUI.OnInstanceSelected += OnInstanceSelected;
+        _instanceListUI.OnInstancesChanged += OnInstancesChanged;
+        
+        // Job Mode row (for selected instance)
+        CreateJobModeRow(content.transform);
+
+        // Row: Active provider (explicit layout) - hidden when using multi-instance
         CreateActiveProviderRow(content.transform);
 
         // Provider panels
@@ -762,6 +790,220 @@ public class LLMSettingsPanel : MonoBehaviour
         _ollamaUI.OnModelChanged += OnOllamaModelChanged;
 
         UpdateVisibleProvider();
+        
+        // Select the first instance if any
+        if (_workingInstancesConfig != null && _workingInstancesConfig.instances.Count > 0)
+        {
+            OnInstanceSelected(_workingInstancesConfig.instances[0].instanceID);
+        }
+    }
+    
+    private void CreateJobModeRow(Transform parent)
+    {
+        const float rowHeight = 36f;
+        const float labelWidth = 100f;
+        const float pad = 12f;
+
+        _jobModeRow = new GameObject("JobModeRow");
+        _jobModeRow.transform.SetParent(parent, false);
+        var rowImg = _jobModeRow.AddComponent<Image>();
+        ApplyUISprite(rowImg);
+        rowImg.color = RowBg;
+        var rowLE = _jobModeRow.AddComponent<LayoutElement>();
+        rowLE.preferredHeight = rowHeight;
+
+        // Label
+        var labelObj = new GameObject("Label");
+        labelObj.transform.SetParent(_jobModeRow.transform, false);
+        var labelRt = labelObj.AddComponent<RectTransform>();
+        labelRt.anchorMin = new Vector2(0, 0);
+        labelRt.anchorMax = new Vector2(0, 1);
+        labelRt.pivot = new Vector2(0, 0.5f);
+        labelRt.sizeDelta = new Vector2(labelWidth, 0);
+        labelRt.anchoredPosition = new Vector2(pad, 0);
+
+        var label = labelObj.AddComponent<TextMeshProUGUI>();
+        label.font = _font;
+        label.text = "Job Mode:";
+        label.fontSize = 14;
+        label.color = TextDark;
+        label.alignment = TextAlignmentOptions.MidlineLeft;
+
+        // Dropdown
+        var ddGo = TMP_DefaultControls.CreateDropdown(BuildTMPResources());
+        ddGo.name = "JobModeDropdown";
+        ddGo.transform.SetParent(_jobModeRow.transform, false);
+        ApplyFontAndColor(ddGo);
+
+        var ddRt = ddGo.GetComponent<RectTransform>();
+        ddRt.anchorMin = new Vector2(0, 0);
+        ddRt.anchorMax = new Vector2(0.5f, 1);
+        ddRt.offsetMin = new Vector2(labelWidth + pad, 4f);
+        ddRt.offsetMax = new Vector2(-pad, -4f);
+
+        _jobModeDropdown = ddGo.GetComponent<TMP_Dropdown>();
+        _jobModeDropdown.options = new List<TMP_Dropdown.OptionData>
+        {
+            new TMP_Dropdown.OptionData("Any"),
+            new TMP_Dropdown.OptionData("Big Jobs Only"),
+            new TMP_Dropdown.OptionData("Small Jobs Only")
+        };
+        _jobModeDropdown.onValueChanged.AddListener(OnJobModeChanged);
+
+        if (_jobModeDropdown.captionText != null)
+        {
+            _jobModeDropdown.captionText.font = _font;
+            _jobModeDropdown.captionText.fontSize = 13;
+            _jobModeDropdown.captionText.color = TextDark;
+        }
+        
+        // Help text
+        var helpObj = new GameObject("HelpText");
+        helpObj.transform.SetParent(_jobModeRow.transform, false);
+        var helpRt = helpObj.AddComponent<RectTransform>();
+        helpRt.anchorMin = new Vector2(0.5f, 0);
+        helpRt.anchorMax = new Vector2(1, 1);
+        helpRt.offsetMin = new Vector2(pad, 0);
+        helpRt.offsetMax = new Vector2(-pad, 0);
+
+        var helpText = helpObj.AddComponent<TextMeshProUGUI>();
+        helpText.font = _font;
+        helpText.text = "(Big=AIGuide/Adventure, Small=AutoPic)";
+        helpText.fontSize = 11;
+        helpText.color = new Color(0.4f, 0.4f, 0.4f, 1f);
+        helpText.alignment = TextAlignmentOptions.MidlineLeft;
+    }
+    
+    private void OnJobModeChanged(int index)
+    {
+        if (_selectedInstanceID < 0) return;
+        
+        var instance = _workingInstancesConfig?.GetInstance(_selectedInstanceID);
+        if (instance != null)
+        {
+            instance.jobMode = (LLMJobMode)index;
+            _instanceListUI?.UpdateItemDisplay(instance);
+        }
+    }
+    
+    private void OnInstanceSelected(int instanceID)
+    {
+        _selectedInstanceID = instanceID;
+        
+        var instance = _workingInstancesConfig?.GetInstance(instanceID);
+        if (instance == null)
+        {
+            // No instance selected - hide provider UI
+            _jobModeRow?.SetActive(false);
+            if (_activeProviderDropdown?.transform.parent != null)
+                _activeProviderDropdown.transform.parent.gameObject.SetActive(false);
+            HideAllProviderUIs();
+            return;
+        }
+        
+        // Show job mode row
+        _jobModeRow?.SetActive(true);
+        if (_jobModeDropdown != null)
+            _jobModeDropdown.value = (int)instance.jobMode;
+        
+        // Update provider dropdown
+        if (_activeProviderDropdown != null)
+        {
+            _activeProviderDropdown.transform.parent.gameObject.SetActive(true);
+            _activeProviderDropdown.SetValueWithoutNotify((int)instance.providerType);
+        }
+        
+        // Update the working settings with instance settings
+        UpdateWorkingSettingsFromInstance(instance);
+        
+        // Refresh the provider UIs
+        RefreshProviderUIsFromInstance(instance);
+        
+        // Show only the relevant provider UI
+        UpdateVisibleProviderForInstance(instance.providerType);
+        
+        // Auto-refresh models if the instance has no available models
+        if (instance.settings.availableModels == null || instance.settings.availableModels.Count == 0)
+        {
+            if (instance.providerType == LLMProvider.LlamaCpp && !string.IsNullOrEmpty(instance.settings.endpoint))
+            {
+                AutoRefreshLlamaCppModel();
+            }
+            else if (instance.providerType == LLMProvider.Ollama && !string.IsNullOrEmpty(instance.settings.endpoint))
+            {
+                OnRefreshOllamaModels();
+            }
+        }
+    }
+    
+    private void OnInstancesChanged()
+    {
+        // Reload working config from manager
+        var manager = LLMInstanceManager.Get();
+        if (manager != null)
+        {
+            _workingInstancesConfig = manager.GetConfigClone();
+        }
+    }
+    
+    private void UpdateWorkingSettingsFromInstance(LLMInstanceInfo instance)
+    {
+        if (instance?.settings == null) return;
+        
+        // Copy instance settings into the appropriate provider slot
+        switch (instance.providerType)
+        {
+            case LLMProvider.OpenAI:
+                _workingSettings.openAI = instance.settings.Clone();
+                break;
+            case LLMProvider.Anthropic:
+                _workingSettings.anthropic = instance.settings.Clone();
+                break;
+            case LLMProvider.LlamaCpp:
+                _workingSettings.llamaCpp = instance.settings.Clone();
+                break;
+            case LLMProvider.Ollama:
+                _workingSettings.ollama = instance.settings.Clone();
+                break;
+        }
+        _workingSettings.activeProvider = instance.providerType;
+    }
+    
+    private void RefreshProviderUIsFromInstance(LLMInstanceInfo instance)
+    {
+        if (instance?.settings == null) return;
+        
+        switch (instance.providerType)
+        {
+            case LLMProvider.OpenAI:
+                _openAIUI?.UpdateFromSettings(instance.settings);
+                break;
+            case LLMProvider.Anthropic:
+                _anthropicUI?.UpdateFromSettings(instance.settings);
+                break;
+            case LLMProvider.LlamaCpp:
+                _llamaCppUI?.UpdateFromSettings(instance.settings);
+                break;
+            case LLMProvider.Ollama:
+                _ollamaUI?.UpdateFromSettings(instance.settings);
+                break;
+        }
+    }
+    
+    private void UpdateVisibleProviderForInstance(LLMProvider provider)
+    {
+        if (_openAIUI?.sectionRoot != null) _openAIUI.sectionRoot.SetActive(provider == LLMProvider.OpenAI);
+        if (_anthropicUI?.sectionRoot != null) _anthropicUI.sectionRoot.SetActive(provider == LLMProvider.Anthropic);
+        if (_llamaCppUI?.sectionRoot != null) _llamaCppUI.sectionRoot.SetActive(provider == LLMProvider.LlamaCpp);
+        if (_ollamaUI?.sectionRoot != null) _ollamaUI.sectionRoot.SetActive(provider == LLMProvider.Ollama);
+    }
+    
+    private void HideAllProviderUIs()
+    {
+        if (_openAIUI?.sectionRoot != null) _openAIUI.sectionRoot.SetActive(false);
+        if (_anthropicUI?.sectionRoot != null) _anthropicUI.sectionRoot.SetActive(false);
+        if (_llamaCppUI?.sectionRoot != null) _llamaCppUI.sectionRoot.SetActive(false);
+        if (_ollamaUI?.sectionRoot != null) _ollamaUI.sectionRoot.SetActive(false);
     }
 
     private void CreateActiveProviderRow(Transform parent)
@@ -847,6 +1089,39 @@ public class LLMSettingsPanel : MonoBehaviour
     private void OnProviderChanged(int index)
     {
         _workingSettings.activeProvider = (LLMProvider)index;
+        
+        // Update selected instance's provider type
+        if (_selectedInstanceID >= 0 && _workingInstancesConfig != null)
+        {
+            var instance = _workingInstancesConfig.GetInstance(_selectedInstanceID);
+            if (instance != null)
+            {
+                instance.providerType = (LLMProvider)index;
+                
+                // Update the instance name to match the new provider
+                switch ((LLMProvider)index)
+                {
+                    case LLMProvider.OpenAI:
+                        instance.name = "OpenAI";
+                        break;
+                    case LLMProvider.Anthropic:
+                        instance.name = "Anthropic";
+                        break;
+                    case LLMProvider.LlamaCpp:
+                        instance.name = "llama.cpp";
+                        break;
+                    case LLMProvider.Ollama:
+                        instance.name = "Ollama";
+                        break;
+                }
+                
+                // Reset settings for the new provider type
+                instance.settings = LLMInstanceInfo.CreateDefault((LLMProvider)index, 0).settings;
+                RefreshProviderUIsFromInstance(instance);
+                _instanceListUI?.UpdateItemDisplay(instance);
+            }
+        }
+        
         UpdateVisibleProvider();
         if (_panelRoot != null)
             ApplyFontAndColor(_panelRoot);
@@ -895,6 +1170,24 @@ public class LLMSettingsPanel : MonoBehaviour
 
             _workingSettings.ollama.availableModels = models;
             _ollamaUI.UpdateModelDropdown(models, _workingSettings.ollama.selectedModel);
+            
+            // Also update the selected instance's settings if it's an Ollama instance
+            if (_selectedInstanceID >= 0 && _workingInstancesConfig != null)
+            {
+                var instance = _workingInstancesConfig.GetInstance(_selectedInstanceID);
+                if (instance != null && instance.providerType == LLMProvider.Ollama)
+                {
+                    instance.settings.availableModels = new List<string>(models);
+                    
+                    // Keep selected model if it's in the list, otherwise select first
+                    if (string.IsNullOrEmpty(instance.settings.selectedModel) || 
+                        !instance.settings.availableModels.Contains(instance.settings.selectedModel))
+                    {
+                        instance.settings.selectedModel = models[0];
+                    }
+                }
+            }
+            
             RTQuickMessageManager.Get().ShowMessage("Found " + models.Count + " models");
             
             // Fetch model info for the selected model
@@ -989,7 +1282,7 @@ public class LLMSettingsPanel : MonoBehaviour
             // Get model names (use modelNames if available, otherwise modelIds)
             var modelList = modelsInfo.modelNames.Count > 0 ? modelsInfo.modelNames : modelsInfo.modelIds;
             
-            // Update settings with the models
+            // Update global settings with the models
             _workingSettings.llamaCpp.availableModels = new List<string>(modelList);
             _workingSettings.llamaCpp.isRouterMode = modelsInfo.IsRouterMode;
             
@@ -998,6 +1291,24 @@ public class LLMSettingsPanel : MonoBehaviour
                 !_workingSettings.llamaCpp.availableModels.Contains(_workingSettings.llamaCpp.selectedModel))
             {
                 _workingSettings.llamaCpp.selectedModel = modelList[0];
+            }
+            
+            // Also update the selected instance's settings if it's a llama.cpp instance
+            if (_selectedInstanceID >= 0 && _workingInstancesConfig != null)
+            {
+                var instance = _workingInstancesConfig.GetInstance(_selectedInstanceID);
+                if (instance != null && instance.providerType == LLMProvider.LlamaCpp)
+                {
+                    instance.settings.availableModels = new List<string>(modelList);
+                    instance.settings.isRouterMode = modelsInfo.IsRouterMode;
+                    
+                    // Keep selected model if it's in the list, otherwise select first
+                    if (string.IsNullOrEmpty(instance.settings.selectedModel) || 
+                        !instance.settings.availableModels.Contains(instance.settings.selectedModel))
+                    {
+                        instance.settings.selectedModel = modelList[0];
+                    }
+                }
             }
             
             // Update UI
@@ -1017,6 +1328,39 @@ public class LLMSettingsPanel : MonoBehaviour
 
     private void ApplySettings()
     {
+        // Apply provider UI settings to the currently selected instance
+        if (_selectedInstanceID >= 0 && _workingInstancesConfig != null)
+        {
+            var instance = _workingInstancesConfig.GetInstance(_selectedInstanceID);
+            if (instance != null)
+            {
+                // Get settings from the appropriate provider UI
+                switch (instance.providerType)
+                {
+                    case LLMProvider.OpenAI:
+                        _openAIUI?.ApplyToSettings(instance.settings);
+                        break;
+                    case LLMProvider.Anthropic:
+                        _anthropicUI?.ApplyToSettings(instance.settings);
+                        break;
+                    case LLMProvider.LlamaCpp:
+                        _llamaCppUI?.ApplyToSettings(instance.settings);
+                        break;
+                    case LLMProvider.Ollama:
+                        _ollamaUI?.ApplyToSettings(instance.settings);
+                        break;
+                }
+            }
+        }
+        
+        // Save instances to manager
+        var instanceManager = LLMInstanceManager.Get();
+        if (instanceManager != null && _workingInstancesConfig != null)
+        {
+            instanceManager.ApplyConfig(_workingInstancesConfig);
+        }
+        
+        // Also update legacy settings for backward compatibility
         _openAIUI.ApplyToSettings(_workingSettings.openAI);
         _anthropicUI.ApplyToSettings(_workingSettings.anthropic);
         _llamaCppUI.ApplyToSettings(_workingSettings.llamaCpp);
@@ -1044,6 +1388,24 @@ public class LLMSettingsPanel : MonoBehaviour
     private void RefreshFromSettings()
     {
         _workingSettings = LLMSettingsManager.Get().GetSettingsClone();
+        
+        // Refresh instance config
+        var instanceManager = LLMInstanceManager.Get();
+        if (instanceManager != null)
+        {
+            _workingInstancesConfig = instanceManager.GetConfigClone();
+            _instanceListUI?.RefreshList(_workingInstancesConfig);
+            
+            // Select first instance if none selected
+            if (_selectedInstanceID < 0 && _workingInstancesConfig.instances.Count > 0)
+            {
+                OnInstanceSelected(_workingInstancesConfig.instances[0].instanceID);
+            }
+            else if (_selectedInstanceID >= 0)
+            {
+                OnInstanceSelected(_selectedInstanceID);
+            }
+        }
 
         if (_activeProviderDropdown != null)
             _activeProviderDropdown.value = (int)_workingSettings.activeProvider;

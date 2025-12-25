@@ -19,6 +19,9 @@ public class LLMSettingsManager : MonoBehaviour
     
     // llama.cpp model info (fetched from server, not persisted)
     private LlamaCppModelFetcher.LlamaCppModelInfo _llamaCppModelInfo;
+    
+    // Reference to the instance manager for multi-instance support
+    private LLMInstanceManager _instanceManager;
 
     /// <summary>
     /// Fired when LLM settings that affect runtime behavior/UI have changed (active provider, model list, etc).
@@ -54,6 +57,9 @@ public class LLMSettingsManager : MonoBehaviour
     {
         if (_isInitialized) return;
 
+        // Initialize the instance manager first
+        InitializeInstanceManager();
+
         // Check for migration from old file name
         if (!File.Exists(SETTINGS_FILE_NAME) && File.Exists(OLD_SETTINGS_FILE_NAME))
         {
@@ -85,6 +91,27 @@ public class LLMSettingsManager : MonoBehaviour
         
         // Auto-refresh model info for the active provider on startup
         RefreshActiveProviderModelOnStartup();
+    }
+    
+    /// <summary>
+    /// Initialize the LLMInstanceManager component.
+    /// </summary>
+    private void InitializeInstanceManager()
+    {
+        _instanceManager = gameObject.GetComponent<LLMInstanceManager>();
+        if (_instanceManager == null)
+        {
+            _instanceManager = gameObject.AddComponent<LLMInstanceManager>();
+        }
+        _instanceManager.Initialize();
+    }
+    
+    /// <summary>
+    /// Get the instance manager for multi-instance operations.
+    /// </summary>
+    public LLMInstanceManager GetInstanceManager()
+    {
+        return _instanceManager;
     }
 
     /// <summary>
@@ -320,9 +347,19 @@ public class LLMSettingsManager : MonoBehaviour
 
     /// <summary>
     /// Save current settings to the settings file.
+    /// NOTE: When using multi-instance mode, LLMInstanceManager handles persistence.
+    /// This method only saves if no instances are configured (legacy mode).
     /// </summary>
     public void SaveSettings()
     {
+        // If we have instances configured, let LLMInstanceManager handle persistence
+        // to avoid overwriting the instances config with legacy format
+        if (_instanceManager != null && _instanceManager.GetInstanceCount() > 0)
+        {
+            RTConsole.Log("LLMSettingsManager: Skipping legacy save (using multi-instance mode)");
+            return;
+        }
+        
         try
         {
             string json = JsonUtility.ToJson(_settings, true);
@@ -746,5 +783,186 @@ public class LLMSettingsManager : MonoBehaviour
             return false;
         
         return _settings.llamaCpp.SupportsThinkingMode();
+    }
+    
+    // ============================================
+    // Multi-Instance Support Methods
+    // ============================================
+    
+    /// <summary>
+    /// Get a free LLM instance for the given job type.
+    /// Returns -1 if none available.
+    /// </summary>
+    /// <param name="isSmallJob">True for autopic jobs, false for AI Guide/Adventure</param>
+    public int GetFreeLLM(bool isSmallJob = false)
+    {
+        if (_instanceManager != null)
+        {
+            return _instanceManager.GetFreeLLM(isSmallJob);
+        }
+        return -1;
+    }
+    
+    /// <summary>
+    /// Check if any LLM is free for the given job type.
+    /// </summary>
+    public bool IsAnyLLMFree(bool isSmallJob = false)
+    {
+        if (_instanceManager != null)
+        {
+            return _instanceManager.IsAnyLLMFree(isSmallJob);
+        }
+        return false;
+    }
+    
+    /// <summary>
+    /// Set an LLM instance's busy state.
+    /// </summary>
+    public void SetLLMBusy(int instanceID, bool busy)
+    {
+        if (_instanceManager != null)
+        {
+            _instanceManager.SetLLMBusy(instanceID, busy);
+        }
+    }
+    
+    /// <summary>
+    /// Check if an LLM instance is busy.
+    /// </summary>
+    public bool IsLLMBusy(int instanceID)
+    {
+        if (_instanceManager != null)
+        {
+            return _instanceManager.IsLLMBusy(instanceID);
+        }
+        return true;
+    }
+    
+    /// <summary>
+    /// Get an LLM instance by ID.
+    /// </summary>
+    public LLMInstanceInfo GetLLMInstance(int instanceID)
+    {
+        if (_instanceManager != null)
+        {
+            return _instanceManager.GetInstance(instanceID);
+        }
+        return null;
+    }
+    
+    /// <summary>
+    /// Get the settings for a specific instance.
+    /// </summary>
+    public LLMProviderSettings GetInstanceSettings(int instanceID)
+    {
+        var instance = GetLLMInstance(instanceID);
+        return instance?.settings;
+    }
+    
+    /// <summary>
+    /// Get the provider type for a specific instance.
+    /// </summary>
+    public LLMProvider GetInstanceProvider(int instanceID)
+    {
+        var instance = GetLLMInstance(instanceID);
+        return instance?.providerType ?? LLMProvider.OpenAI;
+    }
+    
+    /// <summary>
+    /// Get the LLM parameters for a specific instance.
+    /// </summary>
+    public List<LLMParm> GetInstanceLLMParms(int instanceID)
+    {
+        var instance = GetLLMInstance(instanceID);
+        if (instance == null) return new List<LLMParm>();
+        
+        var settings = instance.settings;
+        var result = new List<LLMParm>();
+        
+        // Add the model if it's set
+        if (!string.IsNullOrEmpty(settings.selectedModel))
+        {
+            result.Add(new LLMParm { _key = "model", _value = settings.selectedModel });
+        }
+        
+        // For Ollama, add context length as num_ctx parameter only if override is enabled
+        if (instance.providerType == LLMProvider.Ollama && settings.overrideContextLength && settings.contextLength > 0)
+        {
+            result.Add(new LLMParm { _key = "num_ctx", _value = settings.contextLength.ToString() });
+        }
+        
+        // For llama.cpp, add the thinking mode setting
+        if (instance.providerType == LLMProvider.LlamaCpp)
+        {
+            result.Add(new LLMParm { _key = "enable_thinking", _value = settings.enableThinking ? "true" : "false" });
+        }
+        
+        // Add all extra parameters
+        if (settings.extraParams != null)
+        {
+            foreach (var parm in settings.extraParams)
+            {
+                if (parm._key != "model" && parm._key != "num_ctx" && parm._key != "enable_thinking")
+                {
+                    result.Add(new LLMParm { _key = parm._key, _value = parm._value });
+                }
+            }
+        }
+        
+        return result;
+    }
+    
+    /// <summary>
+    /// Get the full endpoint URL for a specific instance.
+    /// </summary>
+    public string GetInstanceEndpointUrl(int instanceID)
+    {
+        var instance = GetLLMInstance(instanceID);
+        if (instance == null) return "";
+        
+        string endpoint = instance.settings.endpoint;
+        
+        switch (instance.providerType)
+        {
+            case LLMProvider.OpenAI:
+                return endpoint;
+            case LLMProvider.Anthropic:
+                return endpoint;
+            case LLMProvider.LlamaCpp:
+                if (!endpoint.EndsWith("/v1/chat/completions"))
+                {
+                    endpoint = endpoint.TrimEnd('/') + "/v1/chat/completions";
+                }
+                return endpoint;
+            case LLMProvider.Ollama:
+                return endpoint.TrimEnd('/');
+            default:
+                return endpoint;
+        }
+    }
+    
+    /// <summary>
+    /// Check if we have any configured LLM instances.
+    /// </summary>
+    public bool HasAnyInstances()
+    {
+        if (_instanceManager != null)
+        {
+            return _instanceManager.GetInstanceCount() > 0;
+        }
+        // Fallback: check if legacy settings have a configured provider
+        return !string.IsNullOrEmpty(_settings?.GetActiveProviderSettings()?.endpoint);
+    }
+    
+    /// <summary>
+    /// Get the count of active LLM instances.
+    /// </summary>
+    public int GetActiveLLMCount()
+    {
+        if (_instanceManager != null)
+        {
+            return _instanceManager.GetActiveLLMCount();
+        }
+        return 0;
     }
 }

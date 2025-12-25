@@ -378,6 +378,12 @@ public class LLMProviderUI
         {
             modelDropdown.AddOptions(new List<string> { "(no models)" });
             modelDropdown.value = 0;
+            
+            // Update thinking mode visibility for llama.cpp
+            if (_provider == LLMProvider.LlamaCpp)
+            {
+                UpdateThinkingModeVisibility();
+            }
             return;
         }
 
@@ -385,6 +391,13 @@ public class LLMProviderUI
         int idx = !string.IsNullOrEmpty(selectedModel) ? models.IndexOf(selectedModel) : -1;
         modelDropdown.value = idx >= 0 ? idx : 0;
         modelDropdown.RefreshShownValue();
+        
+        // Update thinking mode visibility for llama.cpp (since setting value programmatically
+        // may not trigger the OnValueChanged event)
+        if (_provider == LLMProvider.LlamaCpp)
+        {
+            UpdateThinkingModeVisibility();
+        }
     }
     
     private void OnModelDropdownChanged(int index)

@@ -92,6 +92,7 @@ public class AIGuideManager : MonoBehaviour
 
     bool m_bIsPossibleToContinue = false;
     bool m_bTalkingToLLM = false;
+    int _activeLLMInstanceID = -1; // Tracks which LLM instance is currently active
     string m_imageFileNameBase;
     string m_folderName;
     //make an array of fonts that we can edit inside the editor properties
@@ -266,40 +267,80 @@ public class AIGuideManager : MonoBehaviour
         
         // Use new LLM settings system if available, fall back to legacy
         var llmManager = LLMSettingsManager.Get();
-        LLMProvider activeProvider = llmManager != null ? llmManager.GetActiveProvider() : 
-            (LLMProvider)GameLogic.Get().GetLLMSelection().value;
+        
+        // Try to use multi-instance system first (isSmallJob=false for AI Guide big jobs)
+        var instanceMgr = LLMInstanceManager.Get();
+        int llmInstanceID = instanceMgr?.GetFreeLLM(isSmallJob: false) ?? -1;
+        
+        // If no free instance, try to get the least busy one that can accept big jobs
+        if (llmInstanceID < 0 && instanceMgr != null && instanceMgr.GetInstanceCount() > 0)
+        {
+            llmInstanceID = instanceMgr.GetLeastBusyLLM(isSmallJob: false);
+            RTConsole.Log($"AI Guide: No free big job LLM, using least busy: {llmInstanceID}");
+        }
+        
+        LLMInstanceInfo llmInstance = llmInstanceID >= 0 ? instanceMgr?.GetInstance(llmInstanceID) : null;
+        
+        LLMProvider activeProvider;
+        LLMProviderSettings activeSettings;
+        
+        if (llmInstance != null)
+        {
+            activeProvider = llmInstance.providerType;
+            activeSettings = llmInstance.settings;
+            _activeLLMInstanceID = llmInstanceID;
+            instanceMgr.SetLLMBusy(llmInstanceID, true);
+            RTConsole.Log($"AI Guide using LLM instance {llmInstanceID}: {llmInstance.name}");
+        }
+        else
+        {
+            // Fall back to legacy single-provider only if no instances configured
+            activeProvider = llmManager != null ? llmManager.GetActiveProvider() : 
+                (LLMProvider)GameLogic.Get().GetLLMSelection().value;
+            activeSettings = llmManager?.GetProviderSettings(activeProvider);
+            _activeLLMInstanceID = -1;
+            RTConsole.Log("AI Guide: No LLM instances configured, using legacy provider");
+        }
 
         switch (activeProvider)
         {
             case LLMProvider.OpenAI:
-                SpawnOpenAIRequest(lines);
+                SpawnOpenAIRequest(lines, activeSettings);
                 break;
             case LLMProvider.Anthropic:
-                SpawnAnthropicRequest(lines);
+                SpawnAnthropicRequest(lines, activeSettings);
                 break;
             case LLMProvider.LlamaCpp:
-                SpawnLlamaCppRequest(lines);
+                SpawnLlamaCppRequest(lines, activeSettings);
                 break;
             case LLMProvider.Ollama:
-                SpawnOllamaRequest(lines);
+                SpawnOllamaRequest(lines, activeSettings);
                 break;
         }
 
         m_bTalkingToLLM = true;
     }
 
-    private void SpawnOpenAIRequest(Queue<GTPChatLine> lines)
+    private void SpawnOpenAIRequest(Queue<GTPChatLine> lines, LLMProviderSettings activeSettings = null)
     {
         string apiKey = Config.Get().GetOpenAI_APIKey();
         string model = Config.Get().GetOpenAI_APIModel();
 
-        // Override with LLMSettingsManager if available (model & key only; endpoint is hardcoded per model)
-        var mgr = LLMSettingsManager.Get();
-        if (mgr != null)
+        // Use provided settings from instance, or override with LLMSettingsManager
+        if (activeSettings != null)
         {
-            var settings = mgr.GetProviderSettings(LLMProvider.OpenAI);
-            if (!string.IsNullOrEmpty(settings.apiKey)) apiKey = settings.apiKey;
-            if (!string.IsNullOrEmpty(settings.selectedModel)) model = settings.selectedModel;
+            if (!string.IsNullOrEmpty(activeSettings.apiKey)) apiKey = activeSettings.apiKey;
+            if (!string.IsNullOrEmpty(activeSettings.selectedModel)) model = activeSettings.selectedModel;
+        }
+        else
+        {
+            var mgr = LLMSettingsManager.Get();
+            if (mgr != null)
+            {
+                var settings = mgr.GetProviderSettings(LLMProvider.OpenAI);
+                if (!string.IsNullOrEmpty(settings.apiKey)) apiKey = settings.apiKey;
+                if (!string.IsNullOrEmpty(settings.selectedModel)) model = settings.selectedModel;
+            }
         }
 
         // All GPT-5 models use Responses API - just with different parameters
@@ -369,20 +410,29 @@ public class AIGuideManager : MonoBehaviour
         _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnGTP4CompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
     }
 
-    private void SpawnAnthropicRequest(Queue<GTPChatLine> lines)
+    private void SpawnAnthropicRequest(Queue<GTPChatLine> lines, LLMProviderSettings activeSettings = null)
     {
         string apiKey = Config.Get().GetAnthropicAI_APIKey();
         string model = Config.Get().GetAnthropicAI_APIModel();
         string endpoint = Config.Get().GetAnthropicAI_APIEndpoint();
 
-        // Override with LLMSettingsManager if available
-        var mgr = LLMSettingsManager.Get();
-        if (mgr != null)
+        // Use provided settings from instance, or override with LLMSettingsManager
+        if (activeSettings != null)
         {
-            var settings = mgr.GetProviderSettings(LLMProvider.Anthropic);
-            if (!string.IsNullOrEmpty(settings.apiKey)) apiKey = settings.apiKey;
-            if (!string.IsNullOrEmpty(settings.selectedModel)) model = settings.selectedModel;
-            if (!string.IsNullOrEmpty(settings.endpoint)) endpoint = settings.endpoint;
+            if (!string.IsNullOrEmpty(activeSettings.apiKey)) apiKey = activeSettings.apiKey;
+            if (!string.IsNullOrEmpty(activeSettings.selectedModel)) model = activeSettings.selectedModel;
+            if (!string.IsNullOrEmpty(activeSettings.endpoint)) endpoint = activeSettings.endpoint;
+        }
+        else
+        {
+            var mgr = LLMSettingsManager.Get();
+            if (mgr != null)
+            {
+                var settings = mgr.GetProviderSettings(LLMProvider.Anthropic);
+                if (!string.IsNullOrEmpty(settings.apiKey)) apiKey = settings.apiKey;
+                if (!string.IsNullOrEmpty(settings.selectedModel)) model = settings.selectedModel;
+                if (!string.IsNullOrEmpty(settings.endpoint)) endpoint = settings.endpoint;
+            }
         }
 
         RTConsole.Log("Contacting Anthropic at " + endpoint);
@@ -391,36 +441,40 @@ public class AIGuideManager : MonoBehaviour
         _anthropicAITextCompletionManager.SpawnChatCompletionRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
     }
 
-    private void SpawnLlamaCppRequest(Queue<GTPChatLine> lines)
+    private void SpawnLlamaCppRequest(Queue<GTPChatLine> lines, LLMProviderSettings activeSettings = null)
     {
         var mgr = LLMSettingsManager.Get();
-        var settings = mgr.GetProviderSettings(LLMProvider.LlamaCpp);
-        string serverAddress = settings.endpoint;
-        string apiKey = settings.apiKey;
+        var settings = activeSettings ?? mgr?.GetProviderSettings(LLMProvider.LlamaCpp);
+        string serverAddress = settings?.endpoint ?? "";
+        string apiKey = settings?.apiKey ?? "";
 
         RTConsole.Log("Contacting llama.cpp at " + serverAddress);
 
         string suggestedEndpoint;
+        // Use instance LLM params if we have an active instance, otherwise use manager's
+        var llmParms = _activeLLMInstanceID >= 0 ? mgr?.GetInstanceLLMParms(_activeLLMInstanceID) : mgr?.GetLLMParms(LLMProvider.LlamaCpp);
         string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, m_max_tokens, m_extractor.Temperature, 
-            Config.Get().GetGenericLLMMode(), true, mgr.GetLLMParms(LLMProvider.LlamaCpp), false, true);
+            Config.Get().GetGenericLLMMode(), true, llmParms ?? new List<LLMParm>(), false, true);
 
         RTDB db = new RTDB();
         _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, serverAddress, suggestedEndpoint, 
             OnStreamingTextCallback, true, apiKey);
     }
 
-    private void SpawnOllamaRequest(Queue<GTPChatLine> lines)
+    private void SpawnOllamaRequest(Queue<GTPChatLine> lines, LLMProviderSettings activeSettings = null)
     {
         var mgr = LLMSettingsManager.Get();
-        var settings = mgr.GetProviderSettings(LLMProvider.Ollama);
-        string serverAddress = settings.endpoint;
-        string apiKey = settings.apiKey;
+        var settings = activeSettings ?? mgr?.GetProviderSettings(LLMProvider.Ollama);
+        string serverAddress = settings?.endpoint ?? "";
+        string apiKey = settings?.apiKey ?? "";
 
         RTConsole.Log("Contacting Ollama at " + serverAddress);
 
         string suggestedEndpoint;
+        // Use instance LLM params if we have an active instance, otherwise use manager's
+        var llmParms = _activeLLMInstanceID >= 0 ? mgr?.GetInstanceLLMParms(_activeLLMInstanceID) : mgr?.GetLLMParms(LLMProvider.Ollama);
         string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, m_max_tokens, m_extractor.Temperature, 
-            Config.Get().GetGenericLLMMode(), true, mgr.GetLLMParms(LLMProvider.Ollama), true, false);
+            Config.Get().GetGenericLLMMode(), true, llmParms ?? new List<LLMParm>(), true, false);
 
         RTDB db = new RTDB();
         // Use suggestedEndpoint which is /api/chat for Ollama (supports options.num_ctx)
@@ -432,6 +486,22 @@ public class AIGuideManager : MonoBehaviour
     {
         return (_texGenWebUICompletionManager.IsRequestActive()
           || _openAITextCompletionManager.IsRequestActive() || _anthropicAITextCompletionManager.IsRequestActive());
+    }
+    
+    /// <summary>
+    /// Release the currently active LLM instance.
+    /// </summary>
+    private void ReleaseLLMInstance()
+    {
+        if (_activeLLMInstanceID >= 0)
+        {
+            var instanceMgr = LLMInstanceManager.Get();
+            if (instanceMgr != null)
+            {
+                instanceMgr.SetLLMBusy(_activeLLMInstanceID, false);
+            }
+            _activeLLMInstanceID = -1;
+        }
     }
 
 
@@ -1049,6 +1119,10 @@ public class AIGuideManager : MonoBehaviour
     {
         SetStartTextOnStartButton(true);
         m_bTalkingToLLM = false;
+        
+        // Release LLM instance
+        ReleaseLLMInstance();
+        
         if (jsonNode == null && streamedText.Length == 0)
         {
             //must have been an error
@@ -1157,6 +1231,9 @@ public class AIGuideManager : MonoBehaviour
     {
         m_bTalkingToLLM = false;
         SetStartTextOnStartButton(true);
+        
+        // Release LLM instance
+        ReleaseLLMInstance();
 
         if (jsonNode == null && streamedText.Length == 0)
         {

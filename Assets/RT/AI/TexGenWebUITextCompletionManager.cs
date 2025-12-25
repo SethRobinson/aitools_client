@@ -371,11 +371,33 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
         if (isGLM || isDeepSeek)
         {
             // Check if thinking mode should be enabled or disabled
+            // First check if it's passed in the parms (from instance settings)
             bool enableThinking = true;
-            var llmMgr = LLMSettingsManager.Get();
-            if (llmMgr != null)
+            bool foundInParms = false;
+            
+            if (parms != null)
             {
-                enableThinking = llmMgr.GetThinkingModeEnabled(LLMProvider.LlamaCpp);
+                foreach (var parm in parms)
+                {
+                    if (parm._key == "enable_thinking")
+                    {
+                        enableThinking = parm._value == "true";
+                        foundInParms = true;
+                        RTConsole.Log($"BuildForInstructJSON: Found enable_thinking in parms: {parm._value}");
+                        break;
+                    }
+                }
+            }
+            
+            // Fall back to global settings if not found in parms
+            if (!foundInParms)
+            {
+                RTConsole.Log("BuildForInstructJSON: enable_thinking NOT found in parms, falling back to global settings");
+                var llmMgr = LLMSettingsManager.Get();
+                if (llmMgr != null)
+                {
+                    enableThinking = llmMgr.GetThinkingModeEnabled(LLMProvider.LlamaCpp);
+                }
             }
             
             // NOTE: Server must NOT be started with --reasoning-budget 0 for thinking to work.

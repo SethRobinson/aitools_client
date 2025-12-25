@@ -78,6 +78,141 @@ public class LLMProviderSettings
 }
 
 /// <summary>
+/// Defines which types of jobs an LLM instance will accept.
+/// </summary>
+public enum LLMJobMode
+{
+    Any = 0,           // Accept any job (default)
+    BigJobsOnly = 1,   // Only AI Guide, Adventure mode
+    SmallJobsOnly = 2  // Only autopic LLM actions
+}
+
+/// <summary>
+/// Represents a single LLM instance with its own settings and state.
+/// Similar to GPUInfo for ComfyUI renderers.
+/// </summary>
+[Serializable]
+public class LLMInstanceInfo
+{
+    public int instanceID;
+    public string name = "";                    // User-assigned name: "My OpenAI", "Local Llama", etc.
+    public LLMProvider providerType;            // OpenAI, Anthropic, LlamaCpp, Ollama
+    public LLMProviderSettings settings;        // endpoint, apiKey, model, extraParams
+    public bool isActive = true;                // Whether this instance is enabled
+    public LLMJobMode jobMode = LLMJobMode.Any; // Which job types this instance accepts
+    
+    // Runtime state (not persisted)
+    [NonSerialized]
+    public bool isBusy = false;
+    
+    /// <summary>
+    /// Creates a default instance with the specified provider type.
+    /// </summary>
+    public static LLMInstanceInfo CreateDefault(LLMProvider provider, int id)
+    {
+        var instance = new LLMInstanceInfo
+        {
+            instanceID = id,
+            providerType = provider,
+            settings = new LLMProviderSettings(),
+            isActive = true,
+            jobMode = LLMJobMode.Any
+        };
+        
+        // Set provider-specific defaults
+        var modelData = LLMModelData.Load();
+        switch (provider)
+        {
+            case LLMProvider.OpenAI:
+                instance.name = "OpenAI";
+                instance.settings.endpoint = modelData.openAI.defaultEndpoint;
+                instance.settings.availableModels = new List<string>(modelData.openAI.models);
+                if (modelData.openAI.models.Count > 0)
+                    instance.settings.selectedModel = modelData.openAI.models[0];
+                break;
+            case LLMProvider.Anthropic:
+                instance.name = "Anthropic";
+                instance.settings.endpoint = modelData.anthropic.defaultEndpoint;
+                instance.settings.availableModels = new List<string>(modelData.anthropic.models);
+                if (modelData.anthropic.models.Count > 0)
+                    instance.settings.selectedModel = modelData.anthropic.models[0];
+                break;
+            case LLMProvider.LlamaCpp:
+                instance.name = "llama.cpp";
+                instance.settings.endpoint = "http://localhost:8080";
+                break;
+            case LLMProvider.Ollama:
+                instance.name = "Ollama";
+                instance.settings.endpoint = "http://localhost:11434";
+                break;
+        }
+        
+        return instance;
+    }
+    
+    /// <summary>
+    /// Check if this instance can accept a job of the given type.
+    /// </summary>
+    public bool CanAcceptJob(bool isSmallJob)
+    {
+        if (!isActive) return false;
+        
+        switch (jobMode)
+        {
+            case LLMJobMode.Any:
+                return true;
+            case LLMJobMode.SmallJobsOnly:
+                return isSmallJob;
+            case LLMJobMode.BigJobsOnly:
+                return !isSmallJob;
+            default:
+                return true;
+        }
+    }
+    
+    /// <summary>
+    /// Creates a deep clone of this instance.
+    /// </summary>
+    public LLMInstanceInfo Clone()
+    {
+        return new LLMInstanceInfo
+        {
+            instanceID = this.instanceID,
+            name = this.name,
+            providerType = this.providerType,
+            settings = this.settings?.Clone() ?? new LLMProviderSettings(),
+            isActive = this.isActive,
+            jobMode = this.jobMode,
+            isBusy = false // Don't copy runtime state
+        };
+    }
+    
+    /// <summary>
+    /// Gets a display string for the job mode.
+    /// </summary>
+    public string GetJobModeDisplayString()
+    {
+        switch (jobMode)
+        {
+            case LLMJobMode.Any: return "Any";
+            case LLMJobMode.BigJobsOnly: return "Big Jobs";
+            case LLMJobMode.SmallJobsOnly: return "Small Jobs";
+            default: return "Any";
+        }
+    }
+    
+    /// <summary>
+    /// Gets a summary display string for the instance list.
+    /// </summary>
+    public string GetDisplayString()
+    {
+        string status = isActive ? "Active" : "Inactive";
+        string model = !string.IsNullOrEmpty(settings?.selectedModel) ? settings.selectedModel : providerType.ToString();
+        return $"{name} ({model}, {status}, {GetJobModeDisplayString()})";
+    }
+}
+
+/// <summary>
 /// Root settings object containing all LLM provider configurations.
 /// </summary>
 [Serializable]
@@ -181,5 +316,126 @@ public class LLMSettings
             llamaCpp = this.llamaCpp.Clone(),
             ollama = this.ollama.Clone()
         };
+    }
+}
+
+/// <summary>
+/// Container for multiple LLM instances. This is the new format for config_llm.txt.
+/// </summary>
+[Serializable]
+public class LLMInstancesConfig
+{
+    public List<LLMInstanceInfo> instances = new List<LLMInstanceInfo>();
+    public int defaultInstanceID = 0;
+    
+    // Legacy settings for migration (will be null after migration)
+    public LLMSettings legacySettings = null;
+    
+    /// <summary>
+    /// Creates a default configuration with no instances.
+    /// </summary>
+    public static LLMInstancesConfig CreateDefault()
+    {
+        return new LLMInstancesConfig
+        {
+            instances = new List<LLMInstanceInfo>(),
+            defaultInstanceID = 0
+        };
+    }
+    
+    /// <summary>
+    /// Creates a configuration from legacy single-provider settings.
+    /// </summary>
+    public static LLMInstancesConfig CreateFromLegacy(LLMSettings legacy)
+    {
+        var config = new LLMInstancesConfig();
+        
+        if (legacy == null) return config;
+        
+        // Create an instance from the active provider
+        var instance = new LLMInstanceInfo
+        {
+            instanceID = 0,
+            providerType = legacy.activeProvider,
+            settings = legacy.GetActiveProviderSettings()?.Clone() ?? new LLMProviderSettings(),
+            isActive = true,
+            jobMode = LLMJobMode.Any
+        };
+        
+        // Set name based on provider
+        switch (legacy.activeProvider)
+        {
+            case LLMProvider.OpenAI:
+                instance.name = "OpenAI";
+                break;
+            case LLMProvider.Anthropic:
+                instance.name = "Anthropic";
+                break;
+            case LLMProvider.LlamaCpp:
+                instance.name = "llama.cpp";
+                break;
+            case LLMProvider.Ollama:
+                instance.name = "Ollama";
+                break;
+        }
+        
+        config.instances.Add(instance);
+        config.defaultInstanceID = 0;
+        
+        return config;
+    }
+    
+    /// <summary>
+    /// Gets the next available instance ID.
+    /// </summary>
+    public int GetNextInstanceID()
+    {
+        int maxID = -1;
+        foreach (var inst in instances)
+        {
+            if (inst.instanceID > maxID)
+                maxID = inst.instanceID;
+        }
+        return maxID + 1;
+    }
+    
+    /// <summary>
+    /// Gets an instance by ID, or null if not found.
+    /// </summary>
+    public LLMInstanceInfo GetInstance(int id)
+    {
+        foreach (var inst in instances)
+        {
+            if (inst.instanceID == id)
+                return inst;
+        }
+        return null;
+    }
+    
+    /// <summary>
+    /// Gets the default instance, or null if none.
+    /// </summary>
+    public LLMInstanceInfo GetDefaultInstance()
+    {
+        return GetInstance(defaultInstanceID) ?? (instances.Count > 0 ? instances[0] : null);
+    }
+    
+    /// <summary>
+    /// Creates a deep clone.
+    /// </summary>
+    public LLMInstancesConfig Clone()
+    {
+        var clone = new LLMInstancesConfig
+        {
+            defaultInstanceID = this.defaultInstanceID,
+            instances = new List<LLMInstanceInfo>()
+        };
+        
+        foreach (var inst in this.instances)
+        {
+            clone.instances.Add(inst.Clone());
+        }
+        
+        return clone;
     }
 }
