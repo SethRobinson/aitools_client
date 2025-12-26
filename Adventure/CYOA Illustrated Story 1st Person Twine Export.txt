@@ -26,7 +26,7 @@ Sometimes choices should lead to dead-ends (no choices), generally when the choi
 
 The story should be wrapped up after Choice ID numbers are over 15, at that time try to end the story and no provide more choices.  (If no choices, the story is over, and you should end with GAME OVER - YOU FAILED or GAME OVER - YOU WON! depending on the circumstance)
 
-AFTER all the dialog/story/choices, you will create descriptions of the scene which will be sent to generative AI to make a picture.   Fully describe the visual scene within a DETAILED_SCENE_VISUAL_DESCRIPTION_START and DETAILED_SCENE_VISUAL_DESCRIPTION_END likethis:
+AFTER all the dialog/story/choices, you will create descriptions of the scene which will be sent to generative AI to make a picture.   Fully describe the visual scene within a DETAILED_SCENE_VISUAL_DESCRIPTION_START and DETAILED_SCENE_VISUAL_DESCRIPTION_END like this:
 
 DETAILED_SCENE_VISUAL_DESCRIPTION_START
 (write a detailed description of the scene and environment to illusrate this part of the story. No flowery prose here.  Include descriptions of each creature (never the player, as this is from their viewpoint)  in the image including their age in years, ethnicity, body, clothes, face, hair style and color, facial expression and pose.  Don't use people's names here, just their full, detailed physical description. This part of the text should not reference earlier text or replies, it is be stand-alone. Don't use the words "you" or "your" in these descriptions.)
@@ -65,6 +65,8 @@ Note:  This version of the CYOA rules will generate TONS of branches, getting cr
 What should this story be about?  (Enter in the textbox at the bottom of the screen and press ENTER)
 
 (Example text you could cut and paste in: Player is in a dungeon.  Let them escape and win by solving puzzles.  Bad moves equals death! )
+
+After you get your first reply, you need to click "Auto" on it to start generating the story.  Click the "Pause LLMS" checkbox above to stop early.
 COMMAND_END
 
 COMMAND_SET|temperature|1.0|#higher makes the AI act more crazy, depends on the LLM

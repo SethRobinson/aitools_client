@@ -188,7 +188,7 @@ public class AdventureText : MonoBehaviour
 
         {
             RenderAnotherPic(AdventureLogic.Get().GetRenderer());
-            AdventureLogic.Get().SetLastPicTextAndOwner(this);
+            AdventureLogic.Get().SetLastPicTextAndOwner(this, wasAutoPic: false);
         } else
         {
             //show a message to the screen
@@ -672,7 +672,7 @@ public class AdventureText : MonoBehaviour
                     }
                 }
 
-                AdventureLogic.Get().SetLastPicTextAndOwner(this);
+                AdventureLogic.Get().SetLastPicTextAndOwner(this, wasAutoPic: false);
 
                 _lastPicTextRenderedDetailed = picTextDetailed;
                 _lastPicTextRenderedSimple = picTextSimple;
@@ -712,6 +712,9 @@ public class AdventureText : MonoBehaviour
             //no pics found.  Should we use the LLM to create a description to render?  We'll check to see how many images have been set to render
             if (bRenderAutoPics && AdventureLogic.Get().GetRenderCount() > 0)
             {
+                // Mark this as using autopics so GenExtra knows to check for LLM availability
+                AdventureLogic.Get().SetLastPicTextAndOwner(this, wasAutoPic: true);
+                
                 if (AdventureLogic.Get().GetGenUniqueAPics())
                 {
                     //spawn a separate APic for each render count, so each gets a unique LLM description

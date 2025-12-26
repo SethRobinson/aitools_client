@@ -22,6 +22,8 @@ public class LLMSettingsPanel : MonoBehaviour
     private int _selectedInstanceID = -1;
     private TMP_Dropdown _jobModeDropdown;
     private GameObject _jobModeRow;
+    private TMP_InputField _maxConcurrentInput;
+    private GameObject _maxConcurrentRow;
 
     private RectTransform _mainPanel;
     private TMP_Dropdown _activeProviderDropdown;
@@ -767,6 +769,9 @@ public class LLMSettingsPanel : MonoBehaviour
         
         // Job Mode row (for selected instance)
         CreateJobModeRow(content.transform);
+        
+        // Max Concurrent Tasks row (for selected instance)
+        CreateMaxConcurrentRow(content.transform);
 
         // Row: Active provider (explicit layout) - hidden when using multi-instance
         CreateActiveProviderRow(content.transform);
@@ -886,6 +891,101 @@ public class LLMSettingsPanel : MonoBehaviour
         }
     }
     
+    private void CreateMaxConcurrentRow(Transform parent)
+    {
+        const float rowHeight = 36f;
+        const float labelWidth = 140f;
+        const float pad = 12f;
+
+        _maxConcurrentRow = new GameObject("MaxConcurrentRow");
+        _maxConcurrentRow.transform.SetParent(parent, false);
+        var rowImg = _maxConcurrentRow.AddComponent<Image>();
+        ApplyUISprite(rowImg);
+        rowImg.color = RowBg;
+        var rowLE = _maxConcurrentRow.AddComponent<LayoutElement>();
+        rowLE.preferredHeight = rowHeight;
+
+        // Label
+        var labelObj = new GameObject("Label");
+        labelObj.transform.SetParent(_maxConcurrentRow.transform, false);
+        var labelRt = labelObj.AddComponent<RectTransform>();
+        labelRt.anchorMin = new Vector2(0, 0);
+        labelRt.anchorMax = new Vector2(0, 1);
+        labelRt.pivot = new Vector2(0, 0.5f);
+        labelRt.sizeDelta = new Vector2(labelWidth, 0);
+        labelRt.anchoredPosition = new Vector2(pad, 0);
+
+        var label = labelObj.AddComponent<TextMeshProUGUI>();
+        label.font = _font;
+        label.text = "Max Concurrent:";
+        label.fontSize = 14;
+        label.color = TextDark;
+        label.alignment = TextAlignmentOptions.MidlineLeft;
+
+        // Input field
+        var inputGo = TMP_DefaultControls.CreateInputField(BuildTMPResources());
+        inputGo.name = "MaxConcurrentInput";
+        inputGo.transform.SetParent(_maxConcurrentRow.transform, false);
+        ApplyFontAndColor(inputGo);
+
+        var inputRt = inputGo.GetComponent<RectTransform>();
+        inputRt.anchorMin = new Vector2(0, 0);
+        inputRt.anchorMax = new Vector2(0, 1);
+        inputRt.pivot = new Vector2(0, 0.5f);
+        inputRt.anchoredPosition = new Vector2(labelWidth + pad, 0);
+        inputRt.sizeDelta = new Vector2(60, -8f);
+
+        _maxConcurrentInput = inputGo.GetComponent<TMP_InputField>();
+        _maxConcurrentInput.contentType = TMP_InputField.ContentType.IntegerNumber;
+        _maxConcurrentInput.text = "1";
+        _maxConcurrentInput.onEndEdit.AddListener(OnMaxConcurrentChanged);
+
+        if (_maxConcurrentInput.textComponent != null)
+        {
+            _maxConcurrentInput.textComponent.font = _font;
+            _maxConcurrentInput.textComponent.fontSize = 13;
+            _maxConcurrentInput.textComponent.color = TextDark;
+        }
+        
+        // Help text
+        var helpObj = new GameObject("HelpText");
+        helpObj.transform.SetParent(_maxConcurrentRow.transform, false);
+        var helpRt = helpObj.AddComponent<RectTransform>();
+        helpRt.anchorMin = new Vector2(0, 0);
+        helpRt.anchorMax = new Vector2(1, 1);
+        helpRt.pivot = new Vector2(0, 0.5f);
+        helpRt.anchoredPosition = new Vector2(labelWidth + pad + 70, 0);
+        helpRt.sizeDelta = new Vector2(-labelWidth - pad - 80, 0);
+
+        var helpText = helpObj.AddComponent<TextMeshProUGUI>();
+        helpText.font = _font;
+        helpText.text = "(0 = disabled, 1+ = max parallel tasks)";
+        helpText.fontSize = 11;
+        helpText.color = new Color(0.4f, 0.4f, 0.4f, 1f);
+        helpText.alignment = TextAlignmentOptions.MidlineLeft;
+    }
+    
+    private void OnMaxConcurrentChanged(string value)
+    {
+        if (_selectedInstanceID < 0) return;
+        
+        var instance = _workingInstancesConfig?.GetInstance(_selectedInstanceID);
+        if (instance != null)
+        {
+            if (int.TryParse(value, out int maxTasks))
+            {
+                instance.maxConcurrentTasks = Mathf.Max(0, maxTasks); // 0 = disabled
+                _maxConcurrentInput.text = instance.maxConcurrentTasks.ToString();
+                _instanceListUI?.UpdateItemDisplay(instance);
+            }
+            else
+            {
+                // Reset to current value if parse fails
+                _maxConcurrentInput.text = instance.maxConcurrentTasks.ToString();
+            }
+        }
+    }
+    
     private void OnInstanceSelected(int instanceID)
     {
         _selectedInstanceID = instanceID;
@@ -895,6 +995,7 @@ public class LLMSettingsPanel : MonoBehaviour
         {
             // No instance selected - hide provider UI
             _jobModeRow?.SetActive(false);
+            _maxConcurrentRow?.SetActive(false);
             if (_activeProviderDropdown?.transform.parent != null)
                 _activeProviderDropdown.transform.parent.gameObject.SetActive(false);
             HideAllProviderUIs();
@@ -905,6 +1006,11 @@ public class LLMSettingsPanel : MonoBehaviour
         _jobModeRow?.SetActive(true);
         if (_jobModeDropdown != null)
             _jobModeDropdown.value = (int)instance.jobMode;
+        
+        // Show max concurrent row
+        _maxConcurrentRow?.SetActive(true);
+        if (_maxConcurrentInput != null)
+            _maxConcurrentInput.text = instance.maxConcurrentTasks.ToString();
         
         // Update provider dropdown
         if (_activeProviderDropdown != null)

@@ -282,32 +282,91 @@ public class LLMInstanceManager : MonoBehaviour
     }
     
     // ============================================
-    // Busy State Management
+    // Task Tracking (Concurrent Task Management)
     // ============================================
     
     /// <summary>
-    /// Check if an instance is busy.
+    /// Check if an instance has capacity for more tasks.
+    /// </summary>
+    public bool HasCapacity(int id)
+    {
+        var instance = GetInstance(id);
+        return instance?.HasCapacity() ?? false;
+    }
+    
+    /// <summary>
+    /// Check if an instance is busy (at or over capacity).
     /// </summary>
     public bool IsLLMBusy(int id)
     {
         var instance = GetInstance(id);
-        return instance?.isBusy ?? true;
+        return instance == null || !instance.HasCapacity();
     }
     
     /// <summary>
-    /// Set an instance's busy state.
+    /// Increment the active task count for an instance.
+    /// Call this when starting a new LLM request.
     /// </summary>
-    public void SetLLMBusy(int id, bool busy)
+    public void IncrementActiveTasks(int id)
     {
         var instance = GetInstance(id);
         if (instance != null)
         {
-            instance.isBusy = busy;
+            instance.activeTasks++;
+            RTConsole.Log($"LLM instance {id} ({instance.name}): started task, active={instance.activeTasks}/{instance.maxConcurrentTasks}");
+            NotifyLLMStatusChanged();
         }
     }
     
     /// <summary>
-    /// Check if any LLM is free for the given job type.
+    /// Decrement the active task count for an instance.
+    /// Call this when an LLM request completes.
+    /// </summary>
+    public void DecrementActiveTasks(int id)
+    {
+        var instance = GetInstance(id);
+        if (instance != null)
+        {
+            instance.activeTasks = Math.Max(0, instance.activeTasks - 1);
+            RTConsole.Log($"LLM instance {id} ({instance.name}): finished task, active={instance.activeTasks}/{instance.maxConcurrentTasks}");
+            NotifyLLMStatusChanged();
+        }
+    }
+    
+    /// <summary>
+    /// Notify GameLogic to update the LLM status label.
+    /// </summary>
+    private void NotifyLLMStatusChanged()
+    {
+        var gameLogic = GameLogic.Get();
+        if (gameLogic != null)
+        {
+            gameLogic.UpdateActiveLLMLabel();
+        }
+    }
+    
+    /// <summary>
+    /// Get the current active task count for an instance.
+    /// </summary>
+    public int GetActiveTaskCount(int id)
+    {
+        var instance = GetInstance(id);
+        return instance?.activeTasks ?? 0;
+    }
+    
+    /// <summary>
+    /// Legacy method for backward compatibility. Sets busy state based on active tasks.
+    /// </summary>
+    public void SetLLMBusy(int id, bool busy)
+    {
+        if (busy)
+            IncrementActiveTasks(id);
+        else
+            DecrementActiveTasks(id);
+    }
+    
+    /// <summary>
+    /// Check if any LLM has capacity for the given job type.
     /// </summary>
     public bool IsAnyLLMFree(bool isSmallJob = false)
     {
@@ -315,52 +374,93 @@ public class LLMInstanceManager : MonoBehaviour
     }
     
     /// <summary>
-    /// Get a free LLM instance ID for the given job type.
-    /// Returns -1 if none available.
+    /// Get the best available LLM instance ID for the given job type.
+    /// Chooses the instance with the lowest utilization ratio (activeTasks / maxConcurrentTasks).
+    /// Only returns instances that have capacity available.
+    /// Returns -1 if no instance has capacity.
     /// </summary>
+    /// <example>
+    /// If instance A is 0/1 (0%) and instance B is 1/4 (25%), returns A.
+    /// If instance A is 1/1 (100%) and instance B is 3/4 (75%), returns B.
+    /// If both are at capacity, returns -1.
+    /// </example>
     public int GetFreeLLM(bool isSmallJob = false)
     {
         if (_config == null) return -1;
         
+        int bestID = -1;
+        float bestRatio = float.MaxValue; // Lower is better
+        
         foreach (var instance in _config.instances)
         {
             if (!instance.isActive) continue;
-            if (instance.isBusy) continue;
-            if (!instance.CanAcceptJob(isSmallJob)) continue;
+            if (!instance.CanAcceptJob(isSmallJob)) continue; // Checks job type AND capacity
             
-            return instance.instanceID;
+            // Calculate utilization ratio (0 = empty, approaching 1 = nearly full)
+            float ratio = instance.maxConcurrentTasks > 0 
+                ? (float)instance.activeTasks / instance.maxConcurrentTasks 
+                : float.MaxValue;
+            
+            if (ratio < bestRatio)
+            {
+                bestRatio = ratio;
+                bestID = instance.instanceID;
+            }
         }
         
-        return -1;
+        return bestID;
     }
     
     /// <summary>
-    /// Get the least busy LLM instance ID for the given job type.
-    /// Falls back to any matching instance if all are busy.
-    /// Returns -1 if no matching instances exist.
+    /// Get the LLM instance ID with the lowest utilization for the given job type.
+    /// Unlike GetFreeLLM, this returns an instance even if at capacity (for queueing).
+    /// Returns -1 if no matching instances exist at all.
     /// </summary>
     public int GetLeastBusyLLM(bool isSmallJob = false)
     {
-        // First try to find a free one
-        int freeID = GetFreeLLM(isSmallJob);
-        if (freeID >= 0) return freeID;
-        
-        // Fall back to first matching instance (even if busy)
         if (_config == null) return -1;
+        
+        int bestID = -1;
+        float bestRatio = float.MaxValue; // Lower is better
         
         foreach (var instance in _config.instances)
         {
             if (!instance.isActive) continue;
-            if (!instance.CanAcceptJob(isSmallJob)) continue;
+            if (!instance.CanAcceptJobType(isSmallJob)) continue; // Only check job type, not capacity
             
-            return instance.instanceID;
+            // Calculate utilization ratio (0 = empty, 1 = full, >1 = over capacity)
+            float ratio = instance.maxConcurrentTasks > 0 
+                ? (float)instance.activeTasks / instance.maxConcurrentTasks 
+                : float.MaxValue;
+            
+            if (ratio < bestRatio)
+            {
+                bestRatio = ratio;
+                bestID = instance.instanceID;
+            }
         }
         
-        return -1;
+        return bestID;
     }
     
     /// <summary>
-    /// Get the count of busy LLM instances.
+    /// Get the total count of active tasks across all LLM instances.
+    /// </summary>
+    public int GetTotalActiveTaskCount()
+    {
+        if (_config == null) return 0;
+        
+        int count = 0;
+        foreach (var instance in _config.instances)
+        {
+            if (instance.isActive)
+                count += instance.activeTasks;
+        }
+        return count;
+    }
+    
+    /// <summary>
+    /// Get the count of LLM instances that are at capacity.
     /// </summary>
     public int GetBusyLLMCount()
     {
@@ -369,7 +469,7 @@ public class LLMInstanceManager : MonoBehaviour
         int count = 0;
         foreach (var instance in _config.instances)
         {
-            if (instance.isActive && instance.isBusy)
+            if (instance.isActive && !instance.HasCapacity())
                 count++;
         }
         return count;

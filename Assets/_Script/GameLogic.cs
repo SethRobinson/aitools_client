@@ -1633,34 +1633,59 @@ public string GetPrompt() { return m_prompt; }
 
         string label = "None";
 
-        var mgr = LLMSettingsManager.Get();
-        if (mgr != null)
+        var instanceMgr = LLMInstanceManager.Get();
+        if (instanceMgr != null && instanceMgr.GetInstanceCount() > 0)
         {
-            var provider = mgr.GetActiveProvider();
-            string providerName = GetLLMProviderDisplayName(provider);
-            string model = mgr.GetModel(provider);
-
-            if (!string.IsNullOrEmpty(providerName))
+            // Show status of all instances: "Llama (2/3), OpenAI (0/1)..."
+            var config = instanceMgr.GetConfigClone();
+            if (config != null && config.instances.Count > 0)
             {
-                // Format as:
-                // <provider>
-                // <model>
-                // If model is empty (possible for local providers), show "Default".
-                label = providerName + "\n" + (string.IsNullOrEmpty(model) ? "Default" : model);
+                var parts = new System.Collections.Generic.List<string>();
+                foreach (var instance in config.instances)
+                {
+                    if (!instance.isActive || instance.maxConcurrentTasks <= 0) continue;
+                    
+                    // Get live active count from manager (not the cloned config)
+                    int activeCount = instanceMgr.GetActiveTaskCount(instance.instanceID);
+                    string shortName = GetShortInstanceName(instance.name);
+                    parts.Add($"{shortName} ({activeCount}/{instance.maxConcurrentTasks})");
+                }
+                
+                if (parts.Count > 0)
+                {
+                    label = string.Join(", ", parts);
+                    // Truncate to 40 chars
+                    if (label.Length > 140)
+                    {
+                        label = label.Substring(0, 137) + "...";
+                    }
+                }
             }
         }
-        else if (m_llmSelectionDropdown != null && m_llmSelectionDropdown.options != null && m_llmSelectionDropdown.options.Count > 0)
+        else
         {
-            int idx = Mathf.Clamp(m_llmSelectionDropdown.value, 0, m_llmSelectionDropdown.options.Count - 1);
-            string optionText = m_llmSelectionDropdown.options[idx]?.text;
-            if (!string.IsNullOrEmpty(optionText))
+            // Legacy fallback
+            var mgr = LLMSettingsManager.Get();
+            if (mgr != null)
             {
-                // Legacy fallback: we only know the provider name here.
-                label = optionText + "\n";
+                var provider = mgr.GetActiveProvider();
+                string providerName = GetLLMProviderDisplayName(provider);
+                if (!string.IsNullOrEmpty(providerName))
+                {
+                    label = providerName;
+                }
             }
         }
 
         m_activeLLMLabel.text = label;
+    }
+    
+    private static string GetShortInstanceName(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return "LLM";
+        // Truncate long names
+        if (name.Length > 10) return name.Substring(0, 8) + "..";
+        return name;
     }
 
     private static string GetLLMProviderDisplayName(LLMProvider provider)

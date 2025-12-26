@@ -234,6 +234,7 @@ public class AdventureLogic : MonoBehaviour
     bool _bIsActive = false;
     public UnityEngine.UI.Toggle m_genExtraToggle;
     public Toggle m_genUniqueAPicsToggle;
+    public Toggle m_pauseLLMsToggle;
     public bool GetGenUniqueAPics() { return m_genUniqueAPicsToggle != null && m_genUniqueAPicsToggle.isOn; }
     public string GetAdventureName() { return "My Adventure"; }
     int _llmRequestCount = 0;
@@ -251,11 +252,14 @@ public class AdventureLogic : MonoBehaviour
     public int GetLLMRequestCount() { return _llmRequestCount; }
     public bool CanInitNewLLMRequest()
     {
-        // Check user-configured limit first
-        if (_llmRequestCount >= GetMaxLLMRequestsDesiredAtOnce())
+        // Check if LLMs are paused
+        if (m_pauseLLMsToggle != null && m_pauseLLMsToggle.isOn)
+        {
             return false;
+        }
         
-        // Also check if any LLM instance is available for big jobs
+        // Check if any LLM instance has capacity for big jobs
+        // The per-instance maxConcurrentTasks setting controls the limit
         var instanceMgr = LLMInstanceManager.Get();
         if (instanceMgr != null && instanceMgr.GetInstanceCount() > 0)
         {
@@ -265,12 +269,18 @@ public class AdventureLogic : MonoBehaviour
         // Fall back to legacy behavior (no instances configured)
         return true;
     }
+    
+    public bool AreLLMsPaused()
+    {
+        return m_pauseLLMsToggle != null && m_pauseLLMsToggle.isOn;
+    }
 
     public GPTPromptManager GetGlobalPromptManager() { return m_globalPromptManager; }
 
     public GPTPromptManager m_globalPromptManager; //all the prompts in one giant prompt, used for certain things
 
     AdventureText _lastPicOwner;
+    bool _lastRenderWasAutoPic = false;
 
     private void Awake()
     {
@@ -806,9 +816,10 @@ public class AdventureLogic : MonoBehaviour
         return true;
     }
 
-    public void SetLastPicTextAndOwner(AdventureText owner)
+    public void SetLastPicTextAndOwner(AdventureText owner, bool wasAutoPic = false)
     {
         _lastPicOwner = owner;
+        _lastRenderWasAutoPic = wasAutoPic;
     }
 
     public void OnSummarize()
@@ -911,8 +922,22 @@ public class AdventureLogic : MonoBehaviour
                 {
                     if (_lastPicOwner != null)
                     {
-                        RTConsole.Log("GPU not busy, spawning more");
-                        _lastPicOwner.RenderAnotherPic(RTRendererType.Any_Local);
+                        if (_lastRenderWasAutoPic)
+                        {
+                            // For autopics, we also need an LLM to be free (small job)
+                            var instanceMgr = LLMInstanceManager.Get();
+                            if (instanceMgr != null && instanceMgr.IsAnyLLMFree(isSmallJob: true))
+                            {
+                                RTConsole.Log("GPU and LLM free, spawning extra autopic");
+                                _lastPicOwner.OnAutoRenderButton();
+                            }
+                        }
+                        else
+                        {
+                            // Regular pic with tags - just needs GPU
+                            RTConsole.Log("GPU not busy, spawning more");
+                            _lastPicOwner.RenderAnotherPic(RTRendererType.Any_Local);
+                        }
                     }
 
                 }

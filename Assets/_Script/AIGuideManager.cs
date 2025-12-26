@@ -412,30 +412,38 @@ public class AIGuideManager : MonoBehaviour
 
     private void SpawnAnthropicRequest(Queue<GTPChatLine> lines, LLMProviderSettings activeSettings = null)
     {
-        string apiKey = Config.Get().GetAnthropicAI_APIKey();
-        string model = Config.Get().GetAnthropicAI_APIModel();
-        string endpoint = Config.Get().GetAnthropicAI_APIEndpoint();
+        string apiKey = "";
+        string model = "";
+        string endpoint = "";
 
-        // Use provided settings from instance, or override with LLMSettingsManager
+        // Use provided settings from instance first
         if (activeSettings != null)
         {
-            if (!string.IsNullOrEmpty(activeSettings.apiKey)) apiKey = activeSettings.apiKey;
-            if (!string.IsNullOrEmpty(activeSettings.selectedModel)) model = activeSettings.selectedModel;
-            if (!string.IsNullOrEmpty(activeSettings.endpoint)) endpoint = activeSettings.endpoint;
+            apiKey = activeSettings.apiKey ?? "";
+            model = activeSettings.selectedModel ?? "";
+            endpoint = activeSettings.endpoint ?? "";
+            RTConsole.Log($"Anthropic using instance settings - API key length: {apiKey.Length}, model: {model}, endpoint: {endpoint}");
         }
-        else
+        
+        // Fall back to LLMSettingsManager if settings are empty
+        if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(model) || string.IsNullOrEmpty(endpoint))
         {
             var mgr = LLMSettingsManager.Get();
             if (mgr != null)
             {
                 var settings = mgr.GetProviderSettings(LLMProvider.Anthropic);
-                if (!string.IsNullOrEmpty(settings.apiKey)) apiKey = settings.apiKey;
-                if (!string.IsNullOrEmpty(settings.selectedModel)) model = settings.selectedModel;
-                if (!string.IsNullOrEmpty(settings.endpoint)) endpoint = settings.endpoint;
+                if (string.IsNullOrEmpty(apiKey) && !string.IsNullOrEmpty(settings.apiKey)) apiKey = settings.apiKey;
+                if (string.IsNullOrEmpty(model) && !string.IsNullOrEmpty(settings.selectedModel)) model = settings.selectedModel;
+                if (string.IsNullOrEmpty(endpoint) && !string.IsNullOrEmpty(settings.endpoint)) endpoint = settings.endpoint;
             }
         }
+        
+        // Final fallback to Config
+        if (string.IsNullOrEmpty(apiKey)) apiKey = Config.Get().GetAnthropicAI_APIKey();
+        if (string.IsNullOrEmpty(model)) model = Config.Get().GetAnthropicAI_APIModel();
+        if (string.IsNullOrEmpty(endpoint)) endpoint = Config.Get().GetAnthropicAI_APIEndpoint();
 
-        RTConsole.Log("Contacting Anthropic at " + endpoint);
+        RTConsole.Log($"Anthropic final - API key length: {apiKey.Length}, model: {model}, endpoint: {endpoint}");
         string json = _anthropicAITextCompletionManager.BuildChatCompleteJSON(lines, m_max_tokens, m_extractor.Temperature, model, true);
         RTDB db = new RTDB();
         _anthropicAITextCompletionManager.SpawnChatCompletionRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
@@ -568,27 +576,70 @@ public class AIGuideManager : MonoBehaviour
         m_bIsPossibleToContinue = false;
 
         // Validate API keys for the active provider
-        var llmManager = LLMSettingsManager.Get();
-        LLMProvider activeProvider = llmManager != null ? llmManager.GetActiveProvider() : 
-            (LLMProvider)GameLogic.Get().GetLLMSelection().value;
-
-        if (activeProvider == LLMProvider.OpenAI)
+        // Check if we have any LLM instances available for big jobs
+        var instanceMgr = LLMInstanceManager.Get();
+        if (instanceMgr != null && instanceMgr.GetInstanceCount() > 0)
         {
-            if (Config.Get().GetOpenAI_APIKey().Length < 15)
+            // Check if any big job instance is available
+            int instanceID = instanceMgr.GetLeastBusyLLM(isSmallJob: false);
+            if (instanceID < 0)
             {
-                RTConsole.Log("Error: You need to set the OpenAI API key! Use the LLM Settings button or config.txt");
+                RTConsole.Log("Error: No LLM instance configured for big jobs! Check LLM Settings.");
                 GameLogic.Get().ShowConsole(true);
                 return;
             }
-        }
-
-        if (activeProvider == LLMProvider.Anthropic)
-        {
-            if (Config.Get().GetAnthropicAI_APIKey().Length < 15)
+            
+            var instance = instanceMgr.GetInstance(instanceID);
+            if (instance != null)
             {
-                RTConsole.Log("Error: You need to set the Anthropic API key! Use the LLM Settings button or config.txt");
-                GameLogic.Get().ShowConsole(true);
-                return;
+                // Validate API key for this specific instance
+                if (instance.providerType == LLMProvider.OpenAI)
+                {
+                    string apiKey = instance.settings?.apiKey ?? "";
+                    if (apiKey.Length < 15)
+                    {
+                        RTConsole.Log($"Error: OpenAI API key not set for instance '{instance.name}'! Use the LLM Settings button.");
+                        GameLogic.Get().ShowConsole(true);
+                        return;
+                    }
+                }
+                else if (instance.providerType == LLMProvider.Anthropic)
+                {
+                    string apiKey = instance.settings?.apiKey ?? "";
+                    if (apiKey.Length < 15)
+                    {
+                        RTConsole.Log($"Error: Anthropic API key not set for instance '{instance.name}'! Use the LLM Settings button.");
+                        GameLogic.Get().ShowConsole(true);
+                        return;
+                    }
+                }
+            }
+        }
+        else
+        {
+            // Legacy validation using Config
+            var llmManager = LLMSettingsManager.Get();
+            LLMProvider activeProvider = llmManager != null ? llmManager.GetActiveProvider() : 
+                (LLMProvider)GameLogic.Get().GetLLMSelection().value;
+
+            if (activeProvider == LLMProvider.OpenAI)
+            {
+                if (Config.Get().GetOpenAI_APIKey().Length < 15)
+                {
+                    RTConsole.Log("Error: You need to set the OpenAI API key! Use the LLM Settings button or config.txt");
+                    GameLogic.Get().ShowConsole(true);
+                    return;
+                }
+            }
+
+            if (activeProvider == LLMProvider.Anthropic)
+            {
+                if (Config.Get().GetAnthropicAI_APIKey().Length < 15)
+                {
+                    RTConsole.Log("Error: You need to set the Anthropic API key! Use the LLM Settings button or config.txt");
+                    GameLogic.Get().ShowConsole(true);
+                    return;
+                }
             }
         }
 

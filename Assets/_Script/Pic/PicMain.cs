@@ -2419,13 +2419,20 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         
         if (serverID >= 0) serverInfo = Config.Get().GetGPUInfo(serverID);
 
-        // Check if the next job is an LLM call and if we can initiate it in Adventure mode
+        // Check if the next job is an LLM call and if we can initiate it
         if (m_picJobs.Count > 0 && m_picJobs[0]._job == "call_llm")
         {
-            if (AdventureLogic.Get().IsActive() && !AdventureLogic.Get().CanInitNewLLMRequest())
+            // Check LLM instance capacity for small jobs (autopics)
+            // Note: We don't check AreLLMsPaused() here - that only pauses big jobs (Adventure text)
+            // Autopics (small jobs) can continue processing even when paused
+            var instanceMgr = LLMInstanceManager.Get();
+            if (instanceMgr != null && instanceMgr.GetInstanceCount() > 0)
             {
-                SetStatusMessage("Waiting for LLM slot...");
-                return;
+                if (!instanceMgr.IsAnyLLMFree(isSmallJob: true))
+                {
+                    SetStatusMessage("Waiting for LLM slot...");
+                    return;
+                }
             }
         }
 

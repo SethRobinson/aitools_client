@@ -80,7 +80,8 @@ COMMAND_START|start_msg
 
 Note: Click Export to create a Twine project (.twii file) with images in the output dir.  You'll need to import with Twine, then Build to that same directory to play the adventure.
 
-What should this story be about?
+What should this story be about? (After pressing ENTER and getting the first reply, you need to click "Auto" to start generating the story.  Click the "Pause LLMS" checkbox above to stop early)
+
 
 Try cutting and pasting this input in to get started (modify as needed):
 

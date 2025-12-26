@@ -70,6 +70,8 @@ COMMAND_START|start_msg
 Note:  This version of the CYOA rules will generate TONS of branches, getting crazy.  The text is set to start killing branches and ending the story after Choice ID's hit about 15 per that branch.  I don't recommend using "Global Context" mode btw, it wastes a lot of tokens and doesn't seem to help much.
 
 What should this story be about?  (Enter in the textbox at the bottom of the screen and press ENTER)
+
+After getting the first reply, you need to click "Auto" to start generating the story.  Click the "Pause LLMS" checkbox above to stop early.
 COMMAND_END
 
 COMMAND_SET|temperature|1.0|#higher makes the AI act more crazy, depends on the LLM

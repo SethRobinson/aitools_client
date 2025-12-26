@@ -100,10 +100,11 @@ public class LLMInstanceInfo
     public LLMProviderSettings settings;        // endpoint, apiKey, model, extraParams
     public bool isActive = true;                // Whether this instance is enabled
     public LLMJobMode jobMode = LLMJobMode.Any; // Which job types this instance accepts
+    public int maxConcurrentTasks = 1;          // Maximum concurrent tasks this instance can handle
     
     // Runtime state (not persisted)
     [NonSerialized]
-    public bool isBusy = false;
+    public int activeTasks = 0;                 // Current number of active tasks
     
     /// <summary>
     /// Creates a default instance with the specified provider type.
@@ -116,7 +117,8 @@ public class LLMInstanceInfo
             providerType = provider,
             settings = new LLMProviderSettings(),
             isActive = true,
-            jobMode = LLMJobMode.Any
+            jobMode = LLMJobMode.Any,
+            maxConcurrentTasks = 1
         };
         
         // Set provider-specific defaults
@@ -151,9 +153,9 @@ public class LLMInstanceInfo
     }
     
     /// <summary>
-    /// Check if this instance can accept a job of the given type.
+    /// Check if this instance can accept a job of the given type (checks job mode only).
     /// </summary>
-    public bool CanAcceptJob(bool isSmallJob)
+    public bool CanAcceptJobType(bool isSmallJob)
     {
         if (!isActive) return false;
         
@@ -171,6 +173,25 @@ public class LLMInstanceInfo
     }
     
     /// <summary>
+    /// Check if this instance can accept a new job (checks job mode AND capacity).
+    /// </summary>
+    public bool CanAcceptJob(bool isSmallJob)
+    {
+        if (!CanAcceptJobType(isSmallJob)) return false;
+        return activeTasks < maxConcurrentTasks;
+    }
+    
+    /// <summary>
+    /// Check if this instance has capacity for more tasks.
+    /// Returns false if maxConcurrentTasks is 0 (disabled).
+    /// </summary>
+    public bool HasCapacity()
+    {
+        if (maxConcurrentTasks <= 0) return false; // Disabled
+        return activeTasks < maxConcurrentTasks;
+    }
+    
+    /// <summary>
     /// Creates a deep clone of this instance.
     /// </summary>
     public LLMInstanceInfo Clone()
@@ -183,7 +204,8 @@ public class LLMInstanceInfo
             settings = this.settings?.Clone() ?? new LLMProviderSettings(),
             isActive = this.isActive,
             jobMode = this.jobMode,
-            isBusy = false // Don't copy runtime state
+            maxConcurrentTasks = this.maxConcurrentTasks,
+            activeTasks = 0 // Don't copy runtime state
         };
     }
     
@@ -208,7 +230,8 @@ public class LLMInstanceInfo
     {
         string status = isActive ? "Active" : "Inactive";
         string model = !string.IsNullOrEmpty(settings?.selectedModel) ? settings.selectedModel : providerType.ToString();
-        return $"{name} ({model}, {status}, {GetJobModeDisplayString()})";
+        string concurrent = maxConcurrentTasks <= 0 ? ", DISABLED" : (maxConcurrentTasks > 1 ? $", Max:{maxConcurrentTasks}" : "");
+        return $"{name} ({model}, {status}, {GetJobModeDisplayString()}{concurrent})";
     }
 }
 
