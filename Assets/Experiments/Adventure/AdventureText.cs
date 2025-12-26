@@ -873,6 +873,17 @@ public class AdventureText : MonoBehaviour
                 jobDefaultInfoToStartWith._requestedPrompt = picText;
             }
 
+            // Apply prepend/append prompts
+            if (GameLogic.Get().GetComfyPrependPrompt() != null && GameLogic.Get().GetComfyPrependPrompt().Length > 0)
+            {
+                jobDefaultInfoToStartWith._requestedPrompt = GameLogic.Get().GetComfyPrependPrompt() + " " + jobDefaultInfoToStartWith._requestedPrompt;
+            }
+
+            if (GameLogic.Get().GetComfyAppendPrompt() != null && GameLogic.Get().GetComfyAppendPrompt().Length > 0)
+            {
+                jobDefaultInfoToStartWith._requestedPrompt = jobDefaultInfoToStartWith._requestedPrompt + " " + GameLogic.Get().GetComfyAppendPrompt();
+            }
+
             jobDefaultInfoToStartWith._requestedNegativePrompt = GameLogic.Get().GetNegativePrompt();
             jobDefaultInfoToStartWith._requestedAudioPrompt = audioPrompt;
             jobDefaultInfoToStartWith._requestedAudioNegativePrompt = audioNegativePrompt;
