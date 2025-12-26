@@ -362,30 +362,8 @@ public class AdventureLogic : MonoBehaviour
     }
     public void OnExport()
     {
-        if (GetMode() == AdventureMode.CHOOSE_YOUR_OWN_ADVENTURE)
-        {
-
-            //show a message to the screen
-            RTQuickMessageManager.Get().ShowMessage("Exporting for Twine (.twee)");
-            //Find the AdventureExportTwine on our gameobject
-            AdventureExportTwine exportScript = gameObject.GetComponent<AdventureExportTwine>();
-            StartCoroutine(exportScript.Export());
-            return;
-        }
-
-        if (GetMode() == AdventureMode.QUIZ)
-        {
-
-            //show a message to the screen
-            RTQuickMessageManager.Get().ShowMessage("Exporting HTML Quiz");
-            //Find the AdventureExportTwine on our gameobject
-            AdventureExportQuiz exportScript = gameObject.GetComponent<AdventureExportQuiz>();
-            StartCoroutine(exportScript.Export());
-            return;
-        }
-
-        RTQuickMessageManager.Get().ShowMessage("Can't export in this mode.  Try CYOA or Quiz adventure.txt files.");
-
+        // Show the export dialog with all options
+        AdventureExportDialog.Show();
     }
     public void OnNewStory()
     {

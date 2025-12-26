@@ -121,9 +121,21 @@ public class AdventureExportQuiz : MonoBehaviour
 
     }
 
+    /// <summary>
+    /// Export without progress callback (legacy support).
+    /// </summary>
     public IEnumerator Export()
     {
-        RTConsole.Log("Starting export...");
+        yield return Export(null);
+    }
+
+    /// <summary>
+    /// Export with progress callback.
+    /// </summary>
+    public IEnumerator Export(Action<float, string> progressCallback)
+    {
+        RTConsole.Log("Starting Quiz export...");
+        progressCallback?.Invoke(0f, "Preparing Quiz export...");
         
         string temp = "";
         temp = AdventureLogic.Get().GetExtractor().QuizHTML;
@@ -151,6 +163,7 @@ public class AdventureExportQuiz : MonoBehaviour
             Directory.CreateDirectory(path);
         }
 
+        progressCallback?.Invoke(0.1f, "Copying support files...");
 
         //copy over some extra files our html needs
         //TODO:  Just put these in a function already
@@ -168,8 +181,10 @@ public class AdventureExportQuiz : MonoBehaviour
 
 
         string questionData = "";
+        int processed = 0;
+        int total = objs.Count;
 
-        //enumerate trhough adventure nodes
+        //enumerate through adventure nodes
         foreach (GameObject obj in objs)
         {
             yield return null; //lesson the jerkiness
@@ -177,17 +192,19 @@ public class AdventureExportQuiz : MonoBehaviour
             AdventureText at = obj.GetComponent<AdventureText>();
             if (at != null)
             {
-
                 if (at.GetName() != "S0")
                 {
+                    progressCallback?.Invoke(0.1f + (0.8f * processed / total), $"Processing {at.GetName()}...");
                     //add the question data for this node
-
                     questionData += GetQuestionData(path, at);
                 }
             }
+            processed++;
         }
 
         temp = temp.Replace("_INSERT_CHOICES_", questionData);
+
+        progressCallback?.Invoke(0.95f, "Saving Quiz file...");
 
         //write to our final file
 
@@ -195,6 +212,7 @@ public class AdventureExportQuiz : MonoBehaviour
         {
             File.WriteAllText(fileName, temp);
             RTConsole.Log("Export successful! File saved at: " + fileName);
+            progressCallback?.Invoke(1f, "Export complete!");
 
             //Open in a web browser
             Application.OpenURL(fileName);
@@ -202,6 +220,7 @@ public class AdventureExportQuiz : MonoBehaviour
         catch (Exception e)
         {
             RTConsole.LogError("Failed to save file: " + e.Message);
+            RTQuickMessageManager.Get().ShowMessage($"Export failed: {e.Message}");
         }
 
     }

@@ -20,12 +20,12 @@ public class AdventureExportTwine : MonoBehaviour
     /// <returns>A string with span tags added around quoted text.</returns>
     public static string FormatDialogue(string input)
     {
-        // Regex to match text within double quotes ("") and typographic quotes (ÅgÅh)
-        string pattern = "(\"[^\"]*\"|Åg[^Åh]*Åh)";
+        // Regex to match text within double quotes ("") and typographic quotes (ÔøΩgÔøΩh)
+        string pattern = "(\"[^\"]*\"|ÔøΩg[^ÔøΩh]*ÔøΩh)";
 
         // Replace matched quotes with <span class="dialogue">...</span>
         string result = Regex.Replace(input, pattern, match => {
-            // Identify and extract the type of quote used (either " or Åg and Åh)
+            // Identify and extract the type of quote used (either " or ÔøΩg and ÔøΩh)
             string firstQuote = match.Value.Substring(0, 1);
             string lastQuote = match.Value.Substring(match.Value.Length - 1, 1);
             string content = match.Value.Substring(1, match.Value.Length - 2); // Extract the content inside the quotes
@@ -114,9 +114,23 @@ public class AdventureExportTwine : MonoBehaviour
         passageTemplate += "\n";
         return passageTemplate;
     }
+    /// <summary>
+    /// Export without progress callback (legacy support).
+    /// </summary>
     public IEnumerator Export()
     {
-        RTConsole.Log("Starting export...");
+        yield return Export(null);
+    }
+
+    /// <summary>
+    /// Export with progress callback.
+    /// </summary>
+    public IEnumerator Export(Action<float, string> progressCallback)
+    {
+        RTConsole.Log("Starting Twine export...");
+        progressCallback?.Invoke(0f, "Preparing Twine export...");
+
+        _twee = ""; // Reset twee content
 
         string temp = "";
         temp = AdventureLogic.Get().GetExtractor().TwineStart;
@@ -148,7 +162,10 @@ public class AdventureExportTwine : MonoBehaviour
         }
         _twee += "\n\n";
 
-        //enumerate trhough adventure nodes
+        int processed = 0;
+        int total = objs.Count;
+
+        //enumerate through adventure nodes
         foreach (GameObject obj in objs)
         {
             yield return null; //lesson the jerkiness
@@ -156,14 +173,17 @@ public class AdventureExportTwine : MonoBehaviour
             AdventureText at = obj.GetComponent<AdventureText>();
             if (at != null)
             {
-
                 if (at.GetName() != "S0" && at.GetName() != "?")
                 {
+                    progressCallback?.Invoke((float)processed / total, $"Processing {at.GetName()}...");
                     //add the twee text for this node
                     _twee += GetTweeText(path, at);
                 }
             }
+            processed++;
         }
+
+        progressCallback?.Invoke(0.9f, "Saving Twine file...");
 
         temp = AdventureLogic.Get().GetExtractor().TwineEnd;
         _twee += "\n\n" + temp;
@@ -173,10 +193,12 @@ public class AdventureExportTwine : MonoBehaviour
         {
             File.WriteAllText(fileName, _twee);
             RTConsole.Log("Export successful! File saved at: " + fileName);
+            progressCallback?.Invoke(1f, "Export complete!");
         }
         catch (Exception e)
         {
             RTConsole.LogError("Failed to save file: " + e.Message);
+            RTQuickMessageManager.Get().ShowMessage($"Export failed: {e.Message}");
         }
 
     }
