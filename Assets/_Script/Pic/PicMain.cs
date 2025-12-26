@@ -117,6 +117,7 @@ public class PicMain : MonoBehaviour
     public TexGenWebUITextCompletionManager _texGenWebUICompletionManager;
     public OpenAITextCompletionManager _openAITextCompletionManager;
     public AnthropicAITextCompletionManager _anthropicAITextCompletionManager;
+    public GeminiTextCompletionManager _geminiTextCompletionManager;
     public GPTPromptManager _promptManager;
 
     string m_mediaRemoteFilename = ""; //sometimes media has no name because it was generated, but we need to know the filename for sending/loading remotely on ComfyUI
@@ -2696,6 +2697,49 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                             string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, 4096, temperature, 
                                 Config.Get().GetGenericLLMMode(), true, llmParms, true, false);
                             _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, serverAddress, suggestedEndpoint, OnStreamingTextCallback, true, apiKey);
+                            SetLLMActive(true, llmInstanceID);
+                        }
+                        break;
+
+                    case LLMProvider.Gemini:
+                        {
+                            string apiKey = activeSettings.apiKey;
+                            string model = activeSettings.selectedModel ?? "gemini-2.5-pro";
+                            string baseEndpoint = activeSettings.endpoint ?? "https://generativelanguage.googleapis.com/v1beta/models";
+                            bool enableThinking = activeSettings.enableThinking;
+
+                            // Build full endpoint URL with model name
+                            string endpoint = GeminiTextCompletionManager.BuildEndpointUrl(baseEndpoint, model, true);
+                            
+                            RTConsole.Log($"PicMain: Contacting Gemini at {endpoint} with model {model}, thinking: {enableThinking}");
+
+                            // Gemini requires at least one user message in contents - add placeholder if missing
+                            bool hasUserMessage = false;
+                            foreach (var line in lines)
+                            {
+                                if (line._role == "user")
+                                {
+                                    hasUserMessage = true;
+                                    break;
+                                }
+                            }
+                            if (!hasUserMessage)
+                            {
+                                lines.Enqueue(new GTPChatLine("user", "Please proceed."));
+                            }
+
+                            // Ensure we have a GeminiTextCompletionManager
+                            if (_geminiTextCompletionManager == null)
+                            {
+                                _geminiTextCompletionManager = gameObject.GetComponent<GeminiTextCompletionManager>();
+                                if (_geminiTextCompletionManager == null)
+                                {
+                                    _geminiTextCompletionManager = gameObject.AddComponent<GeminiTextCompletionManager>();
+                                }
+                            }
+
+                            string json = _geminiTextCompletionManager.BuildChatCompleteJSON(lines, 4096, temperature, model, true, enableThinking);
+                            _geminiTextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
                             SetLLMActive(true, llmInstanceID);
                         }
                         break;

@@ -85,7 +85,7 @@ public class LLMProviderUI
 
         CreateHeader(sectionRoot.transform);
 
-        if (_provider == LLMProvider.OpenAI || _provider == LLMProvider.Anthropic)
+        if (_provider == LLMProvider.OpenAI || _provider == LLMProvider.Anthropic || _provider == LLMProvider.Gemini)
             apiKeyInput = CreateInputRow(sectionRoot.transform, "API Key:", settings.apiKey, "Enter API key...", true);
 
         endpointInput = CreateInputRow(sectionRoot.transform, "Endpoint:", settings.endpoint, "http://localhost:8080", false);
@@ -111,6 +111,13 @@ public class LLMProviderUI
             CreateServerModeRow(sectionRoot.transform, settings);
             CreateThinkingModeRow(sectionRoot.transform, settings);
             UpdateThinkingModeVisibility();
+        }
+
+        // Add Gemini-specific controls (thinking mode)
+        if (_provider == LLMProvider.Gemini)
+        {
+            _enableThinking = settings.enableThinking;
+            CreateGeminiThinkingModeRow(sectionRoot.transform, settings);
         }
 
         return sectionRoot;
@@ -338,6 +345,14 @@ public class LLMProviderUI
             UpdateServerModeLabel(settings);
             UpdateThinkingModeVisibility();
         }
+        
+        // Gemini-specific
+        if (_provider == LLMProvider.Gemini)
+        {
+            _enableThinking = settings.enableThinking;
+            if (thinkingModeToggle != null)
+                thinkingModeToggle.isOn = settings.enableThinking;
+        }
     }
 
     public void ApplyToSettings(LLMProviderSettings settings)
@@ -366,6 +381,12 @@ public class LLMProviderUI
         {
             settings.enableThinking = _enableThinking;
             settings.isRouterMode = _isRouterMode;
+        }
+        
+        // Gemini-specific
+        if (_provider == LLMProvider.Gemini)
+        {
+            settings.enableThinking = _enableThinking;
         }
     }
 
@@ -432,6 +453,7 @@ public class LLMProviderUI
             LLMProvider.Anthropic => "Anthropic",
             LLMProvider.LlamaCpp => "llama.cpp",
             LLMProvider.Ollama => "Ollama",
+            LLMProvider.Gemini => "Gemini",
             _ => _provider.ToString()
         };
     }
@@ -978,6 +1000,82 @@ public class LLMProviderUI
     public bool GetThinkingModeEnabled()
     {
         return _enableThinking;
+    }
+
+    #endregion
+
+    #region Gemini Controls
+
+    private void CreateGeminiThinkingModeRow(Transform parent, LLMProviderSettings settings)
+    {
+        var row = CreateRowContainer(parent, "ThinkingMode");
+        
+        // Checkbox + label container
+        var toggleContainer = new GameObject("ToggleContainer");
+        toggleContainer.transform.SetParent(row.transform, false);
+        var containerRt = toggleContainer.AddComponent<RectTransform>();
+        containerRt.anchorMin = Vector2.zero;
+        containerRt.anchorMax = Vector2.one;
+        containerRt.offsetMin = Vector2.zero;
+        containerRt.offsetMax = Vector2.zero;
+        
+        // Create toggle
+        var toggleGo = new GameObject("Toggle");
+        toggleGo.transform.SetParent(toggleContainer.transform, false);
+        var toggleRt = toggleGo.AddComponent<RectTransform>();
+        toggleRt.anchorMin = new Vector2(0, 0.5f);
+        toggleRt.anchorMax = new Vector2(0, 0.5f);
+        toggleRt.pivot = new Vector2(0, 0.5f);
+        toggleRt.sizeDelta = new Vector2(20, 20);
+        toggleRt.anchoredPosition = new Vector2(0, 0);
+        
+        // Background
+        var bgGo = new GameObject("Background");
+        bgGo.transform.SetParent(toggleGo.transform, false);
+        var bgRt = bgGo.AddComponent<RectTransform>();
+        bgRt.anchorMin = Vector2.zero;
+        bgRt.anchorMax = Vector2.one;
+        bgRt.offsetMin = Vector2.zero;
+        bgRt.offsetMax = Vector2.zero;
+        var bgImg = bgGo.AddComponent<Image>();
+        bgImg.color = InputBg;
+        
+        // Checkmark
+        var checkGo = new GameObject("Checkmark");
+        checkGo.transform.SetParent(bgGo.transform, false);
+        var checkRt = checkGo.AddComponent<RectTransform>();
+        checkRt.anchorMin = new Vector2(0.1f, 0.1f);
+        checkRt.anchorMax = new Vector2(0.9f, 0.9f);
+        checkRt.offsetMin = Vector2.zero;
+        checkRt.offsetMax = Vector2.zero;
+        var checkTmp = checkGo.AddComponent<TextMeshProUGUI>();
+        checkTmp.font = _font;
+        checkTmp.fontSize = 14;
+        checkTmp.color = new Color(0.2f, 0.5f, 0.2f, 1f);
+        checkTmp.alignment = TextAlignmentOptions.Center;
+        checkTmp.text = "✓";
+        
+        thinkingModeToggle = toggleGo.AddComponent<Toggle>();
+        thinkingModeToggle.targetGraphic = bgImg;
+        thinkingModeToggle.graphic = checkTmp;
+        thinkingModeToggle.isOn = settings.enableThinking;
+        thinkingModeToggle.onValueChanged.AddListener(OnThinkingModeChanged);
+        
+        // Label
+        var labelObj = new GameObject("Label");
+        labelObj.transform.SetParent(toggleContainer.transform, false);
+        var labelRt = labelObj.AddComponent<RectTransform>();
+        labelRt.anchorMin = new Vector2(0, 0);
+        labelRt.anchorMax = new Vector2(1, 1);
+        labelRt.offsetMin = new Vector2(28, 0);
+        labelRt.offsetMax = new Vector2(0, 0);
+        
+        var labelTmp = labelObj.AddComponent<TextMeshProUGUI>();
+        labelTmp.font = _font;
+        labelTmp.fontSize = 12;
+        labelTmp.color = LabelColor;
+        labelTmp.alignment = TextAlignmentOptions.MidlineLeft;
+        labelTmp.text = "Enable thinking mode";
     }
 
     #endregion

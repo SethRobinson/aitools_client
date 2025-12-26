@@ -10,7 +10,8 @@ public enum LLMProvider
     OpenAI = 0,
     Anthropic = 1,
     LlamaCpp = 2,
-    Ollama = 3
+    Ollama = 3,
+    Gemini = 4
 }
 
 /// <summary>
@@ -147,6 +148,14 @@ public class LLMInstanceInfo
                 instance.name = "Ollama";
                 instance.settings.endpoint = "http://localhost:11434";
                 break;
+            case LLMProvider.Gemini:
+                instance.name = "Gemini";
+                instance.settings.endpoint = modelData.gemini.defaultEndpoint;
+                instance.settings.availableModels = new List<string>(modelData.gemini.models);
+                if (modelData.gemini.models.Count > 0)
+                    instance.settings.selectedModel = modelData.gemini.models[0];
+                instance.settings.enableThinking = true; // Gemini supports thinking mode
+                break;
         }
         
         return instance;
@@ -246,6 +255,7 @@ public class LLMSettings
     public LLMProviderSettings anthropic = new LLMProviderSettings();
     public LLMProviderSettings llamaCpp = new LLMProviderSettings();
     public LLMProviderSettings ollama = new LLMProviderSettings();
+    public LLMProviderSettings gemini = new LLMProviderSettings();
 
     /// <summary>
     /// Creates default settings with sensible defaults for each provider.
@@ -295,6 +305,17 @@ public class LLMSettings
             availableModels = new List<string>()
         };
 
+        // Gemini defaults - models loaded from model_data.json
+        settings.gemini = new LLMProviderSettings
+        {
+            enabled = true,
+            apiKey = "",
+            endpoint = modelData.gemini.defaultEndpoint,
+            selectedModel = modelData.gemini.models.Count > 0 ? modelData.gemini.models[0] : "",
+            availableModels = new List<string>(), // Will be populated from model_data.json
+            enableThinking = true // Gemini supports thinking mode
+        };
+
         return settings;
     }
 
@@ -313,6 +334,8 @@ public class LLMSettings
                 return llamaCpp;
             case LLMProvider.Ollama:
                 return ollama;
+            case LLMProvider.Gemini:
+                return gemini;
             default:
                 return openAI;
         }
@@ -337,7 +360,8 @@ public class LLMSettings
             openAI = this.openAI.Clone(),
             anthropic = this.anthropic.Clone(),
             llamaCpp = this.llamaCpp.Clone(),
-            ollama = this.ollama.Clone()
+            ollama = this.ollama.Clone(),
+            gemini = this.gemini.Clone()
         };
     }
 }
@@ -399,6 +423,9 @@ public class LLMInstancesConfig
                 break;
             case LLMProvider.Ollama:
                 instance.name = "Ollama";
+                break;
+            case LLMProvider.Gemini:
+                instance.name = "Gemini";
                 break;
         }
         

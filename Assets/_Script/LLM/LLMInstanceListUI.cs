@@ -127,7 +127,7 @@ public class LLMInstanceListUI
         _scrollRect.scrollSensitivity = 20f;
         _scrollRect.movementType = ScrollRect.MovementType.Clamped;
         
-        // Viewport
+        // Viewport (leave room for scrollbar on right)
         var viewport = new GameObject("Viewport");
         viewport.transform.SetParent(scrollGo.transform, false);
         
@@ -135,7 +135,7 @@ public class LLMInstanceListUI
         vpRt.anchorMin = Vector2.zero;
         vpRt.anchorMax = Vector2.one;
         vpRt.offsetMin = Vector2.zero;
-        vpRt.offsetMax = Vector2.zero;
+        vpRt.offsetMax = new Vector2(-14, 0); // Leave room for scrollbar
         
         var vpImg = viewport.AddComponent<Image>();
         vpImg.color = ListBg;
@@ -167,6 +167,40 @@ public class LLMInstanceListUI
         
         _scrollRect.viewport = vpRt;
         _scrollRect.content = _contentRoot;
+        
+        // Vertical scrollbar
+        var sbGo = new GameObject("Scrollbar");
+        sbGo.transform.SetParent(scrollGo.transform, false);
+        
+        var sbRt = sbGo.AddComponent<RectTransform>();
+        sbRt.anchorMin = new Vector2(1, 0);
+        sbRt.anchorMax = new Vector2(1, 1);
+        sbRt.pivot = new Vector2(1, 0.5f);
+        sbRt.sizeDelta = new Vector2(12, 0);
+        sbRt.anchoredPosition = Vector2.zero;
+        
+        var sbImg = sbGo.AddComponent<Image>();
+        sbImg.color = new Color(0.22f, 0.22f, 0.24f, 1f);
+        
+        var scrollbar = sbGo.AddComponent<Scrollbar>();
+        scrollbar.direction = Scrollbar.Direction.BottomToTop;
+        
+        var handle = new GameObject("Handle");
+        handle.transform.SetParent(sbGo.transform, false);
+        
+        var handleRt = handle.AddComponent<RectTransform>();
+        handleRt.anchorMin = Vector2.zero;
+        handleRt.anchorMax = Vector2.one;
+        handleRt.offsetMin = new Vector2(2, 2);
+        handleRt.offsetMax = new Vector2(-2, -2);
+        
+        var handleImg = handle.AddComponent<Image>();
+        handleImg.color = new Color(0.45f, 0.45f, 0.5f, 1f);
+        
+        scrollbar.handleRect = handleRt;
+        scrollbar.targetGraphic = handleImg;
+        _scrollRect.verticalScrollbar = scrollbar;
+        _scrollRect.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.AutoHideAndExpandViewport;
     }
     
     private void CreateButtonRow(Transform parent)

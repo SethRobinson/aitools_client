@@ -23,6 +23,7 @@ public class LLMModelData
 {
     public LLMProviderModelData openAI = new LLMProviderModelData();
     public LLMProviderModelData anthropic = new LLMProviderModelData();
+    public LLMProviderModelData gemini = new LLMProviderModelData();
 
     private const string MODEL_DATA_FILE = "model_data.json";
     private static LLMModelData _cached;
@@ -89,6 +90,12 @@ public class LLMModelData
         {
             defaultEndpoint = "https://api.anthropic.com/v1/messages",
             models = new List<string> { "claude-sonnet-4-5", "claude-haiku-4-5", "claude-opus-4-5" }
+        };
+
+        data.gemini = new LLMProviderModelData
+        {
+            defaultEndpoint = "https://generativelanguage.googleapis.com/v1beta/models",
+            models = new List<string> { "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3-pro-preview", "gemini-3-flash-preview" }
         };
 
         return data;

@@ -1700,6 +1700,8 @@ public string GetPrompt() { return m_prompt; }
                 return "llama.cpp";
             case LLMProvider.Ollama:
                 return "Ollama";
+            case LLMProvider.Gemini:
+                return "Gemini";
             default:
                 return "";
         }

@@ -32,6 +32,7 @@ public class LLMSettingsPanel : MonoBehaviour
     private LLMProviderUI _anthropicUI;
     private LLMProviderUI _llamaCppUI;
     private LLMProviderUI _ollamaUI;
+    private LLMProviderUI _geminiUI;
 
     private const float PANEL_WIDTH = 640f;
     private const float PANEL_HEIGHT = 620f; // Increased to fit instance list
@@ -794,6 +795,9 @@ public class LLMSettingsPanel : MonoBehaviour
             _ollamaUI.refreshModelsButton.onClick.AddListener(OnRefreshOllamaModels);
         _ollamaUI.OnModelChanged += OnOllamaModelChanged;
 
+        _geminiUI = new LLMProviderUI(LLMProvider.Gemini, _font, BuildTMPResources(), ApplyFontAndColor);
+        _geminiUI.Build(content.transform, _workingSettings.gemini, false);
+
         UpdateVisibleProvider();
         
         // Select the first instance if any
@@ -1071,6 +1075,9 @@ public class LLMSettingsPanel : MonoBehaviour
             case LLMProvider.Ollama:
                 _workingSettings.ollama = instance.settings.Clone();
                 break;
+            case LLMProvider.Gemini:
+                _workingSettings.gemini = instance.settings.Clone();
+                break;
         }
         _workingSettings.activeProvider = instance.providerType;
     }
@@ -1093,6 +1100,9 @@ public class LLMSettingsPanel : MonoBehaviour
             case LLMProvider.Ollama:
                 _ollamaUI?.UpdateFromSettings(instance.settings);
                 break;
+            case LLMProvider.Gemini:
+                _geminiUI?.UpdateFromSettings(instance.settings);
+                break;
         }
     }
     
@@ -1102,6 +1112,7 @@ public class LLMSettingsPanel : MonoBehaviour
         if (_anthropicUI?.sectionRoot != null) _anthropicUI.sectionRoot.SetActive(provider == LLMProvider.Anthropic);
         if (_llamaCppUI?.sectionRoot != null) _llamaCppUI.sectionRoot.SetActive(provider == LLMProvider.LlamaCpp);
         if (_ollamaUI?.sectionRoot != null) _ollamaUI.sectionRoot.SetActive(provider == LLMProvider.Ollama);
+        if (_geminiUI?.sectionRoot != null) _geminiUI.sectionRoot.SetActive(provider == LLMProvider.Gemini);
     }
     
     private void HideAllProviderUIs()
@@ -1110,6 +1121,7 @@ public class LLMSettingsPanel : MonoBehaviour
         if (_anthropicUI?.sectionRoot != null) _anthropicUI.sectionRoot.SetActive(false);
         if (_llamaCppUI?.sectionRoot != null) _llamaCppUI.sectionRoot.SetActive(false);
         if (_ollamaUI?.sectionRoot != null) _ollamaUI.sectionRoot.SetActive(false);
+        if (_geminiUI?.sectionRoot != null) _geminiUI.sectionRoot.SetActive(false);
     }
 
     private void CreateActiveProviderRow(Transform parent)
@@ -1165,6 +1177,7 @@ public class LLMSettingsPanel : MonoBehaviour
             new TMP_Dropdown.OptionData("Anthropic"),
             new TMP_Dropdown.OptionData("llama.cpp"),
             new TMP_Dropdown.OptionData("Ollama"),
+            new TMP_Dropdown.OptionData("Gemini"),
         };
         _activeProviderDropdown.onValueChanged.AddListener(OnProviderChanged);
 
@@ -1219,6 +1232,9 @@ public class LLMSettingsPanel : MonoBehaviour
                     case LLMProvider.Ollama:
                         instance.name = "Ollama";
                         break;
+                    case LLMProvider.Gemini:
+                        instance.name = "Gemini";
+                        break;
                 }
                 
                 // Reset settings for the new provider type
@@ -1253,6 +1269,7 @@ public class LLMSettingsPanel : MonoBehaviour
         if (_anthropicUI?.sectionRoot != null) _anthropicUI.sectionRoot.SetActive(active == LLMProvider.Anthropic);
         if (_llamaCppUI?.sectionRoot != null) _llamaCppUI.sectionRoot.SetActive(active == LLMProvider.LlamaCpp);
         if (_ollamaUI?.sectionRoot != null) _ollamaUI.sectionRoot.SetActive(active == LLMProvider.Ollama);
+        if (_geminiUI?.sectionRoot != null) _geminiUI.sectionRoot.SetActive(active == LLMProvider.Gemini);
     }
 
     private void OnRefreshOllamaModels()
@@ -1455,6 +1472,9 @@ public class LLMSettingsPanel : MonoBehaviour
                     case LLMProvider.Ollama:
                         _ollamaUI?.ApplyToSettings(instance.settings);
                         break;
+                    case LLMProvider.Gemini:
+                        _geminiUI?.ApplyToSettings(instance.settings);
+                        break;
                 }
             }
         }
@@ -1471,6 +1491,7 @@ public class LLMSettingsPanel : MonoBehaviour
         _anthropicUI.ApplyToSettings(_workingSettings.anthropic);
         _llamaCppUI.ApplyToSettings(_workingSettings.llamaCpp);
         _ollamaUI.ApplyToSettings(_workingSettings.ollama);
+        _geminiUI.ApplyToSettings(_workingSettings.gemini);
 
         LLMSettingsManager.Get().ApplySettings(_workingSettings);
         if (GameLogic.Get() != null)
@@ -1520,6 +1541,7 @@ public class LLMSettingsPanel : MonoBehaviour
         _anthropicUI?.UpdateFromSettings(_workingSettings.anthropic);
         _llamaCppUI?.UpdateFromSettings(_workingSettings.llamaCpp);
         _ollamaUI?.UpdateFromSettings(_workingSettings.ollama);
+        _geminiUI?.UpdateFromSettings(_workingSettings.gemini);
 
         UpdateVisibleProvider();
         

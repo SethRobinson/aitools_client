@@ -50,6 +50,7 @@ public class AIGuideManager : MonoBehaviour
     public OpenAITextCompletionManager _openAITextCompletionManager;
     public TexGenWebUITextCompletionManager _texGenWebUICompletionManager;
     public AnthropicAITextCompletionManager _anthropicAITextCompletionManager;
+    public GeminiTextCompletionManager _geminiTextCompletionManager;
 
     public GPTPromptManager _promptManager;
     public TMP_Dropdown m_presetDropdown;
@@ -316,6 +317,9 @@ public class AIGuideManager : MonoBehaviour
             case LLMProvider.Ollama:
                 SpawnOllamaRequest(lines, activeSettings);
                 break;
+            case LLMProvider.Gemini:
+                SpawnGeminiRequest(lines, activeSettings);
+                break;
         }
 
         m_bTalkingToLLM = true;
@@ -490,10 +494,56 @@ public class AIGuideManager : MonoBehaviour
             OnStreamingTextCallback, true, apiKey);
     }
 
+    private void SpawnGeminiRequest(Queue<GTPChatLine> lines, LLMProviderSettings activeSettings = null)
+    {
+        var mgr = LLMSettingsManager.Get();
+        var settings = activeSettings ?? mgr?.GetProviderSettings(LLMProvider.Gemini);
+        string apiKey = settings?.apiKey ?? "";
+        string model = settings?.selectedModel ?? "gemini-2.5-pro";
+        string baseEndpoint = settings?.endpoint ?? "https://generativelanguage.googleapis.com/v1beta/models";
+        bool enableThinking = settings?.enableThinking ?? true;
+
+        // Build full endpoint URL with model name
+        string endpoint = GeminiTextCompletionManager.BuildEndpointUrl(baseEndpoint, model, true);
+        
+        RTConsole.Log($"Contacting Gemini at {endpoint} with model {model}, thinking: {enableThinking}");
+
+        // Gemini requires at least one user message in contents - add placeholder if missing
+        bool hasUserMessage = false;
+        foreach (var line in lines)
+        {
+            if (line._role == "user")
+            {
+                hasUserMessage = true;
+                break;
+            }
+        }
+        if (!hasUserMessage)
+        {
+            lines.Enqueue(new GTPChatLine("user", "Please proceed."));
+        }
+
+        // Ensure we have a GeminiTextCompletionManager
+        if (_geminiTextCompletionManager == null)
+        {
+            _geminiTextCompletionManager = gameObject.GetComponent<GeminiTextCompletionManager>();
+            if (_geminiTextCompletionManager == null)
+            {
+                _geminiTextCompletionManager = gameObject.AddComponent<GeminiTextCompletionManager>();
+            }
+        }
+
+        string json = _geminiTextCompletionManager.BuildChatCompleteJSON(lines, m_max_tokens, m_extractor.Temperature, model, true, enableThinking);
+        RTDB db = new RTDB();
+        _geminiTextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
+    }
+
     bool IsRequestActive()
     {
         return (_texGenWebUICompletionManager.IsRequestActive()
-          || _openAITextCompletionManager.IsRequestActive() || _anthropicAITextCompletionManager.IsRequestActive());
+          || _openAITextCompletionManager.IsRequestActive() 
+          || _anthropicAITextCompletionManager.IsRequestActive()
+          || (_geminiTextCompletionManager != null && _geminiTextCompletionManager.IsRequestActive()));
     }
     
     /// <summary>
@@ -530,16 +580,20 @@ public class AIGuideManager : MonoBehaviour
 
         if (IsRequestActive())
         {
-           
                 _texGenWebUICompletionManager.CancelCurrentRequest();
                 _openAITextCompletionManager.CancelCurrentRequest();
                 _anthropicAITextCompletionManager.CancelCurrentRequest();
+                _geminiTextCompletionManager?.CancelCurrentRequest();
 
                 SetStatus("Cancelled request", false);
 
                 //Set text on m_startButton back to Start
                 SetStartTextOnStartButton(true);
                 m_llmGenerationCounter = 0;
+                m_bTalkingToLLM = false;
+                
+                // Release the LLM instance when canceling
+                ReleaseLLMInstance();
             return;
         }
 

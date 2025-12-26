@@ -16,6 +16,7 @@ public class AdventureText : MonoBehaviour
     public TexGenWebUITextCompletionManager _texGenWebUICompletionManager;
     public OpenAITextCompletionManager _openAITextCompletionManager;
     public AnthropicAITextCompletionManager _anthropicAITextCompletionManager;
+    public GeminiTextCompletionManager _geminiTextCompletionManager;
 
     string _inputPromptOutput;
     StringBuilder accumulatedText = new StringBuilder();
@@ -126,7 +127,8 @@ public class AdventureText : MonoBehaviour
     public bool IsBusy()
     {
         return _llmIsActive || _texGenWebUICompletionManager.IsRequestActive() || _openAITextCompletionManager.IsRequestActive()
-            || _anthropicAITextCompletionManager.IsRequestActive();
+            || _anthropicAITextCompletionManager.IsRequestActive()
+            || (_geminiTextCompletionManager != null && _geminiTextCompletionManager.IsRequestActive());
     }
 
 
@@ -274,6 +276,10 @@ public class AdventureText : MonoBehaviour
                 _anthropicAITextCompletionManager.CancelCurrentRequest();
             }
 
+            if (_geminiTextCompletionManager != null && _geminiTextCompletionManager.IsRequestActive())
+            {
+                _geminiTextCompletionManager.CancelCurrentRequest();
+            }
 
             //make the button inactive again
             SetLLMActive(false);
@@ -1171,6 +1177,51 @@ public class AdventureText : MonoBehaviour
                     
                     // Use suggestedEndpoint which is /api/chat for Ollama (supports options.num_ctx)
                     _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, settings?.endpoint ?? "", suggestedEndpoint, OnStreamingTextCallback, true, settings?.apiKey ?? "");
+                    SetLLMActive(true);
+                }
+                break;
+
+            case LLMProvider.Gemini:
+                {
+                    var mgr = LLMSettingsManager.Get();
+                    var settings = activeSettings ?? mgr?.GetProviderSettings(LLMProvider.Gemini);
+                    string apiKey = settings?.apiKey ?? "";
+                    string model = settings?.selectedModel ?? "gemini-2.5-pro";
+                    string baseEndpoint = settings?.endpoint ?? "https://generativelanguage.googleapis.com/v1beta/models";
+                    bool enableThinking = settings?.enableThinking ?? true;
+
+                    // Build full endpoint URL with model name
+                    string endpoint = GeminiTextCompletionManager.BuildEndpointUrl(baseEndpoint, model, true);
+                    
+                    RTConsole.Log($"Adventure: Contacting Gemini at {endpoint} with model {model}, thinking: {enableThinking}");
+
+                    // Gemini requires at least one user message in contents - add placeholder if missing
+                    bool hasUserMessage = false;
+                    foreach (var line in lines)
+                    {
+                        if (line._role == "user")
+                        {
+                            hasUserMessage = true;
+                            break;
+                        }
+                    }
+                    if (!hasUserMessage)
+                    {
+                        lines.Enqueue(new GTPChatLine("user", "Please proceed."));
+                    }
+
+                    // Ensure we have a GeminiTextCompletionManager
+                    if (_geminiTextCompletionManager == null)
+                    {
+                        _geminiTextCompletionManager = gameObject.GetComponent<GeminiTextCompletionManager>();
+                        if (_geminiTextCompletionManager == null)
+                        {
+                            _geminiTextCompletionManager = gameObject.AddComponent<GeminiTextCompletionManager>();
+                        }
+                    }
+
+                    string json = _geminiTextCompletionManager.BuildChatCompleteJSON(lines, 4096, AdventureLogic.Get().GetExtractor().Temperature, model, true, enableThinking);
+                    _geminiTextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
                     SetLLMActive(true);
                 }
                 break;

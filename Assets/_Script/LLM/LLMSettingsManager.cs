@@ -343,6 +343,23 @@ public class LLMSettingsManager : MonoBehaviour
         {
             _settings.anthropic.selectedModel = _settings.anthropic.availableModels[0];
         }
+
+        // Update Gemini available models and endpoint from model_data.json
+        _settings.gemini.availableModels = new List<string>(modelData.gemini.models);
+        if (string.IsNullOrEmpty(_settings.gemini.endpoint))
+        {
+            _settings.gemini.endpoint = modelData.gemini.defaultEndpoint;
+        }
+        // If selected model isn't in the list, default to first available
+        if (!string.IsNullOrEmpty(_settings.gemini.selectedModel) && 
+            !_settings.gemini.availableModels.Contains(_settings.gemini.selectedModel))
+        {
+            // Keep their selection even if not in default list - they may have typed a custom model
+        }
+        else if (string.IsNullOrEmpty(_settings.gemini.selectedModel) && _settings.gemini.availableModels.Count > 0)
+        {
+            _settings.gemini.selectedModel = _settings.gemini.availableModels[0];
+        }
     }
 
     /// <summary>
@@ -537,6 +554,14 @@ public class LLMSettingsManager : MonoBehaviour
     }
 
     /// <summary>
+    /// Check if the active provider is Gemini.
+    /// </summary>
+    public bool IsGemini()
+    {
+        return _settings.activeProvider == LLMProvider.Gemini;
+    }
+
+    /// <summary>
     /// Get the settings for a specific provider.
     /// </summary>
     public LLMProviderSettings GetProviderSettings(LLMProvider provider)
@@ -584,6 +609,9 @@ public class LLMSettingsManager : MonoBehaviour
             case LLMProvider.LlamaCpp:
             case LLMProvider.Ollama:
                 return LLM_Type.GenericLLM_API;
+            case LLMProvider.Gemini:
+                // Gemini uses its own API format, map to OpenAI for legacy compatibility
+                return LLM_Type.OpenAI_API;
             default:
                 return LLM_Type.OpenAI_API;
         }
@@ -618,6 +646,10 @@ public class LLMSettingsManager : MonoBehaviour
 
             case LLMProvider.Ollama:
                 // Return base URL only - endpoint path (/api/chat) is set by BuildForInstructJSON
+                return endpoint.TrimEnd('/');
+
+            case LLMProvider.Gemini:
+                // Gemini endpoint is the base URL; full URL is built with model name by GeminiTextCompletionManager
                 return endpoint.TrimEnd('/');
 
             default:
@@ -779,6 +811,10 @@ public class LLMSettingsManager : MonoBehaviour
     /// </summary>
     public bool CurrentModelSupportsThinking()
     {
+        // Gemini always supports thinking mode
+        if (_settings.activeProvider == LLMProvider.Gemini)
+            return true;
+        
         if (_settings.activeProvider != LLMProvider.LlamaCpp)
             return false;
         
@@ -935,6 +971,9 @@ public class LLMSettingsManager : MonoBehaviour
                 }
                 return endpoint;
             case LLMProvider.Ollama:
+                return endpoint.TrimEnd('/');
+            case LLMProvider.Gemini:
+                // Gemini endpoint is the base URL; full URL is built with model name by GeminiTextCompletionManager
                 return endpoint.TrimEnd('/');
             default:
                 return endpoint;
