@@ -7,13 +7,7 @@ build/*
 .vs/*
 autosave/*
 *.csproj
-black_and_white.png
-cosmo_alpha.bmp
 config.txt
-cosmo_alpha.png
-cosmo_tiny.bmp
-GameGenTemplate.png
-GameGenTemplateMask.png
 aitools_client.sln
 interrogation.txt
 json_to_send.json
@@ -21,11 +15,6 @@ UserSettings/EditorUserSettings.asset
 UserSettings/Search.settings
 UserSettings/Layouts/default-2022.dwlt
 SethsAIToolsWindows.zip
-square_pic_test.png
-tall_pic_test.png
-test_image_cosmo_512.png
-vanilla_noise.png
-wide_pic_test.jpg
 log.txt
 .vsconfig
 webgltemp/*
@@ -66,3 +55,4 @@ llm_settings.txt
 config_llm.txt
 ComfyUI/*_cached_api*
 json_error.json
+TestFiles/*

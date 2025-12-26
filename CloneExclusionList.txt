@@ -1,4 +1,0 @@
-Temp\
-build\win
-build\linux
-build\web\Build
