@@ -254,9 +254,9 @@ public class RTConsole : MonoBehaviour
 
         _consoleText.text = string.Concat(_lines.ToArray());
 
-        // Force the scroll rect to update immediately
-        Canvas.ForceUpdateCanvases();
-        LayoutRebuilder.ForceRebuildLayoutImmediate(_consoleText.rectTransform);
+        // Don't call Canvas.ForceUpdateCanvases() immediately after setting text - 
+        // it can cause TMPro IndexOutOfRangeException in DrawUnderlineMesh when 
+        // text contains rich text tags. Let the coroutine handle the update safely.
         StartCoroutine(ScrollToBottomNextFrame());
     }
 
@@ -265,15 +265,28 @@ public class RTConsole : MonoBehaviour
         // Wait for end of frame to ensure layout is updated
         yield return new WaitForEndOfFrame();
 
-        // Force canvas update again
-        Canvas.ForceUpdateCanvases();
+        // Safety check in case object was destroyed
+        if (_scrollRect == null || _consoleText == null) yield break;
+
+        // Force canvas update - wrapped in try-catch to handle rare TMPro mesh generation issues
+        try
+        {
+            Canvas.ForceUpdateCanvases();
+        }
+        catch (System.IndexOutOfRangeException)
+        {
+            // TMPro can throw IndexOutOfRangeException in DrawUnderlineMesh when text 
+            // with rich text tags is being updated. This is a known Unity bug.
+            // The layout will update naturally on the next frame.
+        }
 
         // Set scroll position to bottom
         _scrollRect.verticalNormalizedPosition = 0f;
 
         // Wait one more frame to ensure the scroll position is applied
         yield return null;
-        _scrollRect.verticalNormalizedPosition = 0f;
+        if (_scrollRect != null)
+            _scrollRect.verticalNormalizedPosition = 0f;
     }
 
     void Update()

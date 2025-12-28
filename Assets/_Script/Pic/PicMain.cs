@@ -1956,6 +1956,11 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         RTQuickMessageManager.Get().ShowMessage("Copying to temp pic 2");
         DuplicateToExistingPic(GameLogic.Get().GetTempPic2());
     }
+    public void OnSetTemp3Button()
+    {
+        RTQuickMessageManager.Get().ShowMessage("Copying to temp pic 3");
+        DuplicateToExistingPic(GameLogic.Get().GetTempPic3());
+    }
     public void OnTool2Button()
     {
 
@@ -2129,6 +2134,10 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             {
                 temp1GO = GameLogic.Get().GetTempPic2();
             }
+             if (dest == "temp3")
+            {
+                temp1GO = GameLogic.Get().GetTempPic3();
+            }
             
             if (temp1GO != null)
             {
@@ -2155,6 +2164,10 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             if (dest == "temp2")
             {
                 temp1GO = GameLogic.Get().GetTempPic2();
+            }
+            if (dest == "temp3")
+            {
+                temp1GO = GameLogic.Get().GetTempPic3();
             }
 
         }

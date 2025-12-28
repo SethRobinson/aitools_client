@@ -40,6 +40,8 @@ public class PicMenuNavBar : MonoBehaviour
         _navBar.AddOption("Render w/ ComfyUI", _picMain.OnRenderWithComfyUI, "Works if you have a ComfyUI server defined in your config");
         _navBar.AddOption("Render w/ OpenAI Image", _picMain.OnRenderWithOpenAIImageButton, "Hope you entered your OpenAI key and have cash in it");
         _navBar.AddOption("Copy to Temp Pic 1", _picMain.OnSetTemp1Button, "Set image to temp pic 1, useful to hold for more complicated scripting");
+        _navBar.AddOption("Copy to Temp Pic 2", _picMain.OnSetTemp2Button, "Set image to temp pic 2, useful to hold for more complicated scripting");
+        _navBar.AddOption("Copy to Temp Pic 3", _picMain.OnSetTemp3Button, "Set image to temp pic 3, useful to hold for more complicated scripting");
         _navBar.AddOption("Get Prompt From Image", _picMain.OnGetPromptFromImageButton, "Click to run the Image To Prompt preset");
 
 

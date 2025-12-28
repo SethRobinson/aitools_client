@@ -110,8 +110,9 @@ public class GameLogic : MonoBehaviour
     int m_controlNetModelCurIndex;
     public TMP_Dropdown m_llmSelectionDropdown;
     public GameObject m_tempPic1;
-    
     public GameObject m_tempPic2;
+    public GameObject m_tempPic3;
+
 
     // On startup, GameLogic may initialize before LLMSettingsManager exists/loads settings.
     // We'll retry briefly so the Tools panel label reflects the real active LLM.
@@ -135,6 +136,7 @@ public class GameLogic : MonoBehaviour
 
     public GameObject GetTempPic1() { return m_tempPic1; }
     public GameObject GetTempPic2() { return m_tempPic2; }
+    public GameObject GetTempPic3() { return m_tempPic3; }
     static GameLogic _this = null;
     static public GameLogic Get()
     {
