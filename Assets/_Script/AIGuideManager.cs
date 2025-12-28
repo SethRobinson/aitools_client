@@ -591,6 +591,7 @@ public class AIGuideManager : MonoBehaviour
                 SetStartTextOnStartButton(true);
                 m_llmGenerationCounter = 0;
                 m_bTalkingToLLM = false;
+                m_bIsPossibleToContinue = false; // Prevent auto-continue from restarting
                 
                 // Release the LLM instance when canceling
                 ReleaseLLMInstance();

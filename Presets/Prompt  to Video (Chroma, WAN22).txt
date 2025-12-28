@@ -1,0 +1,11 @@
+COMMAND_START|joblist
+text_to_img_chroma.json @replace|Chroma1-HD-fp8_scaled_defaultloader_hybrid_large_rev2.safetensors|Chroma1-HD-fp8_scaled_defaultloader_hybrid_large_rev2.safetensors|
+
+img_to_video_wan22_fast.json @upload|image1|input1| @replace|"width": 640|"width": 640| @replace|"height": 640|"height": 640| @replace|"length": 81|"length": 81|
+COMMAND_END
+COMMAND_START|default_negative_prompt
+cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white
+COMMAND_END
+COMMAND_START|default_pre_prompt
+live action,
+COMMAND_END

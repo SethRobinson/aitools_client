@@ -29753,8 +29753,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: edd328fb144e819498d395172c8823a0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _text: If movies stop playing or overload things, this will fix it.<BR>You can
-    use P to pause/resume a specific movie as well.
+  _text: 'Shortcut: Backslash - If movies stop playing or overload things, this will
+    fix it.<BR>You can use P to pause/resume a specific movie as well.'
 --- !u!114 &769376883
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -57120,7 +57120,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: edd328fb144e819498d395172c8823a0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _text: Generate additional images when GPUs are free (doesn't apply to auto pics)
+  _text: Generate additional images when GPUs are free
 --- !u!114 &1419941430
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -57876,7 +57876,7 @@ MonoBehaviour:
   m_TargetGraphic: {fileID: 821879226}
   m_HandleRect: {fileID: 821879225}
   m_Direction: 2
-  m_Value: 1
+  m_Value: 0
   m_Size: 1
   m_NumberOfSteps: 0
   m_OnValueChanged:
@@ -89139,7 +89139,7 @@ PrefabInstance:
     - target: {fileID: 8335936608596666549, guid: f13496bcc6225004ebb72d41e2bd85b8,
         type: 3}
       propertyPath: m_fontSize
-      value: 30.7
+      value: 28.75
       objectReference: {fileID: 0}
     - target: {fileID: 8335936608596666549, guid: f13496bcc6225004ebb72d41e2bd85b8,
         type: 3}
