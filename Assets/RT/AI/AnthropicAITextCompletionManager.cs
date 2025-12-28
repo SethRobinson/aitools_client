@@ -21,7 +21,9 @@ public class AnthropicAITextCompletionManager : MonoBehaviour
         }
 
         string reply = jsonNode["completion"];
-        RTQuickMessageManager.Get().ShowMessage(reply);
+        // NOTE: Don't show full LLM reply as quick message - it can be extremely long and crash TMPro
+        // RTQuickMessageManager.Get().ShowMessage(reply);
+        Debug.Log("LLM Reply: " + reply);
     }
 
     public bool SpawnChatCompletionRequest(string jsonRequest, Action<RTDB, JSONObject, string> myCallback, RTDB db, string anthropic_APIKey, string endpoint = "https://api.anthropic.com/v1/messages",

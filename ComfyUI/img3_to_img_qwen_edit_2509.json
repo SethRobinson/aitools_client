@@ -2,7 +2,7 @@
   "id": "ad18abd3-bdee-4f80-8fae-d15d4f845b9d",
   "revision": 0,
   "last_node_id": 73,
-  "last_link_id": 191,
+  "last_link_id": 192,
   "nodes": [
     {
       "id": 67,
@@ -297,7 +297,7 @@
         265.5693054199219
       ],
       "flags": {},
-      "order": 9,
+      "order": 8,
       "mode": 0,
       "inputs": [
         {
@@ -368,7 +368,7 @@
         220
       ],
       "flags": {},
-      "order": 8,
+      "order": 9,
       "mode": 0,
       "inputs": [
         {
@@ -398,7 +398,7 @@
           "name": "image3",
           "shape": 7,
           "type": "IMAGE",
-          "link": null
+          "link": 192
         }
       ],
       "outputs": [
@@ -616,8 +616,8 @@
       "id": 71,
       "type": "VHS_LoadImagePath",
       "pos": [
-        -539.8427889794016,
-        507.9855256687347
+        -556.2064364403391,
+        485.2582612644378
       ],
       "size": [
         240.5986328125,
@@ -680,8 +680,8 @@
       "id": 73,
       "type": "VHS_LoadImagePath",
       "pos": [
-        -88.15187858542595,
-        544.2024757482518
+        -242.69728874167595,
+        610.5661232091893
       ],
       "size": [
         240.5986328125,
@@ -703,7 +703,8 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            191
+            191,
+            192
           ]
         },
         {
@@ -713,14 +714,14 @@
         }
       ],
       "properties": {
+        "cnr_id": "comfyui-videohelpersuite",
+        "ver": "1.7.9",
+        "Node name for S&R": "VHS_LoadImagePath",
         "ue_properties": {
           "widget_ue_connectable": {},
           "input_ue_unconnectable": {},
           "version": "7.5.2"
-        },
-        "cnr_id": "comfyui-videohelpersuite",
-        "ver": "1.7.9",
-        "Node name for S&R": "VHS_LoadImagePath"
+        }
       },
       "widgets_values": {
         "image": "<AITOOLS_INPUT_3>",
@@ -884,6 +885,14 @@
       68,
       4,
       "IMAGE"
+    ],
+    [
+      192,
+      73,
+      0,
+      69,
+      4,
+      "IMAGE"
     ]
   ],
   "groups": [],
@@ -892,8 +901,8 @@
     "ds": {
       "scale": 1,
       "offset": [
-        721.7882311244884,
-        207.07591132145035
+        704.5154650112072,
+        0.7122943780909736
       ]
     },
     "frontendVersion": "1.35.9",

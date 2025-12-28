@@ -4,3 +4,6 @@ COMMAND_END
 COMMAND_START|default_negative_prompt
 cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white
 COMMAND_END
+COMMAND_START|default_pre_prompt
+shot with a Bessa Cinestill. Analog film, high ISO, medium dynamic range, Amauter photo.  Candid.
+COMMAND_END

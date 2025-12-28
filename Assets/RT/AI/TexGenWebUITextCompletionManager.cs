@@ -66,7 +66,9 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
         */
 
         string reply = jsonNode["choices"][0]["message"]["content"];
-        RTQuickMessageManager.Get().ShowMessage(reply);
+        // NOTE: Don't show full LLM reply as quick message - it can be extremely long and crash TMPro
+        // RTQuickMessageManager.Get().ShowMessage(reply);
+        Debug.Log("LLM Reply: " + reply);
 
     }
 

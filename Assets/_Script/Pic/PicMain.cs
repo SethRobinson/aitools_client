@@ -2119,89 +2119,37 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
     void DoVarCopy(ref PicJob job, string source, string dest)
     {
-       string temp = ConvertVarToText(ref job, source);
+        string temp = ConvertVarToText(ref job, source);
 
-        GameObject temp1GO = null;
-
-        if (source == "image" || source == "image1")
+        // Handle image-to-image copies between image1, temp1, temp2, temp3
+        if (IsImageSlot(source) && IsImageSlot(dest))
         {
-            //special case, we're going to copy an entire image
-            if (dest == "temp1")
+            PicMain sourcePic = GetPicMainForSlot(source);
+            PicMain destPic = GetPicMainForSlot(dest);
+
+            if (sourcePic == null)
             {
-                temp1GO = GameLogic.Get().GetTempPic1();
+                RTQuickMessageManager.Get().BroadcastMessage("Error: Unknown source image: " + source);
+                return;
             }
-            if (dest == "temp2")
+            if (destPic == null)
             {
-                temp1GO = GameLogic.Get().GetTempPic2();
-            }
-             if (dest == "temp3")
-            {
-                temp1GO = GameLogic.Get().GetTempPic3();
-            }
-            
-            if (temp1GO != null)
-            {
-                
-                PicMain targetPicScript = temp1GO.GetComponent<PicMain>();
-                if (m_pic.sprite == null || m_pic.sprite.texture == null)
-                {
-                    RTQuickMessageManager.Get().BroadcastMessage("Error:  Source image to copy from is invalid");
-                    return;
-                }
-                targetPicScript.SetImage(m_pic.sprite.texture, true);
-            } else
-            {
-                RTQuickMessageManager.Get().BroadcastMessage("Error:  Unknown source image to copy from: " + source);
-            }
-        }
-        if (source == "image2")
-        {
-            //special case, we're going to copy an entire image
-            if (dest == "temp1")
-            {
-                temp1GO = GameLogic.Get().GetTempPic1();
-            }
-            if (dest == "temp2")
-            {
-                temp1GO = GameLogic.Get().GetTempPic2();
-            }
-            if (dest == "temp3")
-            {
-                temp1GO = GameLogic.Get().GetTempPic3();
+                RTQuickMessageManager.Get().BroadcastMessage("Error: Unknown destination image: " + dest);
+                return;
             }
 
+            Texture2D sourceTexture = sourcePic.m_pic.sprite?.texture;
+            if (sourceTexture == null)
+            {
+                RTQuickMessageManager.Get().BroadcastMessage("Error: Source image to copy from is invalid");
+                return;
+            }
+
+            destPic.SetImage(sourceTexture, true);
+            return;
         }
 
-        if (source == "temp1")
-        {
-            //special case, we're going to copy an entire image
-            if (dest == "image" || dest == "image1")
-            {
-                temp1GO = GameLogic.Get().GetTempPic1();
-            }
-            if (dest == "image2")
-            {
-                temp1GO = GameLogic.Get().GetTempPic2();
-            }
-           
-            if (temp1GO != null)
-            {
-                //see if sourceGo has a valid pic (image) we can copy from
-                PicMain sourcePicScript = temp1GO.GetComponent<PicMain>();
-                if (sourcePicScript == null || sourcePicScript.m_pic.sprite == null || sourcePicScript.m_pic.sprite.texture == null)
-                {
-                    RTQuickMessageManager.Get().BroadcastMessage("Error:  Source image to copy from is invalid");
-                    return;
-                }
-                SetImage(sourcePicScript.m_pic.sprite.texture, true);
-            }
-            else
-            {
-                RTQuickMessageManager.Get().BroadcastMessage("Error:  Unknown source image to copy from: " + source);
-            }
-        }
-
-
+        // Handle text variable copies
         if (dest == "prompt") job._requestedPrompt = temp;
         if (dest == "global_prompt") GameLogic.Get().SetPrompt(temp);
         if (dest == "audio_prompt") job._requestedAudioPrompt = temp;
@@ -2213,7 +2161,23 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         if (dest == "requirements") m_requirements = temp;
         if (dest == "prepend_prompt") GameLogic.Get().SetComfyPrependPrompt(temp);
         if (dest == "append_prompt") GameLogic.Get().SetComfyAppendPrompt(temp);
+    }
 
+    bool IsImageSlot(string slot)
+    {
+        return slot == "image" || slot == "image1" || slot == "temp1" || slot == "temp2" || slot == "temp3";
+    }
+
+    PicMain GetPicMainForSlot(string slot)
+    {
+        if (slot == "image" || slot == "image1") return this;
+
+        GameObject go = null;
+        if (slot == "temp1") go = GameLogic.Get().GetTempPic1();
+        else if (slot == "temp2") go = GameLogic.Get().GetTempPic2();
+        else if (slot == "temp3") go = GameLogic.Get().GetTempPic3();
+
+        return go?.GetComponent<PicMain>();
     }
 
     void DoVarAdd(ref PicJob job, string source, string dest)
@@ -2597,6 +2561,22 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                                 if (temp2Script.m_mask.sprite != null && temp2Script.m_mask.sprite.texture != null)
                                 {
                                     sourceMask = temp2Script.m_mask.sprite.texture;
+                                }
+                            }
+                        }
+                    }  
+                    else if (source == "temp3")
+                    {
+                        GameObject temp3GO = GameLogic.Get().GetTempPic3();
+                        if (temp3GO != null)
+                        {
+                            PicMain temp3Script = temp3GO.GetComponent<PicMain>();
+                            if (temp3Script != null && temp3Script.m_pic.sprite != null && temp3Script.m_pic.sprite.texture != null)
+                            {
+                                sourceTexture = temp3Script.m_pic.sprite.texture;
+                                if (temp3Script.m_mask.sprite != null && temp3Script.m_mask.sprite.texture != null)
+                                {
+                                    sourceMask = temp3Script.m_mask.sprite.texture;
                                 }
                             }
                         }

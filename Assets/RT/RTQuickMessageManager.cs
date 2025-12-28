@@ -15,6 +15,9 @@ public class RTQuickMessageManager : MonoBehaviour
     static RTQuickMessageManager m_this;
     bool m_bOnlyAllowOne = true;
     GameObject m_lastObjCreated = null;
+    
+    // Max characters to display - prevents TMPro crash (IndexOutOfRangeException in DrawUnderlineMesh)
+    const int MAX_MESSAGE_LENGTH = 500;
     private void Awake()
     {
         m_this = this;
@@ -40,6 +43,13 @@ public class RTQuickMessageManager : MonoBehaviour
 
     public void ShowMessage(string msg, Vector2 vPos, float forceDisplayTime =0)
     {
+        // Truncate extremely long messages to prevent TMPro crash
+        if (msg != null && msg.Length > MAX_MESSAGE_LENGTH)
+        {
+            int originalLength = msg.Length;
+            msg = msg.Substring(0, MAX_MESSAGE_LENGTH) + "... (truncated)";
+            Debug.LogWarning($"RTQuickMessage truncated message from {originalLength} to {MAX_MESSAGE_LENGTH} chars to prevent TMPro crash");
+        }
 
         Vector3 vFinalPos = new Vector3(vPos.x, vPos.y, 1);
 
