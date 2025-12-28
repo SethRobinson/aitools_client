@@ -110,6 +110,8 @@ public class GameLogic : MonoBehaviour
     int m_controlNetModelCurIndex;
     public TMP_Dropdown m_llmSelectionDropdown;
     public GameObject m_tempPic1;
+    
+    public GameObject m_tempPic2;
 
     // On startup, GameLogic may initialize before LLMSettingsManager exists/loads settings.
     // We'll retry briefly so the Tools panel label reflects the real active LLM.
@@ -132,6 +134,7 @@ public class GameLogic : MonoBehaviour
     public void SetGameMode(eGameMode gameMode) { m_gameMode = gameMode; }
 
     public GameObject GetTempPic1() { return m_tempPic1; }
+    public GameObject GetTempPic2() { return m_tempPic2; }
     static GameLogic _this = null;
     static public GameLogic Get()
     {
@@ -1464,6 +1467,7 @@ public string GetPrompt() { return m_prompt; }
 
         //let's add text saying "This is a temp pic" to our temp pic1 that will overlay it
         m_tempPic1.GetComponent<PicMain>().AddTextLabelToImage("TempPic1 (used with job scripts sometimes)");
+        m_tempPic2.GetComponent<PicMain>().AddTextLabelToImage("TempPic2 (used with job scripts sometimes)");
     }
 
     private void TryUpdateActiveLLMLabelAfterLLMManagerInit()

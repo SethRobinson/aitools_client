@@ -1917,10 +1917,15 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             RTQuickMessageManager.Get().ShowMessage("Running job script...");
         }
     }
-    public void OnSetTemp1Button()
+        public void OnSetTemp1Button()
+        {
+            RTQuickMessageManager.Get().ShowMessage("Copying to temp pic 1");
+            DuplicateToExistingPic(GameLogic.Get().GetTempPic1());
+        }
+    public void OnSetTemp2Button()
     {
-        RTQuickMessageManager.Get().ShowMessage("Copying to temp pic 1");
-        DuplicateToExistingPic(GameLogic.Get().GetTempPic1());
+        RTQuickMessageManager.Get().ShowMessage("Copying to temp pic 2");
+        DuplicateToExistingPic(GameLogic.Get().GetTempPic2());
     }
     public void OnTool2Button()
     {
@@ -2084,14 +2089,18 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
         GameObject temp1GO = null;
 
-        if (source == "image")
+        if (source == "image" || source == "image1")
         {
             //special case, we're going to copy an entire image
             if (dest == "temp1")
             {
                 temp1GO = GameLogic.Get().GetTempPic1();
             }
-
+            if (dest == "temp2")
+            {
+                temp1GO = GameLogic.Get().GetTempPic2();
+            }
+            
             if (temp1GO != null)
             {
                 
@@ -2107,15 +2116,32 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 RTQuickMessageManager.Get().BroadcastMessage("Error:  Unknown source image to copy from: " + source);
             }
         }
+        if (source == "image2")
+        {
+            //special case, we're going to copy an entire image
+            if (dest == "temp1")
+            {
+                temp1GO = GameLogic.Get().GetTempPic1();
+            }
+            if (dest == "temp2")
+            {
+                temp1GO = GameLogic.Get().GetTempPic2();
+            }
+
+        }
 
         if (source == "temp1")
         {
             //special case, we're going to copy an entire image
-            if (dest == "image")
+            if (dest == "image" || dest == "image1")
             {
                 temp1GO = GameLogic.Get().GetTempPic1();
             }
-
+            if (dest == "image2")
+            {
+                temp1GO = GameLogic.Get().GetTempPic2();
+            }
+           
             if (temp1GO != null)
             {
                 //see if sourceGo has a valid pic (image) we can copy from
