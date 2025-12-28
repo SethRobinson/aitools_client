@@ -6,7 +6,7 @@ COMMAND_START|joblist
 #Oh, the animatio/sound timing was setup to work with a 5090 in a public demo I did
 #sfx and art was partially AI generated
 
-img_to_img_kontext.json
+img_to_img_kontext.json @upload|image1|input1|
 COMMAND_END
 COMMAND_START|default_negative_prompt
 cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white

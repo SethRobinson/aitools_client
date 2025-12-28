@@ -1,5 +1,5 @@
 COMMAND_START|joblist
 -Can remove the - below so the @resize works if you need it
 
-img_to_img_automask_sub_biref.json -@resize_if_larger|x|1024|y|1024|aspect_correct|1|
+img_to_img_automask_sub_biref.json @upload|image1|input1| -@resize_if_larger|x|1024|y|1024|aspect_correct|1|
 COMMAND_END

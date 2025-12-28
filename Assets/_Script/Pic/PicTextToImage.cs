@@ -552,10 +552,19 @@ public class PicTextToImage : MonoBehaviour
         bool bDidFindAudioNegativePromptTag = ReplaceInString(ref comfyUIGraphJSon, "<AITOOLS_AUDIO_NEGATIVE_PROMPT>", JSONNode.Escape(m_scheduledEvent.m_picJob._requestedAudioNegativePrompt));
         bool bDidFindSegmentationPromptTag = ReplaceInString(ref comfyUIGraphJSon, "<AITOOLS_SEGMENTATION_PROMPT>", JSONNode.Escape(m_scheduledEvent.m_picJob._requestedSegmentationPrompt));
 
-        //remove the path from m_scheduledEvent.parm_1_string
-        //m_scheduledEvent.parm_1_string = Path.GetFileName(m_scheduledEvent.parm_1_string); //TEMP
-
-        if (m_scheduledEvent.m_picJob._parm_1_string.Length > 0)
+        // Replace all AITOOLS_INPUT_N placeholders (1 through 4) from _inputFilenames array
+        for (int i = 0; i < 4; i++)
+        {
+            if (m_scheduledEvent.m_picJob._inputFilenames[i].Length > 0)
+            {
+                string placeholder = $"<AITOOLS_INPUT_{i + 1}>";
+                ReplaceInString(ref comfyUIGraphJSon, placeholder, 
+                    JSONNode.Escape(m_scheduledEvent.m_picJob._inputFilenames[i]));
+            }
+        }
+        
+        // Legacy support: also check _parm_1_string for INPUT_1 if _inputFilenames[0] is empty
+        if (m_scheduledEvent.m_picJob._inputFilenames[0].Length == 0 && m_scheduledEvent.m_picJob._parm_1_string.Length > 0)
         {
            ReplaceInString(ref comfyUIGraphJSon, "<AITOOLS_INPUT_1>", JSONNode.Escape(m_scheduledEvent.m_picJob._parm_1_string));
         }

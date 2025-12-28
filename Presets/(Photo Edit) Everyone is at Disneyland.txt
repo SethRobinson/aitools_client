@@ -1,7 +1,7 @@
 COMMAND_START|joblist
-img_to_img_automask_bg_biref.json @resize_if_larger|x|1024|y|1024|aspect_correct|1|
+img_to_img_automask_bg_biref.json @upload|image1|input1| @resize_if_larger|x|1024|y|1024|aspect_correct|1|
 
-img_to_img_inpaint_sdxl.json  @replace|SD1.5/dreamshaper_8Inpainting.safetensors|SD1.5/dreamshaper_8Inpainting.safetensors| @replace|"guidance": 30|"guidance": 30| @replace|"steps": 20|"steps": 20| @replace|"denoise": 0.5|"denoise": 0.9| @replace|"inpaint_model": true|"inpaint_model": true| @no_undo
+img_to_img_inpaint_sdxl.json @upload|image1|input1| @replace|SD1.5/dreamshaper_8Inpainting.safetensors|SD1.5/dreamshaper_8Inpainting.safetensors| @replace|"guidance": 30|"guidance": 30| @replace|"steps": 20|"steps": 20| @replace|"denoise": 0.5|"denoise": 0.9| @replace|"inpaint_model": true|"inpaint_model": true| @no_undo
 COMMAND_END
 COMMAND_START|default_prompt
 People at disneyland, beautiful day, 4k wonderful photo

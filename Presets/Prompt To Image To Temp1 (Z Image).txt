@@ -1,0 +1,17 @@
+COMMAND_START|joblist
+-text_to_img_zimage.json @replace|"width": 1024|"width": 2048| @replace|"height": 1024|"height": 2048 @replace|"steps": 9|"steps": 9|
+
+text_to_img_zimage.json @replace|"width": 1024|"width": 1024| @replace|"height": 1024|"height": 1024| @replace|"steps": 9|"steps": 9|
+
+- Replace the model like this:
+-text_to_img_zimage.json @replace|"width": 1024|"width": 1024| @replace|"height": 1024|"height": 1024| @replace|"steps": 9|"steps": 9|@replace|z_image_turbo_bf16.safetensors|my_new_model.safetensors|
+
+- Picture taken.  Now let's do a headswap
+
+command @copy|Change the persons head in image1 to the person's head in image2.  Don't change anything else.|prompt|
+
+img2_to_img_qwen_edit_2509.json @upload|image1|input1| @upload|temp1|input2|
+COMMAND_END
+COMMAND_START|default_negative_prompt
+cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white
+COMMAND_END

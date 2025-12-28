@@ -28,6 +28,14 @@ public class PicJobData
         };
     }
 }
+// Tracks upload info for multi-input workflows
+public class UploadInfo
+{
+    public string source;      // "image1", "image2" (future), "temp1", "temp2"
+    public int inputIndex;     // 0-3 for INPUT_1 through INPUT_4
+    public string filename;    // Generated GUID filename
+}
+
 public class PicJob
 {
     public string _job = "none";
@@ -48,6 +56,12 @@ public class PicJob
     public string _originalJobString = "";
     public float _timeOfStart = 0;
     public float _timeOfEnd = 0;
+    
+    // Multi-input upload support: filenames for INPUT_1 through INPUT_4
+    public string[] _inputFilenames = new string[4] { "", "", "", "" };
+    // Pending uploads to process before running workflow
+    public List<UploadInfo> _pendingUploads = new List<UploadInfo>();
+    
     public PicJob Clone()
     {
         PicJob clone = (PicJob)this.MemberwiseClone();
@@ -56,6 +70,21 @@ public class PicJob
         foreach (PicJobData d in _data)
         {
             clone._data.Add(d.Clone());
+        }
+        
+        // Deep copy input filenames array
+        clone._inputFilenames = (string[])this._inputFilenames.Clone();
+        
+        // Deep copy pending uploads
+        clone._pendingUploads = new List<UploadInfo>();
+        foreach (UploadInfo u in _pendingUploads)
+        {
+            clone._pendingUploads.Add(new UploadInfo() 
+            { 
+                source = u.source, 
+                inputIndex = u.inputIndex, 
+                filename = u.filename 
+            });
         }
 
         return clone;
@@ -2500,43 +2529,112 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             else  if (job._job == "upload_to_comfy")
             {
                 //add a file to the ComfyUI server
+                // New format: "source|inputIndex|filename" where source is image1, temp1, temp2, etc.
                 ComfyUIFileUploader uploaderScript = ComfyUIFileUploader.CreateObject();
                 SetStatusMessage("Uploading to\nComfyUI...");
-                string remoteFileName = "";
-
-                if (IsMovie())
+                
+                // Parse the parm_1_string format: "source|inputIndex|filename"
+                string[] uploadParts = job._parm_1_string.Split('|');
+                if (uploadParts.Length >= 3)
                 {
-                   remoteFileName = Path.GetFileName(job._parm_1_string);
-                   uploaderScript.UploadFile(serverID, job._parm_1_string, remoteFileName, OnUploadFinished);
+                    string source = uploadParts[0].ToLower().Trim();
+                    // inputIndex is uploadParts[1] - we don't need it here, it was already used to set _inputFilenames
+                    string remoteFileName = uploadParts[2].Trim();
+                    
+                    // Get the texture based on source
+                    Texture2D sourceTexture = null;
+                    Texture2D sourceMask = null;
+                    
+                    if (source == "image1" || source == "image")
+                    {
+                        if (m_pic.sprite != null && m_pic.sprite.texture != null)
+                        {
+                            sourceTexture = m_pic.sprite.texture;
+                            if (m_mask.sprite != null && m_mask.sprite.texture != null)
+                            {
+                                sourceMask = m_mask.sprite.texture;
+                            }
+                        }
+                    }
+                    else if (source == "temp1")
+                    {
+                        GameObject temp1GO = GameLogic.Get().GetTempPic1();
+                        if (temp1GO != null)
+                        {
+                            PicMain temp1Script = temp1GO.GetComponent<PicMain>();
+                            if (temp1Script != null && temp1Script.m_pic.sprite != null && temp1Script.m_pic.sprite.texture != null)
+                            {
+                                sourceTexture = temp1Script.m_pic.sprite.texture;
+                                if (temp1Script.m_mask.sprite != null && temp1Script.m_mask.sprite.texture != null)
+                                {
+                                    sourceMask = temp1Script.m_mask.sprite.texture;
+                                }
+                            }
+                        }
+                    }
+                    else if (source == "temp2")
+                    {
+                        GameObject temp2GO = GameLogic.Get().GetTempPic2();
+                        if (temp2GO != null)
+                        {
+                            PicMain temp2Script = temp2GO.GetComponent<PicMain>();
+                            if (temp2Script != null && temp2Script.m_pic.sprite != null && temp2Script.m_pic.sprite.texture != null)
+                            {
+                                sourceTexture = temp2Script.m_pic.sprite.texture;
+                                if (temp2Script.m_mask.sprite != null && temp2Script.m_mask.sprite.texture != null)
+                                {
+                                    sourceMask = temp2Script.m_mask.sprite.texture;
+                                }
+                            }
+                        }
+                    }
+                    else if (source == "video" || source == "video1")
+                    {
+                        // Video source - upload from file path
+                        if (IsMovie())
+                        {
+                            string videoPath = m_picMovie.GetFileName();
+                            string videoRemoteName = m_picMovie.GetFileNameWithoutPath();
+                            uploaderScript.UploadFile(serverID, videoPath, videoRemoteName, OnUploadFinished);
+                            return; // Video upload handled, exit early
+                        }
+                        else
+                        {
+                            ClearErrorsAndJobs();
+                            SetStatusMessage("Need video\nloaded first!");
+                            RTConsole.Log("Error: No video loaded for video upload");
+                            return;
+                        }
+                    }
+                    // Future: add "image2" handling here
+                    
+                    if (sourceTexture == null)
+                    {
+                        ClearErrorsAndJobs();
+                        SetStatusMessage("Need " + source + "\nimage first!");
+                        RTConsole.Log("Error: Source '" + source + "' has no valid texture for upload");
+                        return;
+                    }
+                    
+                    byte[] pngBytes;
+                    if (sourceMask != null)
+                    {
+                        Texture2D finalTexture = Tex2DExtension.CombineTexturesForAlpha(sourceTexture, sourceMask);
+                        pngBytes = finalTexture.EncodeToPNG();
+                    }
+                    else
+                    {
+                        pngBytes = sourceTexture.EncodeToPNG();
+                    }
+                    
+                    uploaderScript.UploadFileInMemory(serverID, pngBytes, remoteFileName, OnUploadFinished);
                 }
                 else
                 {
-
-                    if (m_pic.sprite == null || m_pic.sprite.texture == null)
-                    {
-                        ClearErrorsAndJobs();
-                        SetStatusMessage("Need image/movie\nfirst!");
-                        return;
-                    }
-                    byte[] pngBytes;
-
-                    if (m_mask.sprite != null && m_mask.sprite.texture != null)
-                    {
-                        Texture2D finalTexture = Tex2DExtension.CombineTexturesForAlpha(m_pic.sprite.texture, m_mask.sprite.texture);
-                        pngBytes = finalTexture.EncodeToPNG();
-
-                    } else
-                    {
-                        pngBytes = m_pic.sprite.texture.EncodeToPNG();
-                    }
-
-                    //for debugging purposes, let's write the png to disk
-                    //File.WriteAllBytes("test_debug_pic.png", pngBytes);
-
-                    //let's get only the filename from job.parm_1_string
-                    remoteFileName = Path.GetFileName(m_mediaRemoteFilename);
-                    m_mediaRemoteFilename = remoteFileName;
-                    uploaderScript.UploadFileInMemory(serverID, pngBytes, remoteFileName, OnUploadFinished);
+                    // Legacy fallback or error
+                    RTConsole.Log("Error: Invalid upload_to_comfy format. Expected 'source|inputIndex|filename', got: " + job._parm_1_string);
+                    ClearErrorsAndJobs();
+                    SetStatusMessage("Upload format\nerror!");
                 }
             } else  if (job._job == "call_llm")
             {
@@ -2927,6 +3025,42 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                         {
                             ProcessResizeIfLargerOrForcedCommand(commandParts, true);
                         }
+                        else if (picJobData._name.ToLower() == "upload")
+                        {
+                            // Parse: @upload|source|inputN|
+                            // source: image1, image2 (future), temp1, temp2
+                            // dest: input1, input2, input3, input4 (or just 1, 2, 3, 4)
+                            string source = picJobData._parm1.ToLower().Trim();
+                            string dest = picJobData._parm2.ToLower().Trim();
+                            
+                            // Parse input index from dest (input1 -> 0, input2 -> 1, etc.)
+                            int inputIndex = -1;
+                            if (dest == "input1" || dest == "1") inputIndex = 0;
+                            else if (dest == "input2" || dest == "2") inputIndex = 1;
+                            else if (dest == "input3" || dest == "3") inputIndex = 2;
+                            else if (dest == "input4" || dest == "4") inputIndex = 3;
+                            
+                            if (inputIndex >= 0 && inputIndex < 4)
+                            {
+                                // Generate a GUID filename for this upload
+                                string guidFilename = "pic_" + System.Guid.NewGuid() + ".png";
+                                
+                                UploadInfo uploadInfo = new UploadInfo()
+                                {
+                                    source = source,
+                                    inputIndex = inputIndex,
+                                    filename = guidFilename
+                                };
+                                job._pendingUploads.Add(uploadInfo);
+                                
+                                // Set the input filename that will be used in workflow replacement
+                                job._inputFilenames[inputIndex] = "temp/" + guidFilename;
+                            }
+                            else
+                            {
+                                RTConsole.Log("Error: Invalid upload destination '" + dest + "'. Use input1-input4 or 1-4.");
+                            }
+                        }
 
                         //add it
                         job._data.Add(picJobData);
@@ -2940,29 +3074,17 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
                 //actually, job
 
-                if (workFlowNameWithoutTest.StartsWith("img_") || workFlowNameWithoutTest.StartsWith("video_") || workFlowNameWithoutTest.StartsWith("vid_"))
+                // Create upload jobs from @upload commands (stored in job._pendingUploads)
+                foreach (UploadInfo uploadInfo in job._pendingUploads)
                 {
-                    //add a new job to upload the file we're gonna need
                     PicJob uploaderJob = new PicJob();
                     uploaderJob._job = "upload_to_comfy";
-                    uploaderJob._parm_1_string = "<MEDIA_LOCAL_FILENAME>";
+                    // Store the source and input index info in the job
+                    // Format: "source|inputIndex|filename"
+                    uploaderJob._parm_1_string = uploadInfo.source + "|" + uploadInfo.inputIndex + "|" + uploadInfo.filename;
                     m_picJobs.Add(uploaderJob);
-
-                    if (workFlowNameWithoutTest.StartsWith("img_"))
-                    {
-                        if (m_mediaRemoteFilename == "")
-                        {
-                            m_mediaRemoteFilename = "pic_" + System.Guid.NewGuid() + ".png";
-                        }
-
-                        job._parm_1_string = "temp/" + m_mediaRemoteFilename;//for images, we need temp
-                    }
-
-                    if (workFlowNameWithoutTest.StartsWith("video_") || workFlowNameWithoutTest.StartsWith("vid_"))
-                    {
-                        job._parm_1_string = "temp/<MEDIA_FILENAME>"; //it will get replaced with the actual movie name later
-                    }
                 }
+                
                 //if first first word is "command", we'll ignore it
 
                 if (words[0] != "command")

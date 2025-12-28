@@ -1,5 +1,5 @@
 COMMAND_START|joblist
-img_to_img_qwen_edit_2509.json
+img_to_img_qwen_edit_2509.json @upload|image1|input1|
 COMMAND_END
 COMMAND_START|default_negative_prompt
 cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white

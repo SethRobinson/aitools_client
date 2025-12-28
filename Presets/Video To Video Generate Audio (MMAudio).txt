@@ -1,4 +1,4 @@
 COMMAND_START|joblist
 -Type the audio prompt in as the main prompt above, we'll copy it below to "audio_prompt"
-video_to_video_gen_mmaudio_api.json @Copy|prompt|audio_prompt| @Comment: MMaudio creates sound to go with the video but uh... it's not great.  We use the generated prompt as the audio prompt.
+video_to_video_gen_mmaudio_api.json @upload|video|input1| @Copy|prompt|audio_prompt| @Comment: MMaudio creates sound to go with the video but uh... it's not great.  We use the generated prompt as the audio prompt.
 COMMAND_END
