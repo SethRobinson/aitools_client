@@ -869,6 +869,105 @@ public class AIGuideManager : MonoBehaviour
         picMain.m_aiPassedInfo.m_titleFontID = m_titleFontDropdown.value;
     }
 
+    // Multi-prompt version of AddPicture for workflows that use multiple prompts (e.g., 20-second movies with 4 segments)
+    public System.Collections.IEnumerator AddPictureMultiPrompt(string text, string[] prompts, string title, int idx, RTRendererType requestedRender, string audio)
+    {
+        GameObject pic = ImageGenerator.Get().AddImageByFileName("");
+        PicMain picMain = pic.GetComponent<PicMain>();
+        picMain.ClearRenderingCallbacks();
+
+        List<string> jobsTodo = GameLogic.Get().GetPicJobListAsListOfStrings();
+        
+        if (jobsTodo.Count == 0)
+        {
+            RTQuickMessageManager.Get().ShowMessage("Add jobs to do!");
+            yield break;
+        }
+
+        PicJob jobDefaultInfoToStartWith = new PicJob();
+        
+        // Set extended prompts for multi-segment workflows
+        string prependPrompt = GameLogic.Get().GetComfyPrependPrompt() ?? "";
+        string appendPrompt = GameLogic.Get().GetComfyAppendPrompt() ?? "";
+        
+        for (int i = 0; i < prompts.Length && i < PicJob.MAX_EXTENDED_PROMPTS; i++)
+        {
+            string p = prompts[i];
+            if (!string.IsNullOrEmpty(p))
+            {
+                if (prependPrompt.Length > 0)
+                    p = prependPrompt + " " + p;
+                if (appendPrompt.Length > 0)
+                    p = p + " " + appendPrompt;
+            }
+            jobDefaultInfoToStartWith._requestedPrompts[i] = p;
+        }
+        
+        // Also set main _requestedPrompt to first prompt for backward compatibility
+        // (workflows using <AITOOLS_PROMPT> will still work)
+        jobDefaultInfoToStartWith._requestedPrompt = jobDefaultInfoToStartWith._requestedPrompts[0];
+        
+        jobDefaultInfoToStartWith._requestedNegativePrompt = GameLogic.Get().GetNegativePrompt();
+        if (string.IsNullOrEmpty(audio))
+        {
+            audio = Config.Get().GetDefaultAudioPrompt();
+        }
+        jobDefaultInfoToStartWith._requestedAudioPrompt = audio;
+        jobDefaultInfoToStartWith._requestedAudioNegativePrompt = Config.Get().GetDefaultAudioNegativePrompt();
+        jobDefaultInfoToStartWith.requestedRenderer = requestedRender;
+        
+        picMain.AddJobListWithStartingJobInfo(jobDefaultInfoToStartWith, jobsTodo);
+        picMain.SetStatusMessage("AI guided\n(multi-prompt)");
+        yield return null;
+
+        if (m_PixelArt128Checkbox.isOn)
+        {
+            pic.GetComponent<PicMain>().m_onFinishedRenderingCallback += OnProcessPixelArt128;
+            yield return null;
+        }
+
+        if (m_autoSave.isOn || m_autoSaveJPG.isOn)
+        {
+            string idxString = idx.ToString().PadLeft(3, '0');
+
+            if (m_autoSave.isOn)
+                picMain.m_aiPassedInfo.m_forcedFilename = m_imageFileNameBase + idxString + ".png";
+
+            if (m_autoSaveJPG.isOn)
+                picMain.m_aiPassedInfo.m_forcedFilenameJPG = m_imageFileNameBase + idxString + ".jpg";
+
+            if (m_autoSave.isOn || m_autoSaveJPG.isOn)
+            {
+                picMain.m_aiPassedInfo.m_forcedFileNameBase = m_imageFileNameBase + idxString;
+            }
+        }
+
+        if (m_AddBordersCheckbox.isOn)
+        {
+            pic.GetComponent<PicMain>().m_onFinishedRenderingCallback += OnAddMotivationBorder;
+            yield return null;
+        }
+        else
+        {
+            if (m_OverlayTextCheckbox.isOn)
+            {
+                pic.GetComponent<PicMain>().m_onFinishedRenderingCallback += OnAddMotivationTextWithTitle;
+            }
+
+            pic.GetComponent<PicMain>().m_onFinishedRenderingCallback += OnSaveIfNeeded;
+        }
+
+        picMain.m_aiPassedInfo.m_text = text;
+        picMain.m_aiPassedInfo.m_textColor = m_imageTextColor.color;
+        picMain.m_aiPassedInfo.m_borderColor = m_imageBorderColor.color;
+        picMain.m_aiPassedInfo.m_title = title;
+        picMain.m_aiPassedInfo.m_BoldCheckbox = m_BoldCheckbox.isOn;
+        picMain.m_aiPassedInfo.m_fontSizeMod = float.TryParse(m_input_FontSize.text, out float resultMp) ? resultMp : 1.0f;
+        picMain.m_aiPassedInfo.m_overlayTextCheckBox = m_OverlayTextCheckbox.isOn;
+        picMain.m_aiPassedInfo.m_textFontID = m_textFontDropdown.value;
+        picMain.m_aiPassedInfo.m_titleFontID = m_titleFontDropdown.value;
+    }
+
     public string GetPicFromText(ref string text)
     {
         List<string> lines = new List<string>(text.Split(new[] { "\r\n", "\r", "\n" }, System.StringSplitOptions.None));
@@ -916,11 +1015,17 @@ public class AIGuideManager : MonoBehaviour
         string imagePrompt = ""; // Initialize imagePrompt to avoid an uninitialized variable error
         string title = "";
         string audio = "";
+        
+        // Track accumulated text for multi-prompt detection (SET_PROMPT1: through SET_PROMPT8:)
+        string accumulatedForMultiPrompt = "";
 
         string forceKey = "";
 
         foreach (string line in lines)
         {
+            // Accumulate all lines for potential multi-prompt parsing
+            accumulatedForMultiPrompt += line + "\n";
+            
             string key = "";
             string value = "";
 
@@ -1001,27 +1106,61 @@ public class AIGuideManager : MonoBehaviour
 
                 imagePrompt = value;
                 
+                // Check if we have SET_PROMPT tags in the accumulated text for multi-prompt workflows
+                string[] parsedPrompts = PicMain.ParseSetPromptTags(accumulatedForMultiPrompt);
+                bool hasMultiPrompt = !string.IsNullOrEmpty(parsedPrompts[1]); // Has at least prompt 2
+                
+                // Debug: Log parsed prompts for this image group
+                if (hasMultiPrompt)
+                {
+                    RTConsole.Log($"[AIGuide MultiPrompt] Image #{_curPicIdx}: Parsed {parsedPrompts.Count(p => !string.IsNullOrEmpty(p))} prompts");
+                    for (int pi = 0; pi < 4; pi++)
+                    {
+                        if (!string.IsNullOrEmpty(parsedPrompts[pi]))
+                        {
+                            string preview = parsedPrompts[pi].Length > 60 ? parsedPrompts[pi].Substring(0, 60) + "..." : parsedPrompts[pi];
+                            RTConsole.Log($"  Prompt {pi + 1}: {preview}");
+                        }
+                    }
+                }
+                
                 int count = 1;
-                
-                
                 int.TryParse(m_inputRenderCount.text, out count);
-
 
                 for (int i = 0; i < count; i++)
                 {
-                    StartCoroutine(AddPicture(text, imagePrompt, title, _curPicIdx++, GameLogic.Get().GetGlobalRenderer(), audio));
+                    if (hasMultiPrompt)
+                    {
+                        // Use multi-prompt path for workflows with SET_PROMPT1-8 tags
+                        StartCoroutine(AddPictureMultiPrompt(text, parsedPrompts, title, _curPicIdx++, 
+                            GameLogic.Get().GetGlobalRenderer(), audio));
+                    }
+                    else
+                    {
+                        // Use existing single-prompt path (backward compatible)
+                        StartCoroutine(AddPicture(text, imagePrompt, title, _curPicIdx++, 
+                            GameLogic.Get().GetGlobalRenderer(), audio));
+                    }
                     yield return null;
                 }
 
-                 if (m_generateExtraCheckbox.isOn)
+                if (m_generateExtraCheckbox.isOn)
                 {
                     //for each non-busy local gpu, add 1 to count
                     for (int i = 0; i < Config.Get().GetGPUCount(); i++)
                     {
                         if (Config.Get().GetGPUInfo(i)._bIsActive && Config.Get().GetGPUInfo(i).isLocal && !Config.Get().IsGPUBusy(i))
                         {
-                            StartCoroutine(AddPicture(text, imagePrompt, title, _curPicIdx++,
-                                Config.Get().GetGPUInfo(i)._requestedRendererType, audio));
+                            if (hasMultiPrompt)
+                            {
+                                StartCoroutine(AddPictureMultiPrompt(text, parsedPrompts, title, _curPicIdx++,
+                                    Config.Get().GetGPUInfo(i)._requestedRendererType, audio));
+                            }
+                            else
+                            {
+                                StartCoroutine(AddPicture(text, imagePrompt, title, _curPicIdx++,
+                                    Config.Get().GetGPUInfo(i)._requestedRendererType, audio));
+                            }
                             yield return null;
                         }
                     }
@@ -1031,6 +1170,7 @@ public class AIGuideManager : MonoBehaviour
                 imagePrompt = "";
                 title = "";
                 audio = "";
+                accumulatedForMultiPrompt = ""; // Reset accumulator for next image group
             }
         }
     }

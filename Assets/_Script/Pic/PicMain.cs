@@ -62,6 +62,11 @@ public class PicJob
     // Pending uploads to process before running workflow
     public List<UploadInfo> _pendingUploads = new List<UploadInfo>();
     
+    // Multi-prompt support: extended prompts for workflows that need multiple distinct prompts
+    // (e.g., multi-segment movie generation with different prompts for each segment)
+    public const int MAX_EXTENDED_PROMPTS = 8;
+    public string[] _requestedPrompts = new string[MAX_EXTENDED_PROMPTS] { "", "", "", "", "", "", "", "" };
+    
     public PicJob Clone()
     {
         PicJob clone = (PicJob)this.MemberwiseClone();
@@ -86,6 +91,9 @@ public class PicJob
                 filename = u.filename 
             });
         }
+        
+        // Deep copy extended prompts array
+        clone._requestedPrompts = (string[])this._requestedPrompts.Clone();
 
         return clone;
     }
@@ -289,13 +297,45 @@ public class PicMain : MonoBehaviour
             }
 
             if (msg != "") msg += "\n";
-            msg += $@"{c1}#{jobCounter}`` {c1}{job._job}:`` {job._workflow} {c1}Server ID:`` {serverTemp} {finished}
-{c1} Prompt:`` {job._requestedPrompt}
-{c1} Neg Prompt:`` {job._requestedNegativePrompt}
-{c1} Audio Prompt:`` {job._requestedAudioPrompt}
-{c1} Neg Audio Prompt:`` {job._requestedAudioNegativePrompt}
-{c1} Segmentation Prompt:`` {job._requestedSegmentationPrompt}
-{c1} Parm 1: ``{job._parm_1_string}";
+            
+            // Check if extended prompts are set (for multi-segment workflows)
+            bool hasExtendedPrompts = false;
+            for (int i = 0; i < PicJob.MAX_EXTENDED_PROMPTS; i++)
+            {
+                if (!string.IsNullOrEmpty(job._requestedPrompts[i]))
+                {
+                    hasExtendedPrompts = true;
+                    break;
+                }
+            }
+            
+            msg += $@"{c1}#{jobCounter}`` {c1}{job._job}:`` {job._workflow} {c1}Server ID:`` {serverTemp} {finished}";
+            
+            if (hasExtendedPrompts)
+            {
+                // Show numbered prompts only (skip the generic Prompt: line since Prompt 1 is the same)
+                for (int i = 0; i < PicJob.MAX_EXTENDED_PROMPTS; i++)
+                {
+                    if (!string.IsNullOrEmpty(job._requestedPrompts[i]))
+                    {
+                        msg += $@"
+{c1}Prompt {i + 1}:`` {job._requestedPrompts[i]}";
+                    }
+                }
+            }
+            else
+            {
+                // No extended prompts, show the single prompt
+                msg += $@"
+{c1}Prompt:`` {job._requestedPrompt}";
+            }
+            
+            msg += $@"
+{c1}Neg Prompt:`` {job._requestedNegativePrompt}
+{c1}Audio Prompt:`` {job._requestedAudioPrompt}
+{c1}Neg Audio Prompt:`` {job._requestedAudioNegativePrompt}
+{c1}Segmentation Prompt:`` {job._requestedSegmentationPrompt}
+{c1}Parm 1: ``{job._parm_1_string}";
 
             //go through each _data and display it
             foreach (var data in job._data)
@@ -2089,6 +2129,148 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
        
     }
 
+    // Helper to parse prompt_N variable names and return the 0-based index, or -1 if not a match
+    int TryParsePromptIndex(string varName)
+    {
+        // Support both "prompt_N" and "promptN" formats
+        if (varName.StartsWith("prompt_") && int.TryParse(varName.Substring(7), out int idx1))
+        {
+            if (idx1 >= 1 && idx1 <= PicJob.MAX_EXTENDED_PROMPTS)
+                return idx1 - 1; // Convert to 0-based
+        }
+        else if (varName.StartsWith("prompt") && varName.Length > 6 && int.TryParse(varName.Substring(6), out int idx2))
+        {
+            if (idx2 >= 1 && idx2 <= PicJob.MAX_EXTENDED_PROMPTS)
+                return idx2 - 1; // Convert to 0-based
+        }
+        return -1;
+    }
+
+    // Static method that parses SET_PROMPTN tags from text and returns array of prompts
+    // Supports formats: SET_PROMPT1:, SET_PROMPT_1:, set_prompt1:, etc. (case-insensitive)
+    // Falls back: if no SET_PROMPT tags found, uses entire text as prompt[0]
+    // Can be called by AIGuideManager and other systems that need to parse multi-prompt text
+    public static string[] ParseSetPromptTags(string text)
+    {
+        string[] result = new string[PicJob.MAX_EXTENDED_PROMPTS];
+        for (int i = 0; i < result.Length; i++)
+            result[i] = "";
+
+        if (string.IsNullOrEmpty(text))
+            return result;
+
+        string textLower = text.ToLower();
+        bool foundAny = false;
+
+        // Try to find SET_PROMPTN: or SET_PROMPT_N: patterns for each index
+        for (int i = 1; i <= PicJob.MAX_EXTENDED_PROMPTS; i++)
+        {
+            // Try both formats: SET_PROMPT1: and SET_PROMPT_1:
+            string[] patterns = new string[] { $"set_prompt{i}:", $"set_prompt_{i}:" };
+            
+            int startPos = -1;
+            int patternLen = 0;
+            
+            foreach (string pattern in patterns)
+            {
+                int pos = textLower.IndexOf(pattern);
+                if (pos >= 0)
+                {
+                    startPos = pos;
+                    patternLen = pattern.Length;
+                    break;
+                }
+            }
+
+            if (startPos >= 0)
+            {
+                foundAny = true;
+                
+                // Find the start of the content (after the pattern)
+                int contentStart = startPos + patternLen;
+                
+                // Find the end: either the next SET_PROMPT tag or end of string
+                int contentEnd = text.Length;
+                
+                for (int j = 1; j <= PicJob.MAX_EXTENDED_PROMPTS; j++)
+                {
+                    if (j == i) continue; // Skip self
+                    
+                    string[] nextPatterns = new string[] { $"set_prompt{j}:", $"set_prompt_{j}:" };
+                    foreach (string nextPattern in nextPatterns)
+                    {
+                        int nextPos = textLower.IndexOf(nextPattern, contentStart);
+                        if (nextPos >= 0 && nextPos < contentEnd)
+                        {
+                            contentEnd = nextPos;
+                        }
+                    }
+                }
+                
+                // Also stop at AUDIO: or IMAGE: tags if present (for AIGuide integration)
+                string[] stopPatterns = new string[] { "audio:", "image:" };
+                foreach (string stopPattern in stopPatterns)
+                {
+                    int stopPos = textLower.IndexOf(stopPattern, contentStart);
+                    if (stopPos >= 0 && stopPos < contentEnd)
+                    {
+                        contentEnd = stopPos;
+                    }
+                }
+
+                // Extract and trim the content
+                result[i - 1] = text.Substring(contentStart, contentEnd - contentStart).Trim();
+            }
+        }
+
+        // Fallback: if no SET_PROMPT tags found, use entire text as prompt[0]
+        if (!foundAny)
+        {
+            result[0] = text.Trim();
+        }
+
+        return result;
+    }
+
+    // Parse SET_PROMPTN: patterns from LLM reply and populate _requestedPrompts array
+    void ParseLLMPrompts(ref PicJob job)
+    {
+        string reply = job._requestedLLMReply;
+        if (string.IsNullOrEmpty(reply))
+        {
+            RTConsole.Log("parse_llm_prompts: LLM reply is empty, nothing to parse");
+            return;
+        }
+
+        string[] parsedPrompts = ParseSetPromptTags(reply);
+        
+        // Copy to job and log results
+        for (int i = 0; i < PicJob.MAX_EXTENDED_PROMPTS; i++)
+        {
+            job._requestedPrompts[i] = parsedPrompts[i];
+            if (!string.IsNullOrEmpty(parsedPrompts[i]))
+            {
+                string preview = parsedPrompts[i].Length > 50 ? parsedPrompts[i].Substring(0, 50) + "..." : parsedPrompts[i];
+                RTConsole.Log($"parse_llm_prompts: Found prompt_{i + 1}: {preview}");
+            }
+        }
+        
+        // Check if we used fallback
+        bool foundTaggedPrompts = false;
+        for (int i = 1; i < PicJob.MAX_EXTENDED_PROMPTS; i++)
+        {
+            if (!string.IsNullOrEmpty(parsedPrompts[i]))
+            {
+                foundTaggedPrompts = true;
+                break;
+            }
+        }
+        if (!foundTaggedPrompts && !string.IsNullOrEmpty(parsedPrompts[0]))
+        {
+            RTConsole.Log("parse_llm_prompts: No SET_PROMPT tags found, using entire reply as prompt_1");
+        }
+    }
+
     string ConvertVarToText(ref PicJob job, string source)
     {
         string temp = "";
@@ -2107,6 +2289,13 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         if (source == "llm_reply")
         {
             temp = job._requestedLLMReply;
+        }
+        
+        // Support extended prompts: prompt_1 through prompt_8 (or prompt1 through prompt8)
+        int promptIdx = TryParsePromptIndex(source);
+        if (promptIdx >= 0)
+        {
+            temp = job._requestedPrompts[promptIdx];
         }
 
         if (temp == "")
@@ -2161,6 +2350,13 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         if (dest == "requirements") m_requirements = temp;
         if (dest == "prepend_prompt") GameLogic.Get().SetComfyPrependPrompt(temp);
         if (dest == "append_prompt") GameLogic.Get().SetComfyAppendPrompt(temp);
+        
+        // Support extended prompts: prompt_1 through prompt_8 (or prompt1 through prompt8)
+        int promptIdx = TryParsePromptIndex(dest);
+        if (promptIdx >= 0)
+        {
+            job._requestedPrompts[promptIdx] = temp;
+        }
     }
 
     bool IsImageSlot(string slot)
@@ -2195,6 +2391,13 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         if (dest == "llm_prompt") job._requestedLLMPrompt += temp;
         if (dest == "llm_reply") job._requestedLLMReply += temp;
         if (dest == "requirements") m_requirements += temp;
+        
+        // Support extended prompts: prompt_1 through prompt_8 (or prompt1 through prompt8)
+        int promptIdx = TryParsePromptIndex(dest);
+        if (promptIdx >= 0)
+        {
+            job._requestedPrompts[promptIdx] += temp;
+        }
     }
 
     public void SetNoUndo(bool bNoUndo)
@@ -3001,6 +3204,11 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                         else if(picJobData._name.ToLower() == "llm_prompt_add_to_last_interaction")
                         {
                             _promptManager.AppendToLastInteraction(" " + ConvertVarToText(ref job, picJobData._parm1));
+                        }
+                        else if (picJobData._name.ToLower() == "parse_llm_prompts")
+                        {
+                            // Parse SET_PROMPT1: through SET_PROMPT8: from LLM reply and populate _requestedPrompts array
+                            ParseLLMPrompts(ref job);
                         }
                         else if (picJobData._name.ToLower() == "fill_mask_if_blank")
                         {

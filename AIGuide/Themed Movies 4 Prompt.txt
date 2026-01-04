@@ -1,0 +1,42 @@
+#Config file for AIGuide profile - 20-second multi-prompt movies
+#Uses SET_PROMPT1 through SET_PROMPT4 for 4 distinct 5-second video segments
+
+COMMAND_START|base_context
+You will design video prompts for AI generative video. Each video is 20 seconds long with 4 distinct 5-second segments.
+
+You will always output detailed and nuanced content. Do not use markup, asterisks, numbered lists, etc.
+
+Format each video design exactly as follows:
+
+AUDIO: (audio description for the entire 20-second clip - sounds, background noise, ambient sounds)
+
+SET_PROMPT1: (first 5 seconds - describe the opening scene, action, people's age/clothing/ethnicity if applicable, camera angle)
+SET_PROMPT2: (seconds 5-10 - continue or transition the scene, describe what happens next)
+SET_PROMPT3: (seconds 10-15 - develop the action further, add drama or movement)
+SET_PROMPT4: (seconds 15-20 - conclude or climax of the scene)
+
+IMAGE: render
+
+Each prompt should be a single paragraph describing that 5-second segment. If people are in the scene, specify each person's age, clothing, ethnicity, expression, pose, and what they are doing.
+
+Create 5 video designs. Do not number entries.
+
+Theme: Animals doing funny things with their natural sounds.
+
+Start with AUDIO:
+COMMAND_END
+
+COMMAND_START|auto_continue_text
+(continue with another video design using the AUDIO/SET_PROMPT1-4/IMAGE format. Fully describe each 5-second scene segment.)
+COMMAND_END
+
+COMMAND_START|start_msg
+What should this video series be about? (Each video will be 20 seconds with 4 distinct scenes)
+COMMAND_END
+
+COMMAND_SET|temperature|1.03|
+COMMAND_SET|add_borders|false|
+COMMAND_SET|overlay_text|false|
+COMMAND_SET|use_bold_font|false|
+COMMAND_SET|image_text_overlay|AI Generated|
+

@@ -34,6 +34,13 @@ public class PicTextToImage : MonoBehaviour
     ScheduledGPUEvent m_scheduledEvent;
     private CancellationTokenSource m_cancellationTokenSource;
     
+    // Mapping of ComfyUI node IDs to their display titles for status updates
+    private Dictionary<string, string> m_nodeIdToTitle = new Dictionary<string, string>();
+    // Track current executing node for progress display
+    private string m_currentExecutingNode = "";
+    // Client ID for ComfyUI WebSocket - needed to receive executing events for our prompts
+    private string m_comfyClientId = "";
+    
     public void SetGPUEvent(ScheduledGPUEvent scheduledEvent)
     {
         m_scheduledEvent = scheduledEvent;
@@ -223,6 +230,50 @@ public class PicTextToImage : MonoBehaviour
         }
     }
 
+    // Build a mapping from node IDs to their display titles for status updates
+    private void BuildNodeTitleMapping(JSONNode jsonNode)
+    {
+        m_nodeIdToTitle.Clear();
+        
+        foreach (var key in jsonNode.Keys)
+        {
+            if (jsonNode[key].IsObject)
+            {
+                var node = jsonNode[key];
+                string title = null;
+                
+                // Try to get title from _meta.title first
+                if (node.HasKey("_meta") && node["_meta"].HasKey("title"))
+                {
+                    title = node["_meta"]["title"].Value;
+                }
+                // Fall back to class_type if no title
+                else if (node.HasKey("class_type"))
+                {
+                    title = node["class_type"].Value;
+                }
+                
+                if (!string.IsNullOrEmpty(title))
+                {
+                    m_nodeIdToTitle[key] = title;
+                }
+            }
+        }
+    }
+    
+    // Get display name for a node ID
+    private string GetNodeDisplayName(string nodeId)
+    {
+        if (string.IsNullOrEmpty(nodeId))
+            return null;
+            
+        if (m_nodeIdToTitle.TryGetValue(nodeId, out string title))
+            return title;
+            
+        // Return shortened ID if no title found
+        return nodeId.Length > 8 ? nodeId.Substring(0, 8) + "..." : nodeId;
+    }
+
     public void StartWebRequest(bool rerender)
     {
 
@@ -253,6 +304,10 @@ public class PicTextToImage : MonoBehaviour
         Config.Get().SetGPUBusy(m_gpu, true);
 
         m_bIsGenerating = true;
+        m_currentExecutingNode = "";
+        m_nodeIdToTitle.Clear();
+        // Generate a unique client ID for this session to receive executing events
+        m_comfyClientId = Guid.NewGuid().ToString();
         startTime = Time.realtimeSinceStartup;
         string url = gpuInfo.remoteURL;
 
@@ -557,6 +612,17 @@ public class PicTextToImage : MonoBehaviour
            ReplaceInString(ref comfyUIGraphJSon, "<AITOOLS_INPUT_1>", JSONNode.Escape(m_scheduledEvent.m_picJob._parm_1_string));
         }
 
+        // Replace all AITOOLS_PROMPT_N placeholders (1 through MAX_EXTENDED_PROMPTS) from _requestedPrompts array
+        // This supports multi-segment movie generation with different prompts for each segment
+        for (int i = 0; i < PicJob.MAX_EXTENDED_PROMPTS; i++)
+        {
+            string placeholder = $"<AITOOLS_PROMPT_{i + 1}>";
+            string promptValue = m_scheduledEvent.m_picJob._requestedPrompts[i] ?? "";
+            // Fallback: if prompt_1 is empty, use the main _requestedPrompt for backward compatibility
+            if (i == 0 && string.IsNullOrEmpty(promptValue))
+                promptValue = m_scheduledEvent.m_picJob._requestedPrompt ?? "";
+            ReplaceInString(ref comfyUIGraphJSon, placeholder, JSONNode.Escape(promptValue));
+        }
 
         JSONNode jsonNode = null;
 
@@ -584,6 +650,8 @@ public class PicTextToImage : MonoBehaviour
 
 
         ExtractTotalSteps(jsonNode);
+        BuildNodeTitleMapping(jsonNode);
+        
         // Modify multiple values
         ModifyJsonValue(jsonNode, "noise_seed", JSONNode.Parse(m_seed.ToString()), false); // Example seed value
         ModifyJsonValue(jsonNode, "seed", JSONNode.Parse(m_seed.ToString()), false); // Example seed value
@@ -617,7 +685,8 @@ public class PicTextToImage : MonoBehaviour
 
         string json =
                 $@"{{
-                ""prompt"": {modifiedJsonString}
+                ""prompt"": {modifiedJsonString},
+                ""client_id"": ""{m_comfyClientId}""
             }}";
 
 
@@ -711,7 +780,8 @@ public class PicTextToImage : MonoBehaviour
     IEnumerator ConnectWebSocket(string baseUrl)
     {
         string wsUrl = baseUrl.Replace("http://", "ws://").Replace("https://", "wss://");
-        wsUrl = wsUrl + "/ws";
+        // Include client_id to receive executing events for our prompts
+        wsUrl = wsUrl + "/ws?clientId=" + m_comfyClientId;
         Uri uri;
 
         try
@@ -770,7 +840,8 @@ public class PicTextToImage : MonoBehaviour
 
     private IEnumerator ReceiveLoop()
     {
-        byte[] buffer = new byte[4096];
+        byte[] buffer = new byte[8192]; // Larger buffer for ComfyUI messages
+        var messageBuffer = new System.IO.MemoryStream();
 
         while (m_ws != null && m_ws.State == WebSocketState.Open)
         {
@@ -789,6 +860,7 @@ public class PicTextToImage : MonoBehaviour
                     m_cancellationTokenSource.Token.IsCancellationRequested ||
                     m_ws.State != WebSocketState.Open)
                 {
+                    messageBuffer.Dispose();
                     yield break;
                 }
                 yield return null;
@@ -812,17 +884,27 @@ public class PicTextToImage : MonoBehaviour
 
             if (result.MessageType == WebSocketMessageType.Text)
             {
-                string message = System.Text.Encoding.UTF8.GetString(buffer, 0, result.Count);
-                if (!string.IsNullOrEmpty(message))
+                // Accumulate message parts for multi-part messages
+                messageBuffer.Write(buffer, 0, result.Count);
+                
+                // Only process when we have the complete message
+                if (result.EndOfMessage)
                 {
-                    try
+                    string message = System.Text.Encoding.UTF8.GetString(messageBuffer.ToArray());
+                    messageBuffer.SetLength(0); // Reset buffer for next message
+                    
+                    if (!string.IsNullOrEmpty(message))
                     {
                         ProcessWebSocketMessage(message);
                     }
-                    catch (Exception e)
-                    {
-                        Debug.LogError($"Error processing WebSocket message: {e.Message}");
-                    }
+                }
+            }
+            else if (result.MessageType == WebSocketMessageType.Binary)
+            {
+                // Skip binary messages (preview images, etc.) - just clear buffer if multi-part
+                if (result.EndOfMessage)
+                {
+                    messageBuffer.SetLength(0);
                 }
             }
             else if (result.MessageType == WebSocketMessageType.Close)
@@ -831,6 +913,8 @@ public class PicTextToImage : MonoBehaviour
                 break;
             }
         }
+
+        messageBuffer.Dispose();
 
         // Cleanup
         if (m_ws != null && m_ws.State == WebSocketState.Open)
@@ -845,39 +929,145 @@ public class PicTextToImage : MonoBehaviour
             return;
         }
 
+        // Skip messages that clearly aren't JSON (binary data, etc.)
+        string trimmed = message.TrimStart();
+        if (trimmed.Length == 0 || (trimmed[0] != '{' && trimmed[0] != '['))
+        {
+            // Not JSON - likely binary preview data, silently ignore
+            return;
+        }
+
+        JSONNode data = null;
         try
         {
-            JSONNode data = JSON.Parse(message);
+            data = JSON.Parse(message);
+        }
+        catch
+        {
+            // Silently ignore JSON parse errors - ComfyUI sometimes sends malformed messages
+            return;
+        }
 
-            if (data == null)
-            {
-                Debug.LogWarning("Failed to parse WebSocket message as JSON");
-                return;
-            }
+        if (data == null)
+        {
+            return;
+        }
 
-            // Check for progress update events
-            if (data.HasKey("type") && data["type"] == "progress")
+        try
+        {
+            // Get the message type
+            string msgType = data.HasKey("type") ? data["type"].Value : "";
+            
+            switch (msgType)
             {
-                if (data.HasKey("data") && data["data"].HasKey("value"))
-                {
-                    float progress = data["data"]["value"].AsFloat;
-                    string progressText = (progress % 1 == 0) ? progress.ToString("F0") : progress.ToString("F1");
-                    SetStatusAdditionalMessage($"Step {progressText} of {m_totalComfySteps}");
-                }
-            }
-            // Also check for execution status
-            else if (data.HasKey("type") && data["type"] == "executing")
-            {
-                if (data.HasKey("data") && data["data"].HasKey("node"))
-                {
-                    string nodeId = data["data"]["node"];
-                    SetStatusAdditionalMessage($"Processing node {nodeId}...");
-                }
+                case "progress":
+                    // Step progress: {"type": "progress", "data": {"value": 5, "max": 20, "prompt_id": "..."}}
+                    if (data.HasKey("data"))
+                    {
+                        var progressData = data["data"];
+                        int value = progressData.HasKey("value") ? progressData["value"].AsInt : 0;
+                        int max = progressData.HasKey("max") ? progressData["max"].AsInt : m_totalComfySteps;
+                        
+                        // Show step progress with current node name if available
+                        string stepText = max > 0 ? $"Step {value}/{max}" : $"Step {value}";
+                        if (!string.IsNullOrEmpty(m_currentExecutingNode))
+                        {
+                            SetStatusAdditionalMessage($"{m_currentExecutingNode}\n{stepText}");
+                        }
+                        else
+                        {
+                            SetStatusAdditionalMessage(stepText);
+                        }
+                    }
+                    break;
+
+                case "executing":
+                    // Node executing: {"type": "executing", "data": {"node": "123", "prompt_id": "..."}}
+                    if (data.HasKey("data"))
+                    {
+                        var execData = data["data"];
+                        if (execData.HasKey("node") && !execData["node"].IsNull)
+                        {
+                            string nodeId = execData["node"].Value;
+                            if (!string.IsNullOrEmpty(nodeId))
+                            {
+                                m_currentExecutingNode = GetNodeDisplayName(nodeId);
+                                SetStatusAdditionalMessage(m_currentExecutingNode);
+                            }
+                        }
+                        else
+                        {
+                            // null node means execution finished
+                            m_currentExecutingNode = "";
+                            SetStatusAdditionalMessage("Finishing...");
+                        }
+                    }
+                    break;
+
+                case "executed":
+                    // Node completed - we don't need to show "done" for each node,
+                    // the "executing" message for the next node is more useful
+                    break;
+
+                case "execution_start":
+                    // Workflow started
+                    SetStatusAdditionalMessage("Starting...");
+                    break;
+
+                case "execution_cached":
+                    // Using cached result
+                    if (data.HasKey("data") && data["data"].HasKey("nodes"))
+                    {
+                        int cachedCount = data["data"]["nodes"].Count;
+                        if (cachedCount > 0)
+                        {
+                            SetStatusAdditionalMessage($"Using {cachedCount} cached");
+                        }
+                    }
+                    break;
+
+                case "execution_error":
+                    // Error during execution
+                    string errorMsg = "Execution error";
+                    if (data.HasKey("data") && data["data"].HasKey("exception_message"))
+                    {
+                        errorMsg = data["data"]["exception_message"].Value;
+                    }
+                    SetStatusAdditionalMessage($"Error: {errorMsg}");
+                    RTConsole.Log($"ComfyUI execution error: {errorMsg}");
+                    break;
+
+                case "status":
+                    // Queue status: {"type": "status", "data": {"status": {"exec_info": {"queue_remaining": 0}}}}
+                    if (data.HasKey("data") && data["data"].HasKey("status"))
+                    {
+                        var status = data["data"]["status"];
+                        if (status.HasKey("exec_info") && status["exec_info"].HasKey("queue_remaining"))
+                        {
+                            int remaining = status["exec_info"]["queue_remaining"].AsInt;
+                            if (remaining > 0)
+                            {
+                                SetStatusAdditionalMessage($"Queue: {remaining}");
+                            }
+                        }
+                    }
+                    break;
+
+                // Other message types we don't need to handle specifically
+                case "crystools.monitor":
+                case "manager-terminal-feedback":
+                    // Extension messages - ignore silently
+                    break;
+
+                default:
+                    // Unknown message type - ignore silently
+                    break;
             }
         }
         catch (Exception e)
         {
-            Debug.LogError($"Error processing WebSocket message: {e.Message}");
+            // Log unexpected errors during message handling (not parsing)
+            Debug.LogWarning($"Error handling WebSocket message type: {e.Message}");
         }
     }
     IEnumerator GetComfyUIHistory(string url)
