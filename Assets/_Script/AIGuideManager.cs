@@ -212,6 +212,17 @@ public class AIGuideManager : MonoBehaviour
 
     public void OnLLMContinueButton()
     {
+        // Check if we're resuming after a "stop after" limit was reached
+        // If so, reset the counter so we can do another full set of generations
+        int stopAfter;
+        bool parseSuccess = int.TryParse(_stopAfterTextInput.text, out stopAfter);
+        if (parseSuccess && stopAfter > 0 && m_llmGenerationCounter >= stopAfter)
+        {
+            // We're resuming after a stop - reset the counter for a fresh run
+            m_llmGenerationCounter = 0;
+            RTConsole.Log("Resuming after stop-after limit - resetting generation counter");
+        }
+
         _inputPromptOutput.text += "\n\n";
         accumulatedText += "\n\n";
         m_totalPromptReceived += "\n\n";
@@ -240,9 +251,12 @@ public class AIGuideManager : MonoBehaviour
         SetStartTextOnStartButton(false);
        // RTQuickMessageManager.Get().ShowMessage("Contacting LLM...", 1);
 
-        //Convert _stopAfterTextInput to an int
-        int stopAfter;
-        bool parseSuccess = int.TryParse(_stopAfterTextInput.text, out stopAfter);
+        //Convert _stopAfterTextInput to an int (re-parse if needed)
+        if (!parseSuccess)
+        {
+            parseSuccess = int.TryParse(_stopAfterTextInput.text, out stopAfter);
+        }
+        
         if (parseSuccess)
         {
             if (m_llmGenerationCounter >= stopAfter)
@@ -1704,10 +1718,16 @@ public class AIGuideManager : MonoBehaviour
 
         _autoContinueTextInput.text = m_extractor.AutoContinueText;
 
-        GameLogic.Get().SetPrompt(m_extractor.PrependPrompt);
-        GameLogic.Get().SetNegativePrompt(m_extractor.NegativePrompt);
-        GameLogic.Get().SetComfyPrependPrompt(m_extractor.PrependComfyUIPrompt);
-        GameLogic.Get().SetComfyAppendPrompt(m_extractor.AppendComfyUIPrompt);
+        // Only set prompts if the preset actually specifies them (non-empty)
+        // This prevents erasing user's existing values when preset leaves them blank
+        if (!string.IsNullOrEmpty(m_extractor.PrependPrompt))
+            GameLogic.Get().SetPrompt(m_extractor.PrependPrompt);
+        if (!string.IsNullOrEmpty(m_extractor.NegativePrompt))
+            GameLogic.Get().SetNegativePrompt(m_extractor.NegativePrompt);
+        if (!string.IsNullOrEmpty(m_extractor.PrependComfyUIPrompt))
+            GameLogic.Get().SetComfyPrependPrompt(m_extractor.PrependComfyUIPrompt);
+        if (!string.IsNullOrEmpty(m_extractor.AppendComfyUIPrompt))
+            GameLogic.Get().SetComfyAppendPrompt(m_extractor.AppendComfyUIPrompt);
         m_AddBordersCheckbox.isOn = m_extractor.AddBorders;
         m_OverlayTextCheckbox.isOn = m_extractor.OverlayText;
         m_BoldCheckbox.isOn = m_extractor.UseBoldFont;
