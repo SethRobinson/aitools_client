@@ -1,6 +1,6 @@
 COMMAND_START|joblist
 command @copy|temp1|image|
-img2_to_img_qwen_edit_2509.json @upload|image1|input1| @upload|temp2|input2|
+img2_to_img_qwen_edit.json @upload|image1|input1| @upload|temp2|input2|
 COMMAND_END
 COMMAND_START|default_negative_prompt
 cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white

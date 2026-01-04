@@ -1,0 +1,14 @@
+COMMAND_START|joblist
+-low quality
+
+img_to_video_wan22_fast.json @upload|image1|input1| @replace|"width": 1280|"width": 640| @replace|"height": 720|"height": 640| @replace|"length": 81|"length" : 81|
+
+-high quality
+-img_to_video_wan22_fast.json @upload|image1|input1| @replace|"width": 1280|"width": 1280| @replace|"height": 720|"height": 720| @replace|"length": 81|"length": 81|
+COMMAND_END
+COMMAND_START|default_negative_prompt
+cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white
+COMMAND_END
+COMMAND_START|default_pre_prompt
+live action,
+COMMAND_END

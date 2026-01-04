@@ -3,6 +3,11 @@ COMMAND_START|joblist
 img_to_img_qwen_edit_fast.json @upload|temp1|input1|
 
 -img_to_img_qwen_edit.json @upload|temp1|input1|
+
+-high quality
+img_to_video_wan22_fast.json @upload|image1|input1| @replace|"width": 1280|"width": 1104| @replace|"height": 720|"height": 944| @replace|"length": 81|"length": 81|
+
+-img_to_video_wan22_fast.json @upload|image1|input1| @replace|"width": 1280|"width": 640| @replace|"height": 768|"height": 640| @replace|"length": 81|"length": 81|
 COMMAND_END
 COMMAND_START|default_negative_prompt
 cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white

@@ -1,3 +1,13 @@
 COMMAND_START|joblist
-text_to_img_qwen_fp8.json @replace|"width": 1328|"width": 1328| @replace|"height": 1328|"height": 1328| @replace|"steps": 20|"steps": 20|
+-slow version, higher quality
+-text_to_img_qwen.json @replace|"width": 1328|"width": 1328| @replace|"height": 1328|"height": 1328| @replace|"steps": 20|"steps": 20|
+
+-fast version, lower quality
+text_to_img_qwen_fast.json @replace|"width": 1328|"width": 1328| @replace|"height": 1328|"height": 1328| @replace|"steps": 20|"steps": 20|
+COMMAND_END
+COMMAND_START|default_negative_prompt
+低分辨率，低画质，肢体畸形，手指畸形，画面过饱和，蜡像感，人脸无细节，过度光滑，画面具有AI感。构图混乱。文字模糊，扭曲
+COMMAND_END
+COMMAND_START|default_pre_prompt
+shot with a Bessa Cinestill. Analog film, high ISO, medium dynamic range,
 COMMAND_END

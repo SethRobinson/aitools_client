@@ -516,31 +516,19 @@ public class PicTextToImage : MonoBehaviour
             }
         }
         //any custom replace commands in the job._data?
-        if (m_scheduledEvent.m_picJob._data.Count > 0)
+        for (int i=0; i < m_scheduledEvent.m_picJob._data.Count; i++)
         {
-           for (int i=0; i < m_scheduledEvent.m_picJob._data.Count; i++)
+            if (m_scheduledEvent.m_picJob._data[i]._name.ToLower() == "replace")
             {
-                if (m_scheduledEvent.m_picJob._data[i]._name.ToLower() == "replace")
+                // @replace is for raw JSON string replacement
+                string findStr = m_scheduledEvent.m_picJob._data[i]._parm1;
+                string replaceStr = m_scheduledEvent.m_picJob._data[i]._parm2;
+                if (!ReplaceInString(ref comfyUIGraphJSon, findStr, replaceStr))
                 {
-                    ReplaceInString(ref comfyUIGraphJSon, m_scheduledEvent.m_picJob._data[i]._parm1,
-                        JSONNode.Escape(m_scheduledEvent.m_picJob._data[i]._parm2));
-                }
-                else if (m_scheduledEvent.m_picJob._data[i]._name.ToLower() == "comment")
-                {
-
-                }
-                else if (m_scheduledEvent.m_picJob._data[i]._name.ToLower() == "copy")
-                {
-                    //already done earlier
-                  //  DoVarCopy(m_scheduledEvent.m_picJob._data[i]._parm1, m_scheduledEvent.m_picJob._data[i]._parm2);
-                }
-                else
-                {
-                   // RTConsole.Log("Unknown command in _data: " + m_scheduledEvent.m_picJob._data[i]._name);
+                    RTConsole.Log($"Warning: @replace could not find '{findStr}' in workflow");
                 }
             }
-
-            ReplaceInString(ref comfyUIGraphJSon, "<AITOOLS_PROMPT>", JSONNode.Escape(m_scheduledEvent.m_picJob._requestedPrompt));
+            // "comment" and "copy" are handled elsewhere, ignore here
         }
 
         //Replace all instances of <AITOOLS_PROMPT> with m_prompt in comfyUIGraphJSon

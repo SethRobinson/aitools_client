@@ -1,6 +1,0 @@
-COMMAND_START|joblist
-img_to_video_wan22_fast.json @upload|image1|input1| @replace|"width": 480|"width": 640| @replace|"height": 480|"height": 640|
-COMMAND_END
-COMMAND_START|default_pre_prompt
-live action,
-COMMAND_END
