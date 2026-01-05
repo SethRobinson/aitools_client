@@ -14,6 +14,7 @@ using UnityEngine.EventSystems;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text;
 
 
 public class GameLogic : MonoBehaviour
@@ -472,55 +473,117 @@ public class GameLogic : MonoBehaviour
             joblist.Add(job);
         }
     }
-    public List<String> GetPicJobListAsListOfStrings(string jobtext)
+    // Commands that support multi-line block syntax (command on one line, content on following lines until @end)
+    private static readonly string[] MultiLineBlockCommands = new string[]
+    {
+        "command @llm_prompt_add_from_user",
+        "command @llm_prompt_add_from_assistant",
+        "command @llm_prompt_add_to_last_interaction",
+        "command @llm_prompt_set_base_prompt"
+    };
+
+    /// <summary>
+    /// Checks if a line is a multi-line block command (no parameters, content follows on next lines until @end)
+    /// </summary>
+    private bool IsMultiLineBlockCommand(string trimmedLine)
+    {
+        string lineLower = trimmedLine.ToLower();
+        foreach (string cmd in MultiLineBlockCommands)
+        {
+            // Match exact command without any trailing | (which would indicate single-line mode)
+            if (lineLower == cmd || (lineLower.StartsWith(cmd) && !lineLower.Contains("|")))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Processes lines array handling multi-line block commands that use @end terminator
+    /// </summary>
+    private List<String> ProcessLinesWithMultiLineSupport(string[] lines)
     {
         List<String> list = new List<String>();
-        string[] lines = jobtext.Split(new string[] { "\r\n", "\n" }, StringSplitOptions.None);
-        foreach (string line in lines)
+        
+        for (int i = 0; i < lines.Length; i++)
         {
-            string trimmedItem = line.Trim();
-            if (trimmedItem.Length > 0 && trimmedItem[0] != '-' && trimmedItem[0] != '/')
+            string trimmedItem = lines[i].Trim();
+            
+            // Skip empty lines and comments
+            if (trimmedItem.Length == 0 || trimmedItem[0] == '-' || trimmedItem[0] == '/')
             {
+                continue;
+            }
+            
+            // Check if this is a multi-line block command
+            if (IsMultiLineBlockCommand(trimmedItem))
+            {
+                // Accumulate lines until @end is found
+                StringBuilder contentBuilder = new StringBuilder();
+                i++; // Move to next line (start of content)
+                bool foundEnd = false;
+                
+                while (i < lines.Length)
+                {
+                    string contentLine = lines[i];
+                    string contentTrimmed = contentLine.Trim();
+                    
+                    // Check for @end terminator
+                    if (contentTrimmed.ToLower() == "@end")
+                    {
+                        foundEnd = true;
+                        break;
+                    }
+                    
+                    // Add line to content (preserve original line, not trimmed, but we'll trim trailing whitespace)
+                    if (contentBuilder.Length > 0)
+                    {
+                        contentBuilder.Append("\n");
+                    }
+                    contentBuilder.Append(contentLine.TrimEnd());
+                    i++;
+                }
+                
+                if (!foundEnd)
+                {
+                    RTConsole.Log("Warning: Multi-line command missing @end terminator: " + trimmedItem);
+                }
+                
+                // Format as single-line command with pipe-delimited content
+                string finalCommand = trimmedItem + "|" + contentBuilder.ToString() + "|";
+                list.Add(finalCommand);
+            }
+            else
+            {
+                // Regular single-line command
                 list.Add(trimmedItem);
             }
         }
+        
         return list;
+    }
+
+    public List<String> GetPicJobListAsListOfStrings(string jobtext)
+    {
+        string[] lines = jobtext.Split(new string[] { "\r\n", "\n" }, StringSplitOptions.None);
+        return ProcessLinesWithMultiLineSupport(lines);
     }
 
     public List<String> GetPicJobListAsListOfStrings()
     {
-        List<String> list = new List<String>();
         string[] lines = m_jobListInputField.text.Split(new string[] { "\r\n", "\n" }, StringSplitOptions.None);
-        foreach (string line in lines)
-        {
-            string trimmedItem = line.Trim();
-            if (trimmedItem.Length > 0 && trimmedItem[0] != '-' && trimmedItem[0] != '/')
-            {
-                list.Add(trimmedItem);
-            }
-        }
-        return list;
+        return ProcessLinesWithMultiLineSupport(lines);
     }
 
     public List<String> GetTempPicJobListAsListOfStrings(string presetName)
     {
-
         //first, we need to load this into our temp extractor using the preset manager
         PresetManager.Get().LoadPresetAndApply(presetName, PresetManager.Get().GetTempPreset(), false);
 
-        List<String> list = new List<String>();
         string jobList = PresetManager.Get().GetTempPreset().JobList ?? string.Empty;
         string[] lines = jobList.Split(new string[] { "\r\n", "\n" }, StringSplitOptions.None);
-        foreach (string line in lines)
-        {
-            string trimmedItem = line.Trim();
-            if (trimmedItem.Length > 0 && trimmedItem[0] != '-' && trimmedItem[0] != '/')
-            {
-                list.Add(trimmedItem);
-            }
-        }
-        return list;
-      
+        return ProcessLinesWithMultiLineSupport(lines);
     }
     public void SetJobList(string joblist)
     {

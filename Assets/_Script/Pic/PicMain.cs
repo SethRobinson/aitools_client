@@ -2269,6 +2269,13 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         {
             RTConsole.Log("parse_llm_prompts: No SET_PROMPT tags found, using entire reply as prompt_1");
         }
+        
+        // Backward compatibility: set main _requestedPrompt to first parsed prompt
+        // so workflows using <AITOOLS_PROMPT> (instead of <AITOOLS_PROMPT_1>) will still work
+        if (!string.IsNullOrEmpty(parsedPrompts[0]))
+        {
+            job._requestedPrompt = parsedPrompts[0];
+        }
     }
 
     string ConvertVarToText(ref PicJob job, string source)

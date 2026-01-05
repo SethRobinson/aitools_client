@@ -122,12 +122,28 @@ Example: `img_to_img.json @copy|prompt|segmentation_prompt| @resize_if_larger|x|
 | `@fill_mask_if_blank` | (none) | Fills the alpha mask if empty |
 | `@no_undo` | (none) | Disables undo for this operation |
 | `@llm_prompt_reset` | (none) | Reset LLM conversation history |
-| `@llm_prompt_set_base_prompt` | `text\|` | Set base system prompt for LLM |
-| `@llm_prompt_add_from_user` | `text\|` | Add user message to LLM conversation |
-| `@llm_prompt_add_from_assistant` | `text\|` | Add assistant message to LLM conversation |
+| `@llm_prompt_set_base_prompt` | `text\|` or multi-line | Set base system prompt for LLM |
+| `@llm_prompt_add_from_user` | `text\|` or multi-line | Add user message to LLM conversation |
+| `@llm_prompt_add_from_assistant` | `text\|` or multi-line | Add assistant message to LLM conversation |
 | `@llm_prompt_pop_first` | (none) | Remove first interaction from history |
-| `@llm_prompt_add_to_last_interaction` | `text\|` | Append text to last message |
+| `@llm_prompt_add_to_last_interaction` | `text\|` or multi-line | Append text to last message |
 | `@Comment` | `text\|` | Human-readable comment (ignored by parser) |
+
+### Multi-line Block Syntax
+
+The LLM prompt commands above support multi-line text using block syntax. Instead of putting text on the same line with pipes, put the command alone and the content on following lines, ending with `@end`:
+
+```
+command @llm_prompt_add_from_user
+Format your response as:
+SET_PROMPT1: [first 5 seconds description]
+SET_PROMPT2: [seconds 5-10 description]
+SET_PROMPT3: [seconds 10-15 description]
+SET_PROMPT4: [seconds 15-20 description]
+@end
+```
+
+Single-line syntax still works: `command @llm_prompt_add_from_user|short text|`
 
 ## Variable Names (for @copy/@add)
 
