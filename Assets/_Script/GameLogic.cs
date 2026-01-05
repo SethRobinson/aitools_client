@@ -878,7 +878,7 @@ public class GameLogic : MonoBehaviour
     public Queue<GTPChatLine> PrepareLLMLinesForSending(Queue<GTPChatLine> lines)
     {
 
-        if (GenerateSettingsPanel.Get().m_stripThinkTagsToggle.isOn)
+        if (GenerateSettingsPanel.GetStripThinkTags())
         {
             lines = OpenAITextCompletionManager.RemoveThinkTags(lines);
         }

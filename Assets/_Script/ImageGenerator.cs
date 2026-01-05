@@ -176,12 +176,7 @@ public class ImageGenerator : MonoBehaviour
     }
     public void OnClickedGenerateSettingsButton()
     {
-        const string panelName = "GenerateSettingsPanel";
-
-        var existing = RTUtil.FindIncludingInactive(panelName);
-        existing.GetComponent<GenerateSettingsPanel>().ToggleWindow();
-
-        existing.name = panelName;
+        GenerateSettingsPanel.Toggle();
         Debug.Log("Clicked OnClickedGenerateSettingsButton");
     }
 

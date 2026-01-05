@@ -2529,7 +2529,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         }
         
         // Respect the "Strip <think> tags" toggle setting (same as AdventureText)
-        if (GenerateSettingsPanel.Get().m_stripThinkTagsToggle.isOn)
+        if (GenerateSettingsPanel.GetStripThinkTags())
         {
             if (hasThinkingContent)
             {
