@@ -334,6 +334,9 @@ public class AIGuideManager : MonoBehaviour
             case LLMProvider.Gemini:
                 SpawnGeminiRequest(lines, activeSettings);
                 break;
+            case LLMProvider.OpenAICompatible:
+                SpawnOpenAICompatibleRequest(lines, activeSettings);
+                break;
         }
 
         m_bTalkingToLLM = true;
@@ -550,6 +553,28 @@ public class AIGuideManager : MonoBehaviour
         string json = _geminiTextCompletionManager.BuildChatCompleteJSON(lines, m_max_tokens, m_extractor.Temperature, model, true, enableThinking);
         RTDB db = new RTDB();
         _geminiTextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
+    }
+
+    private void SpawnOpenAICompatibleRequest(Queue<GTPChatLine> lines, LLMProviderSettings activeSettings = null)
+    {
+        var mgr = LLMSettingsManager.Get();
+        var settings = activeSettings ?? mgr?.GetProviderSettings(LLMProvider.OpenAICompatible);
+        string serverAddress = settings?.endpoint ?? "";
+        string apiKey = settings?.apiKey ?? "";
+        string model = settings?.selectedModel ?? "";
+
+        // Build endpoint URL for OpenAI compatible server
+        string endpoint = serverAddress.TrimEnd('/') + "/v1/chat/completions";
+        
+        RTConsole.Log($"Contacting OpenAI Compatible server at {endpoint} with model {model}");
+
+        // Normalize messages for strict role alternation (required by models like Mistral)
+        var normalizedLines = OpenAITextCompletionManager.NormalizeForStrictAlternation(lines);
+
+        // Use OpenAI manager with custom endpoint - it handles the standard OpenAI format
+        string json = _openAITextCompletionManager.BuildChatCompleteJSON(normalizedLines, m_max_tokens, m_extractor.Temperature, model, true);
+        RTDB db = new RTDB();
+        _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnGTP4CompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
     }
 
     bool IsRequestActive()

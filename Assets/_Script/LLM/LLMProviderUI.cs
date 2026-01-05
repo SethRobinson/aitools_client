@@ -454,6 +454,7 @@ public class LLMProviderUI
             LLMProvider.LlamaCpp => "llama.cpp",
             LLMProvider.Ollama => "Ollama",
             LLMProvider.Gemini => "Gemini",
+            LLMProvider.OpenAICompatible => "OpenAI Compatible",
             _ => _provider.ToString()
         };
     }

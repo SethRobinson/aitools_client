@@ -2,6 +2,7 @@ using SimpleJSON;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Text;
 using UnityEngine;
 using UnityEngine.Networking;
 using System.IO;
@@ -105,6 +106,73 @@ public class OpenAITextCompletionManager : MonoBehaviour
         // Strip bold tags; extendable for other TMP tags if needed.
         line = Regex.Replace(line, @"</?b>", "", RegexOptions.IgnoreCase);
         return line;
+    }
+
+    /// <summary>
+    /// Normalizes chat messages for OpenAI-compatible servers that require strict role alternation.
+    /// - Consolidates all system messages into a single user message at the start
+    /// - Merges consecutive same-role messages
+    /// - Ensures conversation starts with "user" role
+    /// This is needed for models like Mistral that require strict user/assistant/user/assistant alternation.
+    /// </summary>
+    public static Queue<GTPChatLine> NormalizeForStrictAlternation(Queue<GTPChatLine> lines)
+    {
+        if (lines == null || lines.Count == 0)
+            return lines;
+
+        List<GTPChatLine> result = new List<GTPChatLine>();
+        StringBuilder systemContent = new StringBuilder();
+        
+        // First pass: collect all system messages and separate user/assistant messages
+        List<GTPChatLine> nonSystemMessages = new List<GTPChatLine>();
+        foreach (var line in lines)
+        {
+            if (line._role == "system")
+            {
+                if (systemContent.Length > 0)
+                    systemContent.Append("\n\n");
+                systemContent.Append(line._content);
+            }
+            else
+            {
+                nonSystemMessages.Add(line);
+            }
+        }
+        
+        // If we have system content, prepend it as a user message
+        if (systemContent.Length > 0)
+        {
+            result.Add(new GTPChatLine("user", systemContent.ToString()));
+        }
+        
+        // Second pass: merge consecutive same-role messages
+        foreach (var line in nonSystemMessages)
+        {
+            if (result.Count > 0 && result[result.Count - 1]._role == line._role)
+            {
+                // Merge with previous message of same role
+                result[result.Count - 1]._content += "\n\n" + line._content;
+            }
+            else
+            {
+                result.Add(new GTPChatLine(line._role, line._content));
+            }
+        }
+        
+        // Ensure we have at least one user message
+        if (result.Count == 0)
+        {
+            result.Add(new GTPChatLine("user", "Please proceed."));
+        }
+        
+        // If first message isn't user, we need to add a placeholder or shift
+        // (This shouldn't happen normally, but just in case)
+        if (result[0]._role != "user")
+        {
+            result.Insert(0, new GTPChatLine("user", "Please respond to the following:"));
+        }
+        
+        return new Queue<GTPChatLine>(result);
     }
 
     public static Queue<GTPChatLine> RemoveTMPTags(Queue<GTPChatLine> lines)

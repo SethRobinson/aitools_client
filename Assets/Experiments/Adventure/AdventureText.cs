@@ -1225,6 +1225,29 @@ public class AdventureText : MonoBehaviour
                     SetLLMActive(true);
                 }
                 break;
+
+            case LLMProvider.OpenAICompatible:
+                {
+                    var mgr = LLMSettingsManager.Get();
+                    var settings = activeSettings ?? mgr?.GetProviderSettings(LLMProvider.OpenAICompatible);
+                    string serverAddress = settings?.endpoint ?? "";
+                    string apiKey = settings?.apiKey ?? "";
+                    string model = settings?.selectedModel ?? "";
+                    
+                    // Build endpoint URL for OpenAI compatible server
+                    string endpoint = serverAddress.TrimEnd('/') + "/v1/chat/completions";
+                    
+                    RTConsole.Log($"Adventure: Contacting OpenAI Compatible server at {endpoint} with model {model}");
+                    
+                    // Normalize messages for strict role alternation (required by models like Mistral)
+                    var normalizedLines = OpenAITextCompletionManager.NormalizeForStrictAlternation(lines);
+                    
+                    // Use OpenAI manager with custom endpoint - it handles the standard OpenAI format
+                    string json = _openAITextCompletionManager.BuildChatCompleteJSON(normalizedLines, 4096, AdventureLogic.Get().GetExtractor().Temperature, model, true);
+                    _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
+                    SetLLMActive(true);
+                }
+                break;
         }
     }
 

@@ -33,6 +33,7 @@ public class LLMSettingsPanel : MonoBehaviour
     private LLMProviderUI _llamaCppUI;
     private LLMProviderUI _ollamaUI;
     private LLMProviderUI _geminiUI;
+    private LLMProviderUI _openAICompatibleUI;
 
     private const float PANEL_WIDTH = 640f;
     private const float PANEL_HEIGHT = 620f; // Increased to fit instance list
@@ -798,6 +799,11 @@ public class LLMSettingsPanel : MonoBehaviour
         _geminiUI = new LLMProviderUI(LLMProvider.Gemini, _font, BuildTMPResources(), ApplyFontAndColor);
         _geminiUI.Build(content.transform, _workingSettings.gemini, false);
 
+        _openAICompatibleUI = new LLMProviderUI(LLMProvider.OpenAICompatible, _font, BuildTMPResources(), ApplyFontAndColor);
+        _openAICompatibleUI.Build(content.transform, _workingSettings.openAICompatible, true);
+        if (_openAICompatibleUI.refreshModelsButton != null)
+            _openAICompatibleUI.refreshModelsButton.onClick.AddListener(OnRefreshOpenAICompatibleModels);
+
         UpdateVisibleProvider();
         
         // Select the first instance if any
@@ -1043,6 +1049,10 @@ public class LLMSettingsPanel : MonoBehaviour
             {
                 OnRefreshOllamaModels();
             }
+            else if (instance.providerType == LLMProvider.OpenAICompatible && !string.IsNullOrEmpty(instance.settings.endpoint))
+            {
+                AutoRefreshOpenAICompatibleModels();
+            }
         }
     }
     
@@ -1078,6 +1088,9 @@ public class LLMSettingsPanel : MonoBehaviour
             case LLMProvider.Gemini:
                 _workingSettings.gemini = instance.settings.Clone();
                 break;
+            case LLMProvider.OpenAICompatible:
+                _workingSettings.openAICompatible = instance.settings.Clone();
+                break;
         }
         _workingSettings.activeProvider = instance.providerType;
     }
@@ -1103,6 +1116,9 @@ public class LLMSettingsPanel : MonoBehaviour
             case LLMProvider.Gemini:
                 _geminiUI?.UpdateFromSettings(instance.settings);
                 break;
+            case LLMProvider.OpenAICompatible:
+                _openAICompatibleUI?.UpdateFromSettings(instance.settings);
+                break;
         }
     }
     
@@ -1113,6 +1129,7 @@ public class LLMSettingsPanel : MonoBehaviour
         if (_llamaCppUI?.sectionRoot != null) _llamaCppUI.sectionRoot.SetActive(provider == LLMProvider.LlamaCpp);
         if (_ollamaUI?.sectionRoot != null) _ollamaUI.sectionRoot.SetActive(provider == LLMProvider.Ollama);
         if (_geminiUI?.sectionRoot != null) _geminiUI.sectionRoot.SetActive(provider == LLMProvider.Gemini);
+        if (_openAICompatibleUI?.sectionRoot != null) _openAICompatibleUI.sectionRoot.SetActive(provider == LLMProvider.OpenAICompatible);
     }
     
     private void HideAllProviderUIs()
@@ -1122,6 +1139,7 @@ public class LLMSettingsPanel : MonoBehaviour
         if (_llamaCppUI?.sectionRoot != null) _llamaCppUI.sectionRoot.SetActive(false);
         if (_ollamaUI?.sectionRoot != null) _ollamaUI.sectionRoot.SetActive(false);
         if (_geminiUI?.sectionRoot != null) _geminiUI.sectionRoot.SetActive(false);
+        if (_openAICompatibleUI?.sectionRoot != null) _openAICompatibleUI.sectionRoot.SetActive(false);
     }
 
     private void CreateActiveProviderRow(Transform parent)
@@ -1178,6 +1196,7 @@ public class LLMSettingsPanel : MonoBehaviour
             new TMP_Dropdown.OptionData("llama.cpp"),
             new TMP_Dropdown.OptionData("Ollama"),
             new TMP_Dropdown.OptionData("Gemini"),
+            new TMP_Dropdown.OptionData("OpenAI Compatible"),
         };
         _activeProviderDropdown.onValueChanged.AddListener(OnProviderChanged);
 
@@ -1185,7 +1204,7 @@ public class LLMSettingsPanel : MonoBehaviour
         var template = _activeProviderDropdown.template;
         if (template != null)
         {
-            template.sizeDelta = new Vector2(template.sizeDelta.x, 160f);
+            template.sizeDelta = new Vector2(template.sizeDelta.x, 190f);
         }
 
         // Ensure caption looks right
@@ -1235,6 +1254,9 @@ public class LLMSettingsPanel : MonoBehaviour
                     case LLMProvider.Gemini:
                         instance.name = "Gemini";
                         break;
+                    case LLMProvider.OpenAICompatible:
+                        instance.name = "OpenAI Compatible";
+                        break;
                 }
                 
                 // Reset settings for the new provider type
@@ -1270,6 +1292,7 @@ public class LLMSettingsPanel : MonoBehaviour
         if (_llamaCppUI?.sectionRoot != null) _llamaCppUI.sectionRoot.SetActive(active == LLMProvider.LlamaCpp);
         if (_ollamaUI?.sectionRoot != null) _ollamaUI.sectionRoot.SetActive(active == LLMProvider.Ollama);
         if (_geminiUI?.sectionRoot != null) _geminiUI.sectionRoot.SetActive(active == LLMProvider.Gemini);
+        if (_openAICompatibleUI?.sectionRoot != null) _openAICompatibleUI.sectionRoot.SetActive(active == LLMProvider.OpenAICompatible);
     }
 
     private void OnRefreshOllamaModels()
@@ -1352,6 +1375,91 @@ public class LLMSettingsPanel : MonoBehaviour
     {
         // When the model changes in the dropdown, fetch the model info
         FetchOllamaModelInfo(null, modelName);
+    }
+
+    private void OnRefreshOpenAICompatibleModels()
+    {
+        RefreshOpenAICompatibleModelsInternal(true);
+    }
+
+    private void AutoRefreshOpenAICompatibleModels()
+    {
+        RefreshOpenAICompatibleModelsInternal(false);
+    }
+
+    private void RefreshOpenAICompatibleModelsInternal(bool showStartMessage)
+    {
+        string endpoint = _openAICompatibleUI.endpointInput != null ? _openAICompatibleUI.endpointInput.text : _workingSettings.openAICompatible.endpoint;
+        
+        if (string.IsNullOrEmpty(endpoint) || endpoint.Length < 5)
+        {
+            return; // No endpoint configured
+        }
+        
+        if (showStartMessage)
+        {
+            RTQuickMessageManager.Get().ShowMessage("Fetching models...");
+        }
+
+        // Use the OpenAI-compatible fetch which uses /v1/models (not /models like llama.cpp)
+        LlamaCppModelFetcher.FetchOpenAICompatibleModels(endpoint, (modelsInfo, error) =>
+        {
+            if (!string.IsNullOrEmpty(error))
+            {
+                if (showStartMessage)
+                {
+                    RTQuickMessageManager.Get().ShowMessage("Error: " + error);
+                }
+                return;
+            }
+
+            if (modelsInfo == null || modelsInfo.modelIds.Count == 0)
+            {
+                if (showStartMessage)
+                {
+                    RTQuickMessageManager.Get().ShowMessage("No models found");
+                }
+                return;
+            }
+
+            // Get model names (use modelNames if available, otherwise modelIds)
+            var modelList = modelsInfo.modelNames.Count > 0 ? modelsInfo.modelNames : modelsInfo.modelIds;
+            
+            // Update global settings with the models
+            _workingSettings.openAICompatible.availableModels = new List<string>(modelList);
+            
+            // Keep selected model if it's in the list, otherwise select first
+            if (string.IsNullOrEmpty(_workingSettings.openAICompatible.selectedModel) || 
+                !_workingSettings.openAICompatible.availableModels.Contains(_workingSettings.openAICompatible.selectedModel))
+            {
+                _workingSettings.openAICompatible.selectedModel = modelList[0];
+            }
+            
+            // Also update the selected instance's settings if it's an OpenAI Compatible instance
+            if (_selectedInstanceID >= 0 && _workingInstancesConfig != null)
+            {
+                var instance = _workingInstancesConfig.GetInstance(_selectedInstanceID);
+                if (instance != null && instance.providerType == LLMProvider.OpenAICompatible)
+                {
+                    instance.settings.availableModels = new List<string>(modelList);
+                    
+                    // Keep selected model if it's in the list, otherwise select first
+                    if (string.IsNullOrEmpty(instance.settings.selectedModel) || 
+                        !instance.settings.availableModels.Contains(instance.settings.selectedModel))
+                    {
+                        instance.settings.selectedModel = modelList[0];
+                    }
+                }
+            }
+            
+            // Update UI
+            _openAICompatibleUI.UpdateModelDropdown(_workingSettings.openAICompatible.availableModels, _workingSettings.openAICompatible.selectedModel);
+            
+            if (showStartMessage)
+            {
+                RTQuickMessageManager.Get().ShowMessage($"Found {modelList.Count} model(s)");
+            }
+        });
     }
 
     private void OnRefreshLlamaCppModel()
@@ -1475,6 +1583,9 @@ public class LLMSettingsPanel : MonoBehaviour
                     case LLMProvider.Gemini:
                         _geminiUI?.ApplyToSettings(instance.settings);
                         break;
+                    case LLMProvider.OpenAICompatible:
+                        _openAICompatibleUI?.ApplyToSettings(instance.settings);
+                        break;
                 }
             }
         }
@@ -1492,6 +1603,7 @@ public class LLMSettingsPanel : MonoBehaviour
         _llamaCppUI.ApplyToSettings(_workingSettings.llamaCpp);
         _ollamaUI.ApplyToSettings(_workingSettings.ollama);
         _geminiUI.ApplyToSettings(_workingSettings.gemini);
+        _openAICompatibleUI.ApplyToSettings(_workingSettings.openAICompatible);
 
         LLMSettingsManager.Get().ApplySettings(_workingSettings);
         if (GameLogic.Get() != null)
@@ -1542,6 +1654,7 @@ public class LLMSettingsPanel : MonoBehaviour
         _llamaCppUI?.UpdateFromSettings(_workingSettings.llamaCpp);
         _ollamaUI?.UpdateFromSettings(_workingSettings.ollama);
         _geminiUI?.UpdateFromSettings(_workingSettings.gemini);
+        _openAICompatibleUI?.UpdateFromSettings(_workingSettings.openAICompatible);
 
         UpdateVisibleProvider();
         

@@ -1709,6 +1709,8 @@ public string GetPrompt() { return m_prompt; }
                 return "Ollama";
             case LLMProvider.Gemini:
                 return "Gemini";
+            case LLMProvider.OpenAICompatible:
+                return "OpenAI Compatible";
             default:
                 return "";
         }

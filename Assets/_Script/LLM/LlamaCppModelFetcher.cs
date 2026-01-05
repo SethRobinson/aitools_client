@@ -406,5 +406,125 @@ public class LlamaCppModelFetcher : MonoBehaviour
     {
         FetchAll(baseUrl, onComplete);
     }
+
+    /// <summary>
+    /// Fetch models from an OpenAI-compatible server using /v1/models endpoint.
+    /// Used for MLX-LM, vLLM, LocalAI, LMStudio, etc.
+    /// </summary>
+    public static void FetchOpenAICompatibleModels(string baseUrl, Action<LlamaCppModelsInfo, string> onComplete)
+    {
+        GameObject go = new GameObject("OpenAICompatibleModelFetcher");
+        LlamaCppModelFetcher fetcher = go.AddComponent<LlamaCppModelFetcher>();
+        fetcher.FetchOpenAICompatible(baseUrl, onComplete);
+    }
+
+    /// <summary>
+    /// Fetch models from an OpenAI-compatible endpoint (/v1/models).
+    /// </summary>
+    public void FetchOpenAICompatible(string baseUrl, Action<LlamaCppModelsInfo, string> onComplete)
+    {
+        if (_isFetching)
+        {
+            onComplete?.Invoke(null, "Already fetching model info");
+            return;
+        }
+
+        _onCompleteMulti = onComplete;
+        _fetchMultiple = true;
+        _isFetching = true;
+
+        StartCoroutine(FetchOpenAICompatibleCoroutine(baseUrl));
+    }
+
+    private IEnumerator FetchOpenAICompatibleCoroutine(string baseUrl)
+    {
+        // Ensure the URL is properly formatted - use /v1/models for OpenAI-compatible servers
+        baseUrl = baseUrl.TrimEnd('/');
+        string url = baseUrl + "/v1/models";
+
+        RTConsole.Log("OpenAICompatibleModelFetcher: Fetching models from " + url);
+
+        using (UnityWebRequest request = UnityWebRequest.Get(url))
+        {
+            request.timeout = 10;
+
+            yield return request.SendWebRequest();
+
+            _isFetching = false;
+
+            if (request.result != UnityWebRequest.Result.Success)
+            {
+                string error = "Failed to fetch models: " + request.error;
+                Debug.LogWarning("OpenAICompatibleModelFetcher: " + error);
+                _onCompleteMulti?.Invoke(null, error);
+                Destroy(gameObject);
+                yield break;
+            }
+
+            try
+            {
+                string responseText = request.downloadHandler.text;
+                RTConsole.Log("OpenAICompatibleModelFetcher: Response: " + responseText);
+                
+                // Parse OpenAI-style response: {"object": "list", "data": [{"id": "model-name", ...}]}
+                LlamaCppModelsInfo modelsInfo = ParseOpenAIModelsResponse(responseText);
+                
+                if (modelsInfo != null && modelsInfo.modelIds.Count > 0)
+                {
+                    RTConsole.Log($"OpenAICompatibleModelFetcher: Found {modelsInfo.modelIds.Count} model(s)");
+                    _onCompleteMulti?.Invoke(modelsInfo, null);
+                }
+                else
+                {
+                    _onCompleteMulti?.Invoke(null, "No models found in response");
+                }
+            }
+            catch (Exception e)
+            {
+                string error = "Error parsing model response: " + e.Message;
+                Debug.LogWarning("OpenAICompatibleModelFetcher: " + error);
+                _onCompleteMulti?.Invoke(null, error);
+            }
+        }
+
+        Destroy(gameObject);
+    }
+
+    /// <summary>
+    /// Parse OpenAI-style /v1/models response.
+    /// Expected format: {"object": "list", "data": [{"id": "model-name", "object": "model", "created": 123}]}
+    /// </summary>
+    private LlamaCppModelsInfo ParseOpenAIModelsResponse(string json)
+    {
+        LlamaCppModelsInfo info = new LlamaCppModelsInfo();
+
+        JSONNode rootNode = JSON.Parse(json);
+        if (rootNode == null)
+        {
+            Debug.LogWarning("OpenAICompatibleModelFetcher: Failed to parse JSON response");
+            return null;
+        }
+
+        // OpenAI format uses "data" array with "id" field for model names
+        JSONArray dataArray = rootNode["data"]?.AsArray;
+        if (dataArray == null || dataArray.Count == 0)
+        {
+            Debug.LogWarning("OpenAICompatibleModelFetcher: No 'data' array in response");
+            return null;
+        }
+
+        foreach (JSONNode modelNode in dataArray)
+        {
+            if (modelNode == null) continue;
+            
+            string modelId = modelNode["id"]?.Value ?? "";
+            if (string.IsNullOrEmpty(modelId)) continue;
+            
+            info.modelIds.Add(modelId);
+            info.modelNames.Add(modelId); // Use ID as display name
+        }
+
+        return info;
+    }
 }
 

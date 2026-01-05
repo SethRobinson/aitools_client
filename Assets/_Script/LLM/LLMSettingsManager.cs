@@ -612,6 +612,9 @@ public class LLMSettingsManager : MonoBehaviour
             case LLMProvider.Gemini:
                 // Gemini uses its own API format, map to OpenAI for legacy compatibility
                 return LLM_Type.OpenAI_API;
+            case LLMProvider.OpenAICompatible:
+                // OpenAI Compatible uses OpenAI API format
+                return LLM_Type.OpenAI_API;
             default:
                 return LLM_Type.OpenAI_API;
         }
@@ -651,6 +654,14 @@ public class LLMSettingsManager : MonoBehaviour
             case LLMProvider.Gemini:
                 // Gemini endpoint is the base URL; full URL is built with model name by GeminiTextCompletionManager
                 return endpoint.TrimEnd('/');
+
+            case LLMProvider.OpenAICompatible:
+                // OpenAI Compatible uses /v1/chat/completions (standard OpenAI format)
+                if (!endpoint.EndsWith("/v1/chat/completions"))
+                {
+                    endpoint = endpoint.TrimEnd('/') + "/v1/chat/completions";
+                }
+                return endpoint;
 
             default:
                 return endpoint;
@@ -975,6 +986,13 @@ public class LLMSettingsManager : MonoBehaviour
             case LLMProvider.Gemini:
                 // Gemini endpoint is the base URL; full URL is built with model name by GeminiTextCompletionManager
                 return endpoint.TrimEnd('/');
+            case LLMProvider.OpenAICompatible:
+                // OpenAI Compatible uses /v1/chat/completions (standard OpenAI format)
+                if (!endpoint.EndsWith("/v1/chat/completions"))
+                {
+                    endpoint = endpoint.TrimEnd('/') + "/v1/chat/completions";
+                }
+                return endpoint;
             default:
                 return endpoint;
         }

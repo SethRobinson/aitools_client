@@ -11,7 +11,8 @@ public enum LLMProvider
     Anthropic = 1,
     LlamaCpp = 2,
     Ollama = 3,
-    Gemini = 4
+    Gemini = 4,
+    OpenAICompatible = 5
 }
 
 /// <summary>
@@ -156,6 +157,10 @@ public class LLMInstanceInfo
                     instance.settings.selectedModel = modelData.gemini.models[0];
                 instance.settings.enableThinking = true; // Gemini supports thinking mode
                 break;
+            case LLMProvider.OpenAICompatible:
+                instance.name = "OpenAI Compatible";
+                instance.settings.endpoint = "http://localhost:8080";
+                break;
         }
         
         return instance;
@@ -256,6 +261,7 @@ public class LLMSettings
     public LLMProviderSettings llamaCpp = new LLMProviderSettings();
     public LLMProviderSettings ollama = new LLMProviderSettings();
     public LLMProviderSettings gemini = new LLMProviderSettings();
+    public LLMProviderSettings openAICompatible = new LLMProviderSettings();
 
     /// <summary>
     /// Creates default settings with sensible defaults for each provider.
@@ -316,6 +322,16 @@ public class LLMSettings
             enableThinking = true // Gemini supports thinking mode
         };
 
+        // OpenAI Compatible defaults (for MLX-LM, vLLM, LocalAI, LMStudio, etc.)
+        settings.openAICompatible = new LLMProviderSettings
+        {
+            enabled = true,
+            apiKey = "",
+            endpoint = "http://localhost:8080",
+            selectedModel = "",
+            availableModels = new List<string>()
+        };
+
         return settings;
     }
 
@@ -336,6 +352,8 @@ public class LLMSettings
                 return ollama;
             case LLMProvider.Gemini:
                 return gemini;
+            case LLMProvider.OpenAICompatible:
+                return openAICompatible;
             default:
                 return openAI;
         }
@@ -361,7 +379,8 @@ public class LLMSettings
             anthropic = this.anthropic.Clone(),
             llamaCpp = this.llamaCpp.Clone(),
             ollama = this.ollama.Clone(),
-            gemini = this.gemini.Clone()
+            gemini = this.gemini.Clone(),
+            openAICompatible = this.openAICompatible.Clone()
         };
     }
 }
@@ -426,6 +445,9 @@ public class LLMInstancesConfig
                 break;
             case LLMProvider.Gemini:
                 instance.name = "Gemini";
+                break;
+            case LLMProvider.OpenAICompatible:
+                instance.name = "OpenAI Compatible";
                 break;
         }
         
