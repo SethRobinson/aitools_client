@@ -24,6 +24,8 @@ public class LLMSettingsPanel : MonoBehaviour
     private GameObject _jobModeRow;
     private TMP_InputField _maxConcurrentInput;
     private GameObject _maxConcurrentRow;
+    private TMP_InputField _displayNameInput;
+    private GameObject _displayNameRow;
 
     private RectTransform _mainPanel;
     private TMP_Dropdown _activeProviderDropdown;
@@ -769,6 +771,9 @@ public class LLMSettingsPanel : MonoBehaviour
         _instanceListUI.OnInstanceSelected += OnInstanceSelected;
         _instanceListUI.OnInstancesChanged += OnInstancesChanged;
         
+        // Display Name row (for selected instance)
+        CreateDisplayNameRow(content.transform);
+        
         // Job Mode row (for selected instance)
         CreateJobModeRow(content.transform);
         
@@ -810,6 +815,77 @@ public class LLMSettingsPanel : MonoBehaviour
         if (_workingInstancesConfig != null && _workingInstancesConfig.instances.Count > 0)
         {
             OnInstanceSelected(_workingInstancesConfig.instances[0].instanceID);
+        }
+    }
+    
+    private void CreateDisplayNameRow(Transform parent)
+    {
+        const float rowHeight = 36f;
+        const float labelWidth = 100f;
+        const float pad = 12f;
+
+        _displayNameRow = new GameObject("DisplayNameRow");
+        _displayNameRow.transform.SetParent(parent, false);
+        var rowImg = _displayNameRow.AddComponent<Image>();
+        ApplyUISprite(rowImg);
+        rowImg.color = RowBg;
+        var rowLE = _displayNameRow.AddComponent<LayoutElement>();
+        rowLE.preferredHeight = rowHeight;
+
+        // Label
+        var labelObj = new GameObject("Label");
+        labelObj.transform.SetParent(_displayNameRow.transform, false);
+        var labelRt = labelObj.AddComponent<RectTransform>();
+        labelRt.anchorMin = new Vector2(0, 0);
+        labelRt.anchorMax = new Vector2(0, 1);
+        labelRt.pivot = new Vector2(0, 0.5f);
+        labelRt.sizeDelta = new Vector2(labelWidth, 0);
+        labelRt.anchoredPosition = new Vector2(pad, 0);
+
+        var label = labelObj.AddComponent<TextMeshProUGUI>();
+        label.font = _font;
+        label.text = "Display Name:";
+        label.fontSize = 14;
+        label.color = TextDark;
+        label.alignment = TextAlignmentOptions.MidlineLeft;
+
+        // Input field
+        var inputGo = TMP_DefaultControls.CreateInputField(BuildTMPResources());
+        inputGo.name = "DisplayNameInput";
+        inputGo.transform.SetParent(_displayNameRow.transform, false);
+        ApplyFontAndColor(inputGo);
+
+        var inputRt = inputGo.GetComponent<RectTransform>();
+        inputRt.anchorMin = new Vector2(0, 0);
+        inputRt.anchorMax = new Vector2(1, 1);
+        inputRt.offsetMin = new Vector2(labelWidth + pad, 4f);
+        inputRt.offsetMax = new Vector2(-pad, -4f);
+
+        _displayNameInput = inputGo.GetComponent<TMP_InputField>();
+        _displayNameInput.contentType = TMP_InputField.ContentType.Standard;
+        _displayNameInput.text = "";
+        _displayNameInput.onEndEdit.AddListener(OnDisplayNameChanged);
+
+        if (_displayNameInput.textComponent != null)
+        {
+            _displayNameInput.textComponent.font = _font;
+            _displayNameInput.textComponent.fontSize = 13;
+            _displayNameInput.textComponent.color = TextDark;
+        }
+
+        // Hidden by default until an instance is selected
+        _displayNameRow.SetActive(false);
+    }
+    
+    private void OnDisplayNameChanged(string value)
+    {
+        if (_selectedInstanceID < 0) return;
+        
+        var instance = _workingInstancesConfig?.GetInstance(_selectedInstanceID);
+        if (instance != null)
+        {
+            instance.name = value;
+            _instanceListUI?.UpdateItemDisplay(instance);
         }
     }
     
@@ -1004,6 +1080,7 @@ public class LLMSettingsPanel : MonoBehaviour
         if (instance == null)
         {
             // No instance selected - hide provider UI
+            _displayNameRow?.SetActive(false);
             _jobModeRow?.SetActive(false);
             _maxConcurrentRow?.SetActive(false);
             if (_activeProviderDropdown?.transform.parent != null)
@@ -1011,6 +1088,11 @@ public class LLMSettingsPanel : MonoBehaviour
             HideAllProviderUIs();
             return;
         }
+        
+        // Show display name row
+        _displayNameRow?.SetActive(true);
+        if (_displayNameInput != null)
+            _displayNameInput.text = instance.name ?? "";
         
         // Show job mode row
         _jobModeRow?.SetActive(true);
