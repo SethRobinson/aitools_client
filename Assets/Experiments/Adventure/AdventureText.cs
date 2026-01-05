@@ -645,7 +645,7 @@ public class AdventureText : MonoBehaviour
             RTConsole.Log("LLM response contains thinking tags (<think>...</think>)");
         }
 
-        if (GenerateSettingsPanel.Get().m_stripThinkTagsToggle.isOn)
+        if (GenerateSettingsPanel.GetStripThinkTags())
         {
             if (hasThinkingContent)
             {

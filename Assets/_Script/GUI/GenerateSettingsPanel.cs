@@ -103,9 +103,9 @@ public class GenerateSettingsPanel : MonoBehaviour
     }
 
     /// <summary>
-    /// Ensures the panel is created (but hidden). Called lazily when settings are accessed.
+    /// Ensures the panel is created (but hidden). Call during app init or when settings are accessed.
     /// </summary>
-    private static void EnsureCreated()
+    public static void EnsureCreated()
     {
         if (_instance == null)
         {

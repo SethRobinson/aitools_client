@@ -1428,6 +1428,9 @@ public string GetPrompt() { return m_prompt; }
             gameObject.AddComponent<UserPreferences>();
         }
 
+        // Initialize GenerateSettingsPanel so its settings are always accessible
+        GenerateSettingsPanel.EnsureCreated();
+
         DOTween.Init(true, true, LogBehaviour.Verbose).SetCapacity(200, 20);
         // RTAudioManager.Get().SetDefaultMusicVol(0.4f);
 
