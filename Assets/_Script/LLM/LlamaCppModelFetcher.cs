@@ -122,6 +122,7 @@ public class LlamaCppModelFetcher : MonoBehaviour
             if (request.result != UnityWebRequest.Result.Success)
             {
                 string error = "Failed to fetch llama.cpp model info: " + request.error;
+                RTConsole.Log("LlamaCppModelFetcher: " + error);
                 Debug.LogWarning("LlamaCppModelFetcher: " + error);
                 if (_fetchMultiple)
                     _onCompleteMulti?.Invoke(null, error);
@@ -455,6 +456,7 @@ public class LlamaCppModelFetcher : MonoBehaviour
             if (request.result != UnityWebRequest.Result.Success)
             {
                 string error = "Failed to fetch models: " + request.error;
+                RTConsole.Log("OpenAICompatibleModelFetcher: " + error);
                 Debug.LogWarning("OpenAICompatibleModelFetcher: " + error);
                 _onCompleteMulti?.Invoke(null, error);
                 Destroy(gameObject);

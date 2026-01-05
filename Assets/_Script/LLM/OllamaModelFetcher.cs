@@ -52,6 +52,7 @@ public class OllamaModelFetcher : MonoBehaviour
             if (request.result != UnityWebRequest.Result.Success)
             {
                 string error = "Failed to fetch Ollama models: " + request.error;
+                RTConsole.Log("OllamaModelFetcher: " + error);
                 Debug.LogWarning("OllamaModelFetcher: " + error);
                 _onComplete?.Invoke(new List<string>(), error);
                 Destroy(gameObject);

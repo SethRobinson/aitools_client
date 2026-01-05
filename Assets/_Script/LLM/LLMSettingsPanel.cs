@@ -1442,6 +1442,7 @@ public class LLMSettingsPanel : MonoBehaviour
             if (!string.IsNullOrEmpty(error))
             {
                 Debug.LogWarning("Failed to fetch Ollama model info: " + error);
+                RTQuickMessageManager.Get().ShowMessage("Error: " + error);
                 return;
             }
 
