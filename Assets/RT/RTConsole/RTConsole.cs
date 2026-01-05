@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using System;
+using System.Text.RegularExpressions;
 using TMPro;
 
 /*
@@ -40,6 +41,11 @@ public class RTConsole : MonoBehaviour
     string _logPrependString = "RTLOG"; //only applies to the Unity internal debug logs, this helps me filter for it when watching Android stuff with logcat
 
     bool _requiresRefresh = false;
+
+    // Regex to strip tags that use TMPro's DrawUnderlineMesh which can throw IndexOutOfRangeException
+    // This is a known Unity/TMPro bug with underline/strikethrough/link rendering, especially with edge cases
+    // Matches: <link...>, </link>, <u>, </u>, <s>, </s> and variants with attributes
+    static readonly Regex _underlineMeshTagRegex = new Regex(@"</?(?:link|u|s)[^>]*>", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     // Use this for initialization
     public static RTConsole Get()
@@ -232,7 +238,11 @@ public class RTConsole : MonoBehaviour
 
         if (!_isHeadlessMode && _consoleText)
         {
-            _lines.Enqueue(RTUtil.ConvertSansiToUnityColors(text));
+            // Convert SANSI to Unity colors, then strip underline/link/strikethrough tags which cause
+            // TMPro DrawUnderlineMesh IndexOutOfRangeException (these features aren't needed in console anyway)
+            string converted = RTUtil.ConvertSansiToUnityColors(text);
+            converted = _underlineMeshTagRegex.Replace(converted, "");
+            _lines.Enqueue(converted);
             _requiresRefresh = true;
             // Schedule an immediate scroll update
 
