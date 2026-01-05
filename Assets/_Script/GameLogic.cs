@@ -1359,6 +1359,11 @@ public string GetPrompt() { return m_prompt; }
 
     void Start()
     {
+        // Initialize UserPreferences singleton
+        if (gameObject.GetComponent<UserPreferences>() == null)
+        {
+            gameObject.AddComponent<UserPreferences>();
+        }
 
         DOTween.Init(true, true, LogBehaviour.Verbose).SetCapacity(200, 20);
         // RTAudioManager.Get().SetDefaultMusicVol(0.4f);
@@ -1441,18 +1446,9 @@ public string GetPrompt() { return m_prompt; }
         PresetManager.Get().PopulatePresetDropdown(m_presetDropdown);
         PresetManager.Get().PopulatePresetDropdown(m_tempPresetDropdown);
 
-        if (PresetManager.Get().DoesPresetExistByNameNotCaseSensitive("test_startup.txt"))
-        {
-            SetPresetDropdownValue("test_startup.txt");
-            PresetManager.Get().LoadPresetAndApply(GetNameOfActivePreset(), PresetManager.Get().GetActivePreset(), true);
-        } else
-        {
-            if (PresetManager.Get().DoesPresetExistByNameNotCaseSensitive("startup.txt"))
-            {
-                SetPresetDropdownValue("startup.txt");
-                PresetManager.Get().LoadPresetAndApply(GetNameOfActivePreset(), PresetManager.Get().GetActivePreset(), true);
-            }
-        }
+        // Load user preferences and apply saved preset selections
+        UserPreferences.Get().Load();
+        ApplyPresetPreferences();
         
         // Keep the "Active LLM" label on the Tools panel in sync with current LLM settings.
         BindActiveLLMLabelUpdates();
@@ -1505,6 +1501,89 @@ public string GetPrompt() { return m_prompt; }
                 return;
             }
         }
+    }
+
+    public void SetTempPresetDropdownValue(string value)
+    {
+        value = value.ToLower();
+
+        for (int i = 0; i < m_tempPresetDropdown.options.Count; i++)
+        {
+            if (m_tempPresetDropdown.options[i].text.ToLower() == value)
+            {
+                m_tempPresetDropdown.value = i;
+                return;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Apply saved preset preferences from UserPreferences.
+    /// Main Job Script defaults to "Prompt To Image (Z Image).txt" if not saved or not found.
+    /// </summary>
+    private void ApplyPresetPreferences()
+    {
+        var prefs = UserPreferences.Get();
+        if (prefs == null) return;
+
+        // Apply Main Job Script preference
+        string mainJobScript = prefs.MainJobScript;
+        bool mainJobApplied = false;
+
+        if (!string.IsNullOrEmpty(mainJobScript) && 
+            PresetManager.Get().DoesPresetExistByNameNotCaseSensitive(mainJobScript))
+        {
+            SetPresetDropdownValue(mainJobScript);
+            mainJobApplied = true;
+        }
+
+        // Fallback to "Prompt To Image (Z Image).txt" if not applied
+        if (!mainJobApplied && 
+            PresetManager.Get().DoesPresetExistByNameNotCaseSensitive("Prompt To Image (Z Image).txt"))
+        {
+            SetPresetDropdownValue("Prompt To Image (Z Image).txt");
+        }
+
+        // Apply Temp Job Script preference
+        if (!string.IsNullOrEmpty(prefs.TempJobScript) && 
+            PresetManager.Get().DoesPresetExistByNameNotCaseSensitive(prefs.TempJobScript))
+        {
+            SetTempPresetDropdownValue(prefs.TempJobScript);
+        }
+    }
+
+    /// <summary>
+    /// Save current preset selections to UserPreferences.
+    /// </summary>
+    private void SaveUserPreferences()
+    {
+        var prefs = UserPreferences.Get();
+        if (prefs == null) return;
+
+        // Save Main Job Script
+        if (m_presetDropdown.options.Count > 0)
+        {
+            prefs.MainJobScript = m_presetDropdown.options[m_presetDropdown.value].text;
+        }
+
+        // Save Temp Job Script
+        if (m_tempPresetDropdown.options.Count > 0)
+        {
+            prefs.TempJobScript = m_tempPresetDropdown.options[m_tempPresetDropdown.value].text;
+        }
+
+        // Save AI Guide and Adventure presets from their respective managers
+        if (AIGuideManager.Get() != null)
+        {
+            prefs.AIGuidePreset = AIGuideManager.Get().GetActiveProfileTextFileName();
+        }
+
+        if (AdventureLogic.Get() != null)
+        {
+            prefs.AdventurePreset = AdventureLogic.Get().GetActiveAdventureTextFileName();
+        }
+
+        prefs.Save();
     }
 
     public TMP_Dropdown GetPresetDropdown()
@@ -1576,6 +1655,9 @@ public string GetPrompt() { return m_prompt; }
         // Make sure prefs are saved before quitting.
         //PlayerPrefs.Save();
         RTConsole.Log("Application quitting normally");
+
+        // Save user preferences (preset selections)
+        SaveUserPreferences();
 
         DirectoryInfo di = new DirectoryInfo("tempCache");
         di.Delete(true);

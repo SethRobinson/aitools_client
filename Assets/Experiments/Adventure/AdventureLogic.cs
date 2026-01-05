@@ -291,7 +291,42 @@ public class AdventureLogic : MonoBehaviour
     {
         m_globalPromptManager = gameObject.AddComponent<GPTPromptManager>();
         PopulateProfilesDropDown();
+
+        // Apply saved Adventure preset from user preferences
+        ApplyPresetFromPreferences();
+
         //Config.Get().PopulateRendererDropDown(m_rendererSelectionDropdown);
+    }
+
+    /// <summary>
+    /// Apply saved Adventure preset from UserPreferences if it exists.
+    /// </summary>
+    private void ApplyPresetFromPreferences()
+    {
+        var prefs = UserPreferences.Get();
+        if (prefs == null || string.IsNullOrEmpty(prefs.AdventurePreset))
+            return;
+
+        SetProfileDropdownValue(prefs.AdventurePreset);
+    }
+
+    /// <summary>
+    /// Set the profile dropdown to a specific value by name.
+    /// </summary>
+    public void SetProfileDropdownValue(string value)
+    {
+        if (m_profileDropdown == null || m_profileDropdown.options.Count == 0)
+            return;
+
+        string valueLower = value.ToLower();
+        for (int i = 0; i < m_profileDropdown.options.Count; i++)
+        {
+            if (m_profileDropdown.options[i].text.ToLower() == valueLower)
+            {
+                m_profileDropdown.value = i;
+                return;
+            }
+        }
     }
     
     public bool IsActive()

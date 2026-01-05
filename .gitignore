@@ -59,3 +59,4 @@ TestFiles/*
 gemini_last_error.json
 gemini_request_sent.json
 gemini_streaming_response.json
+config_preferences.txt

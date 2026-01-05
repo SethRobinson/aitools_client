@@ -1668,12 +1668,45 @@ public class AIGuideManager : MonoBehaviour
         PopulateDropdownWithFonts(m_titleFontDropdown, 1);
         PopulateProfilesDropDown();
 
+        // Apply saved AI Guide preset from user preferences
+        ApplyPresetFromPreferences();
+
         // Optional: turn off rich text parsing in the output field if not needed
         if (_inputPromptOutput != null && _inputPromptOutput.textComponent != null)
             _inputPromptOutput.textComponent.richText = false;
     }
     //Config.Get().PopulateRendererDropDown(m_rendererSelectionDropdown);
 
+    /// <summary>
+    /// Apply saved AI Guide preset from UserPreferences if it exists.
+    /// </summary>
+    private void ApplyPresetFromPreferences()
+    {
+        var prefs = UserPreferences.Get();
+        if (prefs == null || string.IsNullOrEmpty(prefs.AIGuidePreset))
+            return;
+
+        SetPresetDropdownValue(prefs.AIGuidePreset);
+    }
+
+    /// <summary>
+    /// Set the preset dropdown to a specific value by name.
+    /// </summary>
+    public void SetPresetDropdownValue(string value)
+    {
+        if (m_presetDropdown == null || m_presetDropdown.options.Count == 0)
+            return;
+
+        string valueLower = value.ToLower();
+        for (int i = 0; i < m_presetDropdown.options.Count; i++)
+        {
+            if (m_presetDropdown.options[i].text.ToLower() == valueLower)
+            {
+                m_presetDropdown.value = i;
+                return;
+            }
+        }
+    }
 
     public string GetActiveProfileTextFileName()
     {
