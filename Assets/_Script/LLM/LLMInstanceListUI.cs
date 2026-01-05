@@ -19,6 +19,7 @@ public class LLMInstanceListUI
     
     // Buttons
     private Button _addButton;
+    private Button _duplicateButton;
     private Button _removeButton;
     
     // Selected instance
@@ -222,6 +223,9 @@ public class LLMInstanceListUI
         // Add button (defaults to llama.cpp - user can change provider type below)
         _addButton = CreateButton(rowObj.transform, "+ Add", 70f, OnAddClicked);
         
+        // Duplicate button (copies selected instance)
+        _duplicateButton = CreateButton(rowObj.transform, "+ Duplicate", 90f, OnDuplicateClicked);
+        
         // Remove button
         _removeButton = CreateButton(rowObj.transform, "- Remove", 80f, OnRemoveClicked);
         
@@ -276,6 +280,34 @@ public class LLMInstanceListUI
             _selectedInstanceID = newID;
             RefreshList(manager.GetConfigClone());
             OnInstanceSelected?.Invoke(newID);
+            OnInstancesChanged?.Invoke();
+        }
+    }
+    
+    private void OnDuplicateClicked()
+    {
+        if (_selectedInstanceID < 0) return;
+        
+        var manager = LLMInstanceManager.Get();
+        if (manager != null)
+        {
+            // Get the selected instance
+            var sourceInstance = manager.GetInstance(_selectedInstanceID);
+            if (sourceInstance == null) return;
+            
+            // Clone it (this creates a deep copy with all settings)
+            var clonedInstance = sourceInstance.Clone();
+            
+            // Append " (Copy)" to the name to differentiate
+            clonedInstance.name = sourceInstance.name + " (Copy)";
+            
+            // AddInstance will assign a new ID automatically
+            manager.AddInstance(clonedInstance);
+            
+            // Select the new instance
+            _selectedInstanceID = clonedInstance.instanceID;
+            RefreshList(manager.GetConfigClone());
+            OnInstanceSelected?.Invoke(clonedInstance.instanceID);
             OnInstancesChanged?.Invoke();
         }
     }
