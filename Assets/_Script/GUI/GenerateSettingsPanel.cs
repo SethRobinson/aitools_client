@@ -1,4 +1,6 @@
 using System.Collections;
+using System.Collections.Generic;
+using System.IO;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
@@ -24,10 +26,11 @@ public class GenerateSettingsPanel : MonoBehaviour
     private Toggle _stripThinkTagsToggle;
     private TMP_InputField _maxPicsInput;
     private TextMeshProUGUI _statusText;
+    private TMP_Dropdown _autoPicDropdown;
 
     // Panel dimensions
     private const float PANEL_WIDTH = 500f;
-    private const float PANEL_HEIGHT = 580f;
+    private const float PANEL_HEIGHT = 780f;
     private const float HEADER_HEIGHT = 40f;
     private const float FOOTER_HEIGHT = 50f;
     private const float BASE_FONT_SIZE = 14f;
@@ -119,6 +122,36 @@ public class GenerateSettingsPanel : MonoBehaviour
         if (_instance != null && _instance._stripThinkTagsToggle != null)
             return _instance._stripThinkTagsToggle.isOn;
         return true; // Default to true
+    }
+
+    /// <summary>
+    /// Static accessor for default AutoPic script. Returns the selected script name,
+    /// falling back to "AutoPic.txt" if nothing is configured or the file doesn't exist.
+    /// </summary>
+    public static string GetDefaultAutoPicScript()
+    {
+        const string defaultScript = "AutoPic.txt";
+
+        // Try to get from UserPreferences first
+        var prefs = UserPreferences.Get();
+        string savedScript = prefs != null && !string.IsNullOrEmpty(prefs.DefaultAutoPicScript) 
+            ? prefs.DefaultAutoPicScript 
+            : defaultScript;
+
+        // Verify the script exists in PresetManager
+        if (PresetManager.Get() != null && PresetManager.Get().DoesPresetExistByNameNotCaseSensitive(savedScript))
+        {
+            return savedScript;
+        }
+
+        // Fall back to default if saved script doesn't exist
+        if (PresetManager.Get() != null && PresetManager.Get().DoesPresetExistByNameNotCaseSensitive(defaultScript))
+        {
+            return defaultScript;
+        }
+
+        // Last resort: return what was configured even if it doesn't exist
+        return savedScript;
     }
 
     private void OnDestroy()
@@ -453,6 +486,9 @@ public class GenerateSettingsPanel : MonoBehaviour
         _autoSavePNGToggle = CreateToggleRow(content.transform, "Auto save all generated pics as a .png to the autosave subdir",
             null, OnAutoSavePNGToggleChanged, 40);
 
+        CreateSectionHeader(content.transform, "Adventure Mode:");
+        CreateAutoPicDropdownRow(content.transform);
+
         CreateSectionHeader(content.transform, "LLM Settings:");
         _stripThinkTagsToggle = CreateToggleRow(content.transform, "Strip <think> tags when sending to LLMs",
             null, OnStripThinkTagsChanged, 24);
@@ -717,6 +753,115 @@ public class GenerateSettingsPanel : MonoBehaviour
         _statusText.textWrappingMode = TextWrappingModes.Normal;
     }
 
+    private void CreateAutoPicDropdownRow(Transform parent)
+    {
+        const float rowHeight = 32f;
+        const float labelWidth = 180f;
+        const float pad = 12f;
+
+        var row = new GameObject("AutoPicRow");
+        row.transform.SetParent(parent, false);
+        var rowRt = row.AddComponent<RectTransform>();
+        var rowLayout = row.AddComponent<LayoutElement>();
+        rowLayout.minHeight = rowHeight;
+        rowLayout.preferredHeight = rowHeight;
+
+        // Label
+        var labelObj = new GameObject("Label");
+        labelObj.transform.SetParent(row.transform, false);
+        var labelRt = labelObj.AddComponent<RectTransform>();
+        labelRt.anchorMin = new Vector2(0, 0);
+        labelRt.anchorMax = new Vector2(0, 1);
+        labelRt.pivot = new Vector2(0, 0.5f);
+        labelRt.sizeDelta = new Vector2(labelWidth, 0);
+        labelRt.anchoredPosition = new Vector2(0, 0);
+
+        var label = labelObj.AddComponent<TextMeshProUGUI>();
+        label.font = _font;
+        label.text = "Default AutoPic script:";
+        label.fontSize = BASE_FONT_SIZE;
+        label.color = TextDark;
+        label.alignment = TextAlignmentOptions.MidlineLeft;
+
+        // Dropdown using TMP_DefaultControls
+        var ddGo = TMP_DefaultControls.CreateDropdown(new TMP_DefaultControls.Resources());
+        ddGo.name = "AutoPicDropdown";
+        ddGo.transform.SetParent(row.transform, false);
+
+        var ddRt = ddGo.GetComponent<RectTransform>();
+        ddRt.anchorMin = new Vector2(0, 0);
+        ddRt.anchorMax = new Vector2(1, 1);
+        ddRt.offsetMin = new Vector2(labelWidth + pad, 4f);
+        ddRt.offsetMax = new Vector2(-pad, -4f);
+
+        _autoPicDropdown = ddGo.GetComponent<TMP_Dropdown>();
+        
+        // Populate dropdown with AutoPic*.txt files from Presets folder
+        PopulateAutoPicDropdown();
+
+        _autoPicDropdown.onValueChanged.AddListener(OnAutoPicDropdownChanged);
+
+        // Style the dropdown
+        var ddImg = ddGo.GetComponent<Image>();
+        if (ddImg != null)
+        {
+            ApplyUISprite(ddImg);
+            ddImg.color = InputFieldBg;
+        }
+
+        if (_autoPicDropdown.captionText != null)
+        {
+            _autoPicDropdown.captionText.font = _font;
+            _autoPicDropdown.captionText.fontSize = BASE_FONT_SIZE;
+            _autoPicDropdown.captionText.color = TextDark;
+        }
+
+        if (_autoPicDropdown.itemText != null)
+        {
+            _autoPicDropdown.itemText.font = _font;
+            _autoPicDropdown.itemText.fontSize = BASE_FONT_SIZE;
+            _autoPicDropdown.itemText.color = TextDark;
+        }
+
+        // Make the dropdown list tall enough
+        if (_autoPicDropdown.template != null)
+        {
+            _autoPicDropdown.template.sizeDelta = new Vector2(_autoPicDropdown.template.sizeDelta.x, 150f);
+        }
+    }
+
+    private void PopulateAutoPicDropdown()
+    {
+        if (_autoPicDropdown == null) return;
+
+        _autoPicDropdown.ClearOptions();
+        var options = new List<TMP_Dropdown.OptionData>();
+
+        // Look for files matching AutoPic*.txt or test_AutoPic*.txt patterns (case-insensitive) in Presets folder
+        if (Directory.Exists("Presets"))
+        {
+            string[] files = Directory.GetFiles("Presets", "*.txt");
+            foreach (string file in files)
+            {
+                string fileName = Path.GetFileName(file);
+                // Case-insensitive match for AutoPic*.txt or test_AutoPic*.txt
+                if (fileName.StartsWith("AutoPic", System.StringComparison.OrdinalIgnoreCase) ||
+                    fileName.StartsWith("test_AutoPic", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    options.Add(new TMP_Dropdown.OptionData(fileName));
+                }
+            }
+        }
+
+        // If no AutoPic files found, add a default entry
+        if (options.Count == 0)
+        {
+            options.Add(new TMP_Dropdown.OptionData("AutoPic.txt"));
+        }
+
+        _autoPicDropdown.AddOptions(options);
+    }
+
     private void RefreshFromSettings()
     {
         if (GameLogic.Get() == null) return;
@@ -729,6 +874,52 @@ public class GenerateSettingsPanel : MonoBehaviour
         
         // Strip think tags defaults to true
         _stripThinkTagsToggle.isOn = true;
+
+        // Set AutoPic dropdown from UserPreferences
+        RefreshAutoPicDropdown();
+    }
+
+    private void RefreshAutoPicDropdown()
+    {
+        if (_autoPicDropdown == null || _autoPicDropdown.options.Count == 0) return;
+
+        string savedScript = "AutoPic.txt"; // Default
+        var prefs = UserPreferences.Get();
+        if (prefs != null && !string.IsNullOrEmpty(prefs.DefaultAutoPicScript))
+        {
+            savedScript = prefs.DefaultAutoPicScript;
+        }
+
+        // Find the saved script in the dropdown options
+        bool found = false;
+        for (int i = 0; i < _autoPicDropdown.options.Count; i++)
+        {
+            if (string.Equals(_autoPicDropdown.options[i].text, savedScript, System.StringComparison.OrdinalIgnoreCase))
+            {
+                _autoPicDropdown.value = i;
+                found = true;
+                break;
+            }
+        }
+
+        // If not found, default to AutoPic.txt or first available
+        if (!found)
+        {
+            for (int i = 0; i < _autoPicDropdown.options.Count; i++)
+            {
+                if (string.Equals(_autoPicDropdown.options[i].text, "AutoPic.txt", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    _autoPicDropdown.value = i;
+                    found = true;
+                    break;
+                }
+            }
+            // If still not found, just use index 0
+            if (!found)
+            {
+                _autoPicDropdown.value = 0;
+            }
+        }
     }
 
     private IEnumerator RestyleNextFrame()
@@ -791,6 +982,19 @@ public class GenerateSettingsPanel : MonoBehaviour
     private void OnStripThinkTagsChanged(bool value)
     {
         // This is read directly from the toggle by other code
+    }
+
+    private void OnAutoPicDropdownChanged(int index)
+    {
+        if (_autoPicDropdown == null || index < 0 || index >= _autoPicDropdown.options.Count) return;
+
+        string selectedScript = _autoPicDropdown.options[index].text;
+        var prefs = UserPreferences.Get();
+        if (prefs != null)
+        {
+            prefs.DefaultAutoPicScript = selectedScript;
+            prefs.Save();
+        }
     }
 
     private void OnMaxPicsChanged(string value)

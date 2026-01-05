@@ -899,7 +899,7 @@ public class AdventureText : MonoBehaviour
 
         if (bAutoPic)
         {
-            string fileToLoad = "test_autopic.txt";
+            string fileToLoad = GenerateSettingsPanel.GetDefaultAutoPicScript();
             PresetFileConfigExtractor preset = new PresetFileConfigExtractor();
             picMain._promptManager.CloneFrom(m_promptManager);
             picMain.m_allowServerJobOverrides = false;
@@ -907,15 +907,7 @@ public class AdventureText : MonoBehaviour
             //now, we're going to have it run our script, but we'd like a notification when the script finishes
             picMain.m_onFinishedScriptCallback += this.AutoPicFinishedScriptCallback;
 
-
-            if (PresetManager.Get().DoesPresetExistByNameNotCaseSensitive(fileToLoad))
-            {
-                preset = PresetManager.Get().LoadPreset(fileToLoad, PresetManager.Get().GetActivePreset());
-            }
-            else
-            {
-                preset = PresetManager.Get().LoadPreset("autopic.txt", PresetManager.Get().GetActivePreset());
-            }
+            preset = PresetManager.Get().LoadPreset(fileToLoad, PresetManager.Get().GetActivePreset());
 
             jobsTodo = GameLogic.Get().GetPicJobListAsListOfStrings(preset.JobList);
         }

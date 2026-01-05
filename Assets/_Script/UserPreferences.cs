@@ -16,6 +16,7 @@ public class UserPreferences : MonoBehaviour
     public string TempJobScript { get; set; } = "";
     public string AIGuidePreset { get; set; } = "";
     public string AdventurePreset { get; set; } = "";
+    public string DefaultAutoPicScript { get; set; } = "AutoPic.txt";
 
     private void Awake()
     {
@@ -85,6 +86,9 @@ public class UserPreferences : MonoBehaviour
             case "adventure_preset":
                 AdventurePreset = value;
                 break;
+            case "default_autopic_script":
+                DefaultAutoPicScript = value;
+                break;
         }
     }
 
@@ -112,6 +116,9 @@ public class UserPreferences : MonoBehaviour
 
                 if (!string.IsNullOrEmpty(AdventurePreset))
                     writer.WriteLine("adventure_preset|" + AdventurePreset + "|");
+
+                if (!string.IsNullOrEmpty(DefaultAutoPicScript))
+                    writer.WriteLine("default_autopic_script|" + DefaultAutoPicScript + "|");
             }
             RTConsole.Log("Saved user preferences to " + PREFERENCES_FILE);
         }
