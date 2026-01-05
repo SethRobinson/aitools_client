@@ -405,8 +405,8 @@ public class AdventureLogic : MonoBehaviour
 
         //clear all the text objects
         RTUtil.DestroyChildren(RTUtil.FindObjectOrCreate("Adventures").transform);
-        //clear all pics
-        GameLogic.Get().KillAllPics(true, true);
+        //clear all pics (but preserve locked ones)
+        GameLogic.Get().KillAllPics(true, false);
         m_globalPromptManager.Reset();
         m_totalLLMGenerationCounter = 0;
         _generationInfo = new List<GenerationInfo>();
