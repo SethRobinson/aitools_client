@@ -2233,6 +2233,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     }
 
     // Parse SET_PROMPTN: patterns from LLM reply and populate _requestedPrompts array
+    // Applies prepend/append prompts to each parsed prompt if they are set
     void ParseLLMPrompts(ref PicJob job)
     {
         string reply = job._requestedLLMReply;
@@ -2244,15 +2245,34 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
         string[] parsedPrompts = ParseSetPromptTags(reply);
         
-        // Copy to job and log results
+        // Get prepend/append prompts
+        string prependPrompt = GameLogic.Get().GetComfyPrependPrompt() ?? "";
+        string appendPrompt = GameLogic.Get().GetComfyAppendPrompt() ?? "";
+        bool applyPrependAppend = prependPrompt.Length > 0 || appendPrompt.Length > 0;
+        
+        if (applyPrependAppend)
+        {
+            RTConsole.Log($"parse_llm_prompts: Applying prepend='{prependPrompt}' append='{appendPrompt}'");
+        }
+        
+        // Copy to job, apply prepend/append, and log results
         for (int i = 0; i < PicJob.MAX_EXTENDED_PROMPTS; i++)
         {
-            job._requestedPrompts[i] = parsedPrompts[i];
-            if (!string.IsNullOrEmpty(parsedPrompts[i]))
+            string prompt = parsedPrompts[i];
+            
+            // Apply prepend/append to non-empty prompts
+            if (!string.IsNullOrEmpty(prompt))
             {
-                string preview = parsedPrompts[i].Length > 50 ? parsedPrompts[i].Substring(0, 50) + "..." : parsedPrompts[i];
+                if (prependPrompt.Length > 0)
+                    prompt = prependPrompt + " " + prompt;
+                if (appendPrompt.Length > 0)
+                    prompt = prompt + " " + appendPrompt;
+                    
+                string preview = prompt.Length > 50 ? prompt.Substring(0, 50) + "..." : prompt;
                 RTConsole.Log($"parse_llm_prompts: Found prompt_{i + 1}: {preview}");
             }
+            
+            job._requestedPrompts[i] = prompt;
         }
         
         // Check if we used fallback
@@ -2272,9 +2292,9 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         
         // Backward compatibility: set main _requestedPrompt to first parsed prompt
         // so workflows using <AITOOLS_PROMPT> (instead of <AITOOLS_PROMPT_1>) will still work
-        if (!string.IsNullOrEmpty(parsedPrompts[0]))
+        if (!string.IsNullOrEmpty(job._requestedPrompts[0]))
         {
-            job._requestedPrompt = parsedPrompts[0];
+            job._requestedPrompt = job._requestedPrompts[0];
         }
     }
 
