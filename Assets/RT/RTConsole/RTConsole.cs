@@ -88,7 +88,6 @@ public class RTConsole : MonoBehaviour
     {
         if (_consoleText != null)
           _consoleText.text = "";
-       
     }
 
     public void CopyToClipboard()
@@ -252,12 +251,27 @@ public class RTConsole : MonoBehaviour
             _lines.Dequeue();
         }
 
+        // Clear the mesh before setting new text to prevent TMPro buffer mismatch issues
+        // that can cause IndexOutOfRangeException in DrawUnderlineMesh
+        _consoleText.ClearMesh();
         _consoleText.text = string.Concat(_lines.ToArray());
 
-        // Don't call Canvas.ForceUpdateCanvases() immediately after setting text - 
-        // it can cause TMPro IndexOutOfRangeException in DrawUnderlineMesh when 
-        // text contains rich text tags. Let the coroutine handle the update safely.
-        StartCoroutine(ScrollToBottomNextFrame());
+        // Force mesh generation now in a try-catch, so it doesn't fail during 
+        // Unity's Canvas update system (which can't be caught)
+        try
+        {
+            _consoleText.ForceMeshUpdate(true, true);
+        }
+        catch (System.IndexOutOfRangeException)
+        {
+            // TMPro can throw IndexOutOfRangeException in DrawUnderlineMesh when text 
+            // with rich text tags is being updated. This is a known Unity/TMPro bug.
+            // Clear and retry with simpler text if needed
+            _consoleText.ClearMesh();
+        }
+
+        if (gameObject.activeInHierarchy)
+            StartCoroutine(ScrollToBottomNextFrame());
     }
 
     private IEnumerator ScrollToBottomNextFrame()
@@ -271,17 +285,23 @@ public class RTConsole : MonoBehaviour
         // Force canvas update - wrapped in try-catch to handle rare TMPro mesh generation issues
         try
         {
+            // Use ForceMeshUpdate instead of ForceUpdateCanvases for more targeted update
+            if (_consoleText != null)
+                _consoleText.ForceMeshUpdate(true, true);
             Canvas.ForceUpdateCanvases();
         }
         catch (System.IndexOutOfRangeException)
         {
             // TMPro can throw IndexOutOfRangeException in DrawUnderlineMesh when text 
             // with rich text tags is being updated. This is a known Unity bug.
-            // The layout will update naturally on the next frame.
+            // Clear mesh and let it regenerate naturally on the next frame.
+            if (_consoleText != null)
+                _consoleText.ClearMesh();
         }
 
         // Set scroll position to bottom
-        _scrollRect.verticalNormalizedPosition = 0f;
+        if (_scrollRect != null)
+            _scrollRect.verticalNormalizedPosition = 0f;
 
         // Wait one more frame to ensure the scroll position is applied
         yield return null;
