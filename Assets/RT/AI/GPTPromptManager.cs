@@ -21,6 +21,9 @@ public class GPTPromptManager : MonoBehaviour
 
     string _nameToUseForSystem = "system";
     string _nameToUseForUser = "user";
+    
+    // Pending images to attach to the next user interaction (for vision LLM support)
+    List<string> _pendingImages = new List<string>();
   
     public void SetSystemName(string systemName)
     {
@@ -44,6 +47,35 @@ public class GPTPromptManager : MonoBehaviour
         _baseSystemPrompt = "";
         _journalSystemPrompt = "";
         _interactions.Clear();
+        _pendingImages.Clear();
+    }
+    
+    /// <summary>
+    /// Add a base64-encoded image to be attached to the next user interaction.
+    /// Call this before AddInteraction() for user messages.
+    /// </summary>
+    public void AddPendingImage(string base64ImageData)
+    {
+        if (_pendingImages == null)
+            _pendingImages = new List<string>();
+        _pendingImages.Add(base64ImageData);
+        RTConsole.Log($"GPTPromptManager: Added pending image ({base64ImageData.Length} chars), total pending: {_pendingImages.Count}");
+    }
+    
+    /// <summary>
+    /// Clear all pending images without attaching them to any interaction.
+    /// </summary>
+    public void ClearPendingImages()
+    {
+        _pendingImages.Clear();
+    }
+    
+    /// <summary>
+    /// Returns the number of pending images waiting to be attached.
+    /// </summary>
+    public int GetPendingImageCount()
+    {
+        return _pendingImages?.Count ?? 0;
     }
 
     public void CloneFrom(GPTPromptManager other)
@@ -62,6 +94,9 @@ public class GPTPromptManager : MonoBehaviour
 
             _interactions.Enqueue(clonedChatLine);
         }
+        
+        // Also clone pending images
+        _pendingImages = new List<string>(other._pendingImages ?? new List<string>());
     }
 
     public void AddInteraction(string role, string content, string internalTag = "")
@@ -75,8 +110,20 @@ public class GPTPromptManager : MonoBehaviour
             return;
         }
         */
-        _interactions.Enqueue(new GTPChatLine(role, content, internalTag));
-
+        var chatLine = new GTPChatLine(role, content, internalTag);
+        
+        // Attach any pending images to this interaction (typically user messages)
+        if (_pendingImages != null && _pendingImages.Count > 0)
+        {
+            foreach (var img in _pendingImages)
+            {
+                chatLine.AddImage(img);
+            }
+            RTConsole.Log($"GPTPromptManager: Attached {_pendingImages.Count} image(s) to {role} interaction");
+            _pendingImages.Clear();
+        }
+        
+        _interactions.Enqueue(chatLine);
     }
     public void Awake()
     {
@@ -265,7 +312,8 @@ public class GPTPromptManager : MonoBehaviour
                 break;
             }
             count--;
-            lines.Enqueue(new GTPChatLine(interaction._role, interaction._content));
+            // Use Clone() to preserve images attached to interactions
+            lines.Enqueue(interaction.Clone());
         }
 
         return lines;
@@ -304,7 +352,8 @@ public class GPTPromptManager : MonoBehaviour
                 break;
             }
             count--;
-            lines.Enqueue(new GTPChatLine(interaction._role, interaction._content));
+            // Use Clone() to preserve images attached to interactions
+            lines.Enqueue(interaction.Clone());
         }
 
         return lines;

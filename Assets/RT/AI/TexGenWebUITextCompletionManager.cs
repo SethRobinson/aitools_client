@@ -256,14 +256,45 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
         }
         else
         {
-            // Default chat completions format
+            // Default chat completions format (with vision/multimodal support)
             foreach (GTPChatLine obj in lines)
             {
                 if (msg.Length > 0)
                 {
                     msg += ",\n";
                 }
-                msg += "{\"role\": \"" + obj._role + "\", \"content\": \"" + SimpleJSON.JSONNode.Escape(obj._content) + "\"}";
+                
+                // Check if this message has images attached (vision LLM support)
+                if (obj.HasImages())
+                {
+                    // Build multimodal content array: images first, then text
+                    // Format: [{"type": "image_url", "image_url": {"url": "data:image/png;base64,..."}}, {"type": "text", "text": "..."}]
+                    string contentArray = "[";
+                    bool first = true;
+                    
+                    // Add images first
+                    foreach (string base64Image in obj._images)
+                    {
+                        if (!first) contentArray += ", ";
+                        first = false;
+                        contentArray += "{\"type\": \"image_url\", \"image_url\": {\"url\": \"data:image/png;base64," + base64Image + "\"}}";
+                    }
+                    
+                    // Add text content
+                    if (!string.IsNullOrEmpty(obj._content))
+                    {
+                        if (!first) contentArray += ", ";
+                        contentArray += "{\"type\": \"text\", \"text\": \"" + SimpleJSON.JSONNode.Escape(obj._content) + "\"}";
+                    }
+                    
+                    contentArray += "]";
+                    msg += "{\"role\": \"" + obj._role + "\", \"content\": " + contentArray + "}";
+                }
+                else
+                {
+                    // Standard text-only message
+                    msg += "{\"role\": \"" + obj._role + "\", \"content\": \"" + SimpleJSON.JSONNode.Escape(obj._content) + "\"}";
+                }
             }
         }
 

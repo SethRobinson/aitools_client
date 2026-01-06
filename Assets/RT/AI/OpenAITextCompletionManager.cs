@@ -16,18 +16,39 @@ public class GTPChatLine
             _role = role;
             _content = content;
             _internalTag = internalTag;
-           
+            _images = new List<string>();
         }
 
         public GTPChatLine Clone()
         {
-            return new GTPChatLine(_role, _content, _internalTag);
+            var clone = new GTPChatLine(_role, _content, _internalTag);
+            clone._images = new List<string>(_images);
+            return clone;
         }
 
+        /// <summary>
+        /// Add a base64-encoded image to this chat line (for vision LLM support).
+        /// The image should be PNG or JPEG encoded, without the data:image prefix.
+        /// </summary>
+        public void AddImage(string base64ImageData)
+        {
+            if (_images == null)
+                _images = new List<string>();
+            _images.Add(base64ImageData);
+        }
+
+        /// <summary>
+        /// Returns true if this chat line has images attached.
+        /// </summary>
+        public bool HasImages()
+        {
+            return _images != null && _images.Count > 0;
+        }
 
         public string _role; //must be set to user, assistant, or system
         public string _content;
         public string _internalTag;
+        public List<string> _images; // Base64-encoded images for vision LLM
     }
 
 public class OpenAITextCompletionManager : MonoBehaviour

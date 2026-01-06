@@ -1,0 +1,13 @@
+COMMAND_START|joblist
+-Vision LLM: Describe the image and put the description in the prompt.  Require
+command @llm_prompt_reset
+command @llm_prompt_set_base_prompt
+You are a helpful image analysis assistant. Describe images concisely but thoroughly.
+@end
+command @llm_add_image|image|
+command @llm_prompt_add_from_user
+Please describe this image in detail. Include the subject, setting, colors, mood, and any notable details.
+@end
+call_llm
+command @copy|llm_reply|global_prompt|
+COMMAND_END

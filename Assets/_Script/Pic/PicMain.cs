@@ -2402,6 +2402,20 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
         return go?.GetComponent<PicMain>();
     }
+    
+    /// <summary>
+    /// Get a Texture2D from a source slot name (image, image1, temp1, temp2, temp3).
+    /// Used for vision LLM image input.
+    /// </summary>
+    Texture2D GetTextureFromSource(string source)
+    {
+        PicMain picMain = GetPicMainForSlot(source);
+        if (picMain != null && picMain.m_pic.sprite != null && picMain.m_pic.sprite.texture != null)
+        {
+            return picMain.m_pic.sprite.texture;
+        }
+        return null;
+    }
 
     void DoVarAdd(ref PicJob job, string source, string dest)
     {
@@ -3252,6 +3266,25 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                         else if(picJobData._name.ToLower() == "llm_prompt_add_to_last_interaction")
                         {
                             _promptManager.AppendToLastInteraction(" " + ConvertVarToText(ref job, picJobData._parm1));
+                        }
+                        else if (picJobData._name.ToLower() == "llm_add_image")
+                        {
+                            // Add an image to the next LLM user message (for vision LLM support)
+                            // Usage: command @llm_add_image|temp1|  (or image, image1, temp2, temp3)
+                            string source = picJobData._parm1.ToLower().Trim();
+                            Texture2D sourceTexture = GetTextureFromSource(source);
+                            
+                            if (sourceTexture != null)
+                            {
+                                byte[] pngBytes = sourceTexture.EncodeToPNG();
+                                string base64Image = System.Convert.ToBase64String(pngBytes);
+                                _promptManager.AddPendingImage(base64Image);
+                                RTConsole.Log($"llm_add_image: Added image from '{source}' ({sourceTexture.width}x{sourceTexture.height}, {base64Image.Length} base64 chars)");
+                            }
+                            else
+                            {
+                                RTConsole.Log($"llm_add_image: Error - could not get texture from source '{source}'");
+                            }
                         }
                         else if (picJobData._name.ToLower() == "parse_llm_prompts")
                         {
