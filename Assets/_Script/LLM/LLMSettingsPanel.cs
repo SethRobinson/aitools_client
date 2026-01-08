@@ -937,7 +937,9 @@ public class LLMSettingsPanel : MonoBehaviour
         {
             new TMP_Dropdown.OptionData("Any"),
             new TMP_Dropdown.OptionData("Big Jobs Only"),
-            new TMP_Dropdown.OptionData("Small Jobs Only")
+            new TMP_Dropdown.OptionData("Small Jobs Only"),
+            new TMP_Dropdown.OptionData("Vision Jobs Only"),
+            new TMP_Dropdown.OptionData("Non-Vision Only")
         };
         _jobModeDropdown.onValueChanged.AddListener(OnJobModeChanged);
 
@@ -959,7 +961,7 @@ public class LLMSettingsPanel : MonoBehaviour
 
         var helpText = helpObj.AddComponent<TextMeshProUGUI>();
         helpText.font = _font;
-        helpText.text = "(Big=AIGuide/Adventure, Small=AutoPic)";
+        helpText.text = "(Vision=image analysis)";
         helpText.fontSize = 11;
         helpText.color = new Color(0.4f, 0.4f, 0.4f, 1f);
         helpText.alignment = TextAlignmentOptions.MidlineLeft;

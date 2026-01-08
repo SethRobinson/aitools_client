@@ -77,6 +77,26 @@ public class GPTPromptManager : MonoBehaviour
     {
         return _pendingImages?.Count ?? 0;
     }
+    
+    /// <summary>
+    /// Check if any interaction in the prompt has images attached.
+    /// This is used to detect vision jobs for LLM routing.
+    /// </summary>
+    public bool HasAnyImages()
+    {
+        // Check pending images first
+        if (_pendingImages != null && _pendingImages.Count > 0)
+            return true;
+        
+        // Check all interactions for attached images
+        foreach (var interaction in _interactions)
+        {
+            if (interaction.HasImages())
+                return true;
+        }
+        
+        return false;
+    }
 
     public void CloneFrom(GPTPromptManager other)
     {

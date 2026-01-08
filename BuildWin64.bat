@@ -27,6 +27,7 @@ del build\win\Adventure\test*.txt
 del build\win\AIGuide\TEST*.txt
 del build\win\config.txt
 del build\win\config_llm.txt
+del build\win\config_preferences.txt
 del build\win\ComfyUI\test*.json
 del build\win\ComfyUI\TEST*.json
 del build\win\ComfyUI\workflow\test*.json

@@ -366,11 +366,29 @@ public class LLMInstanceManager : MonoBehaviour
     }
     
     /// <summary>
-    /// Check if any LLM has capacity for the given job type.
+    /// Check if any LLM has capacity for the given job type (legacy overload, assumes non-vision).
     /// </summary>
     public bool IsAnyLLMFree(bool isSmallJob = false)
     {
-        return GetFreeLLM(isSmallJob) >= 0;
+        return IsAnyLLMFree(isSmallJob, isVisionJob: false);
+    }
+    
+    /// <summary>
+    /// Check if any LLM has capacity for the given job type.
+    /// </summary>
+    /// <param name="isSmallJob">True for small jobs (autopic), false for big jobs (AI Guide/Adventure)</param>
+    /// <param name="isVisionJob">True if the job has images attached</param>
+    public bool IsAnyLLMFree(bool isSmallJob, bool isVisionJob)
+    {
+        return GetFreeLLM(isSmallJob, isVisionJob) >= 0;
+    }
+    
+    /// <summary>
+    /// Get the best available LLM instance ID for the given job type (legacy overload, assumes non-vision).
+    /// </summary>
+    public int GetFreeLLM(bool isSmallJob = false)
+    {
+        return GetFreeLLM(isSmallJob, isVisionJob: false);
     }
     
     /// <summary>
@@ -378,23 +396,37 @@ public class LLMInstanceManager : MonoBehaviour
     /// Chooses the instance with the lowest utilization ratio (activeTasks / maxConcurrentTasks).
     /// Only returns instances that have capacity available.
     /// Returns -1 if no instance has capacity.
+    /// For vision jobs: prefers VisionJobsOnly instances, falls back to Any.
     /// </summary>
+    /// <param name="isSmallJob">True for small jobs (autopic), false for big jobs (AI Guide/Adventure)</param>
+    /// <param name="isVisionJob">True if the job has images attached</param>
     /// <example>
     /// If instance A is 0/1 (0%) and instance B is 1/4 (25%), returns A.
     /// If instance A is 1/1 (100%) and instance B is 3/4 (75%), returns B.
     /// If both are at capacity, returns -1.
     /// </example>
-    public int GetFreeLLM(bool isSmallJob = false)
+    public int GetFreeLLM(bool isSmallJob, bool isVisionJob)
     {
         if (_config == null) return -1;
         
+        // For vision jobs, first try to find a VisionJobsOnly instance
+        if (isVisionJob)
+        {
+            int visionOnlyID = GetFreeLLMWithMode(isSmallJob, isVisionJob, LLMJobMode.VisionJobsOnly);
+            if (visionOnlyID >= 0) return visionOnlyID;
+            
+            // Fall back to Any mode
+            return GetFreeLLMWithMode(isSmallJob, isVisionJob, LLMJobMode.Any);
+        }
+        
+        // For non-vision jobs, use standard matching
         int bestID = -1;
         float bestRatio = float.MaxValue; // Lower is better
         
         foreach (var instance in _config.instances)
         {
             if (!instance.isActive) continue;
-            if (!instance.CanAcceptJob(isSmallJob)) continue; // Checks job type AND capacity
+            if (!instance.CanAcceptJob(isSmallJob, isVisionJob)) continue; // Checks job type AND capacity
             
             // Calculate utilization ratio (0 = empty, approaching 1 = nearly full)
             float ratio = instance.maxConcurrentTasks > 0 
@@ -412,23 +444,105 @@ public class LLMInstanceManager : MonoBehaviour
     }
     
     /// <summary>
-    /// Get the LLM instance ID with the lowest utilization for the given job type.
-    /// Unlike GetFreeLLM, this returns an instance even if at capacity (for queueing).
-    /// Returns -1 if no matching instances exist at all.
+    /// Get a free LLM instance with a specific job mode.
     /// </summary>
-    public int GetLeastBusyLLM(bool isSmallJob = false)
+    private int GetFreeLLMWithMode(bool isSmallJob, bool isVisionJob, LLMJobMode targetMode)
     {
         if (_config == null) return -1;
         
+        int bestID = -1;
+        float bestRatio = float.MaxValue;
+        
+        foreach (var instance in _config.instances)
+        {
+            if (!instance.isActive) continue;
+            if (instance.jobMode != targetMode) continue;
+            if (!instance.CanAcceptJob(isSmallJob, isVisionJob)) continue;
+            
+            float ratio = instance.maxConcurrentTasks > 0 
+                ? (float)instance.activeTasks / instance.maxConcurrentTasks 
+                : float.MaxValue;
+            
+            if (ratio < bestRatio)
+            {
+                bestRatio = ratio;
+                bestID = instance.instanceID;
+            }
+        }
+        
+        return bestID;
+    }
+    
+    /// <summary>
+    /// Get the LLM instance ID with the lowest utilization for the given job type (legacy overload, assumes non-vision).
+    /// </summary>
+    public int GetLeastBusyLLM(bool isSmallJob = false)
+    {
+        return GetLeastBusyLLM(isSmallJob, isVisionJob: false);
+    }
+    
+    /// <summary>
+    /// Get the LLM instance ID with the lowest utilization for the given job type.
+    /// Unlike GetFreeLLM, this returns an instance even if at capacity (for queueing).
+    /// Returns -1 if no matching instances exist at all.
+    /// For vision jobs: prefers VisionJobsOnly instances, falls back to Any.
+    /// </summary>
+    /// <param name="isSmallJob">True for small jobs (autopic), false for big jobs (AI Guide/Adventure)</param>
+    /// <param name="isVisionJob">True if the job has images attached</param>
+    public int GetLeastBusyLLM(bool isSmallJob, bool isVisionJob)
+    {
+        if (_config == null) return -1;
+        
+        // For vision jobs, first try to find a VisionJobsOnly instance
+        if (isVisionJob)
+        {
+            int visionOnlyID = GetLeastBusyLLMWithMode(isSmallJob, isVisionJob, LLMJobMode.VisionJobsOnly);
+            if (visionOnlyID >= 0) return visionOnlyID;
+            
+            // Fall back to Any mode
+            return GetLeastBusyLLMWithMode(isSmallJob, isVisionJob, LLMJobMode.Any);
+        }
+        
+        // For non-vision jobs, use standard matching
         int bestID = -1;
         float bestRatio = float.MaxValue; // Lower is better
         
         foreach (var instance in _config.instances)
         {
             if (!instance.isActive) continue;
-            if (!instance.CanAcceptJobType(isSmallJob)) continue; // Only check job type, not capacity
+            if (!instance.CanAcceptJobType(isSmallJob, isVisionJob)) continue; // Only check job type, not capacity
             
             // Calculate utilization ratio (0 = empty, 1 = full, >1 = over capacity)
+            float ratio = instance.maxConcurrentTasks > 0 
+                ? (float)instance.activeTasks / instance.maxConcurrentTasks 
+                : float.MaxValue;
+            
+            if (ratio < bestRatio)
+            {
+                bestRatio = ratio;
+                bestID = instance.instanceID;
+            }
+        }
+        
+        return bestID;
+    }
+    
+    /// <summary>
+    /// Get the least busy LLM instance with a specific job mode.
+    /// </summary>
+    private int GetLeastBusyLLMWithMode(bool isSmallJob, bool isVisionJob, LLMJobMode targetMode)
+    {
+        if (_config == null) return -1;
+        
+        int bestID = -1;
+        float bestRatio = float.MaxValue;
+        
+        foreach (var instance in _config.instances)
+        {
+            if (!instance.isActive) continue;
+            if (instance.jobMode != targetMode) continue;
+            if (!instance.CanAcceptJobType(isSmallJob, isVisionJob)) continue;
+            
             float ratio = instance.maxConcurrentTasks > 0 
                 ? (float)instance.activeTasks / instance.maxConcurrentTasks 
                 : float.MaxValue;

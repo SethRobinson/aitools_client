@@ -1,0 +1,5 @@
+COMMAND_START|joblist
+-Requires an assload of vram to do this fast (96gb?)
+
+img_to_video_ltx.json @upload|image1|input1| @replace|"width": 960|"width": 960| @replace|"height": 576|"height": 576| @replace|"value": 121|"value" : 481|
+COMMAND_END

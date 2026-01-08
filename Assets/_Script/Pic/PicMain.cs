@@ -183,6 +183,10 @@ public class PicMain : MonoBehaviour
     int _activeLLMInstanceID = -1; // Tracks which LLM instance is currently active for this pic
     const string m_default_requirements = "gpu";
     string m_requirements = m_default_requirements;
+    string m_tempText1 = ""; // General-purpose text buffer for preset scripts
+    string m_tempText2 = ""; // Second general-purpose text buffer for preset scripts
+    string m_tempText3 = ""; // Third general-purpose text buffer for preset scripts
+    string m_tempText4 = ""; // Fourth general-purpose text buffer for preset scripts
 
     public void SetPromptManager(GPTPromptManager promptManager)
     {
@@ -2317,6 +2321,10 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         {
             temp = job._requestedLLMReply;
         }
+        if (source == "temp_text1") temp = m_tempText1;
+        if (source == "temp_text2") temp = m_tempText2;
+        if (source == "temp_text3") temp = m_tempText3;
+        if (source == "temp_text4") temp = m_tempText4;
         
         // Support extended prompts: prompt_1 through prompt_8 (or prompt1 through prompt8)
         int promptIdx = TryParsePromptIndex(source);
@@ -2377,6 +2385,10 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         if (dest == "requirements") m_requirements = temp;
         if (dest == "prepend_prompt") GameLogic.Get().SetComfyPrependPrompt(temp);
         if (dest == "append_prompt") GameLogic.Get().SetComfyAppendPrompt(temp);
+        if (dest == "temp_text1") m_tempText1 = temp;
+        if (dest == "temp_text2") m_tempText2 = temp;
+        if (dest == "temp_text3") m_tempText3 = temp;
+        if (dest == "temp_text4") m_tempText4 = temp;
         
         // Support extended prompts: prompt_1 through prompt_8 (or prompt1 through prompt8)
         int promptIdx = TryParsePromptIndex(dest);
@@ -2432,6 +2444,10 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         if (dest == "llm_prompt") job._requestedLLMPrompt += temp;
         if (dest == "llm_reply") job._requestedLLMReply += temp;
         if (dest == "requirements") m_requirements += temp;
+        if (dest == "temp_text1") m_tempText1 += temp;
+        if (dest == "temp_text2") m_tempText2 += temp;
+        if (dest == "temp_text3") m_tempText3 += temp;
+        if (dest == "temp_text4") m_tempText4 += temp;
         
         // Support extended prompts: prompt_1 through prompt_8 (or prompt1 through prompt8)
         int promptIdx = TryParsePromptIndex(dest);
@@ -2461,61 +2477,84 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     }
 
     private bool ProcessResizeIfLargerOrForcedCommand(string[] commandParts, bool bForceResize)
-{
-    // Expected format:
-    // resize_if_larger|x|<newWidth>|y|<newHeight>|aspect_correct|<1 or 0>
-    if (commandParts.Length < 7)
     {
-        RTConsole.Log("Error: 'resize_if_larger' command missing parameters.");
-        RTQuickMessageManager.Get().ShowMessage("Error: 'resize_if_larger' command missing parameters.");
-        return false;
-    }
+        // Expected formats:
+        // Old: resize_if_larger|x|<newWidth>|y|<newHeight>|aspect_correct|<1 or 0>
+        // New: resize_if_larger|<slot>|x|<newWidth>|y|<newHeight>|aspect_correct|<1 or 0>
+        // Where <slot> is: image, image1, temp1, temp2, or temp3
+        
+        // Detect if first parameter is a slot name (new format) or "x" (old format)
+        int paramOffset = 0;
+        PicMain targetPic = this;
+        string firstParam = commandParts.Length > 1 ? commandParts[1].Trim().ToLower() : "";
+        
+        if (IsImageSlot(firstParam))
+        {
+            // New format with slot specified
+            paramOffset = 1;
+            targetPic = GetPicMainForSlot(firstParam);
+            if (targetPic == null)
+            {
+                RTConsole.Log($"Error: Unknown image slot '{firstParam}' in resize command.");
+                RTQuickMessageManager.Get().ShowMessage($"Error: Unknown image slot '{firstParam}'");
+                return false;
+            }
+            RTConsole.Log($"resize: targeting slot '{firstParam}'");
+        }
+        
+        int requiredParams = 7 + paramOffset;
+        if (commandParts.Length < requiredParams)
+        {
+            RTConsole.Log("Error: 'resize_if_larger' command missing parameters.");
+            RTQuickMessageManager.Get().ShowMessage("Error: 'resize_if_larger' command missing parameters.");
+            return false;
+        }
 
-    if (!commandParts[1].Trim().Equals("x", StringComparison.OrdinalIgnoreCase) ||
-        !commandParts[3].Trim().Equals("y", StringComparison.OrdinalIgnoreCase) ||
-        !commandParts[5].Trim().Equals("aspect_correct", StringComparison.OrdinalIgnoreCase))
-    {
-        RTConsole.Log("Error: 'resize_if_larger' command parameters malformed.");
-        RTQuickMessageManager.Get().ShowMessage("Error: 'resize_if_larger' command parameters malformed.");
-        return false;
-    }
+        if (!commandParts[1 + paramOffset].Trim().Equals("x", StringComparison.OrdinalIgnoreCase) ||
+            !commandParts[3 + paramOffset].Trim().Equals("y", StringComparison.OrdinalIgnoreCase) ||
+            !commandParts[5 + paramOffset].Trim().Equals("aspect_correct", StringComparison.OrdinalIgnoreCase))
+        {
+            RTConsole.Log("Error: 'resize_if_larger' command parameters malformed.");
+            RTQuickMessageManager.Get().ShowMessage("Error: 'resize_if_larger' command parameters malformed.");
+            return false;
+        }
 
-    if (!int.TryParse(commandParts[2], out int newWidth))
-    {
-        RTConsole.Log("Error: invalid width in 'resize_if_larger' command.");
-        RTQuickMessageManager.Get().ShowMessage("Error: invalid width in 'resize_if_larger' command.");
-        return false;
-    }
+        if (!int.TryParse(commandParts[2 + paramOffset], out int newWidth))
+        {
+            RTConsole.Log("Error: invalid width in 'resize_if_larger' command.");
+            RTQuickMessageManager.Get().ShowMessage("Error: invalid width in 'resize_if_larger' command.");
+            return false;
+        }
 
-    if (!int.TryParse(commandParts[4], out int newHeight))
-    {
-        RTConsole.Log("Error: invalid height in 'resize_if_larger' command.");
-        RTQuickMessageManager.Get().ShowMessage("Error: invalid height in 'resize_if_larger' command.");
-        return false;
-    }
+        if (!int.TryParse(commandParts[4 + paramOffset], out int newHeight))
+        {
+            RTConsole.Log("Error: invalid height in 'resize_if_larger' command.");
+            RTQuickMessageManager.Get().ShowMessage("Error: invalid height in 'resize_if_larger' command.");
+            return false;
+        }
 
-    // Determine whether to keep aspect ratio.
-    bool bKeepAspect = false;
-    string aspectValue = commandParts[6].Trim();
-    if (aspectValue.Equals("1") || aspectValue.Equals("true", StringComparison.OrdinalIgnoreCase))
-    {
-        bKeepAspect = true;
-    }
+        // Determine whether to keep aspect ratio.
+        bool bKeepAspect = false;
+        string aspectValue = commandParts[6 + paramOffset].Trim();
+        if (aspectValue.Equals("1") || aspectValue.Equals("true", StringComparison.OrdinalIgnoreCase))
+        {
+            bKeepAspect = true;
+        }
 
-    // Get the current texture.
-    Texture2D currentTexture = m_pic.sprite.texture;
-    if (currentTexture != null && (bForceResize || currentTexture.width > newWidth || currentTexture.height > newHeight))
-    {
-        Resize(newWidth, newHeight, bKeepAspect, FilterMode.Bilinear);
-       // RTQuickMessageManager.Get().ShowMessage($"Image resized to {newWidth}x{newHeight}. Keep aspect: {bKeepAspect}");
-    }
-    else
-    {
-       // RTQuickMessageManager.Get().ShowMessage("Image is already within the specified size.");
-    }
+        // Get the target texture.
+        Texture2D currentTexture = targetPic.m_pic.sprite?.texture;
+        if (currentTexture != null && (bForceResize || currentTexture.width > newWidth || currentTexture.height > newHeight))
+        {
+            targetPic.Resize(newWidth, newHeight, bKeepAspect, FilterMode.Bilinear);
+            RTConsole.Log($"resize: Resized {(paramOffset > 0 ? firstParam : "image")} to {newWidth}x{newHeight} (aspect: {bKeepAspect})");
+        }
+        else
+        {
+            RTConsole.Log($"resize: {(paramOffset > 0 ? firstParam : "image")} already within {newWidth}x{newHeight}");
+        }
 
-    return true;
-}
+        return true;
+    }
 
 
     void OnTexGenCompletedCallback(RTDB db, JSONObject jsonNode, string streamedText)
@@ -2705,9 +2744,19 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             var instanceMgr = LLMInstanceManager.Get();
             if (instanceMgr != null && instanceMgr.GetInstanceCount() > 0)
             {
-                if (!instanceMgr.IsAnyLLMFree(isSmallJob: true))
+                // Check if this is a vision job (has images pending or attached to any interaction)
+                bool isVisionJob = _promptManager.HasAnyImages();
+                
+                if (!instanceMgr.IsAnyLLMFree(isSmallJob: true, isVisionJob: isVisionJob))
                 {
-                    SetStatusMessage("Waiting for LLM slot...");
+                    if (isVisionJob)
+                    {
+                        SetStatusMessage("Waiting for Vision LLM...");
+                    }
+                    else
+                    {
+                        SetStatusMessage("Waiting for LLM slot...");
+                    }
                     return;
                 }
             }
@@ -2887,16 +2936,32 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 SetStatusMessage("Running LLM...");
                 var mgr = LLMSettingsManager.Get();
                 
+                // Detect if this is a vision job (has images pending or attached to any interaction)
+                bool isVisionJob = _promptManager.HasAnyImages();
+                if (isVisionJob)
+                {
+                    RTConsole.Log("Vision job detected: prompt contains image(s)");
+                }
+                
                 // Try to use multi-instance system first (isSmallJob=true for autopic LLM calls)
                 var instanceMgr = LLMInstanceManager.Get();
-                int llmInstanceID = instanceMgr?.GetFreeLLM(isSmallJob: true) ?? -1;
+                int llmInstanceID = instanceMgr?.GetFreeLLM(isSmallJob: true, isVisionJob: isVisionJob) ?? -1;
                 
-                // If no free instance, try to get the least busy one that can accept small jobs
-                // This ensures we only use instances that are configured for small jobs
+                // If no free instance, try to get the least busy one that can accept the job type
                 if (llmInstanceID < 0 && instanceMgr != null && instanceMgr.GetInstanceCount() > 0)
                 {
-                    llmInstanceID = instanceMgr.GetLeastBusyLLM(isSmallJob: true);
-                    RTConsole.Log($"No free small job LLM, using least busy: {llmInstanceID}");
+                    llmInstanceID = instanceMgr.GetLeastBusyLLM(isSmallJob: true, isVisionJob: isVisionJob);
+                    RTConsole.Log($"No free LLM for job type, using least busy: {llmInstanceID}");
+                }
+                
+                // Check if vision job has no eligible LLM
+                if (isVisionJob && llmInstanceID < 0 && instanceMgr != null && instanceMgr.GetInstanceCount() > 0)
+                {
+                    RTConsole.Log("Error: No vision-capable LLM available. Set an LLM instance to 'Vision Jobs Only' or 'Any' job mode.");
+                    RTQuickMessageManager.Get().ShowMessage("No vision-capable LLM available. Check LLM Settings.", 5);
+                    SetStatusMessage("No vision LLM!");
+                    ClearErrorsAndJobs();
+                    return;
                 }
                 
                 LLMInstanceInfo llmInstance = llmInstanceID >= 0 ? instanceMgr?.GetInstance(llmInstanceID) : null;

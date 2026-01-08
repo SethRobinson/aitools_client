@@ -25,7 +25,7 @@ COMMAND_END
 
 #I need this so FluxAI won't randomly make cartoons.  If you want cartoons/cg, specify that instead below
 COMMAND_START|prepend_comfyui_prompt
-live action,, 
+Analog film, high ISO, medium dynamic range, amateur photo
 COMMAND_END
 
 COMMAND_START|prepend_prompt

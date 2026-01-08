@@ -84,9 +84,11 @@ public class LLMProviderSettings
 /// </summary>
 public enum LLMJobMode
 {
-    Any = 0,           // Accept any job (default)
-    BigJobsOnly = 1,   // Only AI Guide, Adventure mode
-    SmallJobsOnly = 2  // Only autopic LLM actions
+    Any = 0,           // Accept any job (default), including vision
+    BigJobsOnly = 1,   // Only AI Guide, Adventure mode (big text jobs)
+    SmallJobsOnly = 2, // Only autopic LLM actions (small text jobs)
+    VisionJobsOnly = 3, // Only jobs with images attached
+    NonVisionOnly = 4  // Big or small jobs, but NOT vision jobs
 }
 
 /// <summary>
@@ -168,8 +170,19 @@ public class LLMInstanceInfo
     
     /// <summary>
     /// Check if this instance can accept a job of the given type (checks job mode only).
+    /// Legacy overload for backward compatibility - assumes non-vision job.
     /// </summary>
     public bool CanAcceptJobType(bool isSmallJob)
+    {
+        return CanAcceptJobType(isSmallJob, isVisionJob: false);
+    }
+    
+    /// <summary>
+    /// Check if this instance can accept a job of the given type (checks job mode only).
+    /// </summary>
+    /// <param name="isSmallJob">True for small jobs (autopic), false for big jobs (AI Guide/Adventure)</param>
+    /// <param name="isVisionJob">True if the job has images attached</param>
+    public bool CanAcceptJobType(bool isSmallJob, bool isVisionJob)
     {
         if (!isActive) return false;
         
@@ -178,9 +191,13 @@ public class LLMInstanceInfo
             case LLMJobMode.Any:
                 return true;
             case LLMJobMode.SmallJobsOnly:
-                return isSmallJob;
+                return isSmallJob && !isVisionJob;
             case LLMJobMode.BigJobsOnly:
-                return !isSmallJob;
+                return !isSmallJob && !isVisionJob;
+            case LLMJobMode.VisionJobsOnly:
+                return isVisionJob;
+            case LLMJobMode.NonVisionOnly:
+                return !isVisionJob;
             default:
                 return true;
         }
@@ -188,10 +205,21 @@ public class LLMInstanceInfo
     
     /// <summary>
     /// Check if this instance can accept a new job (checks job mode AND capacity).
+    /// Legacy overload for backward compatibility - assumes non-vision job.
     /// </summary>
     public bool CanAcceptJob(bool isSmallJob)
     {
-        if (!CanAcceptJobType(isSmallJob)) return false;
+        return CanAcceptJob(isSmallJob, isVisionJob: false);
+    }
+    
+    /// <summary>
+    /// Check if this instance can accept a new job (checks job mode AND capacity).
+    /// </summary>
+    /// <param name="isSmallJob">True for small jobs (autopic), false for big jobs (AI Guide/Adventure)</param>
+    /// <param name="isVisionJob">True if the job has images attached</param>
+    public bool CanAcceptJob(bool isSmallJob, bool isVisionJob)
+    {
+        if (!CanAcceptJobType(isSmallJob, isVisionJob)) return false;
         return activeTasks < maxConcurrentTasks;
     }
     
@@ -233,6 +261,8 @@ public class LLMInstanceInfo
             case LLMJobMode.Any: return "Any";
             case LLMJobMode.BigJobsOnly: return "Big Jobs";
             case LLMJobMode.SmallJobsOnly: return "Small Jobs";
+            case LLMJobMode.VisionJobsOnly: return "Vision Jobs";
+            case LLMJobMode.NonVisionOnly: return "Non-Vision";
             default: return "Any";
         }
     }
