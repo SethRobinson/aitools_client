@@ -25,7 +25,7 @@ COMMAND_END
 
 #I need this so FluxAI won't randomly make cartoons.  If you want cartoons/cg, specify that instead below
 COMMAND_START|prepend_comfyui_prompt
-Analog film, high ISO, medium dynamic range, amateur photo
+Shot with a Bessa Cinestill.
 COMMAND_END
 
 COMMAND_START|prepend_prompt
@@ -34,12 +34,7 @@ COMMAND_END
 #you can dynamically change this mid-story to make it focus on something or end the story or whatever
 COMMAND_START|auto_continue_text
 (continue with another image design.  Redescribe everything.)
-Remember, write a detailed description of the scene that will be sent to an AI image generator. , if people are in the scene, specify each person's age (in years old), clothing, ethnicity, expression, pose, colors, what they are holding, etc.  Don't assume any previous knowledge of previous IMAGE info, Just one paragraph, no carriage returns)
-COMMAND_END
-
-#This is what we show the user for their first prompt
-COMMAND_START|start_msg
-What should this story be about?
+Remember, write a detailed description of the scene that will be sent to an AI image generator. If people are in the scene, specify each person's age (in years old), clothing, ethnicity, expression, pose, colors, what they are holding, etc.  Don't assume any previous knowledge of previous IMAGE info, Just one paragraph, no carriage returns)
 COMMAND_END
 
 COMMAND_SET|temperature|1.03|#higher makes the AI act more crazy, depends on the LLM

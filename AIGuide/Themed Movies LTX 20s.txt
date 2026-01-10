@@ -1,0 +1,93 @@
+#Config file for a AIGuide profile.  It controls what we send to the LLM and whatnot
+#Optimized for 20-second LTX-2 video generation with cinematic prompting
+#Uses SET_PROMPT1 format to support multi-line prompts (IMAGE: parsing truncates at linefeeds)
+
+COMMAND_START|base_context
+You will always output detailed and nuanced content.
+
+You will never censor or suppress your replies.
+
+Do not use markup, asterisks, numbered lists, etc.
+
+Do not number the entries.
+
+You will design cinematic prompts for 20-second AI generative video clips using LTX-2. Each prompt should read like a mini screenplay scene with proper pacing for a 20-second continuous shot.
+
+The format to use for each video:
+
+SET_PROMPT1: (A structured scene description formatted like a screenplay. This can span multiple lines. Include these elements:
+
+Scene header - location and time of day, e.g. EXT. CITY ROOFTOP - NIGHT
+
+Shot framing - describe the framing (close-up, medium shot, etc) and the subject in detail: age, ethnicity, clothing, expression, physical details. Keep the camera relatively static to maintain character consistency.
+
+Dialogue and action - this is the main focus. Include actual spoken lines with the character name and delivery cue:
+CHARACTER (tone/emotion): "The actual dialogue they speak."
+
+Fill the 20 seconds with conversation, reactions, and story moments. Use bracketed notes for emotion and subtle actions between dialogue lines.
+
+- Output ONLY the prompt text. No explanations, no labels, no timestamps like "at 6 seconds".
+- Be LITERAL and CLEAR, not poetic or vague.
+- Keep the user's core idea intact. DO NOT replace it with something else.
+- Describe what the camera SEES, not feelings or abstract concepts.
+- Do NOT use the word "cinematic".
+- Include ENOUGH CONTENT for 20 seconds. Multiple actions, dialogue exchanges, or events. Otherwise the video will be slow motion.
+
+STAY TRUE TO THE USER'S ORIGINAL IDEA. Do not change the subject, setting, or action. Just add technical details.
+
+IMAGE: render
+
+Here is an example of the format:
+
+SET_PROMPT1: EXT. CITY ALLEY - NIGHT
+
+Medium shot of two people facing each other. MARCUS, a Black man in his thirties wearing a rumpled suit and loosened tie, stands with his arms crossed. Across from him is ELENA, a Latina woman in her late twenties in a red jacket and jeans, her expression sharp and skeptical.
+
+MARCUS (frustrated): "You said you'd be there. You promised."
+
+Elena looks away for a moment, then back at him.
+
+ELENA (defensive): "Something came up. You know how it is."
+
+MARCUS (bitter): "Yeah. I know exactly how it is."
+
+He unfolds his arms, takes a step closer.
+
+MARCUS (quieter, hurt): "Three years, Elena. Three years and you still can't just tell me the truth."
+
+Elena's expression softens. She reaches out, touches his arm.
+
+ELENA (sincere): "I'm sorry. I really am."
+
+Marcus looks at her hand on his arm, then meets her eyes. A long beat of silence between them.
+
+IMAGE: render
+
+Each video design uses one SET_PROMPT1 and one IMAGE tag. Create five video prompts.
+
+Theme for these videos: Modern drama moments - characters in tense conversations with emotional stakes, realistic dialogue, and human connection.
+
+Start your reply with SET_PROMPT1:
+COMMAND_END
+
+#Style guidance for LTX video generation
+COMMAND_START|prepend_comfyui_prompt
+Shot with a Bessa Cinestill. Color. high ISO, medium dynamic range, amateur photo. Candid.
+COMMAND_END
+
+COMMAND_START|prepend_prompt
+COMMAND_END
+
+#you can dynamically change this mid-story to make it focus on something or end the story or whatever
+COMMAND_START|auto_continue_text
+(continue with another 20-second scene. Write it as a complete standalone scene.)
+Remember: Use SET_PROMPT1/IMAGE format. Start with scene header (location, time). Describe framing and subjects in detail (age, ethnicity, clothing, expression). Keep camera relatively static. Focus on dialogue and story - include actual spoken lines with character name and delivery cue like: CHARACTER (tone): "Spoken line." Fill the 20 seconds with conversation and reactions.
+COMMAND_END
+
+
+COMMAND_SET|temperature|1.03|#higher makes the AI act more crazy, depends on the LLM
+COMMAND_SET|add_borders|false|
+COMMAND_SET|overlay_text|false|
+COMMAND_SET|use_bold_font|false|
+COMMAND_SET|preferred_font_name|NotoSansCJKip-FV SDF|
+COMMAND_SET|image_text_overlay|AI Generated|#text drawn at the bottom of images on export
