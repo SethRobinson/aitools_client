@@ -29,17 +29,8 @@ public class ServerSettingsPanel : MonoBehaviour
 
     public List<string> GetPicJobListAsListOfStrings()
     {
-        List<string> list = new List<string>();
-        string[] lines = m_jobListInputField.text.Split(new string[] { "\r\n", "\n" }, StringSplitOptions.None);
-        foreach (string line in lines)
-        {
-            string trimmedItem = line.Trim();
-            if (line.Length > 0)
-            {
-                list.Add(line);
-            }
-        }
-        return list;
+        // Delegate to GameLogic which handles multi-line @end blocks
+        return GameLogic.Get().GetPicJobListAsListOfStrings(m_jobListInputField.text);
     }
     public void SetJobList(string joblist)
     {

@@ -574,6 +574,62 @@ public class ImageGenerator : MonoBehaviour
 
         //if generate is on, we'll keep generating more images forever
 
+        // Check if the current joblist has LLM calls before GPU work
+        // This prevents spawning hundreds of pics when presets use LLM calls before GPU work
+        bool joblistHasLeadingLLMCall = false;
+        var jobList = GameLogic.Get().GetPicJobListAsListOfStrings();
+        foreach (string line in jobList)
+        {
+            string trimmed = line.Trim();
+            if (trimmed.StartsWith("-") || trimmed.Length == 0) continue; // Skip comments/empty
+            if (trimmed.StartsWith("command ")) continue; // Skip command lines
+            
+            if (trimmed == "call_llm")
+            {
+                joblistHasLeadingLLMCall = true;
+                break;
+            }
+            else if (trimmed.EndsWith(".json"))
+            {
+                // Hit a GPU workflow first - no leading LLM calls
+                break;
+            }
+        }
+
+        // If joblist has LLM calls before GPU work, check LLM availability
+        // This allows pipelining: pics can do LLM work while others use the GPU
+        if (joblistHasLeadingLLMCall)
+        {
+            var instanceMgr = LLMInstanceManager.Get();
+            if (instanceMgr != null && instanceMgr.GetInstanceCount() > 0)
+            {
+                // Only block if NO LLM slots are free
+                // This scales with LLM count: 3 LLMs = up to 3 pics can do LLM work in parallel
+                if (!instanceMgr.IsAnyLLMFree(isSmallJob: true, isVisionJob: false))
+                {
+                    return; // All LLM slots busy, wait for one to free up
+                }
+            }
+            else
+            {
+                // No LLM instance system - fall back to counting active LLM pics
+                // Allow at least 1 pic to do LLM work at a time
+                var existingPics = RTUtil.FindObjectOrCreate("Pics").transform.GetComponentsInChildren<PicMain>();
+                int picsDoingLLMWork = 0;
+                foreach (PicMain pic in existingPics)
+                {
+                    if (pic.IsLLMActive())
+                    {
+                        picsDoingLLMWork++;
+                    }
+                }
+                if (picsDoingLLMWork >= 1)
+                {
+                    return; // Already have a pic doing LLM work
+                }
+            }
+        }
+
         for (int i = 0; i < Config.Get().GetGPUCount(); i++)
         {
 

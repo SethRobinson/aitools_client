@@ -33,6 +33,7 @@ public class GPUInfo
     public int remoteGPUID;
     public string remoteURL;
     public bool IsGPUBusy;
+    public int pendingLLMCount = 0; // Tracks pics doing pre-GPU LLM work targeting this server
     public Dictionary<string, object> configDict = null;
     public bool supportsAITools = false;
     public ServerButtonScript buttonScript = null;
@@ -45,19 +46,36 @@ public class GPUInfo
     public string _jobListOverride = "";
     public string _name = ""; //if blank, we'll use our own
 
-    public List<String> GetPicJobListAsListOfStrings()
+    /// <summary>
+    /// Checks if this server's job list override has LLM calls before GPU work.
+    /// </summary>
+    public bool HasLLMFirstOverride()
     {
-        List<String> list = new List<String>();
-        string[] lines = _jobListOverride.Split(new string[] { "\r\n", "\n" }, StringSplitOptions.None);
-        foreach (string line in lines)
+        if (string.IsNullOrEmpty(_jobListOverride)) return false;
+        
+        var jobList = GetPicJobListAsListOfStrings();
+        foreach (string line in jobList)
         {
-            string trimmedItem = line.Trim();
-            if (trimmedItem.Length > 0 && trimmedItem[0] != '-' && trimmedItem[0] != '/')
+            string trimmed = line.Trim();
+            if (trimmed.StartsWith("-") || trimmed.Length == 0) continue; // Skip comments/empty
+            if (trimmed.StartsWith("command ")) continue; // Skip command lines
+            
+            if (trimmed == "call_llm")
             {
-                list.Add(trimmedItem);
+                return true; // Found LLM call before any GPU work
+            }
+            else if (trimmed.EndsWith(".json"))
+            {
+                return false; // Hit GPU workflow first
             }
         }
-        return list;
+        return false;
+    }
+
+    public List<String> GetPicJobListAsListOfStrings()
+    {
+        // Delegate to GameLogic which handles multi-line @end blocks
+        return GameLogic.Get().GetPicJobListAsListOfStrings(_jobListOverride);
     }
 
 }
@@ -560,7 +578,8 @@ set_default_audio_negative_prompt|music|
     {
         if (!IsValidGPU(gpuID)) return true;
         
-        return m_gpuInfo[gpuID].IsGPUBusy;
+        // GPU is busy if doing actual GPU work OR has pending LLM work
+        return m_gpuInfo[gpuID].IsGPUBusy || m_gpuInfo[gpuID].pendingLLMCount > 0;
     }
 
     public void SetGPUBusy(int gpuID, bool bNew)
@@ -573,6 +592,28 @@ set_default_audio_negative_prompt|music|
             m_gpuInfo[gpuID].buttonScript.OnSetBusy(bNew);
         }
        
+    }
+
+    /// <summary>
+    /// Increment pending LLM count for a server (when a pic starts pre-GPU LLM work targeting this server)
+    /// </summary>
+    public void IncrementPendingLLM(int gpuID)
+    {
+        if (IsValidGPU(gpuID))
+        {
+            m_gpuInfo[gpuID].pendingLLMCount++;
+        }
+    }
+
+    /// <summary>
+    /// Decrement pending LLM count for a server (when pic's LLM work finishes or pic is destroyed)
+    /// </summary>
+    public void DecrementPendingLLM(int gpuID)
+    {
+        if (IsValidGPU(gpuID) && m_gpuInfo[gpuID].pendingLLMCount > 0)
+        {
+            m_gpuInfo[gpuID].pendingLLMCount--;
+        }
     }
 
     public Vector2 GetTopRightPosition(GameObject panel)

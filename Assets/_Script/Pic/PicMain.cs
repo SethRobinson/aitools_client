@@ -181,6 +181,7 @@ public class PicMain : MonoBehaviour
     bool m_waitingForPicJob = false;
     bool _llmIsActive = false;
     int _activeLLMInstanceID = -1; // Tracks which LLM instance is currently active for this pic
+    int _pendingServerID = -1; // Tracks which server this pic is targeting during pre-GPU LLM work
     const string m_default_requirements = "gpu";
     string m_requirements = m_default_requirements;
     string m_tempText1 = ""; // General-purpose text buffer for preset scripts
@@ -467,6 +468,8 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
         return false;
     }
+
+    public bool IsLLMActive() { return _llmIsActive; }
 
     public bool IsMovie()
     {
@@ -2666,6 +2669,13 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             }
         }
         
+        // Track pending server LLM work (for server-specific LLM-first presets)
+        if (!bActive && _pendingServerID >= 0)
+        {
+            Config.Get().DecrementPendingLLM(_pendingServerID);
+            _pendingServerID = -1;
+        }
+        
         // Track LLM requests in Adventure mode to honor the "LLMs at once" limit
         if (AdventureLogic.Get().IsActive())
         {
@@ -3219,6 +3229,14 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                         m_allowServerJobOverrides = false; //once is enough
                         m_jobList.Clear();
                         AddJobList(serverJobList);
+                        
+                        // If this server's override has LLM calls before GPU work, mark it as pending
+                        // This prevents multiple pics from queueing up on the same server
+                        if (serverInfo.HasLLMFirstOverride() && serverID >= 0 && _pendingServerID < 0)
+                        {
+                            _pendingServerID = serverID;
+                            Config.Get().IncrementPendingLLM(serverID);
+                        }
                     }
                 }
 
@@ -3503,6 +3521,13 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
         // Release LLM slot if this pic was using one
         SetLLMActive(false);
+        
+        // Also ensure pending server LLM count is decremented (defensive cleanup)
+        if (_pendingServerID >= 0)
+        {
+            Config.Get().DecrementPendingLLM(_pendingServerID);
+            _pendingServerID = -1;
+        }
 
         if (m_pic.sprite && m_pic.sprite.texture)
         {
