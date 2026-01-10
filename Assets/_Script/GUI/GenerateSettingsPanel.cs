@@ -835,7 +835,7 @@ public class GenerateSettingsPanel : MonoBehaviour
         if (_autoPicDropdown == null) return;
 
         _autoPicDropdown.ClearOptions();
-        var options = new List<TMP_Dropdown.OptionData>();
+        var fileNames = new List<string>();
 
         // Look for files matching AutoPic*.txt or test_AutoPic*.txt patterns (case-insensitive) in Presets folder
         if (Directory.Exists("Presets"))
@@ -848,9 +848,19 @@ public class GenerateSettingsPanel : MonoBehaviour
                 if (fileName.StartsWith("AutoPic", System.StringComparison.OrdinalIgnoreCase) ||
                     fileName.StartsWith("test_AutoPic", System.StringComparison.OrdinalIgnoreCase))
                 {
-                    options.Add(new TMP_Dropdown.OptionData(fileName));
+                    fileNames.Add(fileName);
                 }
             }
+        }
+
+        // Sort alphabetically for consistent ordering (case-insensitive)
+        fileNames.Sort((a, b) => string.Compare(a, b, System.StringComparison.OrdinalIgnoreCase));
+
+        // Convert to dropdown options
+        var options = new List<TMP_Dropdown.OptionData>();
+        foreach (string fileName in fileNames)
+        {
+            options.Add(new TMP_Dropdown.OptionData(fileName));
         }
 
         // If no AutoPic files found, add a default entry
@@ -881,7 +891,12 @@ public class GenerateSettingsPanel : MonoBehaviour
 
     private void RefreshAutoPicDropdown()
     {
-        if (_autoPicDropdown == null || _autoPicDropdown.options.Count == 0) return;
+        if (_autoPicDropdown == null) return;
+        
+        // Always repopulate the dropdown to ensure options are fresh
+        PopulateAutoPicDropdown();
+        
+        if (_autoPicDropdown.options.Count == 0) return;
 
         string savedScript = "AutoPic.txt"; // Default
         var prefs = UserPreferences.Get();
@@ -891,25 +906,27 @@ public class GenerateSettingsPanel : MonoBehaviour
         }
 
         // Find the saved script in the dropdown options
+        // Use SetValueWithoutNotify to avoid triggering the save callback
         bool found = false;
         for (int i = 0; i < _autoPicDropdown.options.Count; i++)
         {
             if (string.Equals(_autoPicDropdown.options[i].text, savedScript, System.StringComparison.OrdinalIgnoreCase))
             {
-                _autoPicDropdown.value = i;
+                _autoPicDropdown.SetValueWithoutNotify(i);
                 found = true;
                 break;
             }
         }
 
         // If not found, default to AutoPic.txt or first available
+        // Still use SetValueWithoutNotify to avoid overwriting the user's preference
         if (!found)
         {
             for (int i = 0; i < _autoPicDropdown.options.Count; i++)
             {
                 if (string.Equals(_autoPicDropdown.options[i].text, "AutoPic.txt", System.StringComparison.OrdinalIgnoreCase))
                 {
-                    _autoPicDropdown.value = i;
+                    _autoPicDropdown.SetValueWithoutNotify(i);
                     found = true;
                     break;
                 }
@@ -917,9 +934,12 @@ public class GenerateSettingsPanel : MonoBehaviour
             // If still not found, just use index 0
             if (!found)
             {
-                _autoPicDropdown.value = 0;
+                _autoPicDropdown.SetValueWithoutNotify(0);
             }
         }
+        
+        // Force the dropdown to update its displayed text
+        _autoPicDropdown.RefreshShownValue();
     }
 
     private IEnumerator RestyleNextFrame()

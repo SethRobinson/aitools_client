@@ -1,0 +1,21 @@
+COMMAND_START|joblist
+-llm_manager has info on the active story and has preset the llm_prompt, so we don't want to init it
+-command @llm_prompt_reset
+
+-command @llm_prompt_pop_first
+command @llm_prompt_pop_first
+
+command @llm_prompt_set_base_prompt|Your job is to look at the following text/story and create a cinematic 20-second video prompt for LTX-2 AI video generation. Structure the prompt like a mini screenplay scene.|
+command @llm_prompt_add_from_user|Please describe the preceding scene as a 20-second cinematic video prompt. Format it as a screenplay scene: Start with a scene header (location and time, e.g. EXT. CITY STREET - NIGHT). Describe the framing and subjects in detail (age, ethnicity, clothing, expression). Keep the camera relatively static. Focus on dialogue and story - include actual spoken lines with character name and delivery cue like: CHARACTER (tone): "The spoken line." Fill the 20 seconds with conversation, reactions, and story moments. Use bracketed notes for emotion and actions. End with a natural story beat. Write as one continuous scene, no formatting or bullet points.|
+
+call_llm
+command @copy|prepend_prompt|prompt|
+-command @add| |prompt|
+command @add|llm_reply|prompt|
+
+COMMAND_END
+COMMAND_START|default_negative_prompt
+COMMAND_END
+COMMAND_START|default_pre_prompt
+Shot with a Bessa Cinestill. Analog film, high ISO, medium dynamic range, amateur photo. Candid.
+COMMAND_END

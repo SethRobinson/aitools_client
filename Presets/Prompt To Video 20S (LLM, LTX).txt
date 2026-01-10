@@ -1,0 +1,48 @@
+COMMAND_START|joblist
+-Use LLM to rewrite the user's prompt into an optimized LTX-2 video prompt for a 20-second clip
+
+command @llm_prompt_set_base_prompt
+You rewrite simple ideas into LTX-2 video prompts. Be literal and direct. No poetry. No metaphors. Just clear visual descriptions.
+@end
+
+command @llm_prompt_add_from_user
+Rewrite the user's idea below into a 20-second LTX-2 video prompt.
+
+STAY TRUE TO THE USER'S ORIGINAL IDEA. Do not change the subject, setting, or action. Just add technical details.
+
+Write ONE flowing paragraph with PLENTY of content to fill 20 seconds at normal speed. If you don't include enough actions, the video will look like slow motion. Describe actions in SEQUENCE, not with timestamps. Include:
+- Scene setting and lighting
+- Subject details (age, clothing, hair, physical expression)
+- MANY actions described one after another using words like "then", "as", "suddenly", "a beat"
+- Camera movement described naturally throughout
+- Dialogue format: Character (tone): "Line."
+- Include multiple lines of dialogue or many distinct actions to fill the time
+
+EXAMPLE 20-SECOND PROMPT:
+"A warm sunny backyard. The camera starts in a tight close-up of a woman and a man in their 30s, facing each other with serious expressions. The woman, emotional and dramatic, says softly: "That's it... Dad's lost it. And we've lost Dad." The man exhales, slightly annoyed: "Stop being so dramatic, Jess." A beat. He glances aside, then mutters defensively: "He's just having fun." The camera slowly pans right, revealing the grandfather in the garden wearing enormous butterfly wings, waving his arms in the air like he's trying to take off. He shouts: "Wheeeew!" as he flaps his wings with full commitment. The woman covers her face, on the verge of tears."
+
+CRITICAL RULES:
+- Output ONLY the prompt text. No explanations, no labels, no timestamps like "at 6 seconds".
+- Be LITERAL and CLEAR, not poetic or vague.
+- Keep the user's core idea intact. DO NOT replace it with something else.
+- Describe what the camera SEES, not feelings or abstract concepts.
+- Do NOT use the word "cinematic".
+- Include ENOUGH CONTENT for 20 seconds. Multiple actions, dialogue exchanges, or events. Otherwise the video will be slow motion.
+
+The user's idea:
+@end
+
+command @llm_prompt_add_from_user|prompt|
+
+call_llm
+
+command @copy|llm_reply|prompt|
+
+text_to_video_ltx_fast.json @replace|"width": 960|"width": 960| @replace|"height": 576|"height": 576| @replace|"value": 121|"value": 481|
+COMMAND_END
+COMMAND_START|default_negative_prompt
+cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white
+COMMAND_END
+COMMAND_START|default_pre_prompt
+shot with a Bessa Cinestill.
+COMMAND_END

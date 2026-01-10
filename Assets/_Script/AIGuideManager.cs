@@ -1147,7 +1147,11 @@ public class AIGuideManager : MonoBehaviour
                 
                 // Check if we have SET_PROMPT tags in the accumulated text for multi-prompt workflows
                 string[] parsedPrompts = PicMain.ParseSetPromptTags(accumulatedForMultiPrompt);
-                bool hasMultiPrompt = !string.IsNullOrEmpty(parsedPrompts[1]); // Has at least prompt 2
+                // Use multi-prompt path if we have SET_PROMPT1 (single long prompt) or SET_PROMPT2+ (multiple prompts)
+                // This allows SET_PROMPT1 alone to work for 20-second single-shot videos
+                bool hasSetPromptTags = !string.IsNullOrEmpty(parsedPrompts[0]) && 
+                    accumulatedForMultiPrompt.ToLower().Contains("set_prompt");
+                bool hasMultiPrompt = hasSetPromptTags || !string.IsNullOrEmpty(parsedPrompts[1]);
                 
                 // Debug: Log parsed prompts for this image group
                 if (hasMultiPrompt)

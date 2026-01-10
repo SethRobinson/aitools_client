@@ -2374,7 +2374,12 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         }
 
         // Handle text variable copies
-        if (dest == "prompt") job._requestedPrompt = temp;
+        if (dest == "prompt")
+        {
+            job._requestedPrompt = temp;
+            // Also sync to _requestedPrompts[0] for consistency with multi-prompt workflows
+            job._requestedPrompts[0] = temp;
+        }
         if (dest == "global_prompt") GameLogic.Get().SetPrompt(temp);
         if (dest == "audio_prompt") job._requestedAudioPrompt = temp;
         if (dest == "negative_prompt") job._requestedNegativePrompt = temp;
@@ -2433,7 +2438,12 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     {
         string temp = ConvertVarToText(ref job, source);
 
-        if (dest == "prompt") job._requestedPrompt += temp;
+        if (dest == "prompt")
+        {
+            job._requestedPrompt += temp;
+            // Also sync to _requestedPrompts[0] for consistency with multi-prompt workflows
+            job._requestedPrompts[0] += temp;
+        }
         if (dest == "global_prompt") GameLogic.Get().SetPrompt(GameLogic.Get().GetPrompt()+ temp);
         if (dest == "audio_prompt") job._requestedAudioPrompt += temp;
         if (dest == "negative_prompt") job._requestedNegativePrompt += temp;
