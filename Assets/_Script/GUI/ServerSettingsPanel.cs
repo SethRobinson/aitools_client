@@ -708,11 +708,25 @@ public class ServerSettingsPanel : MonoBehaviour
         if (_settingsText != null)
             _settingsText.text = "URL: " + serverInfo.remoteURL;
 
-        // Populate preset dropdown
+        // Populate preset dropdown and restore selection
         if (_presetDropdown != null)
         {
             _presetDropdown.onValueChanged.RemoveListener(OnPresetDropdownChanged);
             PresetManager.Get().PopulatePresetDropdown(_presetDropdown, true);
+            
+            // Restore the saved preset selection
+            if (!string.IsNullOrEmpty(serverInfo._selectedPresetName))
+            {
+                for (int i = 0; i < _presetDropdown.options.Count; i++)
+                {
+                    if (string.Equals(_presetDropdown.options[i].text, serverInfo._selectedPresetName, System.StringComparison.OrdinalIgnoreCase))
+                    {
+                        _presetDropdown.SetValueWithoutNotify(i);
+                        break;
+                    }
+                }
+            }
+            _presetDropdown.RefreshShownValue();
             _presetDropdown.onValueChanged.AddListener(OnPresetDropdownChanged);
         }
 
@@ -778,10 +792,14 @@ public class ServerSettingsPanel : MonoBehaviour
 
         if (selected == "<no selection>")
         {
-            // Special case
+            // Special case - clear both the preset name and job list
+            serverInfo._selectedPresetName = "";
             _jobListInputField.text = "";
             return;
         }
+
+        // Remember which preset was selected
+        serverInfo._selectedPresetName = selected;
 
         var preset = PresetManager.Get().LoadPreset(selected, PresetManager.Get().GetActivePreset());
         _jobListInputField.text = preset.JobList;

@@ -44,6 +44,7 @@ public class GPUInfo
     public int _comfyUIWorkFlowOverride = -1;
     public bool _bIsActive = true;
     public string _jobListOverride = "";
+    public string _selectedPresetName = ""; // Remembers which preset was selected in the dropdown
     public string _autoPicOverride = ""; // Empty = use global AutoPic setting, otherwise the preset filename to use
     public string _name = ""; //if blank, we'll use our own
 

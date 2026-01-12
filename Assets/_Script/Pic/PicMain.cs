@@ -168,6 +168,8 @@ public class PicMain : MonoBehaviour
     List<string> m_jobList = new List<string>();
     public bool m_allowServerJobOverrides = true;
     public bool m_isAutoPicJob = false; // Set to true for AutoPic jobs, enables per-server AutoPic override
+    public int m_preferredServerID = -1; // If set, prefer this server for job assignment (used after AutoPic to keep same server)
+    public bool m_skipPostAutoPicJobs = false; // If true (set via @stopjob command), don't add jobs after AutoPic completes
     UndoEvent m_undoevent = new UndoEvent();
     UndoEvent m_curEvent = new UndoEvent(); //useful for just saving the current status, makes it easy to copy to/from a real undo event
     bool m_isDestroyed;
@@ -2726,7 +2728,25 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             Config.Get().TryAddOpenAIImageGPU();
         }
 
-        int serverID = Config.Get().GetFreeGPU(neededRenderer, false);
+        int serverID = -1;
+        
+        // If we have a preferred server (e.g., from AutoPic), try to use it first
+        if (m_preferredServerID >= 0)
+        {
+            GPUInfo preferredServer = Config.Get().GetGPUInfo(m_preferredServerID);
+            if (preferredServer != null && preferredServer._bIsActive && !Config.Get().IsGPUBusy(m_preferredServerID))
+            {
+                serverID = m_preferredServerID;
+            }
+            // Clear preference after attempting to use it (whether successful or not)
+            m_preferredServerID = -1;
+        }
+        
+        // Fall back to any free GPU if preferred wasn't available
+        if (serverID == -1)
+        {
+            serverID = Config.Get().GetFreeGPU(neededRenderer, false);
+        }
 
         if (serverID == -1 && m_requirements == "gpu")
         {
@@ -3257,6 +3277,13 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                         }
                     }
                 }
+                
+                // If this is an AutoPic job, remember the server so post-AutoPic rendering uses the same server
+                // This ensures the server's job list override is applied after the AutoPic LLM phase
+                if (m_isAutoPicJob && serverID >= 0)
+                {
+                    m_preferredServerID = serverID;
+                }
 
                 string workFlowNameWithoutTest = m_jobList[0];
 
@@ -3409,6 +3436,12 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                         else if (picJobData._name.ToLower() == "no_undo")
                         {
                             SetNoUndo(true);
+                        }
+                        else if (picJobData._name.ToLower() == "stopjob")
+                        {
+                            // Signal that no post-AutoPic jobs should be added after this script completes
+                            // Usage: command @stopjob
+                            m_skipPostAutoPicJobs = true;
                         }
                         else if (picJobData._name.ToLower() == "resize_if_larger")
                         {

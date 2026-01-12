@@ -827,10 +827,18 @@ public class AdventureText : MonoBehaviour
         picMain.m_onFinishedRenderingCallback = null;
         picMain.m_onFinishedScriptCallback = null;
 
+        // If AutoPic used @stopjob command, don't add any post-AutoPic jobs
+        // This allows AutoPic presets to handle all rendering themselves
+        if (picMain.m_skipPostAutoPicJobs)
+        {
+            return;
+        }
+
         //re-enable server job overrides now that autopic script is done
         picMain.m_allowServerJobOverrides = true;
+        picMain.m_isAutoPicJob = false; // AutoPic phase is done, now it's a normal render
 
-        //have our LLM picwindow also render
+        //have our LLM picwindow also render - use global job list, server override will be applied in UpdateJobs
         picMain.AddJobList(GameLogic.Get().GetPicJobListAsListOfStrings());
         
         //spawn additional images with the same description, unless we're doing unique APics (each APic handles itself)
