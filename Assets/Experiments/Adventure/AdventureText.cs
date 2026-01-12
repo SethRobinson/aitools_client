@@ -51,6 +51,12 @@ public class AdventureText : MonoBehaviour
     string _factoid = "";
     bool _bDontSendTextToLLM = false;
     string _textToAppendAfterResponse = "";
+    
+    // Selection state for marquee selection feature
+    bool m_isSelected = false;
+    Color m_originalPanelColor = Color.clear; // Will be captured on first selection
+    bool m_hasOriginalPanelColor = false; // Track if we've captured the original color
+    static readonly Color SELECTION_TINT = new Color(0.7f, 0.85f, 1f, 1f); // Light blue tint when selected
 
     public void SetTextToAppendAfterResponse(string text)
     {
@@ -98,6 +104,46 @@ public class AdventureText : MonoBehaviour
     {
         m_name = name;
         SetStatus(m_vanillaStatusMsg);
+    }
+    
+    /// <summary>
+    /// Get selection state for marquee selection feature.
+    /// </summary>
+    public bool GetSelected() { return m_isSelected; }
+    
+    /// <summary>
+    /// Set selection state for marquee selection feature.
+    /// Applies a visual tint to the panel when selected.
+    /// </summary>
+    public void SetSelected(bool bNew)
+    {
+        if (m_isSelected == bNew)
+            return;
+            
+        m_isSelected = bNew;
+        
+        // Apply visual feedback via panel tint
+        if (_panelImage != null)
+        {
+            if (m_isSelected)
+            {
+                // Only capture original color if we haven't already
+                if (!m_hasOriginalPanelColor)
+                {
+                    m_originalPanelColor = _panelImage.color;
+                    m_hasOriginalPanelColor = true;
+                }
+                _panelImage.color = SELECTION_TINT;
+            }
+            else
+            {
+                // Only restore if we have a valid original color
+                if (m_hasOriginalPanelColor)
+                {
+                    _panelImage.color = m_originalPanelColor;
+                }
+            }
+        }
     }
 
     public int GetGenerationCount() { return m_generationCount; }

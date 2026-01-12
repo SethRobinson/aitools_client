@@ -416,6 +416,10 @@ public class PicMask : MonoBehaviour
 
         if ((Input.GetMouseButton(0) || Input.GetMouseButtonUp(0)) && !EventSystem.current.IsPointerOverGameObject())
         {
+            // Don't paint mask while dragging a selection rectangle
+            if (SelectionManager.Get() != null && SelectionManager.Get().IsDragging())
+                return;
+                
             GameObject go = GameLogic.Get().GetPicWereHoveringOver();
             if (go != gameObject) return;
 

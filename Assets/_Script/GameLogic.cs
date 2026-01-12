@@ -861,6 +861,15 @@ public class GameLogic : MonoBehaviour
         return false;
     }
 
+    /// <summary>
+    /// Returns true if the SelectionManager is currently dragging a selection rectangle.
+    /// </summary>
+    public bool IsSelectionDragging()
+    {
+        var selectionManager = SelectionManager.Get();
+        return selectionManager != null && selectionManager.IsDragging();
+    }
+
     public void OnLoopSourceButton(bool bNew)
     {
         m_bLoopSource = bNew;
@@ -1426,6 +1435,12 @@ public string GetPrompt() { return m_prompt; }
         if (gameObject.GetComponent<UserPreferences>() == null)
         {
             gameObject.AddComponent<UserPreferences>();
+        }
+        
+        // Initialize SelectionManager for marquee selection feature
+        if (gameObject.GetComponent<SelectionManager>() == null)
+        {
+            gameObject.AddComponent<SelectionManager>();
         }
 
         // Initialize GenerateSettingsPanel so its settings are always accessible

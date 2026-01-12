@@ -177,6 +177,11 @@ public class PicMain : MonoBehaviour
     string m_editFilename = "";
     bool m_bLocked;
     bool m_bDisableUndo;
+    bool m_isSelected = false;
+    Color m_originalPicColor = Color.white;
+    bool m_hasOriginalPicColor = false; // Track if we've captured the original color
+    static readonly Color SELECTION_TINT = new Color(0.7f, 0.85f, 1f, 1f); // Light blue tint when selected
+    LineRenderer m_selectionFrame; // Visual selection frame
     float m_genericTimerStart = 0; //used to countdown for OpenAI Image API
     string m_genericTimerText = "Waiting...";
     bool m_noUndo = false;
@@ -591,6 +596,83 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     }
     public bool GetLocked() { return m_bLocked; }
     public void SetLocked(bool bNew) { m_bLocked = bNew; }
+    
+    /// <summary>
+    /// Get selection state for marquee selection feature.
+    /// </summary>
+    public bool GetSelected() { return m_isSelected; }
+    
+    /// <summary>
+    /// Set selection state for marquee selection feature.
+    /// Shows a visible selection frame around the Pic.
+    /// </summary>
+    public void SetSelected(bool bNew)
+    {
+        if (m_isSelected == bNew)
+            return;
+            
+        m_isSelected = bNew;
+        
+        // Show/hide selection frame
+        UpdateSelectionFrame();
+    }
+    
+    /// <summary>
+    /// Creates or updates the selection frame visual indicator.
+    /// </summary>
+    private void UpdateSelectionFrame()
+    {
+        if (m_isSelected)
+        {
+            // Create selection frame if it doesn't exist
+            if (m_selectionFrame == null)
+            {
+                GameObject frameObj = new GameObject("SelectionFrame");
+                frameObj.transform.SetParent(transform);
+                frameObj.transform.localPosition = Vector3.zero;
+                
+                m_selectionFrame = frameObj.AddComponent<LineRenderer>();
+                m_selectionFrame.useWorldSpace = false;
+                m_selectionFrame.loop = true;
+                m_selectionFrame.positionCount = 4;
+                m_selectionFrame.startWidth = 0.08f;
+                m_selectionFrame.endWidth = 0.08f;
+                m_selectionFrame.sortingOrder = 100; // Above the pic
+                
+                // Create a simple unlit material for the line
+                m_selectionFrame.material = new Material(Shader.Find("Sprites/Default"));
+                m_selectionFrame.startColor = new Color(0.2f, 0.6f, 1f, 1f); // Bright blue
+                m_selectionFrame.endColor = new Color(0.2f, 0.6f, 1f, 1f);
+            }
+            
+            // Update frame position based on sprite bounds
+            if (m_pic != null && m_pic.sprite != null)
+            {
+                Bounds bounds = m_pic.bounds;
+                float padding = 0.05f; // Small padding outside the sprite
+                
+                // Convert world bounds to local space
+                Vector3 min = transform.InverseTransformPoint(bounds.min) - new Vector3(padding, padding, 0);
+                Vector3 max = transform.InverseTransformPoint(bounds.max) + new Vector3(padding, padding, 0);
+                
+                m_selectionFrame.SetPosition(0, new Vector3(min.x, min.y, -0.1f));
+                m_selectionFrame.SetPosition(1, new Vector3(max.x, min.y, -0.1f));
+                m_selectionFrame.SetPosition(2, new Vector3(max.x, max.y, -0.1f));
+                m_selectionFrame.SetPosition(3, new Vector3(min.x, max.y, -0.1f));
+            }
+            
+            m_selectionFrame.enabled = true;
+        }
+        else
+        {
+            // Hide selection frame
+            if (m_selectionFrame != null)
+            {
+                m_selectionFrame.enabled = false;
+            }
+        }
+    }
+    
     public void SetStatusMessage(string msg)
     {
         //if (GameLogic.Get().GetTurbo())
