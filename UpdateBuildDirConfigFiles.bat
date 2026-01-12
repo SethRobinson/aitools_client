@@ -13,4 +13,5 @@ xcopy /c Presets build\win\Presets\ /E /F /Y
 copy config.txt build\win
 copy config_llm.txt build\win
 copy config_cam.txt build\win
+copy config_preferences.txt build\win
 pause
