@@ -6,7 +6,6 @@ public class ServerButtonScript : MonoBehaviour
 {
     //define an enum with server type A1111, AIT, and COMFYUI
     RTRendererType m_serverType = RTRendererType.A1111;
-    public GameObject _settingsPrefab;
 
     public TextMeshProUGUI m_text;
     int m_buttonIndex = -1;
@@ -19,22 +18,8 @@ public class ServerButtonScript : MonoBehaviour
     }
     public void OnSettingsButton()
     {
-
-        string nameOfObject = "ServerSettingsPanel" + m_buttonIndex;
-        GameObject settingsPanel = GameObject.Find(nameOfObject);
-        if (settingsPanel != null)
-        {
-            Destroy(settingsPanel);
-            return;
-        }
-
-        //init the settings prefab
-        Transform parentTransform = RTUtil.FindIncludingInactive("MainCanvas").transform;
-
-        GameObject settings = Instantiate(_settingsPrefab, parentTransform);
-        settings.name = nameOfObject;
-        ServerSettingsPanel settingsPanelScript = settings.GetComponent<ServerSettingsPanel>();
-        settingsPanelScript.Init(m_buttonIndex);
+        // Use the new static Toggle method - creates panel dynamically
+        ServerSettingsPanel.Toggle(m_buttonIndex);
     }
     public void Setup(GPUInfo g)
     {
