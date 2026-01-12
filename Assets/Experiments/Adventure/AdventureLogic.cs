@@ -233,9 +233,9 @@ public class AdventureLogic : MonoBehaviour
 
     bool _bIsActive = false;
     public UnityEngine.UI.Toggle m_genExtraToggle;
-    public Toggle m_genUniqueAPicsToggle;
+
     public Toggle m_pauseLLMsToggle;
-    public bool GetGenUniqueAPics() { return m_genUniqueAPicsToggle != null && m_genUniqueAPicsToggle.isOn; }
+    public bool GetGenUniqueAPics() { return true; }
     public string GetAdventureName() { return "My Adventure"; }
     int _llmRequestCount = 0;
     int GetMaxLLMRequestsDesiredAtOnce()
@@ -921,6 +921,31 @@ public class AdventureLogic : MonoBehaviour
             + interactionsText 
             + "\n\n**END SUMMARY**\n\n Now, provide a concise summary of the story so far, including all characters and their physical descriptions. Be detailed and thorough.";
     }
+    /// <summary>
+    /// Count how many AutoPic jobs are currently active or waiting (have m_isAutoPicJob or m_autoPicScriptName set).
+    /// This helps prevent over-spawning when GenExtra is on.
+    /// </summary>
+    private int CountActiveAutoPics()
+    {
+        var picsParent = RTUtil.FindObjectOrCreate("Pics");
+        if (picsParent == null) return 0;
+        
+        var allPics = picsParent.transform.GetComponentsInChildren<PicMain>();
+        int count = 0;
+        foreach (var pic in allPics)
+        {
+            if (pic != null && (pic.m_isAutoPicJob || !string.IsNullOrEmpty(pic.m_autoPicScriptName)))
+            {
+                // Count pics that are still processing their AutoPic workflow
+                if (pic.StillHasJobActivityToDo() || pic.IsBusy())
+                {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+    
     void LateUpdate() //late update, so pics have a chance to use the GPUs before we check if any are free
     {
 
@@ -941,8 +966,15 @@ public class AdventureLogic : MonoBehaviour
                             var instanceMgr = LLMInstanceManager.Get();
                             if (instanceMgr != null && instanceMgr.IsAnyLLMFree(isSmallJob: true))
                             {
-                                RTConsole.Log("GPU and LLM free, spawning extra autopic");
-                                _lastPicOwner.OnAutoRenderButton();
+                                // Also check we haven't over-spawned autopics waiting for resources
+                                int activeAutoPics = CountActiveAutoPics();
+                                int maxAutoPics = Config.Get().GetGPUCount() + GetMaxLLMRequestsDesiredAtOnce();
+                                
+                                if (activeAutoPics < maxAutoPics)
+                                {
+                                    RTConsole.Log($"GPU and LLM free, spawning extra autopic ({activeAutoPics}/{maxAutoPics} active)");
+                                    _lastPicOwner.OnAutoRenderButton();
+                                }
                             }
                         }
                         else

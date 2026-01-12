@@ -532,6 +532,47 @@ public class ServerSettingsPanel : MonoBehaviour
 
         yOffset -= (infoHeight + 8);
 
+        // AutoPic Override label (above Preset for visibility)
+        var autoPicLabelObj = new GameObject("AutoPicLabel");
+        autoPicLabelObj.transform.SetParent(_mainPanel, false);
+        var autoPicLabelRt = autoPicLabelObj.AddComponent<RectTransform>();
+        autoPicLabelRt.anchorMin = new Vector2(0, 1);
+        autoPicLabelRt.anchorMax = new Vector2(0, 1);
+        autoPicLabelRt.pivot = new Vector2(0, 1);
+        autoPicLabelRt.offsetMin = new Vector2(leftPad, yOffset - 24);
+        autoPicLabelRt.offsetMax = new Vector2(leftPad + 100, yOffset);
+
+        var autoPicLabelTmp = autoPicLabelObj.AddComponent<TextMeshProUGUI>();
+        autoPicLabelTmp.text = "AutoPic Override:";
+        autoPicLabelTmp.font = _font;
+        autoPicLabelTmp.fontSize = BASE_FONT_SIZE;
+        autoPicLabelTmp.color = TextDark;
+        autoPicLabelTmp.alignment = TextAlignmentOptions.MidlineLeft;
+
+        // AutoPic Override dropdown
+        var autoPicDdGo = TMP_DefaultControls.CreateDropdown(BuildTMPResources());
+        autoPicDdGo.name = "AutoPicDropdown";
+        autoPicDdGo.transform.SetParent(_mainPanel, false);
+        ApplyFontAndColor(autoPicDdGo);
+
+        var autoPicDdRt = autoPicDdGo.GetComponent<RectTransform>();
+        autoPicDdRt.anchorMin = new Vector2(0, 1);
+        autoPicDdRt.anchorMax = new Vector2(1, 1);
+        autoPicDdRt.pivot = new Vector2(0, 1);
+        autoPicDdRt.offsetMin = new Vector2(leftPad + 110, yOffset - 24);
+        autoPicDdRt.offsetMax = new Vector2(-rightPad, yOffset);
+
+        _autoPicDropdown = autoPicDdGo.GetComponent<TMP_Dropdown>();
+        _autoPicDropdown.onValueChanged.AddListener(OnAutoPicDropdownChanged);
+
+        // Make dropdown list taller
+        if (_autoPicDropdown.template != null)
+        {
+            _autoPicDropdown.template.sizeDelta = new Vector2(_autoPicDropdown.template.sizeDelta.x, 150f);
+        }
+
+        yOffset -= 32;
+
         // Preset label (positioned directly in mainPanel, using same offset approach as dropdown)
         var presetLabelObj = new GameObject("PresetLabel");
         presetLabelObj.transform.SetParent(_mainPanel, false);
@@ -571,47 +612,6 @@ public class ServerSettingsPanel : MonoBehaviour
         if (_presetDropdown.template != null)
         {
             _presetDropdown.template.sizeDelta = new Vector2(_presetDropdown.template.sizeDelta.x, 200f);
-        }
-
-        yOffset -= 32;
-
-        // AutoPic Override label
-        var autoPicLabelObj = new GameObject("AutoPicLabel");
-        autoPicLabelObj.transform.SetParent(_mainPanel, false);
-        var autoPicLabelRt = autoPicLabelObj.AddComponent<RectTransform>();
-        autoPicLabelRt.anchorMin = new Vector2(0, 1);
-        autoPicLabelRt.anchorMax = new Vector2(0, 1);
-        autoPicLabelRt.pivot = new Vector2(0, 1);
-        autoPicLabelRt.offsetMin = new Vector2(leftPad, yOffset - 24);
-        autoPicLabelRt.offsetMax = new Vector2(leftPad + 100, yOffset);
-
-        var autoPicLabelTmp = autoPicLabelObj.AddComponent<TextMeshProUGUI>();
-        autoPicLabelTmp.text = "AutoPic Override:";
-        autoPicLabelTmp.font = _font;
-        autoPicLabelTmp.fontSize = BASE_FONT_SIZE;
-        autoPicLabelTmp.color = TextDark;
-        autoPicLabelTmp.alignment = TextAlignmentOptions.MidlineLeft;
-
-        // AutoPic Override dropdown
-        var autoPicDdGo = TMP_DefaultControls.CreateDropdown(BuildTMPResources());
-        autoPicDdGo.name = "AutoPicDropdown";
-        autoPicDdGo.transform.SetParent(_mainPanel, false);
-        ApplyFontAndColor(autoPicDdGo);
-
-        var autoPicDdRt = autoPicDdGo.GetComponent<RectTransform>();
-        autoPicDdRt.anchorMin = new Vector2(0, 1);
-        autoPicDdRt.anchorMax = new Vector2(1, 1);
-        autoPicDdRt.pivot = new Vector2(0, 1);
-        autoPicDdRt.offsetMin = new Vector2(leftPad + 110, yOffset - 24);
-        autoPicDdRt.offsetMax = new Vector2(-rightPad, yOffset);
-
-        _autoPicDropdown = autoPicDdGo.GetComponent<TMP_Dropdown>();
-        _autoPicDropdown.onValueChanged.AddListener(OnAutoPicDropdownChanged);
-
-        // Make dropdown list taller
-        if (_autoPicDropdown.template != null)
-        {
-            _autoPicDropdown.template.sizeDelta = new Vector2(_autoPicDropdown.template.sizeDelta.x, 150f);
         }
 
         yOffset -= 32;
@@ -708,25 +708,11 @@ public class ServerSettingsPanel : MonoBehaviour
         if (_settingsText != null)
             _settingsText.text = "URL: " + serverInfo.remoteURL;
 
-        // Populate preset dropdown and restore selection
+        // Populate preset dropdown
         if (_presetDropdown != null)
         {
             _presetDropdown.onValueChanged.RemoveListener(OnPresetDropdownChanged);
             PresetManager.Get().PopulatePresetDropdown(_presetDropdown, true);
-            
-            // Restore the saved preset selection
-            if (!string.IsNullOrEmpty(serverInfo._selectedPresetName))
-            {
-                for (int i = 0; i < _presetDropdown.options.Count; i++)
-                {
-                    if (string.Equals(_presetDropdown.options[i].text, serverInfo._selectedPresetName, System.StringComparison.OrdinalIgnoreCase))
-                    {
-                        _presetDropdown.SetValueWithoutNotify(i);
-                        break;
-                    }
-                }
-            }
-            _presetDropdown.RefreshShownValue();
             _presetDropdown.onValueChanged.AddListener(OnPresetDropdownChanged);
         }
 
@@ -792,14 +778,10 @@ public class ServerSettingsPanel : MonoBehaviour
 
         if (selected == "<no selection>")
         {
-            // Special case - clear both the preset name and job list
-            serverInfo._selectedPresetName = "";
+            // Special case
             _jobListInputField.text = "";
             return;
         }
-
-        // Remember which preset was selected
-        serverInfo._selectedPresetName = selected;
 
         var preset = PresetManager.Get().LoadPreset(selected, PresetManager.Get().GetActivePreset());
         _jobListInputField.text = preset.JobList;

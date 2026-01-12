@@ -1528,7 +1528,6 @@ public class PicTextToImage : MonoBehaviour
 
             if (bSuccess)
             {
-
                 if (m_picScript.StillHasJobActivityToDo())
                 {
                     m_picScript.UpdateJobs();

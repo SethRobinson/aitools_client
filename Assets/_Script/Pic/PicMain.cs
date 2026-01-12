@@ -168,8 +168,9 @@ public class PicMain : MonoBehaviour
     List<string> m_jobList = new List<string>();
     public bool m_allowServerJobOverrides = true;
     public bool m_isAutoPicJob = false; // Set to true for AutoPic jobs, enables per-server AutoPic override
-    public int m_preferredServerID = -1; // If set, prefer this server for job assignment (used after AutoPic to keep same server)
-    public bool m_skipPostAutoPicJobs = false; // If true (set via @stopjob command), don't add jobs after AutoPic completes
+    public int m_ownedServerID = -1; // When >= 0, this pic owns this server exclusively for AutoPic override
+    public string m_autoPicScriptName = ""; // Tracks which AutoPic script was used for this pic
+    public bool m_stopAfterScript = false; // Set by @stopjob command - tells callback not to add more jobs
     UndoEvent m_undoevent = new UndoEvent();
     UndoEvent m_curEvent = new UndoEvent(); //useful for just saving the current status, makes it easy to copy to/from a real undo event
     bool m_isDestroyed;
@@ -253,6 +254,69 @@ public class PicMain : MonoBehaviour
         m_onFinishedRenderingCallback = null;
     }
 
+    /// <summary>
+    /// Claim exclusive ownership of a server. Used for AutoPic jobs with server overrides
+    /// to ensure the server remains reserved for the entire LLM + render workflow.
+    /// Returns true if claim was successful, false if server is already owned by another pic.
+    /// </summary>
+    public bool ClaimServerOwnership(int serverID)
+    {
+        if (serverID < 0) return false;
+        
+        // Check if another pic already owns this server (race condition prevention)
+        if (IsServerOwnedByAnyPic(serverID))
+        {
+            RTConsole.Log($"Cannot claim server {serverID} - already owned by another pic");
+            return false;
+        }
+        
+        m_ownedServerID = serverID;
+        RTConsole.Log($"Claimed ownership of server {serverID}");
+        return true;
+    }
+
+    /// <summary>
+    /// Release server ownership. Called when AutoPic workflow completes or is cancelled.
+    /// </summary>
+    public void ReleaseServerOwnership()
+    {
+        if (m_ownedServerID >= 0)
+        {
+            RTConsole.Log($"Released ownership of server {m_ownedServerID}");
+        }
+        m_ownedServerID = -1;
+    }
+
+    /// <summary>
+    /// Check if this pic owns a specific server.
+    /// </summary>
+    public bool OwnsServer(int serverID)
+    {
+        return m_ownedServerID >= 0 && m_ownedServerID == serverID;
+    }
+
+    /// <summary>
+    /// Static method to check if any pic in the scene owns a specific server.
+    /// Used by Config.GetFreeGPU to skip servers that are reserved for AutoPic workflows.
+    /// </summary>
+    public static bool IsServerOwnedByAnyPic(int serverID)
+    {
+        if (serverID < 0) return false;
+        
+        var picsParent = RTUtil.FindObjectOrCreate("Pics");
+        if (picsParent == null) return false;
+        
+        var allPics = picsParent.transform.GetComponentsInChildren<PicMain>();
+        foreach (var pic in allPics)
+        {
+            if (pic != null && pic.OwnsServer(serverID))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public void UnloadToSaveMemoryIfPossible()
     {
         if (IsMovie())
@@ -277,6 +341,23 @@ public class PicMain : MonoBehaviour
         int jobCounter = 1;
         string c1 = "`4";
 
+        // Show server lock status at the top if this pic owns a server
+        if (m_ownedServerID >= 0)
+        {
+            string serverName = Config.Get().GetServerNameByGPUID(m_ownedServerID);
+            msg += $@"{c1}Locked to server {m_ownedServerID}:`` {serverName}";
+            if (!string.IsNullOrEmpty(m_autoPicScriptName))
+            {
+                msg += $@" {c1}AutoPic:`` {m_autoPicScriptName}";
+            }
+            msg += "\n";
+        }
+        else if (!string.IsNullOrEmpty(m_autoPicScriptName))
+        {
+            // Show AutoPic script even when not locked to a server
+            msg += $@"{c1}AutoPic:`` {m_autoPicScriptName}
+";
+        }
 
         if (m_pic != null && m_pic.sprite != null && m_pic.sprite.texture != null)
         {
@@ -504,6 +585,9 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         m_jobList.Clear();
         m_waitingForPicJob = false;
         m_requirements = m_default_requirements;
+        
+        // Release server ownership when jobs are cleared (cancellation, error, etc.)
+        ReleaseServerOwnership();
     }
     public bool GetLocked() { return m_bLocked; }
     public void SetLocked(bool bNew) { m_bLocked = bNew; }
@@ -2096,7 +2180,20 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         else
         {
             RTConsole.Log("File " + db.GetString("name") + " uploaded successfully");
-            UpdateJobs();
+            SetStatusMessage(""); // Clear the "Uploading to ComfyUI..." message
+            
+            // Check if this was the last job
+            if (!StillHasJobActivityToDo())
+            {
+                if (m_onFinishedScriptCallback != null)
+                {
+                    m_onFinishedScriptCallback.Invoke(gameObject);
+                }
+            }
+            else
+            {
+                UpdateJobs();
+            }
         }
     }
 
@@ -2730,21 +2827,22 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
         int serverID = -1;
         
-        // If we have a preferred server (e.g., from AutoPic), try to use it first
-        if (m_preferredServerID >= 0)
+        // If we own a server (from AutoPic override), use it exclusively
+        if (m_ownedServerID >= 0)
         {
-            GPUInfo preferredServer = Config.Get().GetGPUInfo(m_preferredServerID);
-            if (preferredServer != null && preferredServer._bIsActive && !Config.Get().IsGPUBusy(m_preferredServerID))
+            GPUInfo ownedServer = Config.Get().GetGPUInfo(m_ownedServerID);
+            // For owned servers, only check the actual GPU busy flag (ownedServer.IsGPUBusy),
+            // NOT Config.IsGPUBusy() which also includes pendingLLMCount.
+            // Our own LLM work may have incremented pendingLLMCount, but that shouldn't block us.
+            if (ownedServer != null && ownedServer._bIsActive && !ownedServer.IsGPUBusy)
             {
-                serverID = m_preferredServerID;
+                serverID = m_ownedServerID;
             }
-            // Clear preference after attempting to use it (whether successful or not)
-            m_preferredServerID = -1;
+            // If owned server's GPU is actually busy, wait for it (don't use a different server)
         }
-        
-        // Fall back to any free GPU if preferred wasn't available
-        if (serverID == -1)
+        else
         {
+            // Normal path: find any free GPU
             serverID = Config.Get().GetFreeGPU(neededRenderer, false);
         }
 
@@ -3271,18 +3369,19 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                         List<string> autoPicJobList = GameLogic.Get().GetPicJobListAsListOfStrings(preset.JobList);
                         if (autoPicJobList.Count > 0)
                         {
-                            m_isAutoPicJob = false; // Once is enough
+                            // Try to claim ownership of this server - keeps it reserved for entire AutoPic workflow
+                            if (!ClaimServerOwnership(serverID))
+                            {
+                                // Another pic already claimed this server - return and try again later
+                                // (GetFreeGPU will give us a different server next time)
+                                return;
+                            }
+                            m_isAutoPicJob = false; // Once is enough, claim succeeded
+                            m_autoPicScriptName = serverInfo._autoPicOverride; // Track which override script was used
                             m_jobList.Clear();
                             AddJobList(autoPicJobList);
                         }
                     }
-                }
-                
-                // If this is an AutoPic job, remember the server so post-AutoPic rendering uses the same server
-                // This ensures the server's job list override is applied after the AutoPic LLM phase
-                if (m_isAutoPicJob && serverID >= 0)
-                {
-                    m_preferredServerID = serverID;
                 }
 
                 string workFlowNameWithoutTest = m_jobList[0];
@@ -3439,9 +3538,8 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                         }
                         else if (picJobData._name.ToLower() == "stopjob")
                         {
-                            // Signal that no post-AutoPic jobs should be added after this script completes
-                            // Usage: command @stopjob
-                            m_skipPostAutoPicJobs = true;
+                            // Signal that the script callback should NOT add more jobs after this script completes
+                            m_stopAfterScript = true;
                         }
                         else if (picJobData._name.ToLower() == "resize_if_larger")
                         {
@@ -3572,6 +3670,9 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
         // Release LLM slot if this pic was using one
         SetLLMActive(false);
+        
+        // Release server ownership if this pic owned a server
+        ReleaseServerOwnership();
         
         // Also ensure pending server LLM count is decremented (defensive cleanup)
         if (_pendingServerID >= 0)

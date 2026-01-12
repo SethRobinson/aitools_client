@@ -821,25 +821,38 @@ public class AdventureText : MonoBehaviour
         if (reply == null || reply.Length == 0)
         {
             RTConsole.LogError("No reply from script, can't render images");
+            // Still release server ownership on error
+            picMain.ReleaseServerOwnership();
+            picMain.SetStatusMessage("AutoPic Error:\nNo LLM reply");
             return;
         }
         //we need to clear picMain.m_onFinishedRenderingCallback
         picMain.m_onFinishedRenderingCallback = null;
         picMain.m_onFinishedScriptCallback = null;
 
-        // If AutoPic used @stopjob command, don't add any post-AutoPic jobs
-        // This allows AutoPic presets to handle all rendering themselves
-        if (picMain.m_skipPostAutoPicJobs)
-        {
-            return;
-        }
-
         //re-enable server job overrides now that autopic script is done
         picMain.m_allowServerJobOverrides = true;
-        picMain.m_isAutoPicJob = false; // AutoPic phase is done, now it's a normal render
+        
+        // Release server ownership now that AutoPic workflow is complete
+        picMain.ReleaseServerOwnership();
+        
+        // Clear the AutoPic job flag - this pic is no longer processing an AutoPic
+        // (Keep m_autoPicScriptName so it shows in the info panel what was used)
+        picMain.m_isAutoPicJob = false;
+        
+        // Clear any stale status message from the AutoPic script
+        picMain.SetStatusMessage("");
 
-        //have our LLM picwindow also render - use global job list, server override will be applied in UpdateJobs
-        picMain.AddJobList(GameLogic.Get().GetPicJobListAsListOfStrings());
+        // Only add more jobs if the script didn't use @stopjob command
+        if (!picMain.m_stopAfterScript)
+        {
+            //have our LLM picwindow also render
+            picMain.AddJobList(GameLogic.Get().GetPicJobListAsListOfStrings());
+        }
+        else
+        {
+            RTConsole.Log("AutoPic script used @stopjob - not adding default jobs");
+        }
         
         //spawn additional images with the same description, unless we're doing unique APics (each APic handles itself)
         if (!AdventureLogic.Get().GetGenUniqueAPics())
@@ -912,6 +925,7 @@ public class AdventureText : MonoBehaviour
             picMain._promptManager.CloneFrom(m_promptManager);
             picMain.m_allowServerJobOverrides = false;
             picMain.m_isAutoPicJob = true; // Enable per-server AutoPic override
+            picMain.m_autoPicScriptName = fileToLoad; // Track which AutoPic script is being used (may be overridden by server)
 
             //now, we're going to have it run our script, but we'd like a notification when the script finishes
             picMain.m_onFinishedScriptCallback += this.AutoPicFinishedScriptCallback;

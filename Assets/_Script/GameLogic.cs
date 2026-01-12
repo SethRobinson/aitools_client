@@ -1049,7 +1049,7 @@ public class GameLogic : MonoBehaviour
             //Might as well kill any texts around too
             RTUtil.DestroyChildren(RTUtil.FindObjectOrCreate("Adventures").transform);
         }
-        ImageGenerator.Get().ReorganizePics(); //defrag 'em
+        //ImageGenerator.Get().ReorganizePics(); //defrag 'em
     }
 
     public void OnClearButtonWithShiftAllowed()

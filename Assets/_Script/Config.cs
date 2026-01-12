@@ -44,7 +44,6 @@ public class GPUInfo
     public int _comfyUIWorkFlowOverride = -1;
     public bool _bIsActive = true;
     public string _jobListOverride = "";
-    public string _selectedPresetName = ""; // Remembers which preset was selected in the dropdown
     public string _autoPicOverride = ""; // Empty = use global AutoPic setting, otherwise the preset filename to use
     public string _name = ""; //if blank, we'll use our own
 
@@ -455,6 +454,9 @@ set_default_audio_negative_prompt|music|
         {
             for (int i = 0; i < GetGPUCount(); i++)
             {
+                // Skip servers owned by other pics (reserved for AutoPic workflows)
+                if (PicMain.IsServerOwnedByAnyPic(i)) continue;
+                
                 if (!IsGPUBusy(i) && Config.Get().GetGPUInfo(i)._bIsActive)
                 {
                     if (GetGPUInfo(i)._requestedRendererType == requestedGPUType)
@@ -483,6 +485,9 @@ set_default_audio_negative_prompt|music|
             //special way to find one for "any local"
             for (int i = 0; i < Config.Get().GetGPUCount(); i++)
             {
+                // Skip servers owned by other pics (reserved for AutoPic workflows)
+                if (PicMain.IsServerOwnedByAnyPic(i)) continue;
+                
                 if (!Config.Get().IsGPUBusy(i) && GetGPUInfo(i).isLocal && Config.Get().GetGPUInfo(i)._bIsActive)
                 {
                     return i;
@@ -498,6 +503,9 @@ set_default_audio_negative_prompt|music|
             {
                 for (int i = 0; i < GetGPUCount(); i++)
                 {
+                    // Skip servers owned by other pics (reserved for AutoPic workflows)
+                    if (PicMain.IsServerOwnedByAnyPic(i)) continue;
+                    
                     if (GetGPUInfo(i)._requestedRendererType == requestedGPUType && Config.Get().GetGPUInfo(i)._bIsActive)
                     {
                         return i;
@@ -524,6 +532,9 @@ set_default_audio_negative_prompt|music|
 
             for (int i = 0; i < Config.Get().GetGPUCount(); i++)
             {
+                // Skip servers owned by other pics (reserved for AutoPic workflows)
+                if (PicMain.IsServerOwnedByAnyPic(i)) continue;
+                
                 if (GetGPUInfo(i).isLocal && Config.Get().GetGPUInfo(i)._bIsActive)
                 {
                     return i;
@@ -566,6 +577,9 @@ set_default_audio_negative_prompt|music|
 
         for (int i=0; i < m_gpuInfo.Count; i++)
         {
+            // Skip servers owned by other pics (reserved for AutoPic workflows)
+            if (PicMain.IsServerOwnedByAnyPic(i)) continue;
+            
             if (!IsGPUBusy(i) && GetGPUInfo(i).isLocal && Config.Get().GetGPUInfo(i)._bIsActive) return true;
         }
 
