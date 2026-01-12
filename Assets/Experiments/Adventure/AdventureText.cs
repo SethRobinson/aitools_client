@@ -903,6 +903,7 @@ public class AdventureText : MonoBehaviour
             PresetFileConfigExtractor preset = new PresetFileConfigExtractor();
             picMain._promptManager.CloneFrom(m_promptManager);
             picMain.m_allowServerJobOverrides = false;
+            picMain.m_isAutoPicJob = true; // Enable per-server AutoPic override
 
             //now, we're going to have it run our script, but we'd like a notification when the script finishes
             picMain.m_onFinishedScriptCallback += this.AutoPicFinishedScriptCallback;

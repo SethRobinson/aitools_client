@@ -830,11 +830,13 @@ public class GenerateSettingsPanel : MonoBehaviour
         }
     }
 
-    private void PopulateAutoPicDropdown()
+    /// <summary>
+    /// Static method to get list of AutoPic file names from Presets folder.
+    /// Files starting with "AutoPic" or "test_AutoPic" (case-insensitive) are included.
+    /// Used by both GenerateSettingsPanel and ServerSettingsPanel.
+    /// </summary>
+    public static List<string> GetAutoPicFileNames()
     {
-        if (_autoPicDropdown == null) return;
-
-        _autoPicDropdown.ClearOptions();
         var fileNames = new List<string>();
 
         // Look for files matching AutoPic*.txt or test_AutoPic*.txt patterns (case-insensitive) in Presets folder
@@ -855,6 +857,16 @@ public class GenerateSettingsPanel : MonoBehaviour
 
         // Sort alphabetically for consistent ordering (case-insensitive)
         fileNames.Sort((a, b) => string.Compare(a, b, System.StringComparison.OrdinalIgnoreCase));
+
+        return fileNames;
+    }
+
+    private void PopulateAutoPicDropdown()
+    {
+        if (_autoPicDropdown == null) return;
+
+        _autoPicDropdown.ClearOptions();
+        var fileNames = GetAutoPicFileNames();
 
         // Convert to dropdown options
         var options = new List<TMP_Dropdown.OptionData>();

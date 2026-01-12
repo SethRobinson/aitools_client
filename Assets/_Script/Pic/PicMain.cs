@@ -167,6 +167,7 @@ public class PicMain : MonoBehaviour
     public Camera m_camera;
     List<string> m_jobList = new List<string>();
     public bool m_allowServerJobOverrides = true;
+    public bool m_isAutoPicJob = false; // Set to true for AutoPic jobs, enables per-server AutoPic override
     UndoEvent m_undoevent = new UndoEvent();
     UndoEvent m_curEvent = new UndoEvent(); //useful for just saving the current status, makes it easy to copy to/from a real undo event
     bool m_isDestroyed;
@@ -3236,6 +3237,23 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                         {
                             _pendingServerID = serverID;
                             Config.Get().IncrementPendingLLM(serverID);
+                        }
+                    }
+                }
+
+                // Per-server AutoPic override - applies to AutoPic jobs even when m_allowServerJobOverrides is false
+                if (serverInfo != null && m_isAutoPicJob && !string.IsNullOrEmpty(serverInfo._autoPicOverride))
+                {
+                    // Load the server-specific AutoPic preset and replace the job list
+                    var preset = PresetManager.Get().LoadPreset(serverInfo._autoPicOverride, PresetManager.Get().GetActivePreset());
+                    if (preset != null && !string.IsNullOrEmpty(preset.JobList))
+                    {
+                        List<string> autoPicJobList = GameLogic.Get().GetPicJobListAsListOfStrings(preset.JobList);
+                        if (autoPicJobList.Count > 0)
+                        {
+                            m_isAutoPicJob = false; // Once is enough
+                            m_jobList.Clear();
+                            AddJobList(autoPicJobList);
                         }
                     }
                 }

@@ -20,6 +20,7 @@ public class ServerSettingsPanel : MonoBehaviour
 
     // UI references (previously from prefab)
     private TMP_Dropdown _presetDropdown;
+    private TMP_Dropdown _autoPicDropdown;
     private TMP_Text _titleText;
     private TMP_Text _settingsText;
     private TMP_InputField _jobListInputField;
@@ -28,7 +29,7 @@ public class ServerSettingsPanel : MonoBehaviour
 
     // Panel dimensions
     private const float PANEL_WIDTH = 680f;
-    private const float PANEL_HEIGHT = 330f;
+    private const float PANEL_HEIGHT = 370f;
     private const float HEADER_HEIGHT = 36f;
     private const float BASE_FONT_SIZE = 14f;
 
@@ -574,8 +575,49 @@ public class ServerSettingsPanel : MonoBehaviour
 
         yOffset -= 32;
 
+        // AutoPic Override label
+        var autoPicLabelObj = new GameObject("AutoPicLabel");
+        autoPicLabelObj.transform.SetParent(_mainPanel, false);
+        var autoPicLabelRt = autoPicLabelObj.AddComponent<RectTransform>();
+        autoPicLabelRt.anchorMin = new Vector2(0, 1);
+        autoPicLabelRt.anchorMax = new Vector2(0, 1);
+        autoPicLabelRt.pivot = new Vector2(0, 1);
+        autoPicLabelRt.offsetMin = new Vector2(leftPad, yOffset - 24);
+        autoPicLabelRt.offsetMax = new Vector2(leftPad + 100, yOffset);
+
+        var autoPicLabelTmp = autoPicLabelObj.AddComponent<TextMeshProUGUI>();
+        autoPicLabelTmp.text = "AutoPic Override:";
+        autoPicLabelTmp.font = _font;
+        autoPicLabelTmp.fontSize = BASE_FONT_SIZE;
+        autoPicLabelTmp.color = TextDark;
+        autoPicLabelTmp.alignment = TextAlignmentOptions.MidlineLeft;
+
+        // AutoPic Override dropdown
+        var autoPicDdGo = TMP_DefaultControls.CreateDropdown(BuildTMPResources());
+        autoPicDdGo.name = "AutoPicDropdown";
+        autoPicDdGo.transform.SetParent(_mainPanel, false);
+        ApplyFontAndColor(autoPicDdGo);
+
+        var autoPicDdRt = autoPicDdGo.GetComponent<RectTransform>();
+        autoPicDdRt.anchorMin = new Vector2(0, 1);
+        autoPicDdRt.anchorMax = new Vector2(1, 1);
+        autoPicDdRt.pivot = new Vector2(0, 1);
+        autoPicDdRt.offsetMin = new Vector2(leftPad + 110, yOffset - 24);
+        autoPicDdRt.offsetMax = new Vector2(-rightPad, yOffset);
+
+        _autoPicDropdown = autoPicDdGo.GetComponent<TMP_Dropdown>();
+        _autoPicDropdown.onValueChanged.AddListener(OnAutoPicDropdownChanged);
+
+        // Make dropdown list taller
+        if (_autoPicDropdown.template != null)
+        {
+            _autoPicDropdown.template.sizeDelta = new Vector2(_autoPicDropdown.template.sizeDelta.x, 150f);
+        }
+
+        yOffset -= 32;
+
         // Job list input (multi-line)
-        float jobListHeight = PANEL_HEIGHT - HEADER_HEIGHT - 8 - 24 - (85 + 8) - 32 - 16; // Remaining height
+        float jobListHeight = PANEL_HEIGHT - HEADER_HEIGHT - 8 - 24 - (85 + 8) - 32 - 32 - 16; // Remaining height (added -32 for AutoPic row)
 
         var jobListGo = TMP_DefaultControls.CreateInputField(BuildTMPResources());
         jobListGo.name = "JobListInput";
@@ -674,9 +716,51 @@ public class ServerSettingsPanel : MonoBehaviour
             _presetDropdown.onValueChanged.AddListener(OnPresetDropdownChanged);
         }
 
+        // Populate AutoPic dropdown
+        RefreshAutoPicDropdown(serverInfo);
+
         // Set job list
         if (_jobListInputField != null)
             _jobListInputField.text = serverInfo._jobListOverride;
+    }
+
+    private void RefreshAutoPicDropdown(GPUInfo serverInfo)
+    {
+        if (_autoPicDropdown == null) return;
+
+        _autoPicDropdown.onValueChanged.RemoveListener(OnAutoPicDropdownChanged);
+        _autoPicDropdown.ClearOptions();
+
+        // Add "use global" option first
+        var options = new List<TMP_Dropdown.OptionData>();
+        options.Add(new TMP_Dropdown.OptionData("<use global>"));
+
+        // Get AutoPic file names using shared method from GenerateSettingsPanel
+        var fileNames = GenerateSettingsPanel.GetAutoPicFileNames();
+        foreach (string fileName in fileNames)
+        {
+            options.Add(new TMP_Dropdown.OptionData(fileName));
+        }
+
+        _autoPicDropdown.AddOptions(options);
+
+        // Select the current override value, or "<use global>" if none
+        int selectedIndex = 0;
+        if (!string.IsNullOrEmpty(serverInfo._autoPicOverride))
+        {
+            for (int i = 0; i < _autoPicDropdown.options.Count; i++)
+            {
+                if (string.Equals(_autoPicDropdown.options[i].text, serverInfo._autoPicOverride, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    selectedIndex = i;
+                    break;
+                }
+            }
+        }
+        _autoPicDropdown.SetValueWithoutNotify(selectedIndex);
+        _autoPicDropdown.RefreshShownValue();
+
+        _autoPicDropdown.onValueChanged.AddListener(OnAutoPicDropdownChanged);
     }
 
     public void OnPresetDropdownChanged(int selectedIndex)
@@ -713,6 +797,27 @@ public class ServerSettingsPanel : MonoBehaviour
         }
 
         serverInfo._jobListOverride = _jobListInputField.text.Trim();
+    }
+
+    public void OnAutoPicDropdownChanged(int selectedIndex)
+    {
+        GPUInfo serverInfo = Config.Get().GetGPUInfo(_serverID);
+        if (!Config.Get().IsValidGPU(_serverID))
+        {
+            RTConsole.Log("Invalid server ID " + _serverID);
+            return;
+        }
+
+        string selected = _autoPicDropdown.options[_autoPicDropdown.value].text;
+        
+        if (selected == "<use global>")
+        {
+            serverInfo._autoPicOverride = "";
+        }
+        else
+        {
+            serverInfo._autoPicOverride = selected;
+        }
     }
 
     // Legacy Init method - now just refreshes settings
