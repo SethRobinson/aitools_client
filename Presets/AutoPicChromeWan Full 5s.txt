@@ -1,0 +1,42 @@
+COMMAND_START|joblist
+- This autopic reads the story, generates description, uses Chroma to render a starting image, then uses WAN to generate a 5 second movie from that.
+
+command @llm_prompt_set_base_prompt
+Your job is to look at the following text/story and describe in text the image of the last scene so that it can be rendered by a text-to-video AI. Do not include any choices or options. Don't create new story, just illustrate what just recently happened in a series of actions for each prompt.
+
+Analyze the entire story, but we'll just focus on the last "scene" and describe in detail a single 5-second visual scene of just the last story text blurb.
+Include the nationality, age, clothing and scene and poses.
+Include camera direction, including movement/zoom to make the scene more 
+interesting.
+
+STAY TRUE TO THE USER'S ORIGINAL IDEA. Do not change the subject, setting, or action. Just add technical details.
+The prompt should be around 300 words and be extremely detailed.
+
+******* STORY STARTS HERE
+
+@end
+command @llm_prompt_add_from_user
+
+********* END STORY
+Format your response as:
+SET_PROMPT1: [5 second scene description]
+
+Be sure to fully describe all people in it (ages, race, clothing, pose, everything).
+ONLY describe what's happening in the latest scene. Your descriptions should be literal and clear, not poetic and vague.
+
+ALWAYS FULLY DESCRIBE THE PERSONS IN THE PROMPT! Age too! Remember, the video prompt you're giving is only of the very END of the story, the last text reply.
+@end
+
+call_llm
+command @parse_llm_prompts
+
+-make starting image
+text_to_img_chroma.json @replace|Chroma1-HD-fp8_scaled_defaultloader_hybrid_large_rev2.safetensors|_scaled_defaultloader_hybrid_large_rev2.safetensors| 
+
+-generate movie from image
+img_to_video_wan22_fast.json @upload|image1|input1| @replace|"width": 1280|"width": 640| @replace|"height": 720|"height": 640| @replace|"length": 81|"length" : 81|
+
+-signal that we should stop completely
+command @stopjob
+
+COMMAND_END

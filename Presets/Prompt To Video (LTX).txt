@@ -1,8 +1,0 @@
-COMMAND_START|joblist
--Change the second 121 to 481 below to get a 20 second movie, assuming your rig can handle it...
-
-text_to_video_ltx_fast.json @replace|"width": 960|"width": 960| @replace|"height": 576|"height": 576| @replace|"value": 121|"value" : 121|
-COMMAND_END
-COMMAND_START|default_pre_prompt
-shot with a Bessa Cinestill.
-COMMAND_END

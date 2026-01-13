@@ -1,0 +1,86 @@
+COMMAND_START|joblist
+-Use LLM to rewrite the user's prompt into an optimized LTX-2 video prompt for a 5-second clip
+
+-Save original prompt so we can use it for both LLM calls
+command @copy|prompt|temp_text1|
+
+-=== FIRST LLM CALL: Generate image prompt for Chroma (scene only, no dialog) ===
+command @llm_prompt_set_base_prompt
+You describe static images for a text-to-image AI. Be literal and direct. No poetry. No metaphors. Just clear visual descriptions.
+@end
+
+command @llm_prompt_add_from_user
+Convert the user's idea below into a single-image prompt for a text-to-image AI.
+
+Describe ONLY what the camera sees in one static moment:
+- The scene/setting (location, lighting, atmosphere)
+- People: age, ethnicity, clothing, hair, physical appearance, pose, expression
+- Composition and framing
+
+DO NOT include:
+- Dialogue or speech
+- Actions or movement
+- Story elements or sequences
+- The word "cinematic"
+
+Output ONLY the image description. No explanations, no labels.
+
+EXAMPLE:
+"A dimly lit diner at night. A broad man in his early 50s sits at the counter, weathered tanned skin, gray-streaked brown hair cropped short under a faded John Deere cap. He wears a flannel shirt rolled to the elbows and mud-splattered work boots. Both hands wrap around a chipped ceramic mug. Across the counter, a middle-aged waitress leans in with penciled eyebrows drawn together. Fluorescent lights buzz overhead, rain streaks down the plate glass windows behind them."
+
+The user's idea:
+@end
+
+command @llm_prompt_add_from_user|temp_text1|
+
+call_llm
+
+-Set prompt to the image description for Chroma
+command @copy|llm_reply|prompt|
+
+-make starting image
+text_to_img_chroma.json @replace|"width": 1024|"width": 960| @replace|"height": 1024|"height": 576| @replace|Chroma1-HD-fp8_scaled_defaultloader_hybrid_large_rev2.safetensors|Chroma1-HD-fp8_scaled_defaultloader_hybrid_large_rev2.safetensors|
+
+-=== SECOND LLM CALL: Generate video prompt for LTX (with dialog/action) ===
+command @llm_prompt_set_base_prompt
+You rewrite simple ideas into LTX-2 video prompts. Be literal and direct. No poetry. No metaphors. Just clear visual descriptions.
+@end
+
+command @llm_prompt_add_from_user
+Rewrite the user's idea below into a 5-second LTX-2 video prompt. Add dialog/adult action to make it good if needed.
+
+Write ONE flowing paragraph. Describe actions in SEQUENCE, not with timestamps. Include:
+
+- Don't describe the initial scene or people, just what they do.
+- Actions described one after another using words like "then", "as", "suddenly"
+- Camera movement described naturally
+- Dialogue format: Character (tone): "Line."
+
+EXAMPLE 5-SECOND PROMPT:
+"The woman stands up. She sighs heavily, sets the phone down, then looks up toward the window. The camera slowly pushes in on her face as she whispers to herself: "Not again.""
+
+CRITICAL RULES:
+- Output ONLY the prompt text. No explanations, no labels, no timestamps like "at 3 seconds".
+- Be LITERAL and CLEAR, not poetic or vague.
+- Keep the user's core idea intact. DO NOT replace it with something else.
+- Describe what the camera SEES, not feelings or abstract concepts.
+- Do NOT use the word "cinematic".
+- Do not use the people's name when specifying dialog, use a description of them, i.e., "the woman", "the girl in red", "the man by the fire" etc.
+
+The user's idea:
+@end
+
+command @llm_prompt_add_from_user|temp_text1|
+
+call_llm
+
+command @copy|llm_reply|prompt|
+
+img_to_video_ltx.json @upload|image1|input1| @replace|"width": 960|"width": 960| @replace|"height": 576|"height": 576| @replace|"value": 121|"value": 121|
+COMMAND_END
+COMMAND_START|default_negative_prompt
+cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white
+COMMAND_END
+COMMAND_START|default_pre_prompt
+shot with a Bessa Cinestill. Live action shot.
+COMMAND_END

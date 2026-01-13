@@ -715,8 +715,11 @@ public class PicTextToImage : MonoBehaviour
             {
                 string msg = postRequest.error + " (GetRequestComfyUI - " + Config.Get().GetGPUName(m_gpu) + ")";
                 Debug.Log(msg);
+                RTConsole.Log(msg);
                 RTQuickMessageManager.Get().ShowMessage(msg);
-                Debug.Log(postRequest.downloadHandler.text);
+                string responseText = postRequest.downloadHandler.text;
+                Debug.Log(responseText);
+                RTConsole.Log(responseText);
 
                 Config.Get().SetGPUBusy(m_gpu, false);
                 m_bIsGenerating = false;

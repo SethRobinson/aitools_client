@@ -510,6 +510,14 @@ public class AdventureText : MonoBehaviour
 
             // For each choice, we'll add a new text object and set it up to generate
             AdventureText newText = AdventureLogic.Get().AddTextAndGetReply(choice.identifier, this, true);
+            
+            // Check if stop condition was hit (AddTextAndGetReply returns null)
+            if (newText == null)
+            {
+                SetAuto(false); // Stop auto mode since we hit the limit
+                return;
+            }
+            
             newText.SetAuto(true);
             newText.SetName(choice.identifier);
             newText.SetIsSelected();
@@ -554,6 +562,13 @@ public class AdventureText : MonoBehaviour
             else
             {
                 newText = AdventureLogic.Get().AddTextAndGetReply(AdventureLogic.Get().GetExtractor().AutoContinueText, this);
+            }
+
+            // Check if stop condition was hit (AddTextAndGetReply returns null)
+            if (newText == null)
+            {
+                SetAuto(false); // Stop auto mode since we hit the limit
+                return;
             }
 
             newText.SetAuto(true);

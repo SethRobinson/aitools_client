@@ -2493,35 +2493,38 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         string temp = "";
         string sourceOriginal = source;
         source = source.ToLower().Trim();
+        bool foundVar = false;
 
-        if (source == "prompt") temp = job._requestedPrompt;
-        if (source == "global_prompt") temp = GameLogic.Get().GetPrompt();
-        if (source == "audio_prompt") temp = job._requestedAudioPrompt;
-        if (source == "prepend_prompt") temp = GameLogic.Get().GetComfyPrependPrompt();
-        if (source == "append_prompt") temp = GameLogic.Get().GetComfyAppendPrompt();
-        if (source == "negative_prompt") temp = job._requestedNegativePrompt;
-        if (source == "audio_negative_prompt") temp = job._requestedAudioNegativePrompt;
-        if (source == "segmentation_prompt") temp = job._requestedSegmentationPrompt;
-        if (source == "llm_prompt") temp = job._requestedLLMPrompt;
+        if (source == "prompt") { temp = job._requestedPrompt; foundVar = true; }
+        if (source == "global_prompt") { temp = GameLogic.Get().GetPrompt(); foundVar = true; }
+        if (source == "audio_prompt") { temp = job._requestedAudioPrompt; foundVar = true; }
+        if (source == "prepend_prompt") { temp = GameLogic.Get().GetComfyPrependPrompt(); foundVar = true; }
+        if (source == "append_prompt") { temp = GameLogic.Get().GetComfyAppendPrompt(); foundVar = true; }
+        if (source == "negative_prompt") { temp = job._requestedNegativePrompt; foundVar = true; }
+        if (source == "audio_negative_prompt") { temp = job._requestedAudioNegativePrompt; foundVar = true; }
+        if (source == "segmentation_prompt") { temp = job._requestedSegmentationPrompt; foundVar = true; }
+        if (source == "llm_prompt") { temp = job._requestedLLMPrompt; foundVar = true; }
         if (source == "llm_reply")
         {
             temp = job._requestedLLMReply;
+            foundVar = true;
         }
-        if (source == "temp_text1") temp = m_tempText1;
-        if (source == "temp_text2") temp = m_tempText2;
-        if (source == "temp_text3") temp = m_tempText3;
-        if (source == "temp_text4") temp = m_tempText4;
+        if (source == "temp_text1") { temp = m_tempText1; foundVar = true; }
+        if (source == "temp_text2") { temp = m_tempText2; foundVar = true; }
+        if (source == "temp_text3") { temp = m_tempText3; foundVar = true; }
+        if (source == "temp_text4") { temp = m_tempText4; foundVar = true; }
         
         // Support extended prompts: prompt_1 through prompt_8 (or prompt1 through prompt8)
         int promptIdx = TryParsePromptIndex(source);
         if (promptIdx >= 0)
         {
             temp = job._requestedPrompts[promptIdx];
+            foundVar = true;
         }
 
-        if (temp == "")
+        if (temp == "" && !foundVar)
         {
-            temp = sourceOriginal; //it's not a var I guess
+            temp = sourceOriginal; //it's not a var, treat as literal text
         }
 
         return temp;

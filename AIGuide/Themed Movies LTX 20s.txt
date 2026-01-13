@@ -33,7 +33,6 @@ Fill the 20 seconds with conversation, reactions, and story moments. Use bracket
 - Do NOT use the word "cinematic".
 - Include ENOUGH CONTENT for 20 seconds. Multiple actions, dialogue exchanges, or events. Otherwise the video will be slow motion.
 
-STAY TRUE TO THE USER'S ORIGINAL IDEA. Do not change the subject, setting, or action. Just add technical details.
 
 IMAGE: render
 

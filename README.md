@@ -36,8 +36,10 @@ If this is all weird and strange, this is probably not the place for you to star
 * New script commands: `@upload`, `@parse_llm_prompts`, `@stopjob` for more flexible preset workflows
 * Added drag multi select, can delete or move things as a group
 * Job script got a lot of upgrades, it can do things like look at an image via a VLLM, decide the best way to edit it, generate a prompt for that via LLM, and do the edit to end up with a kind of "we have nano banana at home" experience.  Also supports generating multiple text prompts for a single thing, useful for certain ComfyUI workflows that have multiple stages that need them
-* Various stability, tweaks, and bug fixes
+* Fixed bugs with Adventure mode's "Compact" button, also its "Stop after X" option
 * The whole autopic system is more powerful and can use llms and comyui workflows with its jobscript in a standalone way, previously it had to be pared with a Preset. Individual GPU/servers conected can override the AutoPic to do their own thing if needed now
+* Various stability, tweaks, and bug fixes
+
 
 ### V2.12 (Dec 18th, 2025)
 * A Christmas miracle, I actually updated this!  I figured enough changed that people might want to try it, although I'm still kind of not planning to seriously support this as it's just too niche and hard to make easy to use

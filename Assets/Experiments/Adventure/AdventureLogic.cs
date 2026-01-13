@@ -637,10 +637,10 @@ public class AdventureLogic : MonoBehaviour
         if (m_totalLLMGenerationCounter >= GetStopAfter() && GetStopAfter() > 0)
         {
             RTQuickMessageManager.Get().ShowMessage("Stopped after " + GetStopAfter() + " generations.");
-            //set the max llms and renders to 0
             m_LLMAtOnceInputField.text = "0";
-            m_forcedComfyUIPicsInputField.text = "0";
+            m_genExtraToggle.isOn = false; // Turn off Gen Xtra to fully stop pic generation
             m_totalLLMGenerationCounter = 0;
+            return null; // Stop generating - don't create another text
         }
         if (_bUseGlobalPrompts.isOn)
         {
@@ -834,6 +834,12 @@ public class AdventureLogic : MonoBehaviour
         }
 
         var newText = AddTextAndGetReply(text, _highlightedAText);
+
+        // Check if stop condition was hit (AddTextAndGetReply returns null)
+        if (newText == null)
+        {
+            return false;
+        }
 
         newText.SetIsSelected();
         return true;

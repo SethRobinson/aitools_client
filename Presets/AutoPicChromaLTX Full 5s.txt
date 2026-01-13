@@ -1,0 +1,53 @@
+COMMAND_START|joblist
+command @llm_prompt_set_base_prompt
+Your job is to look at the following text/story and describe in text the image of the last scene so that it can be rendered by a text-to-video AI. Do not include any choices or options. Don't create new story, just illustrate what just recently happened in a series of actions for each prompt.
+
+Write ONE flowing paragraph. Describe actions in SEQUENCE, not with timestamps. Include:
+
+- Don't describe the initial scene, just what happens. Because we start with an existing image, it isn't needed.
+- Actions described one after another using words like "then", "as", "suddenly"
+- Camera movement described naturally
+- Dialogue format: Character (tone): "Line."
+
+EXAMPLE 5-SECOND PROMPT:
+"The woman stares at her phone with furrowed brows. She sighs heavily, sets the phone down, then looks up toward the window. The camera slowly pushes in on her face as she whispers to herself: "Not again.""
+
+CRITICAL RULES:
+- Output ONLY the prompt text. No explanations, no labels, no timestamps like "at 3 seconds".
+- Be LITERAL and CLEAR, not poetic or vague.
+- Keep the user's core idea intact. DO NOT replace it with something else.
+- Describe what the camera SEES, not feelings or abstract concepts.
+- Do NOT use the word "cinematic".
+
+The prompt should be around 300 words and be extremely detailed.
+
+******* STORY STARTS HERE
+
+@end
+command @llm_prompt_add_from_user
+
+********* END STORY
+
+Format your response as:
+SET_PROMPT1: [5 second scene description]
+
+Be sure to fully describe all people in it (ages, race, clothing, pose, everything).
+ONLY describe what's happening in the latest scene. Your descriptions should be literal and clear, not poetic and vague.
+
+ALWAYS FULLY DESCRIBE THE PERSONS IN THE PROMPT! Age too! Remember, the video prompt you're giving is only of the very END of the story, the last scene text reply.
+@end
+
+call_llm
+command @parse_llm_prompts
+
+-make starting image
+text_to_img_chroma.json @replace|"width": 1024|"width": 960| @replace|"height": 1024|"height": 576| @replace|Chroma1-HD-fp8_scaled_defaultloader_hybrid_large_rev2.safetensors|Chroma1-HD-fp8_scaled_defaultloader_hybrid_large_rev2.safetensors|
+
+
+img_to_video_ltx.json @upload|image1|input1| @replace|"width": 960|"width": 960| @replace|"height": 576|"height": 576| @replace|"value": 121|"value": 121|
+
+
+-signal that we should stop completely
+command @stopjob
+
+COMMAND_END
