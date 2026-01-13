@@ -207,6 +207,22 @@ public class PicMain : MonoBehaviour
     {
         m_mediaRemoteFilename = fname;
     }
+
+    // Awake runs before any Start() - ensures sprite exists for other scripts that access it
+    void Awake()
+    {
+        // Create default sprite early so other scripts (like GameLogic) can access it during Start()
+        if (m_pic.sprite == null || m_pic.sprite.texture == null)
+        {
+            int biggestSize = 512;
+            Texture2D defaultTex = new Texture2D(biggestSize, biggestSize, TextureFormat.RGBA32, false);
+            defaultTex.Fill(Color.black);
+            defaultTex.FillAlpha(1.0f);
+            defaultTex.Apply();
+            m_pic.sprite = Sprite.Create(defaultTex, new Rect(0, 0, defaultTex.width, defaultTex.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f, 0, SpriteMeshType.FullRect);
+        }
+    }
+
     // Start is called before the first frame update
     void Start()
     {
@@ -217,21 +233,6 @@ public class PicMain : MonoBehaviour
 
         m_camera = Camera.allCameras[0];
         m_canvas.worldCamera = m_camera;
-
-        int biggestSize = 512;
-       
-        if (m_pic.sprite != null && m_pic.sprite.texture != null)
-        {
-            //this already has an image, it's possible, happens when Duplicate is used
-        } else
-        {
-            Texture2D defaultTex = new Texture2D(biggestSize, biggestSize, TextureFormat.RGBA32, false);
-            defaultTex.Fill(Color.black);
-            defaultTex.FillAlpha(1.0f);
-            defaultTex.Apply();
-            m_pic.sprite = Sprite.Create(defaultTex, new Rect(0, 0, defaultTex.width, defaultTex.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f, 0, SpriteMeshType.FullRect);
-
-        }
 
         MakeDraggable();
     }
