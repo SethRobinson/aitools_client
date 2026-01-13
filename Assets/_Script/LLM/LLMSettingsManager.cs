@@ -513,13 +513,36 @@ public class LLMSettingsManager : MonoBehaviour
             result.Add(new LLMParm { _key = "num_ctx", _value = settings.contextLength.ToString() });
         }
 
+        // For llama.cpp, add sampling parameters if overrides are enabled
+        if (provider == LLMProvider.LlamaCpp)
+        {
+            if (settings.overrideTemperature)
+            {
+                result.Add(new LLMParm { _key = "temperature", _value = settings.temperature.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+            }
+            if (settings.overrideTopP)
+            {
+                result.Add(new LLMParm { _key = "top_p", _value = settings.topP.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+            }
+            if (settings.overrideTopK)
+            {
+                result.Add(new LLMParm { _key = "top_k", _value = settings.topK.ToString() });
+            }
+            if (settings.overrideMinP)
+            {
+                result.Add(new LLMParm { _key = "min_p", _value = settings.minP.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+            }
+        }
+
         // Add all extra parameters (null check for deserialization safety)
         if (settings.extraParams != null)
         {
             foreach (var parm in settings.extraParams)
             {
-                // Don't add duplicate model or num_ctx parameter
-                if (parm._key != "model" && parm._key != "num_ctx")
+                // Don't add duplicate model or num_ctx parameter or sampling params
+                if (parm._key != "model" && parm._key != "num_ctx" && 
+                    parm._key != "temperature" && parm._key != "top_p" && 
+                    parm._key != "top_k" && parm._key != "min_p")
                 {
                     result.Add(new LLMParm { _key = parm._key, _value = parm._value });
                 }
@@ -938,10 +961,28 @@ public class LLMSettingsManager : MonoBehaviour
             result.Add(new LLMParm { _key = "num_ctx", _value = settings.contextLength.ToString() });
         }
         
-        // For llama.cpp, add the thinking mode setting
+        // For llama.cpp, add the thinking mode setting and sampling parameters
         if (instance.providerType == LLMProvider.LlamaCpp)
         {
             result.Add(new LLMParm { _key = "enable_thinking", _value = settings.enableThinking ? "true" : "false" });
+            
+            // Add sampling parameters if overrides are enabled
+            if (settings.overrideTemperature)
+            {
+                result.Add(new LLMParm { _key = "temperature", _value = settings.temperature.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+            }
+            if (settings.overrideTopP)
+            {
+                result.Add(new LLMParm { _key = "top_p", _value = settings.topP.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+            }
+            if (settings.overrideTopK)
+            {
+                result.Add(new LLMParm { _key = "top_k", _value = settings.topK.ToString() });
+            }
+            if (settings.overrideMinP)
+            {
+                result.Add(new LLMParm { _key = "min_p", _value = settings.minP.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+            }
         }
         
         // Add all extra parameters
@@ -949,7 +990,8 @@ public class LLMSettingsManager : MonoBehaviour
         {
             foreach (var parm in settings.extraParams)
             {
-                if (parm._key != "model" && parm._key != "num_ctx" && parm._key != "enable_thinking")
+                if (parm._key != "model" && parm._key != "num_ctx" && parm._key != "enable_thinking" &&
+                    parm._key != "temperature" && parm._key != "top_p" && parm._key != "top_k" && parm._key != "min_p")
                 {
                     result.Add(new LLMParm { _key = parm._key, _value = parm._value });
                 }

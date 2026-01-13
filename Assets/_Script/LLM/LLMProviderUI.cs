@@ -35,6 +35,26 @@ public class LLMProviderUI
     private bool _enableThinking = true;
     private bool _isRouterMode = false;
     
+    // llama.cpp sampling parameter controls
+    private Toggle _temperatureToggle;
+    private TMP_InputField _temperatureInput;
+    private Toggle _topPToggle;
+    private TMP_InputField _topPInput;
+    private Toggle _topKToggle;
+    private TMP_InputField _topKInput;
+    private Toggle _minPToggle;
+    private TMP_InputField _minPInput;
+    
+    // Cached sampling parameter values
+    private bool _overrideTemperature = false;
+    private float _temperature = 0.8f;
+    private bool _overrideTopP = false;
+    private float _topP = 0.9f;
+    private bool _overrideTopK = false;
+    private int _topK = 40;
+    private bool _overrideMinP = false;
+    private float _minP = 0.1f;
+    
     // Callback for when model selection changes (for Ollama to fetch model info)
     public event Action<string> OnModelChanged;
 
@@ -111,6 +131,17 @@ public class LLMProviderUI
             CreateServerModeRow(sectionRoot.transform, settings);
             CreateThinkingModeRow(sectionRoot.transform, settings);
             UpdateThinkingModeVisibility();
+            
+            // Sampling parameters
+            _overrideTemperature = settings.overrideTemperature;
+            _temperature = settings.temperature;
+            _overrideTopP = settings.overrideTopP;
+            _topP = settings.topP;
+            _overrideTopK = settings.overrideTopK;
+            _topK = settings.topK;
+            _overrideMinP = settings.overrideMinP;
+            _minP = settings.minP;
+            CreateSamplingParametersSection(sectionRoot.transform, settings);
         }
 
         // Add Gemini-specific controls (thinking mode)
@@ -344,6 +375,17 @@ public class LLMProviderUI
                 thinkingModeToggle.isOn = settings.enableThinking;
             UpdateServerModeLabel(settings);
             UpdateThinkingModeVisibility();
+            
+            // Sampling parameters
+            _overrideTemperature = settings.overrideTemperature;
+            _temperature = settings.temperature;
+            _overrideTopP = settings.overrideTopP;
+            _topP = settings.topP;
+            _overrideTopK = settings.overrideTopK;
+            _topK = settings.topK;
+            _overrideMinP = settings.overrideMinP;
+            _minP = settings.minP;
+            UpdateSamplingParametersUI();
         }
         
         // Gemini-specific
@@ -381,6 +423,16 @@ public class LLMProviderUI
         {
             settings.enableThinking = _enableThinking;
             settings.isRouterMode = _isRouterMode;
+            
+            // Sampling parameters
+            settings.overrideTemperature = _overrideTemperature;
+            settings.temperature = _temperature;
+            settings.overrideTopP = _overrideTopP;
+            settings.topP = _topP;
+            settings.overrideTopK = _overrideTopK;
+            settings.topK = _topK;
+            settings.overrideMinP = _overrideMinP;
+            settings.minP = _minP;
         }
         
         // Gemini-specific
@@ -1001,6 +1053,316 @@ public class LLMProviderUI
     public bool GetThinkingModeEnabled()
     {
         return _enableThinking;
+    }
+
+    private void CreateSamplingParametersSection(Transform parent, LLMProviderSettings settings)
+    {
+        // Section header
+        var headerRow = CreateRowContainer(parent, "SamplingHeader");
+        headerRow.GetComponent<LayoutElement>().preferredHeight = 28f;
+        
+        var headerTmp = headerRow.AddComponent<TextMeshProUGUI>();
+        headerTmp.font = _font;
+        headerTmp.fontSize = 12;
+        headerTmp.fontStyle = FontStyles.Bold;
+        headerTmp.color = new Color(0.35f, 0.35f, 0.4f, 1f);
+        headerTmp.alignment = TextAlignmentOptions.MidlineLeft;
+        headerTmp.text = "Sampling Parameters (optional overrides)";
+        
+        // Temperature row
+        (_temperatureToggle, _temperatureInput) = CreateSamplingParameterRow(
+            parent, 
+            "Temperature", 
+            settings.overrideTemperature, 
+            settings.temperature.ToString("F2"),
+            "Controls randomness (0.0-2.0, default: 0.8)",
+            OnTemperatureToggleChanged,
+            OnTemperatureInputChanged
+        );
+        
+        // Top-P row
+        (_topPToggle, _topPInput) = CreateSamplingParameterRow(
+            parent, 
+            "Top-P", 
+            settings.overrideTopP, 
+            settings.topP.ToString("F2"),
+            "Nucleus sampling (0.0-1.0, default: 0.9)",
+            OnTopPToggleChanged,
+            OnTopPInputChanged
+        );
+        
+        // Top-K row
+        (_topKToggle, _topKInput) = CreateSamplingParameterRow(
+            parent, 
+            "Top-K", 
+            settings.overrideTopK, 
+            settings.topK.ToString(),
+            "Top-K sampling (0=disabled, default: 40)",
+            OnTopKToggleChanged,
+            OnTopKInputChanged
+        );
+        
+        // Min-P row
+        (_minPToggle, _minPInput) = CreateSamplingParameterRow(
+            parent, 
+            "Min-P", 
+            settings.overrideMinP, 
+            settings.minP.ToString("F2"),
+            "Min probability threshold (0.0-1.0, default: 0.1)",
+            OnMinPToggleChanged,
+            OnMinPInputChanged
+        );
+    }
+
+    private (Toggle toggle, TMP_InputField input) CreateSamplingParameterRow(
+        Transform parent, 
+        string paramName, 
+        bool isEnabled, 
+        string value, 
+        string description,
+        UnityEngine.Events.UnityAction<bool> onToggleChanged,
+        UnityEngine.Events.UnityAction<string> onInputChanged)
+    {
+        var row = CreateRowContainer(parent, paramName);
+        
+        // Container for all elements
+        var container = new GameObject("Container");
+        container.transform.SetParent(row.transform, false);
+        var containerRt = container.AddComponent<RectTransform>();
+        containerRt.anchorMin = Vector2.zero;
+        containerRt.anchorMax = Vector2.one;
+        containerRt.offsetMin = Vector2.zero;
+        containerRt.offsetMax = Vector2.zero;
+        
+        // Toggle (checkbox)
+        var toggleGo = new GameObject("Toggle");
+        toggleGo.transform.SetParent(container.transform, false);
+        var toggleRt = toggleGo.AddComponent<RectTransform>();
+        toggleRt.anchorMin = new Vector2(0, 0.5f);
+        toggleRt.anchorMax = new Vector2(0, 0.5f);
+        toggleRt.pivot = new Vector2(0, 0.5f);
+        toggleRt.sizeDelta = new Vector2(20, 20);
+        toggleRt.anchoredPosition = new Vector2(0, 0);
+        
+        // Toggle background
+        var bgGo = new GameObject("Background");
+        bgGo.transform.SetParent(toggleGo.transform, false);
+        var bgRt = bgGo.AddComponent<RectTransform>();
+        bgRt.anchorMin = Vector2.zero;
+        bgRt.anchorMax = Vector2.one;
+        bgRt.offsetMin = Vector2.zero;
+        bgRt.offsetMax = Vector2.zero;
+        var bgImg = bgGo.AddComponent<Image>();
+        bgImg.color = InputBg;
+        
+        // Checkmark
+        var checkGo = new GameObject("Checkmark");
+        checkGo.transform.SetParent(bgGo.transform, false);
+        var checkRt = checkGo.AddComponent<RectTransform>();
+        checkRt.anchorMin = new Vector2(0.1f, 0.1f);
+        checkRt.anchorMax = new Vector2(0.9f, 0.9f);
+        checkRt.offsetMin = Vector2.zero;
+        checkRt.offsetMax = Vector2.zero;
+        var checkTmp = checkGo.AddComponent<TextMeshProUGUI>();
+        checkTmp.font = _font;
+        checkTmp.fontSize = 14;
+        checkTmp.color = new Color(0.2f, 0.5f, 0.2f, 1f);
+        checkTmp.alignment = TextAlignmentOptions.Center;
+        checkTmp.text = "✓";
+        
+        var toggle = toggleGo.AddComponent<Toggle>();
+        toggle.targetGraphic = bgImg;
+        toggle.graphic = checkTmp;
+        toggle.isOn = isEnabled;
+        toggle.onValueChanged.AddListener(onToggleChanged);
+        
+        // Parameter name label
+        var nameObj = new GameObject("NameLabel");
+        nameObj.transform.SetParent(container.transform, false);
+        var nameRt = nameObj.AddComponent<RectTransform>();
+        nameRt.anchorMin = new Vector2(0, 0);
+        nameRt.anchorMax = new Vector2(0, 1);
+        nameRt.pivot = new Vector2(0, 0.5f);
+        nameRt.sizeDelta = new Vector2(80, 0);
+        nameRt.anchoredPosition = new Vector2(28, 0);
+        
+        var nameTmp = nameObj.AddComponent<TextMeshProUGUI>();
+        nameTmp.font = _font;
+        nameTmp.fontSize = 12;
+        nameTmp.color = LabelColor;
+        nameTmp.alignment = TextAlignmentOptions.MidlineLeft;
+        nameTmp.text = paramName;
+        
+        // Input field
+        var inputGo = TMP_DefaultControls.CreateInputField(_tmpResources);
+        inputGo.name = "Input_" + paramName;
+        inputGo.transform.SetParent(container.transform, false);
+        _styleApplier?.Invoke(inputGo);
+        
+        var inputRootImg = inputGo.GetComponent<Image>();
+        if (inputRootImg != null) inputRootImg.color = InputBg;
+        
+        var inputRt = inputGo.GetComponent<RectTransform>();
+        inputRt.anchorMin = new Vector2(0, 0.5f);
+        inputRt.anchorMax = new Vector2(0, 0.5f);
+        inputRt.pivot = new Vector2(0, 0.5f);
+        inputRt.sizeDelta = new Vector2(60, 28);
+        inputRt.anchoredPosition = new Vector2(110, 0);
+        
+        var input = inputGo.GetComponent<TMP_InputField>();
+        if (input != null)
+        {
+            input.text = value;
+            input.contentType = TMP_InputField.ContentType.DecimalNumber;
+            input.onEndEdit.AddListener(onInputChanged);
+            if (input.textComponent != null)
+            {
+                input.textComponent.font = _font;
+                input.textComponent.fontSize = 12;
+                input.textComponent.color = TextDark;
+            }
+        }
+        
+        // Description label
+        var descObj = new GameObject("DescLabel");
+        descObj.transform.SetParent(container.transform, false);
+        var descRt = descObj.AddComponent<RectTransform>();
+        descRt.anchorMin = new Vector2(0, 0);
+        descRt.anchorMax = new Vector2(1, 1);
+        descRt.offsetMin = new Vector2(178, 0);
+        descRt.offsetMax = new Vector2(0, 0);
+        
+        var descTmp = descObj.AddComponent<TextMeshProUGUI>();
+        descTmp.font = _font;
+        descTmp.fontSize = 10;
+        descTmp.color = new Color(0.45f, 0.45f, 0.5f, 1f);
+        descTmp.alignment = TextAlignmentOptions.MidlineLeft;
+        descTmp.text = description;
+        
+        // Set initial enabled state for input
+        UpdateInputFieldEnabled(input, isEnabled);
+        
+        return (toggle, input);
+    }
+    
+    private void UpdateInputFieldEnabled(TMP_InputField input, bool enabled)
+    {
+        if (input == null) return;
+        
+        input.interactable = enabled;
+        
+        // Visual feedback - gray out when disabled
+        var img = input.GetComponent<Image>();
+        if (img != null)
+        {
+            img.color = enabled ? InputBg : new Color(0.85f, 0.85f, 0.85f, 1f);
+        }
+        
+        if (input.textComponent != null)
+        {
+            input.textComponent.color = enabled ? TextDark : new Color(0.5f, 0.5f, 0.5f, 1f);
+        }
+    }
+    
+    private void UpdateSamplingParametersUI()
+    {
+        if (_temperatureToggle != null)
+        {
+            _temperatureToggle.isOn = _overrideTemperature;
+            UpdateInputFieldEnabled(_temperatureInput, _overrideTemperature);
+        }
+        if (_temperatureInput != null)
+            _temperatureInput.text = _temperature.ToString("F2");
+            
+        if (_topPToggle != null)
+        {
+            _topPToggle.isOn = _overrideTopP;
+            UpdateInputFieldEnabled(_topPInput, _overrideTopP);
+        }
+        if (_topPInput != null)
+            _topPInput.text = _topP.ToString("F2");
+            
+        if (_topKToggle != null)
+        {
+            _topKToggle.isOn = _overrideTopK;
+            UpdateInputFieldEnabled(_topKInput, _overrideTopK);
+        }
+        if (_topKInput != null)
+            _topKInput.text = _topK.ToString();
+            
+        if (_minPToggle != null)
+        {
+            _minPToggle.isOn = _overrideMinP;
+            UpdateInputFieldEnabled(_minPInput, _overrideMinP);
+        }
+        if (_minPInput != null)
+            _minPInput.text = _minP.ToString("F2");
+    }
+    
+    // Toggle callbacks
+    private void OnTemperatureToggleChanged(bool value)
+    {
+        _overrideTemperature = value;
+        UpdateInputFieldEnabled(_temperatureInput, value);
+    }
+    
+    private void OnTopPToggleChanged(bool value)
+    {
+        _overrideTopP = value;
+        UpdateInputFieldEnabled(_topPInput, value);
+    }
+    
+    private void OnTopKToggleChanged(bool value)
+    {
+        _overrideTopK = value;
+        UpdateInputFieldEnabled(_topKInput, value);
+    }
+    
+    private void OnMinPToggleChanged(bool value)
+    {
+        _overrideMinP = value;
+        UpdateInputFieldEnabled(_minPInput, value);
+    }
+    
+    // Input field callbacks
+    private void OnTemperatureInputChanged(string value)
+    {
+        if (float.TryParse(value, out float result))
+        {
+            _temperature = Mathf.Clamp(result, 0f, 2f);
+            if (_temperatureInput != null)
+                _temperatureInput.text = _temperature.ToString("F2");
+        }
+    }
+    
+    private void OnTopPInputChanged(string value)
+    {
+        if (float.TryParse(value, out float result))
+        {
+            _topP = Mathf.Clamp(result, 0f, 1f);
+            if (_topPInput != null)
+                _topPInput.text = _topP.ToString("F2");
+        }
+    }
+    
+    private void OnTopKInputChanged(string value)
+    {
+        if (int.TryParse(value, out int result))
+        {
+            _topK = Mathf.Max(0, result);
+            if (_topKInput != null)
+                _topKInput.text = _topK.ToString();
+        }
+    }
+    
+    private void OnMinPInputChanged(string value)
+    {
+        if (float.TryParse(value, out float result))
+        {
+            _minP = Mathf.Clamp(result, 0f, 1f);
+            if (_minPInput != null)
+                _minPInput.text = _minP.ToString("F2");
+        }
     }
 
     #endregion

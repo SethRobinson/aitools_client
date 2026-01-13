@@ -36,6 +36,19 @@ public class LLMProviderSettings
     // llama.cpp-specific: thinking mode settings (for GLM and similar models)
     public bool enableThinking = true; // User preference for thinking mode (default: enabled)
     
+    // llama.cpp-specific: sampling parameters (optional overrides)
+    public bool overrideTemperature = false;
+    public float temperature = 0.8f; // Controls randomness (0.0-2.0, default: 0.8)
+    
+    public bool overrideTopP = false;
+    public float topP = 0.9f; // Nucleus sampling threshold (0.0-1.0, default: 0.9)
+    
+    public bool overrideTopK = false;
+    public int topK = 40; // Top-K sampling (0 = disabled, default: 40)
+    
+    public bool overrideMinP = false;
+    public float minP = 0.1f; // Minimum probability threshold (0.0-1.0, default: 0.1)
+    
     // llama.cpp-specific: router mode info (not persisted, runtime only)
     [NonSerialized]
     public bool isRouterMode = false; // True if server has multiple models available
@@ -67,7 +80,16 @@ public class LLMProviderSettings
             contextLength = this.contextLength,
             maxContextLength = this.maxContextLength,
             enableThinking = this.enableThinking,
-            isRouterMode = this.isRouterMode
+            isRouterMode = this.isRouterMode,
+            // Sampling parameters
+            overrideTemperature = this.overrideTemperature,
+            temperature = this.temperature,
+            overrideTopP = this.overrideTopP,
+            topP = this.topP,
+            overrideTopK = this.overrideTopK,
+            topK = this.topK,
+            overrideMinP = this.overrideMinP,
+            minP = this.minP
         };
 
         foreach (var parm in this.extraParams)
