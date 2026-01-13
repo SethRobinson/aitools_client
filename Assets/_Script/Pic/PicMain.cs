@@ -31,7 +31,7 @@ public class PicJobData
 // Tracks upload info for multi-input workflows
 public class UploadInfo
 {
-    public string source;      // "image1", "image2" (future), "temp1", "temp2"
+    public string source;      // "image1", "image2" (future), "temp1", "temp2", "temp3"
     public int inputIndex;     // 0-3 for INPUT_1 through INPUT_4
     public string filename;    // Generated GUID filename
 }
@@ -3635,7 +3635,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                         else if (picJobData._name.ToLower() == "upload")
                         {
                             // Parse: @upload|source|inputN|
-                            // source: image1, image2 (future), temp1, temp2
+                            // source: image1, image2 (future), temp1, temp2, temp3
                             // dest: input1, input2, input3, input4 (or just 1, 2, 3, 4)
                             string source = picJobData._parm1.ToLower().Trim();
                             string dest = picJobData._parm2.ToLower().Trim();
