@@ -52,6 +52,10 @@ public class AdventureText : MonoBehaviour
     bool _bDontSendTextToLLM = false;
     string _textToAppendAfterResponse = "";
     
+    // Summarization rebuild data - when non-null, indicates this is a summarization response
+    // and we need to rebuild the prompt after getting the summary
+    SummarizeRebuildInfo _summarizeRebuildInfo = null;
+    
     // Selection state for marquee selection feature
     bool m_isSelected = false;
     Color m_originalPanelColor = Color.clear; // Will be captured on first selection
@@ -61,6 +65,16 @@ public class AdventureText : MonoBehaviour
     public void SetTextToAppendAfterResponse(string text)
     {
         _textToAppendAfterResponse = text;
+    }
+
+    /// <summary>
+    /// Set the rebuild info for summarization. When this is set, after the LLM
+    /// returns a summary, the prompt will be rebuilt with the original story
+    /// context + summary + recent interactions instead of keeping the summarization prompt.
+    /// </summary>
+    public void SetSummarizeRebuildInfo(SummarizeRebuildInfo info)
+    {
+        _summarizeRebuildInfo = info;
     }
 
     public void SetDontSendTextToLLM(bool bNew)
@@ -739,24 +753,62 @@ public class AdventureText : MonoBehaviour
             //let's add our original prompt to it, I assume that's what we want
             // inputField.text = streamedText;
 
-            // Append any pending text (e.g., recent interactions for summarize feature)
-            if (!string.IsNullOrEmpty(_textToAppendAfterResponse))
+            // Handle summarization rebuild if we have rebuild info
+            if (_summarizeRebuildInfo != null)
             {
-                streamedText += _textToAppendAfterResponse;
-                inputField.text += ConvertMarkdownToTMP(_textToAppendAfterResponse);
-                _textToAppendAfterResponse = ""; // Clear after use
-            }
-
-            if (_bAddedFinishedTextToPrompt)
-            {
-                m_promptManager.RemoveLastInteractionIfItExists();
+                // This is a summarization response - rebuild the prompt properly
+                string summaryText = streamedText; // The LLM's summary response
+                
+                // Reset the prompt manager
+                m_promptManager.Reset();
+                
+                // Set the original story context as the base system prompt
+                m_promptManager.SetBaseSystemPrompt(_summarizeRebuildInfo.originalBaseContext);
+                
+                // Add the user's first interaction (what kind of story)
+                if (_summarizeRebuildInfo.firstUserInteraction != null)
+                {
+                    m_promptManager.AddInteraction(_summarizeRebuildInfo.firstUserInteraction);
+                }
+                
+                // Add the summary as an assistant response providing context
+                // The summary should include a detailed "Current Scene" section for continuity
+                m_promptManager.AddInteraction(Config.Get().GetAIAssistantWord(), 
+                    "**STORY SUMMARY SO FAR:**\n\n" + summaryText);
+                
+                // Update the global prompt manager as well
+                AdventureLogic.Get().GetGlobalPromptManager().CloneFrom(m_promptManager);
+                
+                RTConsole.Log("Summarization complete. Rebuilt prompt with: base context, first user msg, and summary");
+                
+                // Clear the rebuild info
+                _summarizeRebuildInfo = null;
+                _textToAppendAfterResponse = ""; // Don't append separately, we've handled it
+                _bAddedFinishedTextToPrompt = true;
             }
             else
             {
-                AdventureLogic.Get().GetGlobalPromptManager().AddInteraction(Config.Get().GetAIAssistantWord(), streamedText);
+                // Normal flow - not a summarization
 
+                // Append any pending text (e.g., recent interactions for summarize feature)
+                if (!string.IsNullOrEmpty(_textToAppendAfterResponse))
+                {
+                    streamedText += _textToAppendAfterResponse;
+                    inputField.text += ConvertMarkdownToTMP(_textToAppendAfterResponse);
+                    _textToAppendAfterResponse = ""; // Clear after use
+                }
+
+                if (_bAddedFinishedTextToPrompt)
+                {
+                    m_promptManager.RemoveLastInteractionIfItExists();
+                }
+                else
+                {
+                    AdventureLogic.Get().GetGlobalPromptManager().AddInteraction(Config.Get().GetAIAssistantWord(), streamedText);
+
+                }
+                m_promptManager.AddInteraction(Config.Get().GetAIAssistantWord(), streamedText);
             }
-            m_promptManager.AddInteraction(Config.Get().GetAIAssistantWord(), streamedText);
             ProcessChoices();
 
             _bAddedFinishedTextToPrompt = true;

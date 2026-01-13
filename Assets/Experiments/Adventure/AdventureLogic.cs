@@ -174,6 +174,16 @@ public class GenerationInfo
     public float rightMostPos;
 }
 
+/// <summary>
+/// Data needed to rebuild the prompt after summarization completes.
+/// Contains the original story context and the user's first interaction.
+/// </summary>
+public class SummarizeRebuildInfo
+{
+    public string originalBaseContext;       // The original story writing instructions
+    public GTPChatLine firstUserInteraction; // User's first reply (what kind of story)
+}
+
 public class AdventureLogic : MonoBehaviour
 {
 
@@ -846,8 +856,6 @@ public class AdventureLogic : MonoBehaviour
 
         string prompt;
         string configPath = "Presets/AdventureSummarize.txt";
-
-        string textToAppendAfterResponse = "";
         
         // Try to load the summarize prompt from external file
         if (File.Exists(configPath))
@@ -855,25 +863,18 @@ public class AdventureLogic : MonoBehaviour
             try
             {
                 string configText = File.ReadAllText(configPath);
-                var extractor = new PresetFileConfigExtractor();
-                extractor.ExtractInfoFromString(configText);
+                var presetExtractor = new PresetFileConfigExtractor();
+                presetExtractor.ExtractInfoFromString(configText);
 
-                if (!string.IsNullOrEmpty(extractor.summarize_prompt))
+                if (!string.IsNullOrEmpty(presetExtractor.summarize_prompt))
                 {
                     // Always use ALL interactions for the summary
                     string allInteractionsText = _highlightedAText.GetPromptManager().GetAllText();
                     
                     // Replace the {INTERACTIONS} placeholder with ALL interactions
-                    prompt = extractor.summarize_prompt.Replace("{INTERACTIONS}", allInteractionsText);
+                    prompt = presetExtractor.summarize_prompt.Replace("{INTERACTIONS}", allInteractionsText);
                     
-                    // If recent_interactions > 0, prepare the last N interactions to append AFTER the LLM response
-                    int recentN = extractor.recent_interactions;
-                    if (recentN > 0)
-                    {
-                        textToAppendAfterResponse = "\n\n**RECENT INTERACTIONS FOR CONTEXT**\n\n" + _highlightedAText.GetPromptManager().GetLastNInteractionsAsText(recentN);
-                    }
-                    
-                    RTConsole.Log($"Loaded summarize prompt from {configPath} (recent_interactions={recentN})");
+                    RTConsole.Log($"Loaded summarize prompt from {configPath}");
                 }
                 else
                 {
@@ -896,6 +897,29 @@ public class AdventureLogic : MonoBehaviour
 
         _highlightedAText.UpdateLastInteraction();
         
+        // Build the rebuild info for after summarization completes
+        SummarizeRebuildInfo rebuildInfo = new SummarizeRebuildInfo();
+        
+        // Get the original base context from the extractor (story writing instructions)
+        rebuildInfo.originalBaseContext = extractor.BaseContext;
+        
+        // Get the first user interaction (user's first reply about what kind of story)
+        // This is typically the first "user" role message in the interactions
+        Queue<GTPChatLine> allLines = _highlightedAText.GetPromptManager().BuildPromptChat(0);
+        GTPChatLine firstUserMsg = null;
+        foreach (var line in allLines)
+        {
+            if (line._role == "user")
+            {
+                firstUserMsg = line.Clone();
+                break;
+            }
+        }
+        rebuildInfo.firstUserInteraction = firstUserMsg;
+        
+        RTConsole.Log($"Summarize: originalBaseContext={rebuildInfo.originalBaseContext?.Length ?? 0} chars, " +
+                      $"firstUserMsg={rebuildInfo.firstUserInteraction != null}");
+        
         AdventureText newText;
 
         newText = AddText("");
@@ -904,11 +928,8 @@ public class AdventureLogic : MonoBehaviour
         newText.SetConfigFileName(_highlightedAText.GetConfigFileName());
         newText.SetIsSelected();
         
-        // Set the recent interactions to be appended after the LLM responds with the summary
-        if (!string.IsNullOrEmpty(textToAppendAfterResponse))
-        {
-            newText.SetTextToAppendAfterResponse(textToAppendAfterResponse);
-        }
+        // Pass the rebuild info so the prompt can be properly rebuilt after summarization
+        newText.SetSummarizeRebuildInfo(rebuildInfo);
 
         //trigger the LLM request
         newText.StartLLMRequest();

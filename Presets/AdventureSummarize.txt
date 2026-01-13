@@ -8,8 +8,13 @@ Summarize in detail the following text/story by looking at all entries below - i
 
 **END SUMMARY**
 
-Now, provide a concise summary of the story so far, including all characters and their physical descriptions. Be detailed and thorough.
+Now, provide a detailed summary of the story so far that includes:
+
+1. **Character Descriptions**: All characters introduced with their full physical descriptions (age, appearance, clothing, distinguishing features)
+
+2. **Story Overview**: A concise summary of the major plot points and events that have occurred
+
+3. **Current Scene**: A detailed description of the MOST RECENT scene/event in the story - describe where the characters are, what just happened, and what action or conversation was taking place. This section should provide enough context that the story can naturally continue from this point.
+
+Be thorough but organized. The current scene description is especially important for story continuity.
 COMMAND_END
-
-COMMAND_SET|recent_interactions|1|#0 means all interactions, otherwise limits to last N interactions
-
