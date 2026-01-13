@@ -184,6 +184,10 @@ public class PicMain : MonoBehaviour
     LineRenderer m_selectionFrame; // Visual selection frame
     float m_genericTimerStart = 0; //used to countdown for OpenAI Image API
     string m_genericTimerText = "Waiting...";
+    string m_lastTimerDisplayText = ""; // Cache to avoid updating text every frame
+    
+    // Static cache for server ownership - avoids O(N²) GetComponentsInChildren calls in GetFreeGPU
+    static HashSet<int> s_ownedServers = new HashSet<int>();
     bool m_noUndo = false;
 
     public AIGuideManager.PassedInfo m_aiPassedInfo; //a misc place to store things the AI guide wants to
@@ -269,14 +273,15 @@ public class PicMain : MonoBehaviour
     {
         if (serverID < 0) return false;
         
-        // Check if another pic already owns this server (race condition prevention)
-        if (IsServerOwnedByAnyPic(serverID))
+        // Check if another pic already owns this server using cached set (O(1) instead of O(N))
+        if (s_ownedServers.Contains(serverID))
         {
             RTConsole.Log($"Cannot claim server {serverID} - already owned by another pic");
             return false;
         }
         
         m_ownedServerID = serverID;
+        s_ownedServers.Add(serverID);
         RTConsole.Log($"Claimed ownership of server {serverID}");
         return true;
     }
@@ -288,6 +293,7 @@ public class PicMain : MonoBehaviour
     {
         if (m_ownedServerID >= 0)
         {
+            s_ownedServers.Remove(m_ownedServerID);
             RTConsole.Log($"Released ownership of server {m_ownedServerID}");
         }
         m_ownedServerID = -1;
@@ -304,23 +310,12 @@ public class PicMain : MonoBehaviour
     /// <summary>
     /// Static method to check if any pic in the scene owns a specific server.
     /// Used by Config.GetFreeGPU to skip servers that are reserved for AutoPic workflows.
+    /// Uses cached HashSet for O(1) lookup instead of iterating all pics (was causing O(N²) performance issues).
     /// </summary>
     public static bool IsServerOwnedByAnyPic(int serverID)
     {
         if (serverID < 0) return false;
-        
-        var picsParent = RTUtil.FindObjectOrCreate("Pics");
-        if (picsParent == null) return false;
-        
-        var allPics = picsParent.transform.GetComponentsInChildren<PicMain>();
-        foreach (var pic in allPics)
-        {
-            if (pic != null && pic.OwnsServer(serverID))
-            {
-                return true;
-            }
-        }
-        return false;
+        return s_ownedServers.Contains(serverID);
     }
 
     public void UnloadToSaveMemoryIfPossible()
@@ -686,6 +681,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         }
 
         m_genericTimerStart = 0; //disable any timer
+        m_lastTimerDisplayText = ""; //clear timer cache
     }
 
    
@@ -1826,6 +1822,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     {
         m_genericTimerText = "Done";
         m_genericTimerStart = 0;
+        m_lastTimerDisplayText = ""; //clear timer cache
     }
 
     public void OnRenderWithOpenAIImage()
@@ -3839,7 +3836,13 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         if (m_genericTimerStart != 0)
         {
             float elapsed = Time.realtimeSinceStartup - m_genericTimerStart;
-            m_text.text = m_genericTimerText+" "+elapsed.ToString("0.0#");
+            // Only update text when the displayed value changes (every 0.1s) to avoid TMP layout spam
+            string newText = m_genericTimerText + " " + elapsed.ToString("0.0");
+            if (newText != m_lastTimerDisplayText)
+            {
+                m_lastTimerDisplayText = newText;
+                m_text.text = newText;
+            }
         }
     }
 
