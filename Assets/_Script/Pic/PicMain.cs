@@ -3557,6 +3557,17 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                     }
                 }
 
+                // Lock GPU for ALL AutoPic jobs (not just server overrides) to avoid race conditions
+                if (m_isAutoPicJob && m_ownedServerID < 0 && serverID >= 0)
+                {
+                    if (!ClaimServerOwnership(serverID))
+                    {
+                        // Another pic already claimed this server - return and try again later
+                        return;
+                    }
+                    m_isAutoPicJob = false; // Once is enough, claim succeeded
+                }
+
                 string workFlowNameWithoutTest = m_jobList[0];
 
                 //remove "test_" from the front if it's there
