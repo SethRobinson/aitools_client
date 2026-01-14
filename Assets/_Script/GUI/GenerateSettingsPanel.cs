@@ -374,7 +374,7 @@ public class GenerateSettingsPanel : MonoBehaviour
         ApplyUISprite(footerImg);
         footerImg.color = FooterBg;
 
-        CreateFooterButton(footer.transform, "Hide", -60f, 100f, Hide);
+        CreateFooterButton(footer.transform, "Ok", -60f, 100f, Hide);
         CreateFooterButton(footer.transform, "Copy to clipboard", 80f, 150f, OnCopyToClipboard);
     }
 

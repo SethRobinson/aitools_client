@@ -7,6 +7,7 @@ using TMPro;
 /// <summary>
 /// Handles marquee (rubber-band) selection of Pics and Adventure texts.
 /// Left-click and drag from empty space to create a selection rectangle.
+/// Ctrl+Left-click on items to add/remove them from selection individually.
 /// Press Delete to remove selected items (respects locked state).
 /// </summary>
 public class SelectionManager : MonoBehaviour
@@ -93,6 +94,28 @@ public class SelectionManager : MonoBehaviour
             if (EventSystem.current.IsPointerOverGameObject())
                 return;
 
+            // Check for Ctrl+Click to toggle selection on items
+            bool ctrlHeld = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+            
+            if (ctrlHeld)
+            {
+                // Ctrl+Click on a Pic toggles its selection
+                GameObject clickedPic = GetPicUnderMouse();
+                if (clickedPic != null)
+                {
+                    ToggleSelection(clickedPic);
+                    return;
+                }
+
+                // Ctrl+Click on an Adventure text toggles its selection
+                GameObject clickedText = GetAdventureTextUnderMouse();
+                if (clickedText != null)
+                {
+                    ToggleSelection(clickedText);
+                    return;
+                }
+            }
+
             // Don't start selection if over a Pic
             if (IsPicUnderMouse())
                 return;
@@ -118,8 +141,13 @@ public class SelectionManager : MonoBehaviour
         }
 
         // Clear selection on click elsewhere (when not starting a new drag)
+        // Don't clear if Ctrl is held (allows Ctrl+Click on empty space without clearing)
         if (Input.GetMouseButtonDown(0) && !_isDragging && _selectedItems.Count > 0)
         {
+            bool ctrlHeld = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+            if (ctrlHeld)
+                return;
+                
             if (!EventSystem.current.IsPointerOverGameObject())
             {
                 // Check if clicking on a selected item - if so, don't clear
@@ -133,6 +161,31 @@ public class SelectionManager : MonoBehaviour
 
                 ClearSelection();
             }
+        }
+    }
+    
+    /// <summary>
+    /// Toggles an item's selection state (adds if not selected, removes if selected).
+    /// Used for Ctrl+Click functionality.
+    /// </summary>
+    private void ToggleSelection(GameObject go)
+    {
+        if (_selectedItems.Contains(go))
+        {
+            RemoveFromSelection(go);
+            if (_selectedItems.Count > 0)
+            {
+                RTQuickMessageManager.Get().ShowMessage($"{_selectedItems.Count} item(s) selected");
+            }
+            else
+            {
+                RTQuickMessageManager.Get().ShowMessage("Selection cleared");
+            }
+        }
+        else
+        {
+            AddToSelection(go);
+            RTQuickMessageManager.Get().ShowMessage($"{_selectedItems.Count} item(s) selected - Press Delete to remove");
         }
     }
 

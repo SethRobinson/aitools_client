@@ -1244,6 +1244,9 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     public void OnDuplicateButton()
     {
         Duplicate();
+        
+        // Also duplicate other selected pics (skip adventure texts)
+        ApplyToOtherSelectedPics((pic) => pic.Duplicate());
     }
 
     public void OnFileEditButton()
