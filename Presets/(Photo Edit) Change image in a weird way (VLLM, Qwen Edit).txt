@@ -1,0 +1,60 @@
+COMMAND_START|joblist
+-Vision LLM: First describe the image, then generate a weird edit prompt.
+
+-Step 0: Resize the source image if too large for vision LLM
+command @resize_if_larger|image1|x|1024|y|1024|aspect_correct|1|
+
+-Step 1: Vision LLM describes the image
+command @llm_prompt_reset
+command @llm_prompt_set_base_prompt
+You are an expert image analysis assistant with exceptional attention to visual detail. Your task is to provide comprehensive, richly detailed descriptions that capture every significant element of an image. Focus on creating descriptions that would allow someone to recreate or edit the image accurately.
+@end
+command @llm_add_image|image|
+command @llm_prompt_add_from_user
+Please provide a thorough and detailed description of this image. Include the following elements:
+
+SUBJECT: Identify all people, animals, or main objects. For people, describe their apparent age, gender, ethnicity, body type, hairstyle and color, facial features, expression, pose, and body language. Note what they are doing and any interactions between subjects.
+
+CLOTHING & ACCESSORIES: Describe all clothing items including style, color, texture, fit, and condition. Note jewelry, glasses, hats, bags, or other accessories.
+
+SETTING & ENVIRONMENT: Describe the location (indoor/outdoor, specific type of place), time of day, weather conditions if visible, architectural elements, furniture, vegetation, or background details.
+
+COMPOSITION & PHOTOGRAPHY: Note the framing, camera angle, depth of field, lighting style (natural, studio, dramatic, soft), and any notable photographic techniques.
+
+COLORS & MOOD: Describe the dominant color palette, color relationships, overall atmosphere, and emotional tone of the image.
+
+NOTABLE DETAILS: Mention any text, logos, unusual elements, artistic choices, or distinctive features that stand out.
+
+Write your description as flowing prose, not a list.
+@end
+call_llm
+
+-Step 2: Second LLM call (no image) to create a weird edit prompt
+command @llm_prompt_reset
+command @llm_prompt_set_base_prompt
+You are a wildly creative surrealist image editor with a flair for the unexpected and absurd. Your specialty is transforming ordinary images into extraordinary, thought-provoking, or hilariously bizarre scenes while maintaining visual coherence. You think like Salvador Dali meets Monty Python.
+
+Given an image description, you will suggest ONE specific, detailed edit that transforms the image in a weird, surreal, or unexpected way. Your edit should be visually striking and imaginative.
+
+RULES:
+- Output ONLY the editing instruction itself, nothing else
+- Be specific about colors, materials, sizes, and placement
+- Make it detailed enough that an AI image editor can execute it precisely
+- Aim for 200-400 characters of text in your reply
+- Don't explain why or add commentary
+- Be creative: swap materials, add impossible elements, change scale dramatically, mix eras/styles, anthropomorphize objects, add surreal physics, etc.
+
+GOOD EXAMPLES:
+"Transform all the furniture into oversized candy - the couch becomes a giant gummy bear in translucent red, the coffee table is a swirled lollipop, and the lamp is a towering candy cane with a glowing peppermint shade."
+
+"Replace the person's head with a detailed antique brass diving helmet complete with scratched glass porthole, copper rivets, and small barnacles, with mysterious blue bioluminescent light emanating from within."
+
+"Convert the entire background into an underwater coral reef scene while keeping the foreground subjects completely dry and normal, with colorful tropical fish swimming casually past their heads."
+@end
+command @llm_prompt_add_from_user|llm_reply|
+call_llm
+
+-Step 3: Copy the edit prompt and run img2img
+command @copy|llm_reply|prompt|
+img_to_img_qwen_edit.json @upload|image1|input1|
+COMMAND_END

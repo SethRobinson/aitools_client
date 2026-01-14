@@ -26,6 +26,7 @@ public class PicMenuNavBar : MonoBehaviour
         _navBar.AddOption("Rerender image", _picMain.OnReRenderButton, "Render again with same seed. Useful for getting the same pic with more steps");
         _navBar.AddOption("Rerender image with new seed", _picMain.OnReRenderNewSeedButton, "Render again with new seed. Useful for getting the same pic with more steps");
         _navBar.AddOption("Clear jobs/errors", _picMain.ClearErrorsAndJobs, "Clears any errors or jobs, good if an error happens but you want to use the pic again.");
+        _navBar.AddOption("Clear history to base pic", _picMain.ClearHistoryToBasePic, "Removes all history and any movie, leaving just the base image and mask. Works on multiple selected pics.");
         // _navBar.AddOption("Rerender copy with new seed", _picMain.OnReRenderCopyButton, "Duplicate image, change the seed, then render again");
         //  _navBar.AddOption("Generate Audio for video (MMAudio)", _picMain.OnGenAudio, "Uses ComfyUI");
         // _navBar.AddOption("Upscale 2X", _picMain.OnUpscaleButton, "Upscales 2X, beware large image sizes.  Also applies face correction.");

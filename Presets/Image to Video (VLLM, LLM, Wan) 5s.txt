@@ -1,0 +1,108 @@
+COMMAND_START|joblist
+command @lock_gpu
+-=== IMAGE TO VIDEO WITH VISION LLM + USER INSTRUCTIONS (5s) ===
+-
+-How to use: Type your instructions in the prompt box, drag an image, and run this preset.
+-The LLM will analyze your image and create a single video prompt based on your instructions.
+-
+-Example prompt: "Make the man do a flip and say something funny about the background"
+-Example prompt: "Have the woman dance and sing a song about coffee"
+-Example prompt: "Create a dramatic action scene with explosions"
+
+-=== SAVE USER INSTRUCTIONS TO temp_text1 ===
+command @copy|prompt|temp_text1|
+
+-=== STEP 1: VISION LLM - Analyze the current image ===
+command @llm_prompt_reset
+command @llm_prompt_set_base_prompt
+You are an expert image analyst. Describe images in precise, literal detail for video generation purposes.
+@end
+
+command @llm_add_image|image|
+
+command @llm_prompt_add_from_user
+Analyze this image and provide a detailed description. Include:
+
+1. PEOPLE: For each person, describe their approximate age, ethnicity, gender, clothing, hair, pose, expression, and position in frame
+2. SETTING: Location, lighting, atmosphere, time of day
+3. OBJECTS: Notable objects, props, or elements in the scene
+4. COMPOSITION: Camera angle, framing, depth
+
+Be extremely literal and specific. Describe ONLY what you can see, not interpretations or emotions.
+Keep your description to about 200 words.
+@end
+
+call_llm
+
+-Store the image description in temp_text2
+command @copy|llm_reply|temp_text2|
+
+-=== STEP 2: GENERATE 1 VIDEO PROMPT ===
+command @llm_prompt_reset
+command @llm_prompt_set_base_prompt
+Your job is to create a video prompt based on an image description and user instructions.
+
+You will receive:
+1. A detailed description of a starting image
+2. Instructions for what the user wants to happen
+
+Create a single 5-second visual scene. Include camera direction, including movement/zoom to make the scene more interesting.
+The prompt should be around 200-300 words and be extremely detailed.
+
+CRITICAL RULES:
+- State each person's RACE/ETHNICITY and AGE (e.g., "a 30-year-old Korean man", "a 45-year-old white woman")
+- Keep all people consistent with the image description (same age, clothing, features throughout)
+- Actions should start from the positions/poses described in the image
+- Be LITERAL and CLEAR, not poetic or vague
+- DO NOT use character names - use descriptions like "the 25-year-old Black woman", "the elderly Asian man", etc.
+- Describe what the camera SEES, not feelings or abstract concepts
+- IMPORTANT: Keep faces visible in frame at ALL times! Avoid camera movements that lose sight of faces. Keep subjects facing the camera when possible.
+@end
+
+command @llm_prompt_add_from_user
+=== IMAGE DESCRIPTION ===
+@end
+command @llm_prompt_add_from_user|temp_text2|
+
+command @llm_prompt_add_from_user
+
+=== USER INSTRUCTIONS ===
+Based on the image above, here is what the user wants to happen in the video:
+@end
+command @llm_prompt_add_from_user|temp_text1|
+
+command @llm_prompt_add_from_user
+
+=== YOUR TASK ===
+Create a single 5-second video prompt that:
+1. Starts from the scene shown in the image
+2. Executes the user's instructions creatively
+
+Format your response EXACTLY as:
+SET_PROMPT1: [the full 5-second scene description]
+
+In your prompt, you MUST:
+- State each person's RACE/ETHNICITY and AGE explicitly (e.g., "A 35-year-old Asian woman", "A 50-year-old Black man")
+- Re-describe clothing, hair, and physical features
+- Include camera movement/angle (but NEVER lose sight of faces!)
+- Be extremely detailed and literal
+- Include any dialog in format: The [description] (tone): "Line."
+- Keep all faces visible on screen throughout - no turning away, no close-ups that crop faces, no camera moves that lose faces
+@end
+
+call_llm
+command @parse_llm_prompts
+
+-generate movie from image using Wan22 with 1 prompt
+img_to_video_wan22_fast.json @upload|image1|input1|
+
+-signal that we should stop completely
+command @stopjob
+
+COMMAND_END
+COMMAND_START|default_negative_prompt
+cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white
+COMMAND_END
+COMMAND_START|default_pre_prompt
+shot with a Bessa Cinestill. Analog film, high ISO, medium dynamic range,
+COMMAND_END

@@ -1,4 +1,5 @@
 COMMAND_START|joblist
+command @lock_gpu
 command @llm_prompt_set_base_prompt
 Your job is to look at the following text/story and illustrate ONLY THE LAST SCENE - the most recent thing that happened. You will be sent an entire story but you must focus only on the very end.
 

@@ -2017,6 +2017,41 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         }
     }
 
+    /// <summary>
+    /// Core implementation that clears history and movie for this pic only.
+    /// Does not propagate to other selected pics.
+    /// </summary>
+    private void ClearHistoryToBasePicCore()
+    {
+        // Clear jobs and errors first
+        SetLLMActive(false);
+        ClearJobs();
+        SetStatusMessage("");
+        if (IsBusy())
+        {
+            StartCoroutine(m_picTextToImageScript.CancelRender());
+        }
+        
+        // Kill any movie, keeping only the current frame as the image
+        m_picMovie.KillMovie();
+        
+        // Clear all job history
+        _jobHistory.Clear();
+        m_jobDefaultInfo = null;
+    }
+
+    /// <summary>
+    /// Clears all history and any movie, leaving just the base image and mask.
+    /// Works on all selected images if multi-select is being used.
+    /// </summary>
+    public void ClearHistoryToBasePic()
+    {
+        ClearHistoryToBasePicCore();
+        
+        // Apply to other selected pics (call Core directly to avoid recursion)
+        ApplyToOtherSelectedPics((pic) => pic.ClearHistoryToBasePicCore());
+    }
+
     public void OnReRenderButton()
     {
         if (_jobHistory.Count == 0)
