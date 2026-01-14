@@ -2889,7 +2889,15 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
         //now is a good time to start  job I guess
 
-        if (!StillHasJobActivityToDo()) return;
+        if (!StillHasJobActivityToDo())
+        {
+            // Release manual GPU lock if we had one (AutoPic handles its own release via callback)
+            if (m_ownedServerID >= 0 && string.IsNullOrEmpty(m_autoPicScriptName))
+            {
+                ReleaseServerOwnership();
+            }
+            return;
+        }
 
         // Determine which renderer type is needed for the pending job
         RTRendererType neededRenderer = GameLogic.Get().GetGlobalRenderer();
@@ -3623,6 +3631,17 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                         {
                             // Signal that the script callback should NOT add more jobs after this script completes
                             m_stopAfterScript = true;
+                        }
+                        else if (picJobData._name.ToLower() == "lock_gpu")
+                        {
+                            // Lock this server exclusively for the entire preset workflow
+                            if (serverID >= 0 && m_ownedServerID < 0)
+                            {
+                                if (ClaimServerOwnership(serverID))
+                                {
+                                    RTConsole.Log($"@lock_gpu: Locked server {serverID} for this preset");
+                                }
+                            }
                         }
                         else if (picJobData._name.ToLower() == "resize_if_larger")
                         {
