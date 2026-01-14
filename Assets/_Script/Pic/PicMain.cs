@@ -2165,6 +2165,9 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             //show a message that it's been scheduled on the screen
             RTQuickMessageManager.Get().ShowMessage("Running job script...");
         }
+        
+        // Also run on other selected pics (skip adventure texts)
+        ApplyToOtherSelectedPics((pic) => pic.OnTool1());
     }
         public void OnSetTemp1Button()
         {
@@ -2195,6 +2198,9 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             //show a message that it's been scheduled on the screen
             RTQuickMessageManager.Get().ShowMessage("Running job script...");
         }
+        
+        // Also run on other selected pics (skip adventure texts)
+        ApplyToOtherSelectedPics((pic) => pic.OnTool2());
     }
 
     public void OnTool1() 
@@ -2230,6 +2236,38 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     public void OnTool2()
     {
         RunPresetByName(GameLogic.Get().GetNameOfActiveTempPreset());
+    }
+    
+    /// <summary>
+    /// Helper to apply an action to other selected pics when multiselect is active.
+    /// Skips adventure texts and the current pic (which already had the action applied).
+    /// </summary>
+    private void ApplyToOtherSelectedPics(System.Action<PicMain> action)
+    {
+        var selectionManager = SelectionManager.Get();
+        if (selectionManager == null || selectionManager.GetSelectedCount() <= 1)
+            return;
+            
+        // Get all selected items and apply action to other PicMains (not this one, not adventure texts)
+        var picsParent = RTUtil.FindObjectOrCreate("Pics").transform;
+        var allPics = picsParent.GetComponentsInChildren<PicMain>();
+        
+        foreach (var pic in allPics)
+        {
+            if (pic == null || pic.IsDestroyed())
+                continue;
+                
+            // Skip ourselves - we already ran the action
+            if (pic == this)
+                continue;
+                
+            // Only apply to pics that are selected
+            if (!selectionManager.IsSelected(pic.gameObject))
+                continue;
+                
+            // Run the action on this pic
+            action(pic);
+        }
     }
 
     public void OnFinishedJob()
