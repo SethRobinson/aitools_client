@@ -2031,6 +2031,12 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         List<string> jobList = ConvertHistoryBackToJobList();
         _jobHistory.Clear();
 
+        // Clear existing jobs and release GPU lock before re-rendering
+        m_picJobs.Clear();
+        m_jobList.Clear();
+        m_waitingForPicJob = false;
+        ReleaseServerOwnership();
+
         AddJobListWithStartingJobInfo(job, jobList);
         SetStatusMessage("Waiting for GPU...");
     }
