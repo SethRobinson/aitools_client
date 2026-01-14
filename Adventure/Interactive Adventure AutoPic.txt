@@ -21,7 +21,7 @@ COMMAND_END
 #system context is sent directly before every human answer, I do this because without it, the ai can 'forget' how to do certain things.  These type of messages are auto removed except for the latest ones, so they don't eat your context space
 
 COMMAND_START|system_reminder
-(remember: entire reply should be under 400 words)
+(remember: entire reply should be under 400 words. Avoid repetition in content, keep new things happening but don't rush it)
 COMMAND_END
 
 #when "auto" is used, this will be reply given to the llm between its generations.  (keep in mind the system_reminder may also be added)
@@ -37,5 +37,5 @@ What should this story be about? (Enter in the textbox at the bottom of the scre
 COMMAND_END
 
 COMMAND_START|prepend_prompt
-Shot with a Bessa Cinestill. Analog film, high ISO, medium dynamic range, amateur photo.  Candid. (close up portrait photography, not anime or cartoon, real life.  Camera zooms in on the action)
+Shot with a Bessa Cinestill. Analog film, high ISO, medium dynamic range, amateur photo.  Candid.
 COMMAND_END

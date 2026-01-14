@@ -29,7 +29,7 @@ public class GenerateSettingsPanel : MonoBehaviour
     private TMP_Dropdown _autoPicDropdown;
 
     // Panel dimensions
-    private const float PANEL_WIDTH = 500f;
+    private const float PANEL_WIDTH = 800f;
     private const float PANEL_HEIGHT = 780f;
     private const float HEADER_HEIGHT = 40f;
     private const float FOOTER_HEIGHT = 50f;
@@ -46,6 +46,8 @@ public class GenerateSettingsPanel : MonoBehaviour
     private static readonly Color ButtonColor = new Color(1f, 1f, 1f, 1f);
 
     private static Sprite _uiBackgroundSprite;
+    private static Sprite _dropdownArrowSprite;
+    private static Color? _dropdownArrowColor;
     private static bool _spritesCached;
 
     public static GenerateSettingsPanel Get()
@@ -170,7 +172,34 @@ public class GenerateSettingsPanel : MonoBehaviour
     {
         if (_spritesCached) return;
 
-        // Find an existing Image in the scene with a sprite
+        // Find dropdown arrow sprite from existing dropdowns
+        foreach (var dd in Resources.FindObjectsOfTypeAll<TMP_Dropdown>())
+        {
+            if (dd == null) continue;
+            if (_panelRoot != null && dd.transform.IsChildOf(_panelRoot.transform)) continue;
+
+            var ddImg = dd.GetComponent<Image>();
+            var arrowImg = dd.transform.Find("Arrow")?.GetComponent<Image>();
+
+            if (ddImg != null && ddImg.sprite != null && _uiBackgroundSprite == null)
+            {
+                _uiBackgroundSprite = ddImg.sprite;
+            }
+
+            if (arrowImg != null && arrowImg.sprite != null && _dropdownArrowSprite == null)
+            {
+                _dropdownArrowSprite = arrowImg.sprite;
+                _dropdownArrowColor = arrowImg.color;
+            }
+
+            if (_uiBackgroundSprite != null && _dropdownArrowSprite != null)
+            {
+                _spritesCached = true;
+                return;
+            }
+        }
+
+        // Fallback: Find an existing Image in the scene with a sprite
         foreach (var img in Resources.FindObjectsOfTypeAll<Image>())
         {
             if (img == null || img.sprite == null) continue;
@@ -181,23 +210,26 @@ public class GenerateSettingsPanel : MonoBehaviour
                 img.sprite.name.Contains("UISprite"))
             {
                 _uiBackgroundSprite = img.sprite;
-                _spritesCached = true;
-                return;
+                break;
             }
         }
 
         // Fallback: use any sliced sprite
-        foreach (var img in Resources.FindObjectsOfTypeAll<Image>())
+        if (_uiBackgroundSprite == null)
         {
-            if (img == null || img.sprite == null) continue;
-            if (_panelRoot != null && img.transform.IsChildOf(_panelRoot.transform)) continue;
-            if (img.type == Image.Type.Sliced)
+            foreach (var img in Resources.FindObjectsOfTypeAll<Image>())
             {
-                _uiBackgroundSprite = img.sprite;
-                _spritesCached = true;
-                return;
+                if (img == null || img.sprite == null) continue;
+                if (_panelRoot != null && img.transform.IsChildOf(_panelRoot.transform)) continue;
+                if (img.type == Image.Type.Sliced)
+                {
+                    _uiBackgroundSprite = img.sprite;
+                    break;
+                }
             }
         }
+
+        _spritesCached = _uiBackgroundSprite != null;
     }
 
     private static void ApplyUISprite(Image img)
@@ -809,6 +841,19 @@ public class GenerateSettingsPanel : MonoBehaviour
             ddImg.color = InputFieldBg;
         }
 
+        // Apply arrow sprite if we have one cached
+        var arrowTransform = ddGo.transform.Find("Arrow");
+        if (arrowTransform != null)
+        {
+            var arrowImg = arrowTransform.GetComponent<Image>();
+            if (arrowImg != null)
+            {
+                if (_dropdownArrowSprite != null)
+                    arrowImg.sprite = _dropdownArrowSprite;
+                arrowImg.color = _dropdownArrowColor ?? TextDark;
+            }
+        }
+
         if (_autoPicDropdown.captionText != null)
         {
             _autoPicDropdown.captionText.font = _font;
@@ -823,10 +868,32 @@ public class GenerateSettingsPanel : MonoBehaviour
             _autoPicDropdown.itemText.color = TextDark;
         }
 
-        // Make the dropdown list tall enough
+        // Make the dropdown list tall enough and style the scrollbar for better visibility
         if (_autoPicDropdown.template != null)
         {
             _autoPicDropdown.template.sizeDelta = new Vector2(_autoPicDropdown.template.sizeDelta.x, 150f);
+            
+            // Style the dropdown scrollbar for better contrast
+            var scrollbar = _autoPicDropdown.template.GetComponentInChildren<Scrollbar>(true);
+            if (scrollbar != null)
+            {
+                // Style scrollbar background (light gray track)
+                var scrollbarImg = scrollbar.GetComponent<Image>();
+                if (scrollbarImg != null)
+                {
+                    scrollbarImg.color = new Color(0.75f, 0.75f, 0.77f, 1f);
+                }
+                
+                // Style scrollbar handle (darker for contrast against light track)
+                if (scrollbar.handleRect != null)
+                {
+                    var handleImg = scrollbar.handleRect.GetComponent<Image>();
+                    if (handleImg != null)
+                    {
+                        handleImg.color = new Color(0.45f, 0.45f, 0.5f, 1f);
+                    }
+                }
+            }
         }
     }
 

@@ -50,7 +50,7 @@ You rewrite simple ideas into LTX-2 video prompts. Be literal and direct. No poe
 @end
 
 command @llm_prompt_add_from_user
-Rewrite the user's idea below into a 20-second LTX-2 video prompt. Add dialog/adult action to make it good if needed.
+Rewrite the user's idea below into a 20-second LTX-2 video prompt. Add dialog/action to make it good if needed.
 
 Write ONE flowing paragraph. Describe actions in SEQUENCE, not with timestamps. 
 
