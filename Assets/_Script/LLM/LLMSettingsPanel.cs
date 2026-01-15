@@ -809,12 +809,20 @@ public class LLMSettingsPanel : MonoBehaviour
         if (_openAICompatibleUI.refreshModelsButton != null)
             _openAICompatibleUI.refreshModelsButton.onClick.AddListener(OnRefreshOpenAICompatibleModels);
 
-        UpdateVisibleProvider();
-        
-        // Select the first instance if any
+        // Select the first instance if any, otherwise hide all provider UIs
         if (_workingInstancesConfig != null && _workingInstancesConfig.instances.Count > 0)
         {
             OnInstanceSelected(_workingInstancesConfig.instances[0].instanceID);
+        }
+        else
+        {
+            // No instances - hide all provider UIs and instance-specific rows
+            HideAllProviderUIs();
+            _displayNameRow?.SetActive(false);
+            _jobModeRow?.SetActive(false);
+            _maxConcurrentRow?.SetActive(false);
+            if (_activeProviderDropdown?.transform.parent != null)
+                _activeProviderDropdown.transform.parent.gameObject.SetActive(false);
         }
     }
     
@@ -1720,12 +1728,24 @@ public class LLMSettingsPanel : MonoBehaviour
             _workingInstancesConfig = instanceManager.GetConfigClone();
             _instanceListUI?.RefreshList(_workingInstancesConfig);
             
-            // Select first instance if none selected
-            if (_selectedInstanceID < 0 && _workingInstancesConfig.instances.Count > 0)
+            // Select first instance if none selected, or hide UI if no instances exist
+            if (_workingInstancesConfig.instances.Count == 0)
+            {
+                // No instances - hide all provider UIs and instance-specific rows
+                _selectedInstanceID = -1;
+                HideAllProviderUIs();
+                _displayNameRow?.SetActive(false);
+                _jobModeRow?.SetActive(false);
+                _maxConcurrentRow?.SetActive(false);
+                if (_activeProviderDropdown?.transform.parent != null)
+                    _activeProviderDropdown.transform.parent.gameObject.SetActive(false);
+                return; // Don't continue with provider UI updates
+            }
+            else if (_selectedInstanceID < 0)
             {
                 OnInstanceSelected(_workingInstancesConfig.instances[0].instanceID);
             }
-            else if (_selectedInstanceID >= 0)
+            else
             {
                 OnInstanceSelected(_selectedInstanceID);
             }

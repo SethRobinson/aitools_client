@@ -30,7 +30,6 @@ shot with a Bessa Cinestill. Analog film, high ISO, medium dynamic range,
 COMMAND_END
 
 COMMAND_START|prepend_prompt
-photo, 4k, still from a movie 
 COMMAND_END
 COMMAND_START|auto_continue_text
 (continue with more please, remember to keep them unique, don't do the same concept twice)

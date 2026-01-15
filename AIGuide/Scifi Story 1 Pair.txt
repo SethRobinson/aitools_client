@@ -32,7 +32,6 @@ shot with a Bessa Cinestill. Analog film, high ISO, medium dynamic range,
 COMMAND_END
 
 COMMAND_START|prepend_prompt
-photo, 4k, still from a movie 
 COMMAND_END
 
 #you can dynamically change this mid-story to make it focus on something or end the story or whatever
