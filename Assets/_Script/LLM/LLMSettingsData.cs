@@ -49,6 +49,9 @@ public class LLMProviderSettings
     public bool overrideMinP = false;
     public float minP = 0.1f; // Minimum probability threshold (0.0-1.0, default: 0.1)
     
+    public bool overrideRepeatPenalty = false;
+    public float repeatPenalty = 1.0f; // Penalize repeat sequences (1.0 = disabled, >1.0 = penalize, default: 1.0)
+    
     // llama.cpp-specific: router mode info (not persisted, runtime only)
     [NonSerialized]
     public bool isRouterMode = false; // True if server has multiple models available
@@ -89,7 +92,9 @@ public class LLMProviderSettings
             overrideTopK = this.overrideTopK,
             topK = this.topK,
             overrideMinP = this.overrideMinP,
-            minP = this.minP
+            minP = this.minP,
+            overrideRepeatPenalty = this.overrideRepeatPenalty,
+            repeatPenalty = this.repeatPenalty
         };
 
         foreach (var parm in this.extraParams)

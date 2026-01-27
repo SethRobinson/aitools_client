@@ -37,7 +37,7 @@ public class LLMSettingsPanel : MonoBehaviour
     private LLMProviderUI _geminiUI;
     private LLMProviderUI _openAICompatibleUI;
 
-    private const float PANEL_WIDTH = 640f;
+    private const float PANEL_WIDTH = 700f;
     private const float PANEL_HEIGHT = 620f; // Increased to fit instance list
     private const float HEADER_HEIGHT = 40f;
     private const float FOOTER_HEIGHT = 60f;

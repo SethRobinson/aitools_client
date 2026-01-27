@@ -532,6 +532,10 @@ public class LLMSettingsManager : MonoBehaviour
             {
                 result.Add(new LLMParm { _key = "min_p", _value = settings.minP.ToString(System.Globalization.CultureInfo.InvariantCulture) });
             }
+            if (settings.overrideRepeatPenalty)
+            {
+                result.Add(new LLMParm { _key = "repeat_penalty", _value = settings.repeatPenalty.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+            }
         }
 
         // Add all extra parameters (null check for deserialization safety)
@@ -542,7 +546,7 @@ public class LLMSettingsManager : MonoBehaviour
                 // Don't add duplicate model or num_ctx parameter or sampling params
                 if (parm._key != "model" && parm._key != "num_ctx" && 
                     parm._key != "temperature" && parm._key != "top_p" && 
-                    parm._key != "top_k" && parm._key != "min_p")
+                    parm._key != "top_k" && parm._key != "min_p" && parm._key != "repeat_penalty")
                 {
                     result.Add(new LLMParm { _key = parm._key, _value = parm._value });
                 }
@@ -983,6 +987,10 @@ public class LLMSettingsManager : MonoBehaviour
             {
                 result.Add(new LLMParm { _key = "min_p", _value = settings.minP.ToString(System.Globalization.CultureInfo.InvariantCulture) });
             }
+            if (settings.overrideRepeatPenalty)
+            {
+                result.Add(new LLMParm { _key = "repeat_penalty", _value = settings.repeatPenalty.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+            }
         }
         
         // Add all extra parameters
@@ -991,7 +999,7 @@ public class LLMSettingsManager : MonoBehaviour
             foreach (var parm in settings.extraParams)
             {
                 if (parm._key != "model" && parm._key != "num_ctx" && parm._key != "enable_thinking" &&
-                    parm._key != "temperature" && parm._key != "top_p" && parm._key != "top_k" && parm._key != "min_p")
+                    parm._key != "temperature" && parm._key != "top_p" && parm._key != "top_k" && parm._key != "min_p" && parm._key != "repeat_penalty")
                 {
                     result.Add(new LLMParm { _key = parm._key, _value = parm._value });
                 }

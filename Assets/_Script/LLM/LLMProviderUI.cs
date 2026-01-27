@@ -44,6 +44,8 @@ public class LLMProviderUI
     private TMP_InputField _topKInput;
     private Toggle _minPToggle;
     private TMP_InputField _minPInput;
+    private Toggle _repeatPenaltyToggle;
+    private TMP_InputField _repeatPenaltyInput;
     
     // Cached sampling parameter values
     private bool _overrideTemperature = false;
@@ -54,6 +56,8 @@ public class LLMProviderUI
     private int _topK = 40;
     private bool _overrideMinP = false;
     private float _minP = 0.1f;
+    private bool _overrideRepeatPenalty = false;
+    private float _repeatPenalty = 1.0f;
     
     // Callback for when model selection changes (for Ollama to fetch model info)
     public event Action<string> OnModelChanged;
@@ -141,6 +145,8 @@ public class LLMProviderUI
             _topK = settings.topK;
             _overrideMinP = settings.overrideMinP;
             _minP = settings.minP;
+            _overrideRepeatPenalty = settings.overrideRepeatPenalty;
+            _repeatPenalty = settings.repeatPenalty;
             CreateSamplingParametersSection(sectionRoot.transform, settings);
         }
 
@@ -385,6 +391,8 @@ public class LLMProviderUI
             _topK = settings.topK;
             _overrideMinP = settings.overrideMinP;
             _minP = settings.minP;
+            _overrideRepeatPenalty = settings.overrideRepeatPenalty;
+            _repeatPenalty = settings.repeatPenalty;
             UpdateSamplingParametersUI();
         }
         
@@ -433,6 +441,8 @@ public class LLMProviderUI
             settings.topK = _topK;
             settings.overrideMinP = _overrideMinP;
             settings.minP = _minP;
+            settings.overrideRepeatPenalty = _overrideRepeatPenalty;
+            settings.repeatPenalty = _repeatPenalty;
         }
         
         // Gemini-specific
@@ -1112,6 +1122,17 @@ public class LLMProviderUI
             OnMinPToggleChanged,
             OnMinPInputChanged
         );
+        
+        // Repeat Penalty row
+        (_repeatPenaltyToggle, _repeatPenaltyInput) = CreateSamplingParameterRow(
+            parent, 
+            "Repeat Penalty", 
+            settings.overrideRepeatPenalty, 
+            settings.repeatPenalty.ToString("F2"),
+            "Penalize repeats (1.0=disabled, >1.0=penalize)",
+            OnRepeatPenaltyToggleChanged,
+            OnRepeatPenaltyInputChanged
+        );
     }
 
     private (Toggle toggle, TMP_InputField input) CreateSamplingParameterRow(
@@ -1183,7 +1204,7 @@ public class LLMProviderUI
         nameRt.anchorMin = new Vector2(0, 0);
         nameRt.anchorMax = new Vector2(0, 1);
         nameRt.pivot = new Vector2(0, 0.5f);
-        nameRt.sizeDelta = new Vector2(80, 0);
+        nameRt.sizeDelta = new Vector2(100, 0);
         nameRt.anchoredPosition = new Vector2(28, 0);
         
         var nameTmp = nameObj.AddComponent<TextMeshProUGUI>();
@@ -1207,7 +1228,7 @@ public class LLMProviderUI
         inputRt.anchorMax = new Vector2(0, 0.5f);
         inputRt.pivot = new Vector2(0, 0.5f);
         inputRt.sizeDelta = new Vector2(60, 28);
-        inputRt.anchoredPosition = new Vector2(110, 0);
+        inputRt.anchoredPosition = new Vector2(130, 0);
         
         var input = inputGo.GetComponent<TMP_InputField>();
         if (input != null)
@@ -1229,7 +1250,7 @@ public class LLMProviderUI
         var descRt = descObj.AddComponent<RectTransform>();
         descRt.anchorMin = new Vector2(0, 0);
         descRt.anchorMax = new Vector2(1, 1);
-        descRt.offsetMin = new Vector2(178, 0);
+        descRt.offsetMin = new Vector2(198, 0);
         descRt.offsetMax = new Vector2(0, 0);
         
         var descTmp = descObj.AddComponent<TextMeshProUGUI>();
@@ -1297,6 +1318,14 @@ public class LLMProviderUI
         }
         if (_minPInput != null)
             _minPInput.text = _minP.ToString("F2");
+            
+        if (_repeatPenaltyToggle != null)
+        {
+            _repeatPenaltyToggle.isOn = _overrideRepeatPenalty;
+            UpdateInputFieldEnabled(_repeatPenaltyInput, _overrideRepeatPenalty);
+        }
+        if (_repeatPenaltyInput != null)
+            _repeatPenaltyInput.text = _repeatPenalty.ToString("F2");
     }
     
     // Toggle callbacks
@@ -1362,6 +1391,24 @@ public class LLMProviderUI
             _minP = Mathf.Clamp(result, 0f, 1f);
             if (_minPInput != null)
                 _minPInput.text = _minP.ToString("F2");
+        }
+    }
+    
+    private void OnRepeatPenaltyToggleChanged(bool value)
+    {
+        _overrideRepeatPenalty = value;
+        UpdateInputFieldEnabled(_repeatPenaltyInput, value);
+    }
+    
+    private void OnRepeatPenaltyInputChanged(string value)
+    {
+        if (float.TryParse(value, out float result))
+        {
+            // Repeat penalty typically ranges from 1.0 (disabled) to 2.0+ (strong penalty)
+            // Values below 1.0 would encourage repetition, which is unusual but allowed
+            _repeatPenalty = Mathf.Max(0f, result);
+            if (_repeatPenaltyInput != null)
+                _repeatPenaltyInput.text = _repeatPenalty.ToString("F2");
         }
     }
 
