@@ -630,17 +630,21 @@ public class AdventureLogic : MonoBehaviour
     {
         m_totalLLMGenerationCounter = 0;
     }
-    public AdventureText AddTextAndGetReply(string text, AdventureText textScript, bool bDontCreateReplyBox = false)
+    public AdventureText AddTextAndGetReply(string text, AdventureText textScript, bool bDontCreateReplyBox = false, bool isAutoMode = false)
     {
-        m_totalLLMGenerationCounter++;
-
-        if (m_totalLLMGenerationCounter >= GetStopAfter() && GetStopAfter() > 0)
+        // Only count towards "Stop After X" limit when Auto mode is active
+        if (isAutoMode)
         {
-            RTQuickMessageManager.Get().ShowMessage("Stopped after " + GetStopAfter() + " generations.");
-            m_LLMAtOnceInputField.text = "0";
-            m_genExtraToggle.isOn = false; // Turn off Gen Xtra to fully stop pic generation
-            m_totalLLMGenerationCounter = 0;
-            return null; // Stop generating - don't create another text
+            m_totalLLMGenerationCounter++;
+
+            if (m_totalLLMGenerationCounter >= GetStopAfter() && GetStopAfter() > 0)
+            {
+                RTQuickMessageManager.Get().ShowMessage("Stopped after " + GetStopAfter() + " generations.");
+                m_LLMAtOnceInputField.text = "0";
+                m_genExtraToggle.isOn = false; // Turn off Gen Xtra to fully stop pic generation
+                m_totalLLMGenerationCounter = 0;
+                return null; // Stop generating - don't create another text
+            }
         }
         if (_bUseGlobalPrompts.isOn)
         {

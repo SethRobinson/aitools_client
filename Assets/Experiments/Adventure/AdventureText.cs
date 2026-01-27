@@ -509,7 +509,7 @@ public class AdventureText : MonoBehaviour
            // Debug.Log($"Choice: Identifier={choice.identifier}, Unused={choice.unused}, Description={choice.description}");
 
             // For each choice, we'll add a new text object and set it up to generate
-            AdventureText newText = AdventureLogic.Get().AddTextAndGetReply(choice.identifier, this, true);
+            AdventureText newText = AdventureLogic.Get().AddTextAndGetReply(choice.identifier, this, bDontCreateReplyBox: true, isAutoMode: true);
             
             // Check if stop condition was hit (AddTextAndGetReply returns null)
             if (newText == null)
@@ -557,11 +557,11 @@ public class AdventureText : MonoBehaviour
         {
             if (m_bSetUserCreated)
             {
-                newText = AdventureLogic.Get().AddTextAndGetReply("", this);
+                newText = AdventureLogic.Get().AddTextAndGetReply("", this, bDontCreateReplyBox: false, isAutoMode: true);
             }
             else
             {
-                newText = AdventureLogic.Get().AddTextAndGetReply(AdventureLogic.Get().GetExtractor().AutoContinueText, this);
+                newText = AdventureLogic.Get().AddTextAndGetReply(AdventureLogic.Get().GetExtractor().AutoContinueText, this, bDontCreateReplyBox: false, isAutoMode: true);
             }
 
             // Check if stop condition was hit (AddTextAndGetReply returns null)

@@ -6892,7 +6892,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::InputFieldNavigationBlocker
   _disableSubmitWhenFocused: 1
-  _debugLog: 1
+  _debugLog: 0
 --- !u!1 &179101708
 GameObject:
   m_ObjectHideFlags: 0
@@ -25161,7 +25161,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
-  m_Color: {r: 1, g: 1, b: 1, a: 1}
+  m_Color: {r: 0.43529412, g: 0.43529412, b: 0.43529412, a: 1}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -54513,8 +54513,8 @@ MonoBehaviour:
   m_fontMaterials: []
   m_fontColor32:
     serializedVersion: 2
-    rgba: 2159786940
-  m_fontColor: {r: 0.735849, g: 0.73237807, b: 0.73237807, a: 0.5}
+    rgba: 2164260863
+  m_fontColor: {r: 1, g: 1, b: 1, a: 0.5}
   m_enableVertexGradient: 0
   m_colorMode: 3
   m_fontColorGradient:
@@ -57856,6 +57856,7 @@ GameObject:
   - component: {fileID: 1446962432}
   - component: {fileID: 1446962431}
   - component: {fileID: 1446962430}
+  - component: {fileID: 1446962434}
   m_Layer: 5
   m_Name: PromptTextInput
   m_TagString: Untagged
@@ -57978,8 +57979,8 @@ MonoBehaviour:
       m_Calls:
       - m_Target: {fileID: 311706010}
         m_TargetAssemblyTypeName: GameLogic, Assembly-CSharp
-        m_MethodName: OnPromptChanged
-        m_Mode: 0
+        m_MethodName: 
+        m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
           m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
@@ -58022,7 +58023,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
-  m_Color: {r: 0.4339623, g: 0.4339623, b: 0.4339623, a: 0.83137256}
+  m_Color: {r: 0.4339623, g: 0.4339623, b: 0.4339623, a: 1}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -58047,6 +58048,18 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1446962428}
   m_CullTransparentMesh: 1
+--- !u!114 &1446962434
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1446962428}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 350cefafd41cfa344bd8d0d242b8f6f1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::TMPInputFieldUndo
 --- !u!1 &1447984678
 GameObject:
   m_ObjectHideFlags: 0
@@ -85516,7 +85529,7 @@ PrefabInstance:
     - target: {fileID: 8335936608596666549, guid: f13496bcc6225004ebb72d41e2bd85b8,
         type: 3}
       propertyPath: m_fontSize
-      value: 30.7
+      value: 29.8
       objectReference: {fileID: 0}
     - target: {fileID: 8335936608596666549, guid: f13496bcc6225004ebb72d41e2bd85b8,
         type: 3}
