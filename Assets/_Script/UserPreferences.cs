@@ -17,6 +17,8 @@ public class UserPreferences : MonoBehaviour
     public string AIGuidePreset { get; set; } = "";
     public string AdventurePreset { get; set; } = "";
     public string DefaultAutoPicScript { get; set; } = "AutoPic.txt";
+    // Adventure mode quote highlight color (hex format like #FFFF66). Empty string disables quote coloring.
+    public string AdventureQuoteColor { get; set; } = "#FFFF66";
 
     private void Awake()
     {
@@ -89,6 +91,9 @@ public class UserPreferences : MonoBehaviour
             case "default_autopic_script":
                 DefaultAutoPicScript = value;
                 break;
+            case "adventure_quote_color":
+                AdventureQuoteColor = value;
+                break;
         }
     }
 
@@ -119,6 +124,9 @@ public class UserPreferences : MonoBehaviour
 
                 if (!string.IsNullOrEmpty(DefaultAutoPicScript))
                     writer.WriteLine("default_autopic_script|" + DefaultAutoPicScript + "|");
+
+                // Always write adventure_quote_color (empty string means disabled)
+                writer.WriteLine("adventure_quote_color|" + (AdventureQuoteColor ?? "") + "|");
             }
             RTConsole.Log("Saved user preferences to " + PREFERENCES_FILE);
         }

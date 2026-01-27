@@ -120,12 +120,28 @@ public class OpenAITextCompletionManager : MonoBehaviour
         return newLines;
     }
 
-    // Remove TextMeshPro markup tags that we may have injected for display (e.g., <b>...</b>)
+    // Remove TextMeshPro markup tags that we may have injected for display (e.g., <b>...</b>, <color=#FFD700>...</color>)
     public static string RemoveTMPTagsFromString(string line)
     {
         if (string.IsNullOrEmpty(line)) return line;
-        // Strip bold tags; extendable for other TMP tags if needed.
-        line = Regex.Replace(line, @"</?b>", "", RegexOptions.IgnoreCase);
+        
+        try
+        {
+            // Strip color tags with any format: <color=#RRGGBB>, <color=name>, </color>
+            line = Regex.Replace(line, @"<color=[^>]*>", "", RegexOptions.IgnoreCase);
+            line = Regex.Replace(line, @"</color>", "", RegexOptions.IgnoreCase);
+            
+            // Strip bold tags: <b>, </b>
+            line = Regex.Replace(line, @"</?b>", "", RegexOptions.IgnoreCase);
+            
+            // Strip italic tags: <i>, </i>
+            line = Regex.Replace(line, @"</?i>", "", RegexOptions.IgnoreCase);
+        }
+        catch
+        {
+            // If regex fails, return original line unchanged
+        }
+        
         return line;
     }
 

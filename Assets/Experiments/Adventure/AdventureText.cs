@@ -384,6 +384,9 @@ public class AdventureText : MonoBehaviour
 
         //trim whitespace off
         m_textWithoutChoices = m_textWithoutChoices.Trim();
+        
+        // Strip TMP tags so exports and LLM context get clean text
+        m_textWithoutChoices = OpenAITextCompletionManager.RemoveTMPTagsFromString(m_textWithoutChoices);
 
 
         // Split the input text by newlines
@@ -1091,15 +1094,31 @@ public class AdventureText : MonoBehaviour
     {
         if (string.IsNullOrEmpty(text)) return text;
 
-      // Replace bold with double asterisks or underscores first
-        text = Regex.Replace(text, "\\*\\*(.+?)\\*\\*", "<b>$1</b>", RegexOptions.Singleline);
-        //text = Regex.Replace(text, "__(.+?)__", "<b>$1</b>", RegexOptions.Singleline);
+        try
+        {
+            // Replace bold with double asterisks first (before single asterisks)
+            text = Regex.Replace(text, @"\*\*(.+?)\*\*", "<b>$1</b>", RegexOptions.Singleline);
 
-        // Then replace single asterisk or underscore wrapped segments, avoiding overlaps with doubles
-        //text = Regex.Replace(text, "(?<!\\*)\\*(?!\\s)(.+?)(?<!\\s)\\*(?!\\*)", "<b>$1</b>", RegexOptions.Singleline);
-        //text = Regex.Replace(text, "(?<!_)_(?!\\s)(.+?)(?<!\\s)_(?!_)", "<b>$1</b>", RegexOptions.Singleline);
+            // Replace single asterisk emphasis with bold
+            text = Regex.Replace(text, @"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", "<b>$1</b>", RegexOptions.Singleline);
 
-     
+            // Highlight quoted text in configurable color (empty/null disables this feature)
+            string quoteColor = UserPreferences.Get()?.AdventureQuoteColor?.Trim();
+            if (!string.IsNullOrEmpty(quoteColor))
+            {
+                // Ensure color has # prefix for hex values
+                if (!quoteColor.StartsWith("#") && quoteColor.Length >= 3)
+                {
+                    quoteColor = "#" + quoteColor;
+                }
+                text = Regex.Replace(text, @"""([^""]+)""", $"<color={quoteColor}>\"$1\"</color>", RegexOptions.Singleline);
+            }
+        }
+        catch
+        {
+            // If regex fails on malformed input, return original text unchanged
+        }
+
         return text;
     }
     public void SetLLMActive(bool bActive)

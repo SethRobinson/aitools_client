@@ -25,6 +25,7 @@ public class GenerateSettingsPanel : MonoBehaviour
     private Toggle _autoSavePNGToggle;
     private Toggle _stripThinkTagsToggle;
     private TMP_InputField _maxPicsInput;
+    private TMP_InputField _adventureQuoteColorInput;
     private TextMeshProUGUI _statusText;
     private TMP_Dropdown _autoPicDropdown;
 
@@ -520,6 +521,7 @@ public class GenerateSettingsPanel : MonoBehaviour
 
         CreateSectionHeader(content.transform, "Adventure Mode:");
         CreateAutoPicDropdownRow(content.transform);
+        CreateAdventureQuoteColorRow(content.transform);
 
         CreateSectionHeader(content.transform, "LLM Settings:");
         _stripThinkTagsToggle = CreateToggleRow(content.transform, "Strip <think> tags when sending to LLMs",
@@ -625,6 +627,96 @@ public class GenerateSettingsPanel : MonoBehaviour
         labelAfterTMP.color = TextDark;
         labelAfterTMP.text = "pics. (0 for unlimited)";
         labelAfterTMP.alignment = TextAlignmentOptions.MidlineLeft;
+    }
+
+    private void CreateAdventureQuoteColorRow(Transform parent)
+    {
+        var row = new GameObject("AdventureQuoteColorRow");
+        row.transform.SetParent(parent, false);
+        var rowRt = row.AddComponent<RectTransform>();
+        var rowLayout = row.AddComponent<LayoutElement>();
+        rowLayout.minHeight = 50;
+        rowLayout.preferredHeight = 50;
+
+        // Label - manual positioning
+        var label = new GameObject("Label");
+        label.transform.SetParent(row.transform, false);
+        var labelRt = label.AddComponent<RectTransform>();
+        labelRt.anchorMin = new Vector2(0, 0.5f);
+        labelRt.anchorMax = new Vector2(0, 0.5f);
+        labelRt.pivot = new Vector2(0, 0.5f);
+        labelRt.sizeDelta = new Vector2(400, 40);
+        labelRt.anchoredPosition = new Vector2(0, 0);
+        
+        var labelTMP = label.AddComponent<TextMeshProUGUI>();
+        labelTMP.font = _font;
+        labelTMP.fontSize = BASE_FONT_SIZE;
+        labelTMP.color = TextDark;
+        labelTMP.text = "Quote highlight color (hex, e.g. #FFFF66)\nLeave blank to disable quote coloring";
+        labelTMP.alignment = TextAlignmentOptions.MidlineLeft;
+
+        // Input field - manual positioning using TMP_DefaultControls
+        var inputGo = TMP_DefaultControls.CreateInputField(new TMP_DefaultControls.Resources());
+        inputGo.name = "AdventureQuoteColorInput";
+        inputGo.transform.SetParent(row.transform, false);
+        var inputRt = inputGo.GetComponent<RectTransform>();
+        inputRt.anchorMin = new Vector2(0, 0.5f);
+        inputRt.anchorMax = new Vector2(0, 0.5f);
+        inputRt.pivot = new Vector2(0, 0.5f);
+        inputRt.sizeDelta = new Vector2(100, 28);
+        inputRt.anchoredPosition = new Vector2(410, 0);
+
+        _adventureQuoteColorInput = inputGo.GetComponent<TMP_InputField>();
+        _adventureQuoteColorInput.contentType = TMP_InputField.ContentType.Standard;
+        _adventureQuoteColorInput.characterLimit = 9; // #RRGGBBAA max
+        _adventureQuoteColorInput.onEndEdit.AddListener(OnAdventureQuoteColorChanged);
+        
+        // Configure caret and selection for visibility
+        _adventureQuoteColorInput.caretWidth = 2;
+        _adventureQuoteColorInput.customCaretColor = true;
+        _adventureQuoteColorInput.caretColor = TextDark;
+        _adventureQuoteColorInput.selectionColor = new Color(0.25f, 0.5f, 1f, 0.4f);
+        
+        var inputImg = inputGo.GetComponent<Image>();
+        ApplyUISprite(inputImg);
+        inputImg.color = InputFieldBg;
+
+        if (_adventureQuoteColorInput.textComponent != null)
+        {
+            _adventureQuoteColorInput.textComponent.font = _font;
+            _adventureQuoteColorInput.textComponent.fontSize = BASE_FONT_SIZE;
+            _adventureQuoteColorInput.textComponent.color = TextDark;
+            _adventureQuoteColorInput.textComponent.alignment = TextAlignmentOptions.Center;
+            
+            var textMargin = _adventureQuoteColorInput.textComponent.margin;
+            _adventureQuoteColorInput.textComponent.margin = new Vector4(5, textMargin.y, 5, textMargin.w);
+        }
+
+        if (_adventureQuoteColorInput.placeholder is TextMeshProUGUI ph)
+        {
+            ph.font = _font;
+            ph.fontSize = BASE_FONT_SIZE;
+            ph.text = "#FFFF66";
+        }
+        
+        // Fix the Text Area child to have proper sizing
+        var textArea = inputGo.transform.Find("Text Area");
+        if (textArea != null)
+        {
+            var textAreaRt = textArea.GetComponent<RectTransform>();
+            textAreaRt.anchorMin = Vector2.zero;
+            textAreaRt.anchorMax = Vector2.one;
+            textAreaRt.offsetMin = new Vector2(5, 2);
+            textAreaRt.offsetMax = new Vector2(-5, -2);
+        }
+    }
+
+    private void OnAdventureQuoteColorChanged(string value)
+    {
+        if (UserPreferences.Get() != null)
+        {
+            UserPreferences.Get().AdventureQuoteColor = value.Trim();
+        }
     }
 
     private Toggle CreateToggleRow(Transform parent, string labelText, string descriptionText, UnityEngine.Events.UnityAction<bool> callback, float height = 24)
@@ -966,6 +1058,12 @@ public class GenerateSettingsPanel : MonoBehaviour
 
         // Set AutoPic dropdown from UserPreferences
         RefreshAutoPicDropdown();
+
+        // Set Adventure quote color from UserPreferences
+        if (_adventureQuoteColorInput != null && UserPreferences.Get() != null)
+        {
+            _adventureQuoteColorInput.text = UserPreferences.Get().AdventureQuoteColor ?? "";
+        }
     }
 
     private void RefreshAutoPicDropdown()
