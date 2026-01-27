@@ -40,14 +40,10 @@ command @copy|prepend_prompt|prompt|
 command @add|llm_reply|prompt|
 command @add|append_prompt|prompt|
 
-text_to_video_ltx_fast.json @replace|"width": 960|"width": 960| @replace|"height": 576|"height": 576| @replace|"value": 121|"value": 481|
 
--for higher quality, use this instead (need 80 GB vram or something, watch out):
--text_to_video_ltx_fast.json @replace|"width": 960|"width": 1280| @replace|"height": 576|"height": 720| @replace|"value": 121|"value": 481|
+text_to_video_ltx_fast.json @replace|"width": 1920|"width": 1024| @replace|"height": 1088|"height": 1024| @replace|"value": 121|"value": 481|
+
 COMMAND_END
 COMMAND_START|default_negative_prompt
 cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white
-COMMAND_END
-COMMAND_START|default_pre_prompt
-Shot with a Bessa Cinestill. Live action shot.
 COMMAND_END
