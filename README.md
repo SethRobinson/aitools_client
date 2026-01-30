@@ -7,7 +7,7 @@ License:  BSD style attribution, see LICENSE.md
 </p>
 
 
-## Download the latest: V2.50 (Jan 13th, 2026) [AI Tools Client (Windows, 62 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip)
+## Download the latest: V2.51 (Jan 30th, 2026) [AI Tools Client (Windows, 62 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip)
 
 Need an old version? The last pre-V2 version (that still supports Auto1111) can be downloaded [here](https://www.rtsoft.com/files/SethsAIToolsWindowsV095.zip).
 
@@ -30,6 +30,13 @@ If this is all weird and strange, this is probably not the place for you to star
 
 
 ## Recent changes
+
+### V2.51 (Jan 30th, 2026)
+
+* Adventure mode has basic markup display support, quote coloring (can be disabled in options)
+* Input tweaked, the ENTER key just stopped working app-wide on my version, this fixed it
+* Unity version updated
+* LLM repetition value can be controlled
 
 ### V2.50 (Jan 13th, 2026)
 * Added vision LLM support - use `@llm_add_image` to send images to vision-capable LLMs

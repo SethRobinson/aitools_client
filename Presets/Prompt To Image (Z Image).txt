@@ -1,4 +1,9 @@
 COMMAND_START|joblist
+-A dash in front denotes a comment and not a live statement
+-This is a "job script", a simple scripting language that runs ComfyUI json files and provides ways to substitute text and include image files.
+
+-Job scripts can also do things like send and process text and images by LLMs in more complex scripts.
+
 -text_to_img_zimage.json @replace|"width": 1024|"width": 2048| @replace|"height": 1024|"height": 2048 @replace|"steps": 9|"steps": 9|
 
 text_to_img_zimage.json @replace|"width": 1024|"width": 1024| @replace|"height": 1024|"height": 1024| @replace|"steps": 9|"steps": 9|

@@ -15,6 +15,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
+using System.Runtime.InteropServices;
 
 
 public class GameLogic : MonoBehaviour
@@ -1429,14 +1430,27 @@ public string GetPrompt() { return m_prompt; }
         //Debug.Log("Negative prompt changed: " + str);
     }
 
+#if UNITY_STANDALONE_WIN
+    [DllImport("user32.dll", EntryPoint = "SetWindowText")]
+    static extern bool SetWindowText(IntPtr hwnd, string lpString);
+    [DllImport("user32.dll")]
+    static extern IntPtr GetActiveWindow();
+#endif
+
     void Start()
     {
+#if UNITY_STANDALONE_WIN
+        IntPtr windowPtr = GetActiveWindow();
+        if (windowPtr != IntPtr.Zero)
+            SetWindowText(windowPtr, "Seth's AI Tools V" + Config.Get().GetVersionString());
+#endif
+
         // Initialize UserPreferences singleton
         if (gameObject.GetComponent<UserPreferences>() == null)
         {
             gameObject.AddComponent<UserPreferences>();
         }
-        
+
         // Initialize SelectionManager for marquee selection feature
         if (gameObject.GetComponent<SelectionManager>() == null)
         {
