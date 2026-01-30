@@ -1,0 +1,19 @@
+COMMAND_START|joblist
+command @copy|512|%pixel_size%|
+
+text_to_img_zimage.json @replace|"width": 1024|"width": %pixel_size%| @replace|"height": 1024|"height": %pixel_size%| @replace|"steps": 9|"steps": 9|
+
+-Make the background transparent
+
+img_to_img_automask_sub_biref.json @upload|image1|input1| -@resize_if_larger|x|1024|y|1024|aspect_correct|1|
+
+COMMAND_END
+COMMAND_START|default_prompt
+Sprite for a pixel art game, a bush. Top view rpg.  The bush is isolated, nothing else in the image.  The background is pink. 32x32 pixels
+COMMAND_END
+COMMAND_START|default_negative_prompt
+cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white
+COMMAND_END
+COMMAND_START|default_pre_prompt
+Shot with a Bessa Cinestill. Color. high ISO, medium dynamic range, amateur photo. Candid.
+COMMAND_END

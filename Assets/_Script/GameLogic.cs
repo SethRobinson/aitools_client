@@ -139,6 +139,11 @@ public class GameLogic : MonoBehaviour
     public GameObject GetTempPic1() { return m_tempPic1; }
     public GameObject GetTempPic2() { return m_tempPic2; }
     public GameObject GetTempPic3() { return m_tempPic3; }
+
+    // Global variable manager for %global_*% variables - persists for the application lifetime
+    VariableManager m_globalVariableManager = new VariableManager();
+    public VariableManager GetGlobalVariableManager() { return m_globalVariableManager; }
+
     static GameLogic _this = null;
     static public GameLogic Get()
     {

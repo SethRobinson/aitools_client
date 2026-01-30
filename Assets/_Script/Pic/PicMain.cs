@@ -202,6 +202,10 @@ public class PicMain : MonoBehaviour
     string m_tempText3 = ""; // Third general-purpose text buffer for preset scripts
     string m_tempText4 = ""; // Fourth general-purpose text buffer for preset scripts
 
+    // Custom variable manager for %variable% syntax in job scripts
+    VariableManager m_variableManager = new VariableManager();
+    public VariableManager GetVariableManager() { return m_variableManager; }
+
     public void SetPromptManager(GPTPromptManager promptManager)
     {
         _promptManager = promptManager;
@@ -2601,6 +2605,21 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             foundVar = true;
         }
 
+        // Check custom variable manager if no built-in variable was found
+        if (!foundVar)
+        {
+            // Try to resolve as a %variable% from local or global manager
+            string varName = VariableManager.StripDelimiters(sourceOriginal);
+            VariableManager globalVM = GameLogic.Get()?.GetGlobalVariableManager();
+            
+            string resolved = VariableManager.ResolveVariable(varName, m_variableManager, globalVM);
+            if (resolved != null)
+            {
+                temp = resolved;
+                foundVar = true;
+            }
+        }
+
         if (temp == "" && !foundVar)
         {
             temp = sourceOriginal; //it's not a var, treat as literal text
@@ -2668,6 +2687,16 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         if (promptIdx >= 0)
         {
             job._requestedPrompts[promptIdx] = temp;
+        }
+
+        // Support custom %variable% destinations
+        if (VariableManager.IsVariableReference(dest))
+        {
+            VariableManager targetVM = VariableManager.GetManagerForVariable(dest, m_variableManager, GameLogic.Get()?.GetGlobalVariableManager());
+            if (targetVM != null)
+            {
+                targetVM.SetText(dest, temp);
+            }
         }
     }
 
@@ -3641,17 +3670,21 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                         PicJobData picJobData = new PicJobData();
                         picJobData._name = commandParts[0].Trim();
 
+                        // Get variable managers for %variable% substitution
+                        VariableManager globalVM = GameLogic.Get()?.GetGlobalVariableManager();
+
                         if (commandParts.Length >= 2)
                         {
-                            picJobData._parm1 = commandParts[1];
+                            // Process %variable% substitution on parameters
+                            // Note: For @set, parm1 is the destination variable name - if it's not found, 
+                            // it remains unchanged which is correct behavior for setting new variables
+                            picJobData._parm1 = VariableManager.ProcessVariables(commandParts[1], m_variableManager, globalVM);
                         }
 
                         if (commandParts.Length >= 3)
                         {
-                            picJobData._parm2 = commandParts[2];
+                            picJobData._parm2 = VariableManager.ProcessVariables(commandParts[2], m_variableManager, globalVM);
                         }
-
-                        
 
                         if (picJobData._name.ToLower() == "copy")
                         {
@@ -3660,6 +3693,63 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                         else if (picJobData._name.ToLower() == "add")
                         {
                             DoVarAdd(ref job, picJobData._parm1, picJobData._parm2);
+                        }
+                        else if (picJobData._name.ToLower() == "set")
+                        {
+                            // @set|%variable_name%|value - Set a text variable
+                            string varName = picJobData._parm1;
+                            string varValue = picJobData._parm2;
+                            VariableManager targetVM = VariableManager.GetManagerForVariable(varName, m_variableManager, GameLogic.Get()?.GetGlobalVariableManager());
+                            if (targetVM != null)
+                            {
+                                targetVM.SetText(varName, varValue);
+                            }
+                        }
+                        else if (picJobData._name.ToLower() == "setimage")
+                        {
+                            // @setimage|%variable_name%|source - Set an image variable from an image slot
+                            string varName = picJobData._parm1;
+                            string source = picJobData._parm2?.ToLower().Trim() ?? "";
+                            
+                            Texture2D sourceTexture = null;
+                            
+                            // First check if source is a %variable% reference
+                            if (VariableManager.IsVariableReference(source))
+                            {
+                                sourceTexture = VariableManager.ResolveImageVariable(source, m_variableManager, GameLogic.Get()?.GetGlobalVariableManager());
+                            }
+                            
+                            // Otherwise try to get from image slot
+                            if (sourceTexture == null)
+                            {
+                                sourceTexture = GetTextureFromSource(source);
+                            }
+                            
+                            if (sourceTexture != null)
+                            {
+                                VariableManager targetVM = VariableManager.GetManagerForVariable(varName, m_variableManager, GameLogic.Get()?.GetGlobalVariableManager());
+                                if (targetVM != null)
+                                {
+                                    // Make a copy of the texture to avoid reference issues
+                                    Texture2D textureCopy = new Texture2D(sourceTexture.width, sourceTexture.height, sourceTexture.format, false);
+                                    Graphics.CopyTexture(sourceTexture, textureCopy);
+                                    targetVM.SetImage(varName, textureCopy);
+                                }
+                            }
+                            else
+                            {
+                                RTConsole.Log($"setimage: Error - could not get texture from source '{source}'");
+                            }
+                        }
+                        else if (picJobData._name.ToLower() == "clear")
+                        {
+                            // @clear|%variable_name% - Clear a variable
+                            string varName = picJobData._parm1;
+                            VariableManager targetVM = VariableManager.GetManagerForVariable(varName, m_variableManager, GameLogic.Get()?.GetGlobalVariableManager());
+                            if (targetVM != null)
+                            {
+                                targetVM.Clear(varName);
+                            }
                         }
                         if (picJobData._name.ToLower() == "llm_prompt_reset")
                         {

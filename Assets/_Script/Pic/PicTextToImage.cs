@@ -571,13 +571,18 @@ public class PicTextToImage : MonoBehaviour
             }
         }
         //any custom replace commands in the job._data?
+        // Get variable managers for %variable% substitution
+        VariableManager localVM = m_picScript?.GetVariableManager();
+        VariableManager globalVM = GameLogic.Get()?.GetGlobalVariableManager();
+        
         for (int i=0; i < m_scheduledEvent.m_picJob._data.Count; i++)
         {
             if (m_scheduledEvent.m_picJob._data[i]._name.ToLower() == "replace")
             {
                 // @replace is for raw JSON string replacement
-                string findStr = m_scheduledEvent.m_picJob._data[i]._parm1;
-                string replaceStr = m_scheduledEvent.m_picJob._data[i]._parm2;
+                // Apply %variable% substitution to both find and replace strings
+                string findStr = VariableManager.ProcessVariables(m_scheduledEvent.m_picJob._data[i]._parm1, localVM, globalVM);
+                string replaceStr = VariableManager.ProcessVariables(m_scheduledEvent.m_picJob._data[i]._parm2, localVM, globalVM);
                 if (!ReplaceInString(ref comfyUIGraphJSon, findStr, replaceStr))
                 {
                     RTConsole.Log($"Warning: @replace could not find '{findStr}' in workflow");
