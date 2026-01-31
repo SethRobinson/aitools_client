@@ -3806,6 +3806,31 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                         {
                             FillAlphaMaskIfBlank();
                         }
+                        else if (picJobData._name.ToLower() == "invert_alpha")
+                        {
+                            // Format: @invert_alpha| or @invert_alpha|slot|
+                            // Where slot is: image, image1, temp1, temp2, temp3
+                            PicMain targetPic = this;
+                            string slotParam = picJobData._parm1?.Trim().ToLower() ?? "";
+                            
+                            if (!string.IsNullOrEmpty(slotParam) && IsImageSlot(slotParam))
+                            {
+                                targetPic = GetPicMainForSlot(slotParam);
+                                if (targetPic == null)
+                                {
+                                    RTConsole.Log($"Error: Unknown image slot '{slotParam}' in invert_alpha command.");
+                                    break;
+                                }
+                            }
+                            
+                            Texture2D tex = targetPic.m_pic.sprite?.texture;
+                            if (tex != null)
+                            {
+                                tex.InvertAlpha();
+                                tex.Apply();
+                                RTConsole.Log($"invert_alpha: Inverted alpha channel for {(string.IsNullOrEmpty(slotParam) ? "image" : slotParam)}");
+                            }
+                        }
                         else if (picJobData._name.ToLower() == "no_undo")
                         {
                             SetNoUndo(true);

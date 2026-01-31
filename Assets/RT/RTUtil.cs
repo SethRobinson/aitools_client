@@ -487,6 +487,20 @@ public static class Tex2DExtension
 
     }
 
+    //Inverts only the alpha channel, keeping RGB unchanged  //Don't forget to .Apply() after doing this!
+    public static void InvertAlpha(this Texture2D tex)
+    {
+        for (int x = 0; x < tex.width; x++)
+        {
+            for (int y = 0; y < tex.height; y++)
+            {
+                Color pix = tex.GetPixel(x, y);
+                pix.a = 1 - pix.a;
+                tex.SetPixel(x, y, pix);
+            }
+        }
+    }
+
 
     /*
         //we'll use a convolution filter to blur everything, including alpha if available
