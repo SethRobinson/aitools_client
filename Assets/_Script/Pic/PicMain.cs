@@ -2571,61 +2571,83 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         }
     }
 
+    /// <summary>
+    /// Creates a delegate that resolves built-in variables (prompt, llm_reply, temp_text1, etc.)
+    /// This allows %varname% syntax to work for built-in variables in any text context.
+    /// </summary>
+    public BuiltInVariableResolver CreateBuiltInResolver(PicJob job)
+    {
+        return (string varName) => ResolveBuiltInVariable(job, varName);
+    }
+
+    /// <summary>
+    /// Resolves a built-in variable name to its value.
+    /// Returns null if the variable name is not a recognized built-in.
+    /// </summary>
+    public string ResolveBuiltInVariable(PicJob job, string varName)
+    {
+        if (string.IsNullOrEmpty(varName)) return null;
+        
+        string varLower = varName.ToLower().Trim();
+        
+        // Job-based variables
+        if (job != null)
+        {
+            if (varLower == "prompt") return job._requestedPrompt ?? "";
+            if (varLower == "audio_prompt") return job._requestedAudioPrompt ?? "";
+            if (varLower == "negative_prompt") return job._requestedNegativePrompt ?? "";
+            if (varLower == "audio_negative_prompt") return job._requestedAudioNegativePrompt ?? "";
+            if (varLower == "segmentation_prompt") return job._requestedSegmentationPrompt ?? "";
+            if (varLower == "llm_prompt") return job._requestedLLMPrompt ?? "";
+            if (varLower == "llm_reply") return job._requestedLLMReply ?? "";
+            
+            // Support extended prompts: prompt_1 through prompt_8 (or prompt1 through prompt8)
+            int promptIdx = TryParsePromptIndex(varLower);
+            if (promptIdx >= 0)
+            {
+                return job._requestedPrompts[promptIdx] ?? "";
+            }
+        }
+        
+        // GameLogic-based variables
+        if (varLower == "global_prompt") return GameLogic.Get()?.GetPrompt() ?? "";
+        if (varLower == "prepend_prompt") return GameLogic.Get()?.GetComfyPrependPrompt() ?? "";
+        if (varLower == "append_prompt") return GameLogic.Get()?.GetComfyAppendPrompt() ?? "";
+        
+        // PicMain-based variables (temp_text buffers)
+        if (varLower == "temp_text1") return m_tempText1 ?? "";
+        if (varLower == "temp_text2") return m_tempText2 ?? "";
+        if (varLower == "temp_text3") return m_tempText3 ?? "";
+        if (varLower == "temp_text4") return m_tempText4 ?? "";
+        if (varLower == "requirements") return m_requirements ?? "";
+        
+        return null; // Not a built-in variable
+    }
+
     string ConvertVarToText(ref PicJob job, string source)
     {
-        string temp = "";
         string sourceOriginal = source;
-        source = source.ToLower().Trim();
-        bool foundVar = false;
 
-        if (source == "prompt") { temp = job._requestedPrompt; foundVar = true; }
-        if (source == "global_prompt") { temp = GameLogic.Get().GetPrompt(); foundVar = true; }
-        if (source == "audio_prompt") { temp = job._requestedAudioPrompt; foundVar = true; }
-        if (source == "prepend_prompt") { temp = GameLogic.Get().GetComfyPrependPrompt(); foundVar = true; }
-        if (source == "append_prompt") { temp = GameLogic.Get().GetComfyAppendPrompt(); foundVar = true; }
-        if (source == "negative_prompt") { temp = job._requestedNegativePrompt; foundVar = true; }
-        if (source == "audio_negative_prompt") { temp = job._requestedAudioNegativePrompt; foundVar = true; }
-        if (source == "segmentation_prompt") { temp = job._requestedSegmentationPrompt; foundVar = true; }
-        if (source == "llm_prompt") { temp = job._requestedLLMPrompt; foundVar = true; }
-        if (source == "llm_reply")
+        // First try to resolve as a built-in variable
+        string builtInValue = ResolveBuiltInVariable(job, source);
+        if (builtInValue != null)
         {
-            temp = job._requestedLLMReply;
-            foundVar = true;
-        }
-        if (source == "temp_text1") { temp = m_tempText1; foundVar = true; }
-        if (source == "temp_text2") { temp = m_tempText2; foundVar = true; }
-        if (source == "temp_text3") { temp = m_tempText3; foundVar = true; }
-        if (source == "temp_text4") { temp = m_tempText4; foundVar = true; }
-        
-        // Support extended prompts: prompt_1 through prompt_8 (or prompt1 through prompt8)
-        int promptIdx = TryParsePromptIndex(source);
-        if (promptIdx >= 0)
-        {
-            temp = job._requestedPrompts[promptIdx];
-            foundVar = true;
+            return builtInValue;
         }
 
         // Check custom variable manager if no built-in variable was found
-        if (!foundVar)
+        // Try to resolve as a %variable% from local or global manager
+        string varName = VariableManager.StripDelimiters(sourceOriginal);
+        VariableManager globalVM = GameLogic.Get()?.GetGlobalVariableManager();
+        
+        string resolved = VariableManager.ResolveVariable(varName, m_variableManager, globalVM);
+        if (resolved != null)
         {
-            // Try to resolve as a %variable% from local or global manager
-            string varName = VariableManager.StripDelimiters(sourceOriginal);
-            VariableManager globalVM = GameLogic.Get()?.GetGlobalVariableManager();
-            
-            string resolved = VariableManager.ResolveVariable(varName, m_variableManager, globalVM);
-            if (resolved != null)
-            {
-                temp = resolved;
-                foundVar = true;
-            }
+            return resolved;
         }
 
-        if (temp == "" && !foundVar)
-        {
-            temp = sourceOriginal; //it's not a var, treat as literal text
-        }
-
-        return temp;
+        // Not a variable, return as literal text
+        return sourceOriginal;
     }
 
     void DoVarCopy(ref PicJob job, string source, string dest)
@@ -3672,18 +3694,20 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
                         // Get variable managers for %variable% substitution
                         VariableManager globalVM = GameLogic.Get()?.GetGlobalVariableManager();
+                        // Create built-in resolver so %prompt%, %llm_reply%, etc. work in variable substitution
+                        BuiltInVariableResolver builtInResolver = CreateBuiltInResolver(job);
 
                         if (commandParts.Length >= 2)
                         {
                             // Process %variable% substitution on parameters
                             // Note: For @set, parm1 is the destination variable name - if it's not found, 
                             // it remains unchanged which is correct behavior for setting new variables
-                            picJobData._parm1 = VariableManager.ProcessVariables(commandParts[1], m_variableManager, globalVM);
+                            picJobData._parm1 = VariableManager.ProcessVariables(commandParts[1], m_variableManager, globalVM, builtInResolver);
                         }
 
                         if (commandParts.Length >= 3)
                         {
-                            picJobData._parm2 = VariableManager.ProcessVariables(commandParts[2], m_variableManager, globalVM);
+                            picJobData._parm2 = VariableManager.ProcessVariables(commandParts[2], m_variableManager, globalVM, builtInResolver);
                         }
 
                         if (picJobData._name.ToLower() == "copy")

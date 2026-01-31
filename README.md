@@ -241,6 +241,27 @@ You can also reference other variables: %width% x %height%
 %size_info%="Image size: %width% x %height%"
 ```
 
+**Setting built-in text variables:**
+
+You can use the same syntax to set built-in variables like `prompt`, `negative_prompt`, `llm_prompt`, etc.:
+```
+%prompt%="A beautiful landscape"
+%negative_prompt%="blurry, low quality"
+%temp_text1%="intermediate value"
+%llm_reply%="Custom response text"
+```
+
+Built-in text variables: `prompt`, `global_prompt`, `audio_prompt`, `negative_prompt`, `audio_negative_prompt`, `segmentation_prompt`, `llm_prompt`, `llm_reply`, `requirements`, `prepend_prompt`, `append_prompt`, `temp_text1`-`temp_text4`, `prompt_1`-`prompt_8`
+
+**Image variable assignment (use `@image:` prefix):**
+```
+%my_image%=@image:temp1
+%stored_result%=@image:image
+%backup%=@image:temp2
+```
+
+Valid image sources: `image`, `image1`, `temp1`, `temp2`, `temp3`, or a `%image_variable%` reference.
+
 If a variable is referenced but doesn't exist, a warning is logged to the console but the script continues running (the `%var%` text remains unchanged).
 
 ### Variable Scopes
@@ -262,10 +283,19 @@ command @set|%local_temp%|hello|
 
 ### Using Variables in Parameters
 
-Variables are automatically expanded in command parameters:
+Both custom and built-in variables are automatically expanded in command parameters using `%varname%` syntax:
 ```
 %scene_desc%="A beautiful sunset"
 command @llm_prompt_add_from_user|Describe this scene: %scene_desc%|
+```
+
+**Reading built-in variables inline:**
+
+You can read built-in variables like `%prompt%`, `%llm_reply%`, `%temp_text1%`, etc. in any text context:
+```
+%message%="The current prompt is: %prompt%"
+%summary%="LLM said: %llm_reply%"
+command @llm_prompt_add_from_user|The current prompt is: %prompt%, please enhance it|
 ```
 
 Variables can also be used in `@replace` parameters for dynamic workflow modification:

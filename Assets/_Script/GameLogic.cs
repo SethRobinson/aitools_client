@@ -493,6 +493,22 @@ public class GameLogic : MonoBehaviour
     private static readonly Regex VariableAssignmentPattern = 
         new Regex(@"^%([a-zA-Z_][a-zA-Z0-9_]*)%\s*=\s*(.*)$", RegexOptions.Compiled);
 
+    // Built-in text variable names that use @copy instead of @set
+    private static readonly HashSet<string> BuiltInTextVariables = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "prompt", "global_prompt", "audio_prompt", "negative_prompt", "audio_negative_prompt",
+        "segmentation_prompt", "llm_prompt", "llm_reply", "requirements",
+        "prepend_prompt", "append_prompt",
+        "temp_text1", "temp_text2", "temp_text3", "temp_text4",
+        // prompt_1 through prompt_8 handled separately via pattern matching
+    };
+
+    // Built-in image slot names
+    private static readonly HashSet<string> BuiltInImageSlots = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "image", "image1", "temp1", "temp2", "temp3"
+    };
+
     /// <summary>
     /// Checks if a line is a multi-line block command (no parameters, content follows on next lines until @end)
     /// </summary>
@@ -674,14 +690,56 @@ public class GameLogic : MonoBehaviour
                 }
             }
 
-            // Convert to internal command format: command @set|%varname%|value|
-            return "command @set|%" + varName + "%|" + finalValue + "|";
+            // Check if this is an image variable assignment (@image:source syntax)
+            if (finalValue.StartsWith("@image:", StringComparison.OrdinalIgnoreCase))
+            {
+                string imageSource = finalValue.Substring(7).Trim(); // Remove "@image:" prefix
+                if (string.IsNullOrEmpty(imageSource))
+                {
+                    RTConsole.Log("Warning: Empty image source in assignment: " + trimmedLine);
+                    return null;
+                }
+                // Convert to: command @setimage|%varname%|source|
+                return "command @setimage|%" + varName + "%|" + imageSource + "|";
+            }
+
+            // Check if destination is a built-in text variable (use @copy) or custom variable (use @set)
+            if (IsBuiltInTextVariable(varName))
+            {
+                // Built-in variables use @copy with the value as source and varname as dest
+                return "command @copy|" + finalValue + "|" + varName + "|";
+            }
+            else
+            {
+                // Custom variables use @set
+                return "command @set|%" + varName + "%|" + finalValue + "|";
+            }
         }
         catch (Exception ex)
         {
             RTConsole.Log("Warning: Error parsing variable assignment '" + trimmedLine + "': " + ex.Message);
             return null;
         }
+    }
+
+    /// <summary>
+    /// Checks if a variable name is a built-in text variable (prompt, temp_text1, etc.)
+    /// </summary>
+    private bool IsBuiltInTextVariable(string varName)
+    {
+        if (BuiltInTextVariables.Contains(varName))
+            return true;
+        
+        // Check for prompt_N or promptN pattern (1-8)
+        string lower = varName.ToLower();
+        if (lower.StartsWith("prompt_") || lower.StartsWith("prompt"))
+        {
+            string numPart = lower.StartsWith("prompt_") ? lower.Substring(7) : lower.Substring(6);
+            if (int.TryParse(numPart, out int idx) && idx >= 1 && idx <= 8)
+                return true;
+        }
+        
+        return false;
     }
 
     /// <summary>

@@ -1,6 +1,13 @@
+using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using UnityEngine;
+
+/// <summary>
+/// Delegate for resolving built-in variables (prompt, llm_reply, temp_text1, etc.)
+/// Returns the value if found, or null if not a built-in variable.
+/// </summary>
+public delegate string BuiltInVariableResolver(string varName);
 
 /// <summary>
 /// Manages custom variables for job scripts. Supports both text and image variables.
@@ -145,6 +152,21 @@ public class VariableManager
     /// <returns>The processed string with variables replaced</returns>
     public static string ProcessVariables(string input, VariableManager local, VariableManager global, bool warnOnMissing = false)
     {
+        return ProcessVariables(input, local, global, null, warnOnMissing);
+    }
+
+    /// <summary>
+    /// Processes a string and replaces all %variable% patterns with their values.
+    /// Checks custom variables first, then built-in variables via the resolver.
+    /// </summary>
+    /// <param name="input">The input string containing %variable% patterns</param>
+    /// <param name="local">The local (PicMain) variable manager</param>
+    /// <param name="global">The global (GameLogic) variable manager</param>
+    /// <param name="builtInResolver">Optional delegate to resolve built-in variables (prompt, llm_reply, etc.)</param>
+    /// <param name="warnOnMissing">If true, logs a warning for each undefined variable</param>
+    /// <returns>The processed string with variables replaced</returns>
+    public static string ProcessVariables(string input, VariableManager local, VariableManager global, BuiltInVariableResolver builtInResolver, bool warnOnMissing = false)
+    {
         if (string.IsNullOrEmpty(input)) return input;
         
         try
@@ -155,7 +177,15 @@ public class VariableManager
                 try
                 {
                     string varName = match.Groups[1].Value;
+                    
+                    // First try custom variables in VariableManager
                     string value = ResolveVariable(varName, local, global);
+                    
+                    // If not found and we have a built-in resolver, try that
+                    if (value == null && builtInResolver != null)
+                    {
+                        value = builtInResolver(varName);
+                    }
                     
                     if (value == null)
                     {
