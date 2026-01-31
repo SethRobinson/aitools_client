@@ -2396,7 +2396,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         foreach (var item in jobList)
         {
             string itemTrimmed = item.Trim();
-            if (itemTrimmed.Length > 0 && itemTrimmed[0] != '-' && itemTrimmed[0] != '@')
+            if (itemTrimmed.Length > 0 && itemTrimmed[0] != '-' && itemTrimmed[0] != '#' && itemTrimmed[0] != '@')
                 m_jobList.Add(item);
         }
        

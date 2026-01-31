@@ -581,7 +581,7 @@ public class ImageGenerator : MonoBehaviour
         foreach (string line in jobList)
         {
             string trimmed = line.Trim();
-            if (trimmed.StartsWith("-") || trimmed.Length == 0) continue; // Skip comments/empty
+            if (trimmed.StartsWith("-") || trimmed.StartsWith("#") || trimmed.Length == 0) continue; // Skip comments/empty
             if (trimmed.StartsWith("command ")) continue; // Skip command lines
             
             if (trimmed == "call_llm")
