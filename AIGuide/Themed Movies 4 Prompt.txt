@@ -10,14 +10,16 @@ Format each video design exactly as follows:
 
 AUDIO: (audio description for the entire 20-second clip - sounds, background noise, ambient sounds)
 
-SET_PROMPT1: (first 5 seconds - describe the opening scene, action, people's age/clothing/ethnicity if applicable, camera angle)
-SET_PROMPT2: (seconds 5-10 - continue or transition the scene, describe what happens next)
-SET_PROMPT3: (seconds 10-15 - develop the action further, add drama or movement)
-SET_PROMPT4: (seconds 15-20 - conclude or climax of the scene)
+SET_PROMPT1: (first 5 seconds - describe the opening scene, action, people's age/clothing/ethnicity if applicable, camera angle. Keep faces visible if people are present.)
+SET_PROMPT2: (seconds 5-10 - continue the scene with SAME camera angle/position. Keep faces visible. Describe what happens next.)
+SET_PROMPT3: (seconds 10-15 - maintain camera consistency. Keep faces visible. Develop the action further.)
+SET_PROMPT4: (seconds 15-20 - same camera style as previous segments. Keep faces visible. Conclude the scene.)
 
 IMAGE: render
 
 Each prompt should be a single paragraph describing that 5-second segment. If people are in the scene, specify each person's age, clothing, ethnicity, expression, pose, and what they are doing.
+
+IMPORTANT FOR VISUAL COHERENCY: When people appear in a video, keep their faces visible in ALL 4 prompts whenever possible. Avoid extreme camera angle changes between segments - use consistent or similar camera positions (e.g., medium shot, front-facing) throughout the video. Dramatic camera changes cause the AI to lose coherency of the person's appearance. Prefer subtle camera movements over completely different angles.
 
 Create 5 video designs. Do not number entries.
 
