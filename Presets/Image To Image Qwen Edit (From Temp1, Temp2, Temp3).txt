@@ -1,5 +1,5 @@
 COMMAND_START|joblist
--command @copy|temp1|image|
+#Edit temp1 with references from temp2 and temp3 using Qwen model (3-image edit)
 img3_to_img_qwen_edit.json @upload|temp1|input1| @upload|temp2|input2| @upload|temp3|input3|
 COMMAND_END
 COMMAND_START|default_negative_prompt

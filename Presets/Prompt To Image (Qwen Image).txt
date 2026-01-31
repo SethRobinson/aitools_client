@@ -1,9 +1,14 @@
 COMMAND_START|joblist
--slow version, higher quality
--text_to_img_qwen.json @replace|"width": 1328|"width": 1328| @replace|"height": 1328|"height": 1328| @replace|"steps": 20|"steps": 20|
+#Generate image using Qwen model (fast version)
+%width%="1328"
+%height%="1328"
+%steps%="20"
 
--fast version, lower quality
-text_to_img_qwen_fast.json @replace|"width": 1328|"width": 1328| @replace|"height": 1328|"height": 1328| @replace|"steps": 20|"steps": 20|
+#Slow version (higher quality):
+#text_to_img_qwen.json @replace|"width": 1328|"width": %width%| @replace|"height": 1328|"height": %height%| @replace|"steps": 20|"steps": %steps%|
+
+#Fast version (lower quality):
+text_to_img_qwen_fast.json @replace|"width": 1328|"width": %width%| @replace|"height": 1328|"height": %height%| @replace|"steps": 20|"steps": %steps%|
 COMMAND_END
 COMMAND_START|default_negative_prompt
 低分辨率，低画质，肢体畸形，手指畸形，画面过饱和，蜡像感，人脸无细节，过度光滑，画面具有AI感。构图混乱。文字模糊，扭曲

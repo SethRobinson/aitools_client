@@ -1,5 +1,5 @@
 COMMAND_START|joblist
--this script is called when the user hits the prompt process button
+#LLM enhances user prompt into detailed Flux image prompt (called by Process button)
 command @llm_prompt_reset
 command @copy|none|requirements|
 command @llm_prompt_set_base_prompt|Please rewrite and enhance the text from the user to be a detailed image prompt for FLUX text to image renderer.  Return only a single paragraph not longer than 400 words.  Don't use markup. include nationality, age, clothing, poses, camera direction, etc. Obviously don't use the word FLUX in the description.|

@@ -1,6 +1,5 @@
 COMMAND_START|joblist
--Note:  The sam3 segmentation workflow requires that the segmentation_prompt is set to what we want the alpha channel to be on.  We directly set it with the @copy command below
-
+#Auto-mask face with SAM3 then inpaint as monster using Flux
 img_to_img_automask_segmentation_sam3.json @upload|image1|input1| @copy|face|segmentation_prompt|
 img_to_img_inpaint_flux.json @upload|image1|input1|
 COMMAND_END

@@ -1,10 +1,14 @@
 COMMAND_START|joblist
--low quality
+#Convert image to video using Wan 2.2 model
+%width%="640"
+%height%="640"
+%length%="81"
 
-img_to_video_wan22_fast.json @upload|image1|input1| @replace|"width": 1280|"width": 640| @replace|"height": 720|"height": 640| @replace|"length": 81|"length" : 81|
+#Low quality (faster):
+img_to_video_wan22_fast.json @upload|image1|input1| @replace|"width": 1280|"width": %width%| @replace|"height": 720|"height": %height%| @replace|"length": 81|"length": %length%|
 
--high quality
--img_to_video_wan22_fast.json @upload|image1|input1| @replace|"width": 1280|"width": 1280| @replace|"height": 720|"height": 720| @replace|"length": 81|"length": 81|
+#High quality (slower):
+#img_to_video_wan22_fast.json @upload|image1|input1| @replace|"width": 1280|"width": 1280| @replace|"height": 720|"height": 720| @replace|"length": 81|"length": %length%|
 COMMAND_END
 COMMAND_START|default_negative_prompt
 cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white

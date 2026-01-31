@@ -1,8 +1,9 @@
 COMMAND_START|joblist
--command @copy|temp1|image|
+#Edit temp1 image using Qwen model (fast version)
 img_to_img_qwen_edit_fast.json @upload|temp1|input1|
 
--img_to_img_qwen_edit.json @upload|temp1|input1|
+#High quality version:
+#img_to_img_qwen_edit.json @upload|temp1|input1|
 COMMAND_END
 COMMAND_START|default_negative_prompt
 cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white

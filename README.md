@@ -204,15 +204,15 @@ You can create and use custom named variables using the `%variable_name%` syntax
 
 ### Clean Variable Assignment Syntax
 
-In addition to the command-based syntax, you can set variables using a cleaner assignment syntax:
+In addition to the command-based syntax, you can set variables using a cleaner assignment syntax. **All values must be quoted.**
 
-**Simple assignment (unquoted):**
+**Simple assignment:**
 ```
-%width%=512
-%model_name%=flux_dev
+%width%="512"
+%model_name%="flux_dev"
 ```
 
-**Quoted assignment (for values with spaces or special characters):**
+**Values with spaces or special characters:**
 ```
 %scene%="A beautiful sunset over the ocean"
 %message%="Hello, world!"
@@ -236,8 +236,8 @@ You can also reference other variables: %width% x %height%
 
 **Variable interpolation (reference other variables in values):**
 ```
-%width%=512
-%height%=768
+%width%="512"
+%height%="768"
 %size_info%="Image size: %width% x %height%"
 ```
 

@@ -1,3 +1,4 @@
 COMMAND_START|joblist
+#Transform image using Kontext model
 img_to_img_kontext.json @upload|image1|input1|
 COMMAND_END

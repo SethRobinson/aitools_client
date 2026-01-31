@@ -1,5 +1,5 @@
 COMMAND_START|joblist
--Vision LLM: Describe the image and put the description in the prompt.  Require
+#Generate text prompt from image using Vision LLM (result goes to global prompt)
 command @llm_prompt_reset
 command @llm_prompt_set_base_prompt
 You are a helpful image analysis assistant. Describe images concisely but thoroughly.

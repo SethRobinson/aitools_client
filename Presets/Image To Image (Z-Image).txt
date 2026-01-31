@@ -1,3 +1,4 @@
 COMMAND_START|joblist
+#Transform image using Z-Image inpainting model
 img_to_img_inpaint_zimage.json @upload|image1|input1|
 COMMAND_END

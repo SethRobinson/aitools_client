@@ -1,17 +1,10 @@
 COMMAND_START|joblist
--=== IMAGE TO VIDEO WITH VISION LLM + USER INSTRUCTIONS ===
--
--How to use: Type your instructions in the main prompt box, drag an image in, and run this preset on it.
--The LLM will analyze your image and create 4 video prompts based on your instructions, and send them to a workflow which hopefully can handle all four prompts
--
--Example prompt: "make something crazy and funny happen based on the location, people and items at hand"
--Example prompt: "if any people are in the image, make them exit it by running"
--Example prompt: "Have everyone put on cool sunglasses"
+#Generate 20-second video (4x5s) from image using Vision LLM + LLM prompts + Wan 2.2
 
--=== SAVE USER INSTRUCTIONS TO temp_text1 ===
-command @copy|prompt|temp_text1|
+#Save user instructions
+%user_instructions%=%prompt%
 
--=== STEP 1: VISION LLM - Analyze the current image ===
+#=== STEP 1: Vision LLM analyzes the image ===
 command @llm_prompt_reset
 command @llm_prompt_set_base_prompt
 You are an expert image analyst. Describe images in precise, literal detail for video generation purposes.
@@ -33,10 +26,9 @@ Keep your description to about 200 words.
 
 call_llm
 
--Store the image description in temp_text2
-command @copy|llm_reply|temp_text2|
+%image_description%=%llm_reply%
 
--=== STEP 2: GENERATE 4 VIDEO PROMPTS ===
+#=== STEP 2: Generate 4 video prompts ===
 command @llm_prompt_reset
 command @llm_prompt_set_base_prompt
 Your job is to create video prompts based on an image description and user instructions.
@@ -62,14 +54,14 @@ CRITICAL RULES:
 command @llm_prompt_add_from_user
 === IMAGE DESCRIPTION ===
 @end
-command @llm_prompt_add_from_user|temp_text2|
+command @llm_prompt_add_from_user|%image_description%|
 
 command @llm_prompt_add_from_user
 
 === USER INSTRUCTIONS ===
 Based on the image above, here is what the user wants to happen in the video:
 @end
-command @llm_prompt_add_from_user|temp_text1|
+command @llm_prompt_add_from_user|%user_instructions%|
 
 command @llm_prompt_add_from_user
 
@@ -99,10 +91,9 @@ CRITICAL: Every prompt must independently describe each person with their race/e
 call_llm
 command @parse_llm_prompts
 
--generate movie from image using Wan22 with 4 prompts or supply your own workflow that can handle it
-test_img_to_video_wan22_4prompts.json @upload|image1|input1|
+#Generate video from image using Wan22 with 4 prompts
+img_to_video_wan22_4prompts.json @upload|image1|input1|
 
--signal that we should stop completely
 command @stopjob
 COMMAND_END
 COMMAND_START|default_negative_prompt

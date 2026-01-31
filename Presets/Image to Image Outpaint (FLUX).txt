@@ -1,3 +1,4 @@
 COMMAND_START|joblist
+#Outpaint/expand image using Flux model
 img_to_img_outpaint_256_flux_api.json @upload|image1|input1|
 COMMAND_END

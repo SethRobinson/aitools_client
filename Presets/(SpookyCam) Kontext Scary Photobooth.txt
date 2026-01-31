@@ -1,11 +1,7 @@
 COMMAND_START|joblist
-#this is very hacked in, am the screensize has to be 1080p.  Set this as the main job script (with a blank prompt), then
-#click Spooky Cam and select yoru camera.  If it works, it's a cool photobooth kind of thing.  If it doesn't, well, yeah this
-#was pretty sketch, wait for this feature to get fixed up someday.  Oh, Crazy Cam mode is compeltely disabled right now.
-
-#Oh, the animatio/sound timing was setup to work with a 5090 in a public demo I did
-#sfx and art was partially AI generated
-
+#SpookyCam photobooth using Kontext (requires 1080p screen, experimental)
+#Set as main job script with blank prompt, click Spooky Cam to select camera
+#Timing was setup for 5090 GPU at a public demo
 img_to_img_kontext.json @upload|image1|input1|
 COMMAND_END
 COMMAND_START|default_negative_prompt

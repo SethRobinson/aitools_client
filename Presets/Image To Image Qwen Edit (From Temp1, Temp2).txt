@@ -1,4 +1,5 @@
 COMMAND_START|joblist
+#Edit temp1 with reference from temp2 using Qwen model (2-image edit)
 command @copy|temp1|image|
 img2_to_img_qwen_edit.json @upload|image1|input1| @upload|temp2|input2|
 COMMAND_END

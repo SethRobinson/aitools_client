@@ -1,10 +1,15 @@
 COMMAND_START|joblist
--Vision LLM: First describe the image, then generate a weird edit prompt.
+#Vision LLM analyzes image then generates surreal edit prompt for Qwen
 
--Step 0: Resize the source image if too large for vision LLM
-command @resize_if_larger|image1|x|1024|y|1024|aspect_correct|1|
+#=== EDIT THIS LINE TO CUSTOMIZE THE EDIT STYLE ===
+%edit_style%="weird, surreal, or unexpected"
 
--Step 1: Vision LLM describes the image
+%max_size%="1024"
+
+#Resize source image if too large for vision LLM
+command @resize_if_larger|image1|x|%max_size%|y|%max_size%|aspect_correct|1|
+
+#Step 1: Vision LLM describes the image
 command @llm_prompt_reset
 command @llm_prompt_set_base_prompt
 You are an expert image analysis assistant with exceptional attention to visual detail. Your task is to provide comprehensive, richly detailed descriptions that capture every significant element of an image. Focus on creating descriptions that would allow someone to recreate or edit the image accurately.
@@ -29,12 +34,16 @@ Write your description as flowing prose, not a list.
 @end
 call_llm
 
--Step 2: Second LLM call (no image) to create a weird edit prompt
+%image_description%=%llm_reply%
+
+#Step 2: LLM creates edit prompt based on style
 command @llm_prompt_reset
 command @llm_prompt_set_base_prompt
-You are a wildly creative surrealist image editor with a flair for the unexpected and absurd. Your specialty is transforming ordinary images into extraordinary, thought-provoking, or hilariously bizarre scenes while maintaining visual coherence. You think like Salvador Dali meets Monty Python.
+You are a creative image editor. Given an image description, you will suggest ONE specific, detailed edit that transforms the image.
 
-Given an image description, you will suggest ONE specific, detailed edit that transforms the image in a weird, surreal, or unexpected way. Your edit should be visually striking and imaginative.
+The user wants the edit to be: %edit_style%
+
+Your edit should match that style while being visually striking and imaginative.
 
 RULES:
 - Output ONLY the editing instruction itself, nothing else
@@ -42,19 +51,12 @@ RULES:
 - Make it detailed enough that an AI image editor can execute it precisely
 - Aim for 200-400 characters of text in your reply
 - Don't explain why or add commentary
-- Be creative: swap materials, add impossible elements, change scale dramatically, mix eras/styles, anthropomorphize objects, add surreal physics, etc.
-
-GOOD EXAMPLES:
-"Transform all the furniture into oversized candy - the couch becomes a giant gummy bear in translucent red, the coffee table is a swirled lollipop, and the lamp is a towering candy cane with a glowing peppermint shade."
-
-"Replace the person's head with a detailed antique brass diving helmet complete with scratched glass porthole, copper rivets, and small barnacles, with mysterious blue bioluminescent light emanating from within."
-
-"Convert the entire background into an underwater coral reef scene while keeping the foreground subjects completely dry and normal, with colorful tropical fish swimming casually past their heads."
+- Stay true to the requested style
 @end
-command @llm_prompt_add_from_user|llm_reply|
+command @llm_prompt_add_from_user|%image_description%|
 call_llm
 
--Step 3: Copy the edit prompt and run img2img
-command @copy|llm_reply|prompt|
+#Step 3: Apply the edit
+%prompt%=%llm_reply%
 img_to_img_qwen_edit.json @upload|image1|input1|
 COMMAND_END

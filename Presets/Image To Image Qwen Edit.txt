@@ -1,7 +1,9 @@
 COMMAND_START|joblist
+#Edit image using Qwen model (high quality)
 img_to_img_qwen_edit.json @upload|image1|input1|
 
--img_to_img_qwen_edit_fast.json @upload|image1|input1|
+#Fast version (lower quality):
+#img_to_img_qwen_edit_fast.json @upload|image1|input1|
 COMMAND_END
 COMMAND_START|default_negative_prompt
 cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white

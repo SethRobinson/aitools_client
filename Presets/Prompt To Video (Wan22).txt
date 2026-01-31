@@ -1,5 +1,10 @@
 COMMAND_START|joblist
-text_to_video_wan22_fast.json @replace|"width": 480|"width": 640| @replace|"height": 480|"height": 640| @replace|"length": 57|"length": 81|
+#Generate video using Wan 2.2 model
+%width%="640"
+%height%="640"
+%length%="81"
+
+text_to_video_wan22_fast.json @replace|"width": 480|"width": %width%| @replace|"height": 480|"height": %height%| @replace|"length": 57|"length": %length%|
 COMMAND_END
 COMMAND_START|default_negative_prompt
 cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white

@@ -1,5 +1,8 @@
 COMMAND_START|joblist
--Use LLM to rewrite the user's prompt into an optimized LTX-2 video prompt for a 5-second clip
+#Generate 5-second video with LLM-enhanced prompt using LTX
+%width%="1024"
+%height%="1024"
+%frames%="121"
 
 command @llm_prompt_set_base_prompt
 You rewrite simple ideas into LTX-2 video prompts. Be literal and direct. No poetry. No metaphors. Just clear visual descriptions.
@@ -38,10 +41,10 @@ command @copy|prepend_prompt|prompt|
 command @add|llm_reply|prompt|
 command @add|append_prompt|prompt|
 
-text_to_video_ltx_fast.json @replace|"width": 1920|"width": 1024| @replace|"height": 1088|"height": 1024| @replace|"value": 121|"value": 121|
+text_to_video_ltx_fast.json @replace|"width": 1920|"width": %width%| @replace|"height": 1088|"height": %height%| @replace|"value": 121|"value": %frames%|
 
--for higher quality, use this instead (need a lot of vram, watch out):
--text_to_video_ltx_fast.json @replace|"width": 960|"width": 1280| @replace|"height": 576|"height": 720| @replace|"value": 121|"value": 121|
+#Higher quality version (needs lots of VRAM):
+#text_to_video_ltx_fast.json @replace|"width": 960|"width": 1280| @replace|"height": 576|"height": 720| @replace|"value": 121|"value": %frames%|
 COMMAND_END
 COMMAND_START|default_negative_prompt
 cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white

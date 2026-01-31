@@ -1,18 +1,11 @@
 COMMAND_START|joblist
+#Generate 5-second video from image using Vision LLM analysis + LLM prompt + Wan 2.2
 command @lock_gpu
--=== IMAGE TO VIDEO WITH VISION LLM + USER INSTRUCTIONS (5s) ===
--
--How to use: Type your instructions in the prompt box, drag an image, and run this preset.
--The LLM will analyze your image and create a single video prompt based on your instructions.
--
--Example prompt: "Make the man do a flip and say something funny about the background"
--Example prompt: "Have the woman dance and sing a song about coffee"
--Example prompt: "Create a dramatic action scene with explosions"
 
--=== SAVE USER INSTRUCTIONS TO temp_text1 ===
-command @copy|prompt|temp_text1|
+#Save user instructions
+%user_instructions%=%prompt%
 
--=== STEP 1: VISION LLM - Analyze the current image ===
+#=== STEP 1: Vision LLM analyzes the image ===
 command @llm_prompt_reset
 command @llm_prompt_set_base_prompt
 You are an expert image analyst. Describe images in precise, literal detail for video generation purposes.
@@ -34,10 +27,9 @@ Keep your description to about 200 words.
 
 call_llm
 
--Store the image description in temp_text2
-command @copy|llm_reply|temp_text2|
+%image_description%=%llm_reply%
 
--=== STEP 2: GENERATE 1 VIDEO PROMPT ===
+#=== STEP 2: Generate video prompt ===
 command @llm_prompt_reset
 command @llm_prompt_set_base_prompt
 Your job is to create a video prompt based on an image description and user instructions.
@@ -62,14 +54,14 @@ CRITICAL RULES:
 command @llm_prompt_add_from_user
 === IMAGE DESCRIPTION ===
 @end
-command @llm_prompt_add_from_user|temp_text2|
+command @llm_prompt_add_from_user|%image_description%|
 
 command @llm_prompt_add_from_user
 
 === USER INSTRUCTIONS ===
 Based on the image above, here is what the user wants to happen in the video:
 @end
-command @llm_prompt_add_from_user|temp_text1|
+command @llm_prompt_add_from_user|%user_instructions%|
 
 command @llm_prompt_add_from_user
 
@@ -93,12 +85,10 @@ In your prompt, you MUST:
 call_llm
 command @parse_llm_prompts
 
--generate movie from image using Wan22 with 1 prompt
+#Generate video from image using Wan22
 img_to_video_wan22_fast.json @upload|image1|input1|
 
--signal that we should stop completely
 command @stopjob
-
 COMMAND_END
 COMMAND_START|default_negative_prompt
 cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white

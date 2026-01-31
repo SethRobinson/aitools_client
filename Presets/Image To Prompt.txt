@@ -1,3 +1,4 @@
 COMMAND_START|joblist
+#Generate text prompt from image using Florence2 captioning
 img_to_text_florence2.json @upload|image1|input1|
 COMMAND_END

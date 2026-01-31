@@ -1,5 +1,11 @@
 COMMAND_START|joblist
-- This autopic reads the story, generates description, uses Chroma to render a starting image, then uses WAN to generate a 5 second movie from that.
+#AutoPic: LLM generates prompt from story, Chroma image + Wan 2.2 5s video
+%chroma_model%="Chroma1-HD-fp8_scaled_defaultloader_hybrid_large_rev2.safetensors"
+%img_width%="1024"
+%img_height%="1024"
+%video_width%="640"
+%video_height%="640"
+%video_length%="81"
 
 command @llm_prompt_set_base_prompt
 Your job is to look at the following text/story and describe in text the image of the last scene so that it can be rendered by a text-to-video AI. Do not include any choices or options. Don't create new story, just illustrate what just recently happened in a series of actions for each prompt.
@@ -30,13 +36,11 @@ ALWAYS FULLY DESCRIBE THE PERSONS IN THE PROMPT! Age too! Remember, the video pr
 call_llm
 command @parse_llm_prompts
 
--make starting image
-text_to_img_chroma.json @replace|Chroma1-HD-fp8_scaled_defaultloader_hybrid_large_rev2.safetensors|_scaled_defaultloader_hybrid_large_rev2.safetensors| 
+#Generate starting image with Chroma
+text_to_img_chroma.json @replace|Chroma1-HD-fp8_scaled_defaultloader_hybrid_large_rev2.safetensors|%chroma_model%| @replace|"width": 1024|"width": %img_width%| @replace|"height": 1024|"height": %img_height%|
 
--generate movie from image
-img_to_video_wan22_fast.json @upload|image1|input1| @replace|"width": 1280|"width": 640| @replace|"height": 720|"height": 640| @replace|"length": 81|"length" : 81|
+#Generate video from image with Wan 2.2
+img_to_video_wan22_fast.json @upload|image1|input1| @replace|"width": 1280|"width": %video_width%| @replace|"height": 720|"height": %video_height%| @replace|"length": 81|"length": %video_length%|
 
--signal that we should stop completely
 command @stopjob
-
 COMMAND_END
