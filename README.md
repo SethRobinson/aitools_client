@@ -135,12 +135,18 @@ Example: `img_to_img.json @copy|prompt|segmentation_prompt| @resize_if_larger|x|
 |---------|------------|-------------|
 | `@copy` | `source\|dest\|` | Copy text/image between variables |
 | `@add` | `source\|dest\|` | Append text to a variable |
+| `@set` | `%var_name%\|value\|` | Set a named text variable (use `%global_varname%` for global scope) |
+| `@setimage` | `%var_name%\|source\|` | Set a named image variable from an image slot |
+| `@clear` | `%var_name%\|` | Clear a named variable (both text and image) |
 | `@resize_if_larger` | `x\|width\|y\|height\|aspect_correct\|0 or 1\|` | Resize image only if larger than specified |
 | `@resize` | `x\|width\|y\|height\|aspect_correct\|0 or 1\|` | Force resize to specified dimensions |
-| `@upload` | `source\|inputN\|` | Upload image to ComfyUI input slot (source: image/temp1-temp3, dest: input1-4|
+| `@upload` | `source\|inputN\|` | Upload image to ComfyUI input slot (source: image/temp1-temp3, dest: input1-4) |
+| `@replace` | `find\|replace\|` | Raw JSON string replacement in the workflow before sending to ComfyUI |
 | `@fill_mask_if_blank` | (none) | Fills the alpha mask if empty |
+| `@invert_alpha` | `slot\|` (optional) | Invert the alpha channel of an image (slot: image/temp1-temp3, defaults to current image) |
 | `@no_undo` | (none) | Disables undo for this operation |
 | `@stopjob` | (none) | Stop adding more jobs after this script completes |
+| `@lock_gpu` | (none) | Lock the current GPU/server exclusively for the entire preset workflow |
 | `@llm_prompt_reset` | (none) | Reset LLM conversation history |
 | `@llm_prompt_set_base_prompt` | `text\|` or multi-line | Set base system prompt for LLM |
 | `@llm_prompt_add_from_user` | `text\|` or multi-line | Add user message to LLM conversation |
@@ -185,6 +191,40 @@ Single-line syntax still works: `command @llm_prompt_add_from_user|short text|`
 | `image`, `image1` | Current image (synonyms - for copying to/from temp slots) |
 | `temp1`, `temp2`, `temp3` | Temporary image storage slots |
 | `temp_text1` - `temp_text4` | General-purpose text storage buffers for job scripts |
+
+## Named Variables (Custom Variables)
+
+You can create and use custom named variables using the `%variable_name%` syntax. These are useful for storing intermediate values during complex job scripts.
+
+### Syntax
+- Reference a variable: `%my_variable%`
+- Set a variable: `@set|%my_variable%|value|`
+- Set an image variable: `@setimage|%my_image%|temp1|`
+- Clear a variable: `@clear|%my_variable%|`
+
+### Variable Scopes
+
+**Local variables** (default): Scoped to the current PicMain instance (the image being processed). These are cleared when the job completes.
+
+**Global variables**: Prefix with `global_` to store in the global manager. These persist across jobs and can be shared between different images/presets.
+
+```
+command @set|%global_my_counter%|5|
+command @set|%local_temp%|hello|
+```
+
+### Using Variables in Parameters
+
+Variables are automatically expanded in command parameters:
+```
+command @set|%scene_desc%|A beautiful sunset|
+command @llm_prompt_add_from_user|Describe this scene: %scene_desc%|
+```
+
+Variables can also be used in `@replace` parameters for dynamic workflow modification:
+```
+workflow.json @replace|<MODEL_NAME>|%global_selected_model%|
+```
 
 ## Special Line Prefixes
 
