@@ -141,20 +141,45 @@ public class VariableManager
     /// <param name="input">The input string containing %variable% patterns</param>
     /// <param name="local">The local (PicMain) variable manager</param>
     /// <param name="global">The global (GameLogic) variable manager</param>
+    /// <param name="warnOnMissing">If true, logs a warning for each undefined variable</param>
     /// <returns>The processed string with variables replaced</returns>
-    public static string ProcessVariables(string input, VariableManager local, VariableManager global)
+    public static string ProcessVariables(string input, VariableManager local, VariableManager global, bool warnOnMissing = false)
     {
         if (string.IsNullOrEmpty(input)) return input;
         
-        // Use regex to find and replace all %var% patterns
-        return VariablePattern.Replace(input, match =>
+        try
         {
-            string varName = match.Groups[1].Value;
-            string value = ResolveVariable(varName, local, global);
-            
-            // If we found a value, return it; otherwise keep the original %var% pattern
-            return value ?? match.Value;
-        });
+            // Use regex to find and replace all %var% patterns
+            return VariablePattern.Replace(input, match =>
+            {
+                try
+                {
+                    string varName = match.Groups[1].Value;
+                    string value = ResolveVariable(varName, local, global);
+                    
+                    if (value == null)
+                    {
+                        if (warnOnMissing)
+                        {
+                            RTConsole.Log("Warning: Variable '%" + varName + "%' not found");
+                        }
+                        // Keep the original %var% pattern
+                        return match.Value;
+                    }
+                    return value;
+                }
+                catch (System.Exception)
+                {
+                    // If any error occurs during variable resolution, keep original match
+                    return match.Value;
+                }
+            });
+        }
+        catch (System.Exception ex)
+        {
+            RTConsole.Log("Warning: Error processing variables in string: " + ex.Message);
+            return input; // Return original input on error
+        }
     }
 
     /// <summary>

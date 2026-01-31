@@ -15,6 +15,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Runtime.InteropServices;
 
 
@@ -488,6 +489,10 @@ public class GameLogic : MonoBehaviour
         "command @llm_prompt_set_base_prompt"
     };
 
+    // Regex pattern for variable assignment syntax: %varname%=value or %varname%="value" or %varname%=@start
+    private static readonly Regex VariableAssignmentPattern = 
+        new Regex(@"^%([a-zA-Z_][a-zA-Z0-9_]*)%\s*=\s*(.*)$", RegexOptions.Compiled);
+
     /// <summary>
     /// Checks if a line is a multi-line block command (no parameters, content follows on next lines until @end)
     /// </summary>
@@ -507,6 +512,7 @@ public class GameLogic : MonoBehaviour
 
     /// <summary>
     /// Processes lines array handling multi-line block commands that use @end terminator
+    /// and the new variable assignment syntax (%var%=value, %var%="value", %var%=@start...@end)
     /// </summary>
     private List<String> ProcessLinesWithMultiLineSupport(string[] lines)
     {
@@ -519,6 +525,14 @@ public class GameLogic : MonoBehaviour
             // Skip empty lines and comments
             if (trimmedItem.Length == 0 || trimmedItem[0] == '-' || trimmedItem[0] == '/')
             {
+                continue;
+            }
+
+            // Check for variable assignment syntax: %varname%=value
+            string parsedCommand = TryParseVariableAssignment(trimmedItem, lines, ref i);
+            if (parsedCommand != null)
+            {
+                list.Add(parsedCommand);
                 continue;
             }
             
@@ -568,6 +582,126 @@ public class GameLogic : MonoBehaviour
         }
         
         return list;
+    }
+
+    /// <summary>
+    /// Tries to parse a variable assignment line. Returns the command string if successful, null otherwise.
+    /// Supports: %var%=value, %var%="value", %var%=@start...@end (multi-line)
+    /// </summary>
+    private string TryParseVariableAssignment(string trimmedLine, string[] lines, ref int lineIndex)
+    {
+        try
+        {
+            Match match = VariableAssignmentPattern.Match(trimmedLine);
+            if (!match.Success)
+            {
+                return null;
+            }
+
+            string varName = match.Groups[1].Value;
+            string valueRaw = match.Groups[2].Value;
+
+            // Validate variable name is not empty (regex should prevent this, but be safe)
+            if (string.IsNullOrEmpty(varName))
+            {
+                RTConsole.Log("Warning: Empty variable name in assignment: " + trimmedLine);
+                return null;
+            }
+
+            string finalValue;
+
+            // Check if this is a multi-line assignment with @start
+            if (valueRaw.Trim().Equals("@start", StringComparison.OrdinalIgnoreCase))
+            {
+                // Multi-line mode: accumulate lines until @end
+                StringBuilder contentBuilder = new StringBuilder();
+                lineIndex++; // Move to next line (start of content)
+                bool foundEnd = false;
+
+                while (lineIndex < lines.Length)
+                {
+                    string contentLine = lines[lineIndex];
+                    string contentTrimmed = contentLine.Trim();
+
+                    // Check for @end terminator
+                    if (contentTrimmed.Equals("@end", StringComparison.OrdinalIgnoreCase))
+                    {
+                        foundEnd = true;
+                        break;
+                    }
+
+                    // Add line to content (preserve original line, but trim trailing whitespace)
+                    if (contentBuilder.Length > 0)
+                    {
+                        contentBuilder.Append("\n");
+                    }
+                    contentBuilder.Append(contentLine.TrimEnd());
+                    lineIndex++;
+                }
+
+                if (!foundEnd)
+                {
+                    RTConsole.Log("Warning: Variable assignment missing @end terminator: %" + varName + "%=@start");
+                }
+
+                finalValue = contentBuilder.ToString();
+            }
+            else
+            {
+                // Single-line value: check for quoted string
+                finalValue = valueRaw.Trim();
+
+                // Handle quoted strings - remove surrounding quotes and process escape sequences
+                if (finalValue.Length >= 2 && finalValue.StartsWith("\""))
+                {
+                    // Check for proper closing quote (not escaped)
+                    // A proper closing quote is one at the end that's not preceded by an odd number of backslashes
+                    if (finalValue.EndsWith("\"") && !EndsWithEscapedQuote(finalValue))
+                    {
+                        // Remove surrounding quotes
+                        finalValue = finalValue.Substring(1, finalValue.Length - 2);
+                        // Process escape sequences: \" becomes "
+                        finalValue = finalValue.Replace("\\\"", "\"");
+                    }
+                    else
+                    {
+                        // Unclosed quote - warn but still use the value (strip the opening quote)
+                        RTConsole.Log("Warning: Unclosed quote in variable assignment: " + trimmedLine);
+                        finalValue = finalValue.Substring(1);
+                        // Still process escape sequences
+                        finalValue = finalValue.Replace("\\\"", "\"");
+                    }
+                }
+            }
+
+            // Convert to internal command format: command @set|%varname%|value|
+            return "command @set|%" + varName + "%|" + finalValue + "|";
+        }
+        catch (Exception ex)
+        {
+            RTConsole.Log("Warning: Error parsing variable assignment '" + trimmedLine + "': " + ex.Message);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Checks if a quoted string ends with an escaped quote (\" rather than ")
+    /// Used to determine if the final quote is a closing delimiter or part of the content.
+    /// </summary>
+    private bool EndsWithEscapedQuote(string value)
+    {
+        if (value.Length < 2 || !value.EndsWith("\""))
+            return false;
+        
+        // Count consecutive backslashes before the final quote
+        int backslashCount = 0;
+        for (int i = value.Length - 2; i >= 0 && value[i] == '\\'; i--)
+        {
+            backslashCount++;
+        }
+        
+        // If odd number of backslashes, the quote is escaped
+        return (backslashCount % 2) == 1;
     }
 
     public List<String> GetPicJobListAsListOfStrings(string jobtext)

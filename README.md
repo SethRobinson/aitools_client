@@ -198,9 +198,50 @@ You can create and use custom named variables using the `%variable_name%` syntax
 
 ### Syntax
 - Reference a variable: `%my_variable%`
-- Set a variable: `@set|%my_variable%|value|`
+- Set a variable: `@set|%my_variable%|value|` or `%my_variable%=value`
 - Set an image variable: `@setimage|%my_image%|temp1|`
 - Clear a variable: `@clear|%my_variable%|`
+
+### Clean Variable Assignment Syntax
+
+In addition to the command-based syntax, you can set variables using a cleaner assignment syntax:
+
+**Simple assignment (unquoted):**
+```
+%width%=512
+%model_name%=flux_dev
+```
+
+**Quoted assignment (for values with spaces or special characters):**
+```
+%scene%="A beautiful sunset over the ocean"
+%message%="Hello, world!"
+```
+
+**Escaped quotes (use `\"` inside quoted strings):**
+```
+%dialogue%="She said \"Hello\" to him"
+```
+
+**Multi-line assignment with @start/@end:**
+```
+%system_prompt%=@start
+You are a helpful assistant.
+Please respond in a friendly manner.
+
+Quotes "like this" work naturally in multi-line blocks.
+You can also reference other variables: %width% x %height%
+@end
+```
+
+**Variable interpolation (reference other variables in values):**
+```
+%width%=512
+%height%=768
+%size_info%="Image size: %width% x %height%"
+```
+
+If a variable is referenced but doesn't exist, a warning is logged to the console but the script continues running (the `%var%` text remains unchanged).
 
 ### Variable Scopes
 
@@ -208,6 +249,12 @@ You can create and use custom named variables using the `%variable_name%` syntax
 
 **Global variables**: Prefix with `global_` to store in the global manager. These persist across jobs and can be shared between different images/presets.
 
+```
+%global_my_counter%=5
+%local_temp%="hello"
+```
+
+Or using command syntax:
 ```
 command @set|%global_my_counter%|5|
 command @set|%local_temp%|hello|
@@ -217,7 +264,7 @@ command @set|%local_temp%|hello|
 
 Variables are automatically expanded in command parameters:
 ```
-command @set|%scene_desc%|A beautiful sunset|
+%scene_desc%="A beautiful sunset"
 command @llm_prompt_add_from_user|Describe this scene: %scene_desc%|
 ```
 

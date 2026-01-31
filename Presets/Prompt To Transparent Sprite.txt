@@ -1,5 +1,5 @@
 COMMAND_START|joblist
-command @copy|512|%pixel_size%|
+%pixel_size%="512"
 
 text_to_img_zimage.json @replace|"width": 1024|"width": %pixel_size%| @replace|"height": 1024|"height": %pixel_size%| @replace|"steps": 9|"steps": 9|
 
