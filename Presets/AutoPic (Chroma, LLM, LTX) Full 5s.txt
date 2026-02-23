@@ -1,9 +1,10 @@
 COMMAND_START|joblist
 #AutoPic: LLM generates image + video prompts from story, Chroma image + LTX video
 %chroma_model%="Chroma1-HD-fp8_scaled_defaultloader_hybrid_large_rev2.safetensors"
-%img_width%="960"
-%img_height%="576"
+%img_width%="1920"
+%img_height%="1088"
 %frames%="121"
+%fps%="50"
 
 command @lock_gpu
 
@@ -100,17 +101,17 @@ command @copy|prompt_1|prompt|
 #Generate starting image
 text_to_img_chroma.json @replace|Chroma1-HD-fp8_scaled_defaultloader_hybrid_large_rev2.safetensors|%chroma_model%| @replace|"width": 1024|"width": %img_width%| @replace|"height": 1024|"height": %img_height%|
 
-#Higher quality 1280x720:
-#text_to_img_chroma.json @replace|"width": 1024|"width": 1280| @replace|"height": 1024|"height": 720|
 
 #Use PROMPT2 for the video generation with LTX
 command @copy|prompt_2|prompt|
 
-#Generate video from image
-img_to_video_ltx.json @upload|image1|input1| @replace|"width": 960|"width": %img_width%| @replace|"height": 576|"height": %img_height%| @replace|"value": 121|"value": %frames%|
-
-#Higher quality 1280x720:
-#img_to_video_ltx.json @upload|image1|input1| @replace|"width": 960|"width": 1280| @replace|"height": 576|"height": 720| @replace|"value": 121|"value": %frames%|
+img_to_video_ltx_fast.json @upload|image1|input1| @replace|"width": 1920|"width": %img_width%| @replace|"height": 1088|"height": %img_height%| @replace|"value": 121|"value": %frames% @replace|"value": 24|"value": %fps%|
 
 command @stopjob
+COMMAND_END
+COMMAND_START|default_negative_prompt
+cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white
+COMMAND_END
+COMMAND_START|default_pre_prompt
+Shot with a Bessa Cinestill. Color. high ISO, medium dynamic range, amateur photo. Candid.
 COMMAND_END

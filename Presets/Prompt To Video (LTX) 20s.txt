@@ -1,14 +1,14 @@
 COMMAND_START|joblist
 #Generate 20-second video using LTX model (high quality)
-%width%="1280"
-%height%="720"
+#Generate 5-second video using LTX model
+%width%="1920"
+%height%="1088"
 %frames%="481"
+%fps%="50"
 
-#Low VRAM version:
-#text_to_video_ltx_fast.json @replace|"width": 960|"width": 960| @replace|"height": 576|"height": 576| @replace|"value": 121|"value": %frames%|
+text_to_video_ltx_fast.json @replace|"width": 1920|"width": %width%| @replace|"height": 1088|"height": %height%| @replace|"value": 121|"value": %frames%| @replace|"value": 24|"value" : %fps%|"
 
-#High quality version:
-text_to_video_ltx_fast.json @replace|"width": 960|"width": %width%| @replace|"height": 576|"height": %height%| @replace|"value": 121|"value": %frames%|
+
 COMMAND_END
 COMMAND_START|default_negative_prompt
 cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white

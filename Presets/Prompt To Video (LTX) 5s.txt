@@ -1,10 +1,11 @@
 COMMAND_START|joblist
 #Generate 5-second video using LTX model
-%width%="960"
-%height%="576"
-%frames%="481"
+%width%="1920"
+%height%="1088"
+%frames%="121"
+%fps%="50"
 
-text_to_video_ltx_fast.json @replace|"width": 960|"width": %width%| @replace|"height": 576|"height": %height%| @replace|"value": 121|"value": %frames%|
+text_to_video_ltx_fast.json @replace|"width": 1920|"width": %width%| @replace|"height": 1088|"height": %height%| @replace|"value": 121|"value": %frames%| @replace|"value": 24|"value" : %fps%|
 
 #Higher quality version (needs lots of VRAM):
 #text_to_video_ltx_fast.json @replace|"width": 960|"width": 1280| @replace|"height": 576|"height": 720| @replace|"value": 121|"value": %frames%|
