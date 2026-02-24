@@ -1267,6 +1267,17 @@ public class AdventureText : MonoBehaviour
                         endpoint = "https://api.openai.com/v1/chat/completions";
                     }
 
+                    // When a custom (non-OpenAI) endpoint is configured, use it and pass enableThinking
+                    bool? adventureEnableThinking = null;
+                    string adventureSettingsEndpoint = activeSettings?.endpoint ?? "";
+                    if (!string.IsNullOrEmpty(adventureSettingsEndpoint) && !adventureSettingsEndpoint.Contains("api.openai.com"))
+                    {
+                        adventureEnableThinking = activeSettings.enableThinking;
+                        endpoint = adventureSettingsEndpoint.TrimEnd('/');
+                        if (!endpoint.EndsWith("/v1/chat/completions"))
+                            endpoint += "/v1/chat/completions";
+                    }
+                    
                     string json = _openAITextCompletionManager.BuildChatCompleteJSON(
                         lines,
                         4096,
@@ -1276,7 +1287,8 @@ public class AdventureText : MonoBehaviour
                         useResponsesAPI,
                         isReasoningModel,
                         includeTemperature,
-                        reasoningEffort);
+                        reasoningEffort,
+                        adventureEnableThinking);
                     _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
                     SetLLMActive(true);
                 }
@@ -1380,17 +1392,20 @@ public class AdventureText : MonoBehaviour
                     string serverAddress = settings?.endpoint ?? "";
                     string apiKey = settings?.apiKey ?? "";
                     string model = settings?.selectedModel ?? "";
-                    
+
                     // Build endpoint URL for OpenAI compatible server
                     string endpoint = serverAddress.TrimEnd('/') + "/v1/chat/completions";
-                    
+
                     RTConsole.Log($"Adventure: Contacting OpenAI Compatible server at {endpoint} with model {model}");
-                    
+
                     // Normalize messages for strict role alternation (required by models like Mistral)
                     var normalizedLines = OpenAITextCompletionManager.NormalizeForStrictAlternation(lines);
-                    
-                    // Use OpenAI manager with custom endpoint - it handles the standard OpenAI format
-                    string json = _openAITextCompletionManager.BuildChatCompleteJSON(normalizedLines, 4096, AdventureLogic.Get().GetExtractor().Temperature, model, true);
+
+                    // Pass enableThinking for sglang/vLLM reasoning models (Qwen, etc.)
+                    bool? compatEnableThinking = (bool?)(settings?.enableThinking ?? true);
+
+                    string json = _openAITextCompletionManager.BuildChatCompleteJSON(normalizedLines, 4096, AdventureLogic.Get().GetExtractor().Temperature, model, true,
+                        enableThinking: compatEnableThinking);
                     _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
                     SetLLMActive(true);
                 }

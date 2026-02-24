@@ -150,6 +150,13 @@ public class LLMProviderUI
             CreateSamplingParametersSection(sectionRoot.transform, settings);
         }
 
+        // Add thinking mode controls for providers that may point at custom servers with reasoning models
+        if (_provider == LLMProvider.OpenAI || _provider == LLMProvider.OpenAICompatible)
+        {
+            _enableThinking = settings.enableThinking;
+            CreateOpenAIThinkingModeRow(sectionRoot.transform, settings);
+        }
+
         // Add Gemini-specific controls (thinking mode)
         if (_provider == LLMProvider.Gemini)
         {
@@ -396,6 +403,14 @@ public class LLMProviderUI
             UpdateSamplingParametersUI();
         }
         
+        // OpenAI / OpenAI Compatible thinking mode
+        if (_provider == LLMProvider.OpenAI || _provider == LLMProvider.OpenAICompatible)
+        {
+            _enableThinking = settings.enableThinking;
+            if (thinkingModeToggle != null)
+                thinkingModeToggle.isOn = settings.enableThinking;
+        }
+
         // Gemini-specific
         if (_provider == LLMProvider.Gemini)
         {
@@ -445,6 +460,12 @@ public class LLMProviderUI
             settings.repeatPenalty = _repeatPenalty;
         }
         
+        // OpenAI / OpenAI Compatible thinking mode
+        if (_provider == LLMProvider.OpenAI || _provider == LLMProvider.OpenAICompatible)
+        {
+            settings.enableThinking = _enableThinking;
+        }
+
         // Gemini-specific
         if (_provider == LLMProvider.Gemini)
         {
@@ -1410,6 +1431,77 @@ public class LLMProviderUI
             if (_repeatPenaltyInput != null)
                 _repeatPenaltyInput.text = _repeatPenalty.ToString("F2");
         }
+    }
+
+    #endregion
+
+    #region OpenAI Controls
+
+    private void CreateOpenAIThinkingModeRow(Transform parent, LLMProviderSettings settings)
+    {
+        var row = CreateRowContainer(parent, "ThinkingMode");
+        
+        var toggleContainer = new GameObject("ToggleContainer");
+        toggleContainer.transform.SetParent(row.transform, false);
+        var containerRt = toggleContainer.AddComponent<RectTransform>();
+        containerRt.anchorMin = Vector2.zero;
+        containerRt.anchorMax = Vector2.one;
+        containerRt.offsetMin = Vector2.zero;
+        containerRt.offsetMax = Vector2.zero;
+        
+        var toggleGo = new GameObject("Toggle");
+        toggleGo.transform.SetParent(toggleContainer.transform, false);
+        var toggleRt = toggleGo.AddComponent<RectTransform>();
+        toggleRt.anchorMin = new Vector2(0, 0.5f);
+        toggleRt.anchorMax = new Vector2(0, 0.5f);
+        toggleRt.pivot = new Vector2(0, 0.5f);
+        toggleRt.sizeDelta = new Vector2(20, 20);
+        toggleRt.anchoredPosition = new Vector2(0, 0);
+        
+        var bgGo = new GameObject("Background");
+        bgGo.transform.SetParent(toggleGo.transform, false);
+        var bgRt = bgGo.AddComponent<RectTransform>();
+        bgRt.anchorMin = Vector2.zero;
+        bgRt.anchorMax = Vector2.one;
+        bgRt.offsetMin = Vector2.zero;
+        bgRt.offsetMax = Vector2.zero;
+        var bgImg = bgGo.AddComponent<Image>();
+        bgImg.color = InputBg;
+        
+        var checkGo = new GameObject("Checkmark");
+        checkGo.transform.SetParent(bgGo.transform, false);
+        var checkRt = checkGo.AddComponent<RectTransform>();
+        checkRt.anchorMin = new Vector2(0.1f, 0.1f);
+        checkRt.anchorMax = new Vector2(0.9f, 0.9f);
+        checkRt.offsetMin = Vector2.zero;
+        checkRt.offsetMax = Vector2.zero;
+        var checkTmp = checkGo.AddComponent<TextMeshProUGUI>();
+        checkTmp.font = _font;
+        checkTmp.fontSize = 14;
+        checkTmp.color = new Color(0.2f, 0.5f, 0.2f, 1f);
+        checkTmp.alignment = TextAlignmentOptions.Center;
+        checkTmp.text = "\u2713";
+        
+        thinkingModeToggle = toggleGo.AddComponent<Toggle>();
+        thinkingModeToggle.targetGraphic = bgImg;
+        thinkingModeToggle.graphic = checkTmp;
+        thinkingModeToggle.isOn = settings.enableThinking;
+        thinkingModeToggle.onValueChanged.AddListener(OnThinkingModeChanged);
+        
+        var labelObj = new GameObject("Label");
+        labelObj.transform.SetParent(toggleContainer.transform, false);
+        var labelRt = labelObj.AddComponent<RectTransform>();
+        labelRt.anchorMin = new Vector2(0, 0);
+        labelRt.anchorMax = new Vector2(1, 1);
+        labelRt.offsetMin = new Vector2(28, 0);
+        labelRt.offsetMax = new Vector2(0, 0);
+        
+        var labelTmp = labelObj.AddComponent<TextMeshProUGUI>();
+        labelTmp.font = _font;
+        labelTmp.fontSize = 12;
+        labelTmp.color = LabelColor;
+        labelTmp.alignment = TextAlignmentOptions.MidlineLeft;
+        labelTmp.text = "Enable reasoning (for sglang/vLLM thinking models)";
     }
 
     #endregion

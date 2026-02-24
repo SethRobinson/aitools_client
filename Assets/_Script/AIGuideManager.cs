@@ -416,6 +416,17 @@ public class AIGuideManager : MonoBehaviour
             endpoint = "https://api.openai.com/v1/chat/completions";
         }
 
+        // When a custom (non-OpenAI) endpoint is configured, use it and pass enableThinking
+        bool? openAIEnableThinking = null;
+        string settingsEndpoint = activeSettings?.endpoint ?? "";
+        if (!string.IsNullOrEmpty(settingsEndpoint) && !settingsEndpoint.Contains("api.openai.com"))
+        {
+            openAIEnableThinking = activeSettings.enableThinking;
+            endpoint = settingsEndpoint.TrimEnd('/');
+            if (!endpoint.EndsWith("/v1/chat/completions"))
+                endpoint += "/v1/chat/completions";
+        }
+        
         string json = _openAITextCompletionManager.BuildChatCompleteJSON(
             lines,
             m_max_tokens,
@@ -425,7 +436,8 @@ public class AIGuideManager : MonoBehaviour
             useResponsesAPI,
             isReasoningModel,
             includeTemperature,
-            reasoningEffort);
+            reasoningEffort,
+            openAIEnableThinking);
         RTDB db = new RTDB();
         RTConsole.Log("Contacting OpenAI at " + endpoint + " with " + json.Length + " bytes...");
         _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnGTP4CompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
@@ -571,8 +583,11 @@ public class AIGuideManager : MonoBehaviour
         // Normalize messages for strict role alternation (required by models like Mistral)
         var normalizedLines = OpenAITextCompletionManager.NormalizeForStrictAlternation(lines);
 
-        // Use OpenAI manager with custom endpoint - it handles the standard OpenAI format
-        string json = _openAITextCompletionManager.BuildChatCompleteJSON(normalizedLines, m_max_tokens, m_extractor.Temperature, model, true);
+        // Pass enableThinking for sglang/vLLM reasoning models (Qwen, etc.)
+        bool? compatEnableThinking = (bool?)(settings?.enableThinking ?? true);
+
+        string json = _openAITextCompletionManager.BuildChatCompleteJSON(normalizedLines, m_max_tokens, m_extractor.Temperature, model, true,
+            enableThinking: compatEnableThinking);
         RTDB db = new RTDB();
         _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnGTP4CompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
     }

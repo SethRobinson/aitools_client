@@ -270,7 +270,7 @@ public class OpenAITextCompletionManager : MonoBehaviour
     // useResponsesAPI: set to true for OpenAI Responses API (/v1/responses), false for Chat Completions API (/v1/chat/completions)
     // isReasoningModel: include reasoning block for reasoning models (gpt-5.2/gpt-5.2-pro)
     // includeTemperature: some models (gpt-5-mini/nano) do not support temperature at all
-    public string BuildChatCompleteJSON(Queue<GTPChatLine> lines, int max_tokens = 100, float temperature = 1.3f, string model = "gpt-3.5-turbo", bool stream = false, bool useResponsesAPI = false, bool isReasoningModel = false, bool includeTemperature = true, string reasoningEffort = null)
+    public string BuildChatCompleteJSON(Queue<GTPChatLine> lines, int max_tokens = 100, float temperature = 1.3f, string model = "gpt-3.5-turbo", bool stream = false, bool useResponsesAPI = false, bool isReasoningModel = false, bool includeTemperature = true, string reasoningEffort = null, bool? enableThinking = null)
     {
         string bStreamText = stream ? "true" : "false";
 
@@ -361,11 +361,22 @@ public class OpenAITextCompletionManager : MonoBehaviour
 
             string temperaturePart = includeTemperature ? $@"""temperature"": {temperature}," : "";
             
+            // For sglang/vLLM serving reasoning models (Qwen, etc.), control thinking via chat_template_kwargs.
+            // When thinking is enabled, sglang puts output in the reasoning_content field (not content).
+            // The StreamingDownloadHandler reads both fields so this works transparently.
+            string thinkingPart = "";
+            if (enableThinking.HasValue)
+            {
+                string thinkVal = enableThinking.Value ? "true" : "false";
+                thinkingPart = $@"""chat_template_kwargs"": {{""enable_thinking"": {thinkVal}}},";
+            }
+            
             string json =
              $@"{{
              ""model"": ""{model}"",
              ""messages"":[{msg}],
              {temperaturePart}
+             {thinkingPart}
             ""stream"": {bStreamText}
             }}";
             

@@ -10,6 +10,7 @@ public class StreamingDownloadHandler : DownloadHandlerScript
     private StringBuilder stringBuilder = new StringBuilder();
     private string incompleteChunk = "";
     private bool isErrorResponse = false;
+    private bool _inReasoningBlock = false;
 
     protected override string GetText()
     {
@@ -131,15 +132,51 @@ public class StreamingDownloadHandler : DownloadHandlerScript
             // Try Chat Completions API format (choices[0].delta.content)
             else if (rootNode["choices"] != null && rootNode["choices"].Count > 0)
             {
-                // Try to get content from the 'delta' structure
                 JSONNode deltaNode = rootNode["choices"][0]["delta"];
 
-                if (deltaNode != null && deltaNode["content"] != null)
+                // sglang/vLLM with --reasoning-parser puts thinking in reasoning_content
+                // and the final answer in content. We inject <think> tags at the transitions
+                // so the app's existing RemoveThinkTags logic can strip the thinking portion.
+                string mainContent = deltaNode != null && deltaNode["content"] != null ? (string)deltaNode["content"] : null;
+                string reasoningContent = deltaNode != null && deltaNode["reasoning_content"] != null ? (string)deltaNode["reasoning_content"] : null;
+
+                if (!string.IsNullOrEmpty(reasoningContent))
                 {
-                    content = deltaNode["content"];
+                    if (!_inReasoningBlock)
+                    {
+                        _inReasoningBlock = true;
+                        content = "<think>" + reasoningContent;
+                    }
+                    else
+                    {
+                        content = reasoningContent;
+                    }
                 }
-                // If 'delta' structure isn't present, try 'text' structure
-                else if (rootNode["choices"][0]["text"] != null)
+                else if (!string.IsNullOrEmpty(mainContent))
+                {
+                    if (_inReasoningBlock)
+                    {
+                        _inReasoningBlock = false;
+                        content = "</think>" + mainContent;
+                    }
+                    else
+                    {
+                        content = mainContent;
+                    }
+                }
+                else if (deltaNode != null)
+                {
+                    // Check finish_reason to close an open thinking block
+                    JSONNode finishNode = rootNode["choices"][0]["finish_reason"];
+                    if (_inReasoningBlock && finishNode != null && !finishNode.IsNull)
+                    {
+                        _inReasoningBlock = false;
+                        content = "</think>";
+                    }
+                }
+
+                // Fallback: try 'text' structure (completions API)
+                if (content == null && rootNode["choices"][0]["text"] != null)
                 {
                     content = rootNode["choices"][0]["text"];
                 }

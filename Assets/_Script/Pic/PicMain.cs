@@ -3431,9 +3431,20 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                                 lines.Enqueue(new GTPChatLine("user", "Please proceed."));
                             }
                             
+                            // When a custom (non-OpenAI) endpoint is configured, use it and pass enableThinking
+                            bool? openAIEnableThinking = null;
+                            string settingsEndpoint = activeSettings.endpoint ?? "";
+                            if (!string.IsNullOrEmpty(settingsEndpoint) && !settingsEndpoint.Contains("api.openai.com"))
+                            {
+                                openAIEnableThinking = activeSettings.enableThinking;
+                                endpoint = settingsEndpoint.TrimEnd('/');
+                                if (!endpoint.EndsWith("/v1/chat/completions"))
+                                    endpoint += "/v1/chat/completions";
+                            }
+                            
                             string json = _openAITextCompletionManager.BuildChatCompleteJSON(
                                 lines, 4096, temperature, model, true,
-                                useResponsesAPI, isReasoningModel, includeTemperature, reasoningEffort);
+                                useResponsesAPI, isReasoningModel, includeTemperature, reasoningEffort, openAIEnableThinking);
                             RTConsole.Log("Contacting OpenAI at " + endpoint);
                             _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
                             SetLLMActive(true, llmInstanceID);
@@ -3547,8 +3558,11 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                             // Normalize messages for strict role alternation (required by models like Mistral)
                             var normalizedLines = OpenAITextCompletionManager.NormalizeForStrictAlternation(lines);
                             
-                            // Use OpenAI manager with custom endpoint - it handles the standard OpenAI format
-                            string json = _openAITextCompletionManager.BuildChatCompleteJSON(normalizedLines, 4096, temperature, model, true);
+                            // Pass enableThinking for sglang/vLLM reasoning models (Qwen, etc.)
+                            bool? compatEnableThinking = (bool?)activeSettings.enableThinking;
+                            
+                            string json = _openAITextCompletionManager.BuildChatCompleteJSON(normalizedLines, 4096, temperature, model, true,
+                                enableThinking: compatEnableThinking);
                             _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
                             SetLLMActive(true, llmInstanceID);
                         }

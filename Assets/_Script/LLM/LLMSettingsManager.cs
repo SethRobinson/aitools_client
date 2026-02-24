@@ -965,6 +965,18 @@ public class LLMSettingsManager : MonoBehaviour
             result.Add(new LLMParm { _key = "num_ctx", _value = settings.contextLength.ToString() });
         }
         
+        // For OpenAI / OpenAI Compatible, add the thinking mode setting
+        if (instance.providerType == LLMProvider.OpenAI || instance.providerType == LLMProvider.OpenAICompatible)
+        {
+            string ep = settings.endpoint ?? "";
+            bool isCustomServer = instance.providerType == LLMProvider.OpenAICompatible || 
+                                  (!string.IsNullOrEmpty(ep) && !ep.Contains("api.openai.com"));
+            if (isCustomServer)
+            {
+                result.Add(new LLMParm { _key = "enable_thinking", _value = settings.enableThinking ? "true" : "false" });
+            }
+        }
+        
         // For llama.cpp, add the thinking mode setting and sampling parameters
         if (instance.providerType == LLMProvider.LlamaCpp)
         {
