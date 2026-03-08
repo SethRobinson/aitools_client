@@ -487,7 +487,7 @@ public class OpenAITextCompletionManager : MonoBehaviour
             byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
             _currentRequest.uploadHandler = (UploadHandler)new UploadHandlerRaw(bodyRaw);
 
-            var downloadHandler = new StreamingDownloadHandler(updateChunkCallback);
+            var downloadHandler = new StreamingDownloadHandler(updateChunkCallback, injectReasoningThinkTags: true);
             _currentRequest.downloadHandler = downloadHandler;
 
             _currentRequest.SetRequestHeader("Content-Type", "application/json");

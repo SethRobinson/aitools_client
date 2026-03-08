@@ -62,6 +62,11 @@ public class LLMProviderUI
     // Callback for when model selection changes (for Ollama to fetch model info)
     public event Action<string> OnModelChanged;
 
+    /// <summary>Optional: when set, called when a setting that affects the next request changes (so panel can persist without Apply).</summary>
+    private Action _onSettingsChanged;
+
+    public void SetNotifySettingsChangedCallback(Action callback) { _onSettingsChanged = callback; }
+
     private readonly LLMProvider _provider;
     private readonly TMP_FontAsset _font;
     private readonly TMP_DefaultControls.Resources _tmpResources;
@@ -1014,19 +1019,20 @@ public class LLMProviderUI
         labelTmp.fontSize = 12;
         labelTmp.color = LabelColor;
         labelTmp.alignment = TextAlignmentOptions.MidlineLeft;
-        labelTmp.text = "Enable thinking mode (GLM/DeepSeek)";
+        labelTmp.text = "Enable thinking mode";
     }
     
     private void OnThinkingModeChanged(bool value)
     {
         _enableThinking = value;
+        _onSettingsChanged?.Invoke();
     }
     
     private void UpdateThinkingModeVisibility()
     {
         if (_thinkingModeRow == null) return;
         
-        // Show thinking mode toggle only for models that support it (GLM and DeepSeek models)
+        // Show thinking mode toggle only for models that support it (GLM, DeepSeek, Qwen reasoning models)
         string currentModel = GetCurrentModelName();
         if (string.IsNullOrEmpty(currentModel))
         {
@@ -1035,7 +1041,7 @@ public class LLMProviderUI
         }
         
         string modelLower = currentModel.ToLowerInvariant();
-        bool supportsThinking = modelLower.Contains("glm") || modelLower.Contains("deepseek");
+        bool supportsThinking = modelLower.Contains("glm") || modelLower.Contains("deepseek") || modelLower.Contains("qwen");
         
         _thinkingModeRow.SetActive(supportsThinking);
     }
@@ -1366,12 +1372,14 @@ public class LLMProviderUI
     {
         _overrideTopK = value;
         UpdateInputFieldEnabled(_topKInput, value);
+        _onSettingsChanged?.Invoke();
     }
     
     private void OnMinPToggleChanged(bool value)
     {
         _overrideMinP = value;
         UpdateInputFieldEnabled(_minPInput, value);
+        _onSettingsChanged?.Invoke();
     }
     
     // Input field callbacks
@@ -1419,6 +1427,7 @@ public class LLMProviderUI
     {
         _overrideRepeatPenalty = value;
         UpdateInputFieldEnabled(_repeatPenaltyInput, value);
+        _onSettingsChanged?.Invoke();
     }
     
     private void OnRepeatPenaltyInputChanged(string value)

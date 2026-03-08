@@ -11,6 +11,8 @@ public class StreamingDownloadHandler : DownloadHandlerScript
     private string incompleteChunk = "";
     private bool isErrorResponse = false;
     private bool _inReasoningBlock = false;
+    private bool _reasoningBlockClosed = false;
+    private bool _injectReasoningThinkTags;
 
     protected override string GetText()
     {
@@ -22,9 +24,10 @@ public class StreamingDownloadHandler : DownloadHandlerScript
         return GetText();
     }
 
-    public StreamingDownloadHandler(Action<string> textChunkUpdateCallback) : base(new byte[1024])
+    public StreamingDownloadHandler(Action<string> textChunkUpdateCallback, bool injectReasoningThinkTags = false) : base(new byte[1024])
     {
         m_textChunkUpdateCallback = textChunkUpdateCallback;
+        _injectReasoningThinkTags = injectReasoningThinkTags;
     }
 
     protected override bool ReceiveData(byte[] data, int dataLength)
@@ -135,17 +138,25 @@ public class StreamingDownloadHandler : DownloadHandlerScript
                 JSONNode deltaNode = rootNode["choices"][0]["delta"];
 
                 // sglang/vLLM with --reasoning-parser puts thinking in reasoning_content
-                // and the final answer in content. We inject <think> tags at the transitions
-                // so the app's existing RemoveThinkTags logic can strip the thinking portion.
+                // and the final answer in content. When injectReasoningThinkTags is true we inject
+                // <think> tags so the app's RemoveThinkTags logic can strip the thinking portion.
+                // llama.cpp/Ollama may put main reply in reasoning_content; do NOT wrap for those.
                 string mainContent = deltaNode != null && deltaNode["content"] != null ? (string)deltaNode["content"] : null;
                 string reasoningContent = deltaNode != null && deltaNode["reasoning_content"] != null ? (string)deltaNode["reasoning_content"] : null;
 
                 if (!string.IsNullOrEmpty(reasoningContent))
                 {
-                    if (!_inReasoningBlock)
+                    if (_injectReasoningThinkTags && !_reasoningBlockClosed)
                     {
-                        _inReasoningBlock = true;
-                        content = "<think>" + reasoningContent;
+                        if (!_inReasoningBlock)
+                        {
+                            _inReasoningBlock = true;
+                            content = "<think>" + reasoningContent;
+                        }
+                        else
+                        {
+                            content = reasoningContent;
+                        }
                     }
                     else
                     {
@@ -154,9 +165,10 @@ public class StreamingDownloadHandler : DownloadHandlerScript
                 }
                 else if (!string.IsNullOrEmpty(mainContent))
                 {
-                    if (_inReasoningBlock)
+                    if (_injectReasoningThinkTags && _inReasoningBlock)
                     {
                         _inReasoningBlock = false;
+                        _reasoningBlockClosed = true;
                         content = "</think>" + mainContent;
                     }
                     else
@@ -164,13 +176,13 @@ public class StreamingDownloadHandler : DownloadHandlerScript
                         content = mainContent;
                     }
                 }
-                else if (deltaNode != null)
+                else if (deltaNode != null && _injectReasoningThinkTags)
                 {
-                    // Check finish_reason to close an open thinking block
                     JSONNode finishNode = rootNode["choices"][0]["finish_reason"];
                     if (_inReasoningBlock && finishNode != null && !finishNode.IsNull)
                     {
                         _inReasoningBlock = false;
+                        _reasoningBlockClosed = true;
                         content = "</think>";
                     }
                 }

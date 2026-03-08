@@ -792,6 +792,7 @@ public class LLMSettingsPanel : MonoBehaviour
 
         _llamaCppUI = new LLMProviderUI(LLMProvider.LlamaCpp, _font, BuildTMPResources(), ApplyFontAndColor);
         _llamaCppUI.Build(content.transform, _workingSettings.llamaCpp, true);
+        _llamaCppUI.SetNotifySettingsChangedCallback(PersistCurrentInstanceProviderSettings);
         if (_llamaCppUI.refreshModelsButton != null)
             _llamaCppUI.refreshModelsButton.onClick.AddListener(OnRefreshLlamaCppModel);
 
@@ -1648,6 +1649,38 @@ public class LLMSettingsPanel : MonoBehaviour
                 RTQuickMessageManager.Get().ShowMessage($"Found {modelList.Count} model(s) ({modeStr})");
             }
         });
+    }
+
+    /// <summary>Persist the current instance's provider settings from the visible UI (so next request uses them without clicking Apply).</summary>
+    private void PersistCurrentInstanceProviderSettings()
+    {
+        if (_selectedInstanceID < 0 || _workingInstancesConfig == null) return;
+        var instance = _workingInstancesConfig.GetInstance(_selectedInstanceID);
+        if (instance == null) return;
+        switch (instance.providerType)
+        {
+            case LLMProvider.OpenAI:
+                _openAIUI?.ApplyToSettings(instance.settings);
+                break;
+            case LLMProvider.Anthropic:
+                _anthropicUI?.ApplyToSettings(instance.settings);
+                break;
+            case LLMProvider.LlamaCpp:
+                _llamaCppUI?.ApplyToSettings(instance.settings);
+                break;
+            case LLMProvider.Ollama:
+                _ollamaUI?.ApplyToSettings(instance.settings);
+                break;
+            case LLMProvider.Gemini:
+                _geminiUI?.ApplyToSettings(instance.settings);
+                break;
+            case LLMProvider.OpenAICompatible:
+                _openAICompatibleUI?.ApplyToSettings(instance.settings);
+                break;
+        }
+        var instanceManager = LLMInstanceManager.Get();
+        if (instanceManager != null)
+            instanceManager.ApplyConfig(_workingInstancesConfig);
     }
 
     private void ApplySettings()

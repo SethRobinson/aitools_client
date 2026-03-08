@@ -373,6 +373,13 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
                     continue;
                 }
                 
+                // enable_thinking is handled via chat_template_kwargs for supported models (GLM/DeepSeek/Qwen),
+                // so don't emit it as a top-level field — it's read from parms by the chatTemplateKwargs builder below
+                if (parm._key == "enable_thinking")
+                {
+                    continue;
+                }
+                
                 // Check if this parameter value looks like a string that needs quoting
                 // (contains forward slashes, backslashes, or starts with a letter/slash)
                 if (parm._value.Contains("/") || parm._value.Contains("\\") || 
@@ -396,12 +403,13 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
         // Check if we're using a special template that requires completions endpoint
         bool useCompletionsEndpoint = useGLMTemplate || useChatMLTemplate || useLlama2Template || useLlama3Template;
         
-        // Build thinking mode parameters for llama.cpp with supported models (GLM, DeepSeek)
+        // Build thinking mode parameters for llama.cpp with supported models (GLM, DeepSeek, Qwen)
         string chatTemplateKwargs = "";
         bool isGLM = bIsLlamaCpp && !string.IsNullOrEmpty(modelName) && modelName.Contains("glm");
         bool isDeepSeek = bIsLlamaCpp && !string.IsNullOrEmpty(modelName) && modelName.Contains("deepseek");
+        bool isQwen = bIsLlamaCpp && !string.IsNullOrEmpty(modelName) && modelName.Contains("qwen");
         
-        if (isGLM || isDeepSeek)
+        if (isGLM || isDeepSeek || isQwen)
         {
             // Check if thinking mode should be enabled or disabled
             // First check if it's passed in the parms (from instance settings)
@@ -439,18 +447,18 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
             // We request reasoning_format: "deepseek-legacy" to ensure <think> tags appear in content
             // (otherwise server might put thinking only in reasoning_content field which we don't parse)
             
-            if (isGLM)
+            if (isGLM || isQwen)
             {
-                // GLM models use chat_template_kwargs with enable_thinking
+                // GLM and Qwen models use chat_template_kwargs with enable_thinking
                 if (enableThinking)
                 {
                     chatTemplateKwargs = ",\"chat_template_kwargs\": {\"enable_thinking\": true}, \"reasoning_format\": \"deepseek-legacy\"";
-                    RTConsole.Log("GLM model '" + modelName + "': Thinking mode ENABLED");
+                    RTConsole.Log((isQwen ? "Qwen" : "GLM") + " model '" + modelName + "': Thinking mode ENABLED");
                 }
                 else
                 {
                     chatTemplateKwargs = ",\"chat_template_kwargs\": {\"enable_thinking\": false}";
-                    RTConsole.Log("GLM model '" + modelName + "': Thinking mode DISABLED");
+                    RTConsole.Log((isQwen ? "Qwen" : "GLM") + " model '" + modelName + "': Thinking mode DISABLED");
                 }
             }
             else if (isDeepSeek)
@@ -618,7 +626,10 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
             byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
             _currentRequest.uploadHandler = (UploadHandler)new UploadHandlerRaw(bodyRaw);
 
-            var downloadHandler = new StreamingDownloadHandler(updateChunkCallback);
+            // When thinking is enabled, inject <think> tags so Strip <think> tags can hide the reasoning portion
+            bool injectThinkTags = json.IndexOf("\"enable_thinking\": true", StringComparison.Ordinal) >= 0
+                || json.IndexOf("\"enable_thinking\":true", StringComparison.Ordinal) >= 0;
+            var downloadHandler = new StreamingDownloadHandler(updateChunkCallback, injectReasoningThinkTags: injectThinkTags);
             _currentRequest.downloadHandler = downloadHandler;
 
             _currentRequest.SetRequestHeader("Content-Type", "application/json");

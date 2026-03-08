@@ -58,15 +58,13 @@ public class LLMProviderSettings
 
     /// <summary>
     /// Check if the current model supports thinking mode.
-    /// Detects GLM and DeepSeek models by name.
+    /// Detects GLM, DeepSeek, and Qwen models by name.
     /// </summary>
     public bool SupportsThinkingMode()
     {
         if (string.IsNullOrEmpty(selectedModel)) return false;
         string modelLower = selectedModel.ToLowerInvariant();
-        // GLM models (GLM-4.5, GLM-4.6, etc.)
-        // DeepSeek models (DeepSeek-R1, DeepSeek-V3, etc.)
-        return modelLower.Contains("glm") || modelLower.Contains("deepseek");
+        return modelLower.Contains("glm") || modelLower.Contains("deepseek") || modelLower.Contains("qwen");
     }
 
     public LLMProviderSettings Clone()

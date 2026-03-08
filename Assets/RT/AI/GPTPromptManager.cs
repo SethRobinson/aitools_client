@@ -313,11 +313,20 @@ public class GPTPromptManager : MonoBehaviour
     {
         Queue<GTPChatLine> lines = new Queue<GTPChatLine>();
 
-        //add a line with role system using the base prompt
+        // Merge base + journal into a single system message (some templates like Qwen
+        // require exactly one system message at the start and reject multiples)
+        string systemContent = "";
         if (_baseSystemPrompt.Length > 0)
-            lines.Enqueue(new GTPChatLine(_nameToUseForSystem, _baseSystemPrompt));
+            systemContent = _baseSystemPrompt;
         if (_journalSystemPrompt.Length > 0)
-            lines.Enqueue(new GTPChatLine(_nameToUseForSystem, _journalSystemPrompt));
+        {
+            if (systemContent.Length > 0)
+                systemContent += "\n\n" + _journalSystemPrompt;
+            else
+                systemContent = _journalSystemPrompt;
+        }
+        if (systemContent.Length > 0)
+            lines.Enqueue(new GTPChatLine(_nameToUseForSystem, systemContent));
 
         //add the last few interactions, but ignore the last linesToIgnoreAtTheEnd lines
         int count = _interactions.Count - linesToIgnoreAtTheEnd;
@@ -333,7 +342,20 @@ public class GPTPromptManager : MonoBehaviour
             }
             count--;
             // Use Clone() to preserve images attached to interactions
-            lines.Enqueue(interaction.Clone());
+            var cloned = interaction.Clone();
+            // Move any system messages that ended up in interactions into the front system block
+            if (cloned._role == _nameToUseForSystem && lines.Count > 0)
+            {
+                // Peek at first entry and append to its content
+                var arr = lines.ToArray();
+                if (arr[0]._role == _nameToUseForSystem)
+                {
+                    arr[0]._content += "\n\n" + cloned._content;
+                    lines = new Queue<GTPChatLine>(arr);
+                    continue;
+                }
+            }
+            lines.Enqueue(cloned);
         }
 
         return lines;
@@ -355,9 +377,17 @@ public class GPTPromptManager : MonoBehaviour
     {
         Queue<GTPChatLine> lines = new Queue<GTPChatLine>();
 
-        //add a line with role system using the base prompt
-        lines.Enqueue(new GTPChatLine(_nameToUseForSystem, _baseSystemPrompt));
-        lines.Enqueue(new GTPChatLine(_nameToUseForSystem, _journalSystemPrompt));
+        // Merge base + journal into a single system message
+        string systemContent = _baseSystemPrompt;
+        if (!string.IsNullOrEmpty(_journalSystemPrompt))
+        {
+            if (!string.IsNullOrEmpty(systemContent))
+                systemContent += "\n\n" + _journalSystemPrompt;
+            else
+                systemContent = _journalSystemPrompt;
+        }
+        if (!string.IsNullOrEmpty(systemContent))
+            lines.Enqueue(new GTPChatLine(_nameToUseForSystem, systemContent));
 
         //add the last few interactions, but ignore the last linesToIgnoreAtTheEnd lines
         int count = _interactions.Count - linesToIgnoreAtTheEnd;

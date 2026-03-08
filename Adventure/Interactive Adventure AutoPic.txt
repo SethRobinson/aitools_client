@@ -15,7 +15,7 @@ GUIDELINES:
 
 Don't speak for the user, let them type what they say or do.
 
-Entire reply should be under 300 words.  TOP PRIORITY: When introducing characters, always fully describe them physically, age, skin color, ethnicity, clothes, hairstyle, etc.
+Entire reply should be under 400 words.  TOP PRIORITY: When introducing characters, always fully describe them physically, age, skin color, ethnicity, clothes, hairstyle, etc.  Make sure you mention the person's nationality, if the story has pictures we don't want the people changing ethnicity/clothes/color all the time.
 COMMAND_END
 
 #system context is sent directly before every human answer, I do this because without it, the ai can 'forget' how to do certain things.  These type of messages are auto removed except for the latest ones, so they don't eat your context space
