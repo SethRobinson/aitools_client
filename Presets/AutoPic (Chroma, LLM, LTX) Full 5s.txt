@@ -1,10 +1,10 @@
 COMMAND_START|joblist
 #AutoPic: LLM generates image + video prompts from story, Chroma image + LTX video
 %chroma_model%="Chroma1-HD-fp8_scaled_defaultloader_hybrid_large_rev2.safetensors"
-%img_width%="1920"
-%img_height%="1088"
+%img_width%="1280"
+%img_height%="720"
 %frames%="121"
-%fps%="50"
+%fps%="24"
 
 command @lock_gpu
 
@@ -105,7 +105,7 @@ text_to_img_chroma.json @replace|Chroma1-HD-fp8_scaled_defaultloader_hybrid_larg
 #Use PROMPT2 for the video generation with LTX
 command @copy|prompt_2|prompt|
 
-img_to_video_ltx_fast.json @upload|image1|input1| @replace|"width": 1920|"width": %img_width%| @replace|"height": 1088|"height": %img_height%| @replace|"value": 121|"value": %frames% @replace|"value": 24|"value": %fps%|
+img_to_video_ltx.json @upload|image1|input1| @replace|"width": 1280|"width": %img_width%| @replace|"height": 720|"height": %img_height%| @replace|"value": 121|"value": %frames% @replace|"value": 24|"value": %fps%|
 
 command @stopjob
 COMMAND_END

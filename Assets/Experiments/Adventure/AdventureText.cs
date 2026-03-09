@@ -42,6 +42,8 @@ public class AdventureText : MonoBehaviour
     float _tryAgainWaitSeconds = 0;
     private float lastUpdateTime;
     private const float UPDATE_INTERVAL = 0.1f; // Update every 100ms
+    private StringBuilder _fullStreamedText = new StringBuilder();
+    private const int THINKING_DISPLAY_TAIL_CHARS = 500;
 
     // Create a list to store the choices
     List<(string identifier, string unused, string description)> _choices = new List<(string, string, string)>();
@@ -1076,11 +1078,49 @@ public class AdventureText : MonoBehaviour
 
     private void UpdateInputFieldText()
     {
-        inputField.text += accumulatedText.ToString();
-        // Re-apply formatting to the entire text to support matches spanning chunks
-        inputField.text = ConvertMarkdownToTMP(inputField.text);
+        _fullStreamedText.Append(accumulatedText);
         accumulatedText.Clear();
         lastUpdateTime = Time.time;
+
+        inputField.text = BuildStreamingDisplayText(_fullStreamedText.ToString());
+    }
+
+    /// <summary>
+    /// Builds the display text during streaming, truncating thinking content to avoid
+    /// TMP choking on 20+ pages of text. Only the tail of thinking is shown with a
+    /// character count. ProcessFinalText handles the definitive display after completion.
+    /// </summary>
+    private string BuildStreamingDisplayText(string fullText)
+    {
+        int thinkOpen = fullText.IndexOf("<think>");
+        if (thinkOpen < 0)
+            return ConvertMarkdownToTMP(fullText);
+
+        int thinkContentStart = thinkOpen + 7; // "<think>".Length
+        int thinkClose = fullText.IndexOf("</think>", thinkContentStart);
+
+        string preThink = thinkOpen > 0 ? ConvertMarkdownToTMP(fullText.Substring(0, thinkOpen)) : "";
+
+        if (thinkClose < 0)
+        {
+            string thinkContent = fullText.Substring(thinkContentStart);
+            int len = thinkContent.Length;
+            string tail = len > THINKING_DISPLAY_TAIL_CHARS
+                ? "..." + thinkContent.Substring(len - THINKING_DISPLAY_TAIL_CHARS)
+                : thinkContent;
+            return preThink + $"<i>[Thinking... {len:N0} chars]\n{tail}</i>";
+        }
+        else
+        {
+            string thinkContent = fullText.Substring(thinkContentStart, thinkClose - thinkContentStart);
+            string postThink = fullText.Substring(thinkClose + 8); // "</think>".Length
+            int len = thinkContent.Length;
+            string tail = len > THINKING_DISPLAY_TAIL_CHARS
+                ? "..." + thinkContent.Substring(len - THINKING_DISPLAY_TAIL_CHARS)
+                : thinkContent;
+            return preThink + $"<i>[Thinking complete - {len:N0} chars]\n{tail}</i>\n"
+                + ConvertMarkdownToTMP(postThink);
+        }
     }
 
     public void SetStatus(string status)
@@ -1165,6 +1205,7 @@ public class AdventureText : MonoBehaviour
     public void StartLLMRequest()
     {
         accumulatedText = new StringBuilder();
+        _fullStreamedText.Clear();
        
        // Debug.Log("Contacting TexGen WebUI asking for chat style response at " + Config.Get()._texgen_webui_address); ;
 
@@ -1433,6 +1474,7 @@ public class AdventureText : MonoBehaviour
             m_promptManager.RemoveLastInteractionIfItExists();
         }
         accumulatedText = new StringBuilder();
+        _fullStreamedText.Clear();
         //clear everything and re-generate
         _picsSpawned = new List<PicMain>();
         //remove all things from _choices array
