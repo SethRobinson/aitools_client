@@ -43,7 +43,7 @@ public class PicMenuNavBar : MonoBehaviour
         _navBar.AddOption("Copy to Temp Pic 1", _picMain.OnSetTemp1Button, "Set image to temp pic 1, useful to hold for more complicated scripting");
         _navBar.AddOption("Copy to Temp Pic 2", _picMain.OnSetTemp2Button, "Set image to temp pic 2, useful to hold for more complicated scripting");
         _navBar.AddOption("Copy to Temp Pic 3", _picMain.OnSetTemp3Button, "Set image to temp pic 3, useful to hold for more complicated scripting");
-        _navBar.AddOption("Get Prompt From Image", _picMain.OnGetPromptFromImageButton, "Click to run the Image To Prompt preset");
+        _navBar.AddOption("Get Prompt From Image", _picMain.OnGetPromptFromImageButton, "Uses your Vision LLM to analyze the image and set the prompt");
 
 
 

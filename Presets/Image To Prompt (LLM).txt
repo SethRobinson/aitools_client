@@ -1,12 +1,18 @@
 COMMAND_START|joblist
-#Generate text prompt from image using Vision LLM (result goes to global prompt)
+#Generate an image generation prompt from the current image using a Vision LLM
+
+%max_size%="1024"
+
+#Resize source image if too large for vision LLM
+command @resize_if_larger|image1|x|%max_size%|y|%max_size%|aspect_correct|1|
+
 command @llm_prompt_reset
 command @llm_prompt_set_base_prompt
-You are a helpful image analysis assistant. Describe images concisely but thoroughly.
+You are an expert at writing prompts for AI image generation models like Stable Diffusion and Flux. Given an image, you reverse-engineer a concise, effective generation prompt that could recreate it.
 @end
 command @llm_add_image|image|
 command @llm_prompt_add_from_user
-Please describe this image in detail. Include the subject, setting, colors, mood, and any notable details.
+Analyze this image and write a single image generation prompt that could reproduce it. Include the subject, composition, setting, lighting, color palette, art style, and camera angle. Use the comma-separated keyword style common in image generation (e.g. "portrait of a woman, golden hour lighting, shallow depth of field, 4k photo"). Keep it under 200 words. Output ONLY the prompt text, nothing else.
 @end
 call_llm
 command @copy|llm_reply|global_prompt|

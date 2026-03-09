@@ -2191,7 +2191,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
     public void OnGetPromptFromImageButton()
     {
-        RunPresetByName("Image To Prompt.txt");
+        RunPresetByName("Image To Prompt (LLM).txt");
     }
 
     public void OnTool1Button()
@@ -3711,17 +3711,21 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                         // Create built-in resolver so %prompt%, %llm_reply%, etc. work in variable substitution
                         BuiltInVariableResolver builtInResolver = CreateBuiltInResolver(job);
 
+                        // Apply variable substitution to ALL command parts (not just parm1/parm2)
+                        // so commands like resize_if_larger that use parts beyond [1] and [2] also get substitution
+                        for (int p = 1; p < commandParts.Length; p++)
+                        {
+                            commandParts[p] = VariableManager.ProcessVariables(commandParts[p], m_variableManager, globalVM, builtInResolver);
+                        }
+
                         if (commandParts.Length >= 2)
                         {
-                            // Process %variable% substitution on parameters
-                            // Note: For @set, parm1 is the destination variable name - if it's not found, 
-                            // it remains unchanged which is correct behavior for setting new variables
-                            picJobData._parm1 = VariableManager.ProcessVariables(commandParts[1], m_variableManager, globalVM, builtInResolver);
+                            picJobData._parm1 = commandParts[1];
                         }
 
                         if (commandParts.Length >= 3)
                         {
-                            picJobData._parm2 = VariableManager.ProcessVariables(commandParts[2], m_variableManager, globalVM, builtInResolver);
+                            picJobData._parm2 = commandParts[2];
                         }
 
                         if (picJobData._name.ToLower() == "copy")

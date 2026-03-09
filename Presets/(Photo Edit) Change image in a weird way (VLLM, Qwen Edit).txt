@@ -2,7 +2,7 @@ COMMAND_START|joblist
 #Vision LLM analyzes image then generates surreal edit prompt for Qwen
 
 #=== EDIT THIS LINE TO CUSTOMIZE THE EDIT STYLE ===
-%edit_style%="weird, surreal, or unexpected"
+%edit_style%="add something to the image that fits into what's happening - like if someone is staring at a wall, add a scary man with a knife to where they are staring"
 
 %max_size%="1024"
 
@@ -43,7 +43,7 @@ You are a creative image editor. Given an image description, you will suggest ON
 
 The user wants the edit to be: %edit_style%
 
-Your edit should match that style while being visually striking and imaginative.
+Your edit should match that style.
 
 RULES:
 - Output ONLY the editing instruction itself, nothing else
