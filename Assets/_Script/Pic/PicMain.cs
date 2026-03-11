@@ -171,6 +171,8 @@ public class PicMain : MonoBehaviour
     public int m_ownedServerID = -1; // When >= 0, this pic owns this server exclusively for AutoPic override
     public string m_autoPicScriptName = ""; // Tracks which AutoPic script was used for this pic
     public bool m_stopAfterScript = false; // Set by @stopjob command - tells callback not to add more jobs
+    public int m_requestedServerID = -1; // When >= 0, this pic will only use this specific server (waits if busy)
+    public bool m_skipIgnoredServers = false; // When true, GetFreeGPU skips servers with _ignoredByExtraGenerators
     UndoEvent m_undoevent = new UndoEvent();
     UndoEvent m_curEvent = new UndoEvent(); //useful for just saving the current status, makes it easy to copy to/from a real undo event
     bool m_isDestroyed;
@@ -3064,10 +3066,20 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             }
             // If owned server's GPU is actually busy, wait for it (don't use a different server)
         }
+        else if (m_requestedServerID >= 0)
+        {
+            // Per-server adventure render: only use the requested server, wait if busy
+            GPUInfo reqServer = Config.Get().GetGPUInfo(m_requestedServerID);
+            if (reqServer != null && reqServer._bIsActive && !reqServer.IsGPUBusy
+                && !PicMain.IsServerOwnedByAnyPic(m_requestedServerID))
+            {
+                serverID = m_requestedServerID;
+            }
+        }
         else
         {
             // Normal path: find any free GPU
-            serverID = Config.Get().GetFreeGPU(neededRenderer, false);
+            serverID = Config.Get().GetFreeGPU(neededRenderer, false, m_skipIgnoredServers);
         }
 
         if (serverID == -1 && m_requirements == "gpu")

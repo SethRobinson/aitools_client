@@ -260,10 +260,29 @@ public class AdventureText : MonoBehaviour
         }
     }
 
-    public void OnAutoRenderButton()
+    public void OnAutoRenderButton(int requestedServerID = -1, bool skipIgnoredServers = false)
     {
         RenderPic(_lastPicTextRenderedDetailed, _lastPicTextRenderedSimple, AdventureLogic.Get().GetRenderer(),
-            _lastAudioPrompt, _lastAudioNegativePrompt, true);
+            _lastAudioPrompt, _lastAudioNegativePrompt, true, requestedServerID, skipIgnoredServers);
+    }
+
+    /// <returns>True if any per-server autopics were spawned.</returns>
+    private bool SpawnPerServerRenderCountAutoPics()
+    {
+        bool spawned = false;
+        for (int serverIdx = 0; serverIdx < Config.Get().GetGPUCount(); serverIdx++)
+        {
+            GPUInfo serverInfo = Config.Get().GetGPUInfo(serverIdx);
+            if (serverInfo._adventureRenderCount > 0 && serverInfo._bIsActive)
+            {
+                for (int i = 0; i < serverInfo._adventureRenderCount; i++)
+                {
+                    OnAutoRenderButton(requestedServerID: serverIdx);
+                }
+                spawned = true;
+            }
+        }
+        return spawned;
     }
 
     public void SetIsSelected()
@@ -747,23 +766,25 @@ public class AdventureText : MonoBehaviour
 
             if (picTextDetailed.Length > 0 || picTextSimple.Length > 0)
             {
-
-                if (AdventureLogic.Get().GetRenderCount() > 0)
-                {
-                    //render for each of the desired forced pics
-                    for (int i = 0; i < AdventureLogic.Get().GetRenderCount(); i++)
-                    {
-                        RenderPic(picTextDetailed, picTextSimple, AdventureLogic.Get().GetRenderer(),
-                            audioPrompt, audioNegativePrompt, false);
-                    }
-                }
-
-                AdventureLogic.Get().SetLastPicTextAndOwner(this, wasAutoPic: false);
-
                 _lastPicTextRenderedDetailed = picTextDetailed;
                 _lastPicTextRenderedSimple = picTextSimple;
                 _lastAudioPrompt = audioPrompt;
                 _lastAudioNegativePrompt = audioNegativePrompt;
+
+                // Phase 1: Per-server render counts - spawn autopics reserved to specific GPUs
+                SpawnPerServerRenderCountAutoPics();
+
+                // Phase 2: Global render count (skips ignored servers)
+                if (AdventureLogic.Get().GetRenderCount() > 0)
+                {
+                    for (int i = 0; i < AdventureLogic.Get().GetRenderCount(); i++)
+                    {
+                        RenderPic(picTextDetailed, picTextSimple, AdventureLogic.Get().GetRenderer(),
+                            audioPrompt, audioNegativePrompt, false, skipIgnoredServers: true);
+                    }
+                }
+
+                AdventureLogic.Get().SetLastPicTextAndOwner(this, wasAutoPic: false);
             }
             else
             {
@@ -833,24 +854,31 @@ public class AdventureText : MonoBehaviour
 
             _bAddedFinishedTextToPrompt = true;
 
-            //no pics found.  Should we use the LLM to create a description to render?  We'll check to see how many images have been set to render
-            if (bRenderAutoPics && AdventureLogic.Get().GetRenderCount() > 0)
+            if (bRenderAutoPics)
             {
-                // Mark this as using autopics so GenExtra knows to check for LLM availability
-                AdventureLogic.Get().SetLastPicTextAndOwner(this, wasAutoPic: true);
-                
-                if (AdventureLogic.Get().GetGenUniqueAPics())
+                // Phase 1: Per-server render counts - spawn autopics reserved to specific GPUs
+                bool hadPerServerRenders = SpawnPerServerRenderCountAutoPics();
+
+                // Phase 2: Global render count (skips ignored servers)
+                if (AdventureLogic.Get().GetRenderCount() > 0)
                 {
-                    //spawn a separate APic for each render count, so each gets a unique LLM description
-                    for (int i = 0; i < AdventureLogic.Get().GetRenderCount(); i++)
+                    AdventureLogic.Get().SetLastPicTextAndOwner(this, wasAutoPic: true);
+                    
+                    if (AdventureLogic.Get().GetGenUniqueAPics())
                     {
-                        OnAutoRenderButton();
+                        for (int i = 0; i < AdventureLogic.Get().GetRenderCount(); i++)
+                        {
+                            OnAutoRenderButton(skipIgnoredServers: true);
+                        }
+                    }
+                    else
+                    {
+                        OnAutoRenderButton(skipIgnoredServers: true);
                     }
                 }
-                else
+                else if (hadPerServerRenders)
                 {
-                    //single APic, then duplicate the result for additional renders
-                    OnAutoRenderButton();
+                    AdventureLogic.Get().SetLastPicTextAndOwner(this, wasAutoPic: true);
                 }
             }
         }
@@ -890,14 +918,15 @@ public class AdventureText : MonoBehaviour
         ProcessFinalText(streamedText, true);
     }
 
-    public void RenderAnotherPic(RTRendererType renderer)
+    public void RenderAnotherPic(RTRendererType renderer, bool skipIgnoredServers = false)
     {
         if (_lastPicTextRenderedDetailed != null && _lastPicTextRenderedDetailed.Length > 0
             ||
             (_lastPicTextRenderedSimple != null && _lastPicTextRenderedSimple.Length > 0)
             )
         {
-            RenderPic(_lastPicTextRenderedDetailed, _lastPicTextRenderedSimple, renderer, _lastAudioPrompt, _lastAudioNegativePrompt, false);
+            RenderPic(_lastPicTextRenderedDetailed, _lastPicTextRenderedSimple, renderer, _lastAudioPrompt, _lastAudioNegativePrompt, false,
+                skipIgnoredServers: skipIgnoredServers);
         }
     }
 
@@ -979,16 +1008,20 @@ public class AdventureText : MonoBehaviour
             for (int i = 0; i < AdventureLogic.Get().GetRenderCount()-1; i++)
             {
                 //we'll use the reply as the pic text
-                RenderPic(reply, reply, AdventureLogic.Get().GetRenderer(), _lastAudioPrompt, _lastAudioNegativePrompt, false);
+                RenderPic(reply, reply, AdventureLogic.Get().GetRenderer(), _lastAudioPrompt, _lastAudioNegativePrompt, false,
+                    picMain.m_requestedServerID, picMain.m_skipIgnoredServers);
             }
         }
 
     }
-    public void RenderPic(string picTextComfyUI, string picText, RTRendererType desiredRenderer, string audioPrompt, string audioNegativePrompt, bool bAutoPic)
+    public void RenderPic(string picTextComfyUI, string picText, RTRendererType desiredRenderer, string audioPrompt, string audioNegativePrompt, bool bAutoPic,
+        int requestedServerID = -1, bool skipIgnoredServers = false)
     {
         //RTConsole.Log("SPAWNING PIC");
         GameObject pic = ImageGenerator.Get().CreateNewPic();
         PicMain picMain = pic.GetComponent<PicMain>();
+        picMain.m_requestedServerID = requestedServerID;
+        picMain.m_skipIgnoredServers = skipIgnoredServers;
         PicTextToImage scriptAI = pic.GetComponent<PicTextToImage>();
         PicUpscale processAI = pic.GetComponent<PicUpscale>();
         _imagesRenderedOnThisLine++;

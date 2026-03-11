@@ -24,12 +24,14 @@ public class ServerSettingsPanel : MonoBehaviour
     private TMP_Text _titleText;
     private TMP_Text _settingsText;
     private TMP_InputField _jobListInputField;
+    private TMP_InputField _renderCountInputField;
+    private Toggle _ignoredByExtraToggle;
 
     private int _serverID = -1;
 
     // Panel dimensions
     private const float PANEL_WIDTH = 680f;
-    private const float PANEL_HEIGHT = 370f;
+    private const float PANEL_HEIGHT = 430f;
     private const float HEADER_HEIGHT = 36f;
     private const float BASE_FONT_SIZE = 14f;
 
@@ -573,6 +575,102 @@ public class ServerSettingsPanel : MonoBehaviour
 
         yOffset -= 32;
 
+        // Render count label + input field
+        var renderCountLabelObj = new GameObject("RenderCountLabel");
+        renderCountLabelObj.transform.SetParent(_mainPanel, false);
+        var renderCountLabelRt = renderCountLabelObj.AddComponent<RectTransform>();
+        renderCountLabelRt.anchorMin = new Vector2(0, 1);
+        renderCountLabelRt.anchorMax = new Vector2(0, 1);
+        renderCountLabelRt.pivot = new Vector2(0, 1);
+        renderCountLabelRt.offsetMin = new Vector2(leftPad, yOffset - 24);
+        renderCountLabelRt.offsetMax = new Vector2(leftPad + 90, yOffset);
+
+        var renderCountLabelTmp = renderCountLabelObj.AddComponent<TextMeshProUGUI>();
+        renderCountLabelTmp.text = "Render count:";
+        renderCountLabelTmp.font = _font;
+        renderCountLabelTmp.fontSize = BASE_FONT_SIZE;
+        renderCountLabelTmp.color = TextDark;
+        renderCountLabelTmp.alignment = TextAlignmentOptions.MidlineLeft;
+
+        var renderCountGo = TMP_DefaultControls.CreateInputField(BuildTMPResources());
+        renderCountGo.name = "RenderCountInput";
+        renderCountGo.transform.SetParent(_mainPanel, false);
+        ApplyFontAndColor(renderCountGo);
+
+        var renderCountRt = renderCountGo.GetComponent<RectTransform>();
+        renderCountRt.anchorMin = new Vector2(0, 1);
+        renderCountRt.anchorMax = new Vector2(0, 1);
+        renderCountRt.pivot = new Vector2(0, 1);
+        renderCountRt.offsetMin = new Vector2(leftPad + 100, yOffset - 24);
+        renderCountRt.offsetMax = new Vector2(leftPad + 160, yOffset);
+
+        _renderCountInputField = renderCountGo.GetComponent<TMP_InputField>();
+        _renderCountInputField.contentType = TMP_InputField.ContentType.IntegerNumber;
+        _renderCountInputField.text = "0";
+        _renderCountInputField.onValueChanged.AddListener((_) => OnRenderCountChanged());
+
+        var renderCountImg = renderCountGo.GetComponent<Image>();
+        ApplyUISprite(renderCountImg);
+        renderCountImg.color = InputFieldBg;
+
+        // "Ignored by extra generators" checkbox on the same row
+        var ignoredLabelObj = new GameObject("IgnoredByExtraLabel");
+        ignoredLabelObj.transform.SetParent(_mainPanel, false);
+        var ignoredLabelRt = ignoredLabelObj.AddComponent<RectTransform>();
+        ignoredLabelRt.anchorMin = new Vector2(0, 1);
+        ignoredLabelRt.anchorMax = new Vector2(0, 1);
+        ignoredLabelRt.pivot = new Vector2(0, 1);
+        ignoredLabelRt.offsetMin = new Vector2(leftPad + 180, yOffset - 24);
+        ignoredLabelRt.offsetMax = new Vector2(leftPad + 390, yOffset);
+
+        var ignoredLabelTmp = ignoredLabelObj.AddComponent<TextMeshProUGUI>();
+        ignoredLabelTmp.text = "Ignored by extra generators";
+        ignoredLabelTmp.font = _font;
+        ignoredLabelTmp.fontSize = BASE_FONT_SIZE;
+        ignoredLabelTmp.color = TextDark;
+        ignoredLabelTmp.alignment = TextAlignmentOptions.MidlineLeft;
+
+        var toggleGo = new GameObject("IgnoredByExtraToggle");
+        toggleGo.transform.SetParent(_mainPanel, false);
+        var toggleRt = toggleGo.AddComponent<RectTransform>();
+        toggleRt.anchorMin = new Vector2(0, 1);
+        toggleRt.anchorMax = new Vector2(0, 1);
+        toggleRt.pivot = new Vector2(0, 1);
+        toggleRt.offsetMin = new Vector2(leftPad + 395, yOffset - 24);
+        toggleRt.offsetMax = new Vector2(leftPad + 419, yOffset);
+
+        var toggleBgObj = new GameObject("Background");
+        toggleBgObj.transform.SetParent(toggleGo.transform, false);
+        var toggleBgRt = toggleBgObj.AddComponent<RectTransform>();
+        toggleBgRt.anchorMin = Vector2.zero;
+        toggleBgRt.anchorMax = Vector2.one;
+        toggleBgRt.offsetMin = Vector2.zero;
+        toggleBgRt.offsetMax = Vector2.zero;
+        var toggleBgImg = toggleBgObj.AddComponent<Image>();
+        ApplyUISprite(toggleBgImg);
+        toggleBgImg.color = InputFieldBg;
+
+        var toggleCheckObj = new GameObject("Checkmark");
+        toggleCheckObj.transform.SetParent(toggleBgObj.transform, false);
+        var toggleCheckRt = toggleCheckObj.AddComponent<RectTransform>();
+        toggleCheckRt.anchorMin = new Vector2(0.1f, 0.1f);
+        toggleCheckRt.anchorMax = new Vector2(0.9f, 0.9f);
+        toggleCheckRt.offsetMin = Vector2.zero;
+        toggleCheckRt.offsetMax = Vector2.zero;
+        var toggleCheckImg = toggleCheckObj.AddComponent<Image>();
+        CacheSpritesFromExistingDropdown();
+        if (_checkmarkSprite != null)
+            toggleCheckImg.sprite = _checkmarkSprite;
+        toggleCheckImg.color = _checkmarkColor ?? TextDark;
+
+        _ignoredByExtraToggle = toggleGo.AddComponent<Toggle>();
+        _ignoredByExtraToggle.targetGraphic = toggleBgImg;
+        _ignoredByExtraToggle.graphic = toggleCheckImg;
+        _ignoredByExtraToggle.isOn = false;
+        _ignoredByExtraToggle.onValueChanged.AddListener(OnIgnoredByExtraChanged);
+
+        yOffset -= 28;
+
         // Preset label (positioned directly in mainPanel, using same offset approach as dropdown)
         var presetLabelObj = new GameObject("PresetLabel");
         presetLabelObj.transform.SetParent(_mainPanel, false);
@@ -617,7 +715,7 @@ public class ServerSettingsPanel : MonoBehaviour
         yOffset -= 32;
 
         // Job list input (multi-line)
-        float jobListHeight = PANEL_HEIGHT - HEADER_HEIGHT - 8 - 24 - (85 + 8) - 32 - 32 - 16; // Remaining height (added -32 for AutoPic row)
+        float jobListHeight = PANEL_HEIGHT - HEADER_HEIGHT - 8 - 24 - (85 + 8) - 32 - 28 - 32 - 32 - 16; // Remaining height (AutoPic + RenderCount/Ignored row + Preset)
 
         var jobListGo = TMP_DefaultControls.CreateInputField(BuildTMPResources());
         jobListGo.name = "JobListInput";
@@ -722,6 +820,14 @@ public class ServerSettingsPanel : MonoBehaviour
         // Set job list
         if (_jobListInputField != null)
             _jobListInputField.text = serverInfo._jobListOverride;
+
+        // Set render count
+        if (_renderCountInputField != null)
+            _renderCountInputField.text = serverInfo._adventureRenderCount.ToString();
+
+        // Set ignored by extra generators
+        if (_ignoredByExtraToggle != null)
+            _ignoredByExtraToggle.isOn = serverInfo._ignoredByExtraGenerators;
     }
 
     private void RefreshAutoPicDropdown(GPUInfo serverInfo)
@@ -818,6 +924,29 @@ public class ServerSettingsPanel : MonoBehaviour
         {
             serverInfo._autoPicOverride = selected;
         }
+    }
+
+    public void OnRenderCountChanged()
+    {
+        GPUInfo serverInfo = Config.Get().GetGPUInfo(_serverID);
+        if (!Config.Get().IsValidGPU(_serverID)) return;
+
+        if (int.TryParse(_renderCountInputField.text, out int count))
+        {
+            serverInfo._adventureRenderCount = Mathf.Max(0, count);
+        }
+        else
+        {
+            serverInfo._adventureRenderCount = 0;
+        }
+    }
+
+    public void OnIgnoredByExtraChanged(bool isOn)
+    {
+        GPUInfo serverInfo = Config.Get().GetGPUInfo(_serverID);
+        if (!Config.Get().IsValidGPU(_serverID)) return;
+
+        serverInfo._ignoredByExtraGenerators = isOn;
     }
 
     // Legacy Init method - now just refreshes settings

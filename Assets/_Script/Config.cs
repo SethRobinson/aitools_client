@@ -46,6 +46,8 @@ public class GPUInfo
     public string _jobListOverride = "";
     public string _autoPicOverride = ""; // Empty = use global AutoPic setting, otherwise the preset filename to use
     public string _name = ""; //if blank, we'll use our own
+    public int _adventureRenderCount = 0; // Per-server render count for Adventure mode (0 = don't auto-spawn for this server)
+    public bool _ignoredByExtraGenerators = false; // If true, Gen Extra and global render count skip this server
 
     /// <summary>
     /// Checks if this server's job list override has LLM calls before GPU work.
@@ -446,7 +448,7 @@ set_default_audio_negative_prompt|music|
         return -1;
     }
 
-    public int GetFreeGPU(RTRendererType requestedGPUType = RTRendererType.Any_Local, bool bFreeOrBusyIsOk = false)
+    public int GetFreeGPU(RTRendererType requestedGPUType = RTRendererType.Any_Local, bool bFreeOrBusyIsOk = false, bool skipIgnored = false)
     {
         //special types
 
@@ -456,6 +458,7 @@ set_default_audio_negative_prompt|music|
             {
                 // Skip servers owned by other pics (reserved for AutoPic workflows)
                 if (PicMain.IsServerOwnedByAnyPic(i)) continue;
+                if (skipIgnored && GetGPUInfo(i)._ignoredByExtraGenerators) continue;
                 
                 if (!IsGPUBusy(i) && Config.Get().GetGPUInfo(i)._bIsActive)
                 {
@@ -487,6 +490,7 @@ set_default_audio_negative_prompt|music|
             {
                 // Skip servers owned by other pics (reserved for AutoPic workflows)
                 if (PicMain.IsServerOwnedByAnyPic(i)) continue;
+                if (skipIgnored && GetGPUInfo(i)._ignoredByExtraGenerators) continue;
                 
                 if (!Config.Get().IsGPUBusy(i) && GetGPUInfo(i).isLocal && Config.Get().GetGPUInfo(i)._bIsActive)
                 {
@@ -505,6 +509,7 @@ set_default_audio_negative_prompt|music|
                 {
                     // Skip servers owned by other pics (reserved for AutoPic workflows)
                     if (PicMain.IsServerOwnedByAnyPic(i)) continue;
+                    if (skipIgnored && GetGPUInfo(i)._ignoredByExtraGenerators) continue;
                     
                     if (GetGPUInfo(i)._requestedRendererType == requestedGPUType && Config.Get().GetGPUInfo(i)._bIsActive)
                     {
@@ -534,6 +539,7 @@ set_default_audio_negative_prompt|music|
             {
                 // Skip servers owned by other pics (reserved for AutoPic workflows)
                 if (PicMain.IsServerOwnedByAnyPic(i)) continue;
+                if (skipIgnored && GetGPUInfo(i)._ignoredByExtraGenerators) continue;
                 
                 if (GetGPUInfo(i).isLocal && Config.Get().GetGPUInfo(i)._bIsActive)
                 {
@@ -581,6 +587,19 @@ set_default_audio_negative_prompt|music|
             if (PicMain.IsServerOwnedByAnyPic(i)) continue;
             
             if (!IsGPUBusy(i) && GetGPUInfo(i).isLocal && Config.Get().GetGPUInfo(i)._bIsActive) return true;
+        }
+
+        return false;
+    }
+
+    public bool IsAnyNonIgnoredGPUFree()
+    {
+        for (int i = 0; i < m_gpuInfo.Count; i++)
+        {
+            if (PicMain.IsServerOwnedByAnyPic(i)) continue;
+            if (GetGPUInfo(i)._ignoredByExtraGenerators) continue;
+
+            if (!IsGPUBusy(i) && GetGPUInfo(i).isLocal && GetGPUInfo(i)._bIsActive) return true;
         }
 
         return false;

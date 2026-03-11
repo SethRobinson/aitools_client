@@ -986,8 +986,8 @@ public class AdventureLogic : MonoBehaviour
         {
             if (_additionalImageTimer < Time.time)
             {
-                //check if a GPU is free
-                if (Config.Get().IsAnyGPUFree())
+                //check if a non-ignored GPU is free
+                if (Config.Get().IsAnyNonIgnoredGPUFree())
                 {
                     if (_lastPicOwner != null)
                     {
@@ -1004,7 +1004,7 @@ public class AdventureLogic : MonoBehaviour
                                 if (activeAutoPics < maxAutoPics)
                                 {
                                     RTConsole.Log($"GPU and LLM free, spawning extra autopic ({activeAutoPics}/{maxAutoPics} active)");
-                                    _lastPicOwner.OnAutoRenderButton();
+                                    _lastPicOwner.OnAutoRenderButton(skipIgnoredServers: true);
                                 }
                             }
                         }
@@ -1012,7 +1012,7 @@ public class AdventureLogic : MonoBehaviour
                         {
                             // Regular pic with tags - just needs GPU
                             RTConsole.Log("GPU not busy, spawning more");
-                            _lastPicOwner.RenderAnotherPic(RTRendererType.Any_Local);
+                            _lastPicOwner.RenderAnotherPic(RTRendererType.Any_Local, skipIgnoredServers: true);
                         }
                     }
 
