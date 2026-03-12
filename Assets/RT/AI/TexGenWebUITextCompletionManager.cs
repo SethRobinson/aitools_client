@@ -397,12 +397,6 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
             }
         }
 
-        // If no temperature was provided via parms, use the function parameter as fallback
-        if (!extra.Contains("\"temperature\""))
-        {
-            extra += $",\"temperature\": {temperature.ToString(System.Globalization.CultureInfo.InvariantCulture)}\r\n";
-        }
-
         //replace all ` in extra to |
         extra = extra.Replace("`", "|");
 
