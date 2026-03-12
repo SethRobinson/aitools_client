@@ -397,6 +397,12 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
             }
         }
 
+        // If no temperature was provided via parms, use the function parameter as fallback
+        if (!extra.Contains("\"temperature\""))
+        {
+            extra += $",\"temperature\": {temperature.ToString(System.Globalization.CultureInfo.InvariantCulture)}\r\n";
+        }
+
         //replace all ` in extra to |
         extra = extra.Replace("`", "|");
 
@@ -486,8 +492,6 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
             // Build completions-style JSON for llama.cpp with special templates
             // Escape the prompt properly for JSON
             string escapedPrompt = SimpleJSON.JSONNode.Escape(msg);
-          //  ""temperature"": { temperature},
-       
             string json =
              $@"{{
                  ""prompt"": ""{escapedPrompt}"",
@@ -514,8 +518,6 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
         else
         {
             // Original behavior for non-Ollama (includes llama.cpp)
-       //     ""temperature"": { temperature},
-       
             string json =
              $@"{{
                  ""messages"":[{msg}],

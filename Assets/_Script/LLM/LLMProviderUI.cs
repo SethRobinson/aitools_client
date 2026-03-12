@@ -1360,12 +1360,14 @@ public class LLMProviderUI
     {
         _overrideTemperature = value;
         UpdateInputFieldEnabled(_temperatureInput, value);
+        _onSettingsChanged?.Invoke();
     }
     
     private void OnTopPToggleChanged(bool value)
     {
         _overrideTopP = value;
         UpdateInputFieldEnabled(_topPInput, value);
+        _onSettingsChanged?.Invoke();
     }
     
     private void OnTopKToggleChanged(bool value)
@@ -1390,6 +1392,7 @@ public class LLMProviderUI
             _temperature = Mathf.Clamp(result, 0f, 2f);
             if (_temperatureInput != null)
                 _temperatureInput.text = _temperature.ToString("F2");
+            _onSettingsChanged?.Invoke();
         }
     }
     
@@ -1400,6 +1403,7 @@ public class LLMProviderUI
             _topP = Mathf.Clamp(result, 0f, 1f);
             if (_topPInput != null)
                 _topPInput.text = _topP.ToString("F2");
+            _onSettingsChanged?.Invoke();
         }
     }
     
