@@ -260,10 +260,10 @@ public class AdventureText : MonoBehaviour
         }
     }
 
-    public void OnAutoRenderButton(int requestedServerID = -1, bool skipIgnoredServers = false)
+    public void OnAutoRenderButton(int requestedServerID = -1, bool skipIgnoredServers = false, string autoPicOverride = null)
     {
         RenderPic(_lastPicTextRenderedDetailed, _lastPicTextRenderedSimple, AdventureLogic.Get().GetRenderer(),
-            _lastAudioPrompt, _lastAudioNegativePrompt, true, requestedServerID, skipIgnoredServers);
+            _lastAudioPrompt, _lastAudioNegativePrompt, true, requestedServerID, skipIgnoredServers, autoPicOverride);
     }
 
     /// <returns>True if any per-server autopics were spawned.</returns>
@@ -275,9 +275,22 @@ public class AdventureText : MonoBehaviour
             GPUInfo serverInfo = Config.Get().GetGPUInfo(serverIdx);
             if (serverInfo._adventureRenderCount > 0 && serverInfo._bIsActive)
             {
-                for (int i = 0; i < serverInfo._adventureRenderCount; i++)
+                if (serverInfo._gpuLocked)
                 {
-                    OnAutoRenderButton(requestedServerID: serverIdx);
+                    // Locked: reserve autopics to this specific GPU
+                    for (int i = 0; i < serverInfo._adventureRenderCount; i++)
+                    {
+                        OnAutoRenderButton(requestedServerID: serverIdx);
+                    }
+                }
+                else
+                {
+                    // Unlocked: any free GPU can process these, but pre-apply AutoPic override if set
+                    string overrideToApply = string.IsNullOrEmpty(serverInfo._autoPicOverride) ? null : serverInfo._autoPicOverride;
+                    for (int i = 0; i < serverInfo._adventureRenderCount; i++)
+                    {
+                        OnAutoRenderButton(autoPicOverride: overrideToApply);
+                    }
                 }
                 spawned = true;
             }
@@ -1015,7 +1028,7 @@ public class AdventureText : MonoBehaviour
 
     }
     public void RenderPic(string picTextComfyUI, string picText, RTRendererType desiredRenderer, string audioPrompt, string audioNegativePrompt, bool bAutoPic,
-        int requestedServerID = -1, bool skipIgnoredServers = false)
+        int requestedServerID = -1, bool skipIgnoredServers = false, string autoPicOverride = null)
     {
         //RTConsole.Log("SPAWNING PIC");
         GameObject pic = ImageGenerator.Get().CreateNewPic();
@@ -1080,6 +1093,14 @@ public class AdventureText : MonoBehaviour
 
             //now, we're going to have it run our script, but we'd like a notification when the script finishes
             picMain.m_onFinishedScriptCallback += this.AutoPicFinishedScriptCallback;
+
+            // If an AutoPic override was specified at creation (unlocked GPU), use it instead of the global default
+            if (!string.IsNullOrEmpty(autoPicOverride))
+            {
+                fileToLoad = autoPicOverride;
+                picMain.m_autoPicScriptName = autoPicOverride;
+                picMain.m_autoPicOverridePreApplied = true;
+            }
 
             preset = PresetManager.Get().LoadPreset(fileToLoad, PresetManager.Get().GetActivePreset());
 

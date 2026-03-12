@@ -48,6 +48,7 @@ public class GPUInfo
     public string _name = ""; //if blank, we'll use our own
     public int _adventureRenderCount = 0; // Per-server render count for Adventure mode (0 = don't auto-spawn for this server)
     public bool _ignoredByExtraGenerators = false; // If true, Gen Extra and global render count skip this server
+    public bool _gpuLocked = true; // If true (default), per-server autopics are reserved to this GPU; if false, any free GPU can process them
 
     /// <summary>
     /// Checks if this server's job list override has LLM calls before GPU work.

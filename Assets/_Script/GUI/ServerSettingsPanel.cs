@@ -26,6 +26,7 @@ public class ServerSettingsPanel : MonoBehaviour
     private TMP_InputField _jobListInputField;
     private TMP_InputField _renderCountInputField;
     private Toggle _ignoredByExtraToggle;
+    private Toggle _gpuLockedToggle;
 
     private int _serverID = -1;
 
@@ -669,6 +670,61 @@ public class ServerSettingsPanel : MonoBehaviour
         _ignoredByExtraToggle.isOn = false;
         _ignoredByExtraToggle.onValueChanged.AddListener(OnIgnoredByExtraChanged);
 
+        // "GPU Locked" checkbox on the same row, to the right
+        var gpuLockedLabelObj = new GameObject("GPULockedLabel");
+        gpuLockedLabelObj.transform.SetParent(_mainPanel, false);
+        var gpuLockedLabelRt = gpuLockedLabelObj.AddComponent<RectTransform>();
+        gpuLockedLabelRt.anchorMin = new Vector2(0, 1);
+        gpuLockedLabelRt.anchorMax = new Vector2(0, 1);
+        gpuLockedLabelRt.pivot = new Vector2(0, 1);
+        gpuLockedLabelRt.offsetMin = new Vector2(leftPad + 435, yOffset - 24);
+        gpuLockedLabelRt.offsetMax = new Vector2(leftPad + 550, yOffset);
+
+        var gpuLockedLabelTmp = gpuLockedLabelObj.AddComponent<TextMeshProUGUI>();
+        gpuLockedLabelTmp.text = "GPU Locked";
+        gpuLockedLabelTmp.font = _font;
+        gpuLockedLabelTmp.fontSize = BASE_FONT_SIZE;
+        gpuLockedLabelTmp.color = TextDark;
+        gpuLockedLabelTmp.alignment = TextAlignmentOptions.MidlineLeft;
+
+        var gpuLockedToggleGo = new GameObject("GPULockedToggle");
+        gpuLockedToggleGo.transform.SetParent(_mainPanel, false);
+        var gpuLockedToggleRt = gpuLockedToggleGo.AddComponent<RectTransform>();
+        gpuLockedToggleRt.anchorMin = new Vector2(0, 1);
+        gpuLockedToggleRt.anchorMax = new Vector2(0, 1);
+        gpuLockedToggleRt.pivot = new Vector2(0, 1);
+        gpuLockedToggleRt.offsetMin = new Vector2(leftPad + 555, yOffset - 24);
+        gpuLockedToggleRt.offsetMax = new Vector2(leftPad + 579, yOffset);
+
+        var gpuLockedBgObj = new GameObject("Background");
+        gpuLockedBgObj.transform.SetParent(gpuLockedToggleGo.transform, false);
+        var gpuLockedBgRt = gpuLockedBgObj.AddComponent<RectTransform>();
+        gpuLockedBgRt.anchorMin = Vector2.zero;
+        gpuLockedBgRt.anchorMax = Vector2.one;
+        gpuLockedBgRt.offsetMin = Vector2.zero;
+        gpuLockedBgRt.offsetMax = Vector2.zero;
+        var gpuLockedBgImg = gpuLockedBgObj.AddComponent<Image>();
+        ApplyUISprite(gpuLockedBgImg);
+        gpuLockedBgImg.color = InputFieldBg;
+
+        var gpuLockedCheckObj = new GameObject("Checkmark");
+        gpuLockedCheckObj.transform.SetParent(gpuLockedBgObj.transform, false);
+        var gpuLockedCheckRt = gpuLockedCheckObj.AddComponent<RectTransform>();
+        gpuLockedCheckRt.anchorMin = new Vector2(0.1f, 0.1f);
+        gpuLockedCheckRt.anchorMax = new Vector2(0.9f, 0.9f);
+        gpuLockedCheckRt.offsetMin = Vector2.zero;
+        gpuLockedCheckRt.offsetMax = Vector2.zero;
+        var gpuLockedCheckImg = gpuLockedCheckObj.AddComponent<Image>();
+        if (_checkmarkSprite != null)
+            gpuLockedCheckImg.sprite = _checkmarkSprite;
+        gpuLockedCheckImg.color = _checkmarkColor ?? TextDark;
+
+        _gpuLockedToggle = gpuLockedToggleGo.AddComponent<Toggle>();
+        _gpuLockedToggle.targetGraphic = gpuLockedBgImg;
+        _gpuLockedToggle.graphic = gpuLockedCheckImg;
+        _gpuLockedToggle.isOn = true;
+        _gpuLockedToggle.onValueChanged.AddListener(OnGPULockedChanged);
+
         yOffset -= 28;
 
         // Preset label (positioned directly in mainPanel, using same offset approach as dropdown)
@@ -828,6 +884,12 @@ public class ServerSettingsPanel : MonoBehaviour
         // Set ignored by extra generators
         if (_ignoredByExtraToggle != null)
             _ignoredByExtraToggle.isOn = serverInfo._ignoredByExtraGenerators;
+
+        // Set GPU locked
+        if (_gpuLockedToggle != null)
+            _gpuLockedToggle.isOn = serverInfo._gpuLocked;
+
+        UpdateCheckboxInteractability();
     }
 
     private void RefreshAutoPicDropdown(GPUInfo serverInfo)
@@ -939,6 +1001,8 @@ public class ServerSettingsPanel : MonoBehaviour
         {
             serverInfo._adventureRenderCount = 0;
         }
+
+        UpdateCheckboxInteractability();
     }
 
     public void OnIgnoredByExtraChanged(bool isOn)
@@ -947,6 +1011,28 @@ public class ServerSettingsPanel : MonoBehaviour
         if (!Config.Get().IsValidGPU(_serverID)) return;
 
         serverInfo._ignoredByExtraGenerators = isOn;
+    }
+
+    public void OnGPULockedChanged(bool isOn)
+    {
+        GPUInfo serverInfo = Config.Get().GetGPUInfo(_serverID);
+        if (!Config.Get().IsValidGPU(_serverID)) return;
+
+        serverInfo._gpuLocked = isOn;
+    }
+
+    private void UpdateCheckboxInteractability()
+    {
+        GPUInfo serverInfo = Config.Get().GetGPUInfo(_serverID);
+        if (serverInfo == null) return;
+
+        bool hasRenderCount = serverInfo._adventureRenderCount >= 1;
+
+        if (_ignoredByExtraToggle != null)
+            _ignoredByExtraToggle.interactable = hasRenderCount;
+
+        if (_gpuLockedToggle != null)
+            _gpuLockedToggle.interactable = hasRenderCount;
     }
 
     // Legacy Init method - now just refreshes settings

@@ -173,6 +173,7 @@ public class PicMain : MonoBehaviour
     public bool m_stopAfterScript = false; // Set by @stopjob command - tells callback not to add more jobs
     public int m_requestedServerID = -1; // When >= 0, this pic will only use this specific server (waits if busy)
     public bool m_skipIgnoredServers = false; // When true, GetFreeGPU skips servers with _ignoredByExtraGenerators
+    public bool m_autoPicOverridePreApplied = false; // When true, skip per-server AutoPic override (already applied at creation)
     UndoEvent m_undoevent = new UndoEvent();
     UndoEvent m_curEvent = new UndoEvent(); //useful for just saving the current status, makes it easy to copy to/from a real undo event
     bool m_isDestroyed;
@@ -3610,7 +3611,8 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 }
 
                 // Per-server AutoPic override - applies to AutoPic jobs even when m_allowServerJobOverrides is false
-                if (serverInfo != null && m_isAutoPicJob && !string.IsNullOrEmpty(serverInfo._autoPicOverride))
+                // Skip if the override was already pre-applied at creation (unlocked GPU scenario)
+                if (serverInfo != null && m_isAutoPicJob && !m_autoPicOverridePreApplied && !string.IsNullOrEmpty(serverInfo._autoPicOverride))
                 {
                     // Load the server-specific AutoPic preset and replace the job list
                     var preset = PresetManager.Get().LoadPreset(serverInfo._autoPicOverride, PresetManager.Get().GetActivePreset());
