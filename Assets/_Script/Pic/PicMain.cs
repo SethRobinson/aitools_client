@@ -2,6 +2,7 @@ using System.Collections;
 using UnityEngine;
 using System.IO;
 using System;
+using System.Text;
 using TMPro;
 using B83.Image.BMP;
 using UnityEngine.Rendering;
@@ -188,6 +189,13 @@ public class PicMain : MonoBehaviour
     float m_genericTimerStart = 0; //used to countdown for OpenAI Image API
     string m_genericTimerText = "Waiting...";
     string m_lastTimerDisplayText = ""; // Cache to avoid updating text every frame
+
+    // Streaming text display limiting - prevents TMP from choking on huge LLM output
+    private StringBuilder _streamedTextBuffer = new StringBuilder();
+    private float _streamLastUpdateTime;
+    private const float STREAM_UPDATE_INTERVAL = 0.1f;
+    private const int STREAM_DISPLAY_TAIL_CHARS = 500;
+    private const int STREAM_THINKING_TAIL_CHARS = 300;
     
     // Static cache for server ownership - avoids O(N²) GetComponentsInChildren calls in GetFreeGPU
     static HashSet<int> s_ownedServers = new HashSet<int>();
@@ -3006,17 +3014,68 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
     public void OnStreamingTextCallback(string text)
     {
-        //we could get the streaming data here, but for now let's just ignore and handle things when done in OnTexGenCompletedCallback
-    
-        //print it out though
-        if (text != null && text.Length > 0)
+        if (text == null || text.Length == 0) return;
+
+        _streamedTextBuffer.Append(text);
+        m_genericTimerStart = 0;
+
+        if (Time.time - _streamLastUpdateTime < STREAM_UPDATE_INTERVAL) return;
+        _streamLastUpdateTime = Time.time;
+
+        m_text.text = BuildStreamingDisplayText(_streamedTextBuffer.ToString());
+    }
+
+    private string BuildStreamingDisplayText(string fullText)
+    {
+        int thinkOpen = fullText.IndexOf("<think>");
+        if (thinkOpen >= 0)
         {
-            //let's add it to our label text on the pic, to give a preview of what's happening
-           
-           m_text.text += text;
-            m_genericTimerStart = 0;
-            //m_curEvent.m_picJob._requestedLLMReply += text;
+            int thinkContentStart = thinkOpen + 7;
+            int thinkClose = fullText.IndexOf("</think>", thinkContentStart);
+            string preThink = thinkOpen > 0 ? fullText.Substring(0, thinkOpen) : "";
+
+            if (thinkClose < 0)
+            {
+                string thinkContent = fullText.Substring(thinkContentStart);
+                int len = thinkContent.Length;
+                string tail = len > STREAM_THINKING_TAIL_CHARS
+                    ? "..." + thinkContent.Substring(len - STREAM_THINKING_TAIL_CHARS)
+                    : thinkContent;
+                return TruncateHead(preThink) + $"<i>[Thinking... {len:N0} chars]\n{tail}</i>";
+            }
+            else
+            {
+                string thinkContent = fullText.Substring(thinkContentStart, thinkClose - thinkContentStart);
+                string postThink = fullText.Substring(thinkClose + 8);
+                int len = thinkContent.Length;
+                string tail = len > STREAM_THINKING_TAIL_CHARS
+                    ? "..." + thinkContent.Substring(len - STREAM_THINKING_TAIL_CHARS)
+                    : thinkContent;
+                return TruncateHead(preThink)
+                    + $"<i>[Thinking complete - {len:N0} chars]\n{tail}</i>\n"
+                    + TruncateTail(postThink);
+            }
         }
+
+        if (fullText.Length > STREAM_DISPLAY_TAIL_CHARS)
+            return $"[{fullText.Length:N0} chars]\n..." + fullText.Substring(fullText.Length - STREAM_DISPLAY_TAIL_CHARS);
+
+        return fullText;
+    }
+
+    private string TruncateHead(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+        int cap = STREAM_DISPLAY_TAIL_CHARS / 2;
+        if (text.Length <= cap) return text;
+        return "..." + text.Substring(text.Length - cap) + "\n";
+    }
+
+    private string TruncateTail(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+        if (text.Length <= STREAM_DISPLAY_TAIL_CHARS) return text;
+        return text.Substring(text.Length - STREAM_DISPLAY_TAIL_CHARS) + "...";
     }
 
     public void UpdateJobs()
@@ -3309,6 +3368,8 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                     _texGenWebUICompletionManager = gameObject.GetComponent<TexGenWebUITextCompletionManager>() ?? gameObject.AddComponent<TexGenWebUITextCompletionManager>();
      
                 RTDB db = new RTDB();
+                _streamedTextBuffer.Clear();
+                _streamLastUpdateTime = 0;
                 SetStatusMessage("Running LLM...");
                 var mgr = LLMSettingsManager.Get();
                 
