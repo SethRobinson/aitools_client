@@ -7,7 +7,7 @@ License:  BSD style attribution, see LICENSE.md
 </p>
 
 
-## Download the latest: V2.51 (Jan 30th, 2026) [AI Tools Client (Windows, 62 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip)
+## Download the latest: V2.52 (Mar 16th, 2026) [AI Tools Client (Windows, 62 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip)
 
 Need an old version? The last pre-V2 version (that still supports Auto1111) can be downloaded [here](https://www.rtsoft.com/files/SethsAIToolsWindowsV095.zip).
 
@@ -30,6 +30,16 @@ If this is all weird and strange, this is probably not the place for you to star
 
 
 ## Recent changes
+
+### V2.52 (Mar 16th, 2026)
+
+* Added support for Qwen 3.5 thinking/non-thinking modes (OpenAI compatible LLM option)
+* Job script improvements: custom variables with `%var%` syntax, `@invert_alpha` command, `#` for comments, cleaner variable assignment
+* Added "GPU locked toggle" and per-GPU settings in server configuration for more flexible AutoPic rendering
+* Image description now uses vision LLMs directly (e.g. Qwen 3.5) instead of florence/ComfyUI interrogation
+* Improved LLM streaming display on pics
+* Updated presets to use newer script features
+* Bugfixes: temperature override not working, misc stability fixes
 
 ### V2.51 (Jan 30th, 2026)
 
@@ -316,12 +326,14 @@ Note: Workflow filenames like `img_to_img_*.json` or `video_to_video_*.json` are
 
 AutoPic presets (e.g., `AutoPic.txt`, `AutoPicLTX20s.txt`) are special preset job scripts used by Adventure mode to automatically generate image prompts from story text using an LLM. They're stored in the `Presets/` folder and can be selected in the settings. Files starting with `AutoPic` are automatically detected and show in a drop down in the General Settings dialog.  If @stopjob is used in one, it won't automatically try to run the main job script after it's done. (useful so the AutoPic can handle running the comfy workflow it specifically needs)
 
-## Disabling Commands
+## Comments and Disabling Commands
 
-Add `-` at the start of a line to comment it out completely
-Add `-` at the beginning of a command to skip the next parameter
+Add `#` at the start of a line to comment it out (preferred)
+Add `-` at the start of a line to comment it out (also works)
+Add `-` at the beginning of a command to skip that individual command
 ```
--workflow.json (comments out this whole line)
+#workflow.json (commented out)
+-workflow.json (also commented out)
 workflow.json -@disabled_command|parm| @enabled_command|parm|
 ```
 
