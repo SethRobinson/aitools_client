@@ -37,6 +37,7 @@ public class GameLogic : MonoBehaviour
     //from the server which it is.  If we were smart we'd say 0 means no support but hey, I'm adding
     //this later
     bool m_bUseControlNet = false;
+    bool m_bGlobalMute = false;
 
     int m_maxToGenerate = 1000;
     string m_lastModifiedPrompt;
@@ -161,6 +162,7 @@ public class GameLogic : MonoBehaviour
     public bool GetRandomizePrompt() { return m_bRandomizePrompt; }
     public void SetRandomizePrompt(bool bNew) { m_bRandomizePrompt = bNew; }
 
+    public bool GetGlobalMute() { return m_bGlobalMute; }
     public bool GetAutoSave() { return m_bAutoSave; }
     public bool GetAutoSavePNG() { return m_bAutoSavePNG; }
     public void SetAutoSave(bool bNew) { m_bAutoSave = bNew; }
@@ -2156,6 +2158,17 @@ public string GetPrompt() { return m_prompt; }
         */
 
 
+        if (Input.GetKeyDown(KeyCode.M) && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)))
+        {
+            m_bGlobalMute = !m_bGlobalMute;
+            AudioListener.pause = m_bGlobalMute;
+            if (m_bGlobalMute)
+                RTQuickMessageManager.Get().ShowMessage("Muted. Ctrl+M again to unmute");
+            else
+                RTQuickMessageManager.Get().ShowMessage("Unmuted");
+            return;
+        }
+
         if (m_gameMode == eGameMode.EXPERIMENT) return;
 
         const float penAdjustmentSize = 7.0f;
@@ -2207,7 +2220,7 @@ public string GetPrompt() { return m_prompt; }
                     picScript.UndoImage();
                 }
 
-                if (Input.GetKeyDown(KeyCode.M))
+                if (Input.GetKeyDown(KeyCode.M) && !Input.GetKey(KeyCode.LeftControl) && !Input.GetKey(KeyCode.RightControl))
                 {
                     picMaskScript.OnToggleMaskViewButton();
                 }

@@ -199,8 +199,7 @@ public class PicMovie : MonoBehaviour
                 GameObject go = GameLogic.Get().GetPicWereHoveringOver();
                 if (go == gameObject)
                 {
-                    //we're hovering over this pic
-                    _videoPlayer.SetDirectAudioMute(0, false);
+                    _videoPlayer.SetDirectAudioMute(0, GameLogic.Get().GetGlobalMute());
 
                 }
                 else
