@@ -260,6 +260,11 @@ public class AdventureText : MonoBehaviour
         }
     }
 
+ public void OnAutoRenderButtonSimple()
+    {
+        OnAutoRenderButton();
+    }
+
     public void OnAutoRenderButton(int requestedServerID = -1, bool skipIgnoredServers = false, string autoPicOverride = null)
     {
         RenderPic(_lastPicTextRenderedDetailed, _lastPicTextRenderedSimple, AdventureLogic.Get().GetRenderer(),

@@ -488,7 +488,7 @@ MonoBehaviour:
       m_Calls:
       - m_Target: {fileID: 8666351634681075398}
         m_TargetAssemblyTypeName: AdventureText, Assembly-CSharp
-        m_MethodName: OnAutoButton
+        m_MethodName: OnAutoRenderButtonSimple
         m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
