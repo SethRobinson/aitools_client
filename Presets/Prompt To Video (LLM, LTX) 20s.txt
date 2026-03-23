@@ -1,36 +1,60 @@
 COMMAND_START|joblist
-#Generate 20-second video with LLM-enhanced prompt using LTX
-%width%="1024"
-%height%="1024"
-%frames%="481"
+#Generate 20-second video with LLM-enhanced prompt using LTX-2.3
+%width%="960"
+%height%="544"
+%frames%="480"
+%fps%="24"
 
 command @llm_prompt_set_base_prompt
-You rewrite simple ideas into LTX-2 video prompts. Be literal and direct. No poetry. No metaphors. Just clear visual descriptions.
+You rewrite simple ideas into LTX-2.3 video prompts. Be literal and direct. No poetry. No metaphors. Just clear visual descriptions.
 @end
 
 command @llm_prompt_add_from_user
-Rewrite the user's idea below into a 20-second LTX-2 video prompt.
+Rewrite the user's idea below into a 20-second LTX-2.3 text-to-video prompt.
 
 STAY TRUE TO THE USER'S ORIGINAL IDEA. Do not change the subject, setting, or action. Just add technical details.
 
-Write ONE flowing paragraph with PLENTY of content to fill 20 seconds at normal speed. If you don't include enough actions, the video will look like slow motion. Describe actions in SEQUENCE, not with timestamps. Include:
-- Scene setting and lighting
-- Subject details (age, clothing, hair, physical expression)
-- MANY actions described one after another using words like "then", "as", "suddenly", "a beat"
-- Camera movement described naturally throughout
-- Dialogue format: Character (tone): "Line."
-- Include multiple lines of dialogue or many distinct actions to fill the time
+Write ONE flowing paragraph with PLENTY of content to fill 20 seconds. Short prompts for long videos leave the model without enough direction! Structure it as:
+
+OPENING (first 1-2 sentences): Establish the scene.
+# Shot scale (medium shot, close-up, wide establishing shot)
+# Location, lighting, color palette, atmosphere, textures
+# People: age, ethnicity, clothing, hair, physical appearance, starting pose
+
+THEN 20 seconds of sequenced action, structured as three beats:
+# BEAT 1 (~7 seconds): Opening action and first exchange
+# BEAT 2 (~7 seconds): Escalation, reaction, shift in dynamic
+# BEAT 3 (~6 seconds): Resolution or cliffhanger moment
+
+For each beat, interleave:
+# A physical action or gesture (what the body does)
+# A short line of dialog (one sentence max per line)
+# A reaction (how the other person responds physically before speaking)
+
+Break dialog into SHORT phrases with a physical acting direction between EVERY line.
+Show emotion through the BODY, not labels. No parenthetical mood words like (angry) or (sad).
+
+Format: The [description], [physical action]: "[Short line.]"
+
+GOOD: The older man sets down his mug, his jaw tightening: "You said you'd be there."
+BAD: The older man (frustrated): "You said you'd be there. You promised me you'd come."
+
+Include 1-2 camera directions at natural transition points.
+End with one sentence describing the audio environment (voice qualities, ambient sounds, room tone).
+
+Do not use character names - use visual descriptions only.
 
 EXAMPLE 20-SECOND PROMPT:
-"A warm sunny backyard. The camera starts in a tight close-up of a woman and a man in their 30s, facing each other with serious expressions. The woman, emotional and dramatic, says softly: "That's it... Dad's lost it. And we've lost Dad." The man exhales, slightly annoyed: "Stop being so dramatic, Jess." A beat. He glances aside, then mutters defensively: "He's just having fun." The camera slowly pans right, revealing the grandfather in the garden wearing enormous butterfly wings, waving his arms in the air like he's trying to take off. He shouts: "Wheeeew!" as he flaps his wings with full commitment. The woman covers her face, on the verge of tears."
+"Wide shot of a warm sunny backyard, bright afternoon light casting sharp shadows on green grass. A woman in her 30s with auburn hair pulled back in a ponytail stands facing a man of similar age in a faded blue t-shirt, both with serious expressions. The woman clasps her hands together, her voice dropping: 'That's it... Dad's lost it.' She shakes her head slowly: 'And we've lost Dad.' The man exhales through his nose, rubbing the back of his neck: 'Stop being so dramatic.' A beat. He glances to the side, then mutters: 'He's just having fun.' The camera slowly pans right, revealing an elderly man in the garden wearing enormous butterfly wings, waving his arms in the air with full commitment. He shouts: 'Wheeeew!' as he flaps wildly. The woman covers her face with both hands, shoulders trembling. The man stares, mouth slightly open, then turns back to her, gesturing helplessly: 'Okay... maybe a little lost.' Bright outdoor ambience, birdsong, the rustle of butterfly wings, and distant laughter."
 
 CRITICAL RULES:
-- Output ONLY the prompt text. No explanations, no labels, no timestamps like "at 6 seconds".
+- Output ONLY the prompt text. No explanations, no labels, no timestamps.
 - Be LITERAL and CLEAR, not poetic or vague.
 - Keep the user's core idea intact. DO NOT replace it with something else.
 - Describe what the camera SEES, not feelings or abstract concepts.
 - Do NOT use the word "cinematic".
-- Include ENOUGH CONTENT for 20 seconds. Multiple actions, dialogue exchanges, or events. Otherwise the video will be slow motion.
+- No parenthetical emotion labels - show emotion through physical actions!
+- Include ENOUGH CONTENT for 20 seconds (~300-350 words). Otherwise the video will be slow motion.
 
 The user's idea:
 @end
@@ -43,7 +67,7 @@ command @copy|prepend_prompt|prompt|
 command @add|llm_reply|prompt|
 command @add|append_prompt|prompt|
 
-text_to_video_ltx_fast.json @replace|"width": 1920|"width": %width%| @replace|"height": 1088|"height": %height%| @replace|"value": 121|"value": %frames%|
+text_to_video_ltx23.json @replace|"width": 960|"width": %width%| @replace|"height": 544|"height": %height%| @replace|"value": 121|"value": %frames%| @replace|"value": 24|"value": %fps%|
 COMMAND_END
 COMMAND_START|default_negative_prompt
 cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white

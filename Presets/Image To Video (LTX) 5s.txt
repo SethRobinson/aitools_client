@@ -1,10 +1,11 @@
 COMMAND_START|joblist
 #Convert image to 5-second video using LTX model
-%width%="1024"
-%height%="1024"
-%frames%="481"
+%width%="960"
+%height%="544"
+%frames%="121"
+%fps%="24"
 
-img_to_video_ltx.json @upload|image1|input1| @replace|"width": 1920|"width": %width%| @replace|"height": 1088|"height": %height%| @replace|"value": 121|"value": %frames%|
+img_to_video_ltx23.json @upload|image1|input1| @replace|"width": 960|"width": %width%| @replace|"height": 544|"height": %height%| @replace|"value": 121|"value": %frames%| @replace|"value": 24|"value": %fps%|
 COMMAND_END
 COMMAND_START|default_negative_prompt
 cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white

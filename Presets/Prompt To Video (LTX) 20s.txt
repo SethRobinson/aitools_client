@@ -1,18 +1,14 @@
 COMMAND_START|joblist
-#Generate 20-second video using LTX model (high quality)
-#Generate 5-second video using LTX model
-%width%="1920"
-%height%="1088"
-%frames%="481"
-%fps%="50"
+#Generate 20-second video using LTX model
+%width%="960"
+%height%="544"
+%frames%="480"
+%fps%="24"
 
-text_to_video_ltx_fast.json @replace|"width": 1920|"width": %width%| @replace|"height": 1088|"height": %height%| @replace|"value": 121|"value": %frames%| @replace|"value": 24|"value" : %fps%|"
-
+text_to_video_ltx23.json @replace|"width": 960|"width": %width%| @replace|"height": 544|"height": %height%| @replace|"value": 121|"value": %frames%| @replace|"value": 24|"value": %fps%|
 
 COMMAND_END
 COMMAND_START|default_negative_prompt
-cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white
 COMMAND_END
 COMMAND_START|default_pre_prompt
-shot with a Bessa Cinestill, live action shot.
 COMMAND_END

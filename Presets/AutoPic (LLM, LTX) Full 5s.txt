@@ -1,30 +1,52 @@
 COMMAND_START|joblist
-#AutoPic: LLM generates 5-second video prompt from story using LTX
+#AutoPic: LLM generates 5-second video prompt from story using LTX-2.3
 %width%="960"
-%height%="576"
+%height%="544"
 %frames%="121"
+%fps%="24"
 
 command @llm_prompt_set_base_prompt
-Your job is to look at the following text/story and describe in text the image of the last scene so that it can be rendered by a text-to-video AI. Do not include any choices or options. Don't create new story, just illustrate what just recently happened in a series of actions for each prompt.
+Your job is to look at the following text/story and illustrate ONLY THE LAST SCENE as a 5-second video prompt for LTX-2.3 text-to-video AI. Do not include any choices or options. Don't create new story, just illustrate what just recently happened.
 
-Write ONE flowing paragraph. Describe actions in SEQUENCE, not with timestamps. Include:
-- Scene setting and lighting
-- Subject details (age, clothing, hair, physical expression)
-- Actions described one after another using words like "then", "as", "suddenly"
-- Camera movement described naturally
-- Dialogue format: Character (tone): "Line."
+Since there is no starting image, your prompt must describe BOTH the visual scene AND the action.
+
+Write ONE flowing paragraph with this structure:
+
+OPENING (first 1-2 sentences): Establish the scene.
+# Shot scale and camera position (medium shot, close-up, wide establishing shot)
+# Location, lighting, color palette, atmosphere, textures
+# People: age, ethnicity, clothing, hair, physical appearance, starting pose
+
+THEN describe the action for the remaining time:
+# Physical actions and gestures described in sequence using "then", "as", "suddenly"
+# Break dialog into short phrases with a physical acting direction between each line
+# Show emotion through the BODY, not labels. No parenthetical mood words like (angry) or (sad)
+# Include one camera direction placed naturally
+
+Dialog format: The [description], [physical action]: "[Short line.]"
+
+GOOD: The woman sets down her phone, her brow furrowing: "Not again."
+BAD: The woman (frustrated): "Not again."
+
+End with a brief audio note (voice quality, ambient sounds, room tone).
 
 EXAMPLE 5-SECOND PROMPT:
-"Medium shot of a coffee shop interior, warm morning light through large windows. A woman in her 30s with short dark hair and a gray sweater sits at a wooden table, staring at her phone with furrowed brows. She sighs heavily, sets the phone down, then looks up toward the window. The camera slowly pushes in on her face as she whispers to herself: "Not again.""
+"Medium shot of a coffee shop interior, warm morning light streaming through large windows, golden highlights on wooden surfaces. A woman in her 30s with short dark hair and a gray wool sweater sits at a wooden table, staring at her phone with furrowed brows. She sighs heavily, sets the phone face-down on the table, then looks up toward the window. The camera slowly pushes in on her face as she whispers to herself: 'Not again.' Soft ambient cafe noise, the clink of distant cups."
+
+*** ABSOLUTELY NO CHARACTER NAMES! ***
+The video AI has NO IDEA who "Yuki", "Sarah", or "Mr. Thompson" are.
+Replace ALL names with visual descriptions: "The young woman" NOT "Yuki".
 
 CRITICAL RULES:
-- Output ONLY the prompt text. No explanations, no labels, no timestamps like "at 3 seconds".
+- Output ONLY the prompt text. No explanations, no labels, no timestamps.
 - Be LITERAL and CLEAR, not poetic or vague.
 - Keep the user's core idea intact. DO NOT replace it with something else.
 - Describe what the camera SEES, not feelings or abstract concepts.
 - Do NOT use the word "cinematic".
+- ALWAYS FULLY DESCRIBE PERSONS! Age, race, clothing, pose, everything!
+- No parenthetical emotion labels - show emotion through physical actions!
 
-The prompt should be around 300 words and be extremely detailed.
+The prompt should be around 100-150 words.
 
 ******* STORY STARTS HERE
 
@@ -34,20 +56,14 @@ command @llm_prompt_add_from_user
 ********* END STORY
 
 Format your response as:
-SET_PROMPT1: [5 second scene description]
+SET_PROMPT1: [5-second scene + action description, ~100-150 words, ending with audio note]
 
-Be sure to fully describe all people in it (ages, race, clothing, pose, everything).
-ONLY describe what's happening in the latest scene. Your descriptions should be literal and clear, not poetic and vague.
-
-ALWAYS FULLY DESCRIBE THE PERSONS IN THE PROMPT! Age too! Remember, the video prompt you're giving is only of the very END of the story, the last scene text reply.
+ONLY describe what's happening in the LATEST scene of the story.
 @end
 
 call_llm
 command @parse_llm_prompts
-text_to_video_ltx_fast.json @replace|"width": 960|"width": %width%| @replace|"height": 576|"height": %height%| @replace|"value": 121|"value": %frames%|
-
-#Higher quality (needs lots of VRAM):
-#text_to_video_ltx_fast.json @replace|"width": 960|"width": 1280| @replace|"height": 576|"height": 720| @replace|"value": 121|"value": %frames%|
+text_to_video_ltx23.json @replace|"width": 960|"width": %width%| @replace|"height": 544|"height": %height%| @replace|"value": 121|"value": %frames%| @replace|"value": 24|"value": %fps%|
 
 command @stopjob
 COMMAND_END

@@ -1,43 +1,121 @@
 COMMAND_START|joblist
-#AutoPic: LLM generates 20-second video prompt from story using LTX
+#AutoPic: LLM generates 20-second LTX-2.3 text-to-video prompt from story (no starting image)
 %width%="960"
-%height%="576"
-%frames%="481"
+%height%="544"
+%frames%="480"
+%fps%="24"
 
-command @llm_prompt_pop_first
+command @lock_gpu
 
 command @llm_prompt_set_base_prompt
-Your job is to look at the following text/story and create a cinematic 20-second video prompt for LTX-2 AI video generation. Structure the prompt like a mini screenplay scene.|
-command @llm_prompt_add_from_user|
-Your job is to look at the following text/story and describe in text the image of the last scene so that it can be rendered by a text-to-image AI.  Do not include any choices or options.
+Your job is to look at the following text/story and illustrate ONLY THE LAST SCENE - the most recent thing that happened. You will be sent an entire story but you must focus only on the very end.
 
-Analyze the entire story, but we'll just focus on the last "scene" and describe in detail 4 distinct 5-second visual scenes for a 20-second movie, of just the last story text blurb. Each prompt should flow into the next, instead of being a jump cut. Don't create new story, just illustrate what just recently happened in a series of actions for each prompt.
-Include the nationality, age, clothing and scene and poses.
+Do not include any choices or options. Don't create new story, just illustrate what just recently happened. The video prompt is ONLY of the very END of the story, the last scene/text reply.
 
+Create ONE detailed video prompt for LTX-2.3 text-to-video AI generation. Since there is no starting image, your prompt must describe BOTH the visual scene AND the action that unfolds over 20 seconds.
 
-EXAMPLE 20-SECOND PROMPT:
-"A warm sunny backyard. The camera starts in a tight close-up of a woman and a man in their 30s, facing each other with serious expressions. The woman, emotional and dramatic, says softly: "That's it... Dad's lost it. And we've lost Dad." The man exhales, slightly annoyed: "Stop being so dramatic, Jess." A beat. He glances aside, then mutters defensively: "He's just having fun." The camera slowly pans right, revealing the grandfather in the garden wearing enormous butterfly wings, waving his arms in the air like he's trying to take off. He shouts: "Wheeeew!" as he flaps his wings with full commitment. The woman covers her face, on the verge of tears."
+**** PROMPT STRUCTURE ****
+Write ONE flowing paragraph with this structure:
 
-CRITICAL RULES:
-- Output ONLY the prompt text. No explanations, no labels, no timestamps like "at 6 seconds".
-- Be LITERAL and CLEAR, not poetic or vague.
-- Keep the user's core idea intact. DO NOT replace it with something else.
-- Describe what the camera SEES, not feelings or abstract concepts.
-- Do NOT use the word "cinematic".
-- Include ENOUGH CONTENT for 20 seconds. Multiple actions, dialogue exchanges, or events. Otherwise the video will be slow motion.
+OPENING (first 1-2 sentences): Establish the scene.
+# Shot scale and camera position (medium shot, close-up, wide establishing shot)
+# Location, lighting, color palette, atmosphere, textures
+# People: age, ethnicity, clothing, hair, physical appearance, starting pose
+
+THEN the rest is 20 seconds of sequenced action, structured as three beats:
+# BEAT 1 (first ~7 seconds): Opening action and first exchange
+# BEAT 2 (middle ~7 seconds): Escalation, reaction, shift in dynamic
+# BEAT 3 (final ~6 seconds): Resolution or cliffhanger moment
+
+For each beat, interleave:
+# A physical action or gesture (what the body does)
+# A short line of dialog (one sentence max per line)
+# A reaction (how the other person responds physically before speaking)
+
+**** DIALOG FORMAT ****
+Break dialog into SHORT phrases with a physical acting direction between EVERY line.
+Show emotion through the BODY, not labels. No parenthetical mood words like (angry) or (sad).
+
+FORMAT: The [description], [physical action]: "[Short line.]"
+
+GOOD: The older man sets down his mug, his jaw tightening: "You said you'd be there."
+BAD: The older man (frustrated): "You said you'd be there. You promised me you'd come."
+
+# One sentence per dialog line, then a physical beat, then the next line
+# Never have a character speak two sentences in a row without a gesture or reaction between them
+
+**** CAMERA MOVEMENT ****
+Include ONE or TWO camera directions placed at natural transition points:
+# "The camera slowly pushes in" / "The camera tracks left to reveal" / "Handheld, slight shake"
+# Place camera moves between beats, not during dialog
+# Describe what becomes visible after the camera moves
+
+**** AUDIO DESCRIPTION ****
+End the prompt with one sentence describing the sound environment:
+# Voice qualities, ambient sounds, room tone
+# Example: "Crisp indoor dialogue, the hum of fluorescent lights, faint rain on glass."
+
+*** ABSOLUTELY NO CHARACTER NAMES! ***
+The video AI has NO IDEA who "Yuki", "Kenji", "Sarah", or "Mr. Thompson" are.
+You MUST replace ALL names with visual descriptions:
+# In narrative: "The young woman kneels down" NOT "Yuki kneels down"
+# In dialog tags: "The older man, clenching his fist:" NOT "Hiroshi, clenching his fist:"
+# In references: "she turns to the tall man" NOT "she turns to Kenji"
+
+DO NOT include:
+# ANY character names from the story - not even once!
+# The word "cinematic"
+# Parenthetical emotion labels like (angry), (sad), (gentle)
+# Timestamps like "at 5 seconds" or "0:00-0:05"
+
+GOOD EXAMPLE (20 seconds with scene, physical beats, camera, and audio):
+"Medium shot in a dimly lit diner at night, fluorescent lights casting a cold blue-white glow, rain streaking down the plate glass windows. A broad man in his early 50s with weathered tanned skin and gray-streaked brown hair under a faded cap sits at a scratched formica counter, both hands wrapped around a chipped ceramic mug. Across from him, a middle-aged waitress leans against the counter, penciled eyebrows drawn together, a coffee pot in one hand. The older man sets down his mug, the ceramic clinking against the counter. He exhales slowly, his jaw tightening: 'You said you'd be there.' A pause. He swallows hard: 'You promised.' The waitress breaks eye contact, glancing down at the counter, then slowly looks back up, crossing her arms: 'Something came up.' She shifts her weight: 'You know how it is.' The camera slowly pushes in closer. He unfolds his arms and takes a step toward her, eyes narrowing: 'Three years.' He holds up three fingers: 'Three years and you still can't just tell me the truth.' The waitress's shoulders drop. She uncrosses her arms and reaches out, touching his forearm, barely above a whisper: 'I wanted to tell you.' She pauses, biting her lower lip: 'I just didn't know how.' He looks down at her hand on his arm, then slowly back up to her face, his posture softening: 'Then tell me now.' The camera dollies in to a close-up of their faces. Crisp indoor dialogue with the hum of fluorescent lights and faint rain on glass."
+
+BAD EXAMPLE (too short for 20 seconds):
+"A man in a diner sighs. The waitress looks away. He steps closer." - NOT ENOUGH! This would fill maybe 3 seconds.
+
+BAD EXAMPLE (emotion labels instead of physical acting):
+"The man (frustrated): 'You promised.' The waitress (defensive): 'Something came up.'" - DON'T USE PARENTHETICAL MOODS! Show it through the body.
+
+**** CRITICAL RULES ****
+# Output ONLY the prompt. No explanations, no labels like "SET_PROMPT1:".
+# Be LITERAL and CLEAR, not poetic or vague.
+# Keep the user's core idea intact. DO NOT replace it with something else.
+# Describe what the camera SEES, not feelings or abstract concepts.
+# ALWAYS FULLY DESCRIBE PERSONS! Age, race, clothing, pose, everything!
+# ONLY describe what's happening in the LATEST scene of the story.
+# ZERO CHARACTER NAMES! Replace every single name with a visual description!
+# Do not use ALL CAPS for character references - use normal case like "The young woman"
+# Structure as three beats with physical acting between every dialog line!
+# Include 1-2 camera movements at natural transition points!
+# End with a one-sentence audio/sound description!
+# No parenthetical emotion labels - show emotion through physical actions!
+# The prompt must be ~300-350 words to fill 20 seconds (scene description + action)!
+
+******* STORY STARTS HERE
+
+@end
+command @llm_prompt_add_from_user
+
+********* END STORY
+
+Output ONLY the video prompt. No labels, no explanations. ~300-350 words.
+
 @end
 
 call_llm
 command @copy|prepend_prompt|prompt|
 command @add|llm_reply|prompt|
+command @add|append_prompt|prompt|
 
-text_to_video_ltx_fast.json @replace|"width": 960|"width": %width%| @replace|"height": 576|"height": %height%| @replace|"value": 121|"value": %frames%|
+text_to_video_ltx23.json @replace|"width": 960|"width": %width%| @replace|"height": 544|"height": %height%| @replace|"value": 121|"value": %frames%| @replace|"value": 24|"value": %fps%|
 
-#Higher quality (needs 80GB+ VRAM):
-#text_to_video_ltx_fast.json @replace|"width": 960|"width": 1280| @replace|"height": 768|"height": 1024| @replace|"value": 121|"value": %frames%|
+#signal that we should stop completely
+command @stopjob
 COMMAND_END
 COMMAND_START|default_negative_prompt
+cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. cartoon, anime
 COMMAND_END
 COMMAND_START|default_pre_prompt
-Shot with a Bessa Cinestill. Analog film, high ISO, medium dynamic range, amateur photo. Candid.
+
 COMMAND_END

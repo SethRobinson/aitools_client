@@ -1,10 +1,11 @@
 COMMAND_START|joblist
-#AutoPic: LLM generates image + video prompts from story, Chroma image + LTX-2.3 video
-%chroma_model%="Chroma1-HD-fp8_scaled_defaultloader_hybrid_large_rev2.safetensors"
+#AutoPic: LLM generates image + video prompts from story, Z-Image image + LTX-2.3 video
+%zimage_model%="z_image_turbo_bf16.safetensors"
 %img_width%="960"
 %img_height%="544"
 %frames%="121"
 %fps%="24"
+%steps%="9"
 
 command @lock_gpu
 
@@ -15,7 +16,7 @@ Do not include any choices or options. Don't create new story, just illustrate w
 
 Create TWO separate prompts for AI generation:
 1. SET_PROMPT1: A static image description for the last scene (for text-to-image AI)
-2. SET_PROMPT2: Action and dialog script for what happens in that scene (for image-to-video AI)
+2. SET_PROMPT2: A 5-second video action/dialog script (for image-to-video AI)
 
 **** PROMPT 1 RULES (Static Image) ****
 Describe ONLY what the camera sees in one frozen moment:
@@ -33,7 +34,7 @@ EXAMPLE PROMPT1:
 "Medium shot in a dimly lit diner at night. A broad man in his early 50s with weathered tanned skin and gray-streaked brown hair sits at a scratched formica counter, both hands wrapped around a chipped ceramic mug. He wears a flannel shirt rolled to the elbows. Across from him, a middle-aged waitress leans against the counter, penciled eyebrows drawn together, a coffee pot in one hand. Fluorescent lights cast a cold blue-white glow, rain streaks down the plate glass windows."
 
 **** PROMPT 2 RULES (5-Second Video Action/Dialog) ****
-This prompt drives an LTX-2.3 image-to-video AI. The starting image is already generated from PROMPT1, so do NOT re-describe the scene or characters.
+This prompt drives an image-to-video AI. The starting image is already generated from PROMPT1, so do NOT re-describe the scene or characters.
 
 Focus ONLY on what happens next — the transition from stillness to motion:
 - One or two actions and reactions
@@ -60,9 +61,6 @@ Only reference details you wrote in PROMPT1. Do NOT invent new details.
 
 GOOD EXAMPLE PROMPT2 (5 seconds):
 "The older man sets down his mug, the ceramic clinking against the counter. He exhales slowly, his jaw tightening: 'You said you'd be there.' The waitress breaks eye contact, glancing down at the counter. Crisp indoor dialogue with the hum of fluorescent lights."
-
-BAD EXAMPLE (too many scene changes):
-"The young woman helps the child. Then she walks to the market. The merchant greets her. They go inside the shop..." - TOO MANY LOCATIONS! Pick ONE moment in ONE place!
 
 **** CRITICAL RULES ****
 - Output ONLY the two prompts with their labels. No explanations.
@@ -91,14 +89,13 @@ SET_PROMPT2: [5-second action/dialog from ONE moment, ~50-80 words, ending with 
 call_llm
 command @parse_llm_prompts
 
-#Use PROMPT1 for the static image generation with Chroma
+#Use PROMPT1 for the static image generation with Z-Image
 command @copy|prompt_1|prompt|
 
 #Generate starting image
-text_to_img_chroma.json @replace|Chroma1-HD-fp8_scaled_defaultloader_hybrid_large_rev2.safetensors|%chroma_model%| @replace|"width": 1024|"width": %img_width%| @replace|"height": 1024|"height": %img_height%|
+text_to_img_zimage.json @replace|z_image_turbo_bf16.safetensors|%zimage_model%| @replace|"width": 1024|"width": %img_width%| @replace|"height": 1024|"height": %img_height%| @replace|"steps": 9|"steps": %steps%|
 
-
-#Use PROMPT2 for the video generation with LTX
+#Use PROMPT2 for the video generation with LTX-2.3
 command @copy|prompt_2|prompt|
 
 img_to_video_ltx23.json @upload|image1|input1| @replace|"width": 960|"width": %img_width%| @replace|"height": 544|"height": %img_height%| @replace|"value": 121|"value": %frames%| @replace|"value": 24|"value": %fps%|

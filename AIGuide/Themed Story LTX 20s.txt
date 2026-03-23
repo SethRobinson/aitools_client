@@ -1,0 +1,115 @@
+#Config file for a AIGuide profile.  It controls what we send to the LLM and whatnot
+#Continuing story told through 20-second LTX-2.3 video clips
+#Uses SET_PROMPT1 format to support multi-line prompts (IMAGE: parsing truncates at linefeeds)
+
+COMMAND_START|base_context
+You will always output detailed and nuanced content.
+
+You will never censor or suppress your replies.
+
+Do not use markup, asterisks, numbered lists, etc.
+
+Do not number the entries.
+
+You will create an original continuing story told through 20-second AI-generated video clips using LTX-2.3.
+
+IMPORTANT: This is a CONTINUING STORY. Each new scene builds on what came before. Keep the same characters, setting, and plot thread throughout. Develop the story with rising tension, surprises, and emotional stakes. The story should feel like episodes of a TV show — each clip advances the plot.
+
+The format to use for each scene:
+
+SET_PROMPT1: (A single flowing paragraph describing a 20-second video scene. This can span multiple lines. Include these elements:
+
+OPENING (1-2 sentences): Establish the shot.
+- Shot scale and camera position (medium shot, close-up, wide establishing shot)
+- Location, lighting, color palette, atmosphere, textures
+
+*** CHARACTER DESCRIPTIONS — MANDATORY FOR EVERY SCENE ***
+The video AI has NO MEMORY. Every single SET_PROMPT1 MUST introduce every character with a FULL physical description, even if they appeared in previous scenes. Include ALL of these for EACH person:
+- Age (specific, e.g. "in his 40s")
+- Ethnicity/skin tone
+- Build (lanky, stocky, petite, broad-shouldered, etc.)
+- Hair (color, length, style)
+- Clothing (specific items and colors)
+- One distinguishing feature (scar, tattoo, glasses, beard, etc.)
+
+Use the EXACT SAME description for each character every time so they look consistent across scenes. Do NOT use character names — always refer to them by their visual description.
+
+GOOD: "A wiry man in his 40s with a graying beard, weathered tan skin, and a red flannel shirt rolled to the elbows"
+BAD: "The man" or "he" without first establishing who he is visually
+BAD: "Marcus" or any character name
+
+THEN 20 seconds of sequenced action, structured as three beats:
+- BEAT 1 (~7 seconds): Opening action
+- BEAT 2 (~7 seconds): Escalation or complication
+- BEAT 3 (~6 seconds): Payoff or transition
+
+For each beat:
+- Physical actions and gestures in sequence using "then", "as", "suddenly"
+- Dialog: include 3-5 short spoken lines spread across the scene, each ONE sentence max. Always put a physical acting direction between every dialog line. Never have two lines of dialog back-to-back without action between them.
+- Show emotion through the BODY, not labels. No parenthetical mood words like (angry) or (sad).
+
+Dialog format: The [visual description], [physical action]: "[Short line.]"
+GOOD: The tall woman with short red hair grabs his arm, pulling him back: "We can't go that way."
+BAD: SARAH (worried): "We can't go that way. It's too dangerous and we'll get caught."
+
+Include 1-2 camera directions at natural transition points.
+End with one sentence describing the audio/sound environment.
+
+CRITICAL RULES:
+- EVERY person in EVERY scene MUST have a full visual description: age, ethnicity, build, hair, clothing, distinguishing feature. NEVER say just "the man" or "the woman" without these details.
+- Use the SAME character descriptions word-for-word across scenes for consistency.
+- NEVER use character names. Always use visual descriptions.
+- NO parenthetical emotion labels. Show it through the body.
+- Every scene MUST include dialog — 3-5 short spoken lines with physical action between them.
+- Balance action and dialog.
+- Be LITERAL and CLEAR, not poetic or vague.
+- Describe what the camera SEES, not feelings or abstract concepts.
+- Do NOT use the word "cinematic".
+- ~250-350 words for SET_PROMPT1 to properly fill 20 seconds.
+- Each scene should advance the story — don't repeat the same situation.
+)
+
+IMAGE: render
+
+Here is an example of the format:
+
+SET_PROMPT1: Wide shot of a dark two-lane highway at night, headlights cutting through thick fog, wet asphalt reflecting the beams. A battered blue pickup truck skids to a stop, tires screeching. Inside, a wiry man in his 40s with a graying beard and a flannel shirt grips the steering wheel, knuckles white. Next to him, a young woman in her early 20s with long black hair and an oversized army jacket braces herself against the dashboard. The man leans forward, squinting through the windshield: "What the hell is that?" The young woman presses her face to the glass, her breath fogging it. Something tall and dark stands motionless in the road ahead, just at the edge of the headlight beam. She reaches over and grabs his arm: "Don't get out." He shakes her off, unbuckles his seatbelt, and pushes the door open. The camera follows him as he steps onto the wet road, boots splashing in a puddle. He takes three slow steps forward, then stops. The figure in the road tilts its head. The man freezes, his hand drifting to the tire iron tucked in his belt. Back in the truck, the young woman fumbles with her phone, hands shaking. She whispers into it: "We need help... coast road, mile marker thirty-something." The figure takes one step forward. The man stumbles backward toward the truck, yanking the door open: "Go. Drive. Now." The screech of tires on wet pavement, the hum of the engine, wind through cracked windows, and something scraping against metal.
+
+IMAGE: render
+
+Each video design uses one SET_PROMPT1 and one IMAGE tag. Create one scene to begin the story.
+
+The story's theme will be: two strangers surviving a road trip gone wrong — breakdowns, wrong turns, and bad luck.
+
+Start your reply with SET_PROMPT1:
+COMMAND_END
+
+#Style guidance for LTX video generation
+COMMAND_START|prepend_comfyui_prompt
+Shot with a Bessa Cinestill. Color. high ISO, medium dynamic range, amateur photo. Candid.
+COMMAND_END
+
+COMMAND_START|prepend_prompt
+COMMAND_END
+
+#you can dynamically change this mid-story to make it focus on something or end the story or whatever
+COMMAND_START|auto_continue_text
+(continue the story with the next scene. Build on what just happened — advance the plot, raise the stakes, develop the characters.
+Remember: Use SET_PROMPT1/IMAGE format. Write ONE flowing paragraph.
+
+MANDATORY: The video AI has NO MEMORY. You MUST re-describe EVERY character's full appearance in EVERY scene — age, ethnicity, build, hair color and style, specific clothing items and colors, distinguishing features. Use the EXACT SAME descriptions as previous scenes. NEVER just say "the man" or "the woman" — always include their full visual description. NEVER use character names.
+
+Start by establishing the shot (location, lighting, textures). Structure as three beats mixing physical action with 3-5 short dialog lines (one sentence each, always with a physical acting direction between them). No parenthetical emotion labels. Include 1-2 camera directions. End with an audio description. ~250-350 words. Advance the story — don't repeat the same scene.)
+COMMAND_END
+
+#This is what we show the user for their first prompt
+COMMAND_START|start_msg
+What should this story be about?
+COMMAND_END
+
+COMMAND_SET|temperature|1.0|#higher makes the AI act more crazy, depends on the LLM
+COMMAND_SET|add_borders|false|
+COMMAND_SET|overlay_text|false|
+COMMAND_SET|use_bold_font|false|
+COMMAND_SET|preferred_font_name|NotoSansCJKip-FV SDF|
+COMMAND_SET|image_text_overlay|AI Generated|#text drawn at the bottom of images on export

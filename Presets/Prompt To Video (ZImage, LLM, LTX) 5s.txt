@@ -1,13 +1,14 @@
 COMMAND_START|joblist
-#Variables
-%chroma_model%="Chroma1-HD-fp8_scaled_defaultloader_hybrid_large_rev2.safetensors"
+#Generate 5-second video: Z-Image image + LLM prompts + LTX-2.3 video
+%zimage_model%="z_image_turbo_bf16.safetensors"
 %img_width%="960"
 %img_height%="544"
+%steps%="9"
 
 #Save original user prompt
 %original_idea%=%prompt%
 
-#=== FIRST LLM: Generate image description for Chroma ===
+#=== FIRST LLM: Generate image description for Z-Image ===
 command @llm_prompt_set_base_prompt
 You describe static images for a text-to-image AI. Be literal and direct. No poetry. No metaphors.
 @end
@@ -24,6 +25,9 @@ Describe ONLY what the camera sees in one frozen moment:
 DO NOT include dialogue, actions, movement, story elements, or the word "cinematic".
 Output ONLY the image description. No explanations, no labels.
 
+EXAMPLE:
+"Medium shot in a dimly lit diner at night. A broad man in his early 50s with weathered tanned skin and gray-streaked brown hair sits at a scratched formica counter, both hands wrapped around a chipped ceramic mug. He wears a flannel shirt rolled to the elbows and mud-splattered work boots. Across the counter, a middle-aged waitress leans in with penciled eyebrows drawn together. Fluorescent lights buzz overhead, rain streaks down the plate glass windows behind them."
+
 The user's idea:
 @end
 
@@ -34,8 +38,8 @@ call_llm
 %image_description%=%llm_reply%
 %prompt%=%llm_reply%
 
-#Generate starting image
-text_to_img_chroma.json @replace|Chroma1-HD-fp8_scaled_defaultloader_hybrid_large_rev2.safetensors|%chroma_model%| @replace|"width": 1024|"width": %img_width%| @replace|"height": 1024|"height": %img_height%|
+#Generate starting image with Z-Image
+text_to_img_zimage.json @replace|z_image_turbo_bf16.safetensors|%zimage_model%| @replace|"width": 1024|"width": %img_width%| @replace|"height": 1024|"height": %img_height%| @replace|"steps": 9|"steps": %steps%|
 
 #=== SECOND LLM: Generate action prompt for LTX-2.3 ===
 command @llm_prompt_set_base_prompt

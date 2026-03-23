@@ -1,34 +1,48 @@
 COMMAND_START|joblist
-#Generate 5-second video with LLM-enhanced prompt using LTX
-%width%="1024"
-%height%="1024"
+#Generate 5-second video with LLM-enhanced prompt using LTX-2.3
+%width%="960"
+%height%="544"
 %frames%="121"
+%fps%="24"
 
 command @llm_prompt_set_base_prompt
-You rewrite simple ideas into LTX-2 video prompts. Be literal and direct. No poetry. No metaphors. Just clear visual descriptions.
+You rewrite simple ideas into LTX-2.3 video prompts. Be literal and direct. No poetry. No metaphors. Just clear visual descriptions.
 @end
 
 command @llm_prompt_add_from_user
-Rewrite the user's idea below into a 5-second LTX-2 video prompt.
+Rewrite the user's idea below into a 5-second LTX-2.3 text-to-video prompt.
 
 STAY TRUE TO THE USER'S ORIGINAL IDEA. Do not change the subject, setting, or action. Just add technical details.
 
-Write ONE flowing paragraph. Describe actions in SEQUENCE, not with timestamps. Include:
-- Scene setting and lighting
-- Subject details (age, clothing, hair, physical expression)
-- Actions described one after another using words like "then", "as", "suddenly"
-- Camera movement described naturally
-- Dialogue format: Character (tone): "Line."
+Write ONE flowing paragraph. Start by establishing the shot:
+- Shot scale (medium shot, close-up, wide establishing shot)
+- Scene setting, lighting, color palette, atmosphere, textures
+- Subject details (age, clothing, hair, physical appearance, starting pose)
+
+Then describe the action:
+- Actions described in sequence using "then", "as", "suddenly"
+- Break dialog into short phrases with a physical acting direction between each line
+- Show emotion through the BODY, not labels. No parenthetical mood words like (angry) or (sad)
+- Include one camera direction placed naturally
+
+Dialog format: The [description], [physical action]: "[Short line.]"
+
+GOOD: The woman sets down her phone, her brow furrowing: "Not again."
+BAD: The woman (frustrated): "Not again."
+
+End with a brief audio note (voice quality, ambient sounds, room tone).
 
 EXAMPLE 5-SECOND PROMPT:
-"Medium shot of a coffee shop interior, warm morning light through large windows. A woman in her 30s with short dark hair and a gray sweater sits at a wooden table, staring at her phone with furrowed brows. She sighs heavily, sets the phone down, then looks up toward the window. The camera slowly pushes in on her face as she whispers to herself: "Not again.""
+"Medium shot of a coffee shop interior, warm morning light streaming through large windows, golden highlights on wooden surfaces. A woman in her 30s with short dark hair and a gray wool sweater sits at a wooden table, staring at her phone with furrowed brows. She sighs heavily, sets the phone face-down on the table, then looks up toward the window. The camera slowly pushes in on her face as she whispers: 'Not again.' Soft ambient cafe noise, the clink of distant cups."
 
 CRITICAL RULES:
-- Output ONLY the prompt text. No explanations, no labels, no timestamps like "at 3 seconds".
+- Output ONLY the prompt text. No explanations, no labels, no timestamps.
 - Be LITERAL and CLEAR, not poetic or vague.
 - Keep the user's core idea intact. DO NOT replace it with something else.
 - Describe what the camera SEES, not feelings or abstract concepts.
 - Do NOT use the word "cinematic".
+- No parenthetical emotion labels - show emotion through physical actions!
+- Do not use character names - use visual descriptions only.
 
 The user's idea:
 @end
@@ -41,10 +55,7 @@ command @copy|prepend_prompt|prompt|
 command @add|llm_reply|prompt|
 command @add|append_prompt|prompt|
 
-text_to_video_ltx_fast.json @replace|"width": 1920|"width": %width%| @replace|"height": 1088|"height": %height%| @replace|"value": 121|"value": %frames%|
-
-#Higher quality version (needs lots of VRAM):
-#text_to_video_ltx_fast.json @replace|"width": 960|"width": 1280| @replace|"height": 576|"height": 720| @replace|"value": 121|"value": %frames%|
+text_to_video_ltx23.json @replace|"width": 960|"width": %width%| @replace|"height": 544|"height": %height%| @replace|"value": 121|"value": %frames%| @replace|"value": 24|"value": %fps%|
 COMMAND_END
 COMMAND_START|default_negative_prompt
 cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white

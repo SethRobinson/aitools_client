@@ -1,5 +1,5 @@
 #Config file for a AIGuide profile.  It controls what we send to the LLM and whatnot
-#Optimized for 20-second LTX-2 video generation with cinematic prompting
+#Optimized for 20-second LTX-2.3 video generation
 #Uses SET_PROMPT1 format to support multi-line prompts (IMAGE: parsing truncates at linefeeds)
 
 COMMAND_START|base_context
@@ -11,60 +11,74 @@ Do not use markup, asterisks, numbered lists, etc.
 
 Do not number the entries.
 
-You will design cinematic prompts for 20-second AI generative video clips using LTX-2. Each prompt should read like a mini screenplay scene with proper pacing for a 20-second continuous shot.
+You will design prompts for 20-second AI generative video clips using LTX-2.3. Each prompt should describe a continuous 20-second shot that mixes physical action with dialog.
 
 The format to use for each video:
 
-SET_PROMPT1: (A structured scene description formatted like a screenplay. This can span multiple lines. Include these elements:
+SET_PROMPT1: (A single flowing paragraph. This can span multiple lines. Include these elements:
 
-Scene header - location and time of day, e.g. EXT. CITY ROOFTOP - NIGHT
+OPENING (1-2 sentences): Establish the shot.
+- Shot scale and camera position (medium shot, close-up, wide establishing shot)
+- Location, lighting, color palette, atmosphere, textures
 
-Shot framing - describe the framing (close-up, medium shot, etc) and the subject in detail: age, ethnicity, clothing, expression, physical details. Keep the camera relatively static to maintain character consistency.
+*** CHARACTER DESCRIPTIONS — MANDATORY ***
+Every person in the scene MUST have a FULL physical description. The video AI needs specific details to render people correctly. Include ALL of these for EACH person:
+- Age (specific, e.g. "in his 40s")
+- Ethnicity/skin tone
+- Build (lanky, stocky, petite, broad-shouldered, etc.)
+- Hair (color, length, style)
+- Clothing (specific items and colors)
+- One distinguishing feature (scar, tattoo, glasses, beard, etc.)
 
-Dialogue and action - this is the main focus. Include actual spoken lines with the character name and delivery cue:
-CHARACTER (tone/emotion): "The actual dialogue they speak."
+Do NOT use character names — the video AI doesn't know who "Marcus" or "Elena" are. Use visual descriptions only.
 
-Fill the 20 seconds with conversation, reactions, and story moments. Use bracketed notes for emotion and subtle actions between dialogue lines.
+GOOD: "A lanky man in his 30s with messy brown hair, light skin, safety goggles pushed up on his forehead, wearing a grease-stained gray t-shirt and cargo shorts"
+BAD: "A man standing in a garage" (too vague — the AI won't know what he looks like)
 
-- Output ONLY the prompt text. No explanations, no labels, no timestamps like "at 6 seconds".
+THEN 20 seconds of sequenced action, structured as three beats:
+- BEAT 1 (~7 seconds): Opening action
+- BEAT 2 (~7 seconds): Escalation or complication
+- BEAT 3 (~6 seconds): Payoff or surprise
+
+For each beat, describe:
+- Physical actions and gestures in sequence using "then", "as", "suddenly"
+- Dialog: include 3-5 short spoken lines spread across the scene, each ONE sentence max. Always put a physical acting direction between every dialog line — a gesture, a movement, a reaction. Never have two lines of dialog back-to-back without action between them.
+- Show emotion through the BODY, not labels. No parenthetical mood words like (angry) or (sad).
+
+Dialog format: The [visual description], [physical action]: "[Short line.]"
+GOOD: The tall man stumbles backward, catching himself on the railing: "What the hell was that?"
+BAD: MARCUS (shocked): "What the hell was that? I can't believe this is happening to me right now."
+
+Include 1-2 camera directions at natural transition points:
+"The camera slowly pushes in" / "The camera tracks left to reveal" / "Handheld, slight shake"
+
+End with one sentence describing the audio/sound environment:
+Voice qualities, ambient sounds, room tone, sound effects.
+
+CRITICAL RULES:
+- EVERY person MUST have a full visual description: age, ethnicity, build, hair, clothing, distinguishing feature. NEVER say just "a man" or "a woman" without these details.
+- NEVER use character names. Always use visual descriptions.
+- NO parenthetical emotion labels like (angry), (sad), (gentle). Show it through the body.
+- Every scene MUST include dialog — 3-5 short spoken lines, each one sentence, spread across the beats with physical action between them.
+- Balance action and dialog — don't make it all talking OR all silent action.
+- Output ONLY the prompt text. No explanations, no timestamps.
 - Be LITERAL and CLEAR, not poetic or vague.
-- Keep the user's core idea intact. DO NOT replace it with something else.
 - Describe what the camera SEES, not feelings or abstract concepts.
 - Do NOT use the word "cinematic".
-- Include ENOUGH CONTENT for 20 seconds. Multiple actions, dialogue exchanges, or events. Otherwise the video will be slow motion.
-
+- The prompt must be ~250-350 words to properly fill 20 seconds.
+)
 
 IMAGE: render
 
 Here is an example of the format:
 
-SET_PROMPT1: EXT. CITY ALLEY - NIGHT
-
-Medium shot of two people facing each other. MARCUS, a Black man in his thirties wearing a rumpled suit and loosened tie, stands with his arms crossed. Across from him is ELENA, a Latina woman in her late twenties in a red jacket and jeans, her expression sharp and skeptical.
-
-MARCUS (frustrated): "You said you'd be there. You promised."
-
-Elena looks away for a moment, then back at him.
-
-ELENA (defensive): "Something came up. You know how it is."
-
-MARCUS (bitter): "Yeah. I know exactly how it is."
-
-He unfolds his arms, takes a step closer.
-
-MARCUS (quieter, hurt): "Three years, Elena. Three years and you still can't just tell me the truth."
-
-Elena's expression softens. She reaches out, touches his arm.
-
-ELENA (sincere): "I'm sorry. I really am."
-
-Marcus looks at her hand on his arm, then meets her eyes. A long beat of silence between them.
+SET_PROMPT1: Medium shot inside a cluttered garage workshop, warm yellow light from a hanging bulb, sawdust floating in the air. A lanky white man in his early 30s with messy brown hair, a patchy stubble beard, and safety goggles pushed up on his forehead stands next to a homemade wooden go-kart, holding a wrench. He wears a grease-stained gray t-shirt and cargo shorts. A petite East Asian woman in her late 20s with a dark ponytail, round glasses, and a paint-stained denim jacket over a black tank top leans against the workbench, arms crossed, eyebrows raised. The man slaps the side of the go-kart proudly: "She's ready." The woman tilts her head, looking at the wobbly wheels: "You said that last time." He waves her off, climbs into the tiny seat, knees up to his chest, and turns the key. The engine sputters, backfires with a loud bang, and a cloud of black smoke pours out the back. He coughs, fanning the smoke, then grins: "That's normal." The woman steps back, covering her nose. The go-kart lurches forward suddenly, crashing through a stack of paint cans. The camera tracks as cans roll everywhere, blue and red paint splattering across the concrete floor. He yanks the steering wheel, the kart spins in a tight circle, and slams into the workbench. Tools clatter to the ground. The engine dies with a sad whine. He sits in the wrecked kart, covered in paint, blinking. The woman walks over, looks down at him, and extends her hand: "Same time next weekend?" He takes her hand, grinning through the paint: "Obviously." The clang of tools settling, dripping paint, and a faint car alarm triggered outside.
 
 IMAGE: render
 
 Each video design uses one SET_PROMPT1 and one IMAGE tag. Create five video prompts.
 
-Theme for these videos: Modern drama moments - characters in tense conversations with emotional stakes, realistic dialogue, and human connection.
+Theme for these videos: People attempting something ambitious or reckless and things going hilariously wrong — physical comedy, chain reactions, and unexpected chaos. Each scene should mix physical action with short, punchy dialog between characters.
 
 Start your reply with SET_PROMPT1:
 COMMAND_END
@@ -80,7 +94,11 @@ COMMAND_END
 #you can dynamically change this mid-story to make it focus on something or end the story or whatever
 COMMAND_START|auto_continue_text
 (continue with another 20-second scene. Write it as a complete standalone scene.)
-Remember: Use SET_PROMPT1/IMAGE format. Start with scene header (location, time). Describe framing and subjects in detail (age, ethnicity, clothing, expression). Keep camera relatively static. Focus on dialogue and story - include actual spoken lines with character name and delivery cue like: CHARACTER (tone): "Spoken line." Fill the 20 seconds with conversation and reactions.
+Remember: Use SET_PROMPT1/IMAGE format. Write ONE flowing paragraph. Start by establishing the shot (location, lighting, textures).
+
+MANDATORY: Every person MUST have a full visual description — age, ethnicity, build, hair color and style, specific clothing items and colors, one distinguishing feature. NEVER just say "a man" or "a woman" without these details. NEVER use character names.
+
+Structure as three beats mixing physical action with 3-5 short dialog lines (one sentence each, always with a physical acting direction between them). No parenthetical emotion labels. Include 1-2 camera directions. End with an audio description. ~250-350 words.
 COMMAND_END
 
 
