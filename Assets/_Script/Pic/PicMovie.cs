@@ -2,7 +2,10 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.UI;
 using UnityEngine.Video;
+using TMPro;
 
 public class PicMovie : MonoBehaviour
 {
@@ -19,8 +22,14 @@ public class PicMovie : MonoBehaviour
     bool m_bAutoDeleteFileWhenDone = true;
     bool _bDidCleanupSoAllowReload = false;
     bool _bIsHidden = false;
-   
-    // Start is called before the first frame update
+
+    GameObject _progressBarContainer;
+    Image _progressBarFill;
+    TextMeshProUGUI _progressBarTimeText;
+    TextMeshProUGUI _playPauseButtonText;
+    bool _progressBarCreated = false;
+    const float PROGRESS_BAR_HEIGHT = 8f;
+
     void Start()
     {
         if (_videoPlayer == null)
@@ -28,20 +37,8 @@ public class PicMovie : MonoBehaviour
             _videoPlayer = gameObject.AddComponent<VideoPlayer>();
         }
 
-        // Option 1: Using an AudioSource
-       
-        /*
-        AudioSource audioSource = gameObject.GetComponent<AudioSource>();
-        if (audioSource == null)
-        {
-            audioSource = gameObject.AddComponent<AudioSource>();
-        }
-        _videoPlayer.audioOutputMode = VideoAudioOutputMode.AudioSource;
-        _videoPlayer.SetTargetAudioSource(0, audioSource);
-        */
-
-        // Option 2: If you prefer direct audio output, comment out the above lines and use:
-         _videoPlayer.audioOutputMode = VideoAudioOutputMode.Direct;
+        _videoPlayer.audioOutputMode = VideoAudioOutputMode.Direct;
+        CreateProgressBarUI();
     }
     public void OnSetHidden()
     {
@@ -71,11 +68,6 @@ public class PicMovie : MonoBehaviour
         else
         {
             RTQuickMessageManager.Get().ShowMessage("Playing movie");
-
-            //disable and enable the videoplayer, helps fix a bug
-            _videoPlayer.enabled = false;
-            _videoPlayer.enabled = true;
-
             _videoPlayer.Play();
         }
     }
@@ -204,14 +196,194 @@ public class PicMovie : MonoBehaviour
                 }
                 else
                 {
-                    //we're not hovering over this pic, so let's hide the movie
                     _videoPlayer.SetDirectAudioMute(0, true);
                 }
-
-
             }
+
+            UpdateProgressBar();
         }
 
+    }
+
+    void CreateProgressBarUI()
+    {
+        if (_progressBarCreated) return;
+        _progressBarCreated = true;
+
+        Canvas canvas = _picMainScript.GetCanvas();
+        if (canvas == null) return;
+
+        RectTransform canvasRect = canvas.GetComponent<RectTransform>();
+        int layer = canvas.gameObject.layer;
+
+        // Container -- positioned dynamically in UpdateProgressBar based on movie height
+        _progressBarContainer = new GameObject("VideoProgressBar");
+        _progressBarContainer.layer = layer;
+        RectTransform containerRect = _progressBarContainer.AddComponent<RectTransform>();
+        containerRect.SetParent(canvasRect, false);
+        containerRect.anchorMin = new Vector2(0.5f, 0.5f);
+        containerRect.anchorMax = new Vector2(0.5f, 0.5f);
+        containerRect.pivot = new Vector2(0.5f, 1f);
+        containerRect.sizeDelta = new Vector2(canvasRect.sizeDelta.x, PROGRESS_BAR_HEIGHT);
+
+        // Play/Pause button on the left
+        float buttonWidth = 14f;
+        GameObject btnObj = new GameObject("PlayPauseBtn");
+        btnObj.layer = layer;
+        btnObj.AddComponent<CanvasRenderer>();
+        Image btnImage = btnObj.AddComponent<Image>();
+        btnImage.color = new Color(0.15f, 0.15f, 0.15f, 0.7f);
+        btnImage.raycastTarget = true;
+        RectTransform btnRect = btnObj.GetComponent<RectTransform>();
+        btnRect.SetParent(containerRect, false);
+        btnRect.anchorMin = new Vector2(0, 0);
+        btnRect.anchorMax = new Vector2(0, 1);
+        btnRect.pivot = new Vector2(0, 0.5f);
+        btnRect.anchoredPosition = Vector2.zero;
+        btnRect.sizeDelta = new Vector2(buttonWidth, 0);
+
+        Button btn = btnObj.AddComponent<Button>();
+        btn.targetGraphic = btnImage;
+        ColorBlock cb = btn.colors;
+        cb.highlightedColor = new Color(0.3f, 0.3f, 0.3f, 0.8f);
+        cb.pressedColor = new Color(0.4f, 0.4f, 0.4f, 0.9f);
+        btn.colors = cb;
+        btn.onClick.AddListener(TogglePlay);
+
+        GameObject btnTextObj = new GameObject("BtnText");
+        btnTextObj.layer = layer;
+        btnTextObj.AddComponent<CanvasRenderer>();
+        _playPauseButtonText = btnTextObj.AddComponent<TextMeshProUGUI>();
+        _playPauseButtonText.text = "\u2590\u2590";
+        _playPauseButtonText.fontSize = 5f;
+        _playPauseButtonText.alignment = TextAlignmentOptions.Center;
+        _playPauseButtonText.color = Color.white;
+        _playPauseButtonText.raycastTarget = false;
+        _playPauseButtonText.textWrappingMode = TextWrappingModes.NoWrap;
+        _playPauseButtonText.overflowMode = TextOverflowModes.Overflow;
+        RectTransform btnTextRect = btnTextObj.GetComponent<RectTransform>();
+        btnTextRect.SetParent(btnRect, false);
+        btnTextRect.anchorMin = Vector2.zero;
+        btnTextRect.anchorMax = Vector2.one;
+        btnTextRect.sizeDelta = Vector2.zero;
+        btnTextRect.anchoredPosition = Vector2.zero;
+
+        // Seek bar area (to the right of the button)
+        GameObject seekArea = new GameObject("SeekArea");
+        seekArea.layer = layer;
+        RectTransform seekRect = seekArea.AddComponent<RectTransform>();
+        seekRect.SetParent(containerRect, false);
+        seekRect.anchorMin = new Vector2(0, 0);
+        seekRect.anchorMax = new Vector2(1, 1);
+        seekRect.offsetMin = new Vector2(buttonWidth + 1f, 0);
+        seekRect.offsetMax = Vector2.zero;
+
+        // Background of seek bar
+        GameObject bgObj = new GameObject("ProgressBg");
+        bgObj.layer = layer;
+        bgObj.AddComponent<CanvasRenderer>();
+        Image bgImage = bgObj.AddComponent<Image>();
+        bgImage.color = new Color(0f, 0f, 0f, 0.55f);
+        bgImage.raycastTarget = true;
+        RectTransform bgRect = bgObj.GetComponent<RectTransform>();
+        bgRect.SetParent(seekRect, false);
+        bgRect.anchorMin = Vector2.zero;
+        bgRect.anchorMax = Vector2.one;
+        bgRect.sizeDelta = Vector2.zero;
+        bgRect.anchoredPosition = Vector2.zero;
+
+        EventTrigger trigger = bgObj.AddComponent<EventTrigger>();
+        EventTrigger.Entry pointerDown = new EventTrigger.Entry();
+        pointerDown.eventID = EventTriggerType.PointerDown;
+        pointerDown.callback.AddListener((data) => OnProgressBarClicked((PointerEventData)data, bgRect));
+        trigger.triggers.Add(pointerDown);
+
+        EventTrigger.Entry drag = new EventTrigger.Entry();
+        drag.eventID = EventTriggerType.Drag;
+        drag.callback.AddListener((data) => OnProgressBarClicked((PointerEventData)data, bgRect));
+        trigger.triggers.Add(drag);
+
+        // Fill
+        GameObject fillObj = new GameObject("ProgressFill");
+        fillObj.layer = layer;
+        fillObj.AddComponent<CanvasRenderer>();
+        _progressBarFill = fillObj.AddComponent<Image>();
+        _progressBarFill.color = new Color(0.3f, 0.6f, 1f, 0.85f);
+        _progressBarFill.raycastTarget = false;
+        RectTransform fillRect = fillObj.GetComponent<RectTransform>();
+        fillRect.SetParent(seekRect, false);
+        fillRect.anchorMin = Vector2.zero;
+        fillRect.anchorMax = new Vector2(0, 1);
+        fillRect.pivot = new Vector2(0, 0.5f);
+        fillRect.sizeDelta = Vector2.zero;
+        fillRect.anchoredPosition = Vector2.zero;
+
+        // Time label
+        GameObject textObj = new GameObject("ProgressTime");
+        textObj.layer = layer;
+        textObj.AddComponent<CanvasRenderer>();
+        _progressBarTimeText = textObj.AddComponent<TextMeshProUGUI>();
+        _progressBarTimeText.fontSize = 5.5f;
+        _progressBarTimeText.alignment = TextAlignmentOptions.Center;
+        _progressBarTimeText.color = Color.white;
+        _progressBarTimeText.raycastTarget = false;
+        _progressBarTimeText.textWrappingMode = TextWrappingModes.NoWrap;
+        _progressBarTimeText.overflowMode = TextOverflowModes.Overflow;
+        RectTransform textRect = textObj.GetComponent<RectTransform>();
+        textRect.SetParent(seekRect, false);
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.sizeDelta = Vector2.zero;
+        textRect.anchoredPosition = Vector2.zero;
+
+        _progressBarContainer.SetActive(false);
+    }
+
+    void OnProgressBarClicked(PointerEventData eventData, RectTransform barRect)
+    {
+        if (_videoPlayer == null || _videoPlayer.length <= 0) return;
+
+        Camera cam = _picMainScript.GetCamera();
+        if (cam == null) cam = Camera.main;
+
+        Vector2 localPoint;
+        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(barRect, eventData.position, cam, out localPoint))
+            return;
+
+        float normalized = Mathf.Clamp01((localPoint.x + barRect.rect.width * barRect.pivot.x) / barRect.rect.width);
+        _videoPlayer.time = normalized * _videoPlayer.length;
+    }
+
+    void UpdateProgressBar()
+    {
+        if (_progressBarContainer == null) return;
+
+        bool shouldShow = IsMovie() && _videoPlayer.length > 0;
+        if (_progressBarContainer.activeSelf != shouldShow)
+            _progressBarContainer.SetActive(shouldShow);
+
+        if (!shouldShow) return;
+
+        // Position the bar just below the actual movie quad
+        RectTransform canvasRect = _picMainScript.GetCanvas().GetComponent<RectTransform>();
+        float movieBottomWorld = _movieObject.transform.position.y
+            - _movieObject.transform.lossyScale.y * 0.5f;
+        Vector3 localInCanvas = canvasRect.InverseTransformPoint(
+            new Vector3(_movieObject.transform.position.x, movieBottomWorld, _movieObject.transform.position.z));
+
+        RectTransform containerRect = _progressBarContainer.GetComponent<RectTransform>();
+        containerRect.anchoredPosition = new Vector2(0, localInCanvas.y);
+        containerRect.sizeDelta = new Vector2(canvasRect.sizeDelta.x, PROGRESS_BAR_HEIGHT);
+
+        double currentTime = _videoPlayer.time;
+        double totalTime = _videoPlayer.length;
+        float progress = Mathf.Clamp01((float)(currentTime / totalTime));
+
+        _progressBarFill.rectTransform.anchorMax = new Vector2(progress, 1);
+        _progressBarTimeText.text = $"{currentTime:F1}s / {totalTime:F1}s";
+
+        if (_playPauseButtonText != null)
+            _playPauseButtonText.text = _videoPlayer.isPlaying ? "\u2590\u2590" : "\u25B6";
     }
 
     public bool IsMovie()
@@ -222,16 +394,15 @@ public class PicMovie : MonoBehaviour
     public void KillMovie()
     {
         DeleteMovieIfNeeded();
-        // Clean up video player events
         CleanupVideoResources();
-        //reset defaults
         _bDidCleanupSoAllowReload = false;
         m_bAutoDeleteFileWhenDone = true;
         m_fileName = null;
         m_movieSize = new Vector2Int(0, 0);
         _movieObject.SetActive(false);
 
-
+        if (_progressBarContainer != null)
+            _progressBarContainer.SetActive(false);
     }
 
     private void CleanupVideoResources()
