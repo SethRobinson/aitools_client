@@ -137,12 +137,20 @@ public class StreamingDownloadHandler : DownloadHandlerScript
             {
                 JSONNode deltaNode = rootNode["choices"][0]["delta"];
 
-                // sglang/vLLM with --reasoning-parser puts thinking in reasoning_content
-                // and the final answer in content. When injectReasoningThinkTags is true we inject
-                // <think> tags so the app's RemoveThinkTags logic can strip the thinking portion.
+                // sglang/vLLM with --reasoning-parser puts thinking in a separate field and
+                // the final answer in content. The field name varies by server:
+                //   - sglang / older vLLM:  delta.reasoning_content
+                //   - vLLM 0.19+ (e.g. Qwen3.6 builds): delta.reasoning
+                // When injectReasoningThinkTags is true we inject <think> tags so the app's
+                // RemoveThinkTags logic can strip the thinking portion.
                 // llama.cpp/Ollama may put main reply in reasoning_content; do NOT wrap for those.
                 string mainContent = deltaNode != null && deltaNode["content"] != null ? (string)deltaNode["content"] : null;
-                string reasoningContent = deltaNode != null && deltaNode["reasoning_content"] != null ? (string)deltaNode["reasoning_content"] : null;
+                string reasoningContent = null;
+                if (deltaNode != null)
+                {
+                    if (deltaNode["reasoning_content"] != null) reasoningContent = (string)deltaNode["reasoning_content"];
+                    else if (deltaNode["reasoning"] != null) reasoningContent = (string)deltaNode["reasoning"];
+                }
 
                 if (!string.IsNullOrEmpty(reasoningContent))
                 {
