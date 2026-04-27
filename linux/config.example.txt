@@ -1,0 +1,19 @@
+# aitools_cli configuration — copy this file to config.txt and edit.
+#
+# Format: key|value   (lines starting with # and blank lines are ignored)
+#
+# default_workflow|<filename>
+#   Workflow JSON in ../ComfyUI/ to use when neither -p nor -w is given.
+#   Optional; can also be set per-run with -w or implied by a preset (-p).
+#
+# add_server|<url>
+#   ComfyUI server. Add one line per server. Each must be running with
+#   --listen and have the comfyui-workflow-to-api-converter-endpoint
+#   custom node installed. Unreachable servers are silently skipped;
+#   the lowest-queue one wins.
+
+default_workflow|text_to_img_zimage.json
+
+add_server|http://localhost:8188
+# add_server|http://other-host:8188
+# add_server|http://gpu-box.lan:7861
