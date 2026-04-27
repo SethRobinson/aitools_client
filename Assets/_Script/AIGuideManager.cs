@@ -94,6 +94,7 @@ public class AIGuideManager : MonoBehaviour
     bool m_bIsPossibleToContinue = false;
     bool m_bTalkingToLLM = false;
     int _activeLLMInstanceID = -1; // Tracks which LLM instance is currently active
+    int _activeLLMReplicaIndex = 0; // Which replica of the active instance is in use
     string m_imageFileNameBase;
     string m_folderName;
     //make an array of fonts that we can edit inside the editor properties
@@ -285,13 +286,14 @@ public class AIGuideManager : MonoBehaviour
         
         // Try to use multi-instance system first (isSmallJob=false for AI Guide big jobs)
         var instanceMgr = LLMInstanceManager.Get();
-        int llmInstanceID = instanceMgr?.GetFreeLLM(isSmallJob: false) ?? -1;
+        int llmReplicaIndex = 0;
+        int llmInstanceID = instanceMgr?.GetFreeLLM(isSmallJob: false, isVisionJob: false, out llmReplicaIndex) ?? -1;
         
         // If no free instance, try to get the least busy one that can accept big jobs
         if (llmInstanceID < 0 && instanceMgr != null && instanceMgr.GetInstanceCount() > 0)
         {
-            llmInstanceID = instanceMgr.GetLeastBusyLLM(isSmallJob: false);
-            RTConsole.Log($"AI Guide: No free big job LLM, using least busy: {llmInstanceID}");
+            llmInstanceID = instanceMgr.GetLeastBusyLLM(isSmallJob: false, isVisionJob: false, out llmReplicaIndex);
+            RTConsole.Log($"AI Guide: No free big job LLM, using least busy: {llmInstanceID} replica {llmReplicaIndex}");
         }
         
         LLMInstanceInfo llmInstance = llmInstanceID >= 0 ? instanceMgr?.GetInstance(llmInstanceID) : null;
@@ -304,8 +306,9 @@ public class AIGuideManager : MonoBehaviour
             activeProvider = llmInstance.providerType;
             activeSettings = llmInstance.settings;
             _activeLLMInstanceID = llmInstanceID;
-            instanceMgr.SetLLMBusy(llmInstanceID, true);
-            RTConsole.Log($"AI Guide using LLM instance {llmInstanceID}: {llmInstance.name}");
+            _activeLLMReplicaIndex = llmReplicaIndex;
+            instanceMgr.SetLLMBusy(llmInstanceID, llmReplicaIndex, true);
+            RTConsole.Log($"AI Guide using LLM instance {llmInstanceID}: {llmInstance.name} replica {llmReplicaIndex}");
         }
         else
         {
@@ -314,6 +317,7 @@ public class AIGuideManager : MonoBehaviour
                 (LLMProvider)GameLogic.Get().GetLLMSelection().value;
             activeSettings = llmManager?.GetProviderSettings(activeProvider);
             _activeLLMInstanceID = -1;
+            _activeLLMReplicaIndex = 0;
             RTConsole.Log("AI Guide: No LLM instances configured, using legacy provider");
         }
 
@@ -422,7 +426,8 @@ public class AIGuideManager : MonoBehaviour
         if (!string.IsNullOrEmpty(settingsEndpoint) && !settingsEndpoint.Contains("api.openai.com"))
         {
             openAIEnableThinking = activeSettings.enableThinking;
-            endpoint = settingsEndpoint.TrimEnd('/');
+            string customEndpoint = LLMInstanceManager.ApplyReplicaPortOffset(settingsEndpoint, _activeLLMReplicaIndex);
+            endpoint = customEndpoint.TrimEnd('/');
             if (!endpoint.EndsWith("/v1/chat/completions"))
                 endpoint += "/v1/chat/completions";
         }
@@ -486,7 +491,7 @@ public class AIGuideManager : MonoBehaviour
     {
         var mgr = LLMSettingsManager.Get();
         var settings = activeSettings ?? mgr?.GetProviderSettings(LLMProvider.LlamaCpp);
-        string serverAddress = settings?.endpoint ?? "";
+        string serverAddress = LLMInstanceManager.ApplyReplicaPortOffset(settings?.endpoint ?? "", _activeLLMReplicaIndex);
         string apiKey = settings?.apiKey ?? "";
 
         RTConsole.Log("Contacting llama.cpp at " + serverAddress);
@@ -506,7 +511,7 @@ public class AIGuideManager : MonoBehaviour
     {
         var mgr = LLMSettingsManager.Get();
         var settings = activeSettings ?? mgr?.GetProviderSettings(LLMProvider.Ollama);
-        string serverAddress = settings?.endpoint ?? "";
+        string serverAddress = LLMInstanceManager.ApplyReplicaPortOffset(settings?.endpoint ?? "", _activeLLMReplicaIndex);
         string apiKey = settings?.apiKey ?? "";
 
         RTConsole.Log("Contacting Ollama at " + serverAddress);
@@ -571,7 +576,7 @@ public class AIGuideManager : MonoBehaviour
     {
         var mgr = LLMSettingsManager.Get();
         var settings = activeSettings ?? mgr?.GetProviderSettings(LLMProvider.OpenAICompatible);
-        string serverAddress = settings?.endpoint ?? "";
+        string serverAddress = LLMInstanceManager.ApplyReplicaPortOffset(settings?.endpoint ?? "", _activeLLMReplicaIndex);
         string apiKey = settings?.apiKey ?? "";
         string model = settings?.selectedModel ?? "";
 
@@ -610,9 +615,10 @@ public class AIGuideManager : MonoBehaviour
             var instanceMgr = LLMInstanceManager.Get();
             if (instanceMgr != null)
             {
-                instanceMgr.SetLLMBusy(_activeLLMInstanceID, false);
+                instanceMgr.SetLLMBusy(_activeLLMInstanceID, _activeLLMReplicaIndex, false);
             }
             _activeLLMInstanceID = -1;
+            _activeLLMReplicaIndex = 0;
         }
     }
 

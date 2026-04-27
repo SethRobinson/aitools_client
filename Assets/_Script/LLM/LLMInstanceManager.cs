@@ -286,7 +286,7 @@ public class LLMInstanceManager : MonoBehaviour
     // ============================================
     
     /// <summary>
-    /// Check if an instance has capacity for more tasks.
+    /// Check if an instance has capacity for more tasks (across any replica).
     /// </summary>
     public bool HasCapacity(int id)
     {
@@ -295,7 +295,7 @@ public class LLMInstanceManager : MonoBehaviour
     }
     
     /// <summary>
-    /// Check if an instance is busy (at or over capacity).
+    /// Check if an instance is busy across all replicas (at or over capacity everywhere).
     /// </summary>
     public bool IsLLMBusy(int id)
     {
@@ -304,33 +304,45 @@ public class LLMInstanceManager : MonoBehaviour
     }
     
     /// <summary>
-    /// Increment the active task count for an instance.
+    /// Increment the active task count for a specific replica of an instance.
     /// Call this when starting a new LLM request.
     /// </summary>
-    public void IncrementActiveTasks(int id)
+    public void IncrementActiveTasks(int id, int replicaIndex = 0)
     {
         var instance = GetInstance(id);
-        if (instance != null)
+        if (instance == null) return;
+        
+        instance.EnsureReplicaActiveTasks();
+        if (replicaIndex < 0 || replicaIndex >= instance.replicaActiveTasks.Length)
         {
-            instance.activeTasks++;
-            RTConsole.Log($"LLM instance {id} ({instance.name}): started task, active={instance.activeTasks}/{instance.maxConcurrentTasks}");
-            NotifyLLMStatusChanged();
+            Debug.LogWarning($"LLMInstanceManager: IncrementActiveTasks invalid replica {replicaIndex} for instance {id} (count={instance.replicaActiveTasks.Length})");
+            replicaIndex = 0;
         }
+        instance.replicaActiveTasks[replicaIndex]++;
+        instance.activeTasks = instance.GetTotalActiveTasks();
+        RTConsole.Log($"LLM instance {id} ({instance.name}) replica {replicaIndex}: started task, replica active={instance.replicaActiveTasks[replicaIndex]}/{instance.maxConcurrentTasks}, total={instance.activeTasks}");
+        NotifyLLMStatusChanged();
     }
     
     /// <summary>
-    /// Decrement the active task count for an instance.
+    /// Decrement the active task count for a specific replica of an instance.
     /// Call this when an LLM request completes.
     /// </summary>
-    public void DecrementActiveTasks(int id)
+    public void DecrementActiveTasks(int id, int replicaIndex = 0)
     {
         var instance = GetInstance(id);
-        if (instance != null)
+        if (instance == null) return;
+        
+        instance.EnsureReplicaActiveTasks();
+        if (replicaIndex < 0 || replicaIndex >= instance.replicaActiveTasks.Length)
         {
-            instance.activeTasks = Math.Max(0, instance.activeTasks - 1);
-            RTConsole.Log($"LLM instance {id} ({instance.name}): finished task, active={instance.activeTasks}/{instance.maxConcurrentTasks}");
-            NotifyLLMStatusChanged();
+            Debug.LogWarning($"LLMInstanceManager: DecrementActiveTasks invalid replica {replicaIndex} for instance {id} (count={instance.replicaActiveTasks.Length})");
+            replicaIndex = 0;
         }
+        instance.replicaActiveTasks[replicaIndex] = Math.Max(0, instance.replicaActiveTasks[replicaIndex] - 1);
+        instance.activeTasks = instance.GetTotalActiveTasks();
+        RTConsole.Log($"LLM instance {id} ({instance.name}) replica {replicaIndex}: finished task, replica active={instance.replicaActiveTasks[replicaIndex]}/{instance.maxConcurrentTasks}, total={instance.activeTasks}");
+        NotifyLLMStatusChanged();
     }
     
     /// <summary>
@@ -346,23 +358,43 @@ public class LLMInstanceManager : MonoBehaviour
     }
     
     /// <summary>
-    /// Get the current active task count for an instance.
+    /// Get the current active task count for an instance (sum across all replicas).
     /// </summary>
     public int GetActiveTaskCount(int id)
     {
         var instance = GetInstance(id);
-        return instance?.activeTasks ?? 0;
+        return instance?.GetTotalActiveTasks() ?? 0;
     }
     
     /// <summary>
-    /// Legacy method for backward compatibility. Sets busy state based on active tasks.
+    /// Get the active task count for a specific replica.
+    /// </summary>
+    public int GetActiveTaskCount(int id, int replicaIndex)
+    {
+        var instance = GetInstance(id);
+        if (instance == null) return 0;
+        instance.EnsureReplicaActiveTasks();
+        if (replicaIndex < 0 || replicaIndex >= instance.replicaActiveTasks.Length) return 0;
+        return instance.replicaActiveTasks[replicaIndex];
+    }
+    
+    /// <summary>
+    /// Legacy single-replica busy setter (assumes replica 0). Prefer the replicaIndex overload.
     /// </summary>
     public void SetLLMBusy(int id, bool busy)
     {
+        SetLLMBusy(id, 0, busy);
+    }
+    
+    /// <summary>
+    /// Set busy state for a specific replica of an instance.
+    /// </summary>
+    public void SetLLMBusy(int id, int replicaIndex, bool busy)
+    {
         if (busy)
-            IncrementActiveTasks(id);
+            IncrementActiveTasks(id, replicaIndex);
         else
-            DecrementActiveTasks(id);
+            DecrementActiveTasks(id, replicaIndex);
     }
     
     /// <summary>
@@ -388,88 +420,108 @@ public class LLMInstanceManager : MonoBehaviour
     /// </summary>
     public int GetFreeLLM(bool isSmallJob = false)
     {
-        return GetFreeLLM(isSmallJob, isVisionJob: false);
+        return GetFreeLLM(isSmallJob, isVisionJob: false, out _);
     }
     
     /// <summary>
-    /// Get the best available LLM instance ID for the given job type.
-    /// Chooses the instance with the lowest utilization ratio (activeTasks / maxConcurrentTasks).
-    /// Only returns instances that have capacity available.
-    /// Returns -1 if no instance has capacity.
-    /// For vision jobs: prefers VisionJobsOnly instances, falls back to Any.
+    /// Get the best available LLM instance ID for the given job type (legacy overload that discards replica index).
     /// </summary>
-    /// <param name="isSmallJob">True for small jobs (autopic), false for big jobs (AI Guide/Adventure)</param>
-    /// <param name="isVisionJob">True if the job has images attached</param>
-    /// <example>
-    /// If instance A is 0/1 (0%) and instance B is 1/4 (25%), returns A.
-    /// If instance A is 1/1 (100%) and instance B is 3/4 (75%), returns B.
-    /// If both are at capacity, returns -1.
-    /// </example>
     public int GetFreeLLM(bool isSmallJob, bool isVisionJob)
     {
+        return GetFreeLLM(isSmallJob, isVisionJob, out _);
+    }
+    
+    /// <summary>
+    /// Get the best available LLM instance ID + replica index for the given job type.
+    /// Chooses the (instance, replica) slot with the lowest utilization ratio (replicaActiveTasks[r] / maxConcurrentTasks).
+    /// Only returns slots that have capacity available.
+    /// Returns -1 with replicaIndex=0 if no slot has capacity.
+    /// For vision jobs: prefers VisionJobsOnly instances, falls back to Any.
+    /// </summary>
+    public int GetFreeLLM(bool isSmallJob, bool isVisionJob, out int replicaIndex)
+    {
+        replicaIndex = 0;
         if (_config == null) return -1;
         
         // For vision jobs, first try to find a VisionJobsOnly instance
         if (isVisionJob)
         {
-            int visionOnlyID = GetFreeLLMWithMode(isSmallJob, isVisionJob, LLMJobMode.VisionJobsOnly);
+            int visionOnlyID = GetFreeLLMWithMode(isSmallJob, isVisionJob, LLMJobMode.VisionJobsOnly, out replicaIndex);
             if (visionOnlyID >= 0) return visionOnlyID;
             
             // Fall back to Any mode
-            return GetFreeLLMWithMode(isSmallJob, isVisionJob, LLMJobMode.Any);
+            return GetFreeLLMWithMode(isSmallJob, isVisionJob, LLMJobMode.Any, out replicaIndex);
         }
         
-        // For non-vision jobs, use standard matching
+        // For non-vision jobs, scan all replicas across all instances
         int bestID = -1;
+        int bestReplica = 0;
         float bestRatio = float.MaxValue; // Lower is better
         
         foreach (var instance in _config.instances)
         {
             if (!instance.isActive) continue;
-            if (!instance.CanAcceptJob(isSmallJob, isVisionJob)) continue; // Checks job type AND capacity
+            if (!instance.CanAcceptJobType(isSmallJob, isVisionJob)) continue; // Only job-type check; capacity is per replica below
+            if (instance.maxConcurrentTasks <= 0) continue; // Disabled
             
-            // Calculate utilization ratio (0 = empty, approaching 1 = nearly full)
-            float ratio = instance.maxConcurrentTasks > 0 
-                ? (float)instance.activeTasks / instance.maxConcurrentTasks 
-                : float.MaxValue;
-            
-            if (ratio < bestRatio)
+            instance.EnsureReplicaActiveTasks();
+            int repCount = instance.GetEffectiveReplicaCount();
+            for (int r = 0; r < repCount; r++)
             {
-                bestRatio = ratio;
-                bestID = instance.instanceID;
+                int rActive = instance.replicaActiveTasks[r];
+                if (rActive >= instance.maxConcurrentTasks) continue; // No capacity in this replica
+                
+                float ratio = (float)rActive / instance.maxConcurrentTasks;
+                if (ratio < bestRatio)
+                {
+                    bestRatio = ratio;
+                    bestID = instance.instanceID;
+                    bestReplica = r;
+                }
             }
         }
         
+        replicaIndex = bestReplica;
         return bestID;
     }
     
     /// <summary>
-    /// Get a free LLM instance with a specific job mode.
+    /// Get a free LLM instance + replica with a specific job mode.
     /// </summary>
-    private int GetFreeLLMWithMode(bool isSmallJob, bool isVisionJob, LLMJobMode targetMode)
+    private int GetFreeLLMWithMode(bool isSmallJob, bool isVisionJob, LLMJobMode targetMode, out int replicaIndex)
     {
+        replicaIndex = 0;
         if (_config == null) return -1;
         
         int bestID = -1;
+        int bestReplica = 0;
         float bestRatio = float.MaxValue;
         
         foreach (var instance in _config.instances)
         {
             if (!instance.isActive) continue;
             if (instance.jobMode != targetMode) continue;
-            if (!instance.CanAcceptJob(isSmallJob, isVisionJob)) continue;
+            if (!instance.CanAcceptJobType(isSmallJob, isVisionJob)) continue;
+            if (instance.maxConcurrentTasks <= 0) continue;
             
-            float ratio = instance.maxConcurrentTasks > 0 
-                ? (float)instance.activeTasks / instance.maxConcurrentTasks 
-                : float.MaxValue;
-            
-            if (ratio < bestRatio)
+            instance.EnsureReplicaActiveTasks();
+            int repCount = instance.GetEffectiveReplicaCount();
+            for (int r = 0; r < repCount; r++)
             {
-                bestRatio = ratio;
-                bestID = instance.instanceID;
+                int rActive = instance.replicaActiveTasks[r];
+                if (rActive >= instance.maxConcurrentTasks) continue;
+                
+                float ratio = (float)rActive / instance.maxConcurrentTasks;
+                if (ratio < bestRatio)
+                {
+                    bestRatio = ratio;
+                    bestID = instance.instanceID;
+                    bestReplica = r;
+                }
             }
         }
         
+        replicaIndex = bestReplica;
         return bestID;
     }
     
@@ -478,63 +530,79 @@ public class LLMInstanceManager : MonoBehaviour
     /// </summary>
     public int GetLeastBusyLLM(bool isSmallJob = false)
     {
-        return GetLeastBusyLLM(isSmallJob, isVisionJob: false);
+        return GetLeastBusyLLM(isSmallJob, isVisionJob: false, out _);
     }
     
     /// <summary>
-    /// Get the LLM instance ID with the lowest utilization for the given job type.
-    /// Unlike GetFreeLLM, this returns an instance even if at capacity (for queueing).
-    /// Returns -1 if no matching instances exist at all.
-    /// For vision jobs: prefers VisionJobsOnly instances, falls back to Any.
+    /// Get the LLM instance ID with the lowest utilization (legacy overload that discards replica index).
     /// </summary>
-    /// <param name="isSmallJob">True for small jobs (autopic), false for big jobs (AI Guide/Adventure)</param>
-    /// <param name="isVisionJob">True if the job has images attached</param>
     public int GetLeastBusyLLM(bool isSmallJob, bool isVisionJob)
     {
+        return GetLeastBusyLLM(isSmallJob, isVisionJob, out _);
+    }
+    
+    /// <summary>
+    /// Get the LLM instance ID + replica index with the lowest utilization for the given job type.
+    /// Unlike GetFreeLLM, this returns an instance even if at capacity (for queueing).
+    /// Returns -1 with replicaIndex=0 if no matching instances exist at all.
+    /// For vision jobs: prefers VisionJobsOnly instances, falls back to Any.
+    /// </summary>
+    public int GetLeastBusyLLM(bool isSmallJob, bool isVisionJob, out int replicaIndex)
+    {
+        replicaIndex = 0;
         if (_config == null) return -1;
         
         // For vision jobs, first try to find a VisionJobsOnly instance
         if (isVisionJob)
         {
-            int visionOnlyID = GetLeastBusyLLMWithMode(isSmallJob, isVisionJob, LLMJobMode.VisionJobsOnly);
+            int visionOnlyID = GetLeastBusyLLMWithMode(isSmallJob, isVisionJob, LLMJobMode.VisionJobsOnly, out replicaIndex);
             if (visionOnlyID >= 0) return visionOnlyID;
             
             // Fall back to Any mode
-            return GetLeastBusyLLMWithMode(isSmallJob, isVisionJob, LLMJobMode.Any);
+            return GetLeastBusyLLMWithMode(isSmallJob, isVisionJob, LLMJobMode.Any, out replicaIndex);
         }
         
-        // For non-vision jobs, use standard matching
         int bestID = -1;
-        float bestRatio = float.MaxValue; // Lower is better
+        int bestReplica = 0;
+        float bestRatio = float.MaxValue;
         
         foreach (var instance in _config.instances)
         {
             if (!instance.isActive) continue;
-            if (!instance.CanAcceptJobType(isSmallJob, isVisionJob)) continue; // Only check job type, not capacity
+            if (!instance.CanAcceptJobType(isSmallJob, isVisionJob)) continue;
             
-            // Calculate utilization ratio (0 = empty, 1 = full, >1 = over capacity)
-            float ratio = instance.maxConcurrentTasks > 0 
-                ? (float)instance.activeTasks / instance.maxConcurrentTasks 
-                : float.MaxValue;
-            
-            if (ratio < bestRatio)
+            instance.EnsureReplicaActiveTasks();
+            int repCount = instance.GetEffectiveReplicaCount();
+            int divisor = Mathf.Max(1, instance.maxConcurrentTasks);
+            for (int r = 0; r < repCount; r++)
             {
-                bestRatio = ratio;
-                bestID = instance.instanceID;
+                float ratio = instance.maxConcurrentTasks > 0
+                    ? (float)instance.replicaActiveTasks[r] / divisor
+                    : float.MaxValue;
+                
+                if (ratio < bestRatio)
+                {
+                    bestRatio = ratio;
+                    bestID = instance.instanceID;
+                    bestReplica = r;
+                }
             }
         }
         
+        replicaIndex = bestReplica;
         return bestID;
     }
     
     /// <summary>
     /// Get the least busy LLM instance with a specific job mode.
     /// </summary>
-    private int GetLeastBusyLLMWithMode(bool isSmallJob, bool isVisionJob, LLMJobMode targetMode)
+    private int GetLeastBusyLLMWithMode(bool isSmallJob, bool isVisionJob, LLMJobMode targetMode, out int replicaIndex)
     {
+        replicaIndex = 0;
         if (_config == null) return -1;
         
         int bestID = -1;
+        int bestReplica = 0;
         float bestRatio = float.MaxValue;
         
         foreach (var instance in _config.instances)
@@ -543,22 +611,30 @@ public class LLMInstanceManager : MonoBehaviour
             if (instance.jobMode != targetMode) continue;
             if (!instance.CanAcceptJobType(isSmallJob, isVisionJob)) continue;
             
-            float ratio = instance.maxConcurrentTasks > 0 
-                ? (float)instance.activeTasks / instance.maxConcurrentTasks 
-                : float.MaxValue;
-            
-            if (ratio < bestRatio)
+            instance.EnsureReplicaActiveTasks();
+            int repCount = instance.GetEffectiveReplicaCount();
+            int divisor = Mathf.Max(1, instance.maxConcurrentTasks);
+            for (int r = 0; r < repCount; r++)
             {
-                bestRatio = ratio;
-                bestID = instance.instanceID;
+                float ratio = instance.maxConcurrentTasks > 0
+                    ? (float)instance.replicaActiveTasks[r] / divisor
+                    : float.MaxValue;
+                
+                if (ratio < bestRatio)
+                {
+                    bestRatio = ratio;
+                    bestID = instance.instanceID;
+                    bestReplica = r;
+                }
             }
         }
         
+        replicaIndex = bestReplica;
         return bestID;
     }
     
     /// <summary>
-    /// Get the total count of active tasks across all LLM instances.
+    /// Get the total count of active tasks across all LLM instances and all replicas.
     /// </summary>
     public int GetTotalActiveTaskCount()
     {
@@ -568,9 +644,74 @@ public class LLMInstanceManager : MonoBehaviour
         foreach (var instance in _config.instances)
         {
             if (instance.isActive)
-                count += instance.activeTasks;
+                count += instance.GetTotalActiveTasks();
         }
         return count;
+    }
+    
+    // ============================================
+    // Replica / port-increment helpers
+    // ============================================
+    
+    /// <summary>
+    /// Apply a port offset to an endpoint URL, incrementing its TCP port by replicaIndex.
+    /// Returns the original endpoint unchanged when replicaIndex==0, the URL has no parseable port,
+    /// or parsing fails. Preserves the path, query, and trailing-slash behavior of the original.
+    /// </summary>
+    public static string ApplyReplicaPortOffset(string endpoint, int replicaIndex)
+    {
+        if (replicaIndex <= 0 || string.IsNullOrEmpty(endpoint)) return endpoint;
+        
+        try
+        {
+            var ub = new System.UriBuilder(endpoint);
+            // UriBuilder fills in the default port (80/443) when the original had none.
+            // We only shift when the original endpoint explicitly contains ":<port>".
+            if (!System.Text.RegularExpressions.Regex.IsMatch(endpoint, @"^[a-zA-Z][a-zA-Z0-9+.-]*://[^/]+:\d+"))
+            {
+                return endpoint;
+            }
+            
+            int newPort = ub.Port + replicaIndex;
+            if (newPort <= 0 || newPort > 65535) return endpoint;
+            ub.Port = newPort;
+            
+            string result = ub.Uri.AbsoluteUri;
+            
+            // UriBuilder normalizes a host-only URL like "http://hal:8000" into "http://hal:8000/".
+            // Preserve the original presence/absence of a trailing slash on the host-only form.
+            if (!endpoint.EndsWith("/"))
+            {
+                int schemeEnd = result.IndexOf("://", System.StringComparison.Ordinal);
+                if (schemeEnd >= 0)
+                {
+                    int slashAfterAuthority = result.IndexOf('/', schemeEnd + 3);
+                    // If the only '/' after the authority is the last char (i.e., empty path), trim it.
+                    if (slashAfterAuthority == result.Length - 1)
+                    {
+                        result = result.Substring(0, result.Length - 1);
+                    }
+                }
+            }
+            return result;
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning($"LLMInstanceManager.ApplyReplicaPortOffset: failed to shift port on '{endpoint}': {e.Message}");
+            return endpoint;
+        }
+    }
+    
+    /// <summary>
+    /// Get the configured base endpoint of an instance with the replica's port offset applied.
+    /// This is just the raw endpoint (no provider-specific path suffix) — for the full URL
+    /// including paths like /v1/chat/completions, see LLMSettingsManager.GetInstanceEndpointUrl.
+    /// </summary>
+    public string GetInstanceBaseEndpoint(int instanceID, int replicaIndex)
+    {
+        var instance = GetInstance(instanceID);
+        if (instance == null || instance.settings == null) return "";
+        return ApplyReplicaPortOffset(instance.settings.endpoint, replicaIndex);
     }
     
     /// <summary>

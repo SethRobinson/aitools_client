@@ -53,6 +53,7 @@ public class PicJob
     public RTRendererType requestedRenderer = RTRendererType.ComfyUI;
     public int _serverID = -1;
     public int _llmInstanceID = -1; // Tracks which LLM instance is handling this job
+    public int _llmReplicaIndex = 0; // Which replica of the instance (port offset) is in use
     public List<PicJobData> _data = new List<PicJobData>();
     public string _originalJobString = "";
     public float _timeOfStart = 0;
@@ -205,6 +206,7 @@ public class PicMain : MonoBehaviour
     bool m_waitingForPicJob = false;
     bool _llmIsActive = false;
     int _activeLLMInstanceID = -1; // Tracks which LLM instance is currently active for this pic
+    int _activeLLMReplicaIndex = 0; // Which replica of the active instance is in use
     int _pendingServerID = -1; // Tracks which server this pic is targeting during pre-GPU LLM work
     const string m_default_requirements = "gpu";
     string m_requirements = m_default_requirements;
@@ -2975,7 +2977,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
     }
 
-    public void SetLLMActive(bool bActive, int instanceID = -1)
+    public void SetLLMActive(bool bActive, int instanceID = -1, int replicaIndex = 0)
     {
         if (bActive == _llmIsActive && (bActive || _activeLLMInstanceID == instanceID)) return;
         _llmIsActive = bActive;
@@ -2987,12 +2989,14 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             if (bActive && instanceID >= 0)
             {
                 _activeLLMInstanceID = instanceID;
-                instanceMgr.SetLLMBusy(instanceID, true);
+                _activeLLMReplicaIndex = replicaIndex;
+                instanceMgr.SetLLMBusy(instanceID, replicaIndex, true);
             }
             else if (!bActive && _activeLLMInstanceID >= 0)
             {
-                instanceMgr.SetLLMBusy(_activeLLMInstanceID, false);
+                instanceMgr.SetLLMBusy(_activeLLMInstanceID, _activeLLMReplicaIndex, false);
                 _activeLLMInstanceID = -1;
+                _activeLLMReplicaIndex = 0;
             }
         }
         
@@ -3382,13 +3386,14 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 
                 // Try to use multi-instance system first (isSmallJob=true for autopic LLM calls)
                 var instanceMgr = LLMInstanceManager.Get();
-                int llmInstanceID = instanceMgr?.GetFreeLLM(isSmallJob: true, isVisionJob: isVisionJob) ?? -1;
+                int llmReplicaIndex = 0;
+                int llmInstanceID = instanceMgr?.GetFreeLLM(isSmallJob: true, isVisionJob: isVisionJob, out llmReplicaIndex) ?? -1;
                 
                 // If no free instance, try to get the least busy one that can accept the job type
                 if (llmInstanceID < 0 && instanceMgr != null && instanceMgr.GetInstanceCount() > 0)
                 {
-                    llmInstanceID = instanceMgr.GetLeastBusyLLM(isSmallJob: true, isVisionJob: isVisionJob);
-                    RTConsole.Log($"No free LLM for job type, using least busy: {llmInstanceID}");
+                    llmInstanceID = instanceMgr.GetLeastBusyLLM(isSmallJob: true, isVisionJob: isVisionJob, out llmReplicaIndex);
+                    RTConsole.Log($"No free LLM for job type, using least busy: {llmInstanceID} replica {llmReplicaIndex}");
                 }
                 
                 // Check if vision job has no eligible LLM
@@ -3411,8 +3416,9 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 {
                     activeProvider = llmInstance.providerType;
                     activeSettings = llmInstance.settings;
-                    job._llmInstanceID = llmInstanceID; // Track which instance we're using
-                    RTConsole.Log($"Using LLM instance {llmInstanceID}: {llmInstance.name}");
+                    job._llmInstanceID = llmInstanceID;
+                    job._llmReplicaIndex = llmReplicaIndex;
+                    RTConsole.Log($"Using LLM instance {llmInstanceID}: {llmInstance.name} replica {llmReplicaIndex}");
                 }
                 else
                 {
@@ -3420,6 +3426,8 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                     activeProvider = mgr.GetActiveProvider();
                     activeSettings = mgr.GetProviderSettings(activeProvider);
                     job._llmInstanceID = -1;
+                    job._llmReplicaIndex = 0;
+                    llmReplicaIndex = 0;
                     RTConsole.Log("No LLM instances configured, using legacy provider");
                 }
                 
@@ -3511,7 +3519,8 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                             if (!string.IsNullOrEmpty(settingsEndpoint) && !settingsEndpoint.Contains("api.openai.com"))
                             {
                                 openAIEnableThinking = activeSettings.enableThinking;
-                                endpoint = settingsEndpoint.TrimEnd('/');
+                                string customEndpoint = LLMInstanceManager.ApplyReplicaPortOffset(settingsEndpoint, llmReplicaIndex);
+                                endpoint = customEndpoint.TrimEnd('/');
                                 if (!endpoint.EndsWith("/v1/chat/completions"))
                                     endpoint += "/v1/chat/completions";
                             }
@@ -3521,7 +3530,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                                 useResponsesAPI, isReasoningModel, includeTemperature, reasoningEffort, openAIEnableThinking);
                             RTConsole.Log("Contacting OpenAI at " + endpoint);
                             _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
-                            SetLLMActive(true, llmInstanceID);
+                            SetLLMActive(true, llmInstanceID, llmReplicaIndex);
                         }
                         break;
 
@@ -3539,13 +3548,13 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                             RTConsole.Log("Contacting Anthropic at " + endpoint);
                             string json = _anthropicAITextCompletionManager.BuildChatCompleteJSON(lines, 4096, temperature, model, true);
                             _anthropicAITextCompletionManager.SpawnChatCompletionRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
-                            SetLLMActive(true, llmInstanceID);
+                            SetLLMActive(true, llmInstanceID, llmReplicaIndex);
                         }
                         break;
 
                     case LLMProvider.LlamaCpp:
                         {
-                            string serverAddress = activeSettings.endpoint;
+                            string serverAddress = LLMInstanceManager.ApplyReplicaPortOffset(activeSettings.endpoint, llmReplicaIndex);
                             string apiKey = activeSettings.apiKey;
                             
                             RTConsole.Log("Contacting llama.cpp at " + serverAddress);
@@ -3555,13 +3564,13 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                             string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, 4096, temperature, 
                                 Config.Get().GetGenericLLMMode(), true, llmParms, false, true);
                             _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, serverAddress, suggestedEndpoint, OnStreamingTextCallback, true, apiKey);
-                            SetLLMActive(true, llmInstanceID);
+                            SetLLMActive(true, llmInstanceID, llmReplicaIndex);
                         }
                         break;
 
                     case LLMProvider.Ollama:
                         {
-                            string serverAddress = activeSettings.endpoint;
+                            string serverAddress = LLMInstanceManager.ApplyReplicaPortOffset(activeSettings.endpoint, llmReplicaIndex);
                             string apiKey = activeSettings.apiKey;
                             
                             RTConsole.Log("Contacting Ollama at " + serverAddress);
@@ -3571,7 +3580,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                             string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, 4096, temperature, 
                                 Config.Get().GetGenericLLMMode(), true, llmParms, true, false);
                             _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, serverAddress, suggestedEndpoint, OnStreamingTextCallback, true, apiKey);
-                            SetLLMActive(true, llmInstanceID);
+                            SetLLMActive(true, llmInstanceID, llmReplicaIndex);
                         }
                         break;
 
@@ -3614,13 +3623,13 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
                             string json = _geminiTextCompletionManager.BuildChatCompleteJSON(lines, 4096, temperature, model, true, enableThinking);
                             _geminiTextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
-                            SetLLMActive(true, llmInstanceID);
+                            SetLLMActive(true, llmInstanceID, llmReplicaIndex);
                         }
                         break;
 
                     case LLMProvider.OpenAICompatible:
                         {
-                            string serverAddress = activeSettings.endpoint;
+                            string serverAddress = LLMInstanceManager.ApplyReplicaPortOffset(activeSettings.endpoint, llmReplicaIndex);
                             string apiKey = activeSettings.apiKey;
                             string model = activeSettings.selectedModel ?? "";
                             
@@ -3638,7 +3647,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                             string json = _openAITextCompletionManager.BuildChatCompleteJSON(normalizedLines, 4096, temperature, model, true,
                                 enableThinking: compatEnableThinking);
                             _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
-                            SetLLMActive(true, llmInstanceID);
+                            SetLLMActive(true, llmInstanceID, llmReplicaIndex);
                         }
                         break;
                 }

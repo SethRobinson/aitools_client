@@ -33,6 +33,7 @@ public class AdventureText : MonoBehaviour
     bool _bAddedFinishedTextToPrompt = false;
     bool _llmIsActive;
     int _activeLLMInstanceID = -1; // Tracks which LLM instance is currently active
+    int _activeLLMReplicaIndex = 0; // Which replica of the active instance is in use
     Color _stopButtonOriginalBackgroundColor;
     public Button _stopButton;
     bool _bIsOnAuto;
@@ -1255,9 +1256,10 @@ public class AdventureText : MonoBehaviour
             var instanceMgr = LLMInstanceManager.Get();
             if (instanceMgr != null)
             {
-                instanceMgr.SetLLMBusy(_activeLLMInstanceID, false);
+                instanceMgr.SetLLMBusy(_activeLLMInstanceID, _activeLLMReplicaIndex, false);
             }
             _activeLLMInstanceID = -1;
+            _activeLLMReplicaIndex = 0;
         }
     }
 
@@ -1276,13 +1278,14 @@ public class AdventureText : MonoBehaviour
 
         // Try to use multi-instance system first (isSmallJob=false for Adventure big jobs)
         var instanceMgr = LLMInstanceManager.Get();
-        int llmInstanceID = instanceMgr?.GetFreeLLM(isSmallJob: false) ?? -1;
+        int llmReplicaIndex = 0;
+        int llmInstanceID = instanceMgr?.GetFreeLLM(isSmallJob: false, isVisionJob: false, out llmReplicaIndex) ?? -1;
         
         // If no free instance, try to get the least busy one that can accept big jobs
         if (llmInstanceID < 0 && instanceMgr != null && instanceMgr.GetInstanceCount() > 0)
         {
-            llmInstanceID = instanceMgr.GetLeastBusyLLM(isSmallJob: false);
-            RTConsole.Log($"Adventure: No free big job LLM, using least busy: {llmInstanceID}");
+            llmInstanceID = instanceMgr.GetLeastBusyLLM(isSmallJob: false, isVisionJob: false, out llmReplicaIndex);
+            RTConsole.Log($"Adventure: No free big job LLM, using least busy: {llmInstanceID} replica {llmReplicaIndex}");
         }
         
         LLMInstanceInfo llmInstance = llmInstanceID >= 0 ? instanceMgr?.GetInstance(llmInstanceID) : null;
@@ -1295,14 +1298,16 @@ public class AdventureText : MonoBehaviour
             provider = llmInstance.providerType;
             activeSettings = llmInstance.settings;
             _activeLLMInstanceID = llmInstanceID;
-            instanceMgr.SetLLMBusy(llmInstanceID, true);
-            RTConsole.Log($"Adventure using LLM instance {llmInstanceID}: {llmInstance.name}");
+            _activeLLMReplicaIndex = llmReplicaIndex;
+            instanceMgr.SetLLMBusy(llmInstanceID, llmReplicaIndex, true);
+            RTConsole.Log($"Adventure using LLM instance {llmInstanceID}: {llmInstance.name} replica {llmReplicaIndex}");
         }
         else
         {
             // Fall back to legacy system only if no instances configured
             provider = AdventureLogic.Get().GetLLMProvider();
             _activeLLMInstanceID = -1;
+            _activeLLMReplicaIndex = 0;
             RTConsole.Log("Adventure: No LLM instances configured, using legacy provider");
         }
 
@@ -1373,7 +1378,8 @@ public class AdventureText : MonoBehaviour
                     if (!string.IsNullOrEmpty(adventureSettingsEndpoint) && !adventureSettingsEndpoint.Contains("api.openai.com"))
                     {
                         adventureEnableThinking = activeSettings.enableThinking;
-                        endpoint = adventureSettingsEndpoint.TrimEnd('/');
+                        string customEndpoint = LLMInstanceManager.ApplyReplicaPortOffset(adventureSettingsEndpoint, _activeLLMReplicaIndex);
+                        endpoint = customEndpoint.TrimEnd('/');
                         if (!endpoint.EndsWith("/v1/chat/completions"))
                             endpoint += "/v1/chat/completions";
                     }
@@ -1413,13 +1419,14 @@ public class AdventureText : MonoBehaviour
                 {
                     var mgr = LLMSettingsManager.Get();
                     var settings = activeSettings ?? mgr?.GetProviderSettings(LLMProvider.LlamaCpp);
+                    string serverAddress = LLMInstanceManager.ApplyReplicaPortOffset(settings?.endpoint ?? "", _activeLLMReplicaIndex);
                     
                     string suggestedEndpoint;
                     // Use instance LLM params if we have an active instance
                     var llmParms = _activeLLMInstanceID >= 0 ? mgr?.GetInstanceLLMParms(_activeLLMInstanceID) : mgr?.GetLLMParms(LLMProvider.LlamaCpp);
                     string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, 4096, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetGenericLLMMode(), true, llmParms ?? new List<LLMParm>(), false, true);
                     
-                    _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, settings?.endpoint ?? "", suggestedEndpoint, OnStreamingTextCallback, true, settings?.apiKey ?? "");
+                    _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, serverAddress, suggestedEndpoint, OnStreamingTextCallback, true, settings?.apiKey ?? "");
                     SetLLMActive(true);
                 }
                 break;
@@ -1428,6 +1435,7 @@ public class AdventureText : MonoBehaviour
                 {
                     var mgr = LLMSettingsManager.Get();
                     var settings = activeSettings ?? mgr?.GetProviderSettings(LLMProvider.Ollama);
+                    string serverAddress = LLMInstanceManager.ApplyReplicaPortOffset(settings?.endpoint ?? "", _activeLLMReplicaIndex);
                     
                     string suggestedEndpoint;
                     // Use instance LLM params if we have an active instance
@@ -1435,7 +1443,7 @@ public class AdventureText : MonoBehaviour
                     string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, 4096, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetGenericLLMMode(), true, llmParms ?? new List<LLMParm>(), true, false);
                     
                     // Use suggestedEndpoint which is /api/chat for Ollama (supports options.num_ctx)
-                    _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, settings?.endpoint ?? "", suggestedEndpoint, OnStreamingTextCallback, true, settings?.apiKey ?? "");
+                    _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, serverAddress, suggestedEndpoint, OnStreamingTextCallback, true, settings?.apiKey ?? "");
                     SetLLMActive(true);
                 }
                 break;
@@ -1489,7 +1497,7 @@ public class AdventureText : MonoBehaviour
                 {
                     var mgr = LLMSettingsManager.Get();
                     var settings = activeSettings ?? mgr?.GetProviderSettings(LLMProvider.OpenAICompatible);
-                    string serverAddress = settings?.endpoint ?? "";
+                    string serverAddress = LLMInstanceManager.ApplyReplicaPortOffset(settings?.endpoint ?? "", _activeLLMReplicaIndex);
                     string apiKey = settings?.apiKey ?? "";
                     string model = settings?.selectedModel ?? "";
 

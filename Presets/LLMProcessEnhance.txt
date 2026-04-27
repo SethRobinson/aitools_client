@@ -2,7 +2,7 @@ COMMAND_START|joblist
 #LLM enhances user prompt into detailed Flux image prompt (called by Process button)
 command @llm_prompt_reset
 command @copy|none|requirements|
-command @llm_prompt_set_base_prompt|Please rewrite and enhance the text from the user to be a detailed image prompt for FLUX text to image renderer.  Return only a single paragraph not longer than 400 words.  Don't use markup. include nationality, age, clothing, poses, camera direction, etc. Obviously don't use the word FLUX in the description.|
+command @llm_prompt_set_base_prompt|Please rewrite and enhance the text from the user to be a detailed image prompt for Z-Image text to image renderer.  Return only a single paragraph not longer than 400 words.  Don't use markup. include nationality, age, clothing, poses, camera direction, etc. It works best with simple, direct language, not poetry.|
 command @llm_prompt_add_from_user|global_prompt|
 call_llm
 command @copy|llm_reply|global_prompt|

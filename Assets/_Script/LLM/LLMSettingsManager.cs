@@ -1023,14 +1023,23 @@ public class LLMSettingsManager : MonoBehaviour
     }
     
     /// <summary>
-    /// Get the full endpoint URL for a specific instance.
+    /// Get the full endpoint URL for a specific instance (defaults to replica 0).
     /// </summary>
     public string GetInstanceEndpointUrl(int instanceID)
+    {
+        return GetInstanceEndpointUrl(instanceID, 0);
+    }
+    
+    /// <summary>
+    /// Get the full endpoint URL for a specific instance + replica.
+    /// Applies a port offset of replicaIndex to the configured endpoint before building the provider-specific URL.
+    /// </summary>
+    public string GetInstanceEndpointUrl(int instanceID, int replicaIndex)
     {
         var instance = GetLLMInstance(instanceID);
         if (instance == null) return "";
         
-        string endpoint = instance.settings.endpoint;
+        string endpoint = LLMInstanceManager.ApplyReplicaPortOffset(instance.settings.endpoint, replicaIndex);
         
         switch (instance.providerType)
         {

@@ -26,6 +26,12 @@ public class LLMSettingsPanel : MonoBehaviour
     private GameObject _maxConcurrentRow;
     private TMP_InputField _displayNameInput;
     private GameObject _displayNameRow;
+    private Toggle _enabledToggle;
+    private GameObject _enabledRow;
+    private Toggle _useReplicasToggle;
+    private TMP_InputField _replicaCountInput;
+    private TextMeshProUGUI _replicaHelpText;
+    private GameObject _replicaRow;
 
     private RectTransform _mainPanel;
     private TMP_Dropdown _activeProviderDropdown;
@@ -779,11 +785,17 @@ public class LLMSettingsPanel : MonoBehaviour
         // Display Name row (for selected instance)
         CreateDisplayNameRow(content.transform);
         
+        // Enabled toggle (for selected instance)
+        CreateEnabledRow(content.transform);
+        
         // Job Mode row (for selected instance)
         CreateJobModeRow(content.transform);
         
         // Max Concurrent Tasks row (for selected instance)
         CreateMaxConcurrentRow(content.transform);
+        
+        // Replica/port-increment row (for selected instance, local providers only)
+        CreateReplicaRow(content.transform);
 
         // Row: Active provider (explicit layout) - hidden when using multi-instance
         CreateActiveProviderRow(content.transform);
@@ -825,8 +837,10 @@ public class LLMSettingsPanel : MonoBehaviour
             // No instances - hide all provider UIs and instance-specific rows
             HideAllProviderUIs();
             _displayNameRow?.SetActive(false);
+            _enabledRow?.SetActive(false);
             _jobModeRow?.SetActive(false);
             _maxConcurrentRow?.SetActive(false);
+            _replicaRow?.SetActive(false);
             if (_activeProviderDropdown?.transform.parent != null)
                 _activeProviderDropdown.transform.parent.gameObject.SetActive(false);
         }
@@ -1088,6 +1102,297 @@ public class LLMSettingsPanel : MonoBehaviour
         }
     }
     
+    private void CreateEnabledRow(Transform parent)
+    {
+        const float rowHeight = 30f;
+        const float pad = 12f;
+        
+        _enabledRow = new GameObject("EnabledRow");
+        _enabledRow.transform.SetParent(parent, false);
+        var rowImg = _enabledRow.AddComponent<Image>();
+        ApplyUISprite(rowImg);
+        rowImg.color = RowBg;
+        var rowLE = _enabledRow.AddComponent<LayoutElement>();
+        rowLE.preferredHeight = rowHeight;
+        
+        // Toggle (checkbox) at left
+        var toggleGo = new GameObject("Toggle");
+        toggleGo.transform.SetParent(_enabledRow.transform, false);
+        var toggleRt = toggleGo.AddComponent<RectTransform>();
+        toggleRt.anchorMin = new Vector2(0, 0.5f);
+        toggleRt.anchorMax = new Vector2(0, 0.5f);
+        toggleRt.pivot = new Vector2(0, 0.5f);
+        toggleRt.sizeDelta = new Vector2(20, 20);
+        toggleRt.anchoredPosition = new Vector2(pad, 0);
+        
+        var bgGo = new GameObject("Background");
+        bgGo.transform.SetParent(toggleGo.transform, false);
+        var bgRt = bgGo.AddComponent<RectTransform>();
+        bgRt.anchorMin = Vector2.zero;
+        bgRt.anchorMax = Vector2.one;
+        bgRt.offsetMin = Vector2.zero;
+        bgRt.offsetMax = Vector2.zero;
+        var bgImg = bgGo.AddComponent<Image>();
+        bgImg.color = InputFieldBg;
+        ApplyUISprite(bgImg);
+        
+        var checkGo = new GameObject("Checkmark");
+        checkGo.transform.SetParent(bgGo.transform, false);
+        var checkRt = checkGo.AddComponent<RectTransform>();
+        checkRt.anchorMin = new Vector2(0.1f, 0.1f);
+        checkRt.anchorMax = new Vector2(0.9f, 0.9f);
+        checkRt.offsetMin = Vector2.zero;
+        checkRt.offsetMax = Vector2.zero;
+        var checkTmp = checkGo.AddComponent<TextMeshProUGUI>();
+        checkTmp.font = _font;
+        checkTmp.fontSize = 14;
+        checkTmp.color = new Color(0.2f, 0.5f, 0.2f, 1f);
+        checkTmp.alignment = TextAlignmentOptions.Center;
+        checkTmp.text = "\u2713";
+        
+        _enabledToggle = toggleGo.AddComponent<Toggle>();
+        _enabledToggle.targetGraphic = bgImg;
+        _enabledToggle.graphic = checkTmp;
+        _enabledToggle.isOn = true;
+        _enabledToggle.onValueChanged.AddListener(OnEnabledChanged);
+        
+        // Label after checkbox
+        var labelObj = new GameObject("Label");
+        labelObj.transform.SetParent(_enabledRow.transform, false);
+        var labelRt = labelObj.AddComponent<RectTransform>();
+        labelRt.anchorMin = new Vector2(0, 0);
+        labelRt.anchorMax = new Vector2(1, 1);
+        labelRt.offsetMin = new Vector2(pad + 28, 0);
+        labelRt.offsetMax = new Vector2(-pad, 0);
+        var label = labelObj.AddComponent<TextMeshProUGUI>();
+        label.font = _font;
+        label.text = "Enabled (uncheck to disable this LLM without losing settings)";
+        label.fontSize = 13;
+        label.color = TextDark;
+        label.alignment = TextAlignmentOptions.MidlineLeft;
+        
+        _enabledRow.SetActive(false);
+    }
+    
+    private void OnEnabledChanged(bool value)
+    {
+        if (_selectedInstanceID < 0) return;
+        var instance = _workingInstancesConfig?.GetInstance(_selectedInstanceID);
+        if (instance != null)
+        {
+            instance.isActive = value;
+            _instanceListUI?.UpdateItemDisplay(instance);
+        }
+    }
+    
+    private void CreateReplicaRow(Transform parent)
+    {
+        const float rowHeight = 32f;
+        const float pad = 12f;
+        
+        _replicaRow = new GameObject("ReplicaRow");
+        _replicaRow.transform.SetParent(parent, false);
+        var rowImg = _replicaRow.AddComponent<Image>();
+        ApplyUISprite(rowImg);
+        rowImg.color = RowBg;
+        var rowLE = _replicaRow.AddComponent<LayoutElement>();
+        rowLE.preferredHeight = rowHeight;
+        
+        // Toggle on the left
+        var toggleGo = new GameObject("Toggle");
+        toggleGo.transform.SetParent(_replicaRow.transform, false);
+        var toggleRt = toggleGo.AddComponent<RectTransform>();
+        toggleRt.anchorMin = new Vector2(0, 0.5f);
+        toggleRt.anchorMax = new Vector2(0, 0.5f);
+        toggleRt.pivot = new Vector2(0, 0.5f);
+        toggleRt.sizeDelta = new Vector2(20, 20);
+        toggleRt.anchoredPosition = new Vector2(pad, 0);
+        
+        var bgGo = new GameObject("Background");
+        bgGo.transform.SetParent(toggleGo.transform, false);
+        var bgRt = bgGo.AddComponent<RectTransform>();
+        bgRt.anchorMin = Vector2.zero;
+        bgRt.anchorMax = Vector2.one;
+        bgRt.offsetMin = Vector2.zero;
+        bgRt.offsetMax = Vector2.zero;
+        var bgImg = bgGo.AddComponent<Image>();
+        bgImg.color = InputFieldBg;
+        ApplyUISprite(bgImg);
+        
+        var checkGo = new GameObject("Checkmark");
+        checkGo.transform.SetParent(bgGo.transform, false);
+        var checkRt = checkGo.AddComponent<RectTransform>();
+        checkRt.anchorMin = new Vector2(0.1f, 0.1f);
+        checkRt.anchorMax = new Vector2(0.9f, 0.9f);
+        checkRt.offsetMin = Vector2.zero;
+        checkRt.offsetMax = Vector2.zero;
+        var checkTmp = checkGo.AddComponent<TextMeshProUGUI>();
+        checkTmp.font = _font;
+        checkTmp.fontSize = 14;
+        checkTmp.color = new Color(0.2f, 0.5f, 0.2f, 1f);
+        checkTmp.alignment = TextAlignmentOptions.Center;
+        checkTmp.text = "\u2713";
+        
+        _useReplicasToggle = toggleGo.AddComponent<Toggle>();
+        _useReplicasToggle.targetGraphic = bgImg;
+        _useReplicasToggle.graphic = checkTmp;
+        _useReplicasToggle.isOn = false;
+        _useReplicasToggle.onValueChanged.AddListener(OnUseReplicasChanged);
+        
+        // Layout columns (anchored from the left of the row):
+        //   [pad] [toggle:20] [gap:8] [toggle label] [gap] [Replicas:] [input:45] [gap] [help text...]
+        const float toggleLabelX = pad + 20 + 8;        // 40
+        const float toggleLabelWidth = 200f;            // "Increment port per replica"
+        const float replicasLabelX = toggleLabelX + toggleLabelWidth + 8;  // 248
+        const float replicasLabelWidth = 60f;           // "Replicas:"
+        const float inputX = replicasLabelX + replicasLabelWidth;          // 308
+        const float inputWidth = 45f;
+        const float helpX = inputX + inputWidth + 8;    // 361
+        
+        // Toggle label "Increment port per replica"
+        var labelObj = new GameObject("ToggleLabel");
+        labelObj.transform.SetParent(_replicaRow.transform, false);
+        var labelRt = labelObj.AddComponent<RectTransform>();
+        labelRt.anchorMin = new Vector2(0, 0);
+        labelRt.anchorMax = new Vector2(0, 1);
+        labelRt.pivot = new Vector2(0, 0.5f);
+        labelRt.sizeDelta = new Vector2(toggleLabelWidth, 0);
+        labelRt.anchoredPosition = new Vector2(toggleLabelX, 0);
+        var label = labelObj.AddComponent<TextMeshProUGUI>();
+        label.font = _font;
+        label.text = "Increment port per replica";
+        label.fontSize = 13;
+        label.color = TextDark;
+        label.alignment = TextAlignmentOptions.MidlineLeft;
+        
+        // "Replicas:" label
+        var replicasLabelObj = new GameObject("ReplicasLabel");
+        replicasLabelObj.transform.SetParent(_replicaRow.transform, false);
+        var replicasLabelRt = replicasLabelObj.AddComponent<RectTransform>();
+        replicasLabelRt.anchorMin = new Vector2(0, 0);
+        replicasLabelRt.anchorMax = new Vector2(0, 1);
+        replicasLabelRt.pivot = new Vector2(0, 0.5f);
+        replicasLabelRt.sizeDelta = new Vector2(replicasLabelWidth, 0);
+        replicasLabelRt.anchoredPosition = new Vector2(replicasLabelX, 0);
+        var replicasLabel = replicasLabelObj.AddComponent<TextMeshProUGUI>();
+        replicasLabel.font = _font;
+        replicasLabel.text = "Replicas:";
+        replicasLabel.fontSize = 13;
+        replicasLabel.color = TextDark;
+        replicasLabel.alignment = TextAlignmentOptions.MidlineLeft;
+        
+        // Replica count input
+        var inputGo = TMP_DefaultControls.CreateInputField(BuildTMPResources());
+        inputGo.name = "ReplicaCountInput";
+        inputGo.transform.SetParent(_replicaRow.transform, false);
+        ApplyFontAndColor(inputGo);
+        var inputRt = inputGo.GetComponent<RectTransform>();
+        inputRt.anchorMin = new Vector2(0, 0.5f);
+        inputRt.anchorMax = new Vector2(0, 0.5f);
+        inputRt.pivot = new Vector2(0, 0.5f);
+        inputRt.sizeDelta = new Vector2(inputWidth, 24);
+        inputRt.anchoredPosition = new Vector2(inputX, 0);
+        
+        _replicaCountInput = inputGo.GetComponent<TMP_InputField>();
+        _replicaCountInput.contentType = TMP_InputField.ContentType.IntegerNumber;
+        _replicaCountInput.text = "1";
+        _replicaCountInput.onEndEdit.AddListener(OnReplicaCountChanged);
+        if (_replicaCountInput.textComponent != null)
+        {
+            _replicaCountInput.textComponent.font = _font;
+            _replicaCountInput.textComponent.fontSize = 13;
+            _replicaCountInput.textComponent.color = TextDark;
+        }
+        
+        // Help text on the right showing computed range
+        var helpObj = new GameObject("HelpText");
+        helpObj.transform.SetParent(_replicaRow.transform, false);
+        var helpRt = helpObj.AddComponent<RectTransform>();
+        helpRt.anchorMin = new Vector2(0, 0);
+        helpRt.anchorMax = new Vector2(1, 1);
+        helpRt.pivot = new Vector2(0, 0.5f);
+        helpRt.anchoredPosition = new Vector2(helpX, 0);
+        helpRt.sizeDelta = new Vector2(-helpX - pad, 0);
+        _replicaHelpText = helpObj.AddComponent<TextMeshProUGUI>();
+        _replicaHelpText.font = _font;
+        _replicaHelpText.text = "";
+        _replicaHelpText.fontSize = 11;
+        _replicaHelpText.color = new Color(0.4f, 0.4f, 0.4f, 1f);
+        _replicaHelpText.alignment = TextAlignmentOptions.MidlineLeft;
+        
+        _replicaRow.SetActive(false);
+    }
+    
+    private void OnUseReplicasChanged(bool value)
+    {
+        if (_selectedInstanceID < 0) return;
+        var instance = _workingInstancesConfig?.GetInstance(_selectedInstanceID);
+        if (instance == null) return;
+        
+        instance.useReplicas = value;
+        if (value && instance.replicaCount < 1) instance.replicaCount = 1;
+        UpdateReplicaCountInteractable(value);
+        UpdateReplicaHelpText(instance);
+        _instanceListUI?.UpdateItemDisplay(instance);
+    }
+    
+    private void OnReplicaCountChanged(string value)
+    {
+        if (_selectedInstanceID < 0) return;
+        var instance = _workingInstancesConfig?.GetInstance(_selectedInstanceID);
+        if (instance == null) return;
+        
+        if (int.TryParse(value, out int n))
+        {
+            instance.replicaCount = Mathf.Max(1, n);
+        }
+        if (_replicaCountInput != null)
+            _replicaCountInput.text = instance.replicaCount.ToString();
+        UpdateReplicaHelpText(instance);
+        _instanceListUI?.UpdateItemDisplay(instance);
+    }
+    
+    private void UpdateReplicaCountInteractable(bool useReplicas)
+    {
+        if (_replicaCountInput != null)
+            _replicaCountInput.interactable = useReplicas;
+    }
+    
+    private void UpdateReplicaHelpText(LLMInstanceInfo instance)
+    {
+        if (_replicaHelpText == null || instance == null) return;
+        
+        if (!instance.useReplicas || instance.replicaCount <= 1)
+        {
+            _replicaHelpText.text = "(off: single endpoint)";
+            return;
+        }
+        
+        // Try to extract the explicit port from the configured endpoint
+        string ep = instance.settings?.endpoint ?? "";
+        var match = System.Text.RegularExpressions.Regex.Match(ep, @"^([a-zA-Z][a-zA-Z0-9+.-]*://[^/]+):(\d+)");
+        if (!match.Success)
+        {
+            _replicaHelpText.text = "(set an endpoint with explicit :port)";
+            return;
+        }
+        
+        if (!int.TryParse(match.Groups[2].Value, out int basePort))
+        {
+            _replicaHelpText.text = "(invalid port)";
+            return;
+        }
+        
+        int last = basePort + instance.replicaCount - 1;
+        _replicaHelpText.text = $"(uses :{basePort} ... :{last})";
+    }
+    
+    private static bool IsLocalProvider(LLMProvider p)
+    {
+        return p == LLMProvider.LlamaCpp || p == LLMProvider.Ollama || p == LLMProvider.OpenAICompatible;
+    }
+    
+    
     private void OnInstanceSelected(int instanceID)
     {
         _selectedInstanceID = instanceID;
@@ -1097,8 +1402,10 @@ public class LLMSettingsPanel : MonoBehaviour
         {
             // No instance selected - hide provider UI
             _displayNameRow?.SetActive(false);
+            _enabledRow?.SetActive(false);
             _jobModeRow?.SetActive(false);
             _maxConcurrentRow?.SetActive(false);
+            _replicaRow?.SetActive(false);
             if (_activeProviderDropdown?.transform.parent != null)
                 _activeProviderDropdown.transform.parent.gameObject.SetActive(false);
             HideAllProviderUIs();
@@ -1110,6 +1417,11 @@ public class LLMSettingsPanel : MonoBehaviour
         if (_displayNameInput != null)
             _displayNameInput.text = instance.name ?? "";
         
+        // Show enabled toggle
+        _enabledRow?.SetActive(true);
+        if (_enabledToggle != null)
+            _enabledToggle.SetIsOnWithoutNotify(instance.isActive);
+        
         // Show job mode row
         _jobModeRow?.SetActive(true);
         if (_jobModeDropdown != null)
@@ -1119,6 +1431,19 @@ public class LLMSettingsPanel : MonoBehaviour
         _maxConcurrentRow?.SetActive(true);
         if (_maxConcurrentInput != null)
             _maxConcurrentInput.text = instance.maxConcurrentTasks.ToString();
+        
+        // Show replica row only for local providers
+        bool showReplica = IsLocalProvider(instance.providerType);
+        _replicaRow?.SetActive(showReplica);
+        if (showReplica)
+        {
+            if (_useReplicasToggle != null)
+                _useReplicasToggle.SetIsOnWithoutNotify(instance.useReplicas);
+            if (_replicaCountInput != null)
+                _replicaCountInput.text = Mathf.Max(1, instance.replicaCount).ToString();
+            UpdateReplicaHelpText(instance);
+            UpdateReplicaCountInteractable(instance.useReplicas);
+        }
         
         // Update provider dropdown
         if (_activeProviderDropdown != null)
@@ -1683,6 +2008,10 @@ public class LLMSettingsPanel : MonoBehaviour
                 _openAICompatibleUI?.ApplyToSettings(instance.settings);
                 break;
         }
+        // Refresh the replica help text in case the endpoint port changed
+        if (IsLocalProvider(instance.providerType))
+            UpdateReplicaHelpText(instance);
+        
         var instanceManager = LLMInstanceManager.Get();
         if (instanceManager != null)
             instanceManager.ApplyConfig(_workingInstancesConfig);
@@ -1773,8 +2102,10 @@ public class LLMSettingsPanel : MonoBehaviour
                 _selectedInstanceID = -1;
                 HideAllProviderUIs();
                 _displayNameRow?.SetActive(false);
+                _enabledRow?.SetActive(false);
                 _jobModeRow?.SetActive(false);
                 _maxConcurrentRow?.SetActive(false);
+                _replicaRow?.SetActive(false);
                 if (_activeProviderDropdown?.transform.parent != null)
                     _activeProviderDropdown.transform.parent.gameObject.SetActive(false);
                 return; // Don't continue with provider UI updates

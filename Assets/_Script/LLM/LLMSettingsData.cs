@@ -129,11 +129,18 @@ public class LLMInstanceInfo
     public LLMProviderSettings settings;        // endpoint, apiKey, model, extraParams
     public bool isActive = true;                // Whether this instance is enabled
     public LLMJobMode jobMode = LLMJobMode.Any; // Which job types this instance accepts
-    public int maxConcurrentTasks = 1;          // Maximum concurrent tasks this instance can handle
+    public int maxConcurrentTasks = 1;          // Maximum concurrent tasks this instance can handle (per replica)
+    
+    // Replica/port-increment fan-out: when enabled, this single entry represents N
+    // identical instances on consecutive ports starting from the configured endpoint's port.
+    public bool useReplicas = false;            // When true, treat as replicaCount instances on incrementing ports
+    public int replicaCount = 1;                // Number of replicas (>= 1). Effective parallelism = replicaCount * maxConcurrentTasks
     
     // Runtime state (not persisted)
     [NonSerialized]
-    public int activeTasks = 0;                 // Current number of active tasks
+    public int activeTasks = 0;                 // Aggregate active task count across all replicas (for legacy/display)
+    [NonSerialized]
+    public int[] replicaActiveTasks;            // Per-replica active task counter; lazy-allocated to length GetEffectiveReplicaCount()
     
     /// <summary>
     /// Creates a default instance with the specified provider type.
@@ -245,17 +252,63 @@ public class LLMInstanceInfo
     public bool CanAcceptJob(bool isSmallJob, bool isVisionJob)
     {
         if (!CanAcceptJobType(isSmallJob, isVisionJob)) return false;
-        return activeTasks < maxConcurrentTasks;
+        return HasCapacity();
     }
     
     /// <summary>
-    /// Check if this instance has capacity for more tasks.
+    /// Check if this instance has capacity for more tasks across all replicas.
     /// Returns false if maxConcurrentTasks is 0 (disabled).
     /// </summary>
     public bool HasCapacity()
     {
         if (maxConcurrentTasks <= 0) return false; // Disabled
-        return activeTasks < maxConcurrentTasks;
+        EnsureReplicaActiveTasks();
+        int repCount = GetEffectiveReplicaCount();
+        for (int i = 0; i < repCount; i++)
+        {
+            if (replicaActiveTasks[i] < maxConcurrentTasks) return true;
+        }
+        return false;
+    }
+    
+    /// <summary>
+    /// Returns the effective number of replicas: replicaCount when useReplicas is true, else 1.
+    /// Always returns at least 1.
+    /// </summary>
+    public int GetEffectiveReplicaCount()
+    {
+        if (!useReplicas) return 1;
+        return Mathf.Max(1, replicaCount);
+    }
+    
+    /// <summary>
+    /// Ensure replicaActiveTasks is allocated and sized to match the effective replica count.
+    /// Preserves existing counters when growing; truncates when shrinking.
+    /// </summary>
+    public void EnsureReplicaActiveTasks()
+    {
+        int needed = GetEffectiveReplicaCount();
+        if (replicaActiveTasks == null || replicaActiveTasks.Length != needed)
+        {
+            var newArr = new int[needed];
+            if (replicaActiveTasks != null)
+            {
+                int copy = Mathf.Min(replicaActiveTasks.Length, needed);
+                for (int i = 0; i < copy; i++) newArr[i] = replicaActiveTasks[i];
+            }
+            replicaActiveTasks = newArr;
+        }
+    }
+    
+    /// <summary>
+    /// Total active tasks across all replicas (kept in sync with the legacy activeTasks field).
+    /// </summary>
+    public int GetTotalActiveTasks()
+    {
+        if (replicaActiveTasks == null) return activeTasks;
+        int total = 0;
+        for (int i = 0; i < replicaActiveTasks.Length; i++) total += replicaActiveTasks[i];
+        return total;
     }
     
     /// <summary>
@@ -272,7 +325,10 @@ public class LLMInstanceInfo
             isActive = this.isActive,
             jobMode = this.jobMode,
             maxConcurrentTasks = this.maxConcurrentTasks,
-            activeTasks = 0 // Don't copy runtime state
+            useReplicas = this.useReplicas,
+            replicaCount = this.replicaCount,
+            activeTasks = 0, // Don't copy runtime state
+            replicaActiveTasks = null // Don't copy runtime state; lazy-allocated on use
         };
     }
     
@@ -300,7 +356,8 @@ public class LLMInstanceInfo
         string status = isActive ? "Active" : "Inactive";
         string model = !string.IsNullOrEmpty(settings?.selectedModel) ? settings.selectedModel : providerType.ToString();
         string concurrent = maxConcurrentTasks <= 0 ? ", DISABLED" : (maxConcurrentTasks > 1 ? $", Max:{maxConcurrentTasks}" : "");
-        return $"{name} ({model}, {status}, {GetJobModeDisplayString()}{concurrent})";
+        string replicas = (useReplicas && replicaCount > 1) ? $", x{replicaCount}" : "";
+        return $"{name} ({model}, {status}, {GetJobModeDisplayString()}{concurrent}{replicas})";
     }
 }
 

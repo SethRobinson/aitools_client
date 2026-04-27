@@ -2030,8 +2030,10 @@ public string GetPrompt() { return m_prompt; }
                     
                     // Get live active count from manager (not the cloned config)
                     int activeCount = instanceMgr.GetActiveTaskCount(instance.instanceID);
+                    int repCount = instance.GetEffectiveReplicaCount();
+                    int totalCapacity = instance.maxConcurrentTasks * repCount;
                     string shortName = GetShortInstanceName(instance.name);
-                    parts.Add($"{shortName} ({activeCount}/{instance.maxConcurrentTasks})");
+                    parts.Add($"{shortName} ({activeCount}/{totalCapacity})");
                 }
                 
                 if (parts.Count > 0)
