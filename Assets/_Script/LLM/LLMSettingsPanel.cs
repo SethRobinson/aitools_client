@@ -73,6 +73,13 @@ public class LLMSettingsPanel : MonoBehaviour
         {
             _panelRoot.SetActive(true);
             _instance.RefreshFromSettings();
+
+            // Re-apply styling and re-try sprite caching in case the panel was originally
+            // built before any usable UI sprite could be found (which left TMP_DefaultControls
+            // widgets with sprite=null + type=Sliced, i.e. invisible). Doing this on every
+            // re-show heals those invisible widgets as soon as a sprite source becomes available.
+            _instance.ApplyFontAndColor(_panelRoot);
+            _instance.StartCoroutine(_instance.RestyleNextFrame());
             return;
         }
 
@@ -173,6 +180,11 @@ public class LLMSettingsPanel : MonoBehaviour
     /// <summary>
     /// Find and cache sprites from an existing TMP_Dropdown in the scene.
     /// This reuses the same Checkmark and DropdownArrow sprites that other UI uses.
+    ///
+    /// Each sprite (background, arrow, checkmark) is cached independently so we can
+    /// recover partial info even when no single dropdown has all three (which happens
+    /// when the only other dropdowns in the scene are themselves built via
+    /// TMP_DefaultControls with empty resources, e.g. ServerSettingsPanel).
     /// </summary>
     private static void CacheSpritesFromExistingDropdown()
     {
@@ -182,82 +194,64 @@ public class LLMSettingsPanel : MonoBehaviour
         // On first open, FindAnyObjectByType may return the dropdown we just created in this panel,
         // which often has null sprites (TMP_DefaultControls.Resources is empty). If we cache those,
         // selection/checkmarks will be invisible until something later forces a refresh.
-        // So we scan all dropdowns and pick one OUTSIDE of this panel that has real sprites.
-        TMP_Dropdown best = null;
+        // So we scan all dropdowns and pick parts from ones OUTSIDE of this panel that have real sprites.
         foreach (var dd in Resources.FindObjectsOfTypeAll<TMP_Dropdown>())
         {
             if (dd == null) continue;
             if (_panelRoot != null && dd.transform.IsChildOf(_panelRoot.transform)) continue;
 
-            var ddImg = dd.GetComponent<Image>();
-            var arrowImg = dd.transform.Find("Arrow")?.GetComponent<Image>();
-            Sprite arrowSprite = arrowImg != null ? arrowImg.sprite : null;
+            // Background
+            if (_uiBackgroundSprite == null)
+            {
+                var ddImg = dd.GetComponent<Image>();
+                if (ddImg != null && ddImg.sprite != null)
+                    _uiBackgroundSprite = ddImg.sprite;
+            }
 
-            Sprite checkSprite = null;
-            Color? checkColor = null;
-            if (dd.template != null)
+            // Arrow
+            if (_dropdownArrowSprite == null)
+            {
+                var arrowImg = dd.transform.Find("Arrow")?.GetComponent<Image>();
+                if (arrowImg != null && arrowImg.sprite != null)
+                {
+                    _dropdownArrowSprite = arrowImg.sprite;
+                    _dropdownArrowColor = arrowImg.color;
+                }
+            }
+
+            // Checkmark (inside the template)
+            if (_checkmarkSprite == null && dd.template != null)
             {
                 foreach (var img in dd.template.GetComponentsInChildren<Image>(true))
                 {
                     if (img != null && img.gameObject.name.Contains("Checkmark") && img.sprite != null)
                     {
-                        checkSprite = img.sprite;
-                        checkColor = img.color;
+                        _checkmarkSprite = img.sprite;
+                        _checkmarkColor = img.color;
                         break;
                     }
                 }
             }
 
-            // Prefer a dropdown that has both arrow + checkmark sprites, plus a background sprite.
-            bool hasBg = ddImg != null && ddImg.sprite != null;
-            bool hasArrow = arrowSprite != null;
-            bool hasCheck = checkSprite != null;
-            if (hasBg && hasArrow && hasCheck)
-            {
-                best = dd;
+            if (_uiBackgroundSprite != null && _dropdownArrowSprite != null && _checkmarkSprite != null)
                 break;
-            }
-
-            // Fallback: keep the best partial match (background + arrow at least).
-            if (best == null && hasBg && hasArrow)
-                best = dd;
         }
 
-        if (best == null)
+        // If the dropdown scan didn't yield a background sprite, look for ANY UI sprite
+        // we can use (input field bg, panel bg, button bg, etc.) so input/dropdown
+        // backgrounds at least have a sliced look. Without this, every dynamically
+        // created control renders as a flat rect when there are no scene dropdowns
+        // with proper sprites.
+        if (_uiBackgroundSprite == null)
         {
-            // Don't mark cached; try again later (e.g. after UI finishes booting).
-            return;
-        }
-
-        // Cache background sprite used by the existing UI dropdown (usually the built-in UI background)
-        var ddBg = best.GetComponent<Image>();
-        if (ddBg != null && ddBg.sprite != null)
-            _uiBackgroundSprite = ddBg.sprite;
-
-        // Find the Arrow image in the existing dropdown
-        var arrowTransform = best.transform.Find("Arrow");
-        if (arrowTransform != null)
-        {
-            var arrowImg = arrowTransform.GetComponent<Image>();
-            if (arrowImg != null && arrowImg.sprite != null)
+            foreach (var img in Resources.FindObjectsOfTypeAll<Image>())
             {
-                _dropdownArrowSprite = arrowImg.sprite;
-                _dropdownArrowColor = arrowImg.color;
-            }
-        }
+                if (img == null || img.sprite == null) continue;
+                if (_panelRoot != null && img.transform.IsChildOf(_panelRoot.transform)) continue;
+                if (img.type != Image.Type.Sliced) continue; // we want a sliced/9-patch sprite
 
-        // Find the Checkmark in the template
-        if (best.template != null)
-        {
-            var checkmarks = best.template.GetComponentsInChildren<Image>(true);
-            foreach (var img in checkmarks)
-            {
-                if (img.gameObject.name.Contains("Checkmark") && img.sprite != null)
-                {
-                    _checkmarkSprite = img.sprite;
-                    _checkmarkColor = img.color;
-                    break;
-                }
+                _uiBackgroundSprite = img.sprite;
+                break;
             }
         }
 
@@ -292,6 +286,17 @@ public class LLMSettingsPanel : MonoBehaviour
         {
             img.sprite = _uiBackgroundSprite;
             img.type = Image.Type.Sliced;
+        }
+        else
+        {
+            // Fallback: TMP_DefaultControls leaves the bg Image with sprite=null and
+            // type=Sliced, which renders NOTHING in Unity. If we couldn't borrow a sprite
+            // from an existing scene dropdown yet, force Simple so the widget at least
+            // renders as a flat colored rectangle (visible and clickable). The styling
+            // pass will run again later (RestyleNextFrame / Show) and upgrade to the
+            // proper sliced sprite once it becomes available.
+            img.sprite = null;
+            img.type = Image.Type.Simple;
         }
     }
 
