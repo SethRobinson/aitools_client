@@ -21,6 +21,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 import comfy_api
+import images
 import presets
 import progress
 import servers
@@ -44,6 +45,8 @@ def build_argparser():
                    help="Workflow JSON name (mutually exclusive with -p)")
     p.add_argument("-p", "--preset", default=None,
                    help="Preset file from Presets/ (e.g. \"Prompt To Image (Z Image)\")")
+    p.add_argument("-i", "--input", default=None,
+                   help="Input image file (required for presets that use @upload)")
     p.add_argument("-s", "--seed", type=int, default=None,
                    help="Seed (default: random)")
     p.add_argument("-c", "--config", default=str(DEFAULT_CONFIG),
@@ -93,10 +96,26 @@ def main():
             print(f"  workflow: {workflow_name}")
             print(f"  vars: {preset.variables or '(none)'}")
             print(f"  @replaces: {len(preset.replaces)}")
+            if preset.uploads:
+                print(f"  @uploads: input slots {[i+1 for i in preset.uploads]}")
+            if preset.resizes:
+                print(f"  @resizes: {len(preset.resizes)}")
     else:
         workflow_name = args.workflow or cfg["default_workflow"]
         if not workflow_name:
             die("no workflow specified (use -p, -w, or set default_workflow in config)", 1)
+
+    # Validate -i vs preset's @upload requirement.
+    if preset and preset.uploads and not args.input:
+        die(
+            f"preset {preset.source_path.name} needs an input image; "
+            f"pass one with -i <path>",
+            1,
+        )
+    if args.input and not (preset and preset.uploads):
+        if args.verbose:
+            print(f"warning: -i {args.input!r} ignored "
+                  f"({'preset has no @upload' if preset else 'no preset specified'})")
 
     effective_prompt, effective_negative = assemble_prompts(args, preset)
     if args.verbose:
@@ -122,21 +141,35 @@ def main():
         WORKFLOW_DIR, workflow_name, server_url, args.no_cache, args.verbose
     )
 
-    # Apply preset @replace directives (with %var% substitution) on the JSON
-    # text. Built-in vars %prompt% and %negative_prompt% are added on top of
-    # the preset's user-defined vars.
+    # Build the variable namespace once (preset vars + built-ins).
+    all_vars = dict(preset.variables) if preset else {}
+    all_vars.setdefault("prompt", effective_prompt)
+    all_vars.setdefault("negative_prompt", effective_negative)
+
+    # Apply preset @replace directives (with %var% substitution) on the JSON.
     if preset and preset.replaces:
-        all_vars = dict(preset.variables)
-        all_vars.setdefault("prompt", effective_prompt)
-        all_vars.setdefault("negative_prompt", effective_negative)
         expanded = presets.expand_replaces(preset.replaces, all_vars, args.verbose)
         api_workflow = workflow.apply_replaces(api_workflow, expanded, args.verbose)
+
+    # Handle preset @upload + @resize: load the input image, run all resizes
+    # in preset order, upload, then map the server path into <AITOOLS_INPUT_N>.
+    input_path_replacements = {}
+    if preset and preset.uploads:
+        if args.verbose:
+            print(f"loading input image: {args.input}")
+        img = images.load_input_image(Path(args.input))
+        for op in presets.resolve_resizes(preset.resizes, all_vars, args.verbose):
+            img = images.apply_resize(img, op, args.verbose)
+        server_path = images.upload_image(server_url, img, args.verbose)
+        for slot_idx in preset.uploads:
+            input_path_replacements[f"<AITOOLS_INPUT_{slot_idx + 1}>"] = server_path
 
     # Standard placeholder substitution (<AITOOLS_PROMPT>, etc.)
     seed = args.seed if args.seed is not None else random.randint(0, 2**63 - 1)
     placeholder_replacements = {
         "<AITOOLS_PROMPT>": effective_prompt,
         "<AITOOLS_NEGATIVE_PROMPT>": effective_negative,
+        **input_path_replacements,
     }
     for ph in workflow.PLACEHOLDERS_BLANK_BY_DEFAULT:
         placeholder_replacements.setdefault(ph, "")
@@ -167,14 +200,14 @@ def main():
     if err:
         die(err, 3)
 
-    images = comfy_api.fetch_outputs(server_url, prompt_id)
+    output_images = comfy_api.fetch_outputs(server_url, prompt_id)
 
     # Always write PNG to preserve any alpha channel.
     out_path = Path(args.output).with_suffix(".png")
     if args.verbose and out_path.name != args.output:
         print(f"output forced to PNG: {out_path}")
     saved = []
-    for i, img in enumerate(images):
+    for i, img in enumerate(output_images):
         if i == 0:
             target = out_path
         else:
@@ -182,7 +215,11 @@ def main():
         if args.verbose:
             print(f"downloading {img.get('filename')} -> {target}")
         data = comfy_api.download_image(server_url, img)
-        comfy_api.save_image(data, img.get("filename", ""), target)
+        src_filename = img.get("filename", "")
+        if preset and preset.invert_alpha:
+            data = images.invert_alpha_bytes(data, args.verbose)
+            src_filename = "x.png"  # bytes are now PNG regardless of source
+        comfy_api.save_image(data, src_filename, target)
         saved.append(target)
 
     if not args.keep_server_files:

@@ -74,12 +74,21 @@ seed, prompt id, and live per-step progress:
 aitools_cli.py "a cat" cat.png -p "Prompt To Image (Z Image)" -v
 ```
 
+Image-input preset (auto-mask the subject, returning an RGBA PNG with the
+mask burned into alpha):
+```
+aitools_cli.py "" subject_masked.png \
+    -p "Image To Image Mask Subject" \
+    -i photo.jpg
+```
+
 ### Flags
 
 | Flag | Purpose |
 |---|---|
 | `-p, --preset NAME` | Preset file from `../Presets/` (or absolute path) |
 | `-w, --workflow FILE` | Workflow JSON from `../ComfyUI/` (mutex with `-p`) |
+| `-i, --input PATH` | Input image file (required for presets that use `@upload`) |
 | `-n, --negative TEXT` | Negative prompt (overrides preset default) |
 | `-s, --seed INT` | Seed (default: random in `0..2⁶³-1`) |
 | `-c, --config PATH` | Config file path (default: `./config.txt`) |
@@ -96,13 +105,28 @@ preset's `default_negative_prompt` is used unless `-n` is given.
 
 Inside the preset's `joblist` block these are supported:
 - `%name%="value"` (or `%name%=value`) variable assignments
-- One workflow line: `<workflow.json> [@replace|find|with| ...]`
-- `%var%` substitution in `@replace` args, including built-ins `%prompt%`
+- One workflow line: `<workflow.json> [@directive|args| ...]`
+- `%var%` substitution in directive args, including built-ins `%prompt%`
   and `%negative_prompt%`
+- Directives:
+  - `@replace|find|with|` — string substitution on the workflow JSON
+  - `@upload|image1|inputN|` — uploads `-i` to ComfyUI's `/temp/` folder
+    and routes the path into `<AITOOLS_INPUT_N>` (N = 1..4). Source must
+    be `image1` or `image`; `temp1`/`temp2`/`temp3` aren't supported.
+  - `@resize|x|W|y|H|aspect_correct|0_or_1|` — resize the input image to
+    `W×H` before upload. `aspect_correct|1` center-crops to the target
+    aspect first; `aspect_correct|0` stretches.
+  - `@resize_if_larger|...|` — same args as `@resize`, but only acts when
+    the image exceeds either dimension.
+  - `@invert_alpha|` — post-process the *output* image, flipping its alpha
+    channel. Useful when a mask workflow gives you the inverse of what you
+    want (e.g. you want to keep the background, not the subject). Any slot
+    arg is ignored — it always acts on the saved output.
 
-In short: single-step text-to-image presets work; anything that needs an
-input image, an LLM, or chained jobs is rejected with an error explaining
-why.
+In short: single-step presets work for text-to-image and for image-in
+workflows that need a single input image (img2img, mask, inpaint, etc.).
+Multi-step chains, LLM calls, and presets that pull from `temp1`/`temp2`/
+`temp3` slots still error out with a clear explanation.
 
 ## Missing features (vs. the Unity app)
 
@@ -123,14 +147,16 @@ their presence in a preset is harmless:
 - Multiline `@end`-terminated arguments
 - Mid-job control flow: `@stopjob`, `@no_undo`, `@lock_gpu`
 
-### Image / input-slot features — error
-For workflows that take an input image (img2img, inpaint, Kontext, Qwen
-Edit, etc.):
-- `@upload|src|input_slot|` — upload an image from a slot/file to the
-  server as a workflow input
+### Image / input-slot features
+Single-input image presets work via `-i <path>`:
+- `@upload|image1|inputN|` — **supported** (only `image1`/`image` source)
+- `@resize|...|` and `@resize_if_larger|...|` — **supported** (no-slot form)
+
+Still missing:
+- `@upload|temp1|...|`, `@upload|temp2|...|`, `@upload|temp3|...|` — multi-image
+  presets (Qwen Edit From Temp1+Temp2, etc.) need extra `-i2`, `-i3` flags
+  not yet implemented
 - `@setimage|%var%|src|` — copy an image into a named variable
-- `@resize|...|` and `@resize_if_larger|...|` — pre-resize an input image
-- `@invert_alpha|[slot]|` — invert an image's alpha channel
 - `@fill_mask_if_blank` — auto-fill an empty inpaint mask
 
 ### Variable mutation across steps — error

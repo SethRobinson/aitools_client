@@ -1,15 +1,19 @@
 """Parser for Presets/*.txt files used by the Unity app.
 
-Supports the subset relevant to single-step text-to-image:
+Supports the subset relevant to single-step image generation:
   - COMMAND_START|joblist           (one workflow line + %var% assigns)
   - COMMAND_START|default_prompt    (used iff user prompt is empty)
   - COMMAND_START|default_negative_prompt
   - COMMAND_START|default_pre_prompt
   - COMMAND_START|default_post_prompt
-  - @replace|find|with|             (only directive supported)
+  - @replace|find|with|             (string substitution on the workflow JSON)
+  - @upload|image1|inputN|          (uploads CLI's -i image to <AITOOLS_INPUT_N>)
+  - @resize|x|W|y|H|aspect_correct|N|        (always resize input image)
+  - @resize_if_larger|x|W|y|H|aspect_correct|N|
 
-Anything outside this subset (LLM, image upload, multi-job chains, etc.)
-produces a clear, specific error so the user knows why their preset can't run.
+Anything outside this subset (LLM, multi-job chains, temp1/temp2/temp3
+sources, etc.) produces a clear, specific error so the user knows why their
+preset can't run.
 """
 import re
 from dataclasses import dataclass, field
@@ -33,14 +37,10 @@ SILENTLY_IGNORED_BLOCKS = {"summarize_prompt", "recent_interactions"}
 VAR_PATTERN = re.compile(r"%([a-zA-Z_][a-zA-Z0-9_]*)%")
 VAR_ASSIGN_PATTERN = re.compile(r'^%([a-zA-Z_][a-zA-Z0-9_]*)%\s*=\s*(.*)$')
 
-# Per-directive error reasons. Anything not in here AND not @replace
-# is reported as "unknown directive".
+# Per-directive error reasons. Anything not in here AND not in the supported
+# set is reported as "unknown directive".
 UNSUPPORTED_DIRECTIVE_REASONS = {
-    "upload":             "needs server image upload (input images) — not yet supported by aitools_cli",
     "setimage":           "needs Unity image-slot manipulation — not supported by aitools_cli",
-    "resize":             "needs image processing — not yet supported by aitools_cli",
-    "resize_if_larger":   "needs image processing — not yet supported by aitools_cli",
-    "invert_alpha":       "needs image processing — not yet supported by aitools_cli",
     "fill_mask_if_blank": "needs Unity mask handling — not supported by aitools_cli",
     "copy":               "needs cross-job variable mutation — aitools_cli runs a single workflow",
     "add":                "needs cross-job variable mutation — aitools_cli runs a single workflow",
@@ -54,11 +54,30 @@ UNSUPPORTED_DIRECTIVE_REASONS = {
 
 
 @dataclass
+class ResizeOpRaw:
+    """Resize directive with raw (un-substituted) arguments."""
+    raw_args: List[str]   # e.g. ["x","%max_size%","y","%max_size%","aspect_correct","1"]
+    only_if_larger: bool
+
+
+@dataclass
+class ResizeOp:
+    """Resolved resize op: numeric dimensions + flag."""
+    width: int
+    height: int
+    aspect_correct: bool
+    only_if_larger: bool
+
+
+@dataclass
 class PresetData:
     source_path: Path
     workflow: str
     replaces: List[Tuple[str, str]] = field(default_factory=list)
     variables: Dict[str, str] = field(default_factory=dict)
+    uploads: List[int] = field(default_factory=list)            # input slot indices (0..3)
+    resizes: List[ResizeOpRaw] = field(default_factory=list)    # applied to input image, in order
+    invert_alpha: bool = False                                  # post-process output alpha
     default_prompt: Optional[str] = None
     default_negative_prompt: Optional[str] = None
     default_pre_prompt: Optional[str] = None
@@ -223,11 +242,102 @@ def _handle_directive(directive: str, args: List[str], data: PresetData, path: P
             )
         data.replaces.append((args[0], args[1]))
         return
+    if d == "upload":
+        _handle_upload(args, data, path)
+        return
+    if d in ("resize", "resize_if_larger"):
+        _handle_resize(d, args, data, path)
+        return
+    if d == "invert_alpha":
+        # The C# form is `@invert_alpha|[slot]|`; for the CLI we always
+        # invert the output image's alpha (post-download), so any slot arg
+        # is silently ignored.
+        data.invert_alpha = True
+        return
     if d in UNSUPPORTED_DIRECTIVE_REASONS:
         die(f"preset {path.name}: @{d} {UNSUPPORTED_DIRECTIVE_REASONS[d]}", 1)
     if d.startswith("llm_"):
         die(f"preset {path.name}: @{d} needs LLM integration — not supported by aitools_cli", 1)
     die(f"preset {path.name}: unknown directive '@{d}'", 1)
+
+
+_INPUT_SLOTS = {
+    "input1": 0, "1": 0,
+    "input2": 1, "2": 1,
+    "input3": 2, "3": 2,
+    "input4": 3, "4": 3,
+}
+
+
+def _handle_upload(args: List[str], data: PresetData, path: Path):
+    if len(args) != 2:
+        die(f"preset {path.name}: @upload expects 2 args (source|input_slot), got {len(args)}: {args}", 1)
+    source = args[0].strip().lower()
+    dest = args[1].strip().lower()
+    if source not in ("image", "image1"):
+        die(
+            f"preset {path.name}: @upload source '{source}' not supported — "
+            f"aitools_cli only handles 'image1' (the -i input). "
+            f"Sources like temp1/temp2/temp3 require multi-step workflows.",
+            1,
+        )
+    if dest not in _INPUT_SLOTS:
+        die(
+            f"preset {path.name}: @upload dest '{dest}' not recognised — "
+            f"expected one of input1..input4 (or 1..4)",
+            1,
+        )
+    data.uploads.append(_INPUT_SLOTS[dest])
+
+
+def _handle_resize(directive: str, args: List[str], data: PresetData, path: Path):
+    only_if_larger = (directive == "resize_if_larger")
+    # Form: [<slot>|]x|W|y|H|aspect_correct|N|
+    # We only support the no-slot form (the slot form would target temp1/etc.).
+    if not args:
+        die(f"preset {path.name}: @{directive} has no arguments", 1)
+    first = args[0].strip().lower()
+    if first != "x":
+        die(
+            f"preset {path.name}: @{directive} with a slot prefix ('{first}') "
+            f"is not supported — aitools_cli always resizes the -i input image. "
+            f"Use the form @{directive}|x|W|y|H|aspect_correct|N|.",
+            1,
+        )
+    if len(args) != 6:
+        die(
+            f"preset {path.name}: @{directive} expects 6 args "
+            f"(x|W|y|H|aspect_correct|N), got {len(args)}: {args}",
+            1,
+        )
+    if args[2].strip().lower() != "y" or args[4].strip().lower() != "aspect_correct":
+        die(
+            f"preset {path.name}: @{directive} args malformed — "
+            f"expected x|W|y|H|aspect_correct|N, got {args}",
+            1,
+        )
+    data.resizes.append(ResizeOpRaw(raw_args=list(args), only_if_larger=only_if_larger))
+
+
+def resolve_resizes(raw_resizes: List[ResizeOpRaw], variables: Dict[str, str],
+                    verbose: bool = False) -> List[ResizeOp]:
+    """Resolve %var% in resize args and parse into ResizeOp instances."""
+    out = []
+    for raw in raw_resizes:
+        args = [substitute_variables(a, variables, verbose) for a in raw.raw_args]
+        try:
+            w = int(args[1].strip())
+            h = int(args[3].strip())
+        except ValueError:
+            die(f"@{('resize_if_larger' if raw.only_if_larger else 'resize')}: width/height must be integers, got {args[1]!r}/{args[3]!r}", 1)
+        ac = args[5].strip().lower()
+        aspect_correct = ac in ("1", "true", "yes")
+        out.append(ResizeOp(
+            width=w, height=h,
+            aspect_correct=aspect_correct,
+            only_if_larger=raw.only_if_larger,
+        ))
+    return out
 
 
 def substitute_variables(text: str, variables: Dict[str, str], verbose=False):
