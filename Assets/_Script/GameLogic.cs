@@ -1995,6 +1995,14 @@ public string GetPrompt() { return m_prompt; }
         LLMSettingsPanel.Toggle();
     }
 
+    /// <summary>
+    /// Called when the AI Chat button is clicked. Opens the multi-turn AI chat popup.
+    /// </summary>
+    public void OnAIChatButtonClicked()
+    {
+        AIChatPanel.Toggle();
+    }
+
     private void BindActiveLLMLabelUpdates()
     {
         if (m_llmSelectionDropdown != null)
