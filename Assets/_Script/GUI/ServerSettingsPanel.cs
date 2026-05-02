@@ -19,14 +19,23 @@ public class ServerSettingsPanel : MonoBehaviour
     private RectTransform _mainPanel;
 
     // UI references (previously from prefab)
-    private TMP_Dropdown _presetDropdown;
-    private TMP_Dropdown _autoPicDropdown;
+    private Button _presetButton;
+    private TMP_Text _presetButtonLabel;
+    private string _presetSelection = ""; // "" maps to "<no selection>"
+
+    private Button _autoPicButton;
+    private TMP_Text _autoPicButtonLabel;
+    private string _autoPicSelection = ""; // "" maps to "<use global>"
+
     private TMP_Text _titleText;
     private TMP_Text _settingsText;
     private TMP_InputField _jobListInputField;
     private TMP_InputField _renderCountInputField;
     private Toggle _ignoredByExtraToggle;
     private Toggle _gpuLockedToggle;
+
+    private const string AUTOPIC_USE_GLOBAL_LABEL = "<use global>";
+    private const string PRESET_NO_SELECTION_LABEL = "<no selection>";
 
     private int _serverID = -1;
 
@@ -552,27 +561,14 @@ public class ServerSettingsPanel : MonoBehaviour
         autoPicLabelTmp.color = TextDark;
         autoPicLabelTmp.alignment = TextAlignmentOptions.MidlineLeft;
 
-        // AutoPic Override dropdown
-        var autoPicDdGo = TMP_DefaultControls.CreateDropdown(BuildTMPResources());
-        autoPicDdGo.name = "AutoPicDropdown";
-        autoPicDdGo.transform.SetParent(_mainPanel, false);
-        ApplyFontAndColor(autoPicDdGo);
-
-        var autoPicDdRt = autoPicDdGo.GetComponent<RectTransform>();
-        autoPicDdRt.anchorMin = new Vector2(0, 1);
-        autoPicDdRt.anchorMax = new Vector2(1, 1);
-        autoPicDdRt.pivot = new Vector2(0, 1);
-        autoPicDdRt.offsetMin = new Vector2(leftPad + 110, yOffset - 24);
-        autoPicDdRt.offsetMax = new Vector2(-rightPad, yOffset);
-
-        _autoPicDropdown = autoPicDdGo.GetComponent<TMP_Dropdown>();
-        _autoPicDropdown.onValueChanged.AddListener(OnAutoPicDropdownChanged);
-
-        // Make dropdown list taller
-        if (_autoPicDropdown.template != null)
-        {
-            _autoPicDropdown.template.sizeDelta = new Vector2(_autoPicDropdown.template.sizeDelta.x, 150f);
-        }
+        // AutoPic Override picker button
+        var (autoPicBtn, autoPicLbl) = CreatePickerButton("AutoPicButton", _mainPanel,
+            new Vector2(leftPad + 110, yOffset - 24),
+            new Vector2(-rightPad, yOffset),
+            anchorMaxX: 1f);
+        _autoPicButton = autoPicBtn;
+        _autoPicButtonLabel = autoPicLbl;
+        _autoPicButton.onClick.AddListener(OpenAutoPicPicker);
 
         yOffset -= 32;
 
@@ -745,28 +741,14 @@ public class ServerSettingsPanel : MonoBehaviour
         presetLabelTmp.color = TextDark;
         presetLabelTmp.alignment = TextAlignmentOptions.MidlineLeft;
 
-        // Preset dropdown (positioned directly in mainPanel, next to label)
-        var ddGo = TMP_DefaultControls.CreateDropdown(BuildTMPResources());
-        ddGo.name = "PresetDropdown";
-        ddGo.transform.SetParent(_mainPanel, false);
-        ApplyFontAndColor(ddGo);
-
-        var ddRt = ddGo.GetComponent<RectTransform>();
-        ddRt.anchorMin = new Vector2(0, 1);
-        ddRt.anchorMax = new Vector2(1, 1);
-        ddRt.pivot = new Vector2(0, 1);
-        // Stretch horizontal with proper offsets
-        ddRt.offsetMin = new Vector2(leftPad + 55, yOffset - 24);
-        ddRt.offsetMax = new Vector2(-rightPad, yOffset);
-
-        _presetDropdown = ddGo.GetComponent<TMP_Dropdown>();
-        _presetDropdown.onValueChanged.AddListener(OnPresetDropdownChanged);
-
-        // Make dropdown list taller
-        if (_presetDropdown.template != null)
-        {
-            _presetDropdown.template.sizeDelta = new Vector2(_presetDropdown.template.sizeDelta.x, 200f);
-        }
+        // Preset picker button (positioned directly in mainPanel, next to label)
+        var (presetBtn, presetLbl) = CreatePickerButton("PresetButton", _mainPanel,
+            new Vector2(leftPad + 55, yOffset - 24),
+            new Vector2(-rightPad, yOffset),
+            anchorMaxX: 1f);
+        _presetButton = presetBtn;
+        _presetButtonLabel = presetLbl;
+        _presetButton.onClick.AddListener(OpenPresetPicker);
 
         yOffset -= 32;
 
@@ -832,6 +814,78 @@ public class ServerSettingsPanel : MonoBehaviour
         Canvas.ForceUpdateCanvases();
     }
 
+    /// <summary>
+    /// Build a "click to pick" button (used in place of TMP_Dropdowns for preset/AutoPic
+    /// selection). Returns the Button and the inner TMP_Text label.
+    ///
+    /// Positioning matches the legacy dropdown layout: anchored to top of mainPanel.
+    /// </summary>
+    private (Button, TMP_Text) CreatePickerButton(string name, RectTransform parent,
+        Vector2 offsetMin, Vector2 offsetMax, float anchorMaxX = 1f)
+    {
+        var go = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        var rt = go.AddComponent<RectTransform>();
+        rt.anchorMin = new Vector2(0, 1);
+        rt.anchorMax = new Vector2(anchorMaxX, 1);
+        rt.pivot = new Vector2(0, 1);
+        rt.offsetMin = offsetMin;
+        rt.offsetMax = offsetMax;
+
+        var img = go.AddComponent<Image>();
+        ApplyUISprite(img);
+        img.color = InputFieldBg;
+
+        var btn = go.AddComponent<Button>();
+        btn.targetGraphic = img;
+        btn.colors = new ColorBlock
+        {
+            normalColor = Color.white,
+            highlightedColor = new Color(0.96f, 0.96f, 0.96f, 1f),
+            pressedColor = new Color(0.78f, 0.78f, 0.78f, 1f),
+            selectedColor = new Color(0.96f, 0.96f, 0.96f, 1f),
+            disabledColor = new Color(0.78f, 0.78f, 0.78f, 0.5f),
+            colorMultiplier = 1f,
+            fadeDuration = 0.1f,
+        };
+
+        var labelObj = new GameObject("Label");
+        labelObj.transform.SetParent(go.transform, false);
+        var lblRt = labelObj.AddComponent<RectTransform>();
+        lblRt.anchorMin = Vector2.zero;
+        lblRt.anchorMax = Vector2.one;
+        lblRt.offsetMin = new Vector2(8, 0);
+        lblRt.offsetMax = new Vector2(-22, 0); // leave room for the arrow
+
+        var lbl = labelObj.AddComponent<TextMeshProUGUI>();
+        lbl.font = _font;
+        lbl.fontSize = BASE_FONT_SIZE;
+        lbl.color = TextDark;
+        lbl.alignment = TextAlignmentOptions.MidlineLeft;
+        lbl.textWrappingMode = TextWrappingModes.NoWrap;
+        lbl.overflowMode = TextOverflowModes.Ellipsis;
+        lbl.text = "";
+
+        // Caret/arrow indicator on the right (purely cosmetic; mirrors the dropdown look)
+        var arrowObj = new GameObject("Arrow");
+        arrowObj.transform.SetParent(go.transform, false);
+        var arrowRt = arrowObj.AddComponent<RectTransform>();
+        arrowRt.anchorMin = new Vector2(1, 0.5f);
+        arrowRt.anchorMax = new Vector2(1, 0.5f);
+        arrowRt.pivot = new Vector2(1, 0.5f);
+        arrowRt.sizeDelta = new Vector2(14, 14);
+        arrowRt.anchoredPosition = new Vector2(-6, 0);
+
+        var arrowImg = arrowObj.AddComponent<Image>();
+        if (_dropdownArrowSprite != null)
+            arrowImg.sprite = _dropdownArrowSprite;
+        arrowImg.color = _dropdownArrowColor ?? TextDark;
+        arrowImg.preserveAspect = true;
+        arrowImg.raycastTarget = false;
+
+        return (btn, lbl);
+    }
+
     #endregion
 
     #region Settings Logic
@@ -862,16 +916,15 @@ public class ServerSettingsPanel : MonoBehaviour
         if (_settingsText != null)
             _settingsText.text = "URL: " + serverInfo.remoteURL;
 
-        // Populate preset dropdown
-        if (_presetDropdown != null)
-        {
-            _presetDropdown.onValueChanged.RemoveListener(OnPresetDropdownChanged);
-            PresetManager.Get().PopulatePresetDropdown(_presetDropdown, true);
-            _presetDropdown.onValueChanged.AddListener(OnPresetDropdownChanged);
-        }
+        // The picker buttons start in the "<no selection>" / "<use global>" state; the user
+        // explicitly chooses an override via the picker dialog. We could pre-fill them from
+        // the job-list contents, but per-server preset selection isn't otherwise persisted.
+        _presetSelection = "";
+        UpdatePresetButtonLabel();
 
-        // Populate AutoPic dropdown
-        RefreshAutoPicDropdown(serverInfo);
+        // Refresh AutoPic button from server's persisted override
+        _autoPicSelection = serverInfo._autoPicOverride ?? "";
+        UpdateAutoPicButtonLabel();
 
         // Set job list
         if (_jobListInputField != null)
@@ -892,48 +945,33 @@ public class ServerSettingsPanel : MonoBehaviour
         UpdateCheckboxInteractability();
     }
 
-    private void RefreshAutoPicDropdown(GPUInfo serverInfo)
+    private void UpdatePresetButtonLabel()
     {
-        if (_autoPicDropdown == null) return;
-
-        _autoPicDropdown.onValueChanged.RemoveListener(OnAutoPicDropdownChanged);
-        _autoPicDropdown.ClearOptions();
-
-        // Add "use global" option first
-        var options = new List<TMP_Dropdown.OptionData>();
-        options.Add(new TMP_Dropdown.OptionData("<use global>"));
-
-        // Get AutoPic file names using shared method from GenerateSettingsPanel
-        var fileNames = GenerateSettingsPanel.GetAutoPicFileNames();
-        foreach (string fileName in fileNames)
-        {
-            options.Add(new TMP_Dropdown.OptionData(fileName));
-        }
-
-        _autoPicDropdown.AddOptions(options);
-
-        // Select the current override value, or "<use global>" if none
-        int selectedIndex = 0;
-        if (!string.IsNullOrEmpty(serverInfo._autoPicOverride))
-        {
-            for (int i = 0; i < _autoPicDropdown.options.Count; i++)
-            {
-                if (string.Equals(_autoPicDropdown.options[i].text, serverInfo._autoPicOverride, System.StringComparison.OrdinalIgnoreCase))
-                {
-                    selectedIndex = i;
-                    break;
-                }
-            }
-        }
-        _autoPicDropdown.SetValueWithoutNotify(selectedIndex);
-        _autoPicDropdown.RefreshShownValue();
-
-        _autoPicDropdown.onValueChanged.AddListener(OnAutoPicDropdownChanged);
+        if (_presetButtonLabel == null) return;
+        _presetButtonLabel.text = string.IsNullOrEmpty(_presetSelection) ? PRESET_NO_SELECTION_LABEL : _presetSelection;
     }
 
-    public void OnPresetDropdownChanged(int selectedIndex)
+    private void UpdateAutoPicButtonLabel()
     {
-        GPUInfo serverInfo = Config.Get().GetGPUInfo(_serverID);
+        if (_autoPicButtonLabel == null) return;
+        _autoPicButtonLabel.text = string.IsNullOrEmpty(_autoPicSelection) ? AUTOPIC_USE_GLOBAL_LABEL : _autoPicSelection;
+    }
+
+    private void OpenPresetPicker()
+    {
+        PresetPickerDialog.Show(new PresetPickerDialog.Options
+        {
+            Title = "Server " + _serverID + " - Job Script Override",
+            CurrentSelection = _presetSelection,
+            FileFilterPrefix = null,
+            SpecialNoneLabel = PRESET_NO_SELECTION_LABEL,
+        }, OnPresetPicked);
+    }
+
+    private void OnPresetPicked(string fileName)
+    {
+        _presetSelection = fileName ?? "";
+        UpdatePresetButtonLabel();
 
         if (!Config.Get().IsValidGPU(_serverID))
         {
@@ -941,18 +979,39 @@ public class ServerSettingsPanel : MonoBehaviour
             return;
         }
 
-        // Get the text of the selected option
-        string selected = _presetDropdown.options[_presetDropdown.value].text;
-
-        if (selected == "<no selection>")
+        if (string.IsNullOrEmpty(_presetSelection))
         {
-            // Special case
             _jobListInputField.text = "";
             return;
         }
 
-        var preset = PresetManager.Get().LoadPreset(selected, PresetManager.Get().GetActivePreset());
+        var preset = PresetManager.Get().LoadPreset(_presetSelection, PresetManager.Get().GetActivePreset());
         _jobListInputField.text = preset.JobList;
+    }
+
+    private void OpenAutoPicPicker()
+    {
+        PresetPickerDialog.Show(new PresetPickerDialog.Options
+        {
+            Title = "Server " + _serverID + " - AutoPic Override",
+            CurrentSelection = _autoPicSelection,
+            FileFilterPrefix = "AutoPic",
+            SpecialNoneLabel = AUTOPIC_USE_GLOBAL_LABEL,
+        }, OnAutoPicPicked);
+    }
+
+    private void OnAutoPicPicked(string fileName)
+    {
+        _autoPicSelection = fileName ?? "";
+        UpdateAutoPicButtonLabel();
+
+        GPUInfo serverInfo = Config.Get().GetGPUInfo(_serverID);
+        if (!Config.Get().IsValidGPU(_serverID))
+        {
+            RTConsole.Log("Invalid server ID " + _serverID);
+            return;
+        }
+        serverInfo._autoPicOverride = _autoPicSelection;
     }
 
     public void OnJobListChanged()
@@ -965,27 +1024,6 @@ public class ServerSettingsPanel : MonoBehaviour
         }
 
         serverInfo._jobListOverride = _jobListInputField.text.Trim();
-    }
-
-    public void OnAutoPicDropdownChanged(int selectedIndex)
-    {
-        GPUInfo serverInfo = Config.Get().GetGPUInfo(_serverID);
-        if (!Config.Get().IsValidGPU(_serverID))
-        {
-            RTConsole.Log("Invalid server ID " + _serverID);
-            return;
-        }
-
-        string selected = _autoPicDropdown.options[_autoPicDropdown.value].text;
-        
-        if (selected == "<use global>")
-        {
-            serverInfo._autoPicOverride = "";
-        }
-        else
-        {
-            serverInfo._autoPicOverride = selected;
-        }
     }
 
     public void OnRenderCountChanged()

@@ -100,8 +100,15 @@ public class GameLogic : MonoBehaviour
     string m_activeModelName = "";
 
     public TMP_Dropdown m_comfyUIAPIWorkflowsDropdown;
+    // These are still TMP_Dropdown GameObjects in the scene, but at runtime we disable the
+    // dropdown component and attach a ClickToPickHandler so clicking opens PresetPickerDialog.
+    // The dropdown's captionText is reused to display the current selection.
     public TMP_Dropdown m_presetDropdown;
     public TMP_Dropdown m_tempPresetDropdown;
+
+    // Selected preset names, driven by PresetPickerDialog.
+    string m_currentPresetName = "";
+    string m_currentTempPresetName = "";
 
 
     public TMP_Dropdown m_refinerModelDropdown;
@@ -229,24 +236,49 @@ public class GameLogic : MonoBehaviour
         RTConsole.Log("Chose " + selected);
     }
 
-    public void OnPresetDropdownChanged()
-    {
-        //get the text of the selected option
-        string selected = m_presetDropdown.options[m_presetDropdown.value].text;
+    // Legacy scene-wired callbacks. The dropdown components are disabled at runtime so these
+    // never fire from UnityEvents anymore, but we keep the methods for binary scene compat.
+    public void OnPresetDropdownChanged() { }
+    public void OnTempPresetDropdownChanged() { }
 
-        PresetManager.Get().LoadPresetAndApply(selected, PresetManager.Get().GetActivePreset(), true);
+    void OpenPresetPicker()
+    {
+        PresetPickerDialog.Show(new PresetPickerDialog.Options
+        {
+            Title = "Select Main Job Script (Preset)",
+            CurrentSelection = m_currentPresetName,
+            FileFilterPrefix = null,
+            SpecialNoneLabel = null,
+        }, OnPresetPicked);
     }
 
-    public void OnTempPresetDropdownChanged()
+    void OpenTempPresetPicker()
     {
-        //get the text of the selected option
-        //string selected = m_tempPresetDropdown.options[m_tempPresetDropdown.value].text;
+        PresetPickerDialog.Show(new PresetPickerDialog.Options
+        {
+            Title = "Select Temp Job Script (Preset)",
+            CurrentSelection = m_currentTempPresetName,
+            FileFilterPrefix = null,
+            SpecialNoneLabel = null,
+        }, OnTempPresetPicked);
+    }
 
+    void OnPresetPicked(string fileName)
+    {
+        if (string.IsNullOrEmpty(fileName)) return;
+        SetPresetDropdownValue(fileName);
+        PresetManager.Get().LoadPresetAndApply(fileName, PresetManager.Get().GetActivePreset(), true);
+    }
+
+    void OnTempPresetPicked(string fileName)
+    {
+        if (string.IsNullOrEmpty(fileName)) return;
+        SetTempPresetDropdownValue(fileName);
     }
 
     public string GetNameOfActiveTempPreset()
     {
-        return m_tempPresetDropdown.options[m_tempPresetDropdown.value].text;
+        return m_currentTempPresetName ?? "";
     }
 
 
@@ -1736,9 +1768,12 @@ public string GetPrompt() { return m_prompt; }
    
         Config.Get().PopulateRendererDropDown(m_rendererSelectionDropdown);
 
-        m_presetDropdown.SetValueWithoutNotify(0);
-        PresetManager.Get().PopulatePresetDropdown(m_presetDropdown);
-        PresetManager.Get().PopulatePresetDropdown(m_tempPresetDropdown);
+        // Repurpose the scene-wired preset dropdowns as click-to-pick buttons. The TMP_Dropdown
+        // component is disabled so its native list popup never opens; we attach a click handler
+        // that opens our searchable PresetPickerDialog instead.
+        InstallPresetPickerLaunchers();
+        SetPresetDropdownValue("");
+        SetTempPresetDropdownValue("");
 
         // Load user preferences and apply saved preset selections
         UserPreferences.Get().Load();
@@ -1782,33 +1817,37 @@ public string GetPrompt() { return m_prompt; }
         }
     }
 
+    private void InstallPresetPickerLaunchers()
+    {
+        InstallPresetPickerLauncher(m_presetDropdown, OpenPresetPicker);
+        InstallPresetPickerLauncher(m_tempPresetDropdown, OpenTempPresetPicker);
+    }
+
+    private static void InstallPresetPickerLauncher(TMP_Dropdown dd, System.Action onClick)
+    {
+        if (dd == null) return;
+        // Disable the native dropdown popup behavior; we still keep the visual (background image
+        // + arrow + caption text) intact since they look correct as a click-to-pick button.
+        dd.enabled = false;
+
+        var existing = dd.gameObject.GetComponent<ClickToPickHandler>();
+        if (existing == null)
+            existing = dd.gameObject.AddComponent<ClickToPickHandler>();
+        existing.OnClickedAction = onClick;
+    }
+
     public void SetPresetDropdownValue(string value)
     {
-        value = value.ToLower();
-
-        //if an option of the dropdown matches the value, set it to that value
-        for (int i = 0; i < m_presetDropdown.options.Count; i++)
-        {
-            if (m_presetDropdown.options[i].text.ToLower() == value)
-            {
-                m_presetDropdown.value = i;
-                return;
-            }
-        }
+        m_currentPresetName = value ?? "";
+        if (m_presetDropdown != null && m_presetDropdown.captionText != null)
+            m_presetDropdown.captionText.text = m_currentPresetName;
     }
 
     public void SetTempPresetDropdownValue(string value)
     {
-        value = value.ToLower();
-
-        for (int i = 0; i < m_tempPresetDropdown.options.Count; i++)
-        {
-            if (m_tempPresetDropdown.options[i].text.ToLower() == value)
-            {
-                m_tempPresetDropdown.value = i;
-                return;
-            }
-        }
+        m_currentTempPresetName = value ?? "";
+        if (m_tempPresetDropdown != null && m_tempPresetDropdown.captionText != null)
+            m_tempPresetDropdown.captionText.text = m_currentTempPresetName;
     }
 
     /// <summary>
@@ -1854,17 +1893,8 @@ public string GetPrompt() { return m_prompt; }
         var prefs = UserPreferences.Get();
         if (prefs == null) return;
 
-        // Save Main Job Script
-        if (m_presetDropdown.options.Count > 0)
-        {
-            prefs.MainJobScript = m_presetDropdown.options[m_presetDropdown.value].text;
-        }
-
-        // Save Temp Job Script
-        if (m_tempPresetDropdown.options.Count > 0)
-        {
-            prefs.TempJobScript = m_tempPresetDropdown.options[m_tempPresetDropdown.value].text;
-        }
+        prefs.MainJobScript = m_currentPresetName ?? "";
+        prefs.TempJobScript = m_currentTempPresetName ?? "";
 
         // Save AI Guide and Adventure presets from their respective managers
         if (AIGuideManager.Get() != null)
@@ -1891,7 +1921,7 @@ public string GetPrompt() { return m_prompt; }
 
     public string GetNameOfActivePreset()
     {
-        return m_presetDropdown.options[m_presetDropdown.value].text;
+        return m_currentPresetName ?? "";
     }
     public string GetActiveComfyUIWorkflowFileName(int serverID)
     {

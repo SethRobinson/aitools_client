@@ -3,7 +3,6 @@ using System.IO;
 using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
-using TMPro;
 
 
 public class PresetFileConfigExtractor
@@ -187,7 +186,6 @@ public class PresetManager : MonoBehaviour
 
         RTConsole.Log("Preset saved as: " + fileName);
 
-        PopulatePresetDropdown(GameLogic.Get().GetPresetDropdown());
         GameLogic.Get().SetPresetDropdownValue(fileName);
     }
     // Update is called once per frame
@@ -210,38 +208,32 @@ public class PresetManager : MonoBehaviour
         }
         return false;
     }
-   
-    public void PopulatePresetDropdown(TMP_Dropdown dropdown, bool bAddNone = false)
+
+    /// <summary>
+    /// Enumerate preset .txt files. Optional case-insensitive filename prefix (e.g. "AutoPic"
+    /// to get just AutoPic*.txt). Results are sorted alphabetically.
+    /// Single source of truth for every preset/AutoPic picker in the app.
+    /// </summary>
+    public static List<string> GetPresetFileNames(string filenamePrefix = null)
     {
-        // First, delete everything from the dropdown
-        dropdown.ClearOptions();
+        var fileNames = new List<string>();
+        if (!Directory.Exists("Presets"))
+            return fileNames;
 
-        // Load the ComfyUI workflows
         string[] files = Directory.GetFiles("Presets", "*.txt");
-
-        List<string> options = new List<string>();
-        int defaultIndex = dropdown.value;
-        if (bAddNone)
-        {
-            options.Add("<no selection>");
-        }
-
         foreach (string file in files)
         {
-            // Get the name of the file
             string name = Path.GetFileName(file);
-            options.Add(name);
+            if (!string.IsNullOrEmpty(filenamePrefix) &&
+                !name.StartsWith(filenamePrefix, StringComparison.OrdinalIgnoreCase) &&
+                !name.StartsWith("test_" + filenamePrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+            fileNames.Add(name);
         }
-
-        // Add options to the dropdown
-        dropdown.AddOptions(options);
-
-        // Set the default selection
-        if (defaultIndex != -1)
-        {
-            dropdown.value = defaultIndex;
-        } 
-
+        fileNames.Sort((a, b) => string.Compare(a, b, StringComparison.OrdinalIgnoreCase));
+        return fileNames;
     }
 
     public void OnClickedPresetLoad()
@@ -251,8 +243,8 @@ public class PresetManager : MonoBehaviour
     }
     public void OnClickedPresetRefresh()
     {
-        PopulatePresetDropdown(GameLogic.Get().GetPresetDropdown());
-        PopulatePresetDropdown(GameLogic.Get().GetTempPresetDropdown());
+        // The preset list is now read on-demand by PresetPickerDialog (no dropdowns to repopulate),
+        // so just rescan the ComfyUI workflows folder.
         GameLogic.Get().OnClickedRescanComfyUIWorkflowsFolder();
         RTQuickMessageManager.Get().ShowMessage("Refreshed workflows and presets");
     }

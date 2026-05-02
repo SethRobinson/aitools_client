@@ -1,6 +1,5 @@
 using System.Collections;
 using System.Collections.Generic;
-using System.IO;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
@@ -27,7 +26,10 @@ public class GenerateSettingsPanel : MonoBehaviour
     private TMP_InputField _maxPicsInput;
     private TMP_InputField _adventureQuoteColorInput;
     private TextMeshProUGUI _statusText;
-    private TMP_Dropdown _autoPicDropdown;
+    // AutoPic picker (was a TMP_Dropdown; now a click-to-pick button)
+    private Button _autoPicButton;
+    private TMP_Text _autoPicButtonLabel;
+    private string _autoPicSelection = "";
 
     // Panel dimensions
     private const float PANEL_WIDTH = 800f;
@@ -907,140 +909,90 @@ public class GenerateSettingsPanel : MonoBehaviour
         label.color = TextDark;
         label.alignment = TextAlignmentOptions.MidlineLeft;
 
-        // Dropdown using TMP_DefaultControls
-        var ddGo = TMP_DefaultControls.CreateDropdown(new TMP_DefaultControls.Resources());
-        ddGo.name = "AutoPicDropdown";
-        ddGo.transform.SetParent(row.transform, false);
+        // Click-to-pick button (replaces the previous TMP_Dropdown)
+        var btnGo = new GameObject("AutoPicButton");
+        btnGo.transform.SetParent(row.transform, false);
+        var btnRt = btnGo.AddComponent<RectTransform>();
+        btnRt.anchorMin = new Vector2(0, 0);
+        btnRt.anchorMax = new Vector2(1, 1);
+        btnRt.offsetMin = new Vector2(labelWidth + pad, 4f);
+        btnRt.offsetMax = new Vector2(-pad, -4f);
 
-        var ddRt = ddGo.GetComponent<RectTransform>();
-        ddRt.anchorMin = new Vector2(0, 0);
-        ddRt.anchorMax = new Vector2(1, 1);
-        ddRt.offsetMin = new Vector2(labelWidth + pad, 4f);
-        ddRt.offsetMax = new Vector2(-pad, -4f);
+        var btnImg = btnGo.AddComponent<Image>();
+        ApplyUISprite(btnImg);
+        btnImg.color = InputFieldBg;
 
-        _autoPicDropdown = ddGo.GetComponent<TMP_Dropdown>();
-        
-        // Populate dropdown with AutoPic*.txt files from Presets folder
-        PopulateAutoPicDropdown();
-
-        _autoPicDropdown.onValueChanged.AddListener(OnAutoPicDropdownChanged);
-
-        // Style the dropdown
-        var ddImg = ddGo.GetComponent<Image>();
-        if (ddImg != null)
+        _autoPicButton = btnGo.AddComponent<Button>();
+        _autoPicButton.targetGraphic = btnImg;
+        _autoPicButton.colors = new ColorBlock
         {
-            ApplyUISprite(ddImg);
-            ddImg.color = InputFieldBg;
-        }
+            normalColor = Color.white,
+            highlightedColor = new Color(0.96f, 0.96f, 0.96f, 1f),
+            pressedColor = new Color(0.78f, 0.78f, 0.78f, 1f),
+            selectedColor = new Color(0.96f, 0.96f, 0.96f, 1f),
+            disabledColor = new Color(0.78f, 0.78f, 0.78f, 0.5f),
+            colorMultiplier = 1f,
+            fadeDuration = 0.1f,
+        };
+        _autoPicButton.onClick.AddListener(OpenAutoPicPicker);
 
-        // Apply arrow sprite if we have one cached
-        var arrowTransform = ddGo.transform.Find("Arrow");
-        if (arrowTransform != null)
-        {
-            var arrowImg = arrowTransform.GetComponent<Image>();
-            if (arrowImg != null)
-            {
-                if (_dropdownArrowSprite != null)
-                    arrowImg.sprite = _dropdownArrowSprite;
-                arrowImg.color = _dropdownArrowColor ?? TextDark;
-            }
-        }
+        var lblObj = new GameObject("Label");
+        lblObj.transform.SetParent(btnGo.transform, false);
+        var lblRt = lblObj.AddComponent<RectTransform>();
+        lblRt.anchorMin = Vector2.zero;
+        lblRt.anchorMax = Vector2.one;
+        lblRt.offsetMin = new Vector2(8, 0);
+        lblRt.offsetMax = new Vector2(-22, 0);
 
-        if (_autoPicDropdown.captionText != null)
-        {
-            _autoPicDropdown.captionText.font = _font;
-            _autoPicDropdown.captionText.fontSize = BASE_FONT_SIZE;
-            _autoPicDropdown.captionText.color = TextDark;
-        }
+        _autoPicButtonLabel = lblObj.AddComponent<TextMeshProUGUI>();
+        _autoPicButtonLabel.font = _font;
+        _autoPicButtonLabel.fontSize = BASE_FONT_SIZE;
+        _autoPicButtonLabel.color = TextDark;
+        _autoPicButtonLabel.alignment = TextAlignmentOptions.MidlineLeft;
+        _autoPicButtonLabel.textWrappingMode = TextWrappingModes.NoWrap;
+        _autoPicButtonLabel.overflowMode = TextOverflowModes.Ellipsis;
+        _autoPicButtonLabel.text = "";
 
-        if (_autoPicDropdown.itemText != null)
-        {
-            _autoPicDropdown.itemText.font = _font;
-            _autoPicDropdown.itemText.fontSize = BASE_FONT_SIZE;
-            _autoPicDropdown.itemText.color = TextDark;
-        }
+        var arrowObj = new GameObject("Arrow");
+        arrowObj.transform.SetParent(btnGo.transform, false);
+        var arrowRt = arrowObj.AddComponent<RectTransform>();
+        arrowRt.anchorMin = new Vector2(1, 0.5f);
+        arrowRt.anchorMax = new Vector2(1, 0.5f);
+        arrowRt.pivot = new Vector2(1, 0.5f);
+        arrowRt.sizeDelta = new Vector2(14, 14);
+        arrowRt.anchoredPosition = new Vector2(-6, 0);
 
-        // Make the dropdown list tall enough and style the scrollbar for better visibility
-        if (_autoPicDropdown.template != null)
-        {
-            _autoPicDropdown.template.sizeDelta = new Vector2(_autoPicDropdown.template.sizeDelta.x, 150f);
-            
-            // Style the dropdown scrollbar for better contrast
-            var scrollbar = _autoPicDropdown.template.GetComponentInChildren<Scrollbar>(true);
-            if (scrollbar != null)
-            {
-                // Style scrollbar background (light gray track)
-                var scrollbarImg = scrollbar.GetComponent<Image>();
-                if (scrollbarImg != null)
-                {
-                    scrollbarImg.color = new Color(0.75f, 0.75f, 0.77f, 1f);
-                }
-                
-                // Style scrollbar handle (darker for contrast against light track)
-                if (scrollbar.handleRect != null)
-                {
-                    var handleImg = scrollbar.handleRect.GetComponent<Image>();
-                    if (handleImg != null)
-                    {
-                        handleImg.color = new Color(0.45f, 0.45f, 0.5f, 1f);
-                    }
-                }
-            }
-        }
+        var arrowImg = arrowObj.AddComponent<Image>();
+        if (_dropdownArrowSprite != null)
+            arrowImg.sprite = _dropdownArrowSprite;
+        arrowImg.color = _dropdownArrowColor ?? TextDark;
+        arrowImg.preserveAspect = true;
+        arrowImg.raycastTarget = false;
     }
 
-    /// <summary>
-    /// Static method to get list of AutoPic file names from Presets folder.
-    /// Files starting with "AutoPic" or "test_AutoPic" (case-insensitive) are included.
-    /// Used by both GenerateSettingsPanel and ServerSettingsPanel.
-    /// </summary>
-    public static List<string> GetAutoPicFileNames()
+    private void OpenAutoPicPicker()
     {
-        var fileNames = new List<string>();
-
-        // Look for files matching AutoPic*.txt or test_AutoPic*.txt patterns (case-insensitive) in Presets folder
-        if (Directory.Exists("Presets"))
+        PresetPickerDialog.Show(new PresetPickerDialog.Options
         {
-            string[] files = Directory.GetFiles("Presets", "*.txt");
-            foreach (string file in files)
-            {
-                string fileName = Path.GetFileName(file);
-                // Case-insensitive match for AutoPic*.txt or test_AutoPic*.txt
-                if (fileName.StartsWith("AutoPic", System.StringComparison.OrdinalIgnoreCase) ||
-                    fileName.StartsWith("test_AutoPic", System.StringComparison.OrdinalIgnoreCase))
-                {
-                    fileNames.Add(fileName);
-                }
-            }
-        }
-
-        // Sort alphabetically for consistent ordering (case-insensitive)
-        fileNames.Sort((a, b) => string.Compare(a, b, System.StringComparison.OrdinalIgnoreCase));
-
-        return fileNames;
+            Title = "Select Default AutoPic Script",
+            CurrentSelection = _autoPicSelection,
+            FileFilterPrefix = "AutoPic",
+            SpecialNoneLabel = null,
+        }, OnAutoPicPicked);
     }
 
-    private void PopulateAutoPicDropdown()
+    private void OnAutoPicPicked(string fileName)
     {
-        if (_autoPicDropdown == null) return;
+        if (string.IsNullOrEmpty(fileName)) return;
+        _autoPicSelection = fileName;
+        if (_autoPicButtonLabel != null) _autoPicButtonLabel.text = fileName;
 
-        _autoPicDropdown.ClearOptions();
-        var fileNames = GetAutoPicFileNames();
-
-        // Convert to dropdown options
-        var options = new List<TMP_Dropdown.OptionData>();
-        foreach (string fileName in fileNames)
+        var prefs = UserPreferences.Get();
+        if (prefs != null)
         {
-            options.Add(new TMP_Dropdown.OptionData(fileName));
+            prefs.DefaultAutoPicScript = fileName;
+            prefs.Save();
         }
-
-        // If no AutoPic files found, add a default entry
-        if (options.Count == 0)
-        {
-            options.Add(new TMP_Dropdown.OptionData("AutoPic.txt"));
-        }
-
-        _autoPicDropdown.AddOptions(options);
     }
 
     private void RefreshFromSettings()
@@ -1068,55 +1020,15 @@ public class GenerateSettingsPanel : MonoBehaviour
 
     private void RefreshAutoPicDropdown()
     {
-        if (_autoPicDropdown == null) return;
-        
-        // Always repopulate the dropdown to ensure options are fresh
-        PopulateAutoPicDropdown();
-        
-        if (_autoPicDropdown.options.Count == 0) return;
+        if (_autoPicButtonLabel == null) return;
 
         string savedScript = "AutoPic.txt"; // Default
         var prefs = UserPreferences.Get();
         if (prefs != null && !string.IsNullOrEmpty(prefs.DefaultAutoPicScript))
-        {
             savedScript = prefs.DefaultAutoPicScript;
-        }
 
-        // Find the saved script in the dropdown options
-        // Use SetValueWithoutNotify to avoid triggering the save callback
-        bool found = false;
-        for (int i = 0; i < _autoPicDropdown.options.Count; i++)
-        {
-            if (string.Equals(_autoPicDropdown.options[i].text, savedScript, System.StringComparison.OrdinalIgnoreCase))
-            {
-                _autoPicDropdown.SetValueWithoutNotify(i);
-                found = true;
-                break;
-            }
-        }
-
-        // If not found, default to AutoPic.txt or first available
-        // Still use SetValueWithoutNotify to avoid overwriting the user's preference
-        if (!found)
-        {
-            for (int i = 0; i < _autoPicDropdown.options.Count; i++)
-            {
-                if (string.Equals(_autoPicDropdown.options[i].text, "AutoPic.txt", System.StringComparison.OrdinalIgnoreCase))
-                {
-                    _autoPicDropdown.SetValueWithoutNotify(i);
-                    found = true;
-                    break;
-                }
-            }
-            // If still not found, just use index 0
-            if (!found)
-            {
-                _autoPicDropdown.SetValueWithoutNotify(0);
-            }
-        }
-        
-        // Force the dropdown to update its displayed text
-        _autoPicDropdown.RefreshShownValue();
+        _autoPicSelection = savedScript;
+        _autoPicButtonLabel.text = savedScript;
     }
 
     private IEnumerator RestyleNextFrame()
@@ -1179,19 +1091,6 @@ public class GenerateSettingsPanel : MonoBehaviour
     private void OnStripThinkTagsChanged(bool value)
     {
         // This is read directly from the toggle by other code
-    }
-
-    private void OnAutoPicDropdownChanged(int index)
-    {
-        if (_autoPicDropdown == null || index < 0 || index >= _autoPicDropdown.options.Count) return;
-
-        string selectedScript = _autoPicDropdown.options[index].text;
-        var prefs = UserPreferences.Get();
-        if (prefs != null)
-        {
-            prefs.DefaultAutoPicScript = selectedScript;
-            prefs.Save();
-        }
     }
 
     private void OnMaxPicsChanged(string value)
