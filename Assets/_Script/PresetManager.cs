@@ -145,21 +145,20 @@ public class PresetManager : MonoBehaviour
 
         if (applySettings)
         {
-            // Apply the settings
+            // Apply the settings. Save-side writes a field only if non-empty, so an "absent"
+            // command in the preset file means the user wanted that field cleared. We mirror
+            // that here by treating null as empty for the prompt fields, otherwise stale
+            // values (e.g. scene-default text or the previously loaded preset) leak into the
+            // GUI when switching to a preset that doesn't set them.
             if (presetextractor.JobList != null)
                 GameLogic.Get().SetJobList(presetextractor.JobList.Trim());
 
             if (presetextractor.default_prompt != null)
                 GameLogic.Get().SetPrompt(presetextractor.default_prompt.Trim());
 
-            if (presetextractor.default_negative_prompt != null)
-                GameLogic.Get().SetNegativePrompt(presetextractor.default_negative_prompt.Trim());
-
-            if (presetextractor.default_pre_prompt != null)
-                GameLogic.Get().SetComfyPrependPrompt(presetextractor.default_pre_prompt.Trim());
-
-            if (presetextractor.default_post_prompt != null)
-                GameLogic.Get().SetComfyAppendPrompt(presetextractor.default_post_prompt.Trim());
+            GameLogic.Get().SetNegativePrompt(presetextractor.default_negative_prompt?.Trim() ?? "");
+            GameLogic.Get().SetComfyPrependPrompt(presetextractor.default_pre_prompt?.Trim() ?? "");
+            GameLogic.Get().SetComfyAppendPrompt(presetextractor.default_post_prompt?.Trim() ?? "");
         }
     }
     public void SavePreset(string fileName)

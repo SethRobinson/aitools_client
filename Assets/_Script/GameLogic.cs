@@ -11,6 +11,7 @@ using UnityEngine.UI;
 using DG.Tweening;
 using TMPro;
 using UnityEngine.EventSystems;
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -1775,9 +1776,14 @@ public string GetPrompt() { return m_prompt; }
         SetPresetDropdownValue("");
         SetTempPresetDropdownValue("");
 
-        // Load user preferences and apply saved preset selections
+        // Load user preferences and apply saved preset selections.
+        // IMPORTANT: defer the actual apply to next frame. Other MonoBehaviours (notably
+        // AIGuideManager) auto-load their own saved profile in Start() and aggressively call
+        // SetComfyPrependPrompt/SetNegativePrompt/etc. on us. If we apply our main preset now,
+        // their later Start() will clobber the toolbar fields with stale AIGuide values.
+        // Running on the next frame guarantees we win the race.
         UserPreferences.Get().Load();
-        ApplyPresetPreferences();
+        StartCoroutine(ApplyPresetPreferencesNextFrame());
         
         // Keep the "Active LLM" label on the Tools panel in sync with current LLM settings.
         BindActiveLLMLabelUpdates();
@@ -1853,6 +1859,7 @@ public string GetPrompt() { return m_prompt; }
     /// <summary>
     /// Apply saved preset preferences from UserPreferences.
     /// Main Job Script defaults to "Prompt To Image (Z Image).txt" if not saved or not found.
+    /// Loads the preset contents (job list, prompts, etc.) into the main GUI as well.
     /// </summary>
     private void ApplyPresetPreferences()
     {
@@ -1863,26 +1870,41 @@ public string GetPrompt() { return m_prompt; }
         string mainJobScript = prefs.MainJobScript;
         bool mainJobApplied = false;
 
-        if (!string.IsNullOrEmpty(mainJobScript) && 
+        if (!string.IsNullOrEmpty(mainJobScript) &&
             PresetManager.Get().DoesPresetExistByNameNotCaseSensitive(mainJobScript))
         {
-            SetPresetDropdownValue(mainJobScript);
+            ApplyMainPreset(mainJobScript);
             mainJobApplied = true;
         }
 
         // Fallback to "Prompt To Image (Z Image).txt" if not applied
-        if (!mainJobApplied && 
+        if (!mainJobApplied &&
             PresetManager.Get().DoesPresetExistByNameNotCaseSensitive("Prompt To Image (Z Image).txt"))
         {
-            SetPresetDropdownValue("Prompt To Image (Z Image).txt");
+            ApplyMainPreset("Prompt To Image (Z Image).txt");
         }
 
-        // Apply Temp Job Script preference
-        if (!string.IsNullOrEmpty(prefs.TempJobScript) && 
+        // Apply Temp Job Script preference (label only — temp preset is loaded on demand)
+        if (!string.IsNullOrEmpty(prefs.TempJobScript) &&
             PresetManager.Get().DoesPresetExistByNameNotCaseSensitive(prefs.TempJobScript))
         {
             SetTempPresetDropdownValue(prefs.TempJobScript);
         }
+    }
+
+    private void ApplyMainPreset(string fileName)
+    {
+        SetPresetDropdownValue(fileName);
+        PresetManager.Get().LoadPresetAndApply(fileName, PresetManager.Get().GetActivePreset(), true);
+    }
+
+    private IEnumerator ApplyPresetPreferencesNextFrame()
+    {
+        // Wait one frame so every MonoBehaviour's Start() has run. Without this delay,
+        // AIGuideManager.Start() runs after us and overwrites the toolbar prompt fields
+        // we just cleared with values from its own auto-loaded profile.
+        yield return null;
+        ApplyPresetPreferences();
     }
 
     /// <summary>
