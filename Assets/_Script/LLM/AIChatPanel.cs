@@ -37,11 +37,22 @@ public class AIChatPanel : MonoBehaviour
 
     // Footer
     private TMP_InputField _inputField;
+    private RectTransform _inputFieldRT;
     private Button _sendButton;
     private Button _clearButton;
     private Button _stopButton;
     private Button _copyButton;
     private TextMeshProUGUI _statusText;
+
+    // Image attachments (drag-drop / clipboard paste) - all the heavy lifting (drop
+    // intercept, paste-from-clipboard, thumbnail strip UI) lives in ChatImageAttachmentZone.
+    // We just own the strip container's RectTransform plus the footer/chat-area rects so
+    // we can resize them when the strip appears/disappears.
+    private ChatImageAttachmentZone _attachmentZone;
+    private RectTransform _attachmentsStrip;
+    private RectTransform _footerRT;
+    private RectTransform _chatScrollRT;
+    private const float ATTACHMENT_STRIP_HEIGHT = 70f;
 
     // Conversation
     private GPTPromptManager _promptManager;
@@ -113,6 +124,8 @@ public class AIChatPanel : MonoBehaviour
 
     private void OnDestroy()
     {
+        // The ChatImageAttachmentZone component on _panelRoot auto-deregisters and frees
+        // its textures in its own OnDestroy.
         _instance = null;
         _panelRoot = null;
     }
@@ -243,6 +256,7 @@ public class AIChatPanel : MonoBehaviour
         scrollRt.anchorMax = new Vector2(1, 1);
         scrollRt.offsetMin = new Vector2(0, FOOTER_HEIGHT);
         scrollRt.offsetMax = new Vector2(0, -HEADER_HEIGHT);
+        _chatScrollRT = scrollRt;
 
         _chatScroll = scrollGo.AddComponent<ScrollRect>();
         _chatScroll.horizontal = false;
@@ -326,6 +340,7 @@ public class AIChatPanel : MonoBehaviour
         rt.anchoredPosition = Vector2.zero;
         var footerImg = footer.AddComponent<Image>();
         footerImg.color = FooterBg;
+        _footerRT = rt;
 
         // Multi-line input on the left
         var inputGo = TMP_DefaultControls.CreateInputField(new TMP_DefaultControls.Resources());
@@ -336,6 +351,7 @@ public class AIChatPanel : MonoBehaviour
         inputRt.anchorMax = new Vector2(1, 1);
         inputRt.offsetMin = new Vector2(8, 8);
         inputRt.offsetMax = new Vector2(-200, -32); // leave space for buttons (right) and status text (top)
+        _inputFieldRT = inputRt;
 
         var inputImg = inputGo.GetComponent<Image>();
         if (inputImg != null)
@@ -403,6 +419,20 @@ public class AIChatPanel : MonoBehaviour
         _stopButton = CreateFooterButton(footer.transform, "Stop", new Vector2(-72, -68), new Vector2(58, 30), OnStopClicked);
         _copyButton = CreateFooterButton(footer.transform, "Copy", new Vector2(-136, -68), new Vector2(58, 30), OnCopyClicked);
         _stopButton.interactable = false;
+
+        CreateAttachmentsStrip(footer.transform);
+
+        // The helper owns all attachment state (list, drop intercept, paste, thumb UI).
+        // We just feed it our pre-positioned strip container + paste field, then react
+        // to OnAttachmentsChanged to grow / shrink the footer + chat area.
+        _attachmentZone = _panelRoot.AddComponent<ChatImageAttachmentZone>();
+        _attachmentZone.Initialize(
+            dropTarget: _mainPanel,
+            stripContainer: _attachmentsStrip,
+            pasteField: _inputField,
+            font: _font,
+            stripHeight: ATTACHMENT_STRIP_HEIGHT);
+        _attachmentZone.OnAttachmentsChanged += OnAttachmentsChanged;
     }
 
     private Button CreateFooterButton(Transform parent, string text, Vector2 anchoredPos, Vector2 size, UnityEngine.Events.UnityAction onClick)
@@ -448,6 +478,57 @@ public class AIChatPanel : MonoBehaviour
         tmp.color = TextTitle;
         tmp.alignment = TextAlignmentOptions.Center;
         return button;
+    }
+
+    // ---------- Image attachments (drag-drop / clipboard paste) ----------
+
+    private void CreateAttachmentsStrip(Transform footerTransform)
+    {
+        var strip = new GameObject("AttachmentsStrip");
+        strip.transform.SetParent(footerTransform, false);
+        var rt = strip.AddComponent<RectTransform>();
+        // Pin to top of footer, full-width, height grows with content (set in Refresh).
+        rt.anchorMin = new Vector2(0, 1);
+        rt.anchorMax = new Vector2(1, 1);
+        rt.pivot = new Vector2(0.5f, 1);
+        rt.sizeDelta = new Vector2(-200, 0); // leave space on right for status/buttons
+        rt.anchoredPosition = new Vector2(-100, 0); // shift left so the right side stays clear
+
+        var hlg = strip.AddComponent<HorizontalLayoutGroup>();
+        hlg.padding = new RectOffset(8, 8, 4, 4);
+        hlg.spacing = 6;
+        hlg.childAlignment = TextAnchor.UpperLeft;
+        hlg.childControlWidth = false;
+        hlg.childControlHeight = false;
+        hlg.childForceExpandWidth = false;
+        hlg.childForceExpandHeight = false;
+
+        _attachmentsStrip = rt;
+    }
+
+    /// <summary>
+    /// Fired by ChatImageAttachmentZone whenever the attachment count changes. We only
+    /// need to grow / shrink the footer (and matching chat scroll area) so the typing
+    /// field keeps its full height when the strip appears.
+    /// </summary>
+    private void OnAttachmentsChanged()
+    {
+        bool hasAttachments = _attachmentZone != null && _attachmentZone.HasAttachments;
+        float extraFooterHeight = hasAttachments ? ATTACHMENT_STRIP_HEIGHT : 0f;
+
+        // 1) Grow / shrink the footer itself so the input field still has its original
+        //    height after the strip reserves space at its top.
+        if (_footerRT != null)
+            _footerRT.sizeDelta = new Vector2(_footerRT.sizeDelta.x, FOOTER_HEIGHT + extraFooterHeight);
+
+        // 2) Push the chat scroll area's bottom edge up by the same amount so it doesn't
+        //    overlap the now-taller footer.
+        if (_chatScrollRT != null)
+            _chatScrollRT.offsetMin = new Vector2(_chatScrollRT.offsetMin.x, FOOTER_HEIGHT + extraFooterHeight);
+
+        // 3) Input field's top reserves room for the strip + the existing 32 px status row.
+        if (_inputFieldRT != null)
+            _inputFieldRT.offsetMax = new Vector2(_inputFieldRT.offsetMax.x, -(32f + extraFooterHeight));
     }
 
     private void CreateResizeGrip()
@@ -706,7 +787,26 @@ public class AIChatPanel : MonoBehaviour
     {
         if (_isStreaming) return;
         string text = _inputField != null ? _inputField.text : "";
-        if (string.IsNullOrWhiteSpace(text)) return;
+
+        // Allow sending with images even if there's no text (vision models often work
+        // better with a short prompt, but "describe this image" is a valid bare-image use).
+        var attachmentBytes = _attachmentZone != null ? _attachmentZone.GetAttachmentBytes() : null;
+        int attachedCount = attachmentBytes?.Count ?? 0;
+        if (string.IsNullOrWhiteSpace(text) && attachedCount == 0) return;
+        if (string.IsNullOrWhiteSpace(text) && attachedCount > 0)
+            text = "(no caption)";
+
+        // Stage attached images so GPTPromptManager auto-attaches them to the user line
+        // we're about to add. AddInteraction consumes the pending list internally.
+        if (attachedCount > 0)
+        {
+            foreach (var bytes in attachmentBytes)
+            {
+                if (bytes == null) continue;
+                _promptManager.AddPendingImage(System.Convert.ToBase64String(bytes));
+            }
+            AddSystemMessage($"Attached {attachedCount} image{(attachedCount == 1 ? "" : "s")} to the next message.");
+        }
 
         // Add the interaction first so we can link the bubble to it - that link is what
         // makes the bubble editable (and what makes user edits flow back into the prompt
@@ -714,6 +814,10 @@ public class AIChatPanel : MonoBehaviour
         _promptManager.AddInteraction("user", text);
         var userInteraction = _promptManager.GetLastInteraction();
         AddUserMessage(text, userInteraction);
+
+        // Drop the staged thumbnails now that they've been baked into the conversation.
+        if (attachedCount > 0)
+            _attachmentZone?.ClearAttachments();
 
         _inputField.text = "";
         FocusInputDeferred();
@@ -737,6 +841,7 @@ public class AIChatPanel : MonoBehaviour
         }
 
         _promptManager.Reset();
+        _attachmentZone?.ClearAttachments();
         for (int i = _chatContent.childCount - 1; i >= 0; i--)
         {
             Destroy(_chatContent.GetChild(i).gameObject);
@@ -793,11 +898,12 @@ public class AIChatPanel : MonoBehaviour
 
         var instanceMgr = LLMInstanceManager.Get();
         int llmReplicaIndex = 0;
-        int llmInstanceID = instanceMgr?.GetFreeLLM(isSmallJob: true, isVisionJob: false, out llmReplicaIndex) ?? -1;
+        bool isVisionJob = _promptManager != null && _promptManager.HasAnyImages();
+        int llmInstanceID = instanceMgr?.GetFreeLLM(isSmallJob: true, isVisionJob: isVisionJob, out llmReplicaIndex) ?? -1;
 
         if (llmInstanceID < 0 && instanceMgr != null && instanceMgr.GetInstanceCount() > 0)
         {
-            llmInstanceID = instanceMgr.GetLeastBusyLLM(isSmallJob: true, isVisionJob: false, out llmReplicaIndex);
+            llmInstanceID = instanceMgr.GetLeastBusyLLM(isSmallJob: true, isVisionJob: isVisionJob, out llmReplicaIndex);
         }
 
         LLMInstanceInfo llmInstance = llmInstanceID >= 0 ? instanceMgr?.GetInstance(llmInstanceID) : null;
@@ -844,6 +950,15 @@ public class AIChatPanel : MonoBehaviour
         var advLogic = AdventureLogic.Get();
         if (advLogic != null && advLogic.GetExtractor() != null)
             temperature = advLogic.GetExtractor().Temperature;
+
+        // If the user attached images but the resolved provider's chat path doesn't yet
+        // serialize them, surface a clear note so they don't think the model "ignored" the
+        // image. The Chat Completions branches (OpenAI / OpenAICompatible / Ollama / LlamaCpp)
+        // all emit multimodal content arrays today; the others don't.
+        if (isVisionJob && WillProviderDropImages(activeProvider, activeSettings))
+        {
+            AddSystemMessage($"Note: {activeProvider} chat path is not configured to send images yet; only text will be sent.");
+        }
 
         RTDB db = new RTDB();
 
@@ -993,6 +1108,47 @@ public class AIChatPanel : MonoBehaviour
             if (line._role == "user") return true;
         }
         return false;
+    }
+
+    /// <summary>
+    /// Returns true if the given provider/settings combo will hit a code path whose JSON
+    /// builder doesn't currently serialize attached images. Used purely to surface a
+    /// "your image won't be sent" warning - no side effects.
+    /// </summary>
+    private static bool WillProviderDropImages(LLMProvider provider, LLMProviderSettings settings)
+    {
+        switch (provider)
+        {
+            case LLMProvider.Anthropic:
+            case LLMProvider.Gemini:
+                return true;
+
+            case LLMProvider.OpenAI:
+            {
+                // Mirror the useResponsesAPI logic in the OpenAI branch of SendChatTurn.
+                // The Responses-API branch of OpenAITextCompletionManager.BuildChatCompleteJSON
+                // does not emit multimodal content arrays today; only the Chat Completions
+                // branch does.
+                string model = settings != null ? (settings.selectedModel ?? "") : "";
+                bool useResponses = false;
+                if (model.Contains("gpt-5"))
+                {
+                    useResponses = true;
+                    if (model.Contains("gpt-5-mini") || model.Contains("gpt-5-nano"))
+                        useResponses = false;
+                }
+                else if (model.StartsWith("o3") || model.StartsWith("o4"))
+                {
+                    useResponses = true;
+                }
+                return useResponses;
+            }
+
+            default:
+                // OpenAICompatible / Ollama / LlamaCpp all flow through builders that
+                // serialize images today.
+                return false;
+        }
     }
 
     // ---------- Callbacks ----------

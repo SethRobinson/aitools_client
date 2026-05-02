@@ -182,17 +182,26 @@ public class OpenAITextCompletionManager : MonoBehaviour
             result.Add(new GTPChatLine("user", systemContent.ToString()));
         }
         
-        // Second pass: merge consecutive same-role messages
+        // Second pass: merge consecutive same-role messages (preserve images)
         foreach (var line in nonSystemMessages)
         {
             if (result.Count > 0 && result[result.Count - 1]._role == line._role)
             {
                 // Merge with previous message of same role
                 result[result.Count - 1]._content += "\n\n" + line._content;
+                if (line._images != null && line._images.Count > 0)
+                {
+                    if (result[result.Count - 1]._images == null)
+                        result[result.Count - 1]._images = new List<string>();
+                    result[result.Count - 1]._images.AddRange(line._images);
+                }
             }
             else
             {
-                result.Add(new GTPChatLine(line._role, line._content));
+                var merged = new GTPChatLine(line._role, line._content);
+                if (line._images != null && line._images.Count > 0)
+                    merged._images = new List<string>(line._images);
+                result.Add(merged);
             }
         }
         
@@ -356,7 +365,28 @@ public class OpenAITextCompletionManager : MonoBehaviour
                 {
                     msg += ",\n";
                 }
-                msg += "{\"role\": \"" + obj._role + "\", \"content\": \"" + SimpleJSON.JSONNode.Escape(obj._content) + "\"}";
+
+                if (obj.HasImages())
+                {
+                    // Multimodal content array (vLLM/Qwen-VL/GPT-4o style):
+                    // content = [ { image_url... }, ..., { text: "..." } ]
+                    var contentSb = new StringBuilder();
+                    contentSb.Append("[");
+                    foreach (var b64 in obj._images)
+                    {
+                        contentSb.Append("{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,")
+                                 .Append(b64)
+                                 .Append("\"}},");
+                    }
+                    contentSb.Append("{\"type\":\"text\",\"text\":\"")
+                             .Append(SimpleJSON.JSONNode.Escape(obj._content))
+                             .Append("\"}]");
+                    msg += "{\"role\": \"" + obj._role + "\", \"content\": " + contentSb + "}";
+                }
+                else
+                {
+                    msg += "{\"role\": \"" + obj._role + "\", \"content\": \"" + SimpleJSON.JSONNode.Escape(obj._content) + "\"}";
+                }
             }
 
             string temperaturePart = includeTemperature ? $@"""temperature"": {temperature}," : "";

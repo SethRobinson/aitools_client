@@ -5,6 +5,15 @@ using B83.Win32;
 
 public class DragAndDropHandler : MonoBehaviour
 {
+    /// <summary>
+    /// Optional intercept hooks for panels (e.g. AIChatPanel, AdventureInput) that want
+    /// to claim file drops landing over their UI rect before the default "open as new pic"
+    /// behavior runs. Each handler returns true to consume the drop, false to let it fall
+    /// through to the next claimant (or the default handler). Multiple panels can register
+    /// independently; the first one to return true wins.
+    /// </summary>
+    public static readonly List<System.Func<List<string>, POINT, bool>> ClaimHandlers
+        = new List<System.Func<List<string>, POINT, bool>>();
 
     void OnEnable()
     {
@@ -19,6 +28,26 @@ public class DragAndDropHandler : MonoBehaviour
 
     void OnFiles(List<string> aFiles, POINT aPos)
     {
+        // Give any interested panel a chance to claim this drop first. Snapshot the list
+        // so a claim handler can safely (de)register itself during iteration.
+        if (ClaimHandlers.Count > 0)
+        {
+            var snapshot = ClaimHandlers.ToArray();
+            foreach (var handler in snapshot)
+            {
+                if (handler == null) continue;
+                try
+                {
+                    if (handler(aFiles, aPos))
+                        return;
+                }
+                catch (System.Exception ex)
+                {
+                    Debug.LogError("DragAndDropHandler claim handler threw: " + ex);
+                }
+            }
+        }
+
         // List to collect all supported files
         List<string> validFiles = new List<string>();
 

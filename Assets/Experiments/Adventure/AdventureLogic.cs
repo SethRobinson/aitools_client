@@ -708,6 +708,7 @@ public class AdventureLogic : MonoBehaviour
             newText.SetConfigFileName(textScript.GetConfigFileName());
         }
 
+        AttachPendingImagesIfAny(newText);
         newText.StartLLMRequest();
         newText.SetDirectionMult(textScript.GetReverseDirectionMult());
         //_promptManager.AddInteraction("user", text);
@@ -720,6 +721,35 @@ public class AdventureLogic : MonoBehaviour
         }
 
         return newText;
+    }
+
+    /// <summary>
+    /// If the user staged image attachments via AdventureInput's drag-drop / Ctrl+V
+    /// surface, attach them to the most recent "user" GTPChatLine inside <paramref name="newText"/>'s
+    /// prompt manager so the LLM call about to start can include them as multimodal
+    /// content. Pending attachments are consumed (cleared) after attaching.
+    /// </summary>
+    private void AttachPendingImagesIfAny(AdventureText newText)
+    {
+        if (newText == null) return;
+        var advInput = AdventureInput.Get();
+        if (advInput == null || !advInput.HasPendingAttachments) return;
+
+        var pm = newText.GetPromptManager();
+        if (pm == null) return;
+
+        var lastLine = pm.GetLastInteraction();
+        if (lastLine == null || lastLine._role != "user")
+        {
+            // Defensive: if the manager's last line isn't a user line we have no good
+            // place to bind images. Drop them silently rather than send to the wrong turn.
+            advInput.ConsumePendingAttachmentsAsBase64();
+            return;
+        }
+
+        var b64Images = advInput.ConsumePendingAttachmentsAsBase64();
+        foreach (var b64 in b64Images)
+            lastLine.AddImage(b64);
     }
 
     public AdventureText AddTextAndGetReplyGlobal(string text, AdventureText textScript, bool bDontCreateReplyBox = false)
@@ -771,6 +801,7 @@ public class AdventureLogic : MonoBehaviour
             newText.SetConfigFileName(textScript.GetConfigFileName());
         }
 
+        AttachPendingImagesIfAny(newText);
         newText.StartLLMRequest();
         newText.SetDirectionMult(textScript.GetReverseDirectionMult());
 

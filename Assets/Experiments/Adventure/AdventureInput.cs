@@ -1,7 +1,10 @@
+using System;
 using System.Collections;
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.UI;
 
 /// <summary>
 /// Handles Enter key behavior for the Adventure chat input field.
@@ -12,7 +15,17 @@ using UnityEngine.InputSystem;
 /// </summary>
 public class AdventureInput : MonoBehaviour
 {
+    private static AdventureInput _instance;
+    public static AdventureInput Get() => _instance;
+
     private TMP_InputField inputField;
+
+    // Image attachments for vision-capable LLMs. Built at runtime so we don't have to
+    // touch the Adventure scene/prefab. The strip container floats just above the input
+    // field and is hidden / zero-height when no attachments are pending.
+    private ChatImageAttachmentZone _attachmentZone;
+    private RectTransform _stripContainer;
+    private const float ATTACHMENT_STRIP_HEIGHT = 70f;
 
     // Track shift state every frame since checking during the validate callback
     // may be unreliable depending on input dispatch timing.
@@ -32,11 +45,109 @@ public class AdventureInput : MonoBehaviour
 
     private void Awake()
     {
+        _instance = this;
         inputField = GetComponent<TMP_InputField>();
         if (inputField != null)
         {
             inputField.onValidateInput += ValidateInput;
         }
+
+        BuildAttachmentZone();
+    }
+
+    private void OnDestroy()
+    {
+        if (_instance == this) _instance = null;
+    }
+
+    /// <summary>
+    /// Create a horizontal thumbnail strip just above the PromptTextInput plus a
+    /// ChatImageAttachmentZone that wires drag-drop and Ctrl+V paste to it. The
+    /// container is parented to the input field's parent (so it lives inside
+    /// AdventureGUI) and stays hidden until the user attaches something.
+    /// </summary>
+    private void BuildAttachmentZone()
+    {
+        if (inputField == null) return;
+
+        var inputRT = inputField.GetComponent<RectTransform>();
+        if (inputRT == null) return;
+        var parentRT = inputRT.parent as RectTransform;
+        if (parentRT == null) return;
+
+        // Container: anchored to the bottom of the parent (same anchor as PromptTextInput),
+        // sized to match the input's width so it visually belongs to it, and shifted up by
+        // the input's height so the strip floats just above it.
+        var stripGo = new GameObject("AdventureAttachmentsStrip", typeof(RectTransform));
+        stripGo.transform.SetParent(parentRT, false);
+        var stripRT = stripGo.GetComponent<RectTransform>();
+
+        stripRT.anchorMin = inputRT.anchorMin;
+        stripRT.anchorMax = inputRT.anchorMax;
+        stripRT.pivot = new Vector2(inputRT.pivot.x, 0f);
+        stripRT.sizeDelta = new Vector2(inputRT.sizeDelta.x, 0f); // height grows with content
+
+        Vector2 inputAnchored = inputRT.anchoredPosition;
+        float inputHeight = inputRT.rect.height;
+        // Place the strip's bottom edge a few pixels above the input's top edge.
+        // pivot.y == 0 means anchoredPosition.y is the bottom of the strip's rect.
+        stripRT.anchoredPosition = new Vector2(inputAnchored.x, inputAnchored.y + inputHeight + 4f);
+
+        // Subtle background so the user can see the drop target before they drop anything.
+        var bg = stripGo.AddComponent<Image>();
+        bg.color = new Color(0f, 0f, 0f, 0.25f);
+        bg.raycastTarget = false;
+
+        var hlg = stripGo.AddComponent<HorizontalLayoutGroup>();
+        hlg.padding = new RectOffset(8, 8, 4, 4);
+        hlg.spacing = 6;
+        hlg.childAlignment = TextAnchor.UpperLeft;
+        hlg.childControlWidth = false;
+        hlg.childControlHeight = false;
+        hlg.childForceExpandWidth = false;
+        hlg.childForceExpandHeight = false;
+
+        _stripContainer = stripRT;
+
+        // Pick a font from any TMP text already in the scene (matches AIChatPanel's trick).
+        TMP_FontAsset font = null;
+        var anyTmp = FindAnyObjectByType<TextMeshProUGUI>();
+        if (anyTmp != null) font = anyTmp.font;
+        if (font == null) font = TMP_Settings.defaultFontAsset;
+
+        // Drop target = the input field rect itself, so dragging onto the typing box
+        // (or onto the strip area just above it) attaches the image. The strip
+        // container is invisible when empty, so testing against the input rect gives
+        // the most natural target.
+        _attachmentZone = gameObject.AddComponent<ChatImageAttachmentZone>();
+        _attachmentZone.Initialize(
+            dropTarget: inputRT,
+            stripContainer: _stripContainer,
+            pasteField: inputField,
+            font: font,
+            stripHeight: ATTACHMENT_STRIP_HEIGHT);
+    }
+
+    /// <summary>True if the user has staged at least one image to send with the next submit.</summary>
+    public bool HasPendingAttachments
+        => _attachmentZone != null && _attachmentZone.HasAttachments;
+
+    /// <summary>
+    /// Pull the staged attachments out as base64 PNG strings, clearing the zone in the
+    /// process. Call from AdventureLogic right before StartLLMRequest so the bytes can
+    /// be attached to the user's outgoing GTPChatLine.
+    /// </summary>
+    public List<string> ConsumePendingAttachmentsAsBase64()
+    {
+        var result = new List<string>();
+        if (_attachmentZone == null) return result;
+        foreach (var bytes in _attachmentZone.GetAttachmentBytes())
+        {
+            if (bytes == null) continue;
+            result.Add(Convert.ToBase64String(bytes));
+        }
+        _attachmentZone.ClearAttachments();
+        return result;
     }
 
     private void Update()

@@ -1276,15 +1276,18 @@ public class AdventureText : MonoBehaviour
 
         RTDB db = new RTDB();
 
-        // Try to use multi-instance system first (isSmallJob=false for Adventure big jobs)
+        // Try to use multi-instance system first (isSmallJob=false for Adventure big jobs).
+        // If the user attached one or more images via the AdventureInput drag-drop / paste
+        // surface, prefer a vision-capable LLM instance.
         var instanceMgr = LLMInstanceManager.Get();
         int llmReplicaIndex = 0;
-        int llmInstanceID = instanceMgr?.GetFreeLLM(isSmallJob: false, isVisionJob: false, out llmReplicaIndex) ?? -1;
-        
+        bool isVisionJob = m_promptManager != null && m_promptManager.HasAnyImages();
+        int llmInstanceID = instanceMgr?.GetFreeLLM(isSmallJob: false, isVisionJob: isVisionJob, out llmReplicaIndex) ?? -1;
+
         // If no free instance, try to get the least busy one that can accept big jobs
         if (llmInstanceID < 0 && instanceMgr != null && instanceMgr.GetInstanceCount() > 0)
         {
-            llmInstanceID = instanceMgr.GetLeastBusyLLM(isSmallJob: false, isVisionJob: false, out llmReplicaIndex);
+            llmInstanceID = instanceMgr.GetLeastBusyLLM(isSmallJob: false, isVisionJob: isVisionJob, out llmReplicaIndex);
             RTConsole.Log($"Adventure: No free big job LLM, using least busy: {llmInstanceID} replica {llmReplicaIndex}");
         }
         
