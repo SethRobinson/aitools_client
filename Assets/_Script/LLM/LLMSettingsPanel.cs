@@ -2158,7 +2158,21 @@ public class PanelDragHandler : MonoBehaviour, IDragHandler, IBeginDragHandler
     private RectTransform _target;
     private Vector2 _dragOffset;
 
+    // The "header" is the strip the user grabs to drag the panel - it must stay at least
+    // partially on-screen, otherwise there's no way to drag it back. Defaults to 32px,
+    // overridable by callers whose actual header is taller (e.g. AIChatPanel uses 40px).
+    private float _headerHeight = 32f;
+    // Minimum number of horizontal pixels of the panel that must stay on-screen so the
+    // user can always grab the title bar.
+    private const float MinHorizontalVisible = 80f;
+
     public void SetTarget(RectTransform target) => _target = target;
+
+    public void SetTarget(RectTransform target, float headerHeight)
+    {
+        _target = target;
+        _headerHeight = Mathf.Max(8f, headerHeight);
+    }
 
     public void OnBeginDrag(PointerEventData eventData)
     {
@@ -2179,7 +2193,44 @@ public class PanelDragHandler : MonoBehaviour, IDragHandler, IBeginDragHandler
             eventData.position,
             eventData.pressEventCamera,
             out Vector2 localPoint);
-        _target.anchoredPosition = localPoint + _dragOffset;
+        _target.anchoredPosition = ClampToParent(localPoint + _dragOffset);
+    }
+
+    /// <summary>
+    /// Clamp the target's anchoredPosition so that the title bar (top <see cref="_headerHeight"/>
+    /// pixels of the panel) stays fully on-screen vertically, and at least
+    /// <see cref="MinHorizontalVisible"/> pixels remain on-screen horizontally. Lets the
+    /// user always re-grab and drag the panel, no matter where they let go.
+    ///
+    /// Math (with pivot (px, py) and size (W, H), anchoredPos = (ax, ay)):
+    ///   left   = ax - px * W
+    ///   right  = ax + (1-px) * W
+    ///   top    = ay + (1-py) * H
+    ///   bottom = ay - py * H
+    /// We solve each edge constraint for ax/ay and clamp.
+    /// </summary>
+    private Vector2 ClampToParent(Vector2 anchoredPos)
+    {
+        var parent = _target.parent as RectTransform;
+        if (parent == null) return anchoredPos;
+
+        Rect parentRect = parent.rect;
+        Vector2 size = _target.sizeDelta;
+        Vector2 pivot = _target.pivot;
+
+        // Vertical: top edge can't exceed parent top; header bottom can't fall below parent bottom.
+        float maxAnchoredY = parentRect.yMax - (1f - pivot.y) * size.y;
+        float minAnchoredY = parentRect.yMin + _headerHeight - (1f - pivot.y) * size.y;
+        if (minAnchoredY > maxAnchoredY) minAnchoredY = maxAnchoredY; // panel taller than parent
+        anchoredPos.y = Mathf.Clamp(anchoredPos.y, minAnchoredY, maxAnchoredY);
+
+        // Horizontal: keep at least MinHorizontalVisible pixels of the panel inside the parent.
+        float maxAnchoredX = parentRect.xMax - MinHorizontalVisible + pivot.x * size.x;
+        float minAnchoredX = parentRect.xMin + MinHorizontalVisible - (1f - pivot.x) * size.x;
+        if (minAnchoredX > maxAnchoredX) minAnchoredX = maxAnchoredX;
+        anchoredPos.x = Mathf.Clamp(anchoredPos.x, minAnchoredX, maxAnchoredX);
+
+        return anchoredPos;
     }
 }
 

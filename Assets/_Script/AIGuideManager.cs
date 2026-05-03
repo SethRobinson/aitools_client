@@ -591,8 +591,16 @@ public class AIGuideManager : MonoBehaviour
         // Pass enableThinking for sglang/vLLM reasoning models (Qwen, etc.)
         bool? compatEnableThinking = (bool?)(settings?.enableThinking ?? true);
 
-        string json = _openAITextCompletionManager.BuildChatCompleteJSON(normalizedLines, m_max_tokens, m_extractor.Temperature, model, true,
-            enableThinking: compatEnableThinking);
+        // Honor sampling-parameter overrides set in the LLM Settings panel (vLLM/sglang/etc.)
+        float compatTemperature = (settings != null && settings.overrideTemperature) ? settings.temperature : m_extractor.Temperature;
+        float? compatTopP = (settings != null && settings.overrideTopP) ? (float?)settings.topP : null;
+        int? compatTopK = (settings != null && settings.overrideTopK) ? (int?)settings.topK : null;
+        float? compatMinP = (settings != null && settings.overrideMinP) ? (float?)settings.minP : null;
+        float? compatRepPenalty = (settings != null && settings.overrideRepeatPenalty) ? (float?)settings.repeatPenalty : null;
+
+        string json = _openAITextCompletionManager.BuildChatCompleteJSON(normalizedLines, m_max_tokens, compatTemperature, model, true,
+            enableThinking: compatEnableThinking,
+            topP: compatTopP, topK: compatTopK, minP: compatMinP, repetitionPenalty: compatRepPenalty);
         RTDB db = new RTDB();
         _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnGTP4CompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
     }

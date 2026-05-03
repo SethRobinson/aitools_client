@@ -1,0 +1,22 @@
+#Config file for an adventure mode profile.  It controls what we send to the LLM and whatnot
+
+COMMAND_START|base_context
+Write extremely detailed descriptions of everything happening, every person, etc, as if you needed to perfectly recreate the scene for a vision impaired person.
+COMMAND_END
+COMMAND_START|system_reminder
+COMMAND_END
+
+#when "auto" is used, this will be reply given to the llm between its generations.  (keep in mind the system_reminder may also be added)
+COMMAND_START|auto_continue_text
+(continue the story please)
+COMMAND_END
+
+#This is what we show the user for their first prompt
+COMMAND_START|start_msg
+(Note: This preset uses AutoPics, which means instead of generating the image description WITH the story, we send the story to our LLM to get an image description when we need them.  It seems to give better results and variety)
+
+What should this story be about? (Enter in the textbox at the bottom of the screen and press ENTER)
+COMMAND_END
+
+COMMAND_START|prepend_prompt
+COMMAND_END

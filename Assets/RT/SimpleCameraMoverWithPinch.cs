@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 
+// MouseWheelPassthrough lives in the same RT assembly so no extra using is needed.
+
 //this class handles pan and zoom controls for desktops + webgl.  I'm still using the older input
 //controls for the mouse wheel input as I couldn't get that to work with the 1.3 new input system.
 
@@ -192,14 +194,45 @@ public class SimpleCameraMoverWithPinch : MonoBehaviour
             }
         }
 
-        if (m_curCam.orthographic)
+        // Don't zoom the camera if the mouse is hovering over a GUI element (e.g. the
+        // main prompt input field, AI Chat window, or any other UI panel). The right
+        // mouse button override above already lets you force-zoom by holding RMB.
+        // Exception: panels marked with MouseWheelPassthrough explicitly opt out of
+        // eating the wheel (e.g. Adventure text panels), so the global zoom keeps
+        // working while the cursor hovers them.
+        bool bWheelBlocked = bOverGUI && !IsTopUIElementPassthrough();
+        if (!bWheelBlocked)
         {
-            ProcessScrollWheelOrthographic();
+            if (m_curCam.orthographic)
+            {
+                ProcessScrollWheelOrthographic();
+            }
+            else
+            {
+                ProcessScrollWheelPerspective();
+            }
         }
-        else
-        {
-            ProcessScrollWheelPerspective();
-        }
+    }
+
+    // Reused buffers for the per-frame UI raycast so we don't churn GC while idling
+    // with the cursor over the UI.
+    private static readonly List<RaycastResult> s_uiRaycastResults = new List<RaycastResult>();
+
+    /// <summary>
+    /// Returns true if the topmost UI element under the cursor (or any of its parents)
+    /// has a <see cref="MouseWheelPassthrough"/> marker, meaning the wheel should NOT
+    /// be considered blocked by that panel.
+    /// </summary>
+    private bool IsTopUIElementPassthrough()
+    {
+        var es = EventSystem.current;
+        if (es == null) return false;
+        var pd = new PointerEventData(es) { position = Input.mousePosition };
+        s_uiRaycastResults.Clear();
+        es.RaycastAll(pd, s_uiRaycastResults);
+        if (s_uiRaycastResults.Count == 0) return false;
+        var top = s_uiRaycastResults[0].gameObject;
+        return top != null && top.GetComponentInParent<MouseWheelPassthrough>() != null;
     }
 
     private void Awake()

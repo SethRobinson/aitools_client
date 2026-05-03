@@ -80,6 +80,15 @@ public class AIChatPanel : MonoBehaviour
     private const float HEADER_HEIGHT = 40f;
     private const float FOOTER_HEIGHT = 130f;
     private const float BaseFontSize = 14f;
+    private const float BaseLabelFontSize = 12f;
+
+    // Ctrl+MouseWheel font resize. Multiplier scales BaseFontSize (and the smaller
+    // role label font) so the user can read the chat at any size they like. Reset
+    // each session because Show() lazy-creates a fresh panel.
+    private float _fontSizeMultiplier = 1.0f;
+    private const float MinFontMultiplier = 0.5f;
+    private const float MaxFontMultiplier = 3.0f;
+    private const float FontMultiplierStep = 0.1f;
 
     // Theme (matches LLMSettingsPanel's app-style colors).
     private static readonly Color PanelBg = new Color(0.80f, 0.80f, 0.82f, 1f);
@@ -196,8 +205,10 @@ public class AIChatPanel : MonoBehaviour
         var headerImg = header.AddComponent<Image>();
         headerImg.color = HeaderBg;
 
-        // Reuse the same drag handler the LLMSettingsPanel uses.
-        header.AddComponent<PanelDragHandler>().SetTarget(_mainPanel);
+        // Reuse the same drag handler the LLMSettingsPanel uses. Pass our actual header
+        // height so the clamp code keeps the full grab-strip on-screen instead of the
+        // default 32px assumption.
+        header.AddComponent<PanelDragHandler>().SetTarget(_mainPanel, HEADER_HEIGHT);
 
         // Title
         var titleObj = new GameObject("Title");
@@ -258,7 +269,9 @@ public class AIChatPanel : MonoBehaviour
         scrollRt.offsetMax = new Vector2(0, -HEADER_HEIGHT);
         _chatScrollRT = scrollRt;
 
-        _chatScroll = scrollGo.AddComponent<ScrollRect>();
+        // Use our Ctrl-aware ScrollRect so that holding Ctrl while scrolling does NOT
+        // scroll the chat (it's reserved for font resize, handled in Update()).
+        _chatScroll = scrollGo.AddComponent<ChatScrollRectCtrlAware>();
         _chatScroll.horizontal = false;
         _chatScroll.vertical = true;
         _chatScroll.scrollSensitivity = 30f;
@@ -607,7 +620,7 @@ public class AIChatPanel : MonoBehaviour
             var labelTmp = labelGo.AddComponent<TextMeshProUGUI>();
             labelTmp.text = roleLabel;
             labelTmp.font = _font;
-            labelTmp.fontSize = 12;
+            labelTmp.fontSize = BaseLabelFontSize * _fontSizeMultiplier;
             labelTmp.fontStyle = FontStyles.Bold;
             labelTmp.color = labelColor;
             labelTmp.alignment = TextAlignmentOptions.MidlineLeft;
@@ -631,7 +644,7 @@ public class AIChatPanel : MonoBehaviour
         input.readOnly = (linkedInteraction == null); // info bubbles + assistant bubble during streaming = readOnly
         input.interactable = true;
         input.textComponent.font = _font;
-        input.textComponent.fontSize = BaseFontSize;
+        input.textComponent.fontSize = BaseFontSize * _fontSizeMultiplier;
         input.textComponent.color = TextDark;
         input.textComponent.richText = true;
         input.textComponent.textWrappingMode = TextWrappingModes.Normal;
@@ -646,6 +659,13 @@ public class AIChatPanel : MonoBehaviour
         ApplyFatCaret(input);
         var bubbleCaretFixer = inputGo.AddComponent<AIChatCaretFixer>();
         bubbleCaretFixer.Set(input);
+
+        // Forward mouse-wheel events from the bubble's TMP_InputField up to the chat
+        // ScrollRect. Without this, TMP_InputField's own IScrollHandler swallows the
+        // event (because the field is multiline) and the conversation can't be scrolled
+        // while the cursor is hovering a bubble.
+        var bubbleScrollForwarder = inputGo.AddComponent<ChatScrollForwarder>();
+        bubbleScrollForwarder.target = _chatScroll;
 
         // Body only - the role label is its own TMP_Text above this field.
         input.text = ConvertMarkdownToTMP(rawMessageText);
@@ -1088,8 +1108,14 @@ public class AIChatPanel : MonoBehaviour
 
                 var normalizedLines = OpenAITextCompletionManager.NormalizeForStrictAlternation(lines);
                 bool? compatEnableThinking = activeSettings.enableThinking;
-                string json = _openAIMgr.BuildChatCompleteJSON(normalizedLines, 4096, temperature, model, true,
-                    enableThinking: compatEnableThinking);
+                float compatTemperature = activeSettings.overrideTemperature ? activeSettings.temperature : temperature;
+                float? compatTopP = activeSettings.overrideTopP ? (float?)activeSettings.topP : null;
+                int? compatTopK = activeSettings.overrideTopK ? (int?)activeSettings.topK : null;
+                float? compatMinP = activeSettings.overrideMinP ? (float?)activeSettings.minP : null;
+                float? compatRepPenalty = activeSettings.overrideRepeatPenalty ? (float?)activeSettings.repeatPenalty : null;
+                string json = _openAIMgr.BuildChatCompleteJSON(normalizedLines, 4096, compatTemperature, model, true,
+                    enableThinking: compatEnableThinking,
+                    topP: compatTopP, topK: compatTopK, minP: compatMinP, repetitionPenalty: compatRepPenalty);
                 _openAIMgr.SpawnChatCompleteRequest(json, OnLLMCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
                 break;
             }
@@ -1329,10 +1355,81 @@ public class AIChatPanel : MonoBehaviour
         _inputField.Select();
     }
 
+    /// <summary>
+    /// Apply <see cref="_fontSizeMultiplier"/> to every text element in the panel that
+    /// participates in chat reading: the typing input field + placeholder, every
+    /// existing bubble's TMP_InputField text component, and every "Label" TMP_Text
+    /// (the small "You / Assistant / Info" role labels). Body text scales from
+    /// <see cref="BaseFontSize"/>; role labels scale from <see cref="BaseLabelFontSize"/>.
+    /// Triggers a re-layout pass on every bubble so heights re-fit the new size.
+    /// </summary>
+    private void ApplyChatFontSize()
+    {
+        float bodySize = BaseFontSize * _fontSizeMultiplier;
+        float labelSize = BaseLabelFontSize * _fontSizeMultiplier;
+
+        if (_inputField != null)
+        {
+            if (_inputField.textComponent != null)
+                _inputField.textComponent.fontSize = bodySize;
+            if (_inputField.placeholder is TextMeshProUGUI ph)
+                ph.fontSize = bodySize;
+        }
+
+        if (_chatContent != null)
+        {
+            // Bubble bodies (the editable / read-only TMP_InputField inside each bubble).
+            foreach (var input in _chatContent.GetComponentsInChildren<TMP_InputField>(true))
+            {
+                if (input.textComponent != null)
+                    input.textComponent.fontSize = bodySize;
+                var le = input.GetComponent<LayoutElement>();
+                if (le != null) StartCoroutine(ResizeBubbleDeferred(input, le));
+            }
+
+            // Role labels (small "You" / "Assistant" / "Info" headers above each bubble).
+            foreach (var t in _chatContent.GetComponentsInChildren<TextMeshProUGUI>(true))
+            {
+                if (t != null && t.gameObject.name == "Label")
+                    t.fontSize = labelSize;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Adjust the chat font multiplier in response to a Ctrl+MouseWheel gesture over
+    /// the panel. Step is proportional to the wheel delta so trackpads get smooth
+    /// scaling and notched mice get one ~10% step per click.
+    /// </summary>
+    private void AdjustChatFontSize(float wheelDelta)
+    {
+        if (Mathf.Abs(wheelDelta) < 0.001f) return;
+        _fontSizeMultiplier = Mathf.Clamp(
+            _fontSizeMultiplier + wheelDelta * FontMultiplierStep,
+            MinFontMultiplier, MaxFontMultiplier);
+        ApplyChatFontSize();
+    }
+
+    private bool IsMouseOverChatPanel()
+    {
+        if (_mainPanel == null) return false;
+        return RectTransformUtility.RectangleContainsScreenPoint(_mainPanel, Input.mousePosition);
+    }
+
     private void Update()
     {
         if (Input.GetKeyDown(KeyCode.Escape) && !_isStreaming)
             Hide();
+
+        // Ctrl+MouseWheel anywhere over the chat panel adjusts chat font size.
+        // The chat ScrollRect (ChatScrollRectCtrlAware) already swallows its own
+        // scroll while Ctrl is held, so this never fights the conversation scroll.
+        if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
+        {
+            float wheel = Input.mouseScrollDelta.y;
+            if (Mathf.Abs(wheel) > 0.001f && IsMouseOverChatPanel())
+                AdjustChatFontSize(wheel);
+        }
 
         // Enter / Shift+Enter handling for the chat input. Done here (not via TMP_InputField's
         // own MultiLineSubmit mode or onValidateInput) because both of those are unreliable
@@ -1438,7 +1535,18 @@ public class PanelResizeHandle : MonoBehaviour, IBeginDragHandler, IDragHandler
         Vector2 newSize = _startSize + new Vector2(delta.x, -delta.y);
         newSize.x = Mathf.Max(_minSize.x, newSize.x);
         newSize.y = Mathf.Max(_minSize.y, newSize.y);
+
+        // Keep the top-left corner fixed while resizing from the bottom-right grip
+        // (otherwise the panel grows symmetrically around its pivot and appears to drift
+        // up-and-left as you drag down-and-right). For a pivot of (0.5, 0.5) this means
+        // shifting anchoredPosition right by half the width gain and down by half the
+        // height gain. Generalised here to work for any pivot.
+        Vector2 sizeChange = newSize - _target.sizeDelta;
         _target.sizeDelta = newSize;
+        Vector2 pivot = _target.pivot;
+        _target.anchoredPosition += new Vector2(
+            pivot.x * sizeChange.x,
+            -(1f - pivot.y) * sizeChange.y);
     }
 }
 
@@ -1541,5 +1649,38 @@ public class AIChatCaretFixer : MonoBehaviour, ISelectHandler
             caret.maskable = true;
             caret.SetAllDirty();
         }
+    }
+}
+
+/// <summary>
+/// ScrollRect subclass that suppresses its own vertical scroll while Ctrl is held, so
+/// Ctrl+MouseWheel can be used as a font-resize gesture (handled by AIChatPanel.Update())
+/// without simultaneously scrolling the conversation.
+/// </summary>
+public class ChatScrollRectCtrlAware : ScrollRect
+{
+    public override void OnScroll(PointerEventData data)
+    {
+        if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
+            return;
+        base.OnScroll(data);
+    }
+}
+
+/// <summary>
+/// Forwards mouse-wheel scroll events to a target ScrollRect. We attach this to each
+/// chat bubble's TMP_InputField GameObject because TMP_InputField itself implements
+/// IScrollHandler (for in-field scrolling), which otherwise swallows the wheel event
+/// before it can reach the parent ScrollRect. Both handlers fire on the same GameObject
+/// when the EventSystem dispatches IScrollHandler, so this safely runs alongside
+/// TMP_InputField.OnScroll without interfering with text editing.
+/// </summary>
+public class ChatScrollForwarder : MonoBehaviour, IScrollHandler
+{
+    public ScrollRect target;
+
+    public void OnScroll(PointerEventData data)
+    {
+        if (target != null) target.OnScroll(data);
     }
 }

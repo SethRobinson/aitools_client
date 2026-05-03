@@ -162,6 +162,24 @@ public class LLMProviderUI
             CreateOpenAIThinkingModeRow(sectionRoot.transform, settings);
         }
 
+        // Sampling parameters (temperature, top_p, top_k, min_p, repetition penalty) for OpenAI Compatible
+        // backends like vLLM, sglang, LMStudio, LocalAI, etc. These extras live alongside the standard
+        // OpenAI Chat Completions body and are accepted by the major OpenAI-compatible servers.
+        if (_provider == LLMProvider.OpenAICompatible)
+        {
+            _overrideTemperature = settings.overrideTemperature;
+            _temperature = settings.temperature;
+            _overrideTopP = settings.overrideTopP;
+            _topP = settings.topP;
+            _overrideTopK = settings.overrideTopK;
+            _topK = settings.topK;
+            _overrideMinP = settings.overrideMinP;
+            _minP = settings.minP;
+            _overrideRepeatPenalty = settings.overrideRepeatPenalty;
+            _repeatPenalty = settings.repeatPenalty;
+            CreateSamplingParametersSection(sectionRoot.transform, settings);
+        }
+
         // Add Gemini-specific controls (thinking mode)
         if (_provider == LLMProvider.Gemini)
         {
@@ -416,6 +434,22 @@ public class LLMProviderUI
                 thinkingModeToggle.isOn = settings.enableThinking;
         }
 
+        // OpenAI Compatible sampling parameter overrides
+        if (_provider == LLMProvider.OpenAICompatible)
+        {
+            _overrideTemperature = settings.overrideTemperature;
+            _temperature = settings.temperature;
+            _overrideTopP = settings.overrideTopP;
+            _topP = settings.topP;
+            _overrideTopK = settings.overrideTopK;
+            _topK = settings.topK;
+            _overrideMinP = settings.overrideMinP;
+            _minP = settings.minP;
+            _overrideRepeatPenalty = settings.overrideRepeatPenalty;
+            _repeatPenalty = settings.repeatPenalty;
+            UpdateSamplingParametersUI();
+        }
+
         // Gemini-specific
         if (_provider == LLMProvider.Gemini)
         {
@@ -469,6 +503,21 @@ public class LLMProviderUI
         if (_provider == LLMProvider.OpenAI || _provider == LLMProvider.OpenAICompatible)
         {
             settings.enableThinking = _enableThinking;
+        }
+
+        // OpenAI Compatible sampling parameter overrides
+        if (_provider == LLMProvider.OpenAICompatible)
+        {
+            settings.overrideTemperature = _overrideTemperature;
+            settings.temperature = _temperature;
+            settings.overrideTopP = _overrideTopP;
+            settings.topP = _topP;
+            settings.overrideTopK = _overrideTopK;
+            settings.topK = _topK;
+            settings.overrideMinP = _overrideMinP;
+            settings.minP = _minP;
+            settings.overrideRepeatPenalty = _overrideRepeatPenalty;
+            settings.repeatPenalty = _repeatPenalty;
         }
 
         // Gemini-specific

@@ -279,7 +279,11 @@ public class OpenAITextCompletionManager : MonoBehaviour
     // useResponsesAPI: set to true for OpenAI Responses API (/v1/responses), false for Chat Completions API (/v1/chat/completions)
     // isReasoningModel: include reasoning block for reasoning models (gpt-5.2/gpt-5.2-pro)
     // includeTemperature: some models (gpt-5-mini/nano) do not support temperature at all
-    public string BuildChatCompleteJSON(Queue<GTPChatLine> lines, int max_tokens = 100, float temperature = 1.3f, string model = "gpt-3.5-turbo", bool stream = false, bool useResponsesAPI = false, bool isReasoningModel = false, bool includeTemperature = true, string reasoningEffort = null, bool? enableThinking = null)
+    // topP/topK/minP/repetitionPenalty/frequencyPenalty/presencePenalty: optional sampling overrides (vLLM/sglang/LMStudio extras).
+    //   When non-null they are emitted in the request body. Only included by the Chat Completions branch
+    //   (OpenAI Responses API does not accept these extras and would reject the request).
+    public string BuildChatCompleteJSON(Queue<GTPChatLine> lines, int max_tokens = 100, float temperature = 1.3f, string model = "gpt-3.5-turbo", bool stream = false, bool useResponsesAPI = false, bool isReasoningModel = false, bool includeTemperature = true, string reasoningEffort = null, bool? enableThinking = null,
+        float? topP = null, int? topK = null, float? minP = null, float? repetitionPenalty = null, float? frequencyPenalty = null, float? presencePenalty = null)
     {
         string bStreamText = stream ? "true" : "false";
 
@@ -389,8 +393,9 @@ public class OpenAITextCompletionManager : MonoBehaviour
                 }
             }
 
-            string temperaturePart = includeTemperature ? $@"""temperature"": {temperature}," : "";
-            
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            string temperaturePart = includeTemperature ? $@"""temperature"": {temperature.ToString(inv)}," : "";
+
             // For sglang/vLLM serving reasoning models (Qwen, etc.), control thinking via chat_template_kwargs.
             // When thinking is enabled, sglang puts output in the reasoning_content field (not content).
             // The StreamingDownloadHandler reads both fields so this works transparently.
@@ -400,16 +405,33 @@ public class OpenAITextCompletionManager : MonoBehaviour
                 string thinkVal = enableThinking.Value ? "true" : "false";
                 thinkingPart = $@"""chat_template_kwargs"": {{""enable_thinking"": {thinkVal}}},";
             }
-            
+
+            // Optional sampling overrides for vLLM/sglang/LMStudio. Each line is empty when not overridden,
+            // so the cleanup pass below removes any stray trailing commas before "stream".
+            var samplingSb = new StringBuilder();
+            if (topP.HasValue)
+                samplingSb.Append("\"top_p\": ").Append(topP.Value.ToString(inv)).Append(",\n             ");
+            if (topK.HasValue)
+                samplingSb.Append("\"top_k\": ").Append(topK.Value).Append(",\n             ");
+            if (minP.HasValue)
+                samplingSb.Append("\"min_p\": ").Append(minP.Value.ToString(inv)).Append(",\n             ");
+            if (repetitionPenalty.HasValue)
+                samplingSb.Append("\"repetition_penalty\": ").Append(repetitionPenalty.Value.ToString(inv)).Append(",\n             ");
+            if (frequencyPenalty.HasValue)
+                samplingSb.Append("\"frequency_penalty\": ").Append(frequencyPenalty.Value.ToString(inv)).Append(",\n             ");
+            if (presencePenalty.HasValue)
+                samplingSb.Append("\"presence_penalty\": ").Append(presencePenalty.Value.ToString(inv)).Append(",\n             ");
+            string samplingPart = samplingSb.ToString();
+
             string json =
              $@"{{
              ""model"": ""{model}"",
              ""messages"":[{msg}],
              {temperaturePart}
-             {thinkingPart}
+             {samplingPart}{thinkingPart}
             ""stream"": {bStreamText}
             }}";
-            
+
             // Clean up any trailing commas
             json = json.Replace(",\n            \"stream\"", "\n            \"stream\"");
 

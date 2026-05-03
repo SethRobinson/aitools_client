@@ -197,6 +197,13 @@ public class AdventureText : MonoBehaviour
 
     private void Awake()
     {
+        // Adventure text panels are world-space UI, but the user expects the global
+        // mouse-wheel camera zoom to keep working while reading them - the panel
+        // itself doesn't need the wheel for anything. Mark it as passthrough so
+        // SimpleCameraMoverWithPinch lets the wheel through this panel.
+        if (GetComponent<MouseWheelPassthrough>() == null)
+            gameObject.AddComponent<MouseWheelPassthrough>();
+
         // Ensure references are set
         if (inputField == null)
         {
@@ -1534,8 +1541,17 @@ public class AdventureText : MonoBehaviour
                     // Pass enableThinking for sglang/vLLM reasoning models (Qwen, etc.)
                     bool? compatEnableThinking = (bool?)(settings?.enableThinking ?? true);
 
-                    string json = _openAITextCompletionManager.BuildChatCompleteJSON(normalizedLines, 4096, AdventureLogic.Get().GetExtractor().Temperature, model, true,
-                        enableThinking: compatEnableThinking);
+                    // Honor sampling-parameter overrides set in the LLM Settings panel (vLLM/sglang/etc.)
+                    float baseTemp = AdventureLogic.Get().GetExtractor().Temperature;
+                    float compatTemperature = (settings != null && settings.overrideTemperature) ? settings.temperature : baseTemp;
+                    float? compatTopP = (settings != null && settings.overrideTopP) ? (float?)settings.topP : null;
+                    int? compatTopK = (settings != null && settings.overrideTopK) ? (int?)settings.topK : null;
+                    float? compatMinP = (settings != null && settings.overrideMinP) ? (float?)settings.minP : null;
+                    float? compatRepPenalty = (settings != null && settings.overrideRepeatPenalty) ? (float?)settings.repeatPenalty : null;
+
+                    string json = _openAITextCompletionManager.BuildChatCompleteJSON(normalizedLines, 4096, compatTemperature, model, true,
+                        enableThinking: compatEnableThinking,
+                        topP: compatTopP, topK: compatTopK, minP: compatMinP, repetitionPenalty: compatRepPenalty);
                     _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
                     SetLLMActive(true);
                 }
