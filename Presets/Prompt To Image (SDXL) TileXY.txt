@@ -1,0 +1,10 @@
+COMMAND_START|joblist
+#Generate seamless tileable image (both axes) using SDXL model (Base + Refiner)
+%model%="juggernautXL_ragnarokBy.safetensors"
+%steps%="28"
+%cfg%="7"
+%sampler%="ddim"
+%tiling%="enable"
+
+text_to_img_sdxl_tiling.json @replace|juggernautXL_ragnarokBy.safetensors|%model%| @replace|"steps": 25|"steps": %steps%| @replace|"cfg": 8|"cfg": %cfg%| @replace|"sampler_name": "euler"|"sampler_name": "%sampler%"| @replace|"tiling": "x_only"|"tiling": "%tiling%"|
+COMMAND_END

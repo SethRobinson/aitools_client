@@ -175,6 +175,7 @@ public class PicMain : MonoBehaviour
     public bool m_stopAfterScript = false; // Set by @stopjob command - tells callback not to add more jobs
     public int m_requestedServerID = -1; // When >= 0, this pic will only use this specific server (waits if busy)
     public bool m_skipIgnoredServers = false; // When true, GetFreeGPU skips servers with _ignoredByExtraGenerators
+    public string m_gpuNameMatchFilter = ""; // When non-empty AND m_requestedServerID < 0 AND m_ownedServerID < 0, restrict free-GPU lookup to servers whose _name contains this substring (case-insensitive)
     public bool m_autoPicOverridePreApplied = false; // When true, skip per-server AutoPic override (already applied at creation)
     UndoEvent m_undoevent = new UndoEvent();
     UndoEvent m_curEvent = new UndoEvent(); //useful for just saving the current status, makes it easy to copy to/from a real undo event
@@ -3142,8 +3143,8 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         }
         else
         {
-            // Normal path: find any free GPU
-            serverID = Config.Get().GetFreeGPU(neededRenderer, false, m_skipIgnoredServers);
+            // Normal path: find any free GPU (optionally restricted by per-spawn name filter)
+            serverID = Config.Get().GetFreeGPU(neededRenderer, false, m_skipIgnoredServers, m_gpuNameMatchFilter);
         }
 
         if (serverID == -1 && m_requirements == "gpu")

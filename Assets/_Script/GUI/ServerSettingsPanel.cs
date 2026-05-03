@@ -33,6 +33,7 @@ public class ServerSettingsPanel : MonoBehaviour
     private TMP_InputField _renderCountInputField;
     private Toggle _ignoredByExtraToggle;
     private Toggle _gpuLockedToggle;
+    private TMP_InputField _gpuNameFilterInputField;
 
     private const string AUTOPIC_USE_GLOBAL_LABEL = "<use global>";
     private const string PRESET_NO_SELECTION_LABEL = "<no selection>";
@@ -41,7 +42,7 @@ public class ServerSettingsPanel : MonoBehaviour
 
     // Panel dimensions
     private const float PANEL_WIDTH = 680f;
-    private const float PANEL_HEIGHT = 430f;
+    private const float PANEL_HEIGHT = 462f; // bumped +32 for the Limit-by-name row
     private const float HEADER_HEIGHT = 36f;
     private const float BASE_FONT_SIZE = 14f;
 
@@ -723,6 +724,59 @@ public class ServerSettingsPanel : MonoBehaviour
 
         yOffset -= 28;
 
+        // "Limit to cards by name" row - only meaningful when GPU Locked is unchecked.
+        // Lets a per-server render count fan out across multiple matching cards (e.g. all "3090"s)
+        // while excluding weaker/different cards.
+        var nameFilterLabelObj = new GameObject("GPUNameFilterLabel");
+        nameFilterLabelObj.transform.SetParent(_mainPanel, false);
+        var nameFilterLabelRt = nameFilterLabelObj.AddComponent<RectTransform>();
+        nameFilterLabelRt.anchorMin = new Vector2(0, 1);
+        nameFilterLabelRt.anchorMax = new Vector2(0, 1);
+        nameFilterLabelRt.pivot = new Vector2(0, 1);
+        nameFilterLabelRt.offsetMin = new Vector2(leftPad, yOffset - 24);
+        nameFilterLabelRt.offsetMax = new Vector2(leftPad + 160, yOffset);
+
+        var nameFilterLabelTmp = nameFilterLabelObj.AddComponent<TextMeshProUGUI>();
+        nameFilterLabelTmp.text = "Limit to cards by name:";
+        nameFilterLabelTmp.font = _font;
+        nameFilterLabelTmp.fontSize = BASE_FONT_SIZE;
+        nameFilterLabelTmp.color = TextDark;
+        nameFilterLabelTmp.alignment = TextAlignmentOptions.MidlineLeft;
+
+        var nameFilterGo = TMP_DefaultControls.CreateInputField(BuildTMPResources());
+        nameFilterGo.name = "GPUNameFilterInput";
+        nameFilterGo.transform.SetParent(_mainPanel, false);
+        ApplyFontAndColor(nameFilterGo);
+
+        var nameFilterRt = nameFilterGo.GetComponent<RectTransform>();
+        nameFilterRt.anchorMin = new Vector2(0, 1);
+        nameFilterRt.anchorMax = new Vector2(0, 1);
+        nameFilterRt.pivot = new Vector2(0, 1);
+        nameFilterRt.offsetMin = new Vector2(leftPad + 165, yOffset - 24);
+        nameFilterRt.offsetMax = new Vector2(leftPad + 425, yOffset);
+
+        _gpuNameFilterInputField = nameFilterGo.GetComponent<TMP_InputField>();
+        _gpuNameFilterInputField.contentType = TMP_InputField.ContentType.Standard;
+        _gpuNameFilterInputField.lineType = TMP_InputField.LineType.SingleLine;
+        _gpuNameFilterInputField.text = "";
+        _gpuNameFilterInputField.onValueChanged.AddListener(OnGPUNameFilterChanged);
+
+        var nameFilterImg = nameFilterGo.GetComponent<Image>();
+        ApplyUISprite(nameFilterImg);
+        nameFilterImg.color = InputFieldBg;
+
+        if (_gpuNameFilterInputField.placeholder is TextMeshProUGUI nph)
+        {
+            nph.font = _font;
+            nph.fontSize = BASE_FONT_SIZE;
+            nph.fontStyle = FontStyles.Italic;
+            nph.color = new Color(0.19607843f, 0.19607843f, 0.19607843f, 0.5f);
+            nph.text = "e.g. 3090 (substring of GPU name)";
+            nph.alignment = TextAlignmentOptions.MidlineLeft;
+        }
+
+        yOffset -= 32;
+
         // Preset label (positioned directly in mainPanel, using same offset approach as dropdown)
         var presetLabelObj = new GameObject("PresetLabel");
         presetLabelObj.transform.SetParent(_mainPanel, false);
@@ -753,7 +807,7 @@ public class ServerSettingsPanel : MonoBehaviour
         yOffset -= 32;
 
         // Job list input (multi-line)
-        float jobListHeight = PANEL_HEIGHT - HEADER_HEIGHT - 8 - 24 - (85 + 8) - 32 - 28 - 32 - 32 - 16; // Remaining height (AutoPic + RenderCount/Ignored row + Preset)
+        float jobListHeight = PANEL_HEIGHT - HEADER_HEIGHT - 8 - 24 - (85 + 8) - 32 - 28 - 32 - 32 - 32 - 16; // Remaining height (AutoPic + RenderCount/Ignored row + Limit-by-name + Preset)
 
         var jobListGo = TMP_DefaultControls.CreateInputField(BuildTMPResources());
         jobListGo.name = "JobListInput";
@@ -942,6 +996,10 @@ public class ServerSettingsPanel : MonoBehaviour
         if (_gpuLockedToggle != null)
             _gpuLockedToggle.isOn = serverInfo._gpuLocked;
 
+        // Set GPU name filter
+        if (_gpuNameFilterInputField != null)
+            _gpuNameFilterInputField.text = serverInfo._gpuNameMatchFilter ?? "";
+
         UpdateCheckboxInteractability();
     }
 
@@ -1057,6 +1115,17 @@ public class ServerSettingsPanel : MonoBehaviour
         if (!Config.Get().IsValidGPU(_serverID)) return;
 
         serverInfo._gpuLocked = isOn;
+
+        // Re-evaluate the name filter field's enabled state - it only applies when unlocked
+        UpdateCheckboxInteractability();
+    }
+
+    public void OnGPUNameFilterChanged(string text)
+    {
+        GPUInfo serverInfo = Config.Get().GetGPUInfo(_serverID);
+        if (!Config.Get().IsValidGPU(_serverID)) return;
+
+        serverInfo._gpuNameMatchFilter = text == null ? "" : text.Trim();
     }
 
     private void UpdateCheckboxInteractability()
@@ -1071,6 +1140,13 @@ public class ServerSettingsPanel : MonoBehaviour
 
         if (_gpuLockedToggle != null)
             _gpuLockedToggle.interactable = hasRenderCount;
+
+        // Name filter only meaningful when GPU Locked is OFF and we have a render count
+        if (_gpuNameFilterInputField != null)
+        {
+            bool gpuLockedOn = _gpuLockedToggle != null && _gpuLockedToggle.isOn;
+            _gpuNameFilterInputField.interactable = hasRenderCount && !gpuLockedOn;
+        }
     }
 
     // Legacy Init method - now just refreshes settings

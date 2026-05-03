@@ -49,6 +49,7 @@ public class GPUInfo
     public int _adventureRenderCount = 0; // Per-server render count for Adventure mode (0 = don't auto-spawn for this server)
     public bool _ignoredByExtraGenerators = false; // If true, Gen Extra and global render count skip this server
     public bool _gpuLocked = true; // If true (default), per-server autopics are reserved to this GPU; if false, any free GPU can process them
+    public string _gpuNameMatchFilter = ""; // Only meaningful when _gpuLocked == false. If set, per-server-spawned jobs only run on GPUs whose _name contains this substring (case-insensitive).
 
     /// <summary>
     /// Checks if this server's job list override has LLM calls before GPU work.
@@ -449,7 +450,18 @@ set_default_audio_negative_prompt|music|
         return -1;
     }
 
-    public int GetFreeGPU(RTRendererType requestedGPUType = RTRendererType.Any_Local, bool bFreeOrBusyIsOk = false, bool skipIgnored = false)
+    /// <summary>
+    /// Case-insensitive substring match against a GPU's _name. Empty/null filter always matches.
+    /// </summary>
+    private bool GPUNameMatchesFilter(int gpuID, string nameMatchFilter)
+    {
+        if (string.IsNullOrEmpty(nameMatchFilter)) return true;
+        string gpuName = m_gpuInfo[gpuID]._name;
+        if (string.IsNullOrEmpty(gpuName)) return false;
+        return gpuName.IndexOf(nameMatchFilter, System.StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    public int GetFreeGPU(RTRendererType requestedGPUType = RTRendererType.Any_Local, bool bFreeOrBusyIsOk = false, bool skipIgnored = false, string nameMatchFilter = null)
     {
         //special types
 
@@ -460,7 +472,8 @@ set_default_audio_negative_prompt|music|
                 // Skip servers owned by other pics (reserved for AutoPic workflows)
                 if (PicMain.IsServerOwnedByAnyPic(i)) continue;
                 if (skipIgnored && GetGPUInfo(i)._ignoredByExtraGenerators) continue;
-                
+                if (!GPUNameMatchesFilter(i, nameMatchFilter)) continue;
+
                 if (!IsGPUBusy(i) && Config.Get().GetGPUInfo(i)._bIsActive)
                 {
                     if (GetGPUInfo(i)._requestedRendererType == requestedGPUType)
@@ -492,7 +505,8 @@ set_default_audio_negative_prompt|music|
                 // Skip servers owned by other pics (reserved for AutoPic workflows)
                 if (PicMain.IsServerOwnedByAnyPic(i)) continue;
                 if (skipIgnored && GetGPUInfo(i)._ignoredByExtraGenerators) continue;
-                
+                if (!GPUNameMatchesFilter(i, nameMatchFilter)) continue;
+
                 if (!Config.Get().IsGPUBusy(i) && GetGPUInfo(i).isLocal && Config.Get().GetGPUInfo(i)._bIsActive)
                 {
                     return i;
@@ -511,7 +525,8 @@ set_default_audio_negative_prompt|music|
                     // Skip servers owned by other pics (reserved for AutoPic workflows)
                     if (PicMain.IsServerOwnedByAnyPic(i)) continue;
                     if (skipIgnored && GetGPUInfo(i)._ignoredByExtraGenerators) continue;
-                    
+                    if (!GPUNameMatchesFilter(i, nameMatchFilter)) continue;
+
                     if (GetGPUInfo(i)._requestedRendererType == requestedGPUType && Config.Get().GetGPUInfo(i)._bIsActive)
                     {
                         return i;
@@ -541,7 +556,8 @@ set_default_audio_negative_prompt|music|
                 // Skip servers owned by other pics (reserved for AutoPic workflows)
                 if (PicMain.IsServerOwnedByAnyPic(i)) continue;
                 if (skipIgnored && GetGPUInfo(i)._ignoredByExtraGenerators) continue;
-                
+                if (!GPUNameMatchesFilter(i, nameMatchFilter)) continue;
+
                 if (GetGPUInfo(i).isLocal && Config.Get().GetGPUInfo(i)._bIsActive)
                 {
                     return i;
@@ -550,6 +566,39 @@ set_default_audio_negative_prompt|music|
         }
 
         return -1; //none available right now
+    }
+
+    /// <summary>
+    /// Returns true if at least one active GPU exists in the pool that matches the given renderer
+    /// type AND the given name filter. Used to validate up-front before queueing per-server
+    /// render-count jobs that would otherwise sit unfillable forever.
+    /// </summary>
+    public bool DoesAnyGPUMatchNameFilter(RTRendererType requestedGPUType, string nameMatchFilter)
+    {
+        if (string.IsNullOrEmpty(nameMatchFilter)) return true; // no filter == all match
+
+        for (int i = 0; i < GetGPUCount(); i++)
+        {
+            if (!GetGPUInfo(i)._bIsActive) continue;
+            if (!GPUNameMatchesFilter(i, nameMatchFilter)) continue;
+
+            if (requestedGPUType == RTRendererType.Any_Local)
+            {
+                if (GetGPUInfo(i).isLocal) return true;
+                continue;
+            }
+
+            if (GetGPUInfo(i)._requestedRendererType == requestedGPUType) return true;
+
+            if (requestedGPUType == RTRendererType.AI_Tools_or_A1111 &&
+                (GetGPUInfo(i)._requestedRendererType == RTRendererType.A1111 ||
+                 GetGPUInfo(i)._requestedRendererType == RTRendererType.AI_Tools))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public bool IsValidGPU(int gpu)

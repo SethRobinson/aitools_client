@@ -266,10 +266,10 @@ public class AdventureText : MonoBehaviour
         OnAutoRenderButton();
     }
 
-    public void OnAutoRenderButton(int requestedServerID = -1, bool skipIgnoredServers = false, string autoPicOverride = null)
+    public void OnAutoRenderButton(int requestedServerID = -1, bool skipIgnoredServers = false, string autoPicOverride = null, string gpuNameMatchFilter = null)
     {
         RenderPic(_lastPicTextRenderedDetailed, _lastPicTextRenderedSimple, AdventureLogic.Get().GetRenderer(),
-            _lastAudioPrompt, _lastAudioNegativePrompt, true, requestedServerID, skipIgnoredServers, autoPicOverride);
+            _lastAudioPrompt, _lastAudioNegativePrompt, true, requestedServerID, skipIgnoredServers, autoPicOverride, gpuNameMatchFilter);
     }
 
     /// <returns>True if any per-server autopics were spawned.</returns>
@@ -293,9 +293,26 @@ public class AdventureText : MonoBehaviour
                 {
                     // Unlocked: any free GPU can process these, but pre-apply AutoPic override if set
                     string overrideToApply = string.IsNullOrEmpty(serverInfo._autoPicOverride) ? null : serverInfo._autoPicOverride;
+                    string nameFilter = string.IsNullOrEmpty(serverInfo._gpuNameMatchFilter) ? null : serverInfo._gpuNameMatchFilter.Trim();
+                    if (string.IsNullOrEmpty(nameFilter)) nameFilter = null;
+
+                    // Validate up-front: if a name filter is set but no active server matches,
+                    // skip spawning rather than silently falling back to any GPU (which would
+                    // defeat the user's intent) or queueing pics that can never be picked up.
+                    if (nameFilter != null)
+                    {
+                        RTRendererType neededRenderer = AdventureLogic.Get().GetRenderer();
+                        if (!Config.Get().DoesAnyGPUMatchNameFilter(neededRenderer, nameFilter))
+                        {
+                            RTQuickMessageManager.Get().ShowMessage(
+                                "Server " + serverIdx + ": no active GPUs match name filter '" + nameFilter + "', skipping render count");
+                            continue;
+                        }
+                    }
+
                     for (int i = 0; i < serverInfo._adventureRenderCount; i++)
                     {
-                        OnAutoRenderButton(autoPicOverride: overrideToApply);
+                        OnAutoRenderButton(autoPicOverride: overrideToApply, gpuNameMatchFilter: nameFilter);
                     }
                 }
                 spawned = true;
@@ -1026,21 +1043,23 @@ public class AdventureText : MonoBehaviour
             //for each in AdventureLogic.Get().GetRenderCount() we'll do a renderpic call
             for (int i = 0; i < AdventureLogic.Get().GetRenderCount()-1; i++)
             {
-                //we'll use the reply as the pic text
+                //we'll use the reply as the pic text - inherit the originating pic's GPU name filter
+                //so follow-ups land on the same restricted card pool
                 RenderPic(reply, reply, AdventureLogic.Get().GetRenderer(), _lastAudioPrompt, _lastAudioNegativePrompt, false,
-                    picMain.m_requestedServerID, picMain.m_skipIgnoredServers);
+                    picMain.m_requestedServerID, picMain.m_skipIgnoredServers, null, picMain.m_gpuNameMatchFilter);
             }
         }
 
     }
     public void RenderPic(string picTextComfyUI, string picText, RTRendererType desiredRenderer, string audioPrompt, string audioNegativePrompt, bool bAutoPic,
-        int requestedServerID = -1, bool skipIgnoredServers = false, string autoPicOverride = null)
+        int requestedServerID = -1, bool skipIgnoredServers = false, string autoPicOverride = null, string gpuNameMatchFilter = null)
     {
         //RTConsole.Log("SPAWNING PIC");
         GameObject pic = ImageGenerator.Get().CreateNewPic();
         PicMain picMain = pic.GetComponent<PicMain>();
         picMain.m_requestedServerID = requestedServerID;
         picMain.m_skipIgnoredServers = skipIgnoredServers;
+        picMain.m_gpuNameMatchFilter = string.IsNullOrEmpty(gpuNameMatchFilter) ? "" : gpuNameMatchFilter;
         PicTextToImage scriptAI = pic.GetComponent<PicTextToImage>();
         PicUpscale processAI = pic.GetComponent<PicUpscale>();
         _imagesRenderedOnThisLine++;
