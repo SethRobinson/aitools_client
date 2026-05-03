@@ -68,6 +68,14 @@ Reproducible: same seed = same image:
 aitools_cli.py "a cat" cat.png -s 42
 ```
 
+Override preset `%var%` values from the command line (repeatable). For
+example, force a 512-tall image on the normally-1024 SDXL tile preset:
+```
+aitools_cli.py "a cat" cat.png \
+    -p "Prompt To Image (SDXL) TileX" \
+    --set-var height=512 --set-var width=768
+```
+
 Verbose mode shows server probe, effective prompt, every applied `@replace`,
 seed, prompt id, and live per-step progress:
 ```
@@ -88,6 +96,7 @@ aitools_cli.py "" subject_masked.png \
 |---|---|
 | `-p, --preset NAME` | Preset file from `../Presets/` (or absolute path) |
 | `-w, --workflow FILE` | Workflow JSON from `../ComfyUI/` (mutex with `-p`) |
+| `--set-var NAME=VALUE` | Override a preset `%var%` (repeatable; wins over joblist assignments) |
 | `-i, --input PATH` | Input image file (required for presets that use `@upload`) |
 | `-n, --negative TEXT` | Negative prompt (overrides preset default) |
 | `-s, --seed INT` | Seed (default: random in `0..2⁶³-1`) |
@@ -102,6 +111,10 @@ aitools_cli.py "" subject_masked.png \
 When `-p` is used, the user's prompt gets the preset's `default_pre_prompt`
 prepended and `default_post_prompt` appended (both space-joined). The
 preset's `default_negative_prompt` is used unless `-n` is given.
+
+CLI `--set-var NAME=VALUE` overrides wins over any `%name%=...` assignment
+in the joblist (applies to every `%name%` substitution downstream, including
+`@replace`, `@resize`, and placeholder expansion).
 
 Inside the preset's `joblist` block these are supported:
 - `%name%="value"` (or `%name%=value`) variable assignments

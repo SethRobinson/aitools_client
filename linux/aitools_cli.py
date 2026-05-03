@@ -20,6 +20,8 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
+import re
+
 import comfy_api
 import images
 import presets
@@ -28,6 +30,8 @@ import servers
 import workflow
 from config import parse_config
 from util import die, server_label
+
+_VAR_NAME_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
 DEFAULT_CONFIG = SCRIPT_DIR / "config.txt"
 WORKFLOW_DIR = SCRIPT_DIR.parent / "ComfyUI"
@@ -45,6 +49,10 @@ def build_argparser():
                    help="Workflow JSON name (mutually exclusive with -p)")
     p.add_argument("-p", "--preset", default=None,
                    help="Preset file from Presets/ (e.g. \"Prompt To Image (Z Image)\")")
+    p.add_argument("--set-var", action="append", default=[], metavar="NAME=VALUE",
+                   dest="set_var",
+                   help="Override a preset %%var%% (repeatable). "
+                        "Example: --set-var height=512 --set-var width=768")
     p.add_argument("-i", "--input", default=None,
                    help="Input image file (required for presets that use @upload)")
     p.add_argument("-s", "--seed", type=int, default=None,
@@ -77,6 +85,35 @@ def assemble_prompts(args, preset):
         effective_negative = ""
 
     return effective_prompt, effective_negative
+
+
+def parse_set_var_overrides(entries):
+    """Parse a list of '--set-var NAME=VALUE' strings into an ordered dict.
+
+    - Splits on the first '=' so values may contain '='.
+    - NAME must be a valid %var% identifier ([a-zA-Z_][a-zA-Z0-9_]*).
+    - VALUE has surrounding single/double quotes stripped (mirrors joblist RHS
+      quoting in presets._parse_joblist).
+    - Later entries win over earlier ones (last --set-var wins).
+    """
+    overrides = {}
+    for raw in entries:
+        if "=" not in raw:
+            die(f"--set-var expects NAME=VALUE, got: {raw!r}", 1)
+        name, value = raw.split("=", 1)
+        name = name.strip()
+        if not _VAR_NAME_RE.match(name):
+            die(
+                f"--set-var NAME must be a valid identifier "
+                f"([a-zA-Z_][a-zA-Z0-9_]*), got: {name!r}",
+                1,
+            )
+        value = value.strip()
+        if (value.startswith('"') and value.endswith('"')) or \
+           (value.startswith("'") and value.endswith("'")):
+            value = value[1:-1]
+        overrides[name] = value
+    return overrides
 
 
 def main():
@@ -145,6 +182,17 @@ def main():
     all_vars = dict(preset.variables) if preset else {}
     all_vars.setdefault("prompt", effective_prompt)
     all_vars.setdefault("negative_prompt", effective_negative)
+
+    # Apply CLI --set-var overrides last so they win over the preset and built-ins.
+    overrides = parse_set_var_overrides(args.set_var)
+    if overrides:
+        if args.verbose:
+            print(f"--set-var overrides: {len(overrides)}")
+            for name, value in overrides.items():
+                prior = all_vars.get(name)
+                prior_str = f"{prior!r}" if prior is not None else "(new)"
+                print(f"  %{name}% = {value!r}  (was {prior_str})")
+        all_vars.update(overrides)
 
     # Apply preset @replace directives (with %var% substitution) on the JSON.
     if preset and preset.replaces:
