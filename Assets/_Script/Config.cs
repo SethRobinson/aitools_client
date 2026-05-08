@@ -46,6 +46,7 @@ public class GPUInfo
     public string _jobListOverride = "";
     public string _autoPicOverride = ""; // Empty = use global AutoPic setting, otherwise the preset filename to use
     public string _name = ""; //if blank, we'll use our own
+    public float _vramGB = 0f; // User-declared VRAM in GB (0 = unknown). Set via set_gpu_vram|gpuID|gb| in config.txt. Surfaced to AI Chat skills so the LLM can pick a GPU with enough memory.
     public int _adventureRenderCount = 0; // Per-server render count for Adventure mode (0 = don't auto-spawn for this server)
     public bool _ignoredByExtraGenerators = false; // If true, Gen Extra and global render count skip this server
     public bool _gpuLocked = true; // If true (default), per-server autopics are reserved to this GPU; if false, any free GPU can process them
@@ -1135,6 +1136,25 @@ set_default_audio_negative_prompt|music|
                     p._key = words[1];
                     p._value = words[2];
                     m_llmParms.Add(p);
+                }
+                else if (words[0] == "set_gpu_vram")
+                {
+                    // set_gpu_vram|gpuID|gigabytes|
+                    // Records user-declared per-GPU VRAM so AI Chat can show it to the LLM.
+                    // Pure annotation - we never auto-detect VRAM since servers may be remote.
+                    if (words.Length >= 3
+                        && int.TryParse(words[1], out int gpuId)
+                        && float.TryParse(words[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float gb))
+                    {
+                        if (gpuId >= 0 && gpuId < m_gpuInfo.Count)
+                        {
+                            m_gpuInfo[gpuId]._vramGB = gb;
+                        }
+                        else
+                        {
+                            RTConsole.Log($"set_gpu_vram: gpuID {gpuId} out of range (have {m_gpuInfo.Count} GPUs).");
+                        }
+                    }
                 }
                 else if (words[0] == "set_jpg_save_quality")
                 {

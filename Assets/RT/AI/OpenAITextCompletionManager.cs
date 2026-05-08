@@ -88,12 +88,23 @@ public class OpenAITextCompletionManager : MonoBehaviour
 
     public static String RemoveThinkTagsFromString(String line)
     {
-            // Only remove if both tags exist.
-            if (line.Contains("<think>") && line.Contains("</think>"))
-            {
-                // The (?s) inline option makes '.' match newlines as well.
-                return Regex.Replace(line, @"(?s)<think>.*?</think>", "");
-            }
+        if (string.IsNullOrEmpty(line)) return line;
+
+        // Remove standard <think>...</think> blocks.
+        if (line.Contains("<think>") && line.Contains("</think>"))
+        {
+            // The (?s) inline option makes '.' match newlines as well.
+            return Regex.Replace(line, @"(?s)<think>.*?</think>", "");
+        }
+
+        // Some llama.cpp templates (DeepSeek-V4-Flash) stream/return:
+        //   reasoning text </think> final answer
+        // with no opening <think>. In that format, everything before </think> is reasoning.
+        int closeOnly = line.IndexOf("</think>", StringComparison.Ordinal);
+        if (closeOnly >= 0)
+        {
+            return line.Substring(closeOnly + "</think>".Length);
+        }
 
         return line;
     }
@@ -107,13 +118,7 @@ public class OpenAITextCompletionManager : MonoBehaviour
             // Clone the original object so we don't modify it.
             GTPChatLine newObj = obj.Clone();
 
-            // Only remove if both tags exist.
-            if (newObj._content.Contains("<think>") && newObj._content.Contains("</think>"))
-            {
-                // The (?s) inline option makes '.' match newlines as well.
-                newObj._content = Regex.Replace(newObj._content, @"(?s)<think>.*?</think>", "");
-            }
-            // If only one tag is present, we leave the content as is.
+            newObj._content = RemoveThinkTagsFromString(newObj._content);
             newLines.Enqueue(newObj);
         }
 
@@ -283,7 +288,7 @@ public class OpenAITextCompletionManager : MonoBehaviour
     //   When non-null they are emitted in the request body. Only included by the Chat Completions branch
     //   (OpenAI Responses API does not accept these extras and would reject the request).
     public string BuildChatCompleteJSON(Queue<GTPChatLine> lines, int max_tokens = 100, float temperature = 1.3f, string model = "gpt-3.5-turbo", bool stream = false, bool useResponsesAPI = false, bool isReasoningModel = false, bool includeTemperature = true, string reasoningEffort = null, bool? enableThinking = null,
-        float? topP = null, int? topK = null, float? minP = null, float? repetitionPenalty = null, float? frequencyPenalty = null, float? presencePenalty = null)
+        float? topP = null, int? topK = null, float? minP = null, float? repetitionPenalty = null, float? frequencyPenalty = null, float? presencePenalty = null, string customReasoningEffort = null)
     {
         string bStreamText = stream ? "true" : "false";
 
@@ -352,16 +357,22 @@ public class OpenAITextCompletionManager : MonoBehaviour
             }}";
             }
             
-            // Clean up any trailing commas before closing braces
-            json = json.Replace(",\n            \"stream\"", "\n            \"stream\"");
-            json = json.Replace(",\n            }", "\n            }");
-
             return json;
         }
         else
         {
             // Chat Completions API format: uses "messages"
             string msg = "";
+            bool isDeepSeekModel = LLMRequestProfile.IsDeepSeekModel(model);
+            var customEffortFallback = enableThinking.HasValue && enableThinking.Value
+                ? LLMReasoningEffort.High
+                : LLMReasoningEffort.Off;
+            LLMReasoningEffort effectiveCustomEffort = LLMReasoningEffortUtil.Parse(customReasoningEffort, customEffortFallback);
+
+            if (isDeepSeekModel && effectiveCustomEffort == LLMReasoningEffort.Max)
+            {
+                lines = PrependSystemMessage(lines, LLMReasoningPrompts.DeepSeekMaxReasoningSystemPrompt);
+            }
 
             foreach (GTPChatLine obj in lines)
             {
@@ -395,12 +406,20 @@ public class OpenAITextCompletionManager : MonoBehaviour
 
             var inv = System.Globalization.CultureInfo.InvariantCulture;
             string temperaturePart = includeTemperature ? $@"""temperature"": {temperature.ToString(inv)}," : "";
+            string maxTokensPart = (max_tokens > 0 && (!string.IsNullOrEmpty(customReasoningEffort) || isDeepSeekModel))
+                ? $@"""max_tokens"": {max_tokens},"
+                : "";
 
-            // For sglang/vLLM serving reasoning models (Qwen, etc.), control thinking via chat_template_kwargs.
-            // When thinking is enabled, sglang puts output in the reasoning_content field (not content).
-            // The StreamingDownloadHandler reads both fields so this works transparently.
+            // For custom OpenAI-compatible reasoning models, control thinking via
+            // chat_template_kwargs. DeepSeek-V4-Flash expects "thinking"; Qwen/GLM
+            // servers generally expect "enable_thinking".
             string thinkingPart = "";
-            if (enableThinking.HasValue)
+            if (isDeepSeekModel)
+            {
+                if (effectiveCustomEffort != LLMReasoningEffort.Off)
+                    thinkingPart = @"""chat_template_kwargs"": {""thinking"": true},";
+            }
+            else if (enableThinking.HasValue)
             {
                 string thinkVal = enableThinking.Value ? "true" : "false";
                 thinkingPart = $@"""chat_template_kwargs"": {{""enable_thinking"": {thinkVal}}},";
@@ -428,15 +447,27 @@ public class OpenAITextCompletionManager : MonoBehaviour
              ""model"": ""{model}"",
              ""messages"":[{msg}],
              {temperaturePart}
+             {maxTokensPart}
              {samplingPart}{thinkingPart}
             ""stream"": {bStreamText}
             }}";
 
-            // Clean up any trailing commas
-            json = json.Replace(",\n            \"stream\"", "\n            \"stream\"");
-
             return json;
         }
+    }
+
+    private static Queue<GTPChatLine> PrependSystemMessage(Queue<GTPChatLine> lines, string systemPrompt)
+    {
+        var result = new Queue<GTPChatLine>();
+        result.Enqueue(new GTPChatLine("system", systemPrompt));
+        if (lines != null)
+        {
+            foreach (var line in lines)
+            {
+                result.Enqueue(line);
+            }
+        }
+        return result;
     }
     //     ""reasoning_effort"":  ""medium"",
          
@@ -539,7 +570,17 @@ public class OpenAITextCompletionManager : MonoBehaviour
             byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
             _currentRequest.uploadHandler = (UploadHandler)new UploadHandlerRaw(bodyRaw);
 
-            var downloadHandler = new StreamingDownloadHandler(updateChunkCallback, injectReasoningThinkTags: true);
+            bool injectThinkTags = json.IndexOf("\"enable_thinking\": true", StringComparison.Ordinal) >= 0
+                || json.IndexOf("\"enable_thinking\":true", StringComparison.Ordinal) >= 0
+                || (json.IndexOf("\"thinking\"", StringComparison.Ordinal) >= 0
+                    && json.IndexOf("\"thinking\": true", StringComparison.Ordinal) >= 0)
+                || (json.IndexOf("\"thinking\"", StringComparison.Ordinal) >= 0
+                    && json.IndexOf("\"thinking\":true", StringComparison.Ordinal) >= 0)
+                || json.IndexOf("\"reasoning\"", StringComparison.Ordinal) >= 0;
+            bool wrapContentUntilThinkClose = (json.IndexOf("\"chat_template_kwargs\"", StringComparison.Ordinal) >= 0
+                && (json.IndexOf("\"thinking\": true", StringComparison.Ordinal) >= 0
+                    || json.IndexOf("\"thinking\":true", StringComparison.Ordinal) >= 0));
+            var downloadHandler = new StreamingDownloadHandler(updateChunkCallback, injectReasoningThinkTags: injectThinkTags, wrapContentUntilThinkClose: wrapContentUntilThinkClose);
             _currentRequest.downloadHandler = downloadHandler;
 
             _currentRequest.SetRequestHeader("Content-Type", "application/json");

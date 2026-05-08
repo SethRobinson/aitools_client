@@ -2193,7 +2193,7 @@ public class PanelDragHandler : MonoBehaviour, IDragHandler, IBeginDragHandler
             eventData.position,
             eventData.pressEventCamera,
             out Vector2 localPoint);
-        _target.anchoredPosition = ClampToParent(localPoint + _dragOffset);
+        _target.anchoredPosition = ClampAnchoredPosition(_target, localPoint + _dragOffset, _headerHeight);
     }
 
     /// <summary>
@@ -2209,18 +2209,20 @@ public class PanelDragHandler : MonoBehaviour, IDragHandler, IBeginDragHandler
     ///   bottom = ay - py * H
     /// We solve each edge constraint for ax/ay and clamp.
     /// </summary>
-    private Vector2 ClampToParent(Vector2 anchoredPos)
+    public static Vector2 ClampAnchoredPosition(RectTransform target, Vector2 anchoredPos, float headerHeight = 32f)
     {
-        var parent = _target.parent as RectTransform;
+        if (target == null) return anchoredPos;
+        var parent = target.parent as RectTransform;
         if (parent == null) return anchoredPos;
 
         Rect parentRect = parent.rect;
-        Vector2 size = _target.sizeDelta;
-        Vector2 pivot = _target.pivot;
+        Vector2 size = target.sizeDelta;
+        Vector2 pivot = target.pivot;
+        headerHeight = Mathf.Max(8f, headerHeight);
 
         // Vertical: top edge can't exceed parent top; header bottom can't fall below parent bottom.
         float maxAnchoredY = parentRect.yMax - (1f - pivot.y) * size.y;
-        float minAnchoredY = parentRect.yMin + _headerHeight - (1f - pivot.y) * size.y;
+        float minAnchoredY = parentRect.yMin + headerHeight - (1f - pivot.y) * size.y;
         if (minAnchoredY > maxAnchoredY) minAnchoredY = maxAnchoredY; // panel taller than parent
         anchoredPos.y = Mathf.Clamp(anchoredPos.y, minAnchoredY, maxAnchoredY);
 

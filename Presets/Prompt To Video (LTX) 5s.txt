@@ -4,10 +4,12 @@ COMMAND_START|joblist
 %height%="544"
 %frames%="121"
 %fps%="24"
+%ltx_model%="ltx-2.3-22b-dev-fp8.safetensors"
+%ltx_distilled_lora%="ltx-2.3-22b-distilled-lora-384.safetensors"
+%ltx_text_encoder%="gemma_3_12B_it.safetensors"
 
-text_to_video_ltx23.json @replace|"width": 960|"width": %width%| @replace|"height": 544|"height": %height%| @replace|"value": 121|"value": %frames%| @replace|"value": 24|"value": %fps%|
+text_to_video_ltx23.json @replace|"width": 960|"width": %width%| @replace|"height": 544|"height": %height%| @replace|"value": 121|"value": %frames%| @replace|"value": 24|"value": %fps%| @replace|ltx-2.3-22b-dev-fp8.safetensors|%ltx_model%| @replace|ltx-2.3-22b-distilled-lora-384.safetensors|%ltx_distilled_lora%| @replace|gemma_3_12B_it.safetensors|%ltx_text_encoder%|
 COMMAND_END
 COMMAND_START|default_negative_prompt
-COMMAND_END
-COMMAND_START|default_pre_prompt
+CG, computer game, cartoon, drawing
 COMMAND_END

@@ -30,9 +30,11 @@ public class LLMProviderUI
     
     // llama.cpp-specific controls
     public Toggle thinkingModeToggle;
+    public TMP_Dropdown reasoningEffortDropdown;
     public TextMeshProUGUI serverModeLabel;
     private GameObject _thinkingModeRow; // Reference to hide/show based on model
     private bool _enableThinking = true;
+    private LLMReasoningEffort _reasoningEffort = LLMReasoningEffort.High;
     private bool _isRouterMode = false;
     
     // llama.cpp sampling parameter controls
@@ -135,10 +137,11 @@ public class LLMProviderUI
         // Add llama.cpp-specific controls
         if (_provider == LLMProvider.LlamaCpp)
         {
-            _enableThinking = settings.enableThinking;
+            _reasoningEffort = settings.GetReasoningEffort();
+            _enableThinking = _reasoningEffort != LLMReasoningEffort.Off;
             _isRouterMode = settings.isRouterMode;
             CreateServerModeRow(sectionRoot.transform, settings);
-            CreateThinkingModeRow(sectionRoot.transform, settings);
+            CreateReasoningEffortRow(sectionRoot.transform, settings);
             UpdateThinkingModeVisibility();
             
             // Sampling parameters
@@ -159,7 +162,10 @@ public class LLMProviderUI
         if (_provider == LLMProvider.OpenAI || _provider == LLMProvider.OpenAICompatible)
         {
             _enableThinking = settings.enableThinking;
+            _reasoningEffort = _enableThinking ? LLMReasoningEffort.High : LLMReasoningEffort.Off;
             CreateOpenAIThinkingModeRow(sectionRoot.transform, settings);
+            if (_provider == LLMProvider.OpenAICompatible)
+                UpdateThinkingModeVisibility();
         }
 
         // Sampling parameters (temperature, top_p, top_k, min_p, repetition penalty) for OpenAI Compatible
@@ -405,10 +411,16 @@ public class LLMProviderUI
         // llama.cpp-specific
         if (_provider == LLMProvider.LlamaCpp)
         {
-            _enableThinking = settings.enableThinking;
+            _reasoningEffort = settings.GetReasoningEffort();
+            _enableThinking = _reasoningEffort != LLMReasoningEffort.Off;
             _isRouterMode = settings.isRouterMode;
             if (thinkingModeToggle != null)
                 thinkingModeToggle.isOn = settings.enableThinking;
+            if (reasoningEffortDropdown != null)
+            {
+                reasoningEffortDropdown.SetValueWithoutNotify(ReasoningEffortToDropdownIndex(_reasoningEffort));
+                reasoningEffortDropdown.RefreshShownValue();
+            }
             UpdateServerModeLabel(settings);
             UpdateThinkingModeVisibility();
             
@@ -430,8 +442,11 @@ public class LLMProviderUI
         if (_provider == LLMProvider.OpenAI || _provider == LLMProvider.OpenAICompatible)
         {
             _enableThinking = settings.enableThinking;
+            _reasoningEffort = _enableThinking ? LLMReasoningEffort.High : LLMReasoningEffort.Off;
             if (thinkingModeToggle != null)
                 thinkingModeToggle.isOn = settings.enableThinking;
+            if (_provider == LLMProvider.OpenAICompatible)
+                UpdateThinkingModeVisibility();
         }
 
         // OpenAI Compatible sampling parameter overrides
@@ -483,7 +498,7 @@ public class LLMProviderUI
         // llama.cpp-specific
         if (_provider == LLMProvider.LlamaCpp)
         {
-            settings.enableThinking = _enableThinking;
+            settings.SetReasoningEffort(_reasoningEffort);
             settings.isRouterMode = _isRouterMode;
             
             // Sampling parameters
@@ -503,6 +518,8 @@ public class LLMProviderUI
         if (_provider == LLMProvider.OpenAI || _provider == LLMProvider.OpenAICompatible)
         {
             settings.enableThinking = _enableThinking;
+            if (_provider == LLMProvider.OpenAICompatible)
+                settings.reasoningEffort = "";
         }
 
         // OpenAI Compatible sampling parameter overrides
@@ -537,8 +554,8 @@ public class LLMProviderUI
             modelDropdown.AddOptions(new List<string> { "(no models)" });
             modelDropdown.value = 0;
             
-            // Update thinking mode visibility for llama.cpp
-            if (_provider == LLMProvider.LlamaCpp)
+            // Update thinking mode visibility for providers with reasoning-effort controls.
+            if (_provider == LLMProvider.LlamaCpp || _provider == LLMProvider.OpenAICompatible)
             {
                 UpdateThinkingModeVisibility();
             }
@@ -550,9 +567,9 @@ public class LLMProviderUI
         modelDropdown.value = idx >= 0 ? idx : 0;
         modelDropdown.RefreshShownValue();
         
-        // Update thinking mode visibility for llama.cpp (since setting value programmatically
+        // Update thinking mode visibility for providers with reasoning-effort controls (since setting value programmatically
         // may not trigger the OnValueChanged event)
-        if (_provider == LLMProvider.LlamaCpp)
+        if (_provider == LLMProvider.LlamaCpp || _provider == LLMProvider.OpenAICompatible)
         {
             UpdateThinkingModeVisibility();
         }
@@ -571,8 +588,8 @@ public class LLMProviderUI
             UpdateContextLabel();
             UpdateModelInfoDisplay();
             
-            // Update thinking mode visibility for llama.cpp (based on model name)
-            if (_provider == LLMProvider.LlamaCpp)
+            // Update thinking mode visibility for providers with reasoning-effort controls (based on model name)
+            if (_provider == LLMProvider.LlamaCpp || _provider == LLMProvider.OpenAICompatible)
             {
                 UpdateThinkingModeVisibility();
             }
@@ -1070,11 +1087,97 @@ public class LLMProviderUI
         labelTmp.alignment = TextAlignmentOptions.MidlineLeft;
         labelTmp.text = "Enable thinking mode";
     }
+
+    private void CreateReasoningEffortRow(Transform parent, LLMProviderSettings settings)
+    {
+        var row = CreateRowContainer(parent, "ReasoningEffort");
+        _thinkingModeRow = row;
+        CreateRowLabel(row.transform, "Reasoning:");
+
+        var ddGo = TMP_DefaultControls.CreateDropdown(_tmpResources);
+        ddGo.name = "ReasoningEffortDropdown";
+        ddGo.transform.SetParent(row.transform, false);
+        _styleApplier?.Invoke(ddGo);
+
+        var ddRootImg = ddGo.GetComponent<Image>();
+        if (ddRootImg != null) ddRootImg.color = InputBg;
+
+        var ddRt = ddGo.GetComponent<RectTransform>();
+        ddRt.anchorMin = new Vector2(0, 0);
+        ddRt.anchorMax = new Vector2(1, 1);
+        ddRt.offsetMin = new Vector2(LabelWidth + 16, 5);
+        ddRt.offsetMax = new Vector2(-6, -5);
+
+        reasoningEffortDropdown = ddGo.GetComponent<TMP_Dropdown>();
+        if (reasoningEffortDropdown == null) return;
+
+        reasoningEffortDropdown.ClearOptions();
+        reasoningEffortDropdown.AddOptions(new List<TMP_Dropdown.OptionData>
+        {
+            new TMP_Dropdown.OptionData(LLMReasoningEffortUtil.ToDisplayName(LLMReasoningEffort.Off)),
+            new TMP_Dropdown.OptionData(LLMReasoningEffortUtil.ToDisplayName(LLMReasoningEffort.High)),
+            new TMP_Dropdown.OptionData(LLMReasoningEffortUtil.ToDisplayName(LLMReasoningEffort.Max))
+        });
+
+        _reasoningEffort = settings.GetReasoningEffort();
+        _enableThinking = _reasoningEffort != LLMReasoningEffort.Off;
+        reasoningEffortDropdown.value = ReasoningEffortToDropdownIndex(_reasoningEffort);
+        reasoningEffortDropdown.RefreshShownValue();
+        reasoningEffortDropdown.onValueChanged.AddListener(OnReasoningEffortChanged);
+
+        if (reasoningEffortDropdown.captionText != null)
+        {
+            reasoningEffortDropdown.captionText.font = _font;
+            reasoningEffortDropdown.captionText.fontSize = 14;
+            reasoningEffortDropdown.captionText.color = TextDark;
+        }
+        if (reasoningEffortDropdown.itemText != null)
+        {
+            reasoningEffortDropdown.itemText.font = _font;
+            reasoningEffortDropdown.itemText.fontSize = 14;
+            reasoningEffortDropdown.itemText.color = TextDark;
+        }
+        if (reasoningEffortDropdown.template != null)
+            reasoningEffortDropdown.template.sizeDelta = new Vector2(reasoningEffortDropdown.template.sizeDelta.x, 120f);
+    }
     
     private void OnThinkingModeChanged(bool value)
     {
         _enableThinking = value;
         _onSettingsChanged?.Invoke();
+    }
+
+    private void OnReasoningEffortChanged(int value)
+    {
+        _reasoningEffort = DropdownIndexToReasoningEffort(value);
+        _enableThinking = _reasoningEffort != LLMReasoningEffort.Off;
+        _onSettingsChanged?.Invoke();
+    }
+
+    private static int ReasoningEffortToDropdownIndex(LLMReasoningEffort effort)
+    {
+        switch (effort)
+        {
+            case LLMReasoningEffort.Max:
+                return 2;
+            case LLMReasoningEffort.High:
+                return 1;
+            default:
+                return 0;
+        }
+    }
+
+    private static LLMReasoningEffort DropdownIndexToReasoningEffort(int value)
+    {
+        switch (value)
+        {
+            case 2:
+                return LLMReasoningEffort.Max;
+            case 1:
+                return LLMReasoningEffort.High;
+            default:
+                return LLMReasoningEffort.Off;
+        }
     }
     
     private void UpdateThinkingModeVisibility()
@@ -1502,6 +1605,7 @@ public class LLMProviderUI
     private void CreateOpenAIThinkingModeRow(Transform parent, LLMProviderSettings settings)
     {
         var row = CreateRowContainer(parent, "ThinkingMode");
+        _thinkingModeRow = row;
         
         var toggleContainer = new GameObject("ToggleContainer");
         toggleContainer.transform.SetParent(row.transform, false);

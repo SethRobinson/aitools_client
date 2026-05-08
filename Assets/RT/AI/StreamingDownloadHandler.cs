@@ -13,6 +13,8 @@ public class StreamingDownloadHandler : DownloadHandlerScript
     private bool _inReasoningBlock = false;
     private bool _reasoningBlockClosed = false;
     private bool _injectReasoningThinkTags;
+    private bool _reasoningBlockFromContent = false;
+    private bool _wrapContentUntilThinkClose = false;
 
     protected override string GetText()
     {
@@ -24,10 +26,11 @@ public class StreamingDownloadHandler : DownloadHandlerScript
         return GetText();
     }
 
-    public StreamingDownloadHandler(Action<string> textChunkUpdateCallback, bool injectReasoningThinkTags = false) : base(new byte[1024])
+    public StreamingDownloadHandler(Action<string> textChunkUpdateCallback, bool injectReasoningThinkTags = false, bool wrapContentUntilThinkClose = false) : base(new byte[1024])
     {
         m_textChunkUpdateCallback = textChunkUpdateCallback;
         _injectReasoningThinkTags = injectReasoningThinkTags;
+        _wrapContentUntilThinkClose = wrapContentUntilThinkClose;
     }
 
     protected override bool ReceiveData(byte[] data, int dataLength)
@@ -126,16 +129,29 @@ public class StreamingDownloadHandler : DownloadHandlerScript
             JSONNode rootNode = JSON.Parse(jsonChunk);
             string content = null;
 
+            if (rootNode != null && rootNode.HasKey("error"))
+            {
+                isErrorResponse = true;
+                string errorText = ExtractErrorText(rootNode["error"]);
+                if (!string.IsNullOrEmpty(errorText))
+                    stringBuilder.Append(errorText);
+                return;
+            }
+
             // Try Ollama native /api/chat format first (message.content)
             // Format: {"message":{"role":"assistant","content":"text"},"done":false}
-            if (rootNode["message"] != null && rootNode["message"]["content"] != null)
+            if (rootNode != null && rootNode.HasKey("message") && rootNode["message"].HasKey("content") && !rootNode["message"]["content"].IsNull)
             {
                 content = rootNode["message"]["content"];
             }
             // Try Chat Completions API format (choices[0].delta.content)
-            else if (rootNode["choices"] != null && rootNode["choices"].Count > 0)
+            else if (rootNode != null && rootNode.HasKey("choices") && rootNode["choices"].Count > 0)
             {
-                JSONNode deltaNode = rootNode["choices"][0]["delta"];
+                JSONNode choiceNode = rootNode["choices"][0];
+                if (choiceNode.HasKey("message") && choiceNode["message"].HasKey("content") && !choiceNode["message"]["content"].IsNull)
+                {
+                    content = choiceNode["message"]["content"];
+                }
 
                 // sglang/vLLM with --reasoning-parser puts thinking in a separate field and
                 // the final answer in content. The field name varies by server:
@@ -144,21 +160,31 @@ public class StreamingDownloadHandler : DownloadHandlerScript
                 // When injectReasoningThinkTags is true we inject <think> tags so the app's
                 // RemoveThinkTags logic can strip the thinking portion.
                 // llama.cpp/Ollama may put main reply in reasoning_content; do NOT wrap for those.
-                string mainContent = deltaNode != null && deltaNode["content"] != null ? (string)deltaNode["content"] : null;
+                JSONNode deltaNode = choiceNode.HasKey("delta") ? choiceNode["delta"] : null;
+                string mainContent = null;
                 string reasoningContent = null;
                 if (deltaNode != null)
                 {
-                    if (deltaNode["reasoning_content"] != null) reasoningContent = (string)deltaNode["reasoning_content"];
-                    else if (deltaNode["reasoning"] != null) reasoningContent = (string)deltaNode["reasoning"];
+                    if (deltaNode.HasKey("content") && !deltaNode["content"].IsNull)
+                        mainContent = (string)deltaNode["content"];
+                    if (deltaNode.HasKey("reasoning_content") && !deltaNode["reasoning_content"].IsNull)
+                        reasoningContent = (string)deltaNode["reasoning_content"];
+                    else if (deltaNode.HasKey("reasoning") && !deltaNode["reasoning"].IsNull)
+                        reasoningContent = (string)deltaNode["reasoning"];
                 }
 
-                if (!string.IsNullOrEmpty(reasoningContent))
+                if (content != null)
+                {
+                    // Non-streaming OpenAI-compatible response parsed above.
+                }
+                else if (!string.IsNullOrEmpty(reasoningContent))
                 {
                     if (_injectReasoningThinkTags && !_reasoningBlockClosed)
                     {
                         if (!_inReasoningBlock)
                         {
                             _inReasoningBlock = true;
+                            _reasoningBlockFromContent = false;
                             content = "<think>" + reasoningContent;
                         }
                         else
@@ -173,11 +199,37 @@ public class StreamingDownloadHandler : DownloadHandlerScript
                 }
                 else if (!string.IsNullOrEmpty(mainContent))
                 {
-                    if (_injectReasoningThinkTags && _inReasoningBlock)
+                    if (_injectReasoningThinkTags && _inReasoningBlock && _reasoningBlockFromContent)
+                    {
+                        content = mainContent;
+                        if (mainContent.Contains("</think>"))
+                        {
+                            _inReasoningBlock = false;
+                            _reasoningBlockClosed = true;
+                            _reasoningBlockFromContent = false;
+                        }
+                    }
+                    else if (_injectReasoningThinkTags && _inReasoningBlock)
                     {
                         _inReasoningBlock = false;
                         _reasoningBlockClosed = true;
-                        content = "</think>" + mainContent;
+                        content = mainContent.Contains("</think>") ? mainContent : "</think>" + mainContent;
+                    }
+                    else if (_wrapContentUntilThinkClose && !_reasoningBlockClosed && mainContent.Contains("</think>"))
+                    {
+                        _inReasoningBlock = false;
+                        _reasoningBlockClosed = true;
+                        content = mainContent.Contains("<think>") ? mainContent : "<think>" + mainContent;
+                    }
+                    else if (_wrapContentUntilThinkClose && !_reasoningBlockClosed && !mainContent.Contains("<think>"))
+                    {
+                        // DeepSeek-V4-Flash served by llama.cpp streams reasoning as normal
+                        // content until a literal </think>, without an opening <think>.
+                        // Add the missing opener so existing strip/display logic can
+                        // identify the hidden section.
+                        _inReasoningBlock = true;
+                        _reasoningBlockFromContent = true;
+                        content = "<think>" + mainContent;
                     }
                     else
                     {
@@ -186,7 +238,7 @@ public class StreamingDownloadHandler : DownloadHandlerScript
                 }
                 else if (deltaNode != null && _injectReasoningThinkTags)
                 {
-                    JSONNode finishNode = rootNode["choices"][0]["finish_reason"];
+                    JSONNode finishNode = choiceNode["finish_reason"];
                     if (_inReasoningBlock && finishNode != null && !finishNode.IsNull)
                     {
                         _inReasoningBlock = false;
@@ -196,9 +248,9 @@ public class StreamingDownloadHandler : DownloadHandlerScript
                 }
 
                 // Fallback: try 'text' structure (completions API)
-                if (content == null && rootNode["choices"][0]["text"] != null)
+                if (content == null && choiceNode.HasKey("text") && !choiceNode["text"].IsNull)
                 {
-                    content = rootNode["choices"][0]["text"];
+                    content = choiceNode["text"];
                 }
             }
             // Try Responses API format (response.output_text.delta event with delta field)
@@ -260,13 +312,22 @@ public class StreamingDownloadHandler : DownloadHandlerScript
             if (content != null)
             {
                 stringBuilder.Append(content);
-                MainThreadDispatcher.Enqueue(() => m_textChunkUpdateCallback(content));
+                if (m_textChunkUpdateCallback != null)
+                    MainThreadDispatcher.Enqueue(() => m_textChunkUpdateCallback(content));
             }
         }
         catch (Exception ex)
         {
             Debug.LogWarning($"Error processing JSON chunk: {ex.Message}\nChunk: {jsonChunk}");
         }
+    }
+
+    private static string ExtractErrorText(JSONNode errorNode)
+    {
+        if (errorNode == null) return "";
+        if (errorNode.HasKey("message") && !errorNode["message"].IsNull)
+            return errorNode["message"];
+        return errorNode.ToString();
     }
 
     protected override void CompleteContent()

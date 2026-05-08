@@ -8,8 +8,6 @@ COMMAND_START|joblist
 text_to_img_zimage.json @replace|z_image_turbo_bf16.safetensors|%model%| @replace|"width": 1024|"width": %width%| @replace|"height": 1024|"height": %height%| @replace|"steps": 9|"steps": %steps%|
 COMMAND_END
 COMMAND_START|default_negative_prompt
-cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white
 COMMAND_END
 COMMAND_START|default_pre_prompt
-shot with a Bessa Cinestill. Analog film, high ISO, medium dynamic range,
 COMMAND_END

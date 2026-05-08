@@ -99,6 +99,10 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
         
         string msg = "";
         string modelName = "";
+        LLMReasoningEffort reasoningEffort = LLMReasoningEffort.Off;
+        bool foundReasoningEffort = false;
+        bool foundEnableThinking = false;
+        bool enableThinkingFromParm = false;
         
         // Get model name from parms for template detection
         if (parms != null)
@@ -108,9 +112,37 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
                 if (parm._key == "model")
                 {
                     modelName = parm._value.Replace("\"", "").ToLower();
-                    break;
+                }
+                else if (parm._key == "reasoning_effort")
+                {
+                    reasoningEffort = LLMReasoningEffortUtil.Parse(parm._value, LLMReasoningEffort.Off);
+                    foundReasoningEffort = true;
+                }
+                else if (parm._key == "enable_thinking")
+                {
+                    enableThinkingFromParm = parm._value == "true";
+                    foundEnableThinking = true;
                 }
             }
+        }
+
+        if (!foundReasoningEffort)
+        {
+            if (foundEnableThinking)
+            {
+                reasoningEffort = enableThinkingFromParm ? LLMReasoningEffort.High : LLMReasoningEffort.Off;
+            }
+            else
+            {
+                var llmMgr = LLMSettingsManager.Get();
+                if (llmMgr != null && bIsLlamaCpp)
+                    reasoningEffort = llmMgr.GetReasoningEffort(LLMProvider.LlamaCpp);
+            }
+        }
+
+        if (bIsLlamaCpp && LLMRequestProfile.IsDeepSeekModel(modelName) && reasoningEffort == LLMReasoningEffort.Max)
+        {
+            lines = PrependSystemMessage(lines, LLMReasoningPrompts.DeepSeekMaxReasoningSystemPrompt);
         }
         
         // Detect template type for llama.cpp servers
@@ -309,6 +341,9 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
         string ollamaOptions = ""; // For Ollama-specific options like num_ctx
         bool useOllamaDefaults = false;
         string numCtxValue = "";
+        bool hasTemperatureParm = false;
+        bool hasTopPParm = false;
+        bool hasMaxTokensParm = false;
         
         // First pass: collect special flags and num_ctx
         if (parms != null)
@@ -322,6 +357,18 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
                 else if (parm._key == "num_ctx" && parm._value.Length > 0)
                 {
                     numCtxValue = parm._value;
+                }
+                else if (parm._key == "temperature")
+                {
+                    hasTemperatureParm = true;
+                }
+                else if (parm._key == "top_p")
+                {
+                    hasTopPParm = true;
+                }
+                else if (parm._key == "max_tokens" || parm._key == "n_predict")
+                {
+                    hasMaxTokensParm = true;
                 }
             }
         }
@@ -379,6 +426,11 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
                 {
                     continue;
                 }
+
+                if (parm._key == "reasoning_effort")
+                {
+                    continue;
+                }
                 
                 // Check if this parameter value looks like a string that needs quoting
                 // (contains forward slashes, backslashes, or starts with a letter/slash)
@@ -406,76 +458,54 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
         // Build thinking mode parameters for llama.cpp with supported models (GLM, DeepSeek, Qwen)
         string chatTemplateKwargs = "";
         bool isGLM = bIsLlamaCpp && !string.IsNullOrEmpty(modelName) && modelName.Contains("glm");
-        bool isDeepSeek = bIsLlamaCpp && !string.IsNullOrEmpty(modelName) && modelName.Contains("deepseek");
+        bool isDeepSeek = bIsLlamaCpp && LLMRequestProfile.IsDeepSeekModel(modelName);
         bool isQwen = bIsLlamaCpp && !string.IsNullOrEmpty(modelName) && modelName.Contains("qwen");
         
         if (isGLM || isDeepSeek || isQwen)
         {
-            // Check if thinking mode should be enabled or disabled
-            // First check if it's passed in the parms (from instance settings)
-            bool enableThinking = true;
-            bool foundInParms = false;
-            
-            if (parms != null)
-            {
-                foreach (var parm in parms)
-                {
-                    if (parm._key == "enable_thinking")
-                    {
-                        enableThinking = parm._value == "true";
-                        foundInParms = true;
-                        RTConsole.Log($"BuildForInstructJSON: Found enable_thinking in parms: {parm._value}");
-                        break;
-                    }
-                }
-            }
-            
-            // Fall back to global settings if not found in parms
-            if (!foundInParms)
-            {
-                RTConsole.Log("BuildForInstructJSON: enable_thinking NOT found in parms, falling back to global settings");
-                var llmMgr = LLMSettingsManager.Get();
-                if (llmMgr != null)
-                {
-                    enableThinking = llmMgr.GetThinkingModeEnabled(LLMProvider.LlamaCpp);
-                }
-            }
-            
-            // NOTE: Server must NOT be started with --reasoning-budget 0 for thinking to work.
-            // The default is --reasoning-budget -1 (unlimited) which is correct.
-            //
-            // We request reasoning_format: "deepseek-legacy" to ensure <think> tags appear in content
-            // (otherwise server might put thinking only in reasoning_content field which we don't parse)
+            bool enableThinking = reasoningEffort != LLMReasoningEffort.Off;
             
             if (isGLM || isQwen)
             {
                 // GLM and Qwen models use chat_template_kwargs with enable_thinking
                 if (enableThinking)
                 {
-                    chatTemplateKwargs = ",\"chat_template_kwargs\": {\"enable_thinking\": true}, \"reasoning_format\": \"deepseek-legacy\"";
-                    RTConsole.Log((isQwen ? "Qwen" : "GLM") + " model '" + modelName + "': Thinking mode ENABLED");
+                    chatTemplateKwargs = ",\"chat_template_kwargs\": {\"enable_thinking\": true}";
+                    RTConsole.Log((isQwen ? "Qwen" : "GLM") + " model '" + modelName + "': Reasoning " + LLMReasoningEffortUtil.ToConfigValue(reasoningEffort));
                 }
                 else
                 {
                     chatTemplateKwargs = ",\"chat_template_kwargs\": {\"enable_thinking\": false}";
-                    RTConsole.Log((isQwen ? "Qwen" : "GLM") + " model '" + modelName + "': Thinking mode DISABLED");
+                    RTConsole.Log((isQwen ? "Qwen" : "GLM") + " model '" + modelName + "': Reasoning off");
                 }
             }
             else if (isDeepSeek)
             {
-                // DeepSeek models use thinking: {"type": "enabled"} parameter
-                // See: https://api-docs.deepseek.com/guides/thinking_mode
+                // DeepSeek-V4-Flash served by llama.cpp expects chat_template_kwargs.thinking.
+                // No-think is the server default, so omit chat_template_kwargs when off.
                 if (enableThinking)
                 {
-                    chatTemplateKwargs = ",\"thinking\": {\"type\": \"enabled\"}, \"reasoning_format\": \"deepseek-legacy\"";
-                    RTConsole.Log("DeepSeek model '" + modelName + "': Thinking mode ENABLED");
+                    chatTemplateKwargs = ",\"chat_template_kwargs\": {\"thinking\": true}";
+                    RTConsole.Log("DeepSeek model '" + modelName + "': Reasoning " + LLMReasoningEffortUtil.ToConfigValue(reasoningEffort));
                 }
                 else
                 {
-                    chatTemplateKwargs = ",\"thinking\": {\"type\": \"disabled\"}";
-                    RTConsole.Log("DeepSeek model '" + modelName + "': Thinking mode DISABLED");
+                    RTConsole.Log("DeepSeek model '" + modelName + "': Reasoning off");
                 }
             }
+        }
+
+        if (isDeepSeek)
+        {
+            if (!hasTemperatureParm)
+                extra += ",\"temperature\": " + LLMRequestProfile.GetRecommendedTemperature(modelName, reasoningEffort, temperature).ToString(System.Globalization.CultureInfo.InvariantCulture) + "\r\n";
+            if (!hasTopPParm)
+                extra += ",\"top_p\": " + LLMRequestProfile.GetRecommendedTopP(modelName, reasoningEffort, 1.0f).ToString(System.Globalization.CultureInfo.InvariantCulture) + "\r\n";
+        }
+
+        if (!bIsOllama && max_new_tokens > 0 && !hasMaxTokensParm)
+        {
+            extra += $",\"max_tokens\": {max_new_tokens}\r\n";
         }
         
         if (useCompletionsEndpoint)
@@ -522,6 +552,20 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
              }}";
             return json;
         }
+    }
+
+    private static Queue<GTPChatLine> PrependSystemMessage(Queue<GTPChatLine> lines, string systemPrompt)
+    {
+        var result = new Queue<GTPChatLine>();
+        result.Enqueue(new GTPChatLine("system", systemPrompt));
+        if (lines != null)
+        {
+            foreach (var line in lines)
+            {
+                result.Enqueue(line);
+            }
+        }
+        return result;
     }
 
     //  ""instructi
@@ -622,10 +666,23 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
             byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
             _currentRequest.uploadHandler = (UploadHandler)new UploadHandlerRaw(bodyRaw);
 
-            // When thinking is enabled, inject <think> tags so Strip <think> tags can hide the reasoning portion
+            // When thinking is enabled, inject <think> tags so Strip <think> tags can hide
+            // separate reasoning chunks. llama.cpp/sglang-style models use enable_thinking;
+            // DeepSeek-compatible servers use thinking: { type: "enabled" }.
             bool injectThinkTags = json.IndexOf("\"enable_thinking\": true", StringComparison.Ordinal) >= 0
-                || json.IndexOf("\"enable_thinking\":true", StringComparison.Ordinal) >= 0;
-            var downloadHandler = new StreamingDownloadHandler(updateChunkCallback, injectReasoningThinkTags: injectThinkTags);
+                || json.IndexOf("\"enable_thinking\":true", StringComparison.Ordinal) >= 0
+                || (json.IndexOf("\"thinking\"", StringComparison.Ordinal) >= 0
+                    && json.IndexOf("\"thinking\": true", StringComparison.Ordinal) >= 0)
+                || (json.IndexOf("\"thinking\"", StringComparison.Ordinal) >= 0
+                    && json.IndexOf("\"thinking\":true", StringComparison.Ordinal) >= 0)
+                || (json.IndexOf("\"thinking\"", StringComparison.Ordinal) >= 0
+                    && json.IndexOf("\"type\": \"enabled\"", StringComparison.Ordinal) >= 0)
+                || (json.IndexOf("\"thinking\"", StringComparison.Ordinal) >= 0
+                    && json.IndexOf("\"type\":\"enabled\"", StringComparison.Ordinal) >= 0);
+            bool wrapContentUntilThinkClose = (json.IndexOf("\"chat_template_kwargs\"", StringComparison.Ordinal) >= 0
+                && (json.IndexOf("\"thinking\": true", StringComparison.Ordinal) >= 0
+                    || json.IndexOf("\"thinking\":true", StringComparison.Ordinal) >= 0));
+            var downloadHandler = new StreamingDownloadHandler(updateChunkCallback, injectReasoningThinkTags: injectThinkTags, wrapContentUntilThinkClose: wrapContentUntilThinkClose);
             _currentRequest.downloadHandler = downloadHandler;
 
             _currentRequest.SetRequestHeader("Content-Type", "application/json");

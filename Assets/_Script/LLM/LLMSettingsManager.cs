@@ -513,10 +513,29 @@ public class LLMSettingsManager : MonoBehaviour
             result.Add(new LLMParm { _key = "num_ctx", _value = settings.contextLength.ToString() });
         }
 
+        if (provider == LLMProvider.OpenAI || provider == LLMProvider.OpenAICompatible)
+        {
+            string ep = settings.endpoint ?? "";
+            bool isCustomServer = provider == LLMProvider.OpenAICompatible ||
+                                  (!string.IsNullOrEmpty(ep) && !ep.Contains("api.openai.com"));
+            if (isCustomServer)
+                result.Add(new LLMParm { _key = "enable_thinking", _value = settings.enableThinking ? "true" : "false" });
+        }
+
         // For llama.cpp, add thinking mode and sampling parameters (sampling only if overrides enabled)
         if (provider == LLMProvider.LlamaCpp)
         {
-            result.Add(new LLMParm { _key = "enable_thinking", _value = settings.enableThinking ? "true" : "false" });
+            bool isDeepSeek = LLMRequestProfile.IsDeepSeekModel(settings.selectedModel);
+            if (isDeepSeek)
+            {
+                var reasoningEffort = settings.GetReasoningEffort();
+                result.Add(new LLMParm { _key = "reasoning_effort", _value = LLMReasoningEffortUtil.ToConfigValue(reasoningEffort) });
+                result.Add(new LLMParm { _key = "enable_thinking", _value = reasoningEffort != LLMReasoningEffort.Off ? "true" : "false" });
+            }
+            else
+            {
+                result.Add(new LLMParm { _key = "enable_thinking", _value = settings.enableThinking ? "true" : "false" });
+            }
             if (settings.overrideTemperature)
             {
                 result.Add(new LLMParm { _key = "temperature", _value = settings.temperature.ToString(System.Globalization.CultureInfo.InvariantCulture) });
@@ -545,7 +564,7 @@ public class LLMSettingsManager : MonoBehaviour
             foreach (var parm in settings.extraParams)
             {
                 // Don't add duplicate model, num_ctx, enable_thinking, or sampling params
-                if (parm._key != "model" && parm._key != "num_ctx" && parm._key != "enable_thinking" &&
+                if (parm._key != "model" && parm._key != "num_ctx" && parm._key != "enable_thinking" && parm._key != "reasoning_effort" &&
                     parm._key != "temperature" && parm._key != "top_p" && 
                     parm._key != "top_k" && parm._key != "min_p" && parm._key != "repeat_penalty")
                 {
@@ -825,7 +844,10 @@ public class LLMSettingsManager : MonoBehaviour
     /// </summary>
     public bool GetThinkingModeEnabled()
     {
-        return _settings.llamaCpp.enableThinking;
+        var settings = _settings.llamaCpp;
+        if (LLMRequestProfile.IsDeepSeekModel(settings.selectedModel))
+            return settings.GetReasoningEffort() != LLMReasoningEffort.Off;
+        return settings.enableThinking;
     }
 
     /// <summary>
@@ -833,7 +855,18 @@ public class LLMSettingsManager : MonoBehaviour
     /// </summary>
     public bool GetThinkingModeEnabled(LLMProvider provider)
     {
-        return _settings.GetProviderSettings(provider).enableThinking;
+        var settings = _settings.GetProviderSettings(provider);
+        if (LLMRequestProfile.IsDeepSeekModel(settings.selectedModel))
+            return settings.GetReasoningEffort() != LLMReasoningEffort.Off;
+        return settings.enableThinking;
+    }
+
+    public LLMReasoningEffort GetReasoningEffort(LLMProvider provider)
+    {
+        var settings = _settings.GetProviderSettings(provider);
+        if (LLMRequestProfile.IsDeepSeekModel(settings.selectedModel))
+            return settings.GetReasoningEffort();
+        return settings.enableThinking ? LLMReasoningEffort.High : LLMReasoningEffort.Off;
     }
 
     /// <summary>
@@ -841,7 +874,13 @@ public class LLMSettingsManager : MonoBehaviour
     /// </summary>
     public void SetThinkingModeEnabled(bool enabled)
     {
-        _settings.llamaCpp.enableThinking = enabled;
+        if (LLMRequestProfile.IsDeepSeekModel(_settings.llamaCpp.selectedModel))
+            _settings.llamaCpp.SetReasoningEffort(enabled ? LLMReasoningEffort.High : LLMReasoningEffort.Off);
+        else
+        {
+            _settings.llamaCpp.enableThinking = enabled;
+            _settings.llamaCpp.reasoningEffort = "";
+        }
         SaveSettings();
     }
 
@@ -981,7 +1020,17 @@ public class LLMSettingsManager : MonoBehaviour
         // For llama.cpp, add the thinking mode setting and sampling parameters
         if (instance.providerType == LLMProvider.LlamaCpp)
         {
-            result.Add(new LLMParm { _key = "enable_thinking", _value = settings.enableThinking ? "true" : "false" });
+            bool isDeepSeek = LLMRequestProfile.IsDeepSeekModel(settings.selectedModel);
+            if (isDeepSeek)
+            {
+                var reasoningEffort = settings.GetReasoningEffort();
+                result.Add(new LLMParm { _key = "reasoning_effort", _value = LLMReasoningEffortUtil.ToConfigValue(reasoningEffort) });
+                result.Add(new LLMParm { _key = "enable_thinking", _value = reasoningEffort != LLMReasoningEffort.Off ? "true" : "false" });
+            }
+            else
+            {
+                result.Add(new LLMParm { _key = "enable_thinking", _value = settings.enableThinking ? "true" : "false" });
+            }
             
             // Add sampling parameters if overrides are enabled
             if (settings.overrideTemperature)
@@ -1011,7 +1060,7 @@ public class LLMSettingsManager : MonoBehaviour
         {
             foreach (var parm in settings.extraParams)
             {
-                if (parm._key != "model" && parm._key != "num_ctx" && parm._key != "enable_thinking" &&
+                if (parm._key != "model" && parm._key != "num_ctx" && parm._key != "enable_thinking" && parm._key != "reasoning_effort" &&
                     parm._key != "temperature" && parm._key != "top_p" && parm._key != "top_k" && parm._key != "min_p" && parm._key != "repeat_penalty")
                 {
                     result.Add(new LLMParm { _key = parm._key, _value = parm._value });

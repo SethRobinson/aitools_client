@@ -8,6 +8,10 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using AITools.AIChat.Context;
+using AITools.AIChat.Mirroring;
+using AITools.AIChat.Skills;
+using AITools.AIChat.UI;
 
 /// <summary>
 /// Programmatic multi-turn AI chat popup. Mirrors the LLMSettingsPanel pattern
@@ -20,10 +24,53 @@ using UnityEngine.UI;
 ///   1. Tries LLMInstanceManager.GetFreeLLM/GetLeastBusyLLM (small job, no vision).
 ///   2. Falls back to LLMSettingsManager.GetActiveProvider/GetProviderSettings.
 /// </summary>
-public class AIChatPanel : MonoBehaviour
+public class AIChatPanel : MonoBehaviour, IChatHost
 {
     private static AIChatPanel _instance;
     private static GameObject _panelRoot;
+
+    // ---- Skills system: dynamic system prompt + LLM-callable actions ----
+    // Created in CreateUI(); torn down with the panel. SkillManager loads aichat/skills/*.md
+    // and aichat/main_prompt.txt; ChatContextBuilder rebuilds the system prompt every
+    // turn (so GPU/LLM state is always fresh); SkillActionParser extracts <aitools_action>
+    // tags from the LLM's stream; SkillActionExecutor dispatches them to the rest of the
+    // app (PicMain.RunPresetByName, LLM delegation, etc.).
+    private SkillManager _skillManager;
+    private ChatContextBuilder _contextBuilder;
+    private SkillActionParser _actionParser;
+    private SkillActionExecutor _actionExecutor;
+
+    // Header status pill - GPU busy count + LLM count, refreshed periodically.
+    private TextMeshProUGUI _statusPillText;
+    private float _statusPillNextRefresh;
+    private const float STATUS_PILL_REFRESH_INTERVAL = 1.5f;
+
+    // Per-turn attachments: a defensive copy of the user's pasted images at OnSendClicked
+    // time, so a SkillActionExecutor invoked mid-stream can still resolve attachment="N"
+    // even after ChatImageAttachmentZone has cleared its own thumbnail strip.
+    private List<byte[]> _lastTurnAttachments = new List<byte[]>();
+
+    // Stable per-session list of chat-image bubbles (1-based via index+1). Lets the LLM
+    // reference "the image you generated in turn 3" via chat_image="3". Only cleared on
+    // OnClearClicked; persists across turns. Entries can become stale if the user deletes
+    // the world Pic - we just return null on read in that case.
+    private readonly List<PicMain> _chatImagePics = new List<PicMain>();
+
+    // Most-recent Pic spawned by a non-chained skill action in the current user turn.
+    // Reset on each OnSendClicked() so chain="true" can never reach back into a prior
+    // turn's Pic. Chained actions read this to find their stack target; they do NOT
+    // overwrite it (a 3-step chain stays anchored to the original Pic).
+    private PicMain _lastSpawnedPicThisTurn;
+
+    // LIFO stack of non-chained Pics spawned this turn that have NOT yet been
+    // consumed by a chain="true" follow-up. Each chain pops the MOST-RECENT
+    // unmatched Pic (adjacency rule: "the image you just made"), so a reply mixing
+    // standalone Pics with paired stacks - e.g. gen, mov, gen, gen, mov - animates
+    // the Pic the LLM just emitted rather than the oldest unmatched. When the stack
+    // is empty, chained follow-ups fall back to _lastSpawnedPicThisTurn (so 3+ step
+    // chains on the same root Pic still work). Stored as a List with end-pop because
+    // we need to skip dead Pics during pop without losing position.
+    private readonly List<PicMain> _unchainedPicsThisTurn = new List<PicMain>();
 
     private TMP_FontAsset _font;
     private RectTransform _mainPanel;
@@ -31,12 +78,34 @@ public class AIChatPanel : MonoBehaviour
     // Header
     private TextMeshProUGUI _titleText;
 
-    // Chat content
+    // Chat content (right side of the body split = text bubbles only)
     private ScrollRect _chatScroll;
     private RectTransform _chatContent;
 
+    // Body / split layout. Body sits between header and footer; inside it we place
+    // a Media panel on the left, a draggable Splitter, and the Chat text panel on
+    // the right. The split is in absolute pixels (anchored from the body's left
+    // edge), so growing the panel grows the chat side and leaves the media at its
+    // last user-set width.
+    private RectTransform _bodyRT;
+    private RectTransform _mediaPanelRT;
+    private RectTransform _chatPanelRT;
+    private RectTransform _splitterRT;
+    private ScrollRect _mediaScroll;
+    private RectTransform _mediaContent;
+    private TextMeshProUGUI _mediaHeaderText;
+    private float _splitX = DEFAULT_SPLIT_X;       // X (in pixels from body left) of the splitter centre
+    private const float DEFAULT_SPLIT_X = 320f;
+    private const float SPLITTER_WIDTH = 12f;
+    private const float MIN_MEDIA_WIDTH = 140f;
+    private const float MIN_CHAT_WIDTH = 240f;
+    private const float MEDIA_HEADER_HEIGHT = 26f;
+    private const string PREFS_KEEP_LAST_N_MEDIA = "aichat_keep_last_n_media";
+    private const int DEFAULT_KEEP_LAST_N_MEDIA = 10;
+
     // Footer
     private TMP_InputField _inputField;
+    private TMPInputFieldUndo _inputUndo;
     private RectTransform _inputFieldRT;
     private Button _sendButton;
     private Button _clearButton;
@@ -51,7 +120,6 @@ public class AIChatPanel : MonoBehaviour
     private ChatImageAttachmentZone _attachmentZone;
     private RectTransform _attachmentsStrip;
     private RectTransform _footerRT;
-    private RectTransform _chatScrollRT;
     private const float ATTACHMENT_STRIP_HEIGHT = 70f;
 
     // Conversation
@@ -79,6 +147,16 @@ public class AIChatPanel : MonoBehaviour
     private const float MIN_HEIGHT = 360f;
     private const float HEADER_HEIGHT = 40f;
     private const float FOOTER_HEIGHT = 130f;
+    private const float FOOTER_DRAG_BAR_HEIGHT = 10f;
+    private const float MOVE_FRAME_THICKNESS = 18f;
+    private const float RESIZE_EDGE_THICKNESS = 10f;
+    private const float RESIZE_CORNER_SIZE = 16f;
+    private const int AI_CHAT_NO_EXPLICIT_OUTPUT_TOKEN_CAP = 0;
+    private const int AI_CHAT_GEMINI_MAX_OUTPUT_TOKENS = 65536;
+    private const int AI_CHAT_LEGACY_MAX_OUTPUT_TOKENS = 8192;
+    private const int AI_CHAT_ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS = 64000;
+    private const int AI_CHAT_ANTHROPIC_OPUS_47_MAX_OUTPUT_TOKENS = 128000;
+    private const float SCROLL_BOTTOM_PIXEL_EPSILON = 12f;
     private const float BaseFontSize = 14f;
     private const float BaseLabelFontSize = 12f;
 
@@ -108,6 +186,11 @@ public class AIChatPanel : MonoBehaviour
         {
             _panelRoot.SetActive(true);
             _instance.RefreshHeaderTitle();
+            // Reload aichat config in case the user edited a skill or main_prompt.txt
+            // outside the app between toggles. Cheap.
+            _instance._skillManager?.Reload();
+            _instance.UpdateStatusPill();
+            _instance.ClampPanelToScreen();
             _instance.FocusInputDeferred();
             return;
         }
@@ -186,8 +269,21 @@ public class AIChatPanel : MonoBehaviour
         CreateFooter();
         CreateResizeGrip();
 
+        // Skills system. Loads aichat/main_prompt.txt and aichat/skills/*.md, wires up
+        // the parser->executor pipeline. Parser fires per parsed tag; executor reaches
+        // back into the panel via the IChatHost interface to spawn pics, inject system
+        // messages, etc.
+        _skillManager = new SkillManager();
+        _skillManager.Reload();
+        _contextBuilder = new ChatContextBuilder(_skillManager);
+        _actionParser = new SkillActionParser();
+        _actionExecutor = new SkillActionExecutor(_skillManager, this);
+        _actionParser.OnActionParsed += OnSkillActionParsed;
+
         RefreshHeaderTitle();
-        AddSystemMessage("New chat. Conversation history is kept until you click Clear or close the app.");
+        UpdateStatusPill();
+        int loadedSkills = _skillManager.GetSkills().Count;
+        AddSystemMessage($"New chat. {loadedSkills} skill{(loadedSkills == 1 ? "" : "s")} loaded from aichat/skills/. Conversation history is kept until you click Clear or close the app.");
 
         FocusInputDeferred();
     }
@@ -216,8 +312,10 @@ public class AIChatPanel : MonoBehaviour
         var titleRt = titleObj.AddComponent<RectTransform>();
         titleRt.anchorMin = new Vector2(0, 0);
         titleRt.anchorMax = new Vector2(1, 1);
+        // Leave space on right for: status pill (~140), Settings button (~80),
+        // Close button (~30) + a couple of 6px gaps. ~270 total.
         titleRt.offsetMin = new Vector2(12, 0);
-        titleRt.offsetMax = new Vector2(-36, 0);
+        titleRt.offsetMax = new Vector2(-270, 0);
 
         _titleText = titleObj.AddComponent<TextMeshProUGUI>();
         _titleText.text = "AI Chat";
@@ -226,6 +324,70 @@ public class AIChatPanel : MonoBehaviour
         _titleText.fontStyle = FontStyles.Bold;
         _titleText.color = TextTitle;
         _titleText.alignment = TextAlignmentOptions.MidlineLeft;
+        _titleText.overflowMode = TextOverflowModes.Ellipsis;
+
+        // Status pill: shows "GPUs: 1/2 busy   LLMs: 3" so the user can see at a glance
+        // what the LLM is "told" about the rest of the system. Refreshed every 1.5s in
+        // Update() while the panel is visible.
+        var pillObj = new GameObject("StatusPill");
+        pillObj.transform.SetParent(header.transform, false);
+        var pillRt = pillObj.AddComponent<RectTransform>();
+        pillRt.anchorMin = new Vector2(1, 0.5f);
+        pillRt.anchorMax = new Vector2(1, 0.5f);
+        pillRt.pivot = new Vector2(1, 0.5f);
+        pillRt.sizeDelta = new Vector2(150, 22);
+        // Sits to the LEFT of the Settings button (which is at -114) and the close
+        // button (at -6, 30 wide). Gap of 6px from Settings.
+        pillRt.anchoredPosition = new Vector2(-200, 0);
+        var pillBg = pillObj.AddComponent<Image>();
+        pillBg.color = new Color(0.92f, 0.92f, 0.95f, 1f);
+
+        var pillTxtObj = new GameObject("Text");
+        pillTxtObj.transform.SetParent(pillObj.transform, false);
+        var pillTxtRt = pillTxtObj.AddComponent<RectTransform>();
+        pillTxtRt.anchorMin = Vector2.zero;
+        pillTxtRt.anchorMax = Vector2.one;
+        pillTxtRt.offsetMin = new Vector2(6, 0);
+        pillTxtRt.offsetMax = new Vector2(-6, 0);
+        _statusPillText = pillTxtObj.AddComponent<TextMeshProUGUI>();
+        _statusPillText.text = "GPUs: ?  LLMs: ?";
+        _statusPillText.font = _font;
+        _statusPillText.fontSize = 12;
+        _statusPillText.color = new Color(0.18f, 0.18f, 0.22f, 1f);
+        _statusPillText.alignment = TextAlignmentOptions.Center;
+        _statusPillText.raycastTarget = false;
+
+        // Settings button - opens AIChatSettingsPanel for editing main_prompt.txt and
+        // browsing loaded skills.
+        var settingsBtnObj = new GameObject("Settings");
+        settingsBtnObj.transform.SetParent(header.transform, false);
+        var settingsRt = settingsBtnObj.AddComponent<RectTransform>();
+        settingsRt.anchorMin = new Vector2(1, 0.5f);
+        settingsRt.anchorMax = new Vector2(1, 0.5f);
+        settingsRt.pivot = new Vector2(1, 0.5f);
+        settingsRt.sizeDelta = new Vector2(80, 24);
+        settingsRt.anchoredPosition = new Vector2(-44, 0);
+        var settingsImg = settingsBtnObj.AddComponent<Image>();
+        settingsImg.color = Color.white;
+        var settingsBtn = settingsBtnObj.AddComponent<Button>();
+        settingsBtn.targetGraphic = settingsImg;
+        settingsBtn.onClick.AddListener(OnSettingsClicked);
+
+        var settingsTxtObj = new GameObject("Text");
+        settingsTxtObj.transform.SetParent(settingsBtnObj.transform, false);
+        var settingsTxtRt = settingsTxtObj.AddComponent<RectTransform>();
+        settingsTxtRt.anchorMin = Vector2.zero;
+        settingsTxtRt.anchorMax = Vector2.one;
+        settingsTxtRt.offsetMin = Vector2.zero;
+        settingsTxtRt.offsetMax = Vector2.zero;
+        var settingsTxt = settingsTxtObj.AddComponent<TextMeshProUGUI>();
+        settingsTxt.text = "Settings";
+        settingsTxt.font = _font;
+        settingsTxt.fontSize = 13;
+        settingsTxt.fontStyle = FontStyles.Bold;
+        settingsTxt.color = TextTitle;
+        settingsTxt.alignment = TextAlignmentOptions.Center;
+        settingsTxt.raycastTarget = false;
 
         // Close button
         var close = new GameObject("Close");
@@ -258,32 +420,178 @@ public class AIChatPanel : MonoBehaviour
         xTxt.alignment = TextAlignmentOptions.Center;
     }
 
+    /// <summary>
+    /// Builds the body region split into [MediaPanel | Splitter | ChatPanel]. The
+    /// media panel hosts image/movie bubbles (newest at the bottom); the chat panel
+    /// hosts text bubbles only. The splitter is draggable; its X position is in
+    /// absolute pixels from the body's left edge so the chat side absorbs growth
+    /// when the user enlarges the whole panel.
+    /// </summary>
     private void CreateChatArea()
     {
-        var scrollGo = new GameObject("ChatScrollView");
-        scrollGo.transform.SetParent(_mainPanel, false);
-        var scrollRt = scrollGo.AddComponent<RectTransform>();
-        scrollRt.anchorMin = new Vector2(0, 0);
-        scrollRt.anchorMax = new Vector2(1, 1);
-        scrollRt.offsetMin = new Vector2(0, FOOTER_HEIGHT);
-        scrollRt.offsetMax = new Vector2(0, -HEADER_HEIGHT);
-        _chatScrollRT = scrollRt;
+        // Outer body container - everything between header and footer lives here.
+        var bodyGo = new GameObject("Body");
+        bodyGo.transform.SetParent(_mainPanel, false);
+        _bodyRT = bodyGo.AddComponent<RectTransform>();
+        _bodyRT.anchorMin = new Vector2(0, 0);
+        _bodyRT.anchorMax = new Vector2(1, 1);
+        _bodyRT.offsetMin = new Vector2(0, FOOTER_HEIGHT);
+        _bodyRT.offsetMax = new Vector2(0, -HEADER_HEIGHT);
 
-        // Use our Ctrl-aware ScrollRect so that holding Ctrl while scrolling does NOT
-        // scroll the chat (it's reserved for font resize, handled in Update()).
-        _chatScroll = scrollGo.AddComponent<ChatScrollRectCtrlAware>();
-        _chatScroll.horizontal = false;
-        _chatScroll.vertical = true;
-        _chatScroll.scrollSensitivity = 30f;
-        _chatScroll.movementType = ScrollRect.MovementType.Clamped;
+        // Media panel (left): mini-header with title + Clear button, plus a vertical
+        // scroll view that holds image/movie bubbles in spawn order.
+        var mediaGo = new GameObject("MediaPanel");
+        mediaGo.transform.SetParent(bodyGo.transform, false);
+        _mediaPanelRT = mediaGo.AddComponent<RectTransform>();
+        _mediaPanelRT.anchorMin = new Vector2(0, 0);
+        _mediaPanelRT.anchorMax = new Vector2(0, 1);
+        _mediaPanelRT.pivot = new Vector2(0, 0.5f);
+        _mediaPanelRT.anchoredPosition = Vector2.zero;
+        _mediaPanelRT.sizeDelta = new Vector2(_splitX, 0);
+        mediaGo.AddComponent<Image>().color = new Color(0.78f, 0.78f, 0.80f, 1f);
+
+        CreateMediaHeader(mediaGo.transform);
+
+        // Media scroll view fills the rest of the media panel below the header.
+        var mediaScrollHost = new GameObject("MediaScroll");
+        mediaScrollHost.transform.SetParent(mediaGo.transform, false);
+        var mediaScrollHostRT = mediaScrollHost.AddComponent<RectTransform>();
+        mediaScrollHostRT.anchorMin = new Vector2(0, 0);
+        mediaScrollHostRT.anchorMax = new Vector2(1, 1);
+        mediaScrollHostRT.offsetMin = Vector2.zero;
+        mediaScrollHostRT.offsetMax = new Vector2(0, -MEDIA_HEADER_HEIGHT);
+        BuildScrollView(mediaScrollHost, out _mediaScroll, out _mediaContent);
+
+        // Chat panel (right): text bubbles only.
+        var chatGo = new GameObject("ChatPanel");
+        chatGo.transform.SetParent(bodyGo.transform, false);
+        _chatPanelRT = chatGo.AddComponent<RectTransform>();
+        _chatPanelRT.anchorMin = new Vector2(0, 0);
+        _chatPanelRT.anchorMax = new Vector2(1, 1);
+        _chatPanelRT.offsetMin = new Vector2(_splitX + SPLITTER_WIDTH, 0);
+        _chatPanelRT.offsetMax = Vector2.zero;
+        BuildScrollView(chatGo, out _chatScroll, out _chatContent);
+
+        // Splitter (drawn LAST so it renders on top of the panels at the seam).
+        var splitterGo = new GameObject("Splitter");
+        splitterGo.transform.SetParent(bodyGo.transform, false);
+        _splitterRT = splitterGo.AddComponent<RectTransform>();
+        _splitterRT.anchorMin = new Vector2(0, 0);
+        _splitterRT.anchorMax = new Vector2(0, 1);
+        _splitterRT.pivot = new Vector2(0, 0.5f);
+        _splitterRT.sizeDelta = new Vector2(SPLITTER_WIDTH, 0);
+        _splitterRT.anchoredPosition = new Vector2(_splitX, 0);
+        splitterGo.AddComponent<Image>().color = new Color(0.50f, 0.50f, 0.55f, 1f);
+        var splitter = splitterGo.AddComponent<ChatSplitterHandle>();
+        splitter.SetTarget(this, _bodyRT);
+    }
+
+    /// <summary>
+    /// Updates _splitX (clamped) and re-positions media panel, chat panel, and
+    /// splitter accordingly. Called both at startup and from ChatSplitterHandle.OnDrag.
+    /// </summary>
+    public void ApplySplit(float newSplitX)
+    {
+        if (_bodyRT == null) return;
+        float bodyWidth = _bodyRT.rect.width;
+        float maxSplit = Mathf.Max(MIN_MEDIA_WIDTH, bodyWidth - MIN_CHAT_WIDTH - SPLITTER_WIDTH);
+        _splitX = Mathf.Clamp(newSplitX, MIN_MEDIA_WIDTH, maxSplit);
+
+        if (_mediaPanelRT != null)
+            _mediaPanelRT.sizeDelta = new Vector2(_splitX, _mediaPanelRT.sizeDelta.y);
+        if (_splitterRT != null)
+            _splitterRT.anchoredPosition = new Vector2(_splitX, 0);
+        if (_chatPanelRT != null)
+            _chatPanelRT.offsetMin = new Vector2(_splitX + SPLITTER_WIDTH, _chatPanelRT.offsetMin.y);
+    }
+
+    /// <summary>
+    /// Mini-header strip across the top of the media panel: just a title and a
+    /// "Clear" button (which trims to keep-last-N media bubbles).
+    /// </summary>
+    private void CreateMediaHeader(Transform mediaParent)
+    {
+        var header = new GameObject("MediaHeader");
+        header.transform.SetParent(mediaParent, false);
+        var rt = header.AddComponent<RectTransform>();
+        rt.anchorMin = new Vector2(0, 1);
+        rt.anchorMax = new Vector2(1, 1);
+        rt.pivot = new Vector2(0.5f, 1);
+        rt.sizeDelta = new Vector2(0, MEDIA_HEADER_HEIGHT);
+        rt.anchoredPosition = Vector2.zero;
+        header.AddComponent<Image>().color = new Color(0.72f, 0.72f, 0.76f, 1f);
+
+        var titleGo = new GameObject("Title");
+        titleGo.transform.SetParent(header.transform, false);
+        var titleRt = titleGo.AddComponent<RectTransform>();
+        titleRt.anchorMin = new Vector2(0, 0);
+        titleRt.anchorMax = new Vector2(1, 1);
+        titleRt.offsetMin = new Vector2(8, 0);
+        titleRt.offsetMax = new Vector2(-66, 0); // leave room for Clear button
+        _mediaHeaderText = titleGo.AddComponent<TextMeshProUGUI>();
+        _mediaHeaderText.text = "Media (0)";
+        _mediaHeaderText.font = _font;
+        _mediaHeaderText.fontSize = 12;
+        _mediaHeaderText.fontStyle = FontStyles.Bold;
+        _mediaHeaderText.color = TextTitle;
+        _mediaHeaderText.alignment = TextAlignmentOptions.MidlineLeft;
+        _mediaHeaderText.raycastTarget = false;
+
+        var clearBtnGo = new GameObject("ClearBtn");
+        clearBtnGo.transform.SetParent(header.transform, false);
+        var clearRt = clearBtnGo.AddComponent<RectTransform>();
+        clearRt.anchorMin = new Vector2(1, 0.5f);
+        clearRt.anchorMax = new Vector2(1, 0.5f);
+        clearRt.pivot = new Vector2(1, 0.5f);
+        clearRt.sizeDelta = new Vector2(56, 20);
+        clearRt.anchoredPosition = new Vector2(-4, 0);
+        var clearImg = clearBtnGo.AddComponent<Image>();
+        clearImg.color = Color.white;
+        var clearBtn = clearBtnGo.AddComponent<Button>();
+        clearBtn.targetGraphic = clearImg;
+        clearBtn.onClick.AddListener(OnClearMediaClicked);
+
+        var clearTxtGo = new GameObject("Text");
+        clearTxtGo.transform.SetParent(clearBtnGo.transform, false);
+        var clearTxtRt = clearTxtGo.AddComponent<RectTransform>();
+        clearTxtRt.anchorMin = Vector2.zero;
+        clearTxtRt.anchorMax = Vector2.one;
+        clearTxtRt.offsetMin = Vector2.zero;
+        clearTxtRt.offsetMax = Vector2.zero;
+        var clearTxt = clearTxtGo.AddComponent<TextMeshProUGUI>();
+        clearTxt.text = "Clear";
+        clearTxt.font = _font;
+        clearTxt.fontSize = 11;
+        clearTxt.fontStyle = FontStyles.Bold;
+        clearTxt.color = TextTitle;
+        clearTxt.alignment = TextAlignmentOptions.Center;
+        clearTxt.raycastTarget = false;
+    }
+
+    /// <summary>
+    /// Build the standard chat-style ScrollRect (vertical, with a scrollbar on the
+    /// right) into <paramref name="hostGo"/>. Returns the ScrollRect plus the Content
+    /// RectTransform with a VerticalLayoutGroup + ContentSizeFitter already wired up.
+    /// Used for both the media panel and the text chat panel.
+    /// </summary>
+    private void BuildScrollView(GameObject hostGo, out ScrollRect scrollOut, out RectTransform contentOut)
+    {
+        // The ScrollRect lives directly on hostGo so the scrollbar can be a sibling
+        // viewport element. We use ChatScrollRectCtrlAware so Ctrl+wheel doesn't
+        // scroll (it's reserved for the font-resize gesture in Update()).
+        var scroll = hostGo.AddComponent<ChatScrollRectCtrlAware>();
+        scroll.horizontal = false;
+        scroll.vertical = true;
+        scroll.scrollSensitivity = 30f;
+        scroll.movementType = ScrollRect.MovementType.Clamped;
 
         var viewport = new GameObject("Viewport");
-        viewport.transform.SetParent(scrollGo.transform, false);
+        viewport.transform.SetParent(hostGo.transform, false);
         var vpRt = viewport.AddComponent<RectTransform>();
         vpRt.anchorMin = Vector2.zero;
         vpRt.anchorMax = Vector2.one;
         vpRt.offsetMin = Vector2.zero;
-        vpRt.offsetMax = new Vector2(-22, 0);
+        vpRt.offsetMax = new Vector2(-18, 0); // leave 18px on the right for the scrollbar
         var vpImg = viewport.AddComponent<Image>();
         vpImg.color = PanelBg;
         var mask = viewport.AddComponent<Mask>();
@@ -291,12 +599,12 @@ public class AIChatPanel : MonoBehaviour
 
         var content = new GameObject("Content");
         content.transform.SetParent(viewport.transform, false);
-        _chatContent = content.AddComponent<RectTransform>();
-        _chatContent.anchorMin = new Vector2(0, 1);
-        _chatContent.anchorMax = new Vector2(1, 1);
-        _chatContent.pivot = new Vector2(0.5f, 1);
-        _chatContent.anchoredPosition = Vector2.zero;
-        _chatContent.sizeDelta = Vector2.zero;
+        var contentRT = content.AddComponent<RectTransform>();
+        contentRT.anchorMin = new Vector2(0, 1);
+        contentRT.anchorMax = new Vector2(1, 1);
+        contentRT.pivot = new Vector2(0.5f, 1);
+        contentRT.anchoredPosition = Vector2.zero;
+        contentRT.sizeDelta = Vector2.zero;
 
         var vlg = content.AddComponent<VerticalLayoutGroup>();
         vlg.padding = new RectOffset(8, 8, 8, 8);
@@ -309,17 +617,17 @@ public class AIChatPanel : MonoBehaviour
         var csf = content.AddComponent<ContentSizeFitter>();
         csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
-        _chatScroll.viewport = vpRt;
-        _chatScroll.content = _chatContent;
+        scroll.viewport = vpRt;
+        scroll.content = contentRT;
 
-        // Scrollbar
+        // Scrollbar - matches the dark style of the original chat scrollbar.
         var sbGo = new GameObject("Scrollbar");
-        sbGo.transform.SetParent(scrollGo.transform, false);
+        sbGo.transform.SetParent(hostGo.transform, false);
         var sbRt = sbGo.AddComponent<RectTransform>();
         sbRt.anchorMin = new Vector2(1, 0);
         sbRt.anchorMax = new Vector2(1, 1);
         sbRt.pivot = new Vector2(1, 0.5f);
-        sbRt.sizeDelta = new Vector2(18, 0);
+        sbRt.sizeDelta = new Vector2(14, 0);
         sbRt.anchoredPosition = Vector2.zero;
         sbGo.AddComponent<Image>().color = new Color(0.22f, 0.22f, 0.24f, 1f);
 
@@ -338,7 +646,10 @@ public class AIChatPanel : MonoBehaviour
 
         scrollbar.handleRect = handleRt;
         scrollbar.targetGraphic = handleImg;
-        _chatScroll.verticalScrollbar = scrollbar;
+        scroll.verticalScrollbar = scrollbar;
+
+        scrollOut = scroll;
+        contentOut = contentRT;
     }
 
     private void CreateFooter()
@@ -402,6 +713,7 @@ public class AIChatPanel : MonoBehaviour
         ApplyFatCaret(_inputField);
         var caretFixer = _inputField.gameObject.AddComponent<AIChatCaretFixer>();
         caretFixer.Set(_inputField);
+        _inputUndo = _inputField.gameObject.AddComponent<TMPInputFieldUndo>();
 
         // Note: Enter / Shift+Enter handling is in Update() below. Using onValidateInput
         // is unreliable because Input.GetKey(Shift) can return false from inside that
@@ -446,6 +758,25 @@ public class AIChatPanel : MonoBehaviour
             font: _font,
             stripHeight: ATTACHMENT_STRIP_HEIGHT);
         _attachmentZone.OnAttachmentsChanged += OnAttachmentsChanged;
+
+        CreateFooterDragBar(footer.transform);
+    }
+
+    private void CreateFooterDragBar(Transform footerTransform)
+    {
+        var bar = new GameObject("FooterDragBar");
+        bar.transform.SetParent(footerTransform, false);
+        var rt = bar.AddComponent<RectTransform>();
+        rt.anchorMin = new Vector2(0f, 1f);
+        rt.anchorMax = new Vector2(1f, 1f);
+        rt.pivot = new Vector2(0.5f, 1f);
+        rt.sizeDelta = new Vector2(0f, FOOTER_DRAG_BAR_HEIGHT);
+        rt.anchoredPosition = Vector2.zero;
+
+        var img = bar.AddComponent<Image>();
+        img.color = new Color(0.62f, 0.62f, 0.66f, 1f);
+
+        bar.AddComponent<PanelDragHandler>().SetTarget(_mainPanel, HEADER_HEIGHT);
     }
 
     private Button CreateFooterButton(Transform parent, string text, Vector2 anchoredPos, Vector2 size, UnityEngine.Events.UnityAction onClick)
@@ -534,10 +865,10 @@ public class AIChatPanel : MonoBehaviour
         if (_footerRT != null)
             _footerRT.sizeDelta = new Vector2(_footerRT.sizeDelta.x, FOOTER_HEIGHT + extraFooterHeight);
 
-        // 2) Push the chat scroll area's bottom edge up by the same amount so it doesn't
-        //    overlap the now-taller footer.
-        if (_chatScrollRT != null)
-            _chatScrollRT.offsetMin = new Vector2(_chatScrollRT.offsetMin.x, FOOTER_HEIGHT + extraFooterHeight);
+        // 2) Push the body's bottom edge up by the same amount so neither the media
+        //    panel nor the chat panel overlaps the now-taller footer.
+        if (_bodyRT != null)
+            _bodyRT.offsetMin = new Vector2(_bodyRT.offsetMin.x, FOOTER_HEIGHT + extraFooterHeight);
 
         // 3) Input field's top reserves room for the strip + the existing 32 px status row.
         if (_inputFieldRT != null)
@@ -546,13 +877,48 @@ public class AIChatPanel : MonoBehaviour
 
     private void CreateResizeGrip()
     {
+        CreateMoveFrameHandles();
+
+        CreateResizeEdgeHandle(
+            "ResizeTop",
+            new Vector2(0f, 1f),
+            new Vector2(1f, 1f),
+            new Vector2(0.5f, 1f),
+            new Vector2(-RESIZE_CORNER_SIZE * 2f, RESIZE_EDGE_THICKNESS),
+            Vector2.zero,
+            new Vector2(0f, 1f));
+        CreateResizeEdgeHandle(
+            "ResizeBottom",
+            new Vector2(0f, 0f),
+            new Vector2(1f, 0f),
+            new Vector2(0.5f, 0f),
+            new Vector2(-RESIZE_CORNER_SIZE * 2f, RESIZE_EDGE_THICKNESS),
+            Vector2.zero,
+            new Vector2(0f, -1f));
+        CreateResizeEdgeHandle(
+            "ResizeLeft",
+            new Vector2(0f, 0f),
+            new Vector2(0f, 1f),
+            new Vector2(0f, 0.5f),
+            new Vector2(RESIZE_EDGE_THICKNESS, -RESIZE_CORNER_SIZE * 2f),
+            Vector2.zero,
+            new Vector2(-1f, 0f));
+        CreateResizeEdgeHandle(
+            "ResizeRight",
+            new Vector2(1f, 0f),
+            new Vector2(1f, 1f),
+            new Vector2(1f, 0.5f),
+            new Vector2(RESIZE_EDGE_THICKNESS, -RESIZE_CORNER_SIZE * 2f),
+            Vector2.zero,
+            new Vector2(1f, 0f));
+
         var grip = new GameObject("ResizeGrip");
         grip.transform.SetParent(_mainPanel, false);
         var rt = grip.AddComponent<RectTransform>();
         rt.anchorMin = new Vector2(1, 0);
         rt.anchorMax = new Vector2(1, 0);
         rt.pivot = new Vector2(1, 0);
-        rt.sizeDelta = new Vector2(16, 16);
+        rt.sizeDelta = new Vector2(RESIZE_CORNER_SIZE, RESIZE_CORNER_SIZE);
         rt.anchoredPosition = Vector2.zero;
 
         var img = grip.AddComponent<Image>();
@@ -575,7 +941,86 @@ public class AIChatPanel : MonoBehaviour
         hintTxt.raycastTarget = false;
 
         var resize = grip.AddComponent<PanelResizeHandle>();
-        resize.SetTarget(_mainPanel, new Vector2(MIN_WIDTH, MIN_HEIGHT));
+        resize.SetTarget(_mainPanel, new Vector2(MIN_WIDTH, MIN_HEIGHT), new Vector2(1f, -1f), OnPanelResized);
+    }
+
+    private void CreateResizeEdgeHandle(string name, Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot, Vector2 sizeDelta, Vector2 anchoredPosition, Vector2 resizeDirection)
+    {
+        var edge = new GameObject(name);
+        edge.transform.SetParent(_mainPanel, false);
+        var rt = edge.AddComponent<RectTransform>();
+        rt.anchorMin = anchorMin;
+        rt.anchorMax = anchorMax;
+        rt.pivot = pivot;
+        rt.sizeDelta = sizeDelta;
+        rt.anchoredPosition = anchoredPosition;
+
+        var img = edge.AddComponent<Image>();
+        img.color = new Color(0f, 0f, 0f, 0.001f);
+
+        var resize = edge.AddComponent<PanelResizeHandle>();
+        resize.SetTarget(_mainPanel, new Vector2(MIN_WIDTH, MIN_HEIGHT), resizeDirection, OnPanelResized);
+    }
+
+    private void CreateMoveFrameHandles()
+    {
+        CreateMoveFrameHandle(
+            "MoveFrameLeft",
+            new Vector2(0f, 0f),
+            new Vector2(0f, 1f),
+            new Vector2(1f, 0.5f),
+            new Vector2(MOVE_FRAME_THICKNESS, 0f),
+            Vector2.zero);
+        CreateMoveFrameHandle(
+            "MoveFrameRight",
+            new Vector2(1f, 0f),
+            new Vector2(1f, 1f),
+            new Vector2(0f, 0.5f),
+            new Vector2(MOVE_FRAME_THICKNESS, 0f),
+            Vector2.zero);
+        CreateMoveFrameHandle(
+            "MoveFrameBottom",
+            new Vector2(0f, 0f),
+            new Vector2(1f, 0f),
+            new Vector2(0.5f, 1f),
+            new Vector2(0f, MOVE_FRAME_THICKNESS),
+            Vector2.zero);
+        CreateMoveFrameHandle(
+            "MoveFrameTop",
+            new Vector2(0f, 1f),
+            new Vector2(1f, 1f),
+            new Vector2(0.5f, 0f),
+            new Vector2(0f, MOVE_FRAME_THICKNESS),
+            Vector2.zero);
+    }
+
+    private void CreateMoveFrameHandle(string name, Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot, Vector2 sizeDelta, Vector2 anchoredPosition)
+    {
+        var frame = new GameObject(name);
+        frame.transform.SetParent(_mainPanel, false);
+        var rt = frame.AddComponent<RectTransform>();
+        rt.anchorMin = anchorMin;
+        rt.anchorMax = anchorMax;
+        rt.pivot = pivot;
+        rt.sizeDelta = sizeDelta;
+        rt.anchoredPosition = anchoredPosition;
+
+        var img = frame.AddComponent<Image>();
+        img.color = new Color(0.35f, 0.35f, 0.40f, 0.35f);
+
+        frame.AddComponent<PanelDragHandler>().SetTarget(_mainPanel, HEADER_HEIGHT);
+    }
+
+    private void OnPanelResized()
+    {
+        ClampPanelToScreen();
+        ApplySplit(_splitX);
+    }
+
+    private void ClampPanelToScreen()
+    {
+        if (_mainPanel != null)
+            _mainPanel.anchoredPosition = PanelDragHandler.ClampAnchoredPosition(_mainPanel, _mainPanel.anchoredPosition, HEADER_HEIGHT);
     }
 
     // ---------- Chat bubble construction ----------
@@ -588,6 +1033,8 @@ public class AIChatPanel : MonoBehaviour
     /// </summary>
     private TMP_InputField AppendBubble(string roleLabel, Color labelColor, string rawMessageText, Color bubbleBg, GTPChatLine linkedInteraction = null)
     {
+        bool shouldAutoScroll = IsScrollAtBottom(_chatScroll);
+
         // ---- Bubble: VerticalLayoutGroup + ContentSizeFitter so the bubble auto-grows
         // to fit its label + input field children, plus padding.
         var bubble = new GameObject("Bubble_" + roleLabel);
@@ -676,7 +1123,8 @@ public class AIChatPanel : MonoBehaviour
         // Re-measure on every text change (covers streaming, user typing, and re-format).
         input.onValueChanged.AddListener(_ => StartCoroutine(ResizeBubbleDeferred(input, inputLE)));
         StartCoroutine(ResizeBubbleDeferred(input, inputLE));
-        StartCoroutine(ScrollToBottomDeferred());
+        if (shouldAutoScroll)
+            StartCoroutine(ScrollToBottomDeferred());
         return input;
     }
 
@@ -767,11 +1215,45 @@ public class AIChatPanel : MonoBehaviour
 
     private IEnumerator ScrollToBottomDeferred()
     {
-        // Layout updates one frame after we add the bubble; wait then scroll.
+        yield return ScrollToBottomDeferred(_chatScroll);
+    }
+
+    private IEnumerator ScrollMediaToBottomDeferred()
+    {
+        yield return ScrollToBottomDeferred(_mediaScroll);
+    }
+
+    private IEnumerator ScrollToBottomDeferred(ScrollRect scroll)
+    {
+        // Layout updates one or two frames after we add/resize content; follow after
+        // both passes so the pane stays pinned only when auto-scroll was requested.
         yield return null;
         Canvas.ForceUpdateCanvases();
-        if (_chatScroll != null)
-            _chatScroll.verticalNormalizedPosition = 0f;
+        if (scroll != null)
+            scroll.verticalNormalizedPosition = 0f;
+
+        yield return null;
+        Canvas.ForceUpdateCanvases();
+        if (scroll != null)
+            scroll.verticalNormalizedPosition = 0f;
+    }
+
+    public static bool IsScrollAtBottom(ScrollRect scroll)
+    {
+        if (scroll == null || scroll.content == null || scroll.viewport == null)
+            return true;
+
+        float contentHeight = scroll.content.rect.height;
+        float viewportHeight = scroll.viewport.rect.height;
+        if (contentHeight <= viewportHeight + 1f)
+            return true;
+
+        // Pixel-based threshold (the normalized position is fraction-of-scroll-range, which
+        // gets unhelpfully generous on long chats — 5% of a tall conversation is hundreds of
+        // pixels). Must be within SCROLL_BOTTOM_PIXEL_EPSILON of the actual bottom.
+        float scrollableRange = contentHeight - viewportHeight;
+        float pixelsFromBottom = Mathf.Clamp01(scroll.verticalNormalizedPosition) * scrollableRange;
+        return pixelsFromBottom <= SCROLL_BOTTOM_PIXEL_EPSILON;
     }
 
     // ---------- Markdown -> TMP rich text (same approach as AdventureText) ----------
@@ -812,18 +1294,28 @@ public class AIChatPanel : MonoBehaviour
         // better with a short prompt, but "describe this image" is a valid bare-image use).
         var attachmentBytes = _attachmentZone != null ? _attachmentZone.GetAttachmentBytes() : null;
         int attachedCount = attachmentBytes?.Count ?? 0;
-        if (string.IsNullOrWhiteSpace(text) && attachedCount == 0) return;
-        if (string.IsNullOrWhiteSpace(text) && attachedCount > 0)
-            text = "(no caption)";
+        if (string.IsNullOrWhiteSpace(text))
+            text = attachedCount > 0 ? "(no caption)" : "(continue)";
+
+        // Reset the per-turn chain target so a chain="true" action in this reply can
+        // never accidentally stack onto a Pic spawned in some earlier turn. Both the
+        // most-recent ref AND the LIFO stack need clearing.
+        _lastSpawnedPicThisTurn = null;
+        _unchainedPicsThisTurn.Clear();
 
         // Stage attached images so GPTPromptManager auto-attaches them to the user line
         // we're about to add. AddInteraction consumes the pending list internally.
+        // ALSO snapshot the bytes into _lastTurnAttachments so a SkillActionExecutor
+        // invoked mid-stream can resolve attachment="N" by index even after the strip
+        // has been cleared.
+        _lastTurnAttachments.Clear();
         if (attachedCount > 0)
         {
             foreach (var bytes in attachmentBytes)
             {
                 if (bytes == null) continue;
                 _promptManager.AddPendingImage(System.Convert.ToBase64String(bytes));
+                _lastTurnAttachments.Add(bytes);
             }
             AddSystemMessage($"Attached {attachedCount} image{(attachedCount == 1 ? "" : "s")} to the next message.");
         }
@@ -840,6 +1332,7 @@ public class AIChatPanel : MonoBehaviour
             _attachmentZone?.ClearAttachments();
 
         _inputField.text = "";
+        _inputUndo?.ResetHistory();
         FocusInputDeferred();
 
         SendChatTurn();
@@ -862,10 +1355,23 @@ public class AIChatPanel : MonoBehaviour
 
         _promptManager.Reset();
         _attachmentZone?.ClearAttachments();
+        _lastTurnAttachments?.Clear();
+        _chatImagePics?.Clear();
+        _actionParser?.Reset();
         for (int i = _chatContent.childCount - 1; i >= 0; i--)
         {
             Destroy(_chatContent.GetChild(i).gameObject);
         }
+        // Footer "Clear" wipes everything (chat + ALL media), in contrast to the
+        // media panel's "Clear" button which only trims to keep-N.
+        if (_mediaContent != null)
+        {
+            for (int i = _mediaContent.childCount - 1; i >= 0; i--)
+            {
+                Destroy(_mediaContent.GetChild(i).gameObject);
+            }
+        }
+        UpdateMediaHeader();
         AddSystemMessage("Conversation cleared.");
     }
 
@@ -905,6 +1411,59 @@ public class AIChatPanel : MonoBehaviour
         if (_geminiMgr != null && _geminiMgr.IsRequestActive()) _geminiMgr.CancelCurrentRequest();
     }
 
+    private static int GetAnthropicMaxOutputTokens(string model)
+    {
+        string m = (model ?? "").ToLowerInvariant();
+        if (m.Contains("opus-4-7"))
+            return AI_CHAT_ANTHROPIC_OPUS_47_MAX_OUTPUT_TOKENS;
+        if (m.Contains("claude-4") || m.Contains("opus-4") || m.Contains("sonnet-4") || m.Contains("haiku-4"))
+            return AI_CHAT_ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS;
+        return AI_CHAT_LEGACY_MAX_OUTPUT_TOKENS;
+    }
+
+    private static int GetGeminiMaxOutputTokens(string model)
+    {
+        string m = (model ?? "").ToLowerInvariant();
+        if (m.Contains("gemini-3") || m.Contains("gemini-2.5"))
+            return AI_CHAT_GEMINI_MAX_OUTPUT_TOKENS;
+        return AI_CHAT_LEGACY_MAX_OUTPUT_TOKENS;
+    }
+
+    private static List<LLMParm> GetAIChatLLMParms(LLMSettingsManager settingsMgr, LLMInstanceInfo llmInstance, int llmInstanceID, LLMProvider provider, LLMProviderSettings activeSettings)
+    {
+        List<LLMParm> source = llmInstance != null
+            ? settingsMgr.GetInstanceLLMParms(llmInstanceID)
+            : settingsMgr.GetLLMParms(provider);
+        var result = new List<LLMParm>();
+        if (source != null)
+        {
+            foreach (var parm in source)
+            {
+                if (parm == null) continue;
+                result.Add(new LLMParm { _key = parm._key, _value = parm._value });
+            }
+        }
+
+        // AI Chat is a long-form interface; for Ollama, request the model's discovered
+        // context length instead of falling back to Ollama's often-smaller server default.
+        if (provider == LLMProvider.Ollama && activeSettings != null && activeSettings.maxContextLength > 0)
+        {
+            bool hasNumCtx = false;
+            foreach (var parm in result)
+            {
+                if (string.Equals(parm._key, "num_ctx", StringComparison.OrdinalIgnoreCase))
+                {
+                    hasNumCtx = true;
+                    break;
+                }
+            }
+            if (!hasNumCtx)
+                result.Add(new LLMParm { _key = "num_ctx", _value = activeSettings.maxContextLength.ToString() });
+        }
+
+        return result;
+    }
+
     // ---------- LLM provider routing (mirrors PicMain.call_llm) ----------
 
     private void SendChatTurn()
@@ -920,6 +1479,9 @@ public class AIChatPanel : MonoBehaviour
         int llmReplicaIndex = 0;
         bool isVisionJob = _promptManager != null && _promptManager.HasAnyImages();
         int llmInstanceID = instanceMgr?.GetFreeLLM(isSmallJob: true, isVisionJob: isVisionJob, out llmReplicaIndex) ?? -1;
+
+        // Reset the streaming-action parser for this turn (counters + buffer state).
+        _actionParser?.Reset();
 
         if (llmInstanceID < 0 && instanceMgr != null && instanceMgr.GetInstanceCount() > 0)
         {
@@ -951,6 +1513,14 @@ public class AIChatPanel : MonoBehaviour
             AddSystemMessage("No LLM provider settings found. Configure one via LLM Settings.");
             ReleaseActiveLLM();
             return;
+        }
+
+        // Rebuild the dynamic system prompt every turn after final provider/model
+        // resolution so GPU/LLM/skill/chat-image state is fresh.
+        if (_contextBuilder != null && _promptManager != null)
+        {
+            int reachable = ((IChatHost)this).GetChatImageCount();
+            _promptManager.SetBaseSystemPrompt(_contextBuilder.Build(llmInstanceID, reachable));
         }
 
         _activeProviderInFlight = activeProvider;
@@ -1038,7 +1608,7 @@ public class AIChatPanel : MonoBehaviour
                         endpoint += "/v1/chat/completions";
                 }
 
-                string json = _openAIMgr.BuildChatCompleteJSON(lines, 4096, temperature, model, true,
+                string json = _openAIMgr.BuildChatCompleteJSON(lines, AI_CHAT_NO_EXPLICIT_OUTPUT_TOKEN_CAP, temperature, model, true,
                     useResponsesAPI, isReasoningModel, includeTemperature, reasoningEffort, openAIEnableThinking);
                 _openAIMgr.SpawnChatCompleteRequest(json, OnLLMCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
                 break;
@@ -1053,7 +1623,7 @@ public class AIChatPanel : MonoBehaviour
                 if (string.IsNullOrEmpty(model)) model = Config.Get().GetAnthropicAI_APIModel();
                 if (string.IsNullOrEmpty(endpoint)) endpoint = Config.Get().GetAnthropicAI_APIEndpoint();
 
-                string json = _anthropicMgr.BuildChatCompleteJSON(lines, 4096, temperature, model, true);
+                string json = _anthropicMgr.BuildChatCompleteJSON(lines, GetAnthropicMaxOutputTokens(model), temperature, model, true);
                 _anthropicMgr.SpawnChatCompletionRequest(json, OnLLMCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
                 break;
             }
@@ -1062,9 +1632,11 @@ public class AIChatPanel : MonoBehaviour
             {
                 string serverAddress = LLMInstanceManager.ApplyReplicaPortOffset(activeSettings.endpoint, llmReplicaIndex);
                 string apiKey = activeSettings.apiKey;
-                var llmParms = llmInstance != null ? settingsMgr.GetInstanceLLMParms(llmInstanceID) : settingsMgr.GetLLMParms(LLMProvider.LlamaCpp);
+                var llmParms = GetAIChatLLMParms(settingsMgr, llmInstance, llmInstanceID, LLMProvider.LlamaCpp, activeSettings);
+                LLMReasoningEffort effort = activeSettings.GetReasoningEffort();
+                int maxTokens = LLMRequestProfile.GetRecommendedMaxTokens(activeSettings.selectedModel, effort, AI_CHAT_NO_EXPLICIT_OUTPUT_TOKEN_CAP);
                 string suggestedEndpoint;
-                string json = _texGenMgr.BuildForInstructJSON(lines, out suggestedEndpoint, 4096, temperature,
+                string json = _texGenMgr.BuildForInstructJSON(lines, out suggestedEndpoint, maxTokens, temperature,
                     Config.Get().GetGenericLLMMode(), true, llmParms, false, true);
                 _texGenMgr.SpawnChatCompleteRequest(json, OnLLMCompletedCallback, db, serverAddress, suggestedEndpoint, OnStreamingTextCallback, true, apiKey);
                 break;
@@ -1074,9 +1646,9 @@ public class AIChatPanel : MonoBehaviour
             {
                 string serverAddress = LLMInstanceManager.ApplyReplicaPortOffset(activeSettings.endpoint, llmReplicaIndex);
                 string apiKey = activeSettings.apiKey;
-                var llmParms = llmInstance != null ? settingsMgr.GetInstanceLLMParms(llmInstanceID) : settingsMgr.GetLLMParms(LLMProvider.Ollama);
+                var llmParms = GetAIChatLLMParms(settingsMgr, llmInstance, llmInstanceID, LLMProvider.Ollama, activeSettings);
                 string suggestedEndpoint;
-                string json = _texGenMgr.BuildForInstructJSON(lines, out suggestedEndpoint, 4096, temperature,
+                string json = _texGenMgr.BuildForInstructJSON(lines, out suggestedEndpoint, AI_CHAT_NO_EXPLICIT_OUTPUT_TOKEN_CAP, temperature,
                     Config.Get().GetGenericLLMMode(), true, llmParms, true, false);
                 _texGenMgr.SpawnChatCompleteRequest(json, OnLLMCompletedCallback, db, serverAddress, suggestedEndpoint, OnStreamingTextCallback, true, apiKey);
                 break;
@@ -1094,7 +1666,7 @@ public class AIChatPanel : MonoBehaviour
                 if (!HasUserMessage(lines))
                     lines.Enqueue(new GTPChatLine("user", "Please proceed."));
 
-                string json = _geminiMgr.BuildChatCompleteJSON(lines, 4096, temperature, model, true, enableThinking);
+                string json = _geminiMgr.BuildChatCompleteJSON(lines, GetGeminiMaxOutputTokens(model), temperature, model, true, enableThinking);
                 _geminiMgr.SpawnChatCompleteRequest(json, OnLLMCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
                 break;
             }
@@ -1107,15 +1679,30 @@ public class AIChatPanel : MonoBehaviour
                 string endpoint = serverAddress.TrimEnd('/') + "/v1/chat/completions";
 
                 var normalizedLines = OpenAITextCompletionManager.NormalizeForStrictAlternation(lines);
-                bool? compatEnableThinking = activeSettings.enableThinking;
-                float compatTemperature = activeSettings.overrideTemperature ? activeSettings.temperature : temperature;
-                float? compatTopP = activeSettings.overrideTopP ? (float?)activeSettings.topP : null;
+                bool isDeepSeek = LLMRequestProfile.IsDeepSeekModel(model);
+                LLMReasoningEffort compatReasoningEffort = isDeepSeek
+                    ? activeSettings.GetReasoningEffort()
+                    : (activeSettings.enableThinking ? LLMReasoningEffort.High : LLMReasoningEffort.Off);
+                bool? compatEnableThinking = isDeepSeek
+                    ? compatReasoningEffort != LLMReasoningEffort.Off
+                    : activeSettings.enableThinking;
+                int compatMaxTokens = isDeepSeek
+                    ? LLMRequestProfile.GetRecommendedMaxTokens(model, compatReasoningEffort, AI_CHAT_NO_EXPLICIT_OUTPUT_TOKEN_CAP)
+                    : AI_CHAT_NO_EXPLICIT_OUTPUT_TOKEN_CAP;
+                float compatTemperature = activeSettings.overrideTemperature
+                    ? activeSettings.temperature
+                    : (isDeepSeek ? LLMRequestProfile.GetRecommendedTemperature(model, compatReasoningEffort, temperature) : temperature);
+                float? compatTopP = activeSettings.overrideTopP
+                    ? (float?)activeSettings.topP
+                    : (isDeepSeek ? (float?)LLMRequestProfile.GetRecommendedTopP(model, compatReasoningEffort, 1.0f) : null);
                 int? compatTopK = activeSettings.overrideTopK ? (int?)activeSettings.topK : null;
                 float? compatMinP = activeSettings.overrideMinP ? (float?)activeSettings.minP : null;
                 float? compatRepPenalty = activeSettings.overrideRepeatPenalty ? (float?)activeSettings.repeatPenalty : null;
-                string json = _openAIMgr.BuildChatCompleteJSON(normalizedLines, 4096, compatTemperature, model, true,
+                string compatReasoningEffortParam = isDeepSeek ? LLMReasoningEffortUtil.ToConfigValue(compatReasoningEffort) : null;
+                string json = _openAIMgr.BuildChatCompleteJSON(normalizedLines, compatMaxTokens, compatTemperature, model, true,
                     enableThinking: compatEnableThinking,
-                    topP: compatTopP, topK: compatTopK, minP: compatMinP, repetitionPenalty: compatRepPenalty);
+                    topP: compatTopP, topK: compatTopK, minP: compatMinP, repetitionPenalty: compatRepPenalty,
+                    customReasoningEffort: compatReasoningEffortParam);
                 _openAIMgr.SpawnChatCompleteRequest(json, OnLLMCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
                 break;
             }
@@ -1182,7 +1769,22 @@ public class AIChatPanel : MonoBehaviour
     private void OnStreamingTextCallback(string text)
     {
         if (string.IsNullOrEmpty(text)) return;
-        _streamBuffer.Append(text);
+
+        // Feed the action parser first - this fires OnSkillActionParsed callbacks for any
+        // complete <aitools_action.../> tags in the new chunk. Then ConsumeDisplayText()
+        // returns text safe to render in the bubble (action tags stripped/replaced as
+        // needed, with any partial in-progress tag held back until it closes).
+        if (_actionParser != null)
+        {
+            _actionParser.Feed(text);
+            string display = _actionParser.ConsumeDisplayText();
+            if (!string.IsNullOrEmpty(display))
+                _streamBuffer.Append(display);
+        }
+        else
+        {
+            _streamBuffer.Append(text);
+        }
 
         if (Time.unscaledTime - _streamLastUpdate < STREAM_UPDATE_INTERVAL) return;
         _streamLastUpdate = Time.unscaledTime;
@@ -1193,17 +1795,64 @@ public class AIChatPanel : MonoBehaviour
     private void UpdateStreamingBubble()
     {
         if (_streamingAssistantField == null) return;
+        bool shouldAutoScroll = IsScrollAtBottom(_chatScroll);
+
         // Body only - the "Assistant" label is its own TMP_Text above the input field.
-        _streamingAssistantField.text = ConvertMarkdownToTMP(_streamBuffer.ToString());
-        if (_chatScroll != null && _chatScroll.verticalNormalizedPosition < 0.05f)
+        _streamingAssistantField.text = ConvertMarkdownToTMP(BuildVisibleStreamText(_streamBuffer.ToString()));
+        if (shouldAutoScroll)
             StartCoroutine(ScrollToBottomDeferred());
+    }
+
+    private static string BuildVisibleStreamText(string text)
+    {
+        if (!GenerateSettingsPanel.GetStripThinkTags() || string.IsNullOrEmpty(text))
+            return text;
+
+        int thinkOpen = text.IndexOf("<think>", StringComparison.Ordinal);
+        int thinkClose = text.IndexOf("</think>", StringComparison.Ordinal);
+        if (thinkOpen >= 0 && thinkClose < 0)
+        {
+            // Hide partial reasoning until the closing boundary arrives, but keep the
+            // bubble visibly alive so long DeepSeek thinking does not look hung.
+            return thinkOpen > 0 ? text.Substring(0, thinkOpen) + "\n\nThinking..." : "Thinking...";
+        }
+
+        return OpenAITextCompletionManager.RemoveThinkTagsFromString(text);
+    }
+
+    /// <summary>
+    /// Fired by SkillActionParser whenever a complete <c>&lt;aitools_action ... /&gt;</c>
+    /// tag has arrived. Hands the action to the executor; UI side-effects (image bubble,
+    /// system messages) come back through the IChatHost interface.
+    /// </summary>
+    private void OnSkillActionParsed(SkillAction action)
+    {
+        if (_actionExecutor == null) return;
+        try
+        {
+            _actionExecutor.Execute(action);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError("AIChatPanel: SkillActionExecutor.Execute threw: " + ex);
+            AddSystemMessage("Skill error: " + ex.Message);
+        }
     }
 
     private void OnLLMCompletedCallback(RTDB db, JSONObject jsonNode, string streamedText)
     {
+        bool shouldAutoScroll = IsScrollAtBottom(_chatScroll);
+
         if (jsonNode == null && (string.IsNullOrEmpty(streamedText) || streamedText.Length == 0))
         {
-            string error = db != null ? db.GetStringWithDefault("msg", "Unknown error") : "Unknown error";
+            string error = db != null ? db.GetStringWithDefault("msg", "") : "";
+            if (string.IsNullOrEmpty(error))
+            {
+                string status = db != null ? db.GetStringWithDefault("status", "") : "";
+                error = status == "success"
+                    ? "LLM returned an empty response. Check text_completion_sent.json and textgen_json_received.json for the raw exchange."
+                    : "Unknown error";
+            }
             AddSystemMessage("LLM error: " + error);
             FinalizeAssistantTurn(aborted: true);
             return;
@@ -1221,29 +1870,44 @@ public class AIChatPanel : MonoBehaviour
 
         streamedText = (streamedText ?? "").Trim();
 
+        // Final flush of any unparsed text in the action parser (e.g. trailing "<" we
+        // were holding back hoping for a tag that never came). The visible bubble stays
+        // clean, but the canonical assistant history deliberately keeps raw skill tags so
+        // future turns can see concrete examples of successful skill usage.
+        if (_actionParser != null)
+        {
+            string finalDisplay = _actionParser.Flush();
+            if (!string.IsNullOrEmpty(finalDisplay))
+                _streamBuffer.Append(finalDisplay);
+        }
+        string visibleText = _streamBuffer.ToString();
+        string historyText = PreserveActionTagsForHistory(streamedText);
+        visibleText = BuildVisibleStreamText(visibleText);
+
         // Final visual update (body only, the "Assistant" label is a separate TMP_Text)
         var completedField = _streamingAssistantField;
         if (completedField != null)
-            completedField.text = ConvertMarkdownToTMP(streamedText);
+            completedField.text = ConvertMarkdownToTMP(visibleText);
 
-        _promptManager.AddInteraction("assistant", streamedText);
+        _promptManager.AddInteraction("assistant", historyText);
 
         // Now that we have an interaction to link the bubble to, switch the assistant
         // bubble from readOnly to editable so the user can hand-tweak the assistant's
         // reply for testing follow-up turns.
         EnableBubbleEditing(completedField, _promptManager.GetLastInteraction());
 
-        FinalizeAssistantTurn(aborted: false);
+        FinalizeAssistantTurn(aborted: false, shouldAutoScroll);
     }
 
-    private void FinalizeAssistantTurn(bool aborted)
+    private void FinalizeAssistantTurn(bool aborted, bool shouldAutoScroll = false)
     {
         _isStreaming = false;
         _streamingAssistantField = null;
         _streamingAssistantRT = null;
         ReleaseActiveLLM();
         SetBusyUI(false, aborted ? "Stopped" : "Idle");
-        StartCoroutine(ScrollToBottomDeferred());
+        if (shouldAutoScroll)
+            StartCoroutine(ScrollToBottomDeferred());
         // Re-focus the chat input so the user can immediately type their next message
         // (unless they're in the middle of editing some other input - e.g. a bubble).
         FocusInputDeferred();
@@ -1276,35 +1940,374 @@ public class AIChatPanel : MonoBehaviour
         if (_statusText != null) _statusText.text = status;
     }
 
+    // ---------- Skills system: action history, settings, image bubble ----------
+
+    private static string PreserveActionTagsForHistory(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+        return text.Trim();
+    }
+
+    private void OnSettingsClicked()
+    {
+        AIChatSettingsPanel.Show(_skillManager, () =>
+        {
+            // Reload from disk so any user edits to main_prompt.txt or skill files take
+            // effect on the very next turn (rebuilt by ChatContextBuilder.Build()).
+            _skillManager?.Reload();
+            int n = _skillManager?.GetSkills().Count ?? 0;
+            AddSystemMessage($"Reloaded aichat config: {n} skill{(n == 1 ? "" : "s")}.");
+        });
+    }
+
+    /// <summary>
+    /// Refreshes the header status pill: "GPUs: 1/2 busy   LLMs: 3". Cheap; called from
+    /// Update() at most every STATUS_PILL_REFRESH_INTERVAL seconds while the panel is
+    /// visible.
+    /// </summary>
+    private void UpdateStatusPill()
+    {
+        if (_statusPillText == null) return;
+        var cfg = Config.Get();
+        var im = LLMInstanceManager.Get();
+
+        int gpuTotal = cfg != null ? cfg.GetGPUCount() : 0;
+        int gpuBusy = 0;
+        for (int i = 0; i < gpuTotal; i++)
+        {
+            if (cfg.IsGPUBusy(i)) gpuBusy++;
+        }
+        int llmCount = im != null ? im.GetInstanceCount() : 0;
+        // Suffix the pill with a visible TEST flag whenever the test_post_prompt.txt
+        // override is active, so the user can't accidentally forget they've hot-patched
+        // the system prompt.
+        string testFlag = (_skillManager != null && _skillManager.PostPromptIsTestOverride) ? "  [TEST PROMPT]" : "";
+        _statusPillText.text = $"GPUs: {gpuBusy}/{gpuTotal} busy   LLMs: {llmCount}{testFlag}";
+    }
+
+    /// <summary>
+    /// Build a chat-side image / movie bubble that mirrors the live output of a Pic
+    /// just spawned by the skills system. Uses the same VLG-driven layout pattern as
+    /// AppendBubble() so it sits naturally between text bubbles in stream order.
+    /// </summary>
+    private void AppendImageBubble(SkillAction action, PicMain spawnedPic)
+    {
+        if (spawnedPic == null || _mediaContent == null) return;
+        bool shouldAutoScroll = IsScrollAtBottom(_mediaScroll);
+
+        // Track the spawned PicMain in stable, per-session order so the LLM can
+        // reference it on a later turn via chat_image="N". Add BEFORE building the
+        // label so the label shows the correct N.
+        _chatImagePics.Add(spawnedPic);
+        int chatImageNumber = _chatImagePics.Count;
+
+        string skillId = action != null ? (action.SkillId ?? "") : "";
+        bool isMovie = skillId == BuiltInSkillIds.GenerateMovie || skillId == BuiltInSkillIds.ImageToMovie;
+
+        var bubble = new GameObject(isMovie ? "Bubble_Movie" : "Bubble_Image");
+        // Image / movie bubbles live in the LEFT MediaPanel (separate from text).
+        bubble.transform.SetParent(_mediaContent, false);
+        var bubbleImg = bubble.AddComponent<Image>();
+        bubbleImg.color = AssistantBubbleBg;
+
+        var bubbleVLG = bubble.AddComponent<VerticalLayoutGroup>();
+        bubbleVLG.padding = new RectOffset(8, 8, 4, 4);
+        bubbleVLG.spacing = 4;
+        bubbleVLG.childAlignment = TextAnchor.UpperLeft;
+        bubbleVLG.childControlWidth = true;
+        bubbleVLG.childControlHeight = true;
+        bubbleVLG.childForceExpandWidth = true;
+        bubbleVLG.childForceExpandHeight = false;
+
+        var bubbleCSF = bubble.AddComponent<ContentSizeFitter>();
+        bubbleCSF.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+        bubbleCSF.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        // Role label.
+        var labelGo = new GameObject("Label");
+        labelGo.transform.SetParent(bubble.transform, false);
+        var labelLE = labelGo.AddComponent<LayoutElement>();
+        labelLE.minHeight = 16f;
+        labelLE.preferredHeight = 16f;
+        var labelTmp = labelGo.AddComponent<TextMeshProUGUI>();
+        // Bubble label includes the stable Image #N so the user (and the LLM, when it
+        // re-reads this transcript) can match the bubble against chat_image="N" in skill
+        // invocations. The number is the index into _chatImagePics + 1.
+        string kindLabel = isMovie ? "Movie" : "Image";
+        labelTmp.text = $"{kindLabel} #{chatImageNumber} ({skillId})";
+        labelTmp.font = _font;
+        labelTmp.fontSize = BaseLabelFontSize * _fontSizeMultiplier;
+        labelTmp.fontStyle = FontStyles.Bold;
+        labelTmp.color = new Color(0.10f, 0.45f, 0.20f);
+        labelTmp.alignment = TextAlignmentOptions.MidlineLeft;
+        labelTmp.raycastTarget = false;
+
+        // RawImage holder. We can't just put a RawImage as a direct child of the bubble
+        // VLG (which has childForceExpandWidth=true) because RawImage stretches its texture
+        // to fill its rect, and the bubble width almost never matches the source aspect.
+        // Instead we wrap it in a HorizontalLayoutGroup container that DOES NOT force-
+        // expand its child width, then size the RawImage explicitly per its true aspect.
+        // Container width is still bubble-width (so ChatPicMirror can read it for layout)
+        // but the inner RawImage takes only the aspect-correct width and is centered.
+        var imgContainerGo = new GameObject("ImageContainer");
+        imgContainerGo.transform.SetParent(bubble.transform, false);
+        var containerHLG = imgContainerGo.AddComponent<HorizontalLayoutGroup>();
+        containerHLG.padding = new RectOffset(0, 0, 0, 0);
+        containerHLG.spacing = 0;
+        containerHLG.childAlignment = TextAnchor.MiddleCenter;
+        // childControlWidth/Height MUST be true, otherwise HLG ignores the child's
+        // LayoutElement.preferredWidth/Height and uses the RectTransform's default
+        // 100x100 sizeDelta - which is the postage-stamp bug. childForceExpandWidth/
+        // Height are false so the child does NOT stretch beyond its preferredW/H.
+        // Combined with MiddleCenter alignment, that gives us "image at exactly its
+        // computed aspect-correct size, centered in the bubble".
+        containerHLG.childControlWidth = true;
+        containerHLG.childControlHeight = true;
+        containerHLG.childForceExpandWidth = false;
+        containerHLG.childForceExpandHeight = false;
+        var containerLE = imgContainerGo.AddComponent<LayoutElement>();
+        containerLE.minHeight = 96f;
+        containerLE.preferredHeight = 200f; // ChatPicMirror updates per-frame to actual image height
+
+        var imgGo = new GameObject("Preview");
+        imgGo.transform.SetParent(imgContainerGo.transform, false);
+        var imgLE = imgGo.AddComponent<LayoutElement>();
+        imgLE.preferredWidth = 200f;  // ChatPicMirror updates to aspect-correct W
+        imgLE.preferredHeight = 200f; // ChatPicMirror updates to aspect-correct H
+        imgLE.minWidth = 96f;
+        imgLE.minHeight = 96f;
+        var raw = imgGo.AddComponent<RawImage>();
+        raw.color = new Color(1f, 1f, 1f, 0.15f); // hint of the empty slot until first frame
+
+        // Status row beneath the image (shows PicMain's live status text). Important:
+        // PicMain emits multi-line statuses ("Waiting for GPU to\nrun workflow...",
+        // "Sampler\nAdvanced\nStep 6/20", etc.). We let TMP report its natural preferred
+        // height to the parent VLG (childControlHeight=true picks it up via ILayoutElement)
+        // by NOT setting a fixed preferredHeight - only a small minHeight as a floor.
+        // textWrappingMode=Normal so a single very long status line wraps within the bubble.
+        var statusGo = new GameObject("Status");
+        statusGo.transform.SetParent(bubble.transform, false);
+        var statusLE = statusGo.AddComponent<LayoutElement>();
+        statusLE.minHeight = 14f;
+        statusLE.preferredHeight = -1f; // -1 = "use the child's natural preferred height"
+        statusLE.flexibleHeight = -1f;
+        var statusTmp = statusGo.AddComponent<TextMeshProUGUI>();
+        statusTmp.text = "Queued...";
+        statusTmp.font = _font;
+        statusTmp.fontSize = Mathf.Max(10f, BaseLabelFontSize * _fontSizeMultiplier - 1f);
+        statusTmp.color = new Color(0.30f, 0.30f, 0.35f);
+        statusTmp.alignment = TextAlignmentOptions.TopLeft;
+        statusTmp.textWrappingMode = TextWrappingModes.Normal;
+        statusTmp.raycastTarget = false;
+
+        // Mirror component does the polling + click-to-focus.
+        var mirror = bubble.AddComponent<ChatPicMirror>();
+        mirror.targetImage = raw;
+        mirror.statusLabel = statusTmp;
+        mirror.imageLayoutElement = imgLE;
+        mirror.containerLayoutElement = containerLE;
+        mirror.containerRT = imgContainerGo.GetComponent<RectTransform>();
+        mirror.sourcePic = spawnedPic;
+        mirror.occludingPanel = _mainPanel;
+        mirror.autoScrollTarget = _mediaScroll;
+
+        UpdateMediaHeader();
+        if (shouldAutoScroll)
+            StartCoroutine(ScrollMediaToBottomDeferred());
+    }
+
+    /// <summary>
+    /// Update the media panel header text ("Media (N)") to reflect how many bubbles
+    /// are currently visible. Called whenever a bubble is added or removed.
+    /// </summary>
+    private void UpdateMediaHeader()
+    {
+        if (_mediaHeaderText == null) return;
+        int n = _mediaContent != null ? _mediaContent.childCount : 0;
+        _mediaHeaderText.text = $"Media ({n})";
+    }
+
+    /// <summary>
+    /// Configurable: how many media bubbles to keep when the user clicks the media
+    /// "Clear" button. Stored in PlayerPrefs so it persists across sessions; defaults
+    /// to 10. Reading via this helper ensures any non-positive stored value falls
+    /// back to a safe default rather than causing infinite trim loops.
+    /// </summary>
+    public static int GetKeepLastNMedia()
+    {
+        int n = PlayerPrefs.GetInt(PREFS_KEEP_LAST_N_MEDIA, DEFAULT_KEEP_LAST_N_MEDIA);
+        return Mathf.Max(0, n);
+    }
+
+    public static void SetKeepLastNMedia(int n)
+    {
+        PlayerPrefs.SetInt(PREFS_KEEP_LAST_N_MEDIA, Mathf.Max(0, n));
+        PlayerPrefs.Save();
+    }
+
+    /// <summary>
+    /// Trims the media panel to the last <see cref="GetKeepLastNMedia"/> bubbles.
+    /// The matching entries are also removed from <see cref="_chatImagePics"/> so
+    /// the LLM's chat_image="N" indices stay aligned with what's visible. Doesn't
+    /// touch the world Pics - the bubble itself is destroyed but its source PicMain
+    /// remains in the world for the user to keep editing.
+    /// </summary>
+    private void OnClearMediaClicked()
+    {
+        if (_mediaContent == null) return;
+        int keep = GetKeepLastNMedia();
+        TrimMediaToKeepLastN(keep);
+        UpdateMediaHeader();
+    }
+
+    private void TrimMediaToKeepLastN(int keep)
+    {
+        if (_mediaContent == null) return;
+        int childCount = _mediaContent.childCount;
+        int toRemove = childCount - keep;
+        if (toRemove <= 0) return;
+
+        // Children are in spawn order (oldest first) thanks to the VLG. Detach + destroy
+        // from the front so subsequent GetChild(0) calls advance through the list
+        // correctly (Destroy alone is deferred to end-of-frame, so we have to unparent
+        // to make the loop iterate). Pop matching entries off the head of
+        // _chatImagePics so chat_image="1" still points at the OLDEST visible bubble.
+        for (int i = 0; i < toRemove; i++)
+        {
+            var child = _mediaContent.GetChild(0);
+            child.SetParent(null, false);
+            Destroy(child.gameObject);
+        }
+        if (_chatImagePics != null && _chatImagePics.Count > 0)
+        {
+            int popN = Mathf.Min(toRemove, _chatImagePics.Count);
+            _chatImagePics.RemoveRange(0, popN);
+        }
+    }
+
+    // ---------- IChatHost (called by SkillActionExecutor) ----------
+
+    MonoBehaviour IChatHost.CoroutineRunner => this;
+
+    byte[] IChatHost.GetTurnAttachmentBytes(int oneBasedIndex)
+    {
+        int idx0 = oneBasedIndex - 1;
+        if (_lastTurnAttachments == null || idx0 < 0 || idx0 >= _lastTurnAttachments.Count)
+            return null;
+        return _lastTurnAttachments[idx0];
+    }
+
+    int IChatHost.GetTurnAttachmentCount()
+    {
+        return _lastTurnAttachments != null ? _lastTurnAttachments.Count : 0;
+    }
+
+    void IChatHost.AddInfoBubble(string text) => AddSystemMessage(text);
+
+    void IChatHost.AddSystemInjectionAndBubble(string text)
+    {
+        // Inject the message as a system role so the LLM sees it on the NEXT turn (after
+        // the current assistant reply finishes). Also display it in the chat so the user
+        // can see what was injected.
+        if (_promptManager != null)
+            _promptManager.AddInteraction("system", text);
+        AddSystemMessage(text);
+    }
+
+    void IChatHost.AppendImageBubbleForPic(SkillAction action, PicMain spawnedPic)
+    {
+        AppendImageBubble(action, spawnedPic);
+    }
+
+    byte[] IChatHost.GetChatImagePngBytes(int oneBasedIndex)
+    {
+        int idx0 = oneBasedIndex - 1;
+        if (_chatImagePics == null || idx0 < 0 || idx0 >= _chatImagePics.Count) return null;
+        var pic = _chatImagePics[idx0];
+        if (pic == null || pic.gameObject == null) return null; // user deleted the world Pic
+        return pic.TryGetImageAsPng(out byte[] png) ? png : null;
+    }
+
+    int IChatHost.GetChatImageCount()
+    {
+        if (_chatImagePics == null) return 0;
+        // Only count entries whose world Pic is still alive AND has a renderable texture.
+        // Stale entries (pic destroyed by user, or render still queued) are advertised as
+        // 0 so the LLM doesn't try to reference them.
+        int n = 0;
+        foreach (var pic in _chatImagePics)
+        {
+            if (pic == null || pic.gameObject == null) continue;
+            if (!pic.TryGetCurrentTexture(out var tex) || tex == null) continue;
+            n++;
+        }
+        return n;
+    }
+
+    PicMain IChatHost.GetLastSpawnedPicForTurn()
+    {
+        // Defensively null out a destroyed-but-still-referenced Pic so the executor's
+        // "no chain target" error path triggers correctly instead of hitting a Unity
+        // null-equality on a dead GameObject.
+        if (_lastSpawnedPicThisTurn == null || _lastSpawnedPicThisTurn.gameObject == null)
+            return null;
+        return _lastSpawnedPicThisTurn;
+    }
+
+    void IChatHost.SetLastSpawnedPicForTurn(PicMain spawnedPic)
+    {
+        _lastSpawnedPicThisTurn = spawnedPic;
+        if (spawnedPic != null)
+            _unchainedPicsThisTurn.Add(spawnedPic);
+    }
+
+    PicMain IChatHost.ConsumeChainTarget()
+    {
+        // LIFO: walk from the END (most-recent push) so a chain action animates the
+        // Pic the LLM most recently emitted - the natural "the image I just made"
+        // intent. If a reply interleaves standalone gens with paired stacks (gen,
+        // mov, gen, gen, mov), the second mov correctly chains onto the THIRD gen
+        // (not the second), since the first mov already consumed the second gen's
+        // entry off the stack. Skip dead Pics in case the user closed one mid-reply.
+        while (_unchainedPicsThisTurn.Count > 0)
+        {
+            int last = _unchainedPicsThisTurn.Count - 1;
+            var p = _unchainedPicsThisTurn[last];
+            _unchainedPicsThisTurn.RemoveAt(last);
+            if (p != null && p.gameObject != null)
+                return p;
+        }
+
+        // Stack exhausted - fall back to the most-recent Pic so a 3+ step chain
+        // (gen_image -> img_to_image chain -> img_to_movie chain) keeps stacking on
+        // the same root after its stack entry was consumed by step 2.
+        if (_lastSpawnedPicThisTurn == null || _lastSpawnedPicThisTurn.gameObject == null)
+            return null;
+        return _lastSpawnedPicThisTurn;
+    }
+
     private void RefreshHeaderTitle()
     {
         if (_titleText == null) return;
 
         string label = "AI Chat";
-        var settingsMgr = LLMSettingsManager.Get();
-        var instanceMgr = LLMInstanceManager.Get();
 
         try
         {
-            if (instanceMgr != null && instanceMgr.GetInstanceCount() > 0)
+            var instance = ResolveHeaderLLMInstance();
+            if (instance != null)
             {
-                var instance = instanceMgr.GetDefaultInstance();
-                if (instance != null)
-                {
-                    string model = instance.settings?.selectedModel;
-                    label = string.IsNullOrEmpty(model)
-                        ? $"AI Chat \u2014 {instance.providerType}"
-                        : $"AI Chat \u2014 {instance.providerType} ({model})";
-                }
+                label = BuildHeaderTitle(instance.providerType, instance.settings);
             }
-            else if (settingsMgr != null)
+            else
             {
-                var p = settingsMgr.GetActiveProvider();
-                var s = settingsMgr.GetProviderSettings(p);
-                string model = s?.selectedModel;
-                label = string.IsNullOrEmpty(model)
-                    ? $"AI Chat \u2014 {p}"
-                    : $"AI Chat \u2014 {p} ({model})";
+                var settingsMgr = LLMSettingsManager.Get();
+                if (settingsMgr != null)
+                {
+                    var p = settingsMgr.GetActiveProvider();
+                    var s = settingsMgr.GetProviderSettings(p);
+                    label = BuildHeaderTitle(p, s);
+                }
             }
         }
         catch
@@ -1313,6 +2316,62 @@ public class AIChatPanel : MonoBehaviour
         }
 
         _titleText.text = label;
+    }
+
+    /// <summary>
+    /// Resolve the LLM instance the chat header should display. This mirrors the
+    /// allocation order in SendChatTurn without changing busy counters.
+    /// </summary>
+    private LLMInstanceInfo ResolveHeaderLLMInstance()
+    {
+        var instanceMgr = LLMInstanceManager.Get();
+        if (instanceMgr == null || instanceMgr.GetInstanceCount() <= 0)
+            return null;
+
+        if (_activeLLMInstanceID >= 0)
+        {
+            var inFlight = instanceMgr.GetInstance(_activeLLMInstanceID);
+            if (inFlight != null)
+                return inFlight;
+        }
+
+        bool isVisionJob = _promptManager != null && _promptManager.HasAnyImages();
+        int replicaIndex;
+        int instanceID = instanceMgr.GetFreeLLM(isSmallJob: true, isVisionJob: isVisionJob, out replicaIndex);
+        if (instanceID < 0)
+            instanceID = instanceMgr.GetLeastBusyLLM(isSmallJob: true, isVisionJob: isVisionJob, out replicaIndex);
+
+        return instanceID >= 0 ? instanceMgr.GetInstance(instanceID) : null;
+    }
+
+    private static string BuildHeaderTitle(LLMProvider provider, LLMProviderSettings settings)
+    {
+        string providerName = GetLLMProviderDisplayName(provider);
+        string model = settings != null ? settings.selectedModel : "";
+        return string.IsNullOrEmpty(model)
+            ? $"AI Chat - {providerName}"
+            : $"AI Chat - {providerName} ({model})";
+    }
+
+    private static string GetLLMProviderDisplayName(LLMProvider provider)
+    {
+        switch (provider)
+        {
+            case LLMProvider.OpenAI:
+                return "OpenAI";
+            case LLMProvider.Anthropic:
+                return "Anthropic";
+            case LLMProvider.LlamaCpp:
+                return "llama.cpp";
+            case LLMProvider.Ollama:
+                return "Ollama";
+            case LLMProvider.Gemini:
+                return "Gemini";
+            case LLMProvider.OpenAICompatible:
+                return "OpenAI Compatible";
+            default:
+                return provider.ToString();
+        }
     }
 
     /// <summary>
@@ -1462,6 +2521,14 @@ public class AIChatPanel : MonoBehaviour
             _streamLastUpdate = Time.unscaledTime;
             UpdateStreamingBubble();
         }
+
+        // Periodic header status pill refresh (cheap; reads counters from Config/LLM mgr).
+        if (Time.unscaledTime >= _statusPillNextRefresh)
+        {
+            _statusPillNextRefresh = Time.unscaledTime + STATUS_PILL_REFRESH_INTERVAL;
+            RefreshHeaderTitle();
+            UpdateStatusPill();
+        }
     }
 
     /// <summary>
@@ -1491,22 +2558,74 @@ public class AIChatPanel : MonoBehaviour
 }
 
 /// <summary>
-/// Bottom-right corner resize handle for a panel. Drags adjust the target's sizeDelta.
-/// Min size enforced. Pivot/anchors should be center-center on the target so resizing
-/// grows symmetrically; for AIChatPanel we use that pivot, and explicitly compensate for
-/// the cursor drift by tracking the initial offset.
+/// Vertical split-bar handle. Drags horizontally to move the boundary between the
+/// AIChatPanel's left media panel and right text panel. Calls back into
+/// AIChatPanel.ApplySplit which handles clamping and re-laying-out both halves.
+/// </summary>
+public class ChatSplitterHandle : MonoBehaviour, IBeginDragHandler, IDragHandler
+{
+    private AIChatPanel _panel;
+    private RectTransform _bodyRT;
+    private Vector2 _startPointerLocal;
+    private float _startSplitX;
+
+    public void SetTarget(AIChatPanel panel, RectTransform bodyRT)
+    {
+        _panel = panel;
+        _bodyRT = bodyRT;
+    }
+
+    public void OnBeginDrag(PointerEventData eventData)
+    {
+        if (_bodyRT == null) return;
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(
+            _bodyRT, eventData.position, eventData.pressEventCamera, out _startPointerLocal);
+        // The body's pivot is (0.5, 0.5) by default but our splitter is anchored from
+        // the left edge with pivot (0,0.5), so its anchoredPosition.x already equals
+        // the absolute X-from-left. Read it as our drag baseline.
+        var splitterRT = (RectTransform)transform;
+        _startSplitX = splitterRT.anchoredPosition.x;
+    }
+
+    public void OnDrag(PointerEventData eventData)
+    {
+        if (_bodyRT == null || _panel == null) return;
+        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                _bodyRT, eventData.position, eventData.pressEventCamera, out var nowLocal))
+            return;
+
+        // Body pivot is centred; the delta in local space is the same regardless of
+        // pivot, so we can just add it to our left-edge-anchored start position.
+        float deltaX = nowLocal.x - _startPointerLocal.x;
+        _panel.ApplySplit(_startSplitX + deltaX);
+    }
+}
+
+/// <summary>
+/// Edge/corner resize handle for a panel. Drags adjust the target's sizeDelta and move
+/// the target so the opposite edge stays fixed. Min size enforced.
 /// </summary>
 public class PanelResizeHandle : MonoBehaviour, IBeginDragHandler, IDragHandler
 {
     private RectTransform _target;
     private Vector2 _minSize = new Vector2(200, 200);
+    private Vector2 _resizeDirection = new Vector2(1f, -1f);
+    private Action _onResized;
     private Vector2 _startPointerLocal;
     private Vector2 _startSize;
+    private Vector2 _startAnchoredPosition;
 
     public void SetTarget(RectTransform target, Vector2 minSize)
     {
+        SetTarget(target, minSize, new Vector2(1f, -1f), null);
+    }
+
+    public void SetTarget(RectTransform target, Vector2 minSize, Vector2 resizeDirection, Action onResized = null)
+    {
         _target = target;
         _minSize = minSize;
+        _resizeDirection = resizeDirection;
+        _onResized = onResized;
     }
 
     public void OnBeginDrag(PointerEventData eventData)
@@ -1518,6 +2637,7 @@ public class PanelResizeHandle : MonoBehaviour, IBeginDragHandler, IDragHandler
             eventData.pressEventCamera,
             out _startPointerLocal);
         _startSize = _target.sizeDelta;
+        _startAnchoredPosition = _target.anchoredPosition;
     }
 
     public void OnDrag(PointerEventData eventData)
@@ -1530,23 +2650,29 @@ public class PanelResizeHandle : MonoBehaviour, IBeginDragHandler, IDragHandler
             out Vector2 nowLocal))
             return;
 
-        // Movement in parent-local coords. Right-grow = positive X; down-grow = negative Y.
+        // Movement in parent-local coords. Direction maps pointer movement to growth:
+        // right=(1,0), left=(-1,0), top=(0,1), bottom=(0,-1), bottom-right=(1,-1).
         Vector2 delta = nowLocal - _startPointerLocal;
-        Vector2 newSize = _startSize + new Vector2(delta.x, -delta.y);
+        Vector2 newSize = _startSize + new Vector2(delta.x * _resizeDirection.x, delta.y * _resizeDirection.y);
         newSize.x = Mathf.Max(_minSize.x, newSize.x);
         newSize.y = Mathf.Max(_minSize.y, newSize.y);
 
-        // Keep the top-left corner fixed while resizing from the bottom-right grip
-        // (otherwise the panel grows symmetrically around its pivot and appears to drift
-        // up-and-left as you drag down-and-right). For a pivot of (0.5, 0.5) this means
-        // shifting anchoredPosition right by half the width gain and down by half the
-        // height gain. Generalised here to work for any pivot.
-        Vector2 sizeChange = newSize - _target.sizeDelta;
-        _target.sizeDelta = newSize;
+        Vector2 sizeChange = newSize - _startSize;
+        Vector2 newAnchoredPosition = _startAnchoredPosition;
         Vector2 pivot = _target.pivot;
-        _target.anchoredPosition += new Vector2(
-            pivot.x * sizeChange.x,
-            -(1f - pivot.y) * sizeChange.y);
+        if (_resizeDirection.x > 0f)
+            newAnchoredPosition.x += pivot.x * sizeChange.x;
+        else if (_resizeDirection.x < 0f)
+            newAnchoredPosition.x -= (1f - pivot.x) * sizeChange.x;
+
+        if (_resizeDirection.y > 0f)
+            newAnchoredPosition.y += pivot.y * sizeChange.y;
+        else if (_resizeDirection.y < 0f)
+            newAnchoredPosition.y -= (1f - pivot.y) * sizeChange.y;
+
+        _target.sizeDelta = newSize;
+        _target.anchoredPosition = newAnchoredPosition;
+        _onResized?.Invoke();
     }
 }
 

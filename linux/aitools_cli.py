@@ -48,7 +48,7 @@ def build_argparser():
     p.add_argument("-w", "--workflow", default=None,
                    help="Workflow JSON name (mutually exclusive with -p)")
     p.add_argument("-p", "--preset", default=None,
-                   help="Preset file from Presets/ (e.g. \"Prompt To Image (Z Image)\")")
+                   help="Preset file from Presets/ (e.g. \"Prompt To Image (Z-Image)\")")
     p.add_argument("--set-var", action="append", default=[], metavar="NAME=VALUE",
                    dest="set_var",
                    help="Override a preset %%var%% (repeatable). "

@@ -573,8 +573,12 @@ public class GameLogic : MonoBehaviour
         {
             string trimmedItem = lines[i].Trim();
             
-            // Skip empty lines and comments
-            if (trimmedItem.Length == 0 || trimmedItem[0] == '-' || trimmedItem[0] == '/')
+            // Skip empty lines and comments. '#' is the preset/job-script comment style
+            // (matches what GPUInfo.HasLLMFirstOverride and the rest of the codebase already
+            // treat as a comment). Without skipping it here, lines like "#Edit using Qwen"
+            // get treated as workflow filenames and the loader fails with
+            // "Workflow ComfyUI/#Edit using Qwen not found".
+            if (trimmedItem.Length == 0 || trimmedItem[0] == '-' || trimmedItem[0] == '/' || trimmedItem[0] == '#')
             {
                 continue;
             }
@@ -1858,7 +1862,7 @@ public string GetPrompt() { return m_prompt; }
 
     /// <summary>
     /// Apply saved preset preferences from UserPreferences.
-    /// Main Job Script defaults to "Prompt To Image (Z Image).txt" if not saved or not found.
+    /// Main Job Script defaults to "Prompt To Image (Z-Image).txt" if not saved or not found.
     /// Loads the preset contents (job list, prompts, etc.) into the main GUI as well.
     /// </summary>
     private void ApplyPresetPreferences()
@@ -1877,11 +1881,11 @@ public string GetPrompt() { return m_prompt; }
             mainJobApplied = true;
         }
 
-        // Fallback to "Prompt To Image (Z Image).txt" if not applied
+        // Fallback to "Prompt To Image (Z-Image).txt" if not applied
         if (!mainJobApplied &&
-            PresetManager.Get().DoesPresetExistByNameNotCaseSensitive("Prompt To Image (Z Image).txt"))
+            PresetManager.Get().DoesPresetExistByNameNotCaseSensitive("Prompt To Image (Z-Image).txt"))
         {
-            ApplyMainPreset("Prompt To Image (Z Image).txt");
+            ApplyMainPreset("Prompt To Image (Z-Image).txt");
         }
 
         // Apply Temp Job Script preference (label only — temp preset is loaded on demand)

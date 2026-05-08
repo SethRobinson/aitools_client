@@ -2177,13 +2177,70 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
     public void RunPresetByName(string presetName)
     {
+        RunPresetByName(presetName, null, null);
+    }
 
+    // Counter for generating unique variable slots when AI Chat stacks chained presets
+    // onto this Pic. Each chained step gets its own slot so prompts don't clobber each
+    // other if the queue is mid-flight when the next chain step is appended.
+    private int m_chainPresetCounter = 0;
+
+    /// <summary>
+    /// Append a preset's compiled job list to this Pic's queue WITHOUT touching
+    /// <c>m_jobDefaultInfo</c> or the in-flight job. Used by the AI Chat skills system
+    /// to stack a follow-up workflow (e.g. img2vid) onto a Pic that already has a base
+    /// workflow queued or running. The chained workflow inherits the prior step's
+    /// output via the preset's own <c>@upload|image1|input1|</c> modifier.
+    ///
+    /// Prompts are routed via the Pic's variable manager (NOT embedded in the compiled
+    /// command string) so any character is safe in the prompt - the joblist parser
+    /// splits on '|', which would otherwise corrupt arbitrary LLM-written text.
+    /// </summary>
+    public void AppendPresetJobs(string presetName, string promptOverride, string negPromptOverride)
+    {
+        var lines = GameLogic.Get().GetTempPicJobListAsListOfStrings(presetName);
+        if (lines == null) return;
+
+        var prefixed = new List<string>();
+
+        if (!string.IsNullOrEmpty(promptOverride))
+        {
+            int slot = ++m_chainPresetCounter;
+            string varName = "aichat_chain_prompt_" + slot;
+            m_variableManager.SetText(varName, promptOverride);
+            prefixed.Add("command @copy|%" + varName + "%|prompt|");
+        }
+        if (!string.IsNullOrEmpty(negPromptOverride))
+        {
+            int slot = m_chainPresetCounter; // share slot id with prompt above for traceability
+            string varName = "aichat_chain_neg_prompt_" + slot;
+            m_variableManager.SetText(varName, negPromptOverride);
+            prefixed.Add("command @copy|%" + varName + "%|negative_prompt|");
+        }
+
+        prefixed.AddRange(lines);
+        AddJobList(prefixed);
+
+        // Kick the queue. UpdateJobs is idempotent / re-entrant-safe - if the prior
+        // step is mid-flight it's a no-op, and if the queue went idle between the
+        // base step finishing and this append landing, this picks the chain back up.
+        UpdateJobs();
+    }
+
+    /// <summary>
+    /// Run a preset using explicit prompt overrides instead of pulling from the GameLogic
+    /// global prompt fields. Used by the AI Chat skills system, which builds prompts from
+    /// the LLM's reply rather than the on-screen prompt input. Pass null for either
+    /// override to fall back to the GameLogic value (i.e. legacy single-arg behavior).
+    /// </summary>
+    public void RunPresetByName(string presetName, string promptOverride, string negativePromptOverride)
+    {
         if (_jobHistory.Count() == 0)
         {
             PicJob jobDefaultInfoToStartWith = new PicJob();
 
-            jobDefaultInfoToStartWith._requestedPrompt = GameLogic.Get().GetModifiedGlobalPrompt();
-            jobDefaultInfoToStartWith._requestedNegativePrompt = GameLogic.Get().GetNegativePrompt();
+            jobDefaultInfoToStartWith._requestedPrompt = promptOverride ?? GameLogic.Get().GetModifiedGlobalPrompt();
+            jobDefaultInfoToStartWith._requestedNegativePrompt = negativePromptOverride ?? GameLogic.Get().GetNegativePrompt();
             jobDefaultInfoToStartWith._requestedAudioPrompt = Config.Get().GetDefaultAudioPrompt();
             jobDefaultInfoToStartWith._requestedAudioNegativePrompt = Config.Get().GetDefaultAudioNegativePrompt();
             jobDefaultInfoToStartWith.requestedRenderer = GameLogic.Get().GetGlobalRenderer();
@@ -2195,12 +2252,113 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
             //Now, we *DO* have history, but we still want to overwrite things with the latest prompts, right?
 
-            m_curEvent.m_picJob._requestedPrompt = GameLogic.Get().GetPrompt();
-            m_curEvent.m_picJob._requestedNegativePrompt = GameLogic.Get().GetNegativePrompt();
+            m_curEvent.m_picJob._requestedPrompt = promptOverride ?? GameLogic.Get().GetPrompt();
+            m_curEvent.m_picJob._requestedNegativePrompt = negativePromptOverride ?? GameLogic.Get().GetNegativePrompt();
             //m_curEvent.m_picJob._requestedAudioPrompt = Config.Get().GetDefaultAudioPrompt();
             //m_curEvent.m_picJob._requestedAudioNegativePrompt = Config.Get().GetDefaultAudioNegativePrompt();
             GameLogic.Get().AddEveryTempItemToJobList(ref m_jobList, presetName);
         }
+    }
+
+    /// <summary>
+    /// Best-effort accessor for "whatever this Pic is currently displaying" - returns
+    /// the movie's RenderTexture when this Pic is a movie, otherwise the still sprite's
+    /// texture. Lets viewers (e.g. ChatPicMirror in AI Chat) bind to the live output
+    /// without reaching into private fields. Returns false if nothing is renderable yet.
+    /// </summary>
+    public bool TryGetCurrentTexture(out Texture tex)
+    {
+        tex = null;
+
+        // Movie case: PicMovie creates a RenderTexture on first frame; we surface the
+        // VideoPlayer's targetTexture directly so the chat mirror updates as it plays.
+        if (m_picMovie != null && m_picMovie.IsMovie())
+        {
+            if (m_picMovie._videoPlayer != null && m_picMovie._videoPlayer.targetTexture != null)
+            {
+                tex = m_picMovie._videoPlayer.targetTexture;
+                return true;
+            }
+            // Movie loaded but RenderTexture not yet provisioned - no texture yet.
+            return false;
+        }
+
+        // Still image: SpriteRenderer's sprite.texture.
+        if (m_pic != null && m_pic.sprite != null && m_pic.sprite.texture != null)
+        {
+            tex = m_pic.sprite.texture;
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Current human-readable status text from the Pic's world-space label (e.g.
+    /// "Waiting for GPU...", "Rendering 12/30", ""). Exposed so chat-side mirrors can
+    /// echo the live status without reaching into the TextMeshPro component directly.
+    /// </summary>
+    public string GetStatusMessage()
+    {
+        return m_text != null ? m_text.text : "";
+    }
+
+    /// <summary>
+    /// Snapshot the Pic's current displayed image as PNG bytes (whatever
+    /// <see cref="TryGetCurrentTexture"/> returns: still sprite OR movie frame).
+    /// Used by AI Chat skills that want to feed a previously-generated chat image
+    /// back into a fresh img2img / img2vid spawn ("Modify the image you just made").
+    /// Returns false if the Pic has no displayable texture yet (e.g. queued render).
+    ///
+    /// For Texture2D sources (still images) we encode directly. For RenderTexture
+    /// sources (movies) we read the current frame via a one-shot RGBA32 readback so
+    /// the LLM/preset gets a stable still snapshot of the playing video.
+    /// </summary>
+    public bool TryGetImageAsPng(out byte[] pngBytes)
+    {
+        pngBytes = null;
+        if (!TryGetCurrentTexture(out Texture tex) || tex == null) return false;
+
+        if (tex is Texture2D tex2d)
+        {
+            try
+            {
+                pngBytes = tex2d.EncodeToPNG();
+                return pngBytes != null && pngBytes.Length > 0;
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogWarning("PicMain.TryGetImageAsPng: EncodeToPNG threw: " + ex.Message);
+                return false;
+            }
+        }
+
+        if (tex is RenderTexture rt)
+        {
+            // Movies render into a RenderTexture; copy current frame into a transient
+            // Texture2D so we can EncodeToPNG.
+            var prev = RenderTexture.active;
+            Texture2D snap = null;
+            try
+            {
+                RenderTexture.active = rt;
+                snap = new Texture2D(rt.width, rt.height, TextureFormat.RGBA32, false);
+                snap.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0);
+                snap.Apply();
+                pngBytes = snap.EncodeToPNG();
+                return pngBytes != null && pngBytes.Length > 0;
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogWarning("PicMain.TryGetImageAsPng: RT readback threw: " + ex.Message);
+                return false;
+            }
+            finally
+            {
+                RenderTexture.active = prev;
+                if (snap != null) Destroy(snap);
+            }
+        }
+        return false;
     }
 
     public void OnGetPromptFromImageButton()
@@ -3642,11 +3800,28 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                             // Normalize messages for strict role alternation (required by models like Mistral)
                             var normalizedLines = OpenAITextCompletionManager.NormalizeForStrictAlternation(lines);
                             
-                            // Pass enableThinking for sglang/vLLM reasoning models (Qwen, etc.)
-                            bool? compatEnableThinking = (bool?)activeSettings.enableThinking;
+                            bool isDeepSeek = LLMRequestProfile.IsDeepSeekModel(model);
+                            var compatReasoningEffort = isDeepSeek
+                                ? activeSettings.GetReasoningEffort()
+                                : (activeSettings.enableThinking ? LLMReasoningEffort.High : LLMReasoningEffort.Off);
+                            bool? compatEnableThinking = isDeepSeek
+                                ? compatReasoningEffort != LLMReasoningEffort.Off
+                                : activeSettings.enableThinking;
+                            float compatTemperature = isDeepSeek
+                                ? LLMRequestProfile.GetRecommendedTemperature(model, compatReasoningEffort, temperature)
+                                : temperature;
+                            float? compatTopP = isDeepSeek
+                                ? LLMRequestProfile.GetRecommendedTopP(model, compatReasoningEffort, 1.0f)
+                                : (float?)null;
                             
-                            string json = _openAITextCompletionManager.BuildChatCompleteJSON(normalizedLines, 4096, temperature, model, true,
-                                enableThinking: compatEnableThinking);
+                            int compatMaxTokens = isDeepSeek
+                                ? LLMRequestProfile.GetRecommendedMaxTokens(model, compatReasoningEffort, 4096)
+                                : 4096;
+                            string compatReasoningEffortParam = isDeepSeek ? LLMReasoningEffortUtil.ToConfigValue(compatReasoningEffort) : null;
+                            string json = _openAITextCompletionManager.BuildChatCompleteJSON(normalizedLines, compatMaxTokens, compatTemperature, model, true,
+                                enableThinking: compatEnableThinking,
+                                topP: compatTopP,
+                                customReasoningEffort: compatReasoningEffortParam);
                             _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
                             SetLLMActive(true, llmInstanceID, llmReplicaIndex);
                         }

@@ -54,12 +54,12 @@ aitools_cli.py "a giant pig riding a dolphin" pig.png
 Use a preset from `../Presets/` — name resolution accepts the bare file
 stem, with or without `.txt`:
 ```
-aitools_cli.py "a cat" cat.png -p "Prompt To Image (Z Image)"
+aitools_cli.py "a cat" cat.png -p "Prompt To Image (Z-Image)"
 ```
 
 Override the preset's negative prompt and pin a server:
 ```
-aitools_cli.py "a cat" cat.png -p "Prompt To Image (Z Image)" \
+aitools_cli.py "a cat" cat.png -p "Prompt To Image (Z-Image)" \
     -n "ugly, blurry" --server http://hal:7861
 ```
 
@@ -79,7 +79,7 @@ aitools_cli.py "a cat" cat.png \
 Verbose mode shows server probe, effective prompt, every applied `@replace`,
 seed, prompt id, and live per-step progress:
 ```
-aitools_cli.py "a cat" cat.png -p "Prompt To Image (Z Image)" -v
+aitools_cli.py "a cat" cat.png -p "Prompt To Image (Z-Image)" -v
 ```
 
 Image-input preset (auto-mask the subject, returning an RGBA PNG with the

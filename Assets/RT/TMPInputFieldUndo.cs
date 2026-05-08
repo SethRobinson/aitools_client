@@ -1,98 +1,172 @@
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 
+// Adds Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z undo+redo to a TMP_InputField. Behaves like a
+// normal text editor: groups bursts of typing into a single step, preserves caret
+// position, only acts while the field is focused, and exposes ResetHistory() so
+// external code that wipes the field (e.g. AIChatPanel after sending) doesn't leak
+// stale text back via Ctrl+Z.
 public class TMPInputFieldUndo : MonoBehaviour
 {
+    private const int MaxHistory = 200;
+    private const float GroupingWindow = 0.6f;
+
+    private struct Snapshot
+    {
+        public string text;
+        public int caret;
+    }
+
     private TMP_InputField inputField;
-    private const int BUFFER_SIZE = 10;
-    private string[] undoBuffer = new string[BUFFER_SIZE];
-    private int undoIndex = -1;
-    private int undoMax = -1;
-    private bool isUndoRedoOperation = false;
-    
+    private readonly List<Snapshot> history = new List<Snapshot>();
+    private int historyIndex = -1;
+    private float lastChangeTime = -999f;
+    private bool isApplyingHistory;
+
     void Start()
     {
         inputField = GetComponent<TMP_InputField>();
+        if (inputField == null)
+        {
+            enabled = false;
+            return;
+        }
         inputField.onValueChanged.AddListener(OnTextChanged);
+        // Seed with the current state so the very first edit can be undone.
+        history.Add(new Snapshot { text = inputField.text ?? "", caret = inputField.caretPosition });
+        historyIndex = 0;
+    }
+
+    void OnDestroy()
+    {
+        if (inputField != null)
+            inputField.onValueChanged.RemoveListener(OnTextChanged);
     }
 
     void Update()
     {
-        bool isCtrlPressed = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
-        
-        if (isCtrlPressed)
+        if (inputField == null || !inputField.isFocused) return;
+
+        bool ctrl = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+        if (!ctrl) return;
+
+        bool shift = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+
+        if (Input.GetKeyDown(KeyCode.Z))
         {
-            if (Input.GetKeyDown(KeyCode.Z))
-            {
-                Undo();
-            }
-            else if (Input.GetKeyDown(KeyCode.Y))
-            {
-                Redo();
-            }
+            if (shift) Redo(); else Undo();
+        }
+        else if (Input.GetKeyDown(KeyCode.Y))
+        {
+            Redo();
         }
     }
 
     void OnTextChanged(string newText)
     {
-        // Don't record if this change was from an undo/redo operation
-        if (isUndoRedoOperation)
+        if (isApplyingHistory) return;
+        Push(newText ?? "", inputField.caretPosition);
+    }
+
+    void Push(string text, int caret)
+    {
+        // Drop any redo-future when the user types after undoing.
+        if (historyIndex < history.Count - 1)
+            history.RemoveRange(historyIndex + 1, history.Count - historyIndex - 1);
+
+        float now = Time.unscaledTime;
+        bool merge = historyIndex >= 0
+                     && (now - lastChangeTime) < GroupingWindow
+                     && ShouldMerge(history[historyIndex].text, text);
+
+        if (merge)
         {
-            isUndoRedoOperation = false;
-            return;
+            history[historyIndex] = new Snapshot { text = text, caret = caret };
+        }
+        else
+        {
+            history.Add(new Snapshot { text = text, caret = caret });
+            historyIndex = history.Count - 1;
+            if (history.Count > MaxHistory)
+            {
+                int trim = history.Count - MaxHistory;
+                history.RemoveRange(0, trim);
+                historyIndex -= trim;
+            }
         }
 
-        // Add new state to undo buffer
-        undoIndex++;
-        
-        // If we're starting a new branch after some undos, clear the redo stack
-        if (undoIndex < undoMax)
+        lastChangeTime = now;
+    }
+
+    // Merge a typing burst into the previous step, but break on whitespace / newline so
+    // each "word" is its own undo unit (matches what most editors do).
+    static bool ShouldMerge(string prev, string next)
+    {
+        int diff = Mathf.Abs(prev.Length - next.Length);
+        if (diff != 1) return false;
+        if (next.Length > prev.Length)
         {
-            undoMax = undoIndex;
+            char added = FirstDiffChar(prev, next);
+            if (added == '\n' || added == '\r' || added == ' ' || added == '\t') return false;
         }
-        
-        // If we're at buffer capacity, shift everything down
-        if (undoIndex >= BUFFER_SIZE)
-        {
-            for (int i = 1; i < BUFFER_SIZE; i++)
-            {
-                undoBuffer[i-1] = undoBuffer[i];
-            }
-            undoIndex = BUFFER_SIZE - 1;
-            undoMax = undoIndex;
-        }
-        
-        undoBuffer[undoIndex] = newText;
-        undoMax = Mathf.Max(undoMax, undoIndex);
+        return true;
+    }
+
+    static char FirstDiffChar(string prev, string next)
+    {
+        int i = 0;
+        while (i < prev.Length && i < next.Length && prev[i] == next[i]) i++;
+        return i < next.Length ? next[i] : '\0';
     }
 
     void Undo()
     {
-        if (undoIndex > 0)
-        {
-            undoIndex--;
-            isUndoRedoOperation = true;
-            inputField.text = undoBuffer[undoIndex];
-            inputField.caretPosition = inputField.text.Length;
-        }
+        if (historyIndex <= 0) return;
+        historyIndex--;
+        Apply(history[historyIndex]);
     }
 
     void Redo()
     {
-        if (undoIndex < undoMax)
+        if (historyIndex >= history.Count - 1) return;
+        historyIndex++;
+        Apply(history[historyIndex]);
+    }
+
+    void Apply(Snapshot s)
+    {
+        isApplyingHistory = true;
+        try
         {
-            undoIndex++;
-            isUndoRedoOperation = true;
-            inputField.text = undoBuffer[undoIndex];
-            inputField.caretPosition = inputField.text.Length;
+            string text = s.text ?? "";
+            inputField.text = text;
+            int caret = Mathf.Clamp(s.caret, 0, text.Length);
+            inputField.caretPosition = caret;
+            inputField.selectionAnchorPosition = caret;
+            inputField.selectionFocusPosition = caret;
+        }
+        finally
+        {
+            isApplyingHistory = false;
+        }
+        // Force a fresh group on the next real keystroke.
+        lastChangeTime = -999f;
+    }
+
+    // Call when external code wipes the field (e.g. after a chat message is sent),
+    // so Ctrl+Z doesn't restore the just-sent text.
+    public void ResetHistory()
+    {
+        history.Clear();
+        historyIndex = -1;
+        lastChangeTime = -999f;
+        if (inputField != null)
+        {
+            history.Add(new Snapshot { text = inputField.text ?? "", caret = inputField.caretPosition });
+            historyIndex = 0;
         }
     }
 
-    // Optional: Clear undo history when the input field is deselected
-    public void ClearUndoHistory()
-    {
-        undoIndex = -1;
-        undoMax = -1;
-        System.Array.Clear(undoBuffer, 0, BUFFER_SIZE);
-    }
+    public void ClearUndoHistory() => ResetHistory();
 }

@@ -107,28 +107,19 @@ public class GeminiTextCompletionManager : MonoBehaviour
         // Add generation config
         var genConfig = new JSONObject();
         genConfig["temperature"] = temperature;
-        genConfig["maxOutputTokens"] = max_tokens;
+        if (max_tokens > 0)
+            genConfig["maxOutputTokens"] = max_tokens;
         
         // Check if model supports thinking (gemini-2.5 and gemini-3 models)
         string modelLower = model.ToLowerInvariant();
         bool supportsThinking = modelLower.Contains("gemini-2.5") || modelLower.Contains("gemini-3");
         
-        if (supportsThinking)
+        if (supportsThinking && !enableThinking)
         {
-            // Only include thinkingConfig for models that support it
+            // Only include thinkingConfig when disabling thinking. When thinking is
+            // enabled, omit thinkingBudget so Gemini can use its model-default budget.
             var thinkingConfig = new JSONObject();
-            // thinkingBudget: 0 = disabled, positive number = token budget
-            // For enabling, we omit thinkingBudget or set a positive value
-            if (!enableThinking)
-            {
-                thinkingConfig["thinkingBudget"] = 0;
-            }
-            // When enabling, we don't set thinkingBudget to let the model decide dynamically
-            // Or we could set a reasonable default like 8192
-            else
-            {
-                thinkingConfig["thinkingBudget"] = 8192; // Default thinking budget when enabled
-            }
+            thinkingConfig["thinkingBudget"] = 0;
             genConfig["thinkingConfig"] = thinkingConfig;
         }
         

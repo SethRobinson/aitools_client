@@ -1,8 +1,11 @@
 COMMAND_START|joblist
-#LLM processes prompt using global_prompt as system prompt (raw mode)
+#LLM sends the global_prompt as the user's raw message.
+#Chat-template models can emit stray template text when given only a system
+#message, so keep Raw Request as a real user turn.
 command @llm_prompt_reset
 command @copy|none|requirements|
-command @llm_prompt_set_base_prompt|global_prompt|
+command @llm_prompt_set_base_prompt|Answer the user directly. Use English unless asked otherwise.|
+command @llm_prompt_add_from_user|global_prompt|
 call_llm
 command @copy|llm_reply|global_prompt|
 COMMAND_END

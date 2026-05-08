@@ -15,6 +15,125 @@ public enum LLMProvider
     OpenAICompatible = 5
 }
 
+public enum LLMReasoningEffort
+{
+    Off = 0,
+    High = 1,
+    Max = 2
+}
+
+public static class LLMReasoningEffortUtil
+{
+    public const string OffValue = "off";
+    public const string HighValue = "high";
+    public const string MaxValue = "max";
+
+    public static LLMReasoningEffort Parse(string value, LLMReasoningEffort fallback = LLMReasoningEffort.Off)
+    {
+        if (string.IsNullOrEmpty(value)) return fallback;
+        switch (value.Trim().ToLowerInvariant())
+        {
+            case OffValue:
+            case "none":
+            case "no-think":
+            case "nothink":
+            case "false":
+            case "0":
+                return LLMReasoningEffort.Off;
+            case HighValue:
+            case "think":
+            case "thinking":
+            case "true":
+            case "1":
+                return LLMReasoningEffort.High;
+            case MaxValue:
+            case "maximum":
+            case "absolute_max":
+            case "absolute-maximum":
+            case "2":
+                return LLMReasoningEffort.Max;
+            default:
+                return fallback;
+        }
+    }
+
+    public static string ToConfigValue(LLMReasoningEffort effort)
+    {
+        switch (effort)
+        {
+            case LLMReasoningEffort.Max:
+                return MaxValue;
+            case LLMReasoningEffort.High:
+                return HighValue;
+            default:
+                return OffValue;
+        }
+    }
+
+    public static string ToDisplayName(LLMReasoningEffort effort)
+    {
+        switch (effort)
+        {
+            case LLMReasoningEffort.Max:
+                return "Think Max";
+            case LLMReasoningEffort.High:
+                return "Think High";
+            default:
+                return "No-think";
+        }
+    }
+}
+
+public static class LLMReasoningPrompts
+{
+    public const string DeepSeekMaxReasoningSystemPrompt =
+        "Reasoning Effort: Absolute maximum with no shortcuts permitted.\n" +
+        "You MUST be very thorough in your thinking and comprehensively decompose the problem to resolve the root cause, rigorously stress-testing your logic against all potential paths, edge cases, and adversarial scenarios.\n" +
+        "Explicitly write out your entire deliberation process, documenting every intermediate step, considered alternative, and rejected hypothesis to ensure absolutely no assumption is left unchecked.\n";
+}
+
+public static class LLMRequestProfile
+{
+    public const int DeepSeekNoThinkMaxTokens = 4096;
+    public const int DeepSeekThinkHighMaxTokens = 4096;
+    public const int DeepSeekThinkMaxMaxTokens = 8000;
+
+    public static bool IsDeepSeekModel(string model)
+    {
+        return !string.IsNullOrEmpty(model) && model.ToLowerInvariant().Contains("deepseek");
+    }
+
+    public static int GetRecommendedMaxTokens(string model, LLMReasoningEffort effort, int fallback)
+    {
+        if (!IsDeepSeekModel(model))
+            return fallback;
+
+        switch (effort)
+        {
+            case LLMReasoningEffort.Max:
+                return DeepSeekThinkMaxMaxTokens;
+            case LLMReasoningEffort.High:
+                return DeepSeekThinkHighMaxTokens;
+            default:
+                return DeepSeekNoThinkMaxTokens;
+        }
+    }
+
+    public static float GetRecommendedTemperature(string model, LLMReasoningEffort effort, float fallback)
+    {
+        if (!IsDeepSeekModel(model))
+            return fallback;
+        return effort == LLMReasoningEffort.Off ? 0.6f : 1.0f;
+    }
+
+    public static float GetRecommendedTopP(string model, LLMReasoningEffort effort, float fallback)
+    {
+        if (!IsDeepSeekModel(model))
+            return fallback;
+        return effort == LLMReasoningEffort.Off ? 0.95f : 1.0f;
+    }
+}
+
 /// <summary>
 /// Settings for a single LLM provider.
 /// </summary>
@@ -35,6 +154,7 @@ public class LLMProviderSettings
     
     // llama.cpp-specific: thinking mode settings (for GLM and similar models)
     public bool enableThinking = true; // User preference for thinking mode (default: enabled)
+    public string reasoningEffort = ""; // "", off, high, max. Empty migrates from enableThinking.
     
     // llama.cpp-specific: sampling parameters (optional overrides)
     public bool overrideTemperature = false;
@@ -67,6 +187,18 @@ public class LLMProviderSettings
         return modelLower.Contains("glm") || modelLower.Contains("deepseek") || modelLower.Contains("qwen");
     }
 
+    public LLMReasoningEffort GetReasoningEffort()
+    {
+        var fallback = enableThinking ? LLMReasoningEffort.High : LLMReasoningEffort.Off;
+        return LLMReasoningEffortUtil.Parse(reasoningEffort, fallback);
+    }
+
+    public void SetReasoningEffort(LLMReasoningEffort effort)
+    {
+        reasoningEffort = LLMReasoningEffortUtil.ToConfigValue(effort);
+        enableThinking = effort != LLMReasoningEffort.Off;
+    }
+
     public LLMProviderSettings Clone()
     {
         var clone = new LLMProviderSettings
@@ -81,6 +213,7 @@ public class LLMProviderSettings
             contextLength = this.contextLength,
             maxContextLength = this.maxContextLength,
             enableThinking = this.enableThinking,
+            reasoningEffort = this.reasoningEffort,
             isRouterMode = this.isRouterMode,
             // Sampling parameters
             overrideTemperature = this.overrideTemperature,
@@ -178,6 +311,7 @@ public class LLMInstanceInfo
             case LLMProvider.LlamaCpp:
                 instance.name = "llama.cpp";
                 instance.settings.endpoint = "http://localhost:8080";
+                instance.settings.SetReasoningEffort(LLMReasoningEffort.Off);
                 break;
             case LLMProvider.Ollama:
                 instance.name = "Ollama";
@@ -194,6 +328,7 @@ public class LLMInstanceInfo
             case LLMProvider.OpenAICompatible:
                 instance.name = "OpenAI Compatible";
                 instance.settings.endpoint = "http://localhost:8080";
+                instance.settings.SetReasoningEffort(LLMReasoningEffort.Off);
                 break;
         }
         
@@ -410,7 +545,9 @@ public class LLMSettings
             apiKey = "",
             endpoint = "http://localhost:8080",
             selectedModel = "",
-            availableModels = new List<string>()
+            availableModels = new List<string>(),
+            enableThinking = false,
+            reasoningEffort = LLMReasoningEffortUtil.OffValue
         };
 
         // Ollama defaults
@@ -441,7 +578,9 @@ public class LLMSettings
             apiKey = "",
             endpoint = "http://localhost:8080",
             selectedModel = "",
-            availableModels = new List<string>()
+            availableModels = new List<string>(),
+            enableThinking = false,
+            reasoningEffort = LLMReasoningEffortUtil.OffValue
         };
 
         return settings;
@@ -601,7 +740,17 @@ public class LLMInstancesConfig
     /// </summary>
     public LLMInstanceInfo GetDefaultInstance()
     {
-        return GetInstance(defaultInstanceID) ?? (instances.Count > 0 ? instances[0] : null);
+        var configuredDefault = GetInstance(defaultInstanceID);
+        if (configuredDefault != null && configuredDefault.isActive)
+            return configuredDefault;
+
+        foreach (var inst in instances)
+        {
+            if (inst != null && inst.isActive)
+                return inst;
+        }
+
+        return configuredDefault ?? (instances.Count > 0 ? instances[0] : null);
     }
     
     /// <summary>
