@@ -22,8 +22,11 @@ public class GPTPromptManager : MonoBehaviour
     string _nameToUseForSystem = "system";
     string _nameToUseForUser = "user";
     
-    // Pending images to attach to the next user interaction (for vision LLM support)
+    // Pending images to attach to the next user interaction (for vision LLM support).
+    // Parallel lists: _pendingImages[i] is base64 PNG, _pendingImageChatIndices[i] is
+    // the global 1-based chat_image="N" index (or -1 if unknown). Kept in sync.
     List<string> _pendingImages = new List<string>();
+    List<int> _pendingImageChatIndices = new List<int>();
   
     public void SetSystemName(string systemName)
     {
@@ -48,26 +51,33 @@ public class GPTPromptManager : MonoBehaviour
         _journalSystemPrompt = "";
         _interactions.Clear();
         _pendingImages.Clear();
+        _pendingImageChatIndices.Clear();
     }
-    
+
     /// <summary>
     /// Add a base64-encoded image to be attached to the next user interaction.
-    /// Call this before AddInteraction() for user messages.
+    /// Call this before AddInteraction() for user messages. Optionally supply the
+    /// global chat_image="N" index this image corresponds to so serializers can
+    /// emit explicit "[Image #N]" labels (pass -1 if unknown / not applicable).
     /// </summary>
-    public void AddPendingImage(string base64ImageData)
+    public void AddPendingImage(string base64ImageData, int chatImageIndex = -1)
     {
         if (_pendingImages == null)
             _pendingImages = new List<string>();
+        if (_pendingImageChatIndices == null)
+            _pendingImageChatIndices = new List<int>();
         _pendingImages.Add(base64ImageData);
-        RTConsole.Log($"GPTPromptManager: Added pending image ({base64ImageData.Length} chars), total pending: {_pendingImages.Count}");
+        _pendingImageChatIndices.Add(chatImageIndex);
+        RTConsole.Log($"GPTPromptManager: Added pending image ({base64ImageData.Length} chars, chat_image={chatImageIndex}), total pending: {_pendingImages.Count}");
     }
-    
+
     /// <summary>
     /// Clear all pending images without attaching them to any interaction.
     /// </summary>
     public void ClearPendingImages()
     {
         _pendingImages.Clear();
+        _pendingImageChatIndices.Clear();
     }
     
     /// <summary>
@@ -115,8 +125,9 @@ public class GPTPromptManager : MonoBehaviour
             _interactions.Enqueue(clonedChatLine);
         }
         
-        // Also clone pending images
+        // Also clone pending images + their chat indices (kept in sync)
         _pendingImages = new List<string>(other._pendingImages ?? new List<string>());
+        _pendingImageChatIndices = new List<int>(other._pendingImageChatIndices ?? new List<int>());
     }
 
     public void AddInteraction(string role, string content, string internalTag = "")
@@ -132,15 +143,20 @@ public class GPTPromptManager : MonoBehaviour
         */
         var chatLine = new GTPChatLine(role, content, internalTag);
         
-        // Attach any pending images to this interaction (typically user messages)
+        // Attach any pending images to this interaction (typically user messages).
+        // Indices come from the parallel _pendingImageChatIndices list - same order.
         if (_pendingImages != null && _pendingImages.Count > 0)
         {
-            foreach (var img in _pendingImages)
+            for (int i = 0; i < _pendingImages.Count; i++)
             {
-                chatLine.AddImage(img);
+                int idx = (_pendingImageChatIndices != null && i < _pendingImageChatIndices.Count)
+                    ? _pendingImageChatIndices[i]
+                    : -1;
+                chatLine.AddImage(_pendingImages[i], idx);
             }
             RTConsole.Log($"GPTPromptManager: Attached {_pendingImages.Count} image(s) to {role} interaction");
             _pendingImages.Clear();
+            _pendingImageChatIndices?.Clear();
         }
         
         _interactions.Enqueue(chatLine);

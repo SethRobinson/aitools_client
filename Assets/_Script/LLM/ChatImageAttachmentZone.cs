@@ -4,6 +4,7 @@ using System.IO;
 using B83.Win32;
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 /// <summary>
@@ -270,6 +271,39 @@ public class ChatImageAttachmentZone : MonoBehaviour
         xTxt.raycastTarget = false;
     }
 
+    // Pixel-space padding around the drop target's projected rect. Generous enough
+    // to absorb DPI rounding error, the resize grip and footer drag bar that sit
+    // just outside the parent's sizeDelta, and small mismatches between where Win32
+    // says the drop landed and where Unity's screen origin is.
+    private const float DropTargetPaddingPx = 40f;
+
+    /// <summary>
+    /// True if <paramref name="unityScreenPos"/> is "on" our drop target. Computes
+    /// the drop target's actual screen-space rect from its world corners (works for
+    /// ScreenSpaceOverlay canvases, where world corners ARE pixel coords), then pads
+    /// it. RectTransformUtility.RectangleContainsScreenPoint is bypassed because it
+    /// has been observed to mis-classify drops near the edges of the panel under
+    /// some DPI scales.
+    /// </summary>
+    private bool IsPointOverDropTarget(Vector2 unityScreenPos)
+    {
+        if (_dropTargetRect == null) return false;
+        var corners = new Vector3[4];
+        _dropTargetRect.GetWorldCorners(corners);
+        float minX = corners[0].x, minY = corners[0].y, maxX = corners[0].x, maxY = corners[0].y;
+        for (int i = 1; i < 4; i++)
+        {
+            if (corners[i].x < minX) minX = corners[i].x;
+            if (corners[i].y < minY) minY = corners[i].y;
+            if (corners[i].x > maxX) maxX = corners[i].x;
+            if (corners[i].y > maxY) maxY = corners[i].y;
+        }
+        return unityScreenPos.x >= minX - DropTargetPaddingPx
+            && unityScreenPos.x <= maxX + DropTargetPaddingPx
+            && unityScreenPos.y >= minY - DropTargetPaddingPx
+            && unityScreenPos.y <= maxY + DropTargetPaddingPx;
+    }
+
     /// <summary>
     /// DragAndDropHandler claim callback. Returns true if the drop landed over our drop
     /// target rect (and was therefore consumed as attachments) - false to let the next
@@ -281,7 +315,7 @@ public class ChatImageAttachmentZone : MonoBehaviour
 
         // Win32 POINT is top-left origin; Unity screen coords are bottom-left origin.
         Vector2 unityScreenPos = new Vector2(screenPos.x, Screen.height - screenPos.y);
-        if (!RectTransformUtility.RectangleContainsScreenPoint(_dropTargetRect, unityScreenPos, null))
+        if (!IsPointOverDropTarget(unityScreenPos))
             return false;
 
         bool addedAny = false;

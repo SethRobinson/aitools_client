@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 using UnityEngine;
 
 namespace AITools.AIChat.Skills
@@ -180,6 +181,30 @@ namespace AITools.AIChat.Skills
                     sb.Append("    Template: ").AppendLine(s.Template);
             }
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// PlayerPrefs key for the global preset prefix. Empty string = no prefix.
+        /// </summary>
+        public const string PresetPrefixPrefsKey = "aichat_preset_prefix";
+
+        // <c>{{Preset Name.txt}}</c> sentinel - inner text excludes braces. Compiled
+        // once for the lifetime of the AppDomain.
+        private static readonly Regex PresetTokenRx = new Regex(
+            @"\{\{([^{}]+)\}\}",
+            RegexOptions.Compiled);
+
+        /// <summary>
+        /// Replaces every <c>{{Preset Name.txt}}</c> sentinel with
+        /// <c>&lt;prefix&gt;Preset Name.txt</c>, where the prefix is read live from
+        /// <see cref="PresetPrefixPrefsKey"/>. Empty prefix is a strip-only pass - the
+        /// sentinel itself is always removed so raw <c>{{...}}</c> never reaches the LLM.
+        /// </summary>
+        public static string ApplyPresetPrefix(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return text;
+            string prefix = PlayerPrefs.GetString(PresetPrefixPrefsKey, "");
+            return PresetTokenRx.Replace(text, m => prefix + m.Groups[1].Value);
         }
 
         // ---------- Internals ----------

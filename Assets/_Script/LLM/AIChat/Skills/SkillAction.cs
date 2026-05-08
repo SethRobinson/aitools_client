@@ -51,6 +51,36 @@ namespace AITools.AIChat.Skills
             }
         }
 
+        /// <summary>
+        /// Optional 1-based attachment index for the SECOND input slot (2-input
+        /// presets such as Image To Image Klein Edit 2 Input). Mirrors
+        /// <see cref="AttachmentIndex"/> but feeds the workflow's image2 slot.
+        /// </summary>
+        public int? AttachmentIndex2
+        {
+            get
+            {
+                if (!Args.TryGetValue("attachment2", out var v)) return null;
+                if (int.TryParse(v, out int n) && n > 0) return n;
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Optional 1-based chat-image index for the SECOND input slot (2-input
+        /// presets). Wins over <see cref="AttachmentIndex2"/> when both are set,
+        /// matching the precedence rule on the primary slot.
+        /// </summary>
+        public int? ChatImageIndex2
+        {
+            get
+            {
+                if (!Args.TryGetValue("chat_image2", out var v)) return null;
+                if (int.TryParse(v, out int n) && n > 0) return n;
+                return null;
+            }
+        }
+
         /// <summary>Optional GPU id hint (Config.GetGPUInfo index), or null.</summary>
         public int? GpuId
         {
@@ -69,6 +99,35 @@ namespace AITools.AIChat.Skills
             {
                 if (!Args.TryGetValue("llm", out var v)) return null;
                 if (int.TryParse(v, out int n) && n >= 0) return n;
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Optional explicit output-width override for image/video skills. When both
+        /// width and height are set (and > 0), they bypass the host's auto-aspect
+        /// match and force the workflow to run at the specified dimensions. Useful
+        /// for portrait video from a square source, or any time the LLM needs a
+        /// specific aspect that doesn't match the source image. Returns null if
+        /// missing or unparseable.
+        /// </summary>
+        public int? Width
+        {
+            get
+            {
+                if (!Args.TryGetValue("width", out var v)) return null;
+                if (int.TryParse(v, out int n) && n > 0) return n;
+                return null;
+            }
+        }
+
+        /// <summary>Optional explicit output-height override - see <see cref="Width"/>.</summary>
+        public int? Height
+        {
+            get
+            {
+                if (!Args.TryGetValue("height", out var v)) return null;
+                if (int.TryParse(v, out int n) && n > 0) return n;
                 return null;
             }
         }

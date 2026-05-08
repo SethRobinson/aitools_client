@@ -17,24 +17,32 @@ public class GTPChatLine
             _content = content;
             _internalTag = internalTag;
             _images = new List<string>();
+            _imageChatIndices = new List<int>();
         }
 
         public GTPChatLine Clone()
         {
             var clone = new GTPChatLine(_role, _content, _internalTag);
             clone._images = new List<string>(_images);
+            clone._imageChatIndices = new List<int>(_imageChatIndices ?? new List<int>());
             return clone;
         }
 
         /// <summary>
         /// Add a base64-encoded image to this chat line (for vision LLM support).
         /// The image should be PNG or JPEG encoded, without the data:image prefix.
+        /// chatImageIndex is the global 1-based chat_image="N" index this image
+        /// corresponds to (so the serializer can emit "[Image #N]" labels). Pass
+        /// -1 if the image isn't a numbered chat-image (e.g. one-shot caption job).
         /// </summary>
-        public void AddImage(string base64ImageData)
+        public void AddImage(string base64ImageData, int chatImageIndex = -1)
         {
             if (_images == null)
                 _images = new List<string>();
+            if (_imageChatIndices == null)
+                _imageChatIndices = new List<int>();
             _images.Add(base64ImageData);
+            _imageChatIndices.Add(chatImageIndex);
         }
 
         /// <summary>
@@ -49,6 +57,10 @@ public class GTPChatLine
         public string _content;
         public string _internalTag;
         public List<string> _images; // Base64-encoded images for vision LLM
+        // Parallel to _images: the global chat_image="N" index of each image, or
+        // -1 if not a numbered chat image. Used by serializers to inject explicit
+        // "[Image #N]" text labels so the LLM doesn't have to guess the mapping.
+        public List<int> _imageChatIndices;
     }
 
 public class OpenAITextCompletionManager : MonoBehaviour
@@ -384,13 +396,23 @@ public class OpenAITextCompletionManager : MonoBehaviour
                 if (obj.HasImages())
                 {
                     // Multimodal content array (vLLM/Qwen-VL/GPT-4o style):
-                    // content = [ { image_url... }, ..., { text: "..." } ]
+                    // content = [ { text: "[Image #N]" }, { image_url... }, ..., { text: "..." } ]
+                    // The "[Image #N]" labels in front of each image_url give the
+                    // LLM an unambiguous mapping from "the image I see" to
+                    // chat_image="N" - smaller models would otherwise mis-index.
                     var contentSb = new StringBuilder();
                     contentSb.Append("[");
-                    foreach (var b64 in obj._images)
+                    for (int i = 0; i < obj._images.Count; i++)
                     {
+                        int idx = (obj._imageChatIndices != null && i < obj._imageChatIndices.Count)
+                            ? obj._imageChatIndices[i]
+                            : -1;
+                        int labelN = idx >= 0 ? idx : (i + 1);
+                        contentSb.Append("{\"type\":\"text\",\"text\":\"[Image #")
+                                 .Append(labelN)
+                                 .Append("]\"},");
                         contentSb.Append("{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:image/png;base64,")
-                                 .Append(b64)
+                                 .Append(obj._images[i])
                                  .Append("\"}},");
                     }
                     contentSb.Append("{\"type\":\"text\",\"text\":\"")

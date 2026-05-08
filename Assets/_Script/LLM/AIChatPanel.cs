@@ -50,6 +50,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // even after ChatImageAttachmentZone has cleared its own thumbnail strip.
     private List<byte[]> _lastTurnAttachments = new List<byte[]>();
 
+    // Per-Pic label TMP + the base "Image #N (...)" text it was created with, so a
+    // caption arriving asynchronously can append " - <caption>" to the existing
+    // label without disturbing the index/source prefix. Stale entries (Pic destroyed)
+    // are tolerated - we null-check before writing.
+    private readonly Dictionary<PicMain, (TextMeshProUGUI label, string baseText)> _captionLabels = new Dictionary<PicMain, (TextMeshProUGUI, string)>();
+
     // Stable per-session list of chat-image bubbles (1-based via index+1). Lets the LLM
     // reference "the image you generated in turn 3" via chat_image="3". Only cleared on
     // OnClearClicked; persists across turns. Entries can become stale if the user deletes
@@ -102,6 +108,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private const float MEDIA_HEADER_HEIGHT = 26f;
     private const string PREFS_KEEP_LAST_N_MEDIA = "aichat_keep_last_n_media";
     private const int DEFAULT_KEEP_LAST_N_MEDIA = 10;
+    // Mirror of SkillManager.PresetPrefixPrefsKey - kept here for the static
+    // get/set helpers next to GetKeepLastNMedia. Both must stay in sync.
+    private const string PREFS_PRESET_PREFIX = "aichat_preset_prefix";
+    private const string DEFAULT_PRESET_PREFIX = "";
 
     // Footer
     private TMP_InputField _inputField;
@@ -133,6 +143,20 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private StringBuilder _streamBuffer = new StringBuilder();
     private float _streamLastUpdate = 0f;
     private const float STREAM_UPDATE_INTERVAL = 0.1f;
+
+    // Streaming status counters - reset on each user send. Total chars received
+    // (proxy for tokens via /4), wall-clock start, and the next time we should
+    // refresh the status text. Display is throttled to STATUS_PILL_INTERVAL so
+    // we don't thrash _statusText every chunk.
+    private int _streamCharsReceived = 0;
+    private float _streamStartTime = 0f;
+    private float _streamStatusNextRefresh = 0f;
+    private int _streamSpinnerStep = 0;
+    private const float STREAM_STATUS_INTERVAL = 0.15f;
+    // Plain ASCII spinner - the chat font (LiberationSans SDF) doesn't ship the
+    // Braille / block glyphs that look nicer, and they render as missing-glyph
+    // squares. |/-\ is universal.
+    private static readonly char[] StreamSpinnerFrames = { '|', '/', '-', '\\' };
     private TMP_InputField _streamingAssistantField;
     private RectTransform _streamingAssistantRT;
     private bool _isStreaming = false;
@@ -180,11 +204,20 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private static readonly Color TextPlaceholder = new Color(0.196f, 0.196f, 0.196f, 0.5f);
     private static readonly Color ResizeGripColor = new Color(0.45f, 0.45f, 0.50f, 1f);
 
+    // Tracks the visibility state independently of _panelRoot.SetActive, because we
+    // intentionally keep _panelRoot active even when "hidden" so that coroutines on
+    // its components (most importantly the LLM completion managers' streaming
+    // requests) can run to completion. Deactivating _panelRoot would kill those
+    // coroutines mid-stream and the chat UI would be stuck thinking the LLM is
+    // still talking forever.
+    public static bool IsVisible => _panelRoot != null && _instance != null && _instance._isVisible;
+    private bool _isVisible = true;
+
     public static void Show()
     {
         if (_instance != null)
         {
-            _panelRoot.SetActive(true);
+            _instance.SetVisible(true);
             _instance.RefreshHeaderTitle();
             // Reload aichat config in case the user edited a skill or main_prompt.txt
             // outside the app between toggles. Cheap.
@@ -202,16 +235,32 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     public static void Hide()
     {
-        if (_panelRoot != null)
-            _panelRoot.SetActive(false);
+        if (_instance != null)
+            _instance.SetVisible(false);
     }
 
     public static void Toggle()
     {
-        if (_panelRoot != null && _panelRoot.activeSelf)
+        if (_instance != null && _instance._isVisible)
             Hide();
         else
             Show();
+    }
+
+    /// <summary>
+    /// Hide/show the visible chat UI without deactivating _panelRoot. Closing the
+    /// panel must NOT stop the LLM streaming coroutines that live on _panelRoot's
+    /// components (OpenAITextCompletionManager etc. were added there); otherwise
+    /// the in-flight reply never finalizes and the chat is stuck "talking" until
+    /// Stop is clicked. Just deactivate the visible UI children instead.
+    /// </summary>
+    private void SetVisible(bool visible)
+    {
+        _isVisible = visible;
+        if (_mainPanel != null)
+            _mainPanel.gameObject.SetActive(visible);
+        if (_captionTooltipRoot != null && !visible)
+            _captionTooltipRoot.SetActive(false);
     }
 
     private void OnDestroy()
@@ -1311,12 +1360,25 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _lastTurnAttachments.Clear();
         if (attachedCount > 0)
         {
+            // Each attachment is about to become Image #(_chatImagePics.Count + 1 + offset)
+            // via PromoteAttachmentsToChatImages below. Capture the starting index here so
+            // we can label the multipart image_url parts with their stable chat_image="N".
+            int firstChatIdx = _chatImagePics.Count + 1;
+            int promoteOffset = 0;
             foreach (var bytes in attachmentBytes)
             {
                 if (bytes == null) continue;
-                _promptManager.AddPendingImage(System.Convert.ToBase64String(bytes));
+                _promptManager.AddPendingImage(System.Convert.ToBase64String(bytes), firstChatIdx + promoteOffset);
                 _lastTurnAttachments.Add(bytes);
+                promoteOffset++;
             }
+            // Promote each attachment to a real PicMain. This makes the image persist in
+            // the media column, gives the user a world Pic they can edit, AND registers it
+            // in _chatImagePics so the LLM can reach it via chat_image="N" on this and all
+            // future turns. Without this, ChatImageAttachmentZone.ClearAttachments below
+            // would wipe the only UI surface holding the image, and SkillActionExecutor's
+            // image_to_image validation would report "0 reachable images" on the next turn.
+            PromoteAttachmentsToChatImages(attachmentBytes);
             AddSystemMessage($"Attached {attachedCount} image{(attachedCount == 1 ? "" : "s")} to the next message.");
         }
 
@@ -1357,6 +1419,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _attachmentZone?.ClearAttachments();
         _lastTurnAttachments?.Clear();
         _chatImagePics?.Clear();
+        _captionLabels?.Clear();
         _actionParser?.Reset();
         for (int i = _chatContent.childCount - 1; i >= 0; i--)
         {
@@ -1520,14 +1583,23 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (_contextBuilder != null && _promptManager != null)
         {
             int reachable = ((IChatHost)this).GetChatImageCount();
-            _promptManager.SetBaseSystemPrompt(_contextBuilder.Build(llmInstanceID, reachable));
+            // Snapshot captions in chat-image order so the CHAT IMAGES block can
+            // print "- Image #N: <caption>" entries for the LLM.
+            var captions = new List<string>(reachable);
+            for (int i = 1; i <= reachable; i++)
+                captions.Add(((IChatHost)this).GetChatImageCaption(i));
+            _promptManager.SetBaseSystemPrompt(_contextBuilder.Build(llmInstanceID, reachable, captions));
         }
 
         _activeProviderInFlight = activeProvider;
         _isStreaming = true;
         _streamBuffer.Clear();
         _streamLastUpdate = 0;
-        SetBusyUI(true, $"Contacting {activeProvider}...");
+        _streamCharsReceived = 0;
+        _streamStartTime = Time.unscaledTime;
+        _streamStatusNextRefresh = 0f;
+        _streamSpinnerStep = 0;
+        SetBusyUI(true, $"{StreamSpinnerFrames[0]} Talking to LLM...");
 
         AddAssistantBubble("");
 
@@ -1770,6 +1842,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     {
         if (string.IsNullOrEmpty(text)) return;
 
+        // Count visible chars for the status line's TPS estimate. Chunk size is the
+        // closest cheap proxy for "bytes received" without having to plumb HTTP body
+        // length through every provider manager.
+        _streamCharsReceived += text.Length;
+
         // Feed the action parser first - this fires OnSkillActionParsed callbacks for any
         // complete <aitools_action.../> tags in the new chunk. Then ConsumeDisplayText()
         // returns text safe to render in the bubble (action tags stripped/replaced as
@@ -1986,6 +2063,252 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     }
 
     /// <summary>
+    /// Fire a one-shot caption request against any vision-capable LLM for the
+    /// supplied PNG bytes. On completion, sets pic.Caption (overwriting any prior
+    /// value), updates the bubble label, and invokes <paramref name="onComplete"/>
+    /// (success or failure - the caller uses it to clear an "in-flight" gate).
+    /// No-op if no vision LLM is available (onComplete still fires so the caller
+    /// doesn't deadlock).
+    /// </summary>
+    private void TryCaptionPic(PicMain pic, byte[] png, Action onComplete)
+    {
+        Action safeComplete = () => { try { onComplete?.Invoke(); } catch { } };
+
+        if (pic == null || pic.gameObject == null) { safeComplete(); return; }
+        if (png == null || png.Length == 0) { safeComplete(); return; }
+
+        var instanceMgr = LLMInstanceManager.Get();
+        if (instanceMgr == null || instanceMgr.GetInstanceCount() == 0) { safeComplete(); return; }
+
+        int targetId = instanceMgr.GetFreeLLM(isSmallJob: false, isVisionJob: true, out int replicaIndex);
+        if (targetId < 0)
+            targetId = instanceMgr.GetLeastBusyLLM(isSmallJob: false, isVisionJob: true, out replicaIndex);
+        if (targetId < 0) { safeComplete(); return; }
+
+        var inst = instanceMgr.GetInstance(targetId);
+        if (inst == null || inst.settings == null) { safeComplete(); return; }
+
+        instanceMgr.SetLLMBusy(targetId, replicaIndex, true);
+
+        var lines = new Queue<GTPChatLine>();
+        var userLine = new GTPChatLine("user", "Describe this image in one short sentence (max 15 words). Just the description, no preamble, no quotes, no markdown.");
+        userLine.AddImage(System.Convert.ToBase64String(png), -1);
+        lines.Enqueue(userLine);
+
+        int capturedTargetId = targetId;
+        int capturedReplicaIndex = replicaIndex;
+        PicMain capturedPic = pic;
+
+        Action<RTDB, JSONObject, string> onDone = (db, json, text) =>
+        {
+            instanceMgr.SetLLMBusy(capturedTargetId, capturedReplicaIndex, false);
+            try
+            {
+                string clean = (text ?? "").Trim();
+                if (string.IsNullOrEmpty(clean) && json != null)
+                {
+                    try { clean = json["choices"][0]["message"]["content"]; } catch { /* no-op */ }
+                }
+                clean = ClampCaption(clean);
+                if (string.IsNullOrEmpty(clean)) return;
+
+                if (capturedPic != null && capturedPic.gameObject != null)
+                {
+                    capturedPic.Caption = clean;
+                    if (_captionLabels.TryGetValue(capturedPic, out var entry) && entry.label != null)
+                        entry.label.text = entry.baseText + " - " + clean;
+                }
+            }
+            finally { safeComplete(); }
+        };
+
+        SkillActionExecutor.DispatchOneShot(this, inst, lines, onDone, "ImageCaption");
+    }
+
+    /// <summary>
+    /// Trim a caption to a sane length (~25 words) and strip surrounding quotes/
+    /// trailing punctuation noise. LLMs sometimes ignore the length hint or wrap
+    /// the response in quotes; this keeps the system prompt's CHAT IMAGES block
+    /// from blowing up.
+    /// </summary>
+    private static string ClampCaption(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        s = s.Trim();
+        // Strip a single pair of surrounding quotes / asterisks / backticks.
+        if (s.Length >= 2)
+        {
+            char a = s[0], b = s[s.Length - 1];
+            if ((a == '"' && b == '"') || (a == '\'' && b == '\'') || (a == '`' && b == '`'))
+                s = s.Substring(1, s.Length - 2).Trim();
+        }
+        // Collapse newlines so a multi-line response becomes one line.
+        s = s.Replace("\r\n", " ").Replace('\n', ' ').Replace('\r', ' ');
+        // Word clamp.
+        var words = s.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+        const int MaxWords = 25;
+        if (words.Length > MaxWords)
+            s = string.Join(" ", words, 0, MaxWords) + "…";
+        return s;
+    }
+
+    // ---------- Hover tooltip for chat image bubbles ----------
+
+    private GameObject _captionTooltipRoot;
+    private RectTransform _captionTooltipRT;
+    private TextMeshProUGUI _captionTooltipText;
+
+    /// <summary>
+    /// Pointer-event trigger attached to each chat-image bubble. Calls back into
+    /// the host panel to pop a floating tooltip with the bubble's full caption -
+    /// useful because the bubble label is clipped to the narrow media column.
+    /// </summary>
+    private class BubbleCaptionHoverTrigger : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler, IPointerMoveHandler
+    {
+        public AIChatPanel host;
+        public PicMain pic;
+
+        public void OnPointerEnter(PointerEventData eventData)
+        {
+            if (host == null || pic == null) return;
+            host.ShowCaptionTooltip(pic, eventData.position);
+        }
+
+        public void OnPointerMove(PointerEventData eventData)
+        {
+            if (host == null) return;
+            host.MoveCaptionTooltip(eventData.position);
+        }
+
+        public void OnPointerExit(PointerEventData eventData)
+        {
+            if (host == null) return;
+            host.HideCaptionTooltip();
+        }
+    }
+
+    private void EnsureCaptionTooltip()
+    {
+        if (_captionTooltipRoot != null) return;
+        if (_panelRoot == null) return;
+
+        _captionTooltipRoot = new GameObject("CaptionTooltip");
+        _captionTooltipRoot.transform.SetParent(_panelRoot.transform, false);
+        _captionTooltipRT = _captionTooltipRoot.AddComponent<RectTransform>();
+        // Anchored at bottom-left of the canvas so anchoredPosition == screen position.
+        _captionTooltipRT.anchorMin = new Vector2(0, 0);
+        _captionTooltipRT.anchorMax = new Vector2(0, 0);
+        _captionTooltipRT.pivot = new Vector2(0, 0);
+
+        var bg = _captionTooltipRoot.AddComponent<Image>();
+        bg.color = new Color(0.06f, 0.06f, 0.08f, 0.92f);
+        bg.raycastTarget = false; // tooltip must NOT eat the cursor
+
+        var hlg = _captionTooltipRoot.AddComponent<HorizontalLayoutGroup>();
+        hlg.padding = new RectOffset(8, 8, 5, 5);
+        hlg.childControlWidth = true;
+        hlg.childControlHeight = true;
+        hlg.childForceExpandWidth = true;
+        hlg.childForceExpandHeight = false;
+
+        var fitter = _captionTooltipRoot.AddComponent<ContentSizeFitter>();
+        fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        var textGo = new GameObject("Text");
+        textGo.transform.SetParent(_captionTooltipRoot.transform, false);
+        var textLE = textGo.AddComponent<LayoutElement>();
+        textLE.preferredWidth = 320f;
+        _captionTooltipText = textGo.AddComponent<TextMeshProUGUI>();
+        _captionTooltipText.font = _font;
+        _captionTooltipText.fontSize = 13f;
+        _captionTooltipText.color = new Color(0.95f, 0.95f, 0.95f, 1f);
+        _captionTooltipText.alignment = TextAlignmentOptions.TopLeft;
+        _captionTooltipText.textWrappingMode = TextWrappingModes.Normal;
+        _captionTooltipText.raycastTarget = false;
+
+        _captionTooltipRoot.SetActive(false);
+    }
+
+    /// <summary>
+    /// Show the tooltip with the full caption for <paramref name="pic"/>, positioned
+    /// just below-right of the cursor. Called from BubbleCaptionHoverTrigger on enter.
+    /// </summary>
+    private void ShowCaptionTooltip(PicMain pic, Vector2 screenPos)
+    {
+        if (pic == null) return;
+        EnsureCaptionTooltip();
+        if (_captionTooltipText == null) return;
+
+        string caption = pic.Caption ?? "";
+        // Compose: bold "Image #N" header on top, full caption below. The header
+        // gives the user a quick scan of which slot they're hovering even when
+        // the caption is empty/still being computed.
+        int idx0 = _chatImagePics.IndexOf(pic);
+        string header = idx0 >= 0 ? $"Image #{idx0 + 1}" : "Image";
+        if (string.IsNullOrEmpty(caption))
+            caption = "(captioning...)";
+        _captionTooltipText.text = $"<b>{header}</b>\n{caption}";
+
+        _captionTooltipRoot.transform.SetAsLastSibling(); // render on top
+        _captionTooltipRoot.SetActive(true);
+        MoveCaptionTooltip(screenPos);
+    }
+
+    private void MoveCaptionTooltip(Vector2 screenPos)
+    {
+        if (_captionTooltipRT == null) return;
+        // Offset so the tooltip doesn't sit right under the cursor (which would
+        // immediately fire a pointer-exit if the cursor crosses into it).
+        Vector2 pos = screenPos + new Vector2(14f, 14f);
+        // Clamp to keep the tooltip on-screen.
+        Vector2 size = _captionTooltipRT.rect.size;
+        pos.x = Mathf.Min(pos.x, Screen.width - size.x - 4f);
+        pos.y = Mathf.Min(pos.y, Screen.height - size.y - 4f);
+        pos.x = Mathf.Max(4f, pos.x);
+        pos.y = Mathf.Max(4f, pos.y);
+        _captionTooltipRT.anchoredPosition = pos;
+    }
+
+    private void HideCaptionTooltip()
+    {
+        if (_captionTooltipRoot != null)
+            _captionTooltipRoot.SetActive(false);
+    }
+
+    /// <summary>
+    /// Turn each user-pasted/dragged attachment into a real PicMain in the world
+    /// gallery and a chat-image bubble in the media column. After this, attachments
+    /// have the same lifecycle as AI-generated images: addressable via
+    /// chat_image="N", visible in the media column, mirrored in the chat by
+    /// ChatPicMirror, and editable by the user as a normal world Pic.
+    /// </summary>
+    private void PromoteAttachmentsToChatImages(IReadOnlyList<byte[]> attachments)
+    {
+        if (attachments == null || attachments.Count == 0) return;
+        var imageGen = ImageGenerator.Get();
+        if (imageGen == null) return;
+
+        foreach (var bytes in attachments)
+        {
+            if (bytes == null || bytes.Length == 0) continue;
+            // Same decode pattern SkillActionExecutor uses for chat_image inputs, so
+            // round-trips of the same PNG are byte-identical.
+            var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            if (!tex.LoadImage(bytes))
+            {
+                UnityEngine.Object.Destroy(tex);
+                continue;
+            }
+            var go = imageGen.AddImageByTexture(tex);
+            if (go == null) continue;
+            var pic = go.GetComponent<PicMain>();
+            if (pic == null) continue;
+            AppendUserAttachmentBubble(pic);
+        }
+    }
+
+    /// <summary>
     /// Build a chat-side image / movie bubble that mirrors the live output of a Pic
     /// just spawned by the skills system. Uses the same VLG-driven layout pattern as
     /// AppendBubble() so it sits naturally between text bubbles in stream order.
@@ -1993,7 +2316,6 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private void AppendImageBubble(SkillAction action, PicMain spawnedPic)
     {
         if (spawnedPic == null || _mediaContent == null) return;
-        bool shouldAutoScroll = IsScrollAtBottom(_mediaScroll);
 
         // Track the spawned PicMain in stable, per-session order so the LLM can
         // reference it on a later turn via chat_image="N". Add BEFORE building the
@@ -2003,6 +2325,126 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         string skillId = action != null ? (action.SkillId ?? "") : "";
         bool isMovie = skillId == BuiltInSkillIds.GenerateMovie || skillId == BuiltInSkillIds.ImageToMovie;
+        string kindLabel = isMovie ? "Movie" : "Image";
+        string label = $"{kindLabel} #{chatImageNumber} ({skillId})";
+        AppendImageBubbleInternal(spawnedPic, label, isMovie);
+
+        // Generated images don't have texture data yet (workflow hasn't run). The
+        // PicMain callbacks (m_onFinishedRenderingCallback / m_onFinishedScriptCallback)
+        // are unreliable signals here - they're reset between steps, multiple
+        // subsystems chain to them, and a plain single-image gen doesn't always fire
+        // the script callback. Just poll until TryGetImageAsPng returns bytes.
+        if (!isMovie && spawnedPic != null)
+            StartCoroutine(WaitForPicAndCaption(spawnedPic));
+    }
+
+    /// <summary>
+    /// Polls a freshly-spawned Pic and (re-)captions it whenever its texture
+    /// settles into a stable state. Required because:
+    ///  - generate_image starts with no texture, then the workflow result lands later.
+    ///  - image_to_image first calls SetImage(sourceTex) synchronously (from
+    ///    SkillActionExecutor) so the SOURCE shows up, then the workflow REPLACES
+    ///    it with the edited RESULT. A naive "first non-null bytes win" caption
+    ///    captures the source instead of the result.
+    /// We track texture-reference identity as a free change detector (PicMain
+    /// replaces the sprite + its Texture2D wholesale on every workflow result -
+    /// see SetImage / LoadImageByFilename), and only encode PNG bytes when there
+    /// is a new un-captioned texture to send. The loop exits as soon as the
+    /// current texture has been captioned and the source Pic isn't producing
+    /// anything new, instead of running EncodeToPNG every poll for the full
+    /// 240s timeout window.
+    /// </summary>
+    private IEnumerator WaitForPicAndCaption(PicMain pic)
+    {
+        const float timeoutSeconds = 240f;
+        const float pollInterval = 1.5f;
+        const int stableTicksRequired = 2; // ~3s of stability before captioning
+        float deadline = Time.realtimeSinceStartup + timeoutSeconds;
+
+        Texture lastSeenTex = null;
+        Texture captionedTex = null;
+        int stableTicks = 0;
+        bool inFlight = false;
+
+        while (Time.realtimeSinceStartup < deadline)
+        {
+            if (pic == null || pic.gameObject == null) yield break;
+
+            Texture curTex;
+            if (!pic.TryGetCurrentTexture(out curTex) || curTex == null)
+            {
+                yield return new WaitForSeconds(pollInterval);
+                continue;
+            }
+
+            if (curTex != lastSeenTex)
+            {
+                lastSeenTex = curTex;
+                stableTicks = 0;
+            }
+            else if (stableTicks < int.MaxValue)
+            {
+                stableTicks++;
+            }
+
+            // EncodeToPNG only when there is a NEW stable texture worth captioning.
+            // Doing this every poll regardless was the source of a periodic app-wide
+            // FPS hitch: with N generated bubbles open, N encodes (~10-50ms each on
+            // a 1024^2 image) stacked up on the same 1.5s cadence. inFlight gates
+            // overlapping caption jobs; the next stable tick re-fires if needed.
+            if (curTex != captionedTex && !inFlight && stableTicks >= stableTicksRequired)
+            {
+                if (pic.TryGetImageAsPng(out byte[] png) && png != null && png.Length > 0)
+                {
+                    inFlight = true;
+                    Texture submittedTex = curTex;
+                    TryCaptionPic(pic, png, () =>
+                    {
+                        inFlight = false;
+                        captionedTex = submittedTex;
+                    });
+                }
+            }
+
+            // Done: the current texture has been captioned and no further workflow
+            // step is expected to swap it. Exiting here is what stops the polling
+            // from running for the full 240s timeout after a successful gen.
+            if (!inFlight && captionedTex == curTex && !pic.IsBusyBasic())
+                yield break;
+
+            yield return new WaitForSeconds(pollInterval);
+        }
+    }
+
+    /// <summary>
+    /// Build a chat-side bubble for an image the USER dragged/pasted into the chat
+    /// this turn. Shares the rendering with skill-spawned bubbles so the image is a
+    /// first-class chat image: registered in _chatImagePics for chat_image="N"
+    /// reuse, visible in the media column, and live-mirrored from a real PicMain
+    /// (which the user can also see / edit in the world gallery).
+    /// </summary>
+    private void AppendUserAttachmentBubble(PicMain pic)
+    {
+        if (pic == null || _mediaContent == null) return;
+        _chatImagePics.Add(pic);
+        int chatImageNumber = _chatImagePics.Count;
+        string label = $"Image #{chatImageNumber} (you)";
+        AppendImageBubbleInternal(pic, label, isMovie: false);
+        // User attachments have a stable texture loaded synchronously in
+        // PromoteAttachmentsToChatImages - the same stability-aware coroutine
+        // we use for generated images works fine here too (it'll just settle
+        // and caption immediately).
+        StartCoroutine(WaitForPicAndCaption(pic));
+    }
+
+    /// <summary>
+    /// Shared bubble construction for both AI-generated and user-attached images.
+    /// Caller is responsible for registering <paramref name="pic"/> in _chatImagePics
+    /// and computing <paramref name="labelText"/> (which embeds the chat_image index).
+    /// </summary>
+    private void AppendImageBubbleInternal(PicMain pic, string labelText, bool isMovie)
+    {
+        bool shouldAutoScroll = IsScrollAtBottom(_mediaScroll);
 
         var bubble = new GameObject(isMovie ? "Bubble_Movie" : "Bubble_Image");
         // Image / movie bubbles live in the LEFT MediaPanel (separate from text).
@@ -2033,14 +2475,27 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // Bubble label includes the stable Image #N so the user (and the LLM, when it
         // re-reads this transcript) can match the bubble against chat_image="N" in skill
         // invocations. The number is the index into _chatImagePics + 1.
-        string kindLabel = isMovie ? "Movie" : "Image";
-        labelTmp.text = $"{kindLabel} #{chatImageNumber} ({skillId})";
+        labelTmp.text = labelText;
         labelTmp.font = _font;
         labelTmp.fontSize = BaseLabelFontSize * _fontSizeMultiplier;
         labelTmp.fontStyle = FontStyles.Bold;
         labelTmp.color = new Color(0.10f, 0.45f, 0.20f);
         labelTmp.alignment = TextAlignmentOptions.MidlineLeft;
         labelTmp.raycastTarget = false;
+
+        // Remember the label so the async caption job (TryCaptionPic) can
+        // append "- <caption>" once the vision LLM responds.
+        if (pic != null)
+            _captionLabels[pic] = (labelTmp, labelText);
+
+        // Hover tooltip: the label gets clipped in the narrow media column, so
+        // hovering over the bubble pops a floating panel with the full caption.
+        if (pic != null)
+        {
+            var tip = bubble.AddComponent<BubbleCaptionHoverTrigger>();
+            tip.host = this;
+            tip.pic = pic;
+        }
 
         // RawImage holder. We can't just put a RawImage as a direct child of the bubble
         // VLG (which has childForceExpandWidth=true) because RawImage stretches its texture
@@ -2107,7 +2562,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         mirror.imageLayoutElement = imgLE;
         mirror.containerLayoutElement = containerLE;
         mirror.containerRT = imgContainerGo.GetComponent<RectTransform>();
-        mirror.sourcePic = spawnedPic;
+        mirror.sourcePic = pic;
         mirror.occludingPanel = _mainPanel;
         mirror.autoScrollTarget = _mediaScroll;
 
@@ -2142,6 +2597,23 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     public static void SetKeepLastNMedia(int n)
     {
         PlayerPrefs.SetInt(PREFS_KEEP_LAST_N_MEDIA, Mathf.Max(0, n));
+        PlayerPrefs.Save();
+    }
+
+    /// <summary>
+    /// Global prefix prepended to every {{Preset Name.txt}} sentinel in the system
+    /// prompt before it goes to the LLM. Empty string = use bare names. Lets the
+    /// user swap in a parallel set of presets (e.g. "test_") without editing any
+    /// skill md or main_prompt - all wrapped names track in lockstep.
+    /// </summary>
+    public static string GetPresetPrefix()
+    {
+        return PlayerPrefs.GetString(PREFS_PRESET_PREFIX, DEFAULT_PRESET_PREFIX) ?? "";
+    }
+
+    public static void SetPresetPrefix(string prefix)
+    {
+        PlayerPrefs.SetString(PREFS_PRESET_PREFIX, prefix ?? "");
         PlayerPrefs.Save();
     }
 
@@ -2181,6 +2653,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (_chatImagePics != null && _chatImagePics.Count > 0)
         {
             int popN = Mathf.Min(toRemove, _chatImagePics.Count);
+            // Drop the corresponding caption-label entries too so the dict doesn't
+            // accumulate dead Pic references over a long chat.
+            for (int i = 0; i < popN; i++)
+            {
+                var poppedPic = _chatImagePics[i];
+                if (poppedPic != null) _captionLabels.Remove(poppedPic);
+            }
             _chatImagePics.RemoveRange(0, popN);
         }
     }
@@ -2242,6 +2721,15 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             n++;
         }
         return n;
+    }
+
+    string IChatHost.GetChatImageCaption(int oneBasedIndex)
+    {
+        int idx0 = oneBasedIndex - 1;
+        if (_chatImagePics == null || idx0 < 0 || idx0 >= _chatImagePics.Count) return "";
+        var pic = _chatImagePics[idx0];
+        if (pic == null || pic.gameObject == null) return "";
+        return pic.Caption ?? "";
     }
 
     PicMain IChatHost.GetLastSpawnedPicForTurn()
@@ -2390,7 +2878,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     private void FocusInputDeferred()
     {
-        if (!gameObject.activeInHierarchy) return;
+        // _panelRoot stays active even when the user has closed the chat (so the
+        // LLM stream coroutine can finish), but the input field itself lives under
+        // the hidden _mainPanel - calling ActivateInputField on an inactive object
+        // would fail anyway, and we don't want to steal focus while hidden.
+        if (!gameObject.activeInHierarchy || !_isVisible) return;
         StartCoroutine(FocusInputCoroutine());
     }
 
@@ -2477,23 +2969,31 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     private void Update()
     {
-        if (Input.GetKeyDown(KeyCode.Escape) && !_isStreaming)
-            Hide();
-
-        // Ctrl+MouseWheel anywhere over the chat panel adjusts chat font size.
-        // The chat ScrollRect (ChatScrollRectCtrlAware) already swallows its own
-        // scroll while Ctrl is held, so this never fights the conversation scroll.
-        if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
+        // Streaming flush + status pill refresh further down must keep running even
+        // while the panel is "hidden" - the LLM coroutine on _panelRoot is still
+        // alive (we deliberately don't deactivate _panelRoot on Hide; see SetVisible)
+        // and we want the streamed bubble + counters to be up to date when the user
+        // pops the panel back open.
+        if (_isVisible)
         {
-            float wheel = Input.mouseScrollDelta.y;
-            if (Mathf.Abs(wheel) > 0.001f && IsMouseOverChatPanel())
-                AdjustChatFontSize(wheel);
+            if (Input.GetKeyDown(KeyCode.Escape) && !_isStreaming)
+                Hide();
+
+            // Ctrl+MouseWheel anywhere over the chat panel adjusts chat font size.
+            // The chat ScrollRect (ChatScrollRectCtrlAware) already swallows its own
+            // scroll while Ctrl is held, so this never fights the conversation scroll.
+            if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
+            {
+                float wheel = Input.mouseScrollDelta.y;
+                if (Mathf.Abs(wheel) > 0.001f && IsMouseOverChatPanel())
+                    AdjustChatFontSize(wheel);
+            }
         }
 
         // Enter / Shift+Enter handling for the chat input. Done here (not via TMP_InputField's
         // own MultiLineSubmit mode or onValidateInput) because both of those are unreliable
         // about reading the Shift modifier in Unity 6 / TMP 3.
-        if (_inputField != null && _inputField.isFocused
+        if (_isVisible && _inputField != null && _inputField.isFocused
             && (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter)))
         {
             bool shift = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
@@ -2520,6 +3020,24 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         {
             _streamLastUpdate = Time.unscaledTime;
             UpdateStreamingBubble();
+        }
+
+        // Refresh the "Talking to LLM..." status with a rotating spinner + live
+        // tokens/TPS readout. Spinner rotates every refresh tick (~6 fps) regardless
+        // of incoming chunks so the user gets a clear "still working" signal even
+        // while waiting on the first byte.
+        if (_isStreaming && _statusText != null && Time.unscaledTime >= _streamStatusNextRefresh)
+        {
+            _streamStatusNextRefresh = Time.unscaledTime + STREAM_STATUS_INTERVAL;
+            _streamSpinnerStep = (_streamSpinnerStep + 1) % StreamSpinnerFrames.Length;
+            char spin = StreamSpinnerFrames[_streamSpinnerStep];
+            float elapsed = Mathf.Max(0.001f, Time.unscaledTime - _streamStartTime);
+            // ~4 chars per token is a good rough average for English completions; the
+            // user gets a sense of pace, not a token-exact count.
+            int approxTokens = _streamCharsReceived / 4;
+            float tps = approxTokens / elapsed;
+            string tpsStr = tps >= 10 ? tps.ToString("F0") : tps.ToString("F1");
+            _statusText.text = $"{spin} Talking to LLM   {approxTokens} tok   {tpsStr} t/s";
         }
 
         // Periodic header status pill refresh (cheap; reads counters from Config/LLM mgr).

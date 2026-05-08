@@ -1,0 +1,5 @@
+COMMAND_START|joblist
+#Edit image using Klien2 9b model, takes two inputs ( <AITOOLS_INPUT_1> and <AITOOLS_INPUT_2> )
+img_to_img_klein_edit_2_input.json @upload|image1|input1| @upload|image2|input2|
+
+COMMAND_END

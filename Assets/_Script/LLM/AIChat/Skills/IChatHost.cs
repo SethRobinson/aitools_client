@@ -65,6 +65,15 @@ namespace AITools.AIChat.Skills
         int GetChatImageCount();
 
         /// <summary>
+        /// Short visual caption (~15 words) for the Nth chat image, or "" if the
+        /// caption hasn't been computed yet, the index is out of range, or no
+        /// vision LLM is available to caption with. Used by ChatContextBuilder to
+        /// list per-image descriptions in the system prompt's CHAT IMAGES block
+        /// so the LLM can map "the one with grandma" to chat_image="N".
+        /// </summary>
+        string GetChatImageCaption(int oneBasedIndex);
+
+        /// <summary>
         /// The most recent PicMain the executor spawned via a non-chained action this
         /// turn, or null if nothing has been spawned yet (or the underlying GameObject
         /// has been destroyed). Used to resolve <c>chain="true"</c> follow-up actions.

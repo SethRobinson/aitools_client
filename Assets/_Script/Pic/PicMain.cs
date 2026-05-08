@@ -5,6 +5,7 @@ using System;
 using System.Text;
 using TMPro;
 using B83.Image.BMP;
+using UnityEngine.EventSystems;
 using UnityEngine.Rendering;
 using System.Linq;
 using System.Collections.Generic;
@@ -137,6 +138,7 @@ public class PicMain : MonoBehaviour
     public Canvas m_canvas;
     public SpriteRenderer m_pic;
     public SpriteRenderer m_mask;
+    private Texture2D m_image2; // Secondary input texture for 2-input workflows (uploaded as "image2" via @upload). Not displayed.
     private bool m_editFileHasChanged;
     private FileSystemWatcher m_editFileWatcher;
     public PicMask m_picMaskScript;
@@ -160,6 +162,13 @@ public class PicMain : MonoBehaviour
     public GPTPromptManager _promptManager;
 
     string m_mediaRemoteFilename = ""; //sometimes media has no name because it was generated, but we need to know the filename for sending/loading remotely on ComfyUI
+
+    // Short visual caption (~15 words) generated asynchronously by a vision LLM
+    // when the Pic is registered as an AI Chat image. Surfaced in the system
+    // prompt's CHAT IMAGES block so the chat LLM can match descriptive references
+    // ("the one with grandma") to chat_image="N" indices. Empty until the job
+    // returns, or stays empty if no vision LLM is configured.
+    public string Caption { get; set; } = "";
 
     bool m_bNeedsToUpdateInfoPanel = false;
 
@@ -1230,6 +1239,17 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         SetNeedsToUpdateInfoPanelFlag();
     }
 
+    // Secondary reference image for 2-input workflows. Takes ownership of the passed texture
+    // and uploads it as the "image2" source (see @upload|image2|inputN| in the preset).
+    public void SetImage2(Texture2D tex)
+    {
+        if (m_image2 != null)
+        {
+            UnityEngine.Object.Destroy(m_image2);
+        }
+        m_image2 = tex;
+    }
+
     public void InvertMask()
     {
         Debug.Log("invert mask");
@@ -2185,6 +2205,145 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     // other if the queue is mid-flight when the next chain step is appended.
     private int m_chainPresetCounter = 0;
 
+    // One-shot output-dimension overrides for the next RunPresetByName / AppendPresetJobs.
+    // Two modes:
+    //   1) Explicit: m_workflowWidthOverride > 0 && m_workflowHeightOverride > 0 - force
+    //      these exact dimensions into the workflow JSON.
+    //   2) Aspect-from-source: m_workflowAspectSrcW > 0 && m_workflowAspectSrcH > 0 -
+    //      preserve the preset's pixel budget but rotate it to match this aspect.
+    // Cleared after a single preset run so the override doesn't leak into a subsequent
+    // unrelated workflow on the same Pic.
+    private int m_workflowWidthOverride = 0;
+    private int m_workflowHeightOverride = 0;
+    private int m_workflowAspectSrcW = 0;
+    private int m_workflowAspectSrcH = 0;
+
+    // Dimensions the most recent workflow was queued at, after any override applied.
+    // Lets a chained step query this Pic's "size class so far" while the prior step's
+    // texture is still rendering and TryGetCurrentTexture would return null.
+    public int LastQueuedWorkflowWidth { get; private set; } = 0;
+    public int LastQueuedWorkflowHeight { get; private set; } = 0;
+
+    // Regexes used to dig the preset's default width/height out of the joblist.
+    // Match "@replace|\"width\": <N>|" - the FIRST half of the @replace pair, which
+    // carries the literal default the preset author wrote (and which the workflow
+    // JSON actually contains until our override appends a follow-up @replace).
+    private static readonly System.Text.RegularExpressions.Regex WorkflowWidthReplaceRx =
+        new System.Text.RegularExpressions.Regex(@"@replace\|""width"":\s*(\d+)\|",
+            System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex WorkflowHeightReplaceRx =
+        new System.Text.RegularExpressions.Regex(@"@replace\|""height"":\s*(\d+)\|",
+            System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// Force the next RunPresetByName / AppendPresetJobs to run the workflow at exact
+    /// <paramref name="width"/>x<paramref name="height"/>. Pass 0 for either to clear.
+    /// One-shot: cleared automatically after the next preset is queued. Useful when an
+    /// LLM action specifies width="N" height="N" attributes.
+    /// </summary>
+    public void SetWorkflowDimensionOverride(int width, int height)
+    {
+        m_workflowWidthOverride = Mathf.Max(0, width);
+        m_workflowHeightOverride = Mathf.Max(0, height);
+    }
+
+    /// <summary>
+    /// Force the next RunPresetByName / AppendPresetJobs to run the workflow at the
+    /// aspect ratio of <paramref name="srcW"/>x<paramref name="srcH"/>, while preserving
+    /// the preset's overall pixel budget (so the model's "size class" stays the same).
+    /// Resolved at queue time against the preset's actual default dimensions. Lower
+    /// priority than <see cref="SetWorkflowDimensionOverride"/> - that takes precedence
+    /// when both are set. Pass 0/0 to clear. One-shot.
+    /// </summary>
+    public void SetWorkflowAspectSource(int srcW, int srcH)
+    {
+        m_workflowAspectSrcW = Mathf.Max(0, srcW);
+        m_workflowAspectSrcH = Mathf.Max(0, srcH);
+    }
+
+    /// <summary>
+    /// Mutates <paramref name="lines"/> to inject extra @replace operations for width/
+    /// height on the workflow-loading line, honouring the one-shot dimension overrides
+    /// set via SetWorkflowDimensionOverride / SetWorkflowAspectSource. Clears the
+    /// overrides on exit. No-op when no override is set or the preset doesn't follow
+    /// the standard @replace|"width":...| pattern (so non-image/video presets pass
+    /// through untouched).
+    /// </summary>
+    private void ApplyDimensionOverrideToJoblist(List<string> lines)
+    {
+        bool hasExplicit = m_workflowWidthOverride > 0 && m_workflowHeightOverride > 0;
+        bool hasAspect = m_workflowAspectSrcW > 0 && m_workflowAspectSrcH > 0;
+        try
+        {
+            if (lines == null || lines.Count == 0) return;
+
+            for (int i = 0; i < lines.Count; i++)
+            {
+                string line = lines[i];
+                if (string.IsNullOrEmpty(line)) continue;
+                if (line.IndexOf(".json", StringComparison.OrdinalIgnoreCase) < 0) continue;
+
+                var wMatch = WorkflowWidthReplaceRx.Match(line);
+                var hMatch = WorkflowHeightReplaceRx.Match(line);
+                if (!wMatch.Success || !hMatch.Success) continue;
+                if (!int.TryParse(wMatch.Groups[1].Value, out int presetW)) continue;
+                if (!int.TryParse(hMatch.Groups[1].Value, out int presetH)) continue;
+                if (presetW <= 0 || presetH <= 0) continue;
+
+                // No override requested: just record the preset's dims as the
+                // "last queued" pair so a follow-up chain step can use them, then exit.
+                if (!hasExplicit && !hasAspect)
+                {
+                    LastQueuedWorkflowWidth = presetW;
+                    LastQueuedWorkflowHeight = presetH;
+                    return;
+                }
+
+                int newW, newH;
+                if (hasExplicit)
+                {
+                    newW = m_workflowWidthOverride;
+                    newH = m_workflowHeightOverride;
+                }
+                else
+                {
+                    // Preserve the preset's budget; rotate it to the source's aspect.
+                    long budget = (long)presetW * presetH;
+                    float srcAspect = m_workflowAspectSrcW / (float)m_workflowAspectSrcH;
+                    if (srcAspect <= 0f) return; // bad source - skip
+                    double h = Math.Sqrt(budget / (double)srcAspect);
+                    double w = h * srcAspect;
+                    newW = Mathf.RoundToInt((float)(w / 32.0)) * 32;
+                    newH = Mathf.RoundToInt((float)(h / 32.0)) * 32;
+                }
+
+                newW = Mathf.Clamp((newW / 32) * 32, 256, 1280);
+                newH = Mathf.Clamp((newH / 32) * 32, 256, 1280);
+                if (newW <= 0 || newH <= 0) return;
+
+                // Record what we're queueing so the next chain step can read it.
+                LastQueuedWorkflowWidth = newW;
+                LastQueuedWorkflowHeight = newH;
+
+                if (newW == presetW && newH == presetH) return; // no JSON edit needed
+
+                lines[i] = line
+                    + $" @replace|\"width\": {presetW}|\"width\": {newW}|"
+                    + $" @replace|\"height\": {presetH}|\"height\": {newH}|";
+                return;
+            }
+        }
+        finally
+        {
+            // Always clear - one-shot semantics. If no matching line was found we still
+            // clear so the override doesn't bleed into the NEXT preset run.
+            m_workflowWidthOverride = 0;
+            m_workflowHeightOverride = 0;
+            m_workflowAspectSrcW = 0;
+            m_workflowAspectSrcH = 0;
+        }
+    }
+
     /// <summary>
     /// Append a preset's compiled job list to this Pic's queue WITHOUT touching
     /// <c>m_jobDefaultInfo</c> or the in-flight job. Used by the AI Chat skills system
@@ -2200,6 +2359,10 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     {
         var lines = GameLogic.Get().GetTempPicJobListAsListOfStrings(presetName);
         if (lines == null) return;
+
+        // Apply pending one-shot dimension overrides (auto-aspect-from-source or
+        // explicit width/height) before queuing.
+        ApplyDimensionOverrideToJoblist(lines);
 
         var prefixed = new List<string>();
 
@@ -2245,7 +2408,9 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             jobDefaultInfoToStartWith._requestedAudioNegativePrompt = Config.Get().GetDefaultAudioNegativePrompt();
             jobDefaultInfoToStartWith.requestedRenderer = GameLogic.Get().GetGlobalRenderer();
 
-            AddJobListWithStartingJobInfo(jobDefaultInfoToStartWith, GameLogic.Get().GetTempPicJobListAsListOfStrings(presetName));
+            var lines = GameLogic.Get().GetTempPicJobListAsListOfStrings(presetName);
+            ApplyDimensionOverrideToJoblist(lines);
+            AddJobListWithStartingJobInfo(jobDefaultInfoToStartWith, lines);
         }
         else
         {
@@ -2256,7 +2421,15 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             m_curEvent.m_picJob._requestedNegativePrompt = negativePromptOverride ?? GameLogic.Get().GetNegativePrompt();
             //m_curEvent.m_picJob._requestedAudioPrompt = Config.Get().GetDefaultAudioPrompt();
             //m_curEvent.m_picJob._requestedAudioNegativePrompt = Config.Get().GetDefaultAudioNegativePrompt();
-            GameLogic.Get().AddEveryTempItemToJobList(ref m_jobList, presetName);
+            // Inline AddEveryTempItemToJobList so we can intercept and apply the
+            // dimension override before the lines are merged into m_jobList.
+            var lines = GameLogic.Get().GetTempPicJobListAsListOfStrings(presetName);
+            ApplyDimensionOverrideToJoblist(lines);
+            if (lines != null)
+            {
+                foreach (var job in lines)
+                    m_jobList.Add(job);
+            }
         }
     }
 
@@ -3490,8 +3663,14 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                             return;
                         }
                     }
-                    // Future: add "image2" handling here
-                    
+                    else if (source == "image2")
+                    {
+                        if (m_image2 != null)
+                        {
+                            sourceTexture = m_image2;
+                        }
+                    }
+
                     if (sourceTexture == null)
                     {
                         ClearErrorsAndJobs();
@@ -4299,6 +4478,12 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             UnityEngine.Object.Destroy(m_pic.sprite);
         }
 
+        if (m_image2 != null)
+        {
+            UnityEngine.Object.Destroy(m_image2);
+            m_image2 = null;
+        }
+
         KillUndoImageBuffers();
     }
 
@@ -4373,6 +4558,26 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 m_text.text = newText;
             }
         }
+
+        // Hold Z to hide status text overlays so the image/video underneath is visible.
+        if (m_text != null)
+        {
+            bool wantHidden = Input.GetKey(KeyCode.Z) && !IsTypingInInputField();
+            if (m_text.enabled == wantHidden)
+            {
+                m_text.enabled = !wantHidden;
+            }
+        }
+    }
+
+    static bool IsTypingInInputField()
+    {
+        var es = EventSystem.current;
+        if (es == null) return false;
+        var selected = es.currentSelectedGameObject;
+        if (selected == null) return false;
+        var tmpInput = selected.GetComponent<TMP_InputField>();
+        return tmpInput != null && tmpInput.isFocused;
     }
 
     public void PassInTempInfoPicJob(PicJob picJob)

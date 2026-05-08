@@ -2,7 +2,7 @@
 id: image_to_movie
 summary: Animate an image (user-pasted OR a previously-generated chat image) into a short video clip. LTX 2.3 has audio - include ONE short quoted line of in-scene dialog (with language+accent) in the motion beat unless the scene has no plausible speaker.
 inputs: attachment
-template: <aitools_action skill="image_to_movie" preset="Image To Video (LTX) 5s.txt" prompt="describe motion + camera, with ONE short line of in-scene dialog in double-quotes (language+accent), then ambient sound" chain="true"/>  # default: stack onto generate_image emitted earlier in THIS reply. For an existing chat bubble use chat_image="N" instead; for a freshly-pasted image use attachment="N". Never combine.
+template: <aitools_action skill="image_to_movie" preset="{{Image To Video (LTX) 5s.txt}}" prompt="describe motion + camera, with ONE short line of in-scene dialog in double-quotes (language+accent), then ambient sound" chat_image="N"/>  # default = animate an existing chat bubble; replace N with its number from CHAT IMAGES. Use attachment="N" for a freshly-pasted image. Use chain="true" (and drop chat_image/attachment) ONLY for a same-reply generate->animate pair.
 ---
 # Image-to-movie
 
@@ -19,31 +19,31 @@ Specify EXACTLY ONE source via:
 
 ## Available presets
 
-- `Image To Video (Wan22).txt` - high-quality 5s, slow (Wan 2.2)
-- `Image To Video (LTX) 5s.txt` - fast 5s clip (LTX 2.3)
+- `{{Image To Video (Wan22).txt}}` - high-quality 5s, slow (Wan 2.2)
+- `{{Image To Video (LTX) 5s.txt}}` - fast 5s clip (LTX 2.3)
 
 ## Invocation
 
 DEFAULT - stack onto the image you JUST generated in this same reply (chain="true"):
 ```
 <aitools_action skill="generate_image" preset="Prompt To Image (Z-Image).txt" prompt="<full Z-Image scene description>"/>
-<aitools_action skill="image_to_movie" preset="Image To Video (LTX) 5s.txt" prompt="<full LTX motion + dialog beat>" chain="true"/>
+<aitools_action skill="image_to_movie" preset="{{Image To Video (LTX) 5s.txt}}" prompt="<full LTX motion + dialog beat>" chain="true"/>
 ```
 This stacks the LTX video onto the SAME Pic as the image you just made, so the
 chat shows ONE bubble that updates from still -> playing video. Do NOT also pass
 attachment / chat_image when you set chain="true" - the prior step's output is
 inherited automatically. chain="true" only works as a follow-up to a generate
 action emitted earlier in the same reply. This is the right form for any
-"<image-model> + <video-model>" combo (Z-Image + LTX, Qwen + LTX, etc.).
+"<image-model> + <video-model>" combo (e.g. Z-Image + LTX).
 
 Animate a freshly-pasted image (user dropped/pasted an image THIS turn):
 ```
-<aitools_action skill="image_to_movie" preset="Image To Video (LTX) 5s.txt" prompt="slow camera push-in, leaves rustling" attachment="1"/>
+<aitools_action skill="image_to_movie" preset="{{Image To Video (LTX) 5s.txt}}" prompt="slow camera push-in, leaves rustling" attachment="1"/>
 ```
 
 Animate an image already in the chat from earlier (numbered bubble):
 ```
-<aitools_action skill="image_to_movie" preset="Image To Video (LTX) 5s.txt" prompt="the wind picks up, hair flutters" chat_image="2"/>
+<aitools_action skill="image_to_movie" preset="{{Image To Video (LTX) 5s.txt}}" prompt="the wind picks up, hair flutters" chat_image="2"/>
 ```
 
 ## Writing good image-to-video prompts
@@ -51,7 +51,7 @@ Animate an image already in the chat from earlier (numbered bubble):
 The model already SEES the source - don't redescribe it, describe what
 CHANGES over time.
 
-### LTX 2.3 (`Image To Video (LTX) 5s.txt`)
+### LTX 2.3 (`{{Image To Video (LTX) 5s.txt}}`)
 
 Source: [docs.ltx.video](https://docs.ltx.video/api-documentation/prompting-guide).
 
@@ -86,7 +86,7 @@ LTX 2.3 example for a previously-generated rooftop-smoking image:
 > style of a mid-2010s editorial portrait, Portra 400 film grain,
 > natural skin tones; ambient sound of distant city traffic.
 
-### Wan 2.2 (`Image To Video (Wan22).txt`)
+### Wan 2.2 (`{{Image To Video (Wan22).txt}}`)
 
 Source: [wan2-2.app/prompt](https://wan2-2.app/prompt).
 
@@ -97,6 +97,25 @@ Source: [wan2-2.app/prompt](https://wan2-2.app/prompt).
 - **Wan 2.2 uses negative prompts** (unlike LTX / Z-Image). Common:
   `blurry, low quality, distorted faces, jittery motion, watermark`.
 - Same hard-cut rule: avoid "suddenly", "flashes", "cuts to".
+
+## Aspect handling (auto)
+
+The host automatically matches the output video's aspect ratio to the source
+image's aspect, while keeping the preset's overall pixel budget. So a 1024x1024
+source animated with the LTX 5s preset (default 960x544 landscape) actually
+runs at ~720x720 - no top/bottom crop. You don't need to do anything for this.
+
+If you specifically want a different aspect (e.g. portrait video from a
+landscape source), pass explicit `width="N" height="N"` attributes (both
+required, both must be > 0). They'll be snapped to multiples of 32 and clamped
+to a sensible range. Example for a 9:16 portrait:
+
+```
+<aitools_action skill="image_to_movie" preset="{{Image To Video (LTX) 5s.txt}}" prompt="..." chat_image="2" width="448" height="768"/>
+```
+
+Skip `width`/`height` unless the user is explicitly asking for a non-source
+aspect ratio - the auto-match is correct in 99% of cases.
 
 ## Rules
 

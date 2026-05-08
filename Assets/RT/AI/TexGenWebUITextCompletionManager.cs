@@ -299,26 +299,32 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
                 // Check if this message has images attached (vision LLM support)
                 if (obj.HasImages())
                 {
-                    // Build multimodal content array: images first, then text
-                    // Format: [{"type": "image_url", "image_url": {"url": "data:image/png;base64,..."}}, {"type": "text", "text": "..."}]
+                    // Build multimodal content array: per-image label, then image, ..., then text
+                    // Format: [{"type":"text","text":"[Image #N]"}, {"type":"image_url",...}, ..., {"type":"text","text":"..."}]
+                    // The "[Image #N]" labels give the LLM an unambiguous mapping
+                    // from "the image I see" to chat_image="N".
                     string contentArray = "[";
                     bool first = true;
-                    
-                    // Add images first
-                    foreach (string base64Image in obj._images)
+
+                    for (int i = 0; i < obj._images.Count; i++)
                     {
+                        int idx = (obj._imageChatIndices != null && i < obj._imageChatIndices.Count)
+                            ? obj._imageChatIndices[i]
+                            : -1;
+                        int labelN = idx >= 0 ? idx : (i + 1);
                         if (!first) contentArray += ", ";
                         first = false;
-                        contentArray += "{\"type\": \"image_url\", \"image_url\": {\"url\": \"data:image/png;base64," + base64Image + "\"}}";
+                        contentArray += "{\"type\": \"text\", \"text\": \"[Image #" + labelN + "]\"}";
+                        contentArray += ", {\"type\": \"image_url\", \"image_url\": {\"url\": \"data:image/png;base64," + obj._images[i] + "\"}}";
                     }
-                    
+
                     // Add text content
                     if (!string.IsNullOrEmpty(obj._content))
                     {
                         if (!first) contentArray += ", ";
                         contentArray += "{\"type\": \"text\", \"text\": \"" + SimpleJSON.JSONNode.Escape(obj._content) + "\"}";
                     }
-                    
+
                     contentArray += "]";
                     msg += "{\"role\": \"" + obj._role + "\", \"content\": " + contentArray + "}";
                 }

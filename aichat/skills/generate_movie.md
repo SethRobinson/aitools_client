@@ -2,7 +2,7 @@
 id: generate_movie
 summary: Generate a short video clip from a text prompt. LTX 2.3 has audio - include ONE short quoted line of in-scene dialog (with language+accent) in the motion beat unless the scene has no plausible speaker.
 inputs: none
-template: <aitools_action skill="generate_movie" preset="Prompt To Video (LTX) 5s.txt" prompt="4-8 sentences: subject, then motion with ONE short line of in-scene dialog in double-quotes (language+accent), then one camera move, then mood/lighting, then ambient sound"/>
+template: <aitools_action skill="generate_movie" preset="{{Prompt To Video (LTX) 5s.txt}}" prompt="4-8 sentences: subject, then motion with ONE short line of in-scene dialog in double-quotes (language+accent), then one camera move, then mood/lighting, then ambient sound"/>
 ---
 # Generate a movie
 
@@ -11,12 +11,12 @@ movie from a text prompt (no input image required).
 
 ## Available presets
 
-- `Prompt To Video (LTX) 5s.txt` - fast 5s clip (LTX 2.3)
+- `{{Prompt To Video (LTX) 5s.txt}}` - fast 5s clip (LTX 2.3)
 
 ## Invocation
 
 ```
-<aitools_action skill="generate_movie" preset="Prompt To Video (LTX) 5s.txt" prompt="vivid visual description with motion"/>
+<aitools_action skill="generate_movie" preset="{{Prompt To Video (LTX) 5s.txt}}" prompt="vivid visual description with motion"/>
 ```
 
 ## Writing good LTX 2.3 prompts

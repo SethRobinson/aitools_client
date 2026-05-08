@@ -2,7 +2,7 @@
 id: generate_image
 summary: Generate a brand-new still image from a text prompt. Use when the user asks for a picture.
 inputs: none
-template: <aitools_action skill="generate_image" preset="Prompt To Image (Z-Image).txt" prompt="vivid visual description of the scene"/>
+template: <aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="vivid visual description of the scene"/>
 ---
 # Generate an image
 
@@ -12,15 +12,15 @@ Use this skill when the user asks you to create or show a still image
 ## Available presets
 
 Pick the preset whose strengths best match the user's request. If unsure,
-default to `Prompt To Image (Z-Image).txt` (high-quality general purpose).
+default to `{{Prompt To Image (Z-Image).txt}}` (high-quality general purpose).
 
-- `Prompt To Image (Z-Image).txt` - balanced quality/speed
+- `{{Prompt To Image (Z-Image).txt}}` - balanced quality/speed
 
 
 ## Invocation
 
 ```
-<aitools_action skill="generate_image" preset="Prompt To Image (Z-Image).txt" prompt="vivid visual description of the scene"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="vivid visual description of the scene"/>
 ```
 
 ## Writing good Z-Image prompts

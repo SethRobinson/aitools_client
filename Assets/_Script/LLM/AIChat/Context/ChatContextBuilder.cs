@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text;
 using AITools.AIChat.Skills;
 
@@ -32,7 +33,7 @@ namespace AITools.AIChat.Context
         /// number of previously-generated chat images currently available to be reused
         /// via chat_image="N" (1-based, in spawn order). Pass 0 if none.
         /// </summary>
-        public string Build(int callingInstanceId, int reachableChatImageCount = 0)
+        public string Build(int callingInstanceId, int reachableChatImageCount = 0, IReadOnlyList<string> chatImageCaptions = null)
         {
             var sb = new StringBuilder();
 
@@ -48,17 +49,25 @@ namespace AITools.AIChat.Context
             sb.Append(GpuSnapshot.BuildBlock());
             sb.AppendLine();
 
-            // 3. LLMs.
-            sb.Append(LLMSnapshot.BuildBlock(callingInstanceId));
-            sb.AppendLine();
+            // 3. (LLM snapshot intentionally omitted - we don't share the OTHER LLMS
+            // roster with the chat LLM. Runtime still honours an explicit llm="N" on
+            // a delegation skill, but we no longer advertise the available ids.)
 
-            // 4. Reachable chat images (for chat_image="N" reuse).
+            // 4. Reachable chat images (for chat_image="N" reuse). When captions are
+            // available we list each image with its short auto-generated description so
+            // the LLM can resolve descriptive references ("the one with grandma") to
+            // the right chat_image="N" without relying solely on visual recall.
             if (reachableChatImageCount > 0)
             {
-                sb.Append("CHAT IMAGES (still in chat, reusable as input via chat_image=\"N\"): ");
-                sb.Append("Image #1");
-                if (reachableChatImageCount > 1) sb.Append(" .. Image #").Append(reachableChatImageCount);
-                sb.AppendLine();
+                sb.AppendLine("CHAT IMAGES (still in chat, reusable as input via chat_image=\"N\"):");
+                for (int i = 0; i < reachableChatImageCount; i++)
+                {
+                    string caption = (chatImageCaptions != null && i < chatImageCaptions.Count)
+                        ? (chatImageCaptions[i] ?? "")
+                        : "";
+                    if (string.IsNullOrEmpty(caption)) caption = "(captioning...)";
+                    sb.Append("- Image #").Append(i + 1).Append(": ").AppendLine(caption);
+                }
                 sb.AppendLine();
             }
             else
@@ -83,7 +92,6 @@ namespace AITools.AIChat.Context
             sb.AppendLine("  for a reason. Don't invent attributes that aren't shown.");
             sb.AppendLine("- Optional add-ons not in any template:");
             sb.AppendLine("  - gpu=\"N\" : pin generation to a specific GPU id (see GPUS list).");
-            sb.AppendLine("  - llm=\"N\" : pin a delegated LLM call to a specific instance.");
             sb.AppendLine("- chat_image=\"N\" references the Nth image bubble already in the chat");
             sb.AppendLine("  (matches the \"Image #N\" / \"Movie #N\" labels). attachment=\"N\"");
             sb.AppendLine("  references the Nth image the user pasted THIS turn.");
@@ -110,7 +118,11 @@ namespace AITools.AIChat.Context
                 sb.AppendLine(post.TrimEnd());
             }
 
-            return sb.ToString();
+            // Final pass: substitute every {{Preset Name.txt}} sentinel with
+            // <prefix>Preset Name.txt (prefix from PlayerPrefs, empty by default).
+            // Done at the end so it covers main_prompt body, per-skill Templates,
+            // and the action protocol footer in one shot.
+            return SkillManager.ApplyPresetPrefix(sb.ToString());
         }
     }
 }

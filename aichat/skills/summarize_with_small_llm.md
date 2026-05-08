@@ -23,9 +23,7 @@ the conversation as a system message you can read on your next turn.
 <aitools_action skill="summarize_with_small_llm" prompt="The text or instruction for the small LLM to handle. Be self-contained - it has no other context."/>
 ```
 
-The optional `llm="N"` attribute targets a specific LLM instance id from
-the OTHER LLMS list in the system prompt. Otherwise the scheduler picks
-the least busy small-job-capable instance.
+The host scheduler picks the least busy small-job-capable instance for you.
 
 ## Rules
 

@@ -279,7 +279,23 @@ namespace AITools.AIChat.Skills
             _buffer.Clear();
             _scannedUpTo = 0;
             text = SuppressPendingLeadingLineBreak(text);
-            return ReplaceTagsWithSentinels(text);
+            text = ReplaceTagsWithSentinels(text);
+            // Defense against an LLM that stopped mid-emission of an action tag (model
+            // collapse / early-EOS / network drop). After sentinel replacement, any
+            // remaining "<aitools_action" is by definition an unclosed tag - if it had
+            // closed, SelfClosingRx / PairedRx would have consumed it. Trim it to a
+            // one-line marker so the bubble shows a clear failure indicator instead
+            // of a 500-word leaked prompt body. The canonical history (built separately
+            // from the raw stream) keeps the partial tag so the LLM can see its own
+            // mistake on the next turn.
+            int orphanIdx = text.IndexOf(TagOpen, StringComparison.OrdinalIgnoreCase);
+            if (orphanIdx >= 0)
+            {
+                string head = text.Substring(0, orphanIdx).TrimEnd();
+                string sep = head.Length > 0 ? "\n" : "";
+                text = head + sep + "[truncated tool call - LLM stopped mid-emission, try again]";
+            }
+            return text;
         }
 
         private string SuppressPendingLeadingLineBreak(string text)

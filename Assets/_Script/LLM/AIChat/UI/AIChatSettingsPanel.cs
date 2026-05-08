@@ -36,11 +36,12 @@ namespace AITools.AIChat.UI
         private TMP_InputField _mainPromptField;
         private RectTransform _skillsContent;
         private TMP_InputField _keepLastNField;
+        private TMP_InputField _presetPrefixField;
 
         private const float DEFAULT_WIDTH = 760f;
         private const float DEFAULT_HEIGHT = 620f;
         private const float HEADER_HEIGHT = 40f;
-        private const float FOOTER_HEIGHT = 50f;
+        private const float FOOTER_HEIGHT = 85f;
         private const float BaseFontSize = 13f;
 
         private static readonly Color PanelBg = new Color(0.80f, 0.80f, 0.82f, 1f);
@@ -376,6 +377,61 @@ namespace AITools.AIChat.UI
                 kp.fontSize = BaseFontSize;
                 kp.alignment = TextAlignmentOptions.Center;
             }
+
+            // Centered above the keep-N row: "Preset prefix: [_______]" - prepended
+            // to every {{...}}-wrapped preset name in skill md / main_prompt at
+            // prompt-build time. Empty = bare names (default). Persisted to
+            // PlayerPrefs via AIChatPanel.GetPresetPrefix/SetPresetPrefix.
+            var prefixRowGo = new GameObject("PresetPrefixRow");
+            prefixRowGo.transform.SetParent(footer.transform, false);
+            var prefixRowRT = prefixRowGo.AddComponent<RectTransform>();
+            prefixRowRT.anchorMin = new Vector2(0.5f, 0);
+            prefixRowRT.anchorMax = new Vector2(0.5f, 0);
+            prefixRowRT.pivot = new Vector2(0.5f, 0);
+            prefixRowRT.sizeDelta = new Vector2(360, 30);
+            prefixRowRT.anchoredPosition = new Vector2(0, 45);
+
+            var prefixLabelGo = new GameObject("Label");
+            prefixLabelGo.transform.SetParent(prefixRowGo.transform, false);
+            var prefixLabelRT = prefixLabelGo.AddComponent<RectTransform>();
+            prefixLabelRT.anchorMin = new Vector2(0, 0);
+            prefixLabelRT.anchorMax = new Vector2(1, 1);
+            prefixLabelRT.offsetMin = Vector2.zero;
+            prefixLabelRT.offsetMax = new Vector2(-180, 0);
+            var prefixLabelTmp = prefixLabelGo.AddComponent<TextMeshProUGUI>();
+            prefixLabelTmp.text = "Preset prefix:";
+            prefixLabelTmp.font = _font;
+            prefixLabelTmp.fontSize = BaseFontSize;
+            prefixLabelTmp.color = TextDark;
+            prefixLabelTmp.alignment = TextAlignmentOptions.MidlineRight;
+            prefixLabelTmp.raycastTarget = false;
+
+            var prefixInputGo = TMP_DefaultControls.CreateInputField(new TMP_DefaultControls.Resources());
+            prefixInputGo.name = "PresetPrefixInput";
+            prefixInputGo.transform.SetParent(prefixRowGo.transform, false);
+            var prefixInputRT = prefixInputGo.GetComponent<RectTransform>();
+            prefixInputRT.anchorMin = new Vector2(1, 0.5f);
+            prefixInputRT.anchorMax = new Vector2(1, 0.5f);
+            prefixInputRT.pivot = new Vector2(1, 0.5f);
+            prefixInputRT.sizeDelta = new Vector2(170, 26);
+            prefixInputRT.anchoredPosition = new Vector2(0, 0);
+            var prefixInputImg = prefixInputGo.GetComponent<Image>();
+            if (prefixInputImg != null) { prefixInputImg.sprite = null; prefixInputImg.color = InputFieldBg; }
+            _presetPrefixField = prefixInputGo.GetComponent<TMP_InputField>();
+            _presetPrefixField.contentType = TMP_InputField.ContentType.Standard;
+            _presetPrefixField.characterLimit = 32;
+            _presetPrefixField.textComponent.font = _font;
+            _presetPrefixField.textComponent.fontSize = BaseFontSize;
+            _presetPrefixField.textComponent.color = TextDark;
+            _presetPrefixField.textComponent.alignment = TextAlignmentOptions.MidlineLeft;
+            if (_presetPrefixField.placeholder is TextMeshProUGUI pp2)
+            {
+                pp2.text = "(empty = use bare names; e.g. test_)";
+                pp2.color = new Color(0, 0, 0, 0.4f);
+                pp2.font = _font;
+                pp2.fontSize = BaseFontSize - 1;
+                pp2.alignment = TextAlignmentOptions.MidlineLeft;
+            }
         }
 
         // ---------- Behavior ----------
@@ -387,6 +443,8 @@ namespace AITools.AIChat.UI
                 _mainPromptField.text = _staticSkillManager.MainPrompt ?? "";
             if (_keepLastNField != null)
                 _keepLastNField.text = AIChatPanel.GetKeepLastNMedia().ToString();
+            if (_presetPrefixField != null)
+                _presetPrefixField.text = AIChatPanel.GetPresetPrefix();
             RebuildSkillRows();
         }
 
@@ -447,6 +505,11 @@ namespace AITools.AIChat.UI
             // Persist the keep-last-N setting to PlayerPrefs.
             if (_keepLastNField != null && int.TryParse(_keepLastNField.text, out int keepN))
                 AIChatPanel.SetKeepLastNMedia(keepN);
+
+            // Persist the global preset prefix. Empty string is fine and means "use
+            // bare names" (no prefix substitution beyond stripping the {{...}} markers).
+            if (_presetPrefixField != null)
+                AIChatPanel.SetPresetPrefix(_presetPrefixField.text ?? "");
 
             // Trigger the host's reload + UI update.
             _staticSkillManager?.Reload();

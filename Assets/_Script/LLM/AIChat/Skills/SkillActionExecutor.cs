@@ -171,15 +171,37 @@ namespace AITools.AIChat.Skills
                 else if (chatImageCount > 0)
                 {
                     bool hasChainTarget = _host?.GetLastSpawnedPicForTurn() != null;
-                    string chainHint = hasChainTarget
-                        ? "If you meant to stack this onto the image you JUST generated earlier in this same reply, add chain=\"true\" instead (do not also pass chat_image / attachment with chain=\"true\"). "
-                        : "";
-                    _host?.AddSystemInjectionAndBubble(
-                        $"Skill '{action.SkillId}' has no input image. " +
-                        chainHint +
-                        $"The user didn't paste anything this turn, but there are {chatImageCount} chat image(s) " +
-                        $"available - reference one with chat_image=\"N\" (1..{chatImageCount}) if that's what the user meant.");
-                    return;
+                    if (hasChainTarget)
+                    {
+                        // Same-reply pair: the LLM emitted (e.g.) generate_image then a
+                        // bare image_to_movie without chain="true". We can't safely
+                        // auto-pick a chat_image because the just-spawned Pic isn't a
+                        // numbered bubble yet - point the LLM at chain="true" and let it
+                        // re-roll on the next turn.
+                        _host?.AddSystemInjectionAndBubble(
+                            $"Skill '{action.SkillId}' has no input image. " +
+                            "If you meant to stack this onto the image you JUST generated earlier in this same reply, add chain=\"true\" instead (do not also pass chat_image / attachment with chain=\"true\"). " +
+                            $"Otherwise reference an existing chat bubble via chat_image=\"N\" (1..{chatImageCount}).");
+                        return;
+                    }
+
+                    // Standalone reply (e.g. follow-up "turn it into a video") - the LLM
+                    // forgot chat_image="N" but there's only one reasonable target: the
+                    // most recent chat image. Fall back to it instead of erroring; this
+                    // is the single most common LLM omission with smaller models, and
+                    // failing strictly here breaks the user's flow for no real benefit.
+                    int implicitIdx = chatImageCount;
+                    attachmentBytes = _host?.GetChatImagePngBytes(implicitIdx);
+                    if (attachmentBytes == null)
+                    {
+                        // Race: pic was destroyed between count and fetch. Fall through
+                        // to the same explicit-error message the chat_image="N" path uses.
+                        _host?.AddSystemInjectionAndBubble(
+                            $"Skill '{action.SkillId}': implicit chat_image=\"{implicitIdx}\" is no longer available (the world Pic may have been deleted). " +
+                            $"Use a smaller chat_image=\"N\" index, or ask the user to paste a new image.");
+                        return;
+                    }
+                    _host?.AddInfoBubble($"(auto-picked chat_image=\"{implicitIdx}\" - the latest image - as the source for {action.SkillId})");
                 }
                 else
                 {
@@ -195,6 +217,13 @@ namespace AITools.AIChat.Skills
                     return;
                 }
             }
+
+            // Resolve optional 2nd-input image (attachment2 / chat_image2). Used by
+            // 2-input presets like Image To Image Klein Edit 2 Input. Returns null when
+            // the LLM didn't ask for a second image; returns null + emits a bubble when
+            // it asked for one that isn't reachable (caller bails).
+            byte[] attachmentBytes2 = ResolveSecondInputBytes(action, out bool secondInputErrored);
+            if (secondInputErrored) return;
 
             if (string.IsNullOrEmpty(preset))
             {
@@ -245,11 +274,14 @@ namespace AITools.AIChat.Skills
 
             // Seed main image for img2img / img2vid presets (which expect "image1" via
             // @upload|image1|input1|).
+            int srcW = 0, srcH = 0;
             if (useAttachment && attachmentBytes != null)
             {
                 var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
                 if (tex.LoadImage(attachmentBytes))
                 {
+                    srcW = tex.width;
+                    srcH = tex.height;
                     picMain.SetImage(tex, false);
                 }
                 else
@@ -259,6 +291,40 @@ namespace AITools.AIChat.Skills
                         $"Skill '{action.SkillId}': could not decode attachment {action.AttachmentIndex ?? 1} as an image.");
                     return;
                 }
+            }
+
+            // Optional 2nd input - feeds the workflow's "image2" upload slot. The Pic
+            // takes ownership of the texture and uploads it (no display, no mask).
+            if (attachmentBytes2 != null)
+            {
+                var tex2 = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                if (tex2.LoadImage(attachmentBytes2))
+                {
+                    picMain.SetImage2(tex2);
+                }
+                else
+                {
+                    UnityEngine.Object.Destroy(tex2);
+                    _host?.AddSystemInjectionAndBubble(
+                        $"Skill '{action.SkillId}': could not decode the 2nd input image.");
+                    return;
+                }
+            }
+
+            // Aspect-aware dimension override for img2X presets. Explicit width/height
+            // attributes from the LLM win; otherwise fall back to "match the source's
+            // aspect at the preset's pixel budget" so a 1024x1024 source no longer
+            // gets center-cropped into LTX's default 960x544. Standalone generate_*
+            // (no source image) and presets that don't follow the standard %width%/
+            // %height% @replace pattern are unaffected - PicMain's helper no-ops.
+            if (action.Width.HasValue && action.Height.HasValue
+                && action.Width.Value > 0 && action.Height.Value > 0)
+            {
+                picMain.SetWorkflowDimensionOverride(action.Width.Value, action.Height.Value);
+            }
+            else if (useAttachment && srcW > 0 && srcH > 0)
+            {
+                picMain.SetWorkflowAspectSource(srcW, srcH);
             }
 
             // Optional GPU hint - reuses the existing per-server "wait for this server"
@@ -322,6 +388,27 @@ namespace AITools.AIChat.Skills
             var prevPic = _host?.ConsumeChainTarget();
             if (prevPic == null)
             {
+                // Common LLM mistake: chain="true" emitted on a fresh turn, intending
+                // to operate on an image from the previous turn. chain only works
+                // within a SINGLE reply, but the model's intent is clear when there's
+                // a recent chat image - translate to chat_image="<latest>" and run
+                // through the standard non-chain path. Smaller models (Qwen, etc) at
+                // low temperature persistently emit chain="true" by reflex even with
+                // explicit prompt warnings; this rescue keeps the user's flow alive.
+                int chatImageCount = _host?.GetChatImageCount() ?? 0;
+                if (chatImageCount > 0)
+                {
+                    action.Args["chat_image"] = chatImageCount.ToString();
+                    action.Args.Remove("chain");
+                    _host?.AddInfoBubble(
+                        $"(translated chain=\"true\" -> chat_image=\"{chatImageCount}\" - chain only works within the SAME reply; using the latest chat image instead)");
+                    // Both image_to_image and image_to_movie are useAttachment=true in
+                    // the dispatcher above (lines 50-52); chain rescue only applies to
+                    // those two skills, so always pass true here.
+                    ExecuteGenerate(action, useAttachment: true);
+                    return;
+                }
+
                 _host?.AddSystemInjectionAndBubble(
                     $"Skill '{action.SkillId}' was called with chain=\"true\" but no Pic was spawned earlier in this turn. " +
                     "Either drop chain=\"true\" or emit a base generate_image / image_to_image action first.");
@@ -359,10 +446,63 @@ namespace AITools.AIChat.Skills
                 return;
             }
 
+            // Optional 2nd input - chain inherits image1 from the prior step, but the
+            // LLM can still bring a separate image2 reference in via attachment2 /
+            // chat_image2 for 2-input presets.
+            byte[] chainBytes2 = ResolveSecondInputBytes(action, out bool chainSecondErrored);
+            if (chainSecondErrored) return;
+            if (chainBytes2 != null)
+            {
+                var tex2 = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                if (tex2.LoadImage(chainBytes2))
+                {
+                    prevPic.SetImage2(tex2);
+                }
+                else
+                {
+                    UnityEngine.Object.Destroy(tex2);
+                    _host?.AddSystemInjectionAndBubble(
+                        $"Skill '{action.SkillId}' (chain=\"true\"): could not decode the 2nd input image.");
+                    return;
+                }
+            }
+
             // Same per-Pic negative-prompt extraction as the non-chained path so the
             // chained workflow inherits the preset author's negative prompt instead of
             // whatever GameLogic's global state happens to hold.
             string negFromPreset = ReadPresetDefaultNegativePrompt(resolved);
+
+            // Aspect-aware dimension override: explicit width/height from the LLM win;
+            // otherwise inherit the prior step's actual texture dimensions if any are
+            // already on the Pic, else fall back to the prior step's last queued
+            // workflow dimensions (best-effort) - this keeps a Z-Image -> LTX chain
+            // running at the Z-Image source's aspect even though the texture isn't
+            // rendered yet at queue time.
+            if (action.Width.HasValue && action.Height.HasValue
+                && action.Width.Value > 0 && action.Height.Value > 0)
+            {
+                prevPic.SetWorkflowDimensionOverride(action.Width.Value, action.Height.Value);
+            }
+            else
+            {
+                int chainSrcW = 0, chainSrcH = 0;
+                if (prevPic.TryGetCurrentTexture(out var prevTex) && prevTex != null)
+                {
+                    chainSrcW = prevTex.width;
+                    chainSrcH = prevTex.height;
+                }
+                // Texture not rendered yet (typical for generate_image -> image_to_movie
+                // chain in one reply): fall back to the prior step's queued dimensions
+                // so e.g. a Z-Image 1024x1024 prior step propagates "square" to LTX.
+                if ((chainSrcW <= 0 || chainSrcH <= 0)
+                    && prevPic.LastQueuedWorkflowWidth > 0 && prevPic.LastQueuedWorkflowHeight > 0)
+                {
+                    chainSrcW = prevPic.LastQueuedWorkflowWidth;
+                    chainSrcH = prevPic.LastQueuedWorkflowHeight;
+                }
+                if (chainSrcW > 0 && chainSrcH > 0)
+                    prevPic.SetWorkflowAspectSource(chainSrcW, chainSrcH);
+            }
 
             try
             {
@@ -407,6 +547,51 @@ namespace AITools.AIChat.Skills
                 Debug.LogWarning("SkillActionExecutor.ReadPresetDefaultNegativePrompt: " + ex.Message);
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Resolve the optional 2nd input image (attachment2 / chat_image2) to PNG bytes.
+        /// Returns null when the LLM didn't ask for a second image. Returns null and sets
+        /// <paramref name="errored"/>=true (after emitting a system-injection bubble) when
+        /// it asked for one that's not reachable; callers should bail in that case.
+        /// chat_image2 wins over attachment2 if both are set, mirroring the precedence on
+        /// the primary slot.
+        /// </summary>
+        private byte[] ResolveSecondInputBytes(SkillAction action, out bool errored)
+        {
+            errored = false;
+            int chatN2 = action.ChatImageIndex2 ?? -1;
+            int attachN2 = action.AttachmentIndex2 ?? -1;
+            if (chatN2 <= 0 && attachN2 <= 0) return null;
+
+            if (chatN2 > 0)
+            {
+                byte[] bytes = _host?.GetChatImagePngBytes(chatN2);
+                if (bytes == null)
+                {
+                    int chatImageCount = _host?.GetChatImageCount() ?? 0;
+                    _host?.AddSystemInjectionAndBubble(
+                        $"Skill '{action.SkillId}': chat_image2=\"{chatN2}\" is not available. " +
+                        $"There are {chatImageCount} reachable chat image(s) this session. " +
+                        $"Use a smaller index, or drop chat_image2 if a 2nd image isn't needed.");
+                    errored = true;
+                    return null;
+                }
+                return bytes;
+            }
+
+            // attachN2 > 0
+            int turnAttachCount = _host?.GetTurnAttachmentCount() ?? 0;
+            byte[] aBytes = _host?.GetTurnAttachmentBytes(attachN2);
+            if (aBytes == null)
+            {
+                _host?.AddSystemInjectionAndBubble(
+                    $"Skill '{action.SkillId}' wanted attachment2=\"{attachN2}\" but the user only attached {turnAttachCount} image(s) this turn. " +
+                    "Use a smaller index, or drop attachment2 if a 2nd image isn't needed.");
+                errored = true;
+                return null;
+            }
+            return aBytes;
         }
 
         private static string ResolvePresetName(string requested)
@@ -456,6 +641,10 @@ namespace AITools.AIChat.Skills
             }
 
             string body = skill.RawMarkdown ?? "(skill body is empty)";
+            // Apply the same {{...}} -> <prefix>... substitution the system prompt uses,
+            // so a read_skill echo stays consistent with the Template line the LLM saw
+            // in the main prompt.
+            body = SkillManager.ApplyPresetPrefix(body);
             _host?.AddSystemInjectionAndBubble(
                 "Full content of skill '" + skill.Id + "':\n" + body);
         }
@@ -555,12 +744,15 @@ namespace AITools.AIChat.Skills
         }
 
         /// <summary>
-        /// Fire-and-forget chat completion for <see cref="ExecuteSummarizeWithSmallLlm"/>.
+        /// Fire-and-forget chat completion for delegated one-shot calls (used by both
+        /// <see cref="ExecuteSummarizeWithSmallLlm"/> and AIChatPanel's image-caption job).
         /// Supports the OpenAI-compatible / Ollama / LlamaCpp / OpenAI flow (which is
         /// where small/local models almost always live in this app). Other providers fall
         /// back to a clear error so the LLM can pick a different instance next turn.
+        /// Image data carried by lines (via GTPChatLine.AddImage) is preserved through the
+        /// OpenAI-compatible / LlamaCpp providers' multipart serializers.
         /// </summary>
-        private static void DispatchOneShot(
+        public static void DispatchOneShot(
             MonoBehaviour runner,
             LLMInstanceInfo inst,
             Queue<GTPChatLine> lines,
