@@ -54,7 +54,10 @@ def build_argparser():
                    help="Override a preset %%var%% (repeatable). "
                         "Example: --set-var height=512 --set-var width=768")
     p.add_argument("-i", "--input", default=None,
-                   help="Input image file (required for presets that use @upload)")
+                   help="Input image file (image1 — required for presets that @upload image1)")
+    p.add_argument("-i2", "--input2", default=None,
+                   help="Second input image file (image2 — required for two-input presets, "
+                        "e.g. \"Image To Image Klein Edit 2 Input\")")
     p.add_argument("-s", "--seed", type=int, default=None,
                    help="Seed (default: random)")
     p.add_argument("-c", "--config", default=str(DEFAULT_CONFIG),
@@ -134,7 +137,8 @@ def main():
             print(f"  vars: {preset.variables or '(none)'}")
             print(f"  @replaces: {len(preset.replaces)}")
             if preset.uploads:
-                print(f"  @uploads: input slots {[i+1 for i in preset.uploads]}")
+                print(f"  @uploads: " + ", ".join(
+                    f"{u.source}->input{u.slot_idx + 1}" for u in preset.uploads))
             if preset.resizes:
                 print(f"  @resizes: {len(preset.resizes)}")
     else:
@@ -142,17 +146,28 @@ def main():
         if not workflow_name:
             die("no workflow specified (use -p, -w, or set default_workflow in config)", 1)
 
-    # Validate -i vs preset's @upload requirement.
-    if preset and preset.uploads and not args.input:
+    # Validate -i / -i2 vs preset's @upload requirements.
+    needed_sources = sorted({u.source for u in preset.uploads}) if preset else []
+    if "image1" in needed_sources and not args.input:
         die(
-            f"preset {preset.source_path.name} needs an input image; "
+            f"preset {preset.source_path.name} needs an image1 input; "
             f"pass one with -i <path>",
             1,
         )
-    if args.input and not (preset and preset.uploads):
+    if "image2" in needed_sources and not args.input2:
+        die(
+            f"preset {preset.source_path.name} needs an image2 input; "
+            f"pass one with -i2 <path>",
+            1,
+        )
+    if args.input and "image1" not in needed_sources:
         if args.verbose:
             print(f"warning: -i {args.input!r} ignored "
-                  f"({'preset has no @upload' if preset else 'no preset specified'})")
+                  f"({'preset has no image1 @upload' if preset else 'no preset specified'})")
+    if args.input2 and "image2" not in needed_sources:
+        if args.verbose:
+            print(f"warning: -i2 {args.input2!r} ignored "
+                  f"({'preset has no image2 @upload' if preset else 'no preset specified'})")
 
     effective_prompt, effective_negative = assemble_prompts(args, preset)
     if args.verbose:
@@ -199,18 +214,30 @@ def main():
         expanded = presets.expand_replaces(preset.replaces, all_vars, args.verbose)
         api_workflow = workflow.apply_replaces(api_workflow, expanded, args.verbose)
 
-    # Handle preset @upload + @resize: load the input image, run all resizes
-    # in preset order, upload, then map the server path into <AITOOLS_INPUT_N>.
+    # Handle preset @upload + @resize: for each unique source the preset
+    # references, load that local file, run resizes (image1 only — see
+    # README), upload, then map the server path into <AITOOLS_INPUT_N> for
+    # every slot that source was routed to.
     input_path_replacements = {}
     if preset and preset.uploads:
-        if args.verbose:
-            print(f"loading input image: {args.input}")
-        img = images.load_input_image(Path(args.input))
-        for op in presets.resolve_resizes(preset.resizes, all_vars, args.verbose):
-            img = images.apply_resize(img, op, args.verbose)
-        server_path = images.upload_image(server_url, img, args.verbose)
-        for slot_idx in preset.uploads:
-            input_path_replacements[f"<AITOOLS_INPUT_{slot_idx + 1}>"] = server_path
+        source_paths = {"image1": args.input, "image2": args.input2}
+        for source in needed_sources:
+            local_path = source_paths[source]
+            if args.verbose:
+                print(f"loading {source} input: {local_path}")
+            img = images.load_input_image(Path(local_path))
+            if source == "image1":
+                for op in presets.resolve_resizes(preset.resizes, all_vars, args.verbose):
+                    img = images.apply_resize(img, op, args.verbose)
+            elif preset.resizes and args.verbose:
+                print(f"  note: @resize directives only apply to image1, "
+                      f"not {source}")
+            server_path = images.upload_image(server_url, img, args.verbose)
+            for upload in preset.uploads:
+                if upload.source == source:
+                    input_path_replacements[
+                        f"<AITOOLS_INPUT_{upload.slot_idx + 1}>"
+                    ] = server_path
 
     # Standard placeholder substitution (<AITOOLS_PROMPT>, etc.)
     seed = args.seed if args.seed is not None else random.randint(0, 2**63 - 1)

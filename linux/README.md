@@ -90,6 +90,23 @@ aitools_cli.py "" subject_masked.png \
     -i photo.jpg
 ```
 
+Single-image edit using the Klein 9B model:
+```
+aitools_cli.py "make her hair red" edited.png \
+    -p "Image To Image Klein Edit" \
+    -i portrait.jpg
+```
+
+Two-image preset — combine/edit using two source images. Use `-i2` for the
+second image; presets that declare both `@upload|image1|...` and
+`@upload|image2|...` (e.g. `Image To Image Klein Edit 2 Input`) require
+both inputs:
+```
+aitools_cli.py "put the cat from image2 into image1" combined.png \
+    -p "Image To Image Klein Edit 2 Input" \
+    -i background.jpg -i2 cat.jpg
+```
+
 ### Flags
 
 | Flag | Purpose |
@@ -97,7 +114,8 @@ aitools_cli.py "" subject_masked.png \
 | `-p, --preset NAME` | Preset file from `../Presets/` (or absolute path) |
 | `-w, --workflow FILE` | Workflow JSON from `../ComfyUI/` (mutex with `-p`) |
 | `--set-var NAME=VALUE` | Override a preset `%var%` (repeatable; wins over joblist assignments) |
-| `-i, --input PATH` | Input image file (required for presets that use `@upload`) |
+| `-i, --input PATH` | Input image file (image1 — required for presets that `@upload image1`) |
+| `-i2, --input2 PATH` | Second input image file (image2 — required for two-input presets) |
 | `-n, --negative TEXT` | Negative prompt (overrides preset default) |
 | `-s, --seed INT` | Seed (default: random in `0..2⁶³-1`) |
 | `-c, --config PATH` | Config file path (default: `./config.txt`) |
@@ -125,7 +143,9 @@ Inside the preset's `joblist` block these are supported:
   - `@replace|find|with|` — string substitution on the workflow JSON
   - `@upload|image1|inputN|` — uploads `-i` to ComfyUI's `/temp/` folder
     and routes the path into `<AITOOLS_INPUT_N>` (N = 1..4). Source must
-    be `image1` or `image`; `temp1`/`temp2`/`temp3` aren't supported.
+    be `image1`, `image`, or `image2`. A preset may use both `image1` and
+    `image2` for two-input workflows (e.g. `Image To Image Klein Edit 2
+    Input` — pass `-i` and `-i2`). `temp1`/`temp2`/`temp3` aren't supported.
   - `@resize|x|W|y|H|aspect_correct|0_or_1|` — resize the input image to
     `W×H` before upload. `aspect_correct|1` center-crops to the target
     aspect first; `aspect_correct|0` stretches.
@@ -161,14 +181,17 @@ their presence in a preset is harmless:
 - Mid-job control flow: `@stopjob`, `@no_undo`, `@lock_gpu`
 
 ### Image / input-slot features
-Single-input image presets work via `-i <path>`:
-- `@upload|image1|inputN|` — **supported** (only `image1`/`image` source)
-- `@resize|...|` and `@resize_if_larger|...|` — **supported** (no-slot form)
+Image-input presets work via `-i <path>` (and optionally `-i2 <path>`):
+- `@upload|image1|inputN|` — **supported** (`-i` input)
+- `@upload|image2|inputN|` — **supported** (`-i2` input). Two-input presets
+  (e.g. `Image To Image Klein Edit 2 Input`) require both flags.
+- `@resize|...|` and `@resize_if_larger|...|` — **supported** (no-slot form;
+  always applied to `image1`. `image2` is uploaded as-is.)
 
 Still missing:
-- `@upload|temp1|...|`, `@upload|temp2|...|`, `@upload|temp3|...|` — multi-image
-  presets (Qwen Edit From Temp1+Temp2, etc.) need extra `-i2`, `-i3` flags
-  not yet implemented
+- `@upload|temp1|...|`, `@upload|temp2|...|`, `@upload|temp3|...|` — multi-step
+  presets that pass intermediate results between jobs (Qwen Edit From
+  Temp1+Temp2, etc.) — the CLI only runs a single job at a time
 - `@setimage|%var%|src|` — copy an image into a named variable
 - `@fill_mask_if_blank` — auto-fill an empty inpaint mask
 

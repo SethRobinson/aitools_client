@@ -70,13 +70,20 @@ class ResizeOp:
 
 
 @dataclass
+class UploadSpec:
+    """An @upload directive: route source image to input slot N (0..3)."""
+    source: str        # 'image1' or 'image2'
+    slot_idx: int      # 0..3 -> <AITOOLS_INPUT_(slot_idx+1)>
+
+
+@dataclass
 class PresetData:
     source_path: Path
     workflow: str
     replaces: List[Tuple[str, str]] = field(default_factory=list)
     variables: Dict[str, str] = field(default_factory=dict)
-    uploads: List[int] = field(default_factory=list)            # input slot indices (0..3)
-    resizes: List[ResizeOpRaw] = field(default_factory=list)    # applied to input image, in order
+    uploads: List[UploadSpec] = field(default_factory=list)     # in declaration order
+    resizes: List[ResizeOpRaw] = field(default_factory=list)    # applied to image1 input, in order
     invert_alpha: bool = False                                  # post-process output alpha
     default_prompt: Optional[str] = None
     default_negative_prompt: Optional[str] = None
@@ -274,10 +281,13 @@ def _handle_upload(args: List[str], data: PresetData, path: Path):
         die(f"preset {path.name}: @upload expects 2 args (source|input_slot), got {len(args)}: {args}", 1)
     source = args[0].strip().lower()
     dest = args[1].strip().lower()
-    if source not in ("image", "image1"):
+    # 'image' is a documented alias for 'image1' (matches Unity's PicMain.cs).
+    if source == "image":
+        source = "image1"
+    if source not in ("image1", "image2"):
         die(
             f"preset {path.name}: @upload source '{source}' not supported — "
-            f"aitools_cli only handles 'image1' (the -i input). "
+            f"aitools_cli handles 'image1' (-i input) and 'image2' (-i2 input). "
             f"Sources like temp1/temp2/temp3 require multi-step workflows.",
             1,
         )
@@ -287,7 +297,7 @@ def _handle_upload(args: List[str], data: PresetData, path: Path):
             f"expected one of input1..input4 (or 1..4)",
             1,
         )
-    data.uploads.append(_INPUT_SLOTS[dest])
+    data.uploads.append(UploadSpec(source=source, slot_idx=_INPUT_SLOTS[dest]))
 
 
 def _handle_resize(directive: str, args: List[str], data: PresetData, path: Path):
