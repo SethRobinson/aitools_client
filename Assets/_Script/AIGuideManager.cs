@@ -1375,7 +1375,60 @@ public class AIGuideManager : MonoBehaviour
 
     public TMP_FontAsset GetFontByID(int fontID)
     {
+        if (m_fontArray == null || m_fontArray.Length == 0) return null;
+        if (fontID < 0 || fontID >= m_fontArray.Length) return null;
         return m_fontArray[fontID];
+    }
+
+    /// <summary>
+    /// Look up a font asset by its name (case-insensitive). Strips a trailing
+    /// " SDF" so the LLM can pass either the bare TMP asset name or the variant
+    /// suffix it sees in the system prompt list. Returns null if not found - caller
+    /// should fall back to a default font.
+    /// </summary>
+    public TMP_FontAsset GetFontByName(string name)
+    {
+        if (string.IsNullOrEmpty(name) || m_fontArray == null) return null;
+        string trimmed = name.Trim();
+        foreach (var font in m_fontArray)
+        {
+            if (font == null) continue;
+            if (string.Equals(font.name, trimmed, StringComparison.OrdinalIgnoreCase))
+                return font;
+        }
+        // Fuzzy fallback: ignore "SDF" suffix and any whitespace differences so
+        // "NotoSansCJKip-FV" matches "NotoSansCJKip-FV SDF".
+        string normalized = NormalizeFontName(trimmed);
+        foreach (var font in m_fontArray)
+        {
+            if (font == null) continue;
+            if (string.Equals(NormalizeFontName(font.name), normalized, StringComparison.OrdinalIgnoreCase))
+                return font;
+        }
+        return null;
+    }
+
+    private static string NormalizeFontName(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        s = s.Replace(" SDF", "").Replace("-SDF", "").Replace("_SDF", "").Trim();
+        return s;
+    }
+
+    /// <summary>
+    /// Returns the names of all loaded TMP fonts, suitable for showing the LLM
+    /// what valid <c>font_name</c> values look like for the AI Chat composition
+    /// skills. Empty entries (null slots in the inspector array) are skipped.
+    /// </summary>
+    public List<string> GetAllFontNames()
+    {
+        var result = new List<string>();
+        if (m_fontArray == null) return result;
+        foreach (var font in m_fontArray)
+        {
+            if (font != null && !string.IsNullOrEmpty(font.name)) result.Add(font.name);
+        }
+        return result;
     }
     public void OnAddMotivationTextWithTitle(GameObject entity)
     {

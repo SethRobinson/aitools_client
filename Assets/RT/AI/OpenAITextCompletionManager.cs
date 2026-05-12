@@ -8,6 +8,7 @@ using UnityEngine.Networking;
 using System.IO;
 using System.Runtime.InteropServices.ComTypes;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 
 public class GTPChatLine
     {
@@ -279,14 +280,14 @@ public class OpenAITextCompletionManager : MonoBehaviour
 
     //*  EXAMPLE END */
     public bool SpawnChatCompleteRequest(string jsonRequest, Action<RTDB, JSONObject, string> myCallback, RTDB db, string openAI_APIKey, string endpoint = "https://api.openai.com/v1/chat/completions",
-        Action<string> streamingUpdateChunkCallback = null, bool bStreaming = false)
+        Action<string> streamingUpdateChunkCallback = null, bool bStreaming = false, string sentJsonFilename = "text_completion_sent.json")
     {
         if (bStreaming)
         {
-            StartCoroutine(GetRequestStreaming(jsonRequest, myCallback, db, openAI_APIKey, endpoint, streamingUpdateChunkCallback));
+            StartCoroutine(GetRequestStreaming(jsonRequest, myCallback, db, openAI_APIKey, endpoint, streamingUpdateChunkCallback, sentJsonFilename));
         } else
         {
-            StartCoroutine(GetRequest(jsonRequest, myCallback, db, openAI_APIKey, endpoint));
+            StartCoroutine(GetRequest(jsonRequest, myCallback, db, openAI_APIKey, endpoint, sentJsonFilename));
 
         }
         return true;
@@ -495,11 +496,20 @@ public class OpenAITextCompletionManager : MonoBehaviour
          
 //                 ""max_tokens"": {max_tokens,
 
-    IEnumerator GetRequest(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string openAI_APIKey, string endpoint)
+    IEnumerator GetRequest(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string openAI_APIKey, string endpoint, string sentJsonFilename)
     {
 
-#if UNITY_STANDALONE && !RT_RELEASE 
-               File.WriteAllText("text_completion_sent.json", json);
+#if UNITY_STANDALONE && !RT_RELEASE
+        // Off-thread debug dump: a multi-MB caption-request JSON synchronously
+        // written here was the source of multi-second freezes during AI Chat
+        // image_to_image edits. The file is for post-mortem inspection only -
+        // nothing reads it back synchronously, so a fire-and-forget Task.Run
+        // is safe and keeps the main thread free.
+        {
+            string sj = json;
+            string sf = string.IsNullOrEmpty(sentJsonFilename) ? "text_completion_sent.json" : sentJsonFilename;
+            Task.Run(() => { try { File.WriteAllText(sf, sj); } catch { /* best-effort */ } });
+        }
 #endif
         string url;
         url = endpoint;
@@ -527,7 +537,10 @@ public class OpenAITextCompletionManager : MonoBehaviour
                 Debug.Log(msg);
                 //Debug.Log(_currentRequest.downloadHandler.text);
 //#if UNITY_STANDALONE && !RT_RELEASE
-                File.WriteAllText("last_error_returned.json", _currentRequest.downloadHandler.text);
+                {
+                    string body = _currentRequest.downloadHandler.text;
+                    Task.Run(() => { try { File.WriteAllText("last_error_returned.json", body); } catch { } });
+                }
                 //#endif
                 m_connectionActive = false;
 
@@ -538,10 +551,12 @@ public class OpenAITextCompletionManager : MonoBehaviour
             else
             {
 
-#if UNITY_STANDALONE && !RT_RELEASE 
+#if UNITY_STANDALONE && !RT_RELEASE
 //                Debug.Log("Form upload complete! Downloaded " + _currentRequest.downloadedBytes);
-
-                File.WriteAllText("textgen_json_received.json", _currentRequest.downloadHandler.text);
+                {
+                    string body = _currentRequest.downloadHandler.text;
+                    Task.Run(() => { try { File.WriteAllText("textgen_json_received.json", body); } catch { } });
+                }
 #endif
 
                 JSONNode rootNode = JSON.Parse(_currentRequest.downloadHandler.text);
@@ -575,11 +590,16 @@ public class OpenAITextCompletionManager : MonoBehaviour
 
 
     IEnumerator GetRequestStreaming(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string openAI_APIKey, string endpoint,
-         Action<string> updateChunkCallback)
+         Action<string> updateChunkCallback, string sentJsonFilename)
     {
 
 #if UNITY_STANDALONE && !RT_RELEASE
-        File.WriteAllText("text_completion_sent.json", json);
+        // Off-thread debug dump - see GetRequest above for rationale.
+        {
+            string sj = json;
+            string sf = string.IsNullOrEmpty(sentJsonFilename) ? "text_completion_sent.json" : sentJsonFilename;
+            Task.Run(() => { try { File.WriteAllText(sf, sj); } catch { } });
+        }
 #endif
         string url;
         url = endpoint;
@@ -641,7 +661,10 @@ public class OpenAITextCompletionManager : MonoBehaviour
                 Debug.Log("Error response body: " + errorBody);
                 
                 //#if UNITY_STANDALONE && !RT_RELEASE
-                File.WriteAllText("last_error_returned.json", errorBody);
+                {
+                    string body = errorBody;
+                    Task.Run(() => { try { File.WriteAllText("last_error_returned.json", body); } catch { } });
+                }
                 //#endif
                 m_connectionActive = false;
 
@@ -654,8 +677,10 @@ public class OpenAITextCompletionManager : MonoBehaviour
 
 #if UNITY_STANDALONE && !RT_RELEASE
                 //                Debug.Log("Form upload complete! Downloaded " + _currentRequest.downloadedBytes);
-
-                File.WriteAllText("textgen_json_received.json", _currentRequest.downloadHandler.text);
+                {
+                    string body = _currentRequest.downloadHandler.text;
+                    Task.Run(() => { try { File.WriteAllText("textgen_json_received.json", body); } catch { } });
+                }
 #endif
                 m_connectionActive = false;
             

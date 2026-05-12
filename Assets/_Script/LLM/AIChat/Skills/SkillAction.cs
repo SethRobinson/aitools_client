@@ -81,6 +81,35 @@ namespace AITools.AIChat.Skills
             }
         }
 
+        /// <summary>
+        /// Generic accessor for the 1-based attachment index of an extra input slot
+        /// (slot 2..5). Used by N-input presets (Image To Image Klein Edit 3/4/5 Input)
+        /// to pull additional anchor / reference images. Returns null if the LLM did
+        /// not provide attachment{slot}.
+        /// </summary>
+        public int? GetExtraAttachmentIndex(int slot)
+        {
+            if (slot < 2 || slot > 5) return null;
+            string key = "attachment" + slot;
+            if (!Args.TryGetValue(key, out var v)) return null;
+            if (int.TryParse(v, out int n) && n > 0) return n;
+            return null;
+        }
+
+        /// <summary>
+        /// Generic accessor for the 1-based chat-image index of an extra input slot
+        /// (slot 2..5). Wins over <see cref="GetExtraAttachmentIndex"/> at the same
+        /// slot when both are set, matching the precedence rule on the primary slot.
+        /// </summary>
+        public int? GetExtraChatImageIndex(int slot)
+        {
+            if (slot < 2 || slot > 5) return null;
+            string key = "chat_image" + slot;
+            if (!Args.TryGetValue(key, out var v)) return null;
+            if (int.TryParse(v, out int n) && n > 0) return n;
+            return null;
+        }
+
         /// <summary>Optional GPU id hint (Config.GetGPUInfo index), or null.</summary>
         public int? GpuId
         {

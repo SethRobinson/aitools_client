@@ -602,8 +602,8 @@ public class PicTextToImage : MonoBehaviour
         bool bDidFindAudioNegativePromptTag = ReplaceInString(ref comfyUIGraphJSon, "<AITOOLS_AUDIO_NEGATIVE_PROMPT>", JSONNode.Escape(m_scheduledEvent.m_picJob._requestedAudioNegativePrompt));
         bool bDidFindSegmentationPromptTag = ReplaceInString(ref comfyUIGraphJSon, "<AITOOLS_SEGMENTATION_PROMPT>", JSONNode.Escape(m_scheduledEvent.m_picJob._requestedSegmentationPrompt));
 
-        // Replace all AITOOLS_INPUT_N placeholders (1 through 4) from _inputFilenames array
-        for (int i = 0; i < 4; i++)
+        // Replace all AITOOLS_INPUT_N placeholders (1 through 5) from _inputFilenames array
+        for (int i = 0; i < 5; i++)
         {
             if (m_scheduledEvent.m_picJob._inputFilenames[i].Length > 0)
             {

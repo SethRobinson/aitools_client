@@ -407,15 +407,25 @@ namespace AITools.AIChat.Skills
         private static string MakeSentinel(string attrBlob, int n)
         {
             string skill = ParseAttributes(attrBlob)?.SkillId ?? "";
-            // Media actions already create real bubbles in the Media panel; don't also
-            // spam the text transcript with "[image #N]" / "[movie #N]" markers.
+            // Skills with VISUAL side-effects (spawn a Pic bubble or stack onto one)
+            // already have a visible result in the Media panel; don't also spam the
+            // text transcript with "[skill: X]" markers. Includes media generators
+            // AND the composition primitives, which all either create new bubbles
+            // (new_canvas) or modify an existing/chained Pic (draw_text, add_border,
+            // paste_image, draw_shape, crop_resize). Users want to see the resulting
+            // poster, not 4 [skill: X] markers per poster.
             switch ((skill ?? "").ToLowerInvariant())
             {
                 case BuiltInSkillIds.GenerateImage:
                 case BuiltInSkillIds.ImageToImage:
-                    return RemovedMediaActionMarker;
                 case BuiltInSkillIds.GenerateMovie:
                 case BuiltInSkillIds.ImageToMovie:
+                case BuiltInSkillIds.DrawText:
+                case BuiltInSkillIds.AddBorder:
+                case BuiltInSkillIds.PasteImage:
+                case BuiltInSkillIds.NewCanvas:
+                case BuiltInSkillIds.CropResize:
+                case BuiltInSkillIds.DrawShape:
                     return RemovedMediaActionMarker;
                 default:
                     return $"\n[skill: {skill}]\n";

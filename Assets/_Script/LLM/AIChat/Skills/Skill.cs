@@ -29,6 +29,9 @@ namespace AITools.AIChat.Skills
     /// id: generate_image
     /// summary: Generate a brand-new image from a text prompt.
     /// inputs: none
+    /// autoload: true
+    /// triggers: poster, comic, storyboard
+    /// exclude_triggers: poster into a movie, poster into a video
     /// template: &lt;aitools_action skill="generate_image" preset="Prompt To Image (Z-Image).txt" prompt="..."/&gt;
     /// ---
     /// </code>
@@ -39,17 +42,23 @@ namespace AITools.AIChat.Skills
         public string Summary;
         public SkillInputs Inputs = SkillInputs.None;
         public string Template;       // copy-pasteable canonical action tag
+        public List<string> Triggers = new List<string>();
+        public List<string> ExcludeTriggers = new List<string>();
+        public bool Autoload;
         public string RawMarkdown;
         public string FilePath;
 
         public Skill() { }
 
-        public Skill(string id, string summary, SkillInputs inputs, string template, string rawMarkdown, string filePath)
+        public Skill(string id, string summary, SkillInputs inputs, string template, List<string> triggers, List<string> excludeTriggers, bool autoload, string rawMarkdown, string filePath)
         {
             Id = id;
             Summary = summary;
             Inputs = inputs;
             Template = template;
+            Triggers = triggers ?? new List<string>();
+            ExcludeTriggers = excludeTriggers ?? new List<string>();
+            Autoload = autoload;
             RawMarkdown = rawMarkdown;
             FilePath = filePath;
         }
@@ -76,10 +85,23 @@ namespace AITools.AIChat.Skills
         public const string SummarizeWithSmallLlm = "summarize_with_small_llm";
         public const string DescribeImage = "describe_image";
 
+        // Composition primitives - C#-side image ops the LLM can chain to build
+        // posters, books, storyboards, comic panels, magazine covers, etc. None
+        // of these touch ComfyUI; they all run as coroutines on the spawned
+        // PicMain (or stack onto a prior Pic via chain="true"). See
+        // aichat/skills/composition_recipes.md for worked examples.
+        public const string DrawText = "draw_text";
+        public const string AddBorder = "add_border";
+        public const string PasteImage = "paste_image";
+        public const string NewCanvas = "new_canvas";
+        public const string CropResize = "crop_resize";
+        public const string DrawShape = "draw_shape";
+
         public static readonly HashSet<string> All = new HashSet<string>
         {
             GenerateImage, GenerateMovie, ImageToImage, ImageToMovie,
-            ReadSkill, SummarizeWithSmallLlm, DescribeImage
+            ReadSkill, SummarizeWithSmallLlm, DescribeImage,
+            DrawText, AddBorder, PasteImage, NewCanvas, CropResize, DrawShape
         };
     }
 }

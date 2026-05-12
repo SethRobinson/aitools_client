@@ -34,6 +34,7 @@ namespace AITools.AIChat.UI
         private TMP_FontAsset _font;
         private RectTransform _mainPanel;
         private TMP_InputField _mainPromptField;
+        private TMP_InputField _maxEdgeField;
         private RectTransform _skillsContent;
         private TMP_InputField _keepLastNField;
         private TMP_InputField _presetPrefixField;
@@ -41,6 +42,8 @@ namespace AITools.AIChat.UI
         private const float DEFAULT_WIDTH = 760f;
         private const float DEFAULT_HEIGHT = 620f;
         private const float HEADER_HEIGHT = 40f;
+        // Tall enough for one compact settings row (left-justified label +
+        // input pairs) above the bottom button row.
         private const float FOOTER_HEIGHT = 85f;
         private const float BaseFontSize = 13f;
 
@@ -219,6 +222,38 @@ namespace AITools.AIChat.UI
                 pp.fontSize = BaseFontSize;
             }
 
+            // Vertical scrollbar for the main prompt. TMP_InputField will drive
+            // it automatically once assigned to verticalScrollbar. We shrink the
+            // text viewport so the bar doesn't draw on top of the wrapped text.
+            if (_mainPromptField.textViewport != null)
+            {
+                var vp = _mainPromptField.textViewport;
+                vp.offsetMax = new Vector2(-18, vp.offsetMax.y);
+            }
+            var promptSb = new GameObject("Scrollbar");
+            promptSb.transform.SetParent(promptInputGo.transform, false);
+            var promptSbRt = promptSb.AddComponent<RectTransform>();
+            promptSbRt.anchorMin = new Vector2(1, 0);
+            promptSbRt.anchorMax = new Vector2(1, 1);
+            promptSbRt.pivot = new Vector2(1, 0.5f);
+            promptSbRt.sizeDelta = new Vector2(16, 0);
+            promptSbRt.anchoredPosition = Vector2.zero;
+            promptSb.AddComponent<Image>().color = new Color(0.78f, 0.78f, 0.80f, 1f);
+            var promptSbComp = promptSb.AddComponent<Scrollbar>();
+            promptSbComp.direction = Scrollbar.Direction.BottomToTop;
+            var promptSbHandle = new GameObject("Handle");
+            promptSbHandle.transform.SetParent(promptSb.transform, false);
+            var promptSbHandleRt = promptSbHandle.AddComponent<RectTransform>();
+            promptSbHandleRt.anchorMin = Vector2.zero;
+            promptSbHandleRt.anchorMax = Vector2.one;
+            promptSbHandleRt.offsetMin = new Vector2(2, 2);
+            promptSbHandleRt.offsetMax = new Vector2(-2, -2);
+            var promptSbHandleImg = promptSbHandle.AddComponent<Image>();
+            promptSbHandleImg.color = new Color(0.50f, 0.50f, 0.55f, 1f);
+            promptSbComp.handleRect = promptSbHandleRt;
+            promptSbComp.targetGraphic = promptSbHandleImg;
+            _mainPromptField.verticalScrollbar = promptSbComp;
+
             // Bottom half: scrollable skill list.
             var skillsLabel = MakeLabel("Loaded skills (aichat/skills/*.md) - call read_skill in chat to load full body for any:");
             skillsLabel.transform.SetParent(body.transform, false);
@@ -325,49 +360,77 @@ namespace AITools.AIChat.UI
             saveBtn.GetComponent<RectTransform>().anchorMax = new Vector2(1, 0);
             saveBtn.GetComponent<RectTransform>().pivot = new Vector2(1, 0);
 
-            // Centered: "Keep last N media on Clear: [10]" - persisted to PlayerPrefs
-            // via AIChatPanel.GetKeepLastNMedia/SetKeepLastNMedia. Saved on close.
-            var keepRowGo = new GameObject("KeepLastNRow");
-            keepRowGo.transform.SetParent(footer.transform, false);
-            var keepRowRT = keepRowGo.AddComponent<RectTransform>();
-            keepRowRT.anchorMin = new Vector2(0.5f, 0);
-            keepRowRT.anchorMax = new Vector2(0.5f, 0);
-            keepRowRT.pivot = new Vector2(0.5f, 0);
-            keepRowRT.sizeDelta = new Vector2(280, 30);
-            keepRowRT.anchoredPosition = new Vector2(0, 10);
+            // Single compact settings row above the buttons: three label+input
+            // pairs laid out left-to-right (max attachment size, preset prefix,
+            // keep last N media). Each pair has a transparent hit-box parent
+            // with an RTToolTip explaining what the setting does.
+            const float kSettingsRowY = 46f;
+            const float kSettingsLeftPad = 8f;
+            const float kSettingsGap = 14f;
 
-            var keepLabelGo = new GameObject("Label");
-            keepLabelGo.transform.SetParent(keepRowGo.transform, false);
-            var keepLabelRT = keepLabelGo.AddComponent<RectTransform>();
-            keepLabelRT.anchorMin = new Vector2(0, 0);
-            keepLabelRT.anchorMax = new Vector2(1, 1);
-            keepLabelRT.offsetMin = Vector2.zero;
-            keepLabelRT.offsetMax = new Vector2(-60, 0);
-            var keepLabelTmp = keepLabelGo.AddComponent<TextMeshProUGUI>();
-            keepLabelTmp.text = "Keep last N media on Clear:";
-            keepLabelTmp.font = _font;
-            keepLabelTmp.fontSize = BaseFontSize;
-            keepLabelTmp.color = TextDark;
-            keepLabelTmp.alignment = TextAlignmentOptions.MidlineRight;
-            keepLabelTmp.raycastTarget = false;
+            float x = kSettingsLeftPad;
 
-            var keepInputGo = TMP_DefaultControls.CreateInputField(new TMP_DefaultControls.Resources());
-            keepInputGo.name = "KeepLastNInput";
-            keepInputGo.transform.SetParent(keepRowGo.transform, false);
-            var keepInputRT = keepInputGo.GetComponent<RectTransform>();
-            keepInputRT.anchorMin = new Vector2(1, 0.5f);
-            keepInputRT.anchorMax = new Vector2(1, 0.5f);
-            keepInputRT.pivot = new Vector2(1, 0.5f);
-            keepInputRT.sizeDelta = new Vector2(54, 26);
-            keepInputRT.anchoredPosition = new Vector2(0, 0);
-            var keepInputImg = keepInputGo.GetComponent<Image>();
-            if (keepInputImg != null) { keepInputImg.sprite = null; keepInputImg.color = InputFieldBg; }
-            _keepLastNField = keepInputGo.GetComponent<TMP_InputField>();
+            const float kMaxEdgeLabelW = 200f;
+            const float kMaxEdgeInputW = 60f;
+            BuildSettingPair(
+                footer.transform,
+                "MaxEdgePair",
+                "Max attachment size (px, 0 = off):",
+                kMaxEdgeLabelW,
+                kMaxEdgeInputW,
+                new Vector2(x, kSettingsRowY),
+                "Maximum pixel size for the longest edge of image attachments. Larger images dropped or pasted into the chat are downscaled to this before being sent. Set to 0 to disable resizing (sends originals as-is).",
+                out _maxEdgeField);
+            _maxEdgeField.contentType = TMP_InputField.ContentType.IntegerNumber;
+            _maxEdgeField.characterLimit = 5;
+            _maxEdgeField.textComponent.alignment = TextAlignmentOptions.Center;
+            if (_maxEdgeField.placeholder is TextMeshProUGUI mep)
+            {
+                mep.text = "1024";
+                mep.color = new Color(0, 0, 0, 0.4f);
+                mep.font = _font;
+                mep.fontSize = BaseFontSize;
+                mep.alignment = TextAlignmentOptions.Center;
+            }
+            x += kMaxEdgeLabelW + 4f + kMaxEdgeInputW + kSettingsGap;
+
+            const float kPrefixLabelW = 80f;
+            const float kPrefixInputW = 110f;
+            BuildSettingPair(
+                footer.transform,
+                "PrefixPair",
+                "Preset prefix:",
+                kPrefixLabelW,
+                kPrefixInputW,
+                new Vector2(x, kSettingsRowY),
+                "Optional string prepended to every {{preset_name}} marker found in skills/main_prompt at chat-build time. Lets you switch families of presets (e.g. 'test_' vs production). Empty = use bare names.",
+                out _presetPrefixField);
+            _presetPrefixField.contentType = TMP_InputField.ContentType.Standard;
+            _presetPrefixField.characterLimit = 32;
+            _presetPrefixField.textComponent.alignment = TextAlignmentOptions.MidlineLeft;
+            if (_presetPrefixField.placeholder is TextMeshProUGUI pp2)
+            {
+                pp2.text = "(none)";
+                pp2.color = new Color(0, 0, 0, 0.4f);
+                pp2.font = _font;
+                pp2.fontSize = BaseFontSize - 1;
+                pp2.alignment = TextAlignmentOptions.MidlineLeft;
+            }
+            x += kPrefixLabelW + 4f + kPrefixInputW + kSettingsGap;
+
+            const float kKeepLabelW = 165f;
+            const float kKeepInputW = 50f;
+            BuildSettingPair(
+                footer.transform,
+                "KeepLastNPair",
+                "Keep last N media on Clear:",
+                kKeepLabelW,
+                kKeepInputW,
+                new Vector2(x, kSettingsRowY),
+                "When you press Clear in the chat, this many of the most recent media items (images/videos) are preserved. Older media is removed. Set to 0 to clear everything.",
+                out _keepLastNField);
             _keepLastNField.contentType = TMP_InputField.ContentType.IntegerNumber;
             _keepLastNField.characterLimit = 4;
-            _keepLastNField.textComponent.font = _font;
-            _keepLastNField.textComponent.fontSize = BaseFontSize;
-            _keepLastNField.textComponent.color = TextDark;
             _keepLastNField.textComponent.alignment = TextAlignmentOptions.Center;
             if (_keepLastNField.placeholder is TextMeshProUGUI kp)
             {
@@ -377,61 +440,76 @@ namespace AITools.AIChat.UI
                 kp.fontSize = BaseFontSize;
                 kp.alignment = TextAlignmentOptions.Center;
             }
+        }
 
-            // Centered above the keep-N row: "Preset prefix: [_______]" - prepended
-            // to every {{...}}-wrapped preset name in skill md / main_prompt at
-            // prompt-build time. Empty = bare names (default). Persisted to
-            // PlayerPrefs via AIChatPanel.GetPresetPrefix/SetPresetPrefix.
-            var prefixRowGo = new GameObject("PresetPrefixRow");
-            prefixRowGo.transform.SetParent(footer.transform, false);
-            var prefixRowRT = prefixRowGo.AddComponent<RectTransform>();
-            prefixRowRT.anchorMin = new Vector2(0.5f, 0);
-            prefixRowRT.anchorMax = new Vector2(0.5f, 0);
-            prefixRowRT.pivot = new Vector2(0.5f, 0);
-            prefixRowRT.sizeDelta = new Vector2(360, 30);
-            prefixRowRT.anchoredPosition = new Vector2(0, 45);
+        // Builds a "[Label:] [InputField]" pair anchored to the bottom-left of
+        // its parent at <anchoredPos>. The pair has an invisible Image so it
+        // can receive pointer events for the RTToolTip we attach.
+        private void BuildSettingPair(
+            Transform parent,
+            string name,
+            string labelText,
+            float labelWidth,
+            float inputWidth,
+            Vector2 anchoredPos,
+            string tooltip,
+            out TMP_InputField inputOut)
+        {
+            const float ROW_HEIGHT = 28f;
+            const float LABEL_INPUT_GAP = 4f;
 
-            var prefixLabelGo = new GameObject("Label");
-            prefixLabelGo.transform.SetParent(prefixRowGo.transform, false);
-            var prefixLabelRT = prefixLabelGo.AddComponent<RectTransform>();
-            prefixLabelRT.anchorMin = new Vector2(0, 0);
-            prefixLabelRT.anchorMax = new Vector2(1, 1);
-            prefixLabelRT.offsetMin = Vector2.zero;
-            prefixLabelRT.offsetMax = new Vector2(-180, 0);
-            var prefixLabelTmp = prefixLabelGo.AddComponent<TextMeshProUGUI>();
-            prefixLabelTmp.text = "Preset prefix:";
-            prefixLabelTmp.font = _font;
-            prefixLabelTmp.fontSize = BaseFontSize;
-            prefixLabelTmp.color = TextDark;
-            prefixLabelTmp.alignment = TextAlignmentOptions.MidlineRight;
-            prefixLabelTmp.raycastTarget = false;
+            var pair = new GameObject(name);
+            pair.transform.SetParent(parent, false);
+            var pairRT = pair.AddComponent<RectTransform>();
+            pairRT.anchorMin = new Vector2(0, 0);
+            pairRT.anchorMax = new Vector2(0, 0);
+            pairRT.pivot = new Vector2(0, 0);
+            pairRT.sizeDelta = new Vector2(labelWidth + LABEL_INPUT_GAP + inputWidth, ROW_HEIGHT);
+            pairRT.anchoredPosition = anchoredPos;
 
-            var prefixInputGo = TMP_DefaultControls.CreateInputField(new TMP_DefaultControls.Resources());
-            prefixInputGo.name = "PresetPrefixInput";
-            prefixInputGo.transform.SetParent(prefixRowGo.transform, false);
-            var prefixInputRT = prefixInputGo.GetComponent<RectTransform>();
-            prefixInputRT.anchorMin = new Vector2(1, 0.5f);
-            prefixInputRT.anchorMax = new Vector2(1, 0.5f);
-            prefixInputRT.pivot = new Vector2(1, 0.5f);
-            prefixInputRT.sizeDelta = new Vector2(170, 26);
-            prefixInputRT.anchoredPosition = new Vector2(0, 0);
-            var prefixInputImg = prefixInputGo.GetComponent<Image>();
-            if (prefixInputImg != null) { prefixInputImg.sprite = null; prefixInputImg.color = InputFieldBg; }
-            _presetPrefixField = prefixInputGo.GetComponent<TMP_InputField>();
-            _presetPrefixField.contentType = TMP_InputField.ContentType.Standard;
-            _presetPrefixField.characterLimit = 32;
-            _presetPrefixField.textComponent.font = _font;
-            _presetPrefixField.textComponent.fontSize = BaseFontSize;
-            _presetPrefixField.textComponent.color = TextDark;
-            _presetPrefixField.textComponent.alignment = TextAlignmentOptions.MidlineLeft;
-            if (_presetPrefixField.placeholder is TextMeshProUGUI pp2)
+            // Transparent fill so the pair is a hover target for the tooltip.
+            // Children (label = raycast off, input = own raycast) keep working.
+            var bg = pair.AddComponent<Image>();
+            bg.color = new Color(0, 0, 0, 0);
+            bg.raycastTarget = true;
+
+            if (!string.IsNullOrEmpty(tooltip))
             {
-                pp2.text = "(empty = use bare names; e.g. test_)";
-                pp2.color = new Color(0, 0, 0, 0.4f);
-                pp2.font = _font;
-                pp2.fontSize = BaseFontSize - 1;
-                pp2.alignment = TextAlignmentOptions.MidlineLeft;
+                var tt = pair.AddComponent<RTToolTip>();
+                tt._text = tooltip;
             }
+
+            var labelGo = new GameObject("Label");
+            labelGo.transform.SetParent(pair.transform, false);
+            var labelRT = labelGo.AddComponent<RectTransform>();
+            labelRT.anchorMin = new Vector2(0, 0);
+            labelRT.anchorMax = new Vector2(0, 1);
+            labelRT.pivot = new Vector2(0, 0.5f);
+            labelRT.sizeDelta = new Vector2(labelWidth, 0);
+            labelRT.anchoredPosition = Vector2.zero;
+            var labelTmp = labelGo.AddComponent<TextMeshProUGUI>();
+            labelTmp.text = labelText;
+            labelTmp.font = _font;
+            labelTmp.fontSize = BaseFontSize;
+            labelTmp.color = TextDark;
+            labelTmp.alignment = TextAlignmentOptions.MidlineRight;
+            labelTmp.raycastTarget = false;
+
+            var inputGo = TMP_DefaultControls.CreateInputField(new TMP_DefaultControls.Resources());
+            inputGo.name = name + "Input";
+            inputGo.transform.SetParent(pair.transform, false);
+            var inputRT = inputGo.GetComponent<RectTransform>();
+            inputRT.anchorMin = new Vector2(0, 0.5f);
+            inputRT.anchorMax = new Vector2(0, 0.5f);
+            inputRT.pivot = new Vector2(0, 0.5f);
+            inputRT.sizeDelta = new Vector2(inputWidth, 26);
+            inputRT.anchoredPosition = new Vector2(labelWidth + LABEL_INPUT_GAP, 0);
+            var inputImg = inputGo.GetComponent<Image>();
+            if (inputImg != null) { inputImg.sprite = null; inputImg.color = InputFieldBg; }
+            inputOut = inputGo.GetComponent<TMP_InputField>();
+            inputOut.textComponent.font = _font;
+            inputOut.textComponent.fontSize = BaseFontSize;
+            inputOut.textComponent.color = TextDark;
         }
 
         // ---------- Behavior ----------
@@ -445,6 +523,8 @@ namespace AITools.AIChat.UI
                 _keepLastNField.text = AIChatPanel.GetKeepLastNMedia().ToString();
             if (_presetPrefixField != null)
                 _presetPrefixField.text = AIChatPanel.GetPresetPrefix();
+            if (_maxEdgeField != null)
+                _maxEdgeField.text = AIChatPanel.GetAttachmentMaxEdge().ToString();
             RebuildSkillRows();
         }
 
@@ -460,8 +540,10 @@ namespace AITools.AIChat.UI
                 var row = new GameObject("Skill_" + s.Id);
                 row.transform.SetParent(_skillsContent, false);
                 var le = row.AddComponent<LayoutElement>();
+                // Floor only - row grows vertically when the description wraps
+                // to multiple lines. Without this the bottom of long summaries
+                // got clipped or overflowed past the right edge of the panel.
                 le.minHeight = 46f;
-                le.preferredHeight = 46f;
                 row.AddComponent<Image>().color = RowBg;
 
                 var v = row.AddComponent<VerticalLayoutGroup>();
@@ -470,6 +552,8 @@ namespace AITools.AIChat.UI
                 v.childControlWidth = true;
                 v.childControlHeight = true;
                 v.childForceExpandWidth = true;
+                v.childForceExpandHeight = false;
+                row.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
                 var idTmp = MakeLabel(s.Id + "  -  " + (s.Inputs == SkillInputs.None ? "no inputs" : "needs " + s.Inputs.ToString().ToLowerInvariant()));
                 idTmp.transform.SetParent(row.transform, false);
@@ -477,9 +561,20 @@ namespace AITools.AIChat.UI
                 idRt.fontStyle = FontStyles.Bold;
                 idRt.fontSize = BaseFontSize;
 
-                var sumTmp = MakeLabel(s.Summary);
-                sumTmp.transform.SetParent(row.transform, false);
-                sumTmp.GetComponent<TextMeshProUGUI>().fontSize = BaseFontSize - 1;
+                // Description: built inline (not via MakeLabel) so it can wrap
+                // and let TMP report its own multi-line preferred height instead
+                // of the fixed 16px MakeLabel forces via LayoutElement.
+                var sumGo = new GameObject("Desc");
+                sumGo.transform.SetParent(row.transform, false);
+                sumGo.AddComponent<RectTransform>();
+                var sumTmp = sumGo.AddComponent<TextMeshProUGUI>();
+                sumTmp.text = s.Summary ?? "";
+                sumTmp.font = _font;
+                sumTmp.fontSize = BaseFontSize - 1;
+                sumTmp.color = TextDark;
+                sumTmp.alignment = TextAlignmentOptions.TopLeft;
+                sumTmp.textWrappingMode = TextWrappingModes.Normal;
+                sumTmp.raycastTarget = false;
             }
         }
 
@@ -510,6 +605,11 @@ namespace AITools.AIChat.UI
             // bare names" (no prefix substitution beyond stripping the {{...}} markers).
             if (_presetPrefixField != null)
                 AIChatPanel.SetPresetPrefix(_presetPrefixField.text ?? "");
+
+            // Persist the attachment max-edge cap. Empty / unparseable -> leave the
+            // existing value untouched. SetAttachmentMaxEdge clamps to a sane range.
+            if (_maxEdgeField != null && int.TryParse(_maxEdgeField.text, out int maxEdge))
+                AIChatPanel.SetAttachmentMaxEdge(maxEdge);
 
             // Trigger the host's reload + UI update.
             _staticSkillManager?.Reload();

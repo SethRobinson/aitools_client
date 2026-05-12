@@ -41,6 +41,16 @@ namespace AITools.AIChat.Skills
         void AddSystemInjectionAndBubble(string text);
 
         /// <summary>
+        /// Inject a system-role interaction into the prompt manager so the LLM sees
+        /// it on its NEXT turn, without spamming the chat with the full content.
+        /// Use when the injected text is large (e.g. a full skill markdown body) and
+        /// the user doesn't need to see it in their chat - they only care that
+        /// "something was loaded". Pair with a small <see cref="AddInfoBubble"/> if
+        /// you want a visual confirmation.
+        /// </summary>
+        void AddSystemInjectionSilent(string text);
+
+        /// <summary>
         /// Append a chat-side image bubble with a live mirror of the supplied PicMain
         /// (which has been spawned and queued via the standard ImageGenerator pipeline).
         /// The bubble is positioned in stream order with the rest of the chat content.
@@ -58,11 +68,26 @@ namespace AITools.AIChat.Skills
         byte[] GetChatImagePngBytes(int oneBasedIndex);
 
         /// <summary>
-        /// Number of chat-image bubbles spawned this session that still have a live
-        /// world Pic. Lets the executor and skill descriptions tell the LLM how many
-        /// chat_image slots are reachable right now.
+        /// Number of numbered chat-image slots tracked by this chat session.
+        /// The number maps to the visible "Image #N" / "Movie #N" labels; a slot may
+        /// still need to be reloaded before its pixels can be read.
         /// </summary>
         int GetChatImageCount();
+
+        /// <summary>
+        /// Highest currently tracked chat_image index whose world Pic still exists,
+        /// or 0 if none exist. Used for "latest image" fallbacks without compressing
+        /// stable chat_image numbering when older movies are unloaded.
+        /// </summary>
+        int GetLatestChatImageIndex();
+
+        /// <summary>
+        /// Best-effort request to make the Nth chat image readable by
+        /// <see cref="GetChatImagePngBytes"/>. Returns true if the slot exists and is
+        /// either already readable or a reload/preparation was started. Returns false
+        /// for out-of-range, deleted, or non-reloadable slots.
+        /// </summary>
+        bool TryPrepareChatImageForRead(int oneBasedIndex);
 
         /// <summary>
         /// Short visual caption (~15 words) for the Nth chat image, or "" if the

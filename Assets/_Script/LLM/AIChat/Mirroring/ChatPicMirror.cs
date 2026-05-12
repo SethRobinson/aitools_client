@@ -59,6 +59,7 @@ namespace AITools.AIChat.Mirroring
         private float _lastAppliedH = -1f;
         private float _lastContainerWidth = -1f;
         private string _lastStatus = "";
+        private bool _hasSyncedStatus = false;
         private bool _picWentMissingNotified = false;
         private const float ScrollBottomPixelEpsilon = 12f;
 
@@ -122,12 +123,13 @@ namespace AITools.AIChat.Mirroring
             // sized via TextMeshPro's natural preferred height to fit them.
             if (statusLabel != null)
             {
-                string status = sourcePic.GetStatusMessage();
-                if (status != _lastStatus)
+                string status = sourcePic.GetStatusMessage() ?? "";
+                if (!_hasSyncedStatus || status != _lastStatus)
                 {
                     bool shouldAutoScroll = IsScrollAtBottom(autoScrollTarget);
                     statusLabel.text = string.IsNullOrEmpty(status) ? "Done." : status;
                     _lastStatus = status;
+                    _hasSyncedStatus = true;
                     RequestAutoScrollIfNeeded(shouldAutoScroll);
                 }
             }
@@ -139,10 +141,20 @@ namespace AITools.AIChat.Mirroring
         /// to the inner RawImage's LayoutElement and the row container's LayoutElement.
         /// Cheap: skip the writes when nothing meaningful changed.
         ///
-        /// While the source Pic is still generating (PicMain.IsBusyBasic == true)
-        /// the image area collapses to zero so the bubble takes only the space its
-        /// label + status row need - keeps the gallery compact during long renders.
-        /// As soon as the render finishes, we expand back to the aspect-correct size.
+        /// While the source Pic is still generating AND no texture has ever been
+        /// bound yet, the image area collapses to zero so the bubble takes only the
+        /// space its label + status row need - keeps the gallery compact during long
+        /// renders. As soon as the render finishes, we expand back to the aspect-
+        /// correct size.
+        ///
+        /// Multi-stage chain handling: in chained workflows (e.g. generate_image then
+        /// image_to_movie chain="true") both stages run on the same Pic and
+        /// IsBusyBasic stays true the whole time. Once the first stage publishes a
+        /// texture (set in SyncFromSource via _lastBoundTexture), we keep the bubble
+        /// visible at aspect-correct size for the rest of the chain so the user sees
+        /// the still image while the next stage (video) is rendering. SyncFromSource
+        /// will swap to the newer texture (e.g. movie RenderTexture) the moment it
+        /// becomes available.
         /// </summary>
         private void UpdateAspectFit()
         {
@@ -151,8 +163,12 @@ namespace AITools.AIChat.Mirroring
 
             // Collapsed-while-generating mode. Doesn't depend on _sourceAspect being
             // known yet (that only gets set when the first texture frame arrives).
+            // Skip the collapse once any intermediate texture has been bound, so
+            // chained workflows reveal the still image as soon as it lands instead
+            // of staying hidden until the entire chain (e.g. video stage) finishes.
             bool isBusy = sourcePic != null && sourcePic.IsBusyBasic();
-            if (isBusy)
+            bool hasIntermediate = _lastBoundTexture != null;
+            if (isBusy && !hasIntermediate)
             {
                 if (Mathf.Abs(_lastAppliedH) > 0.5f || _lastAppliedW > 0.5f)
                 {

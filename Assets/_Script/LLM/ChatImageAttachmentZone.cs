@@ -22,13 +22,53 @@ using UnityEngine.UI;
 /// </summary>
 public class ChatImageAttachmentZone : MonoBehaviour
 {
+    // Monotonic id source: stable across remove/add so a host can correlate an
+    // async caption result back to the right attachment even after the user has
+    // X'd earlier ones and the visible index has shifted.
+    private static int _nextAttachmentId = 1;
+
     private class ChatAttachment
     {
+        public int id;
         public Texture2D thumb;
         public byte[] pngBytes;
+        public int width;
+        public int height;
+        // Two captions returned by the host's vision pass: a one-line summary
+        // for cramped UI labels, and a detailed paragraph for the LLM payload.
+        // Either or both may be null if no vision LLM was available.
+        public string captionShort;
+        public string captionLong;
+        public bool captionInFlight;
+    }
+
+    /// <summary>
+    /// Public read-only snapshot of an attachment, exposing the bytes plus the
+    /// pre-computed metadata (dimensions + short/long captions) the host needs
+    /// at send time to decide whether to ship raw base64 or a caption-only
+    /// metadata block.
+    /// </summary>
+    public struct AttachmentInfo
+    {
+        public int id;                  // stable id; survives remove of earlier attachments
+        public byte[] bytes;
+        public int width;
+        public int height;
+        public string captionShort;     // null/empty if no caption is available
+        public string captionLong;      // null/empty if no caption is available
     }
 
     public event Action OnAttachmentsChanged;
+    /// <summary>Fires once per AddAttachment with the new attachment's info (incl. stable id).</summary>
+    public event Action<AttachmentInfo> OnAttachmentAdded;
+    /// <summary>
+    /// Fires when an attachment is removed (typically: user clicked the X) while its
+    /// caption was still in flight. The id matches <see cref="AttachmentInfo.id"/> from
+    /// the OnAttachmentAdded event. Hosts use this to cancel the pending vision LLM
+    /// work tied to that attachment - releasing the LLM busy slot immediately rather
+    /// than waiting for the request to finish (which on a hung local model is "never").
+    /// </summary>
+    public event Action<int> OnCaptionCancelled;
 
     private readonly List<ChatAttachment> _attachments = new List<ChatAttachment>();
 
@@ -39,6 +79,11 @@ public class ChatImageAttachmentZone : MonoBehaviour
     private TMP_FontAsset _font;
     private int _maxAttachments = 8;
     private float _stripHeight = 70f;
+    // Optional callback the host wires up to return the current max-edge cap
+    // (in pixels). Queried per AddAttachment so a runtime settings change
+    // takes effect on the next drop without re-initializing the zone. Returns
+    // 0 / negative to disable resizing.
+    private Func<int> _maxEdgeProvider;
 
     // Per-instance drop claimant lambda; kept around so we can deregister on destroy.
     private Func<List<string>, POINT, bool> _claimDelegate;
@@ -61,6 +106,69 @@ public class ChatImageAttachmentZone : MonoBehaviour
                 list.Add(att.pngBytes);
         }
         return list;
+    }
+
+    /// <summary>
+    /// Returns full per-attachment info (bytes + dimensions + caption) in the
+    /// same order they were attached. Used by the host at send time so it can
+    /// build a metadata block instead of (or alongside) shipping base64.
+    /// </summary>
+    public IReadOnlyList<AttachmentInfo> GetAttachmentInfo()
+    {
+        var list = new List<AttachmentInfo>(_attachments.Count);
+        foreach (var att in _attachments)
+        {
+            if (att == null || att.pngBytes == null) continue;
+            list.Add(new AttachmentInfo
+            {
+                id = att.id,
+                bytes = att.pngBytes,
+                width = att.width,
+                height = att.height,
+                captionShort = att.captionShort,
+                captionLong = att.captionLong,
+            });
+        }
+        return list;
+    }
+
+    private ChatAttachment FindById(int id)
+    {
+        foreach (var att in _attachments)
+            if (att != null && att.id == id) return att;
+        return null;
+    }
+
+    /// <summary>
+    /// How many attachments are still waiting on a caption result. The host
+    /// uses this to gate the Send button so a user message can't fly out
+    /// before its attachments have been described.
+    /// </summary>
+    public int CountInFlightCaptions()
+    {
+        int n = 0;
+        foreach (var att in _attachments)
+            if (att != null && att.captionInFlight) n++;
+        return n;
+    }
+
+    /// <summary>
+    /// Host writes the captioning result back here, keyed by the stable
+    /// <see cref="AttachmentInfo.id"/>. Pass null/empty for both fields to
+    /// clear the in-flight flag without recording a caption (e.g. when no
+    /// vision LLM is available). If the attachment was removed before the
+    /// caption arrived, this is a silent no-op. Always raises
+    /// <see cref="OnAttachmentsChanged"/> when the attachment is still around
+    /// so the host re-evaluates Send button state.
+    /// </summary>
+    public void SetCaption(int id, string captionShort, string captionLong)
+    {
+        var att = FindById(id);
+        if (att == null) return;
+        att.captionShort = string.IsNullOrEmpty(captionShort) ? null : captionShort;
+        att.captionLong  = string.IsNullOrEmpty(captionLong)  ? null : captionLong;
+        att.captionInFlight = false;
+        OnAttachmentsChanged?.Invoke();
     }
 
     public void ClearAttachments()
@@ -86,7 +194,8 @@ public class ChatImageAttachmentZone : MonoBehaviour
         TMP_InputField pasteField,
         TMP_FontAsset font,
         int maxAttachments = 8,
-        float stripHeight = 70f)
+        float stripHeight = 70f,
+        Func<int> maxEdgeProvider = null)
     {
         _dropTargetRect = dropTarget;
         _stripContainer = stripContainer;
@@ -94,6 +203,7 @@ public class ChatImageAttachmentZone : MonoBehaviour
         _font = font;
         _maxAttachments = Mathf.Max(1, maxAttachments);
         _stripHeight = Mathf.Max(16f, stripHeight);
+        _maxEdgeProvider = maxEdgeProvider;
 
         // Register with the global drop hook. Multiple zones can register independently;
         // first one whose hit-test passes wins.
@@ -160,6 +270,26 @@ public class ChatImageAttachmentZone : MonoBehaviour
             return;
         }
 
+        // Auto-downscale oversized drops. Huge source images (4K, 6K, mobile photos
+        // at 8K+) blow up every downstream cost - PNG re-encode time, captioning
+        // payload, image_to_image source bytes, hover-tooltip latency. A bilinear
+        // GPU blit to fit-within-square keeps aspect ratio intact and runs in
+        // a millisecond or two regardless of source size.
+        int maxEdge = _maxEdgeProvider != null ? _maxEdgeProvider() : 0;
+        if (maxEdge > 0 && (tex.width > maxEdge || tex.height > maxEdge))
+        {
+            int origW = tex.width;
+            int origH = tex.height;
+            var scaled = ScaleToFit(tex, maxEdge);
+            if (scaled != null)
+            {
+                UnityEngine.Object.Destroy(tex);
+                tex = scaled;
+                RTQuickMessageManager.Get().ShowMessage(
+                    $"Resized attachment {origW}x{origH} -> {tex.width}x{tex.height}");
+            }
+        }
+
         byte[] pngBytes;
         try { pngBytes = tex.EncodeToPNG(); }
         catch (Exception ex)
@@ -169,18 +299,52 @@ public class ChatImageAttachmentZone : MonoBehaviour
             return;
         }
 
-        _attachments.Add(new ChatAttachment { thumb = tex, pngBytes = pngBytes });
+        // captionInFlight starts true: the host wires OnAttachmentAdded to a
+        // caption job and calls SetCaption when it returns (or returns null
+        // when no vision LLM is available). Send is gated until this clears.
+        var newAttachment = new ChatAttachment
+        {
+            id = _nextAttachmentId++,
+            thumb = tex,
+            pngBytes = pngBytes,
+            width = tex.width,
+            height = tex.height,
+            captionShort = null,
+            captionLong = null,
+            captionInFlight = true,
+        };
+        _attachments.Add(newAttachment);
         Refresh();
         RTQuickMessageManager.Get().ShowMessage($"Attached image ({_attachments.Count} pending)");
+        OnAttachmentAdded?.Invoke(new AttachmentInfo
+        {
+            id = newAttachment.id,
+            bytes = newAttachment.pngBytes,
+            width = newAttachment.width,
+            height = newAttachment.height,
+            captionShort = null,
+            captionLong = null,
+        });
     }
 
     private void RemoveAttachment(int idx)
     {
         if (idx < 0 || idx >= _attachments.Count) return;
-        if (_attachments[idx].thumb != null)
-            UnityEngine.Object.Destroy(_attachments[idx].thumb);
+        var att = _attachments[idx];
+        bool wasInFlight = att != null && att.captionInFlight;
+        int capturedId = att != null ? att.id : -1;
+        if (att != null && att.thumb != null)
+            UnityEngine.Object.Destroy(att.thumb);
         _attachments.RemoveAt(idx);
         Refresh();
+        // Notify host AFTER list/UI is consistent so a cancel handler can safely
+        // re-query state. Only fire if the caption was still pending - otherwise
+        // there's nothing for the host to cancel.
+        if (wasInFlight && capturedId >= 0)
+        {
+            try { OnCaptionCancelled?.Invoke(capturedId); }
+            catch (Exception ex) { Debug.LogWarning("ChatImageAttachmentZone: OnCaptionCancelled handler threw: " + ex.Message); }
+        }
     }
 
     /// <summary>
@@ -239,6 +403,11 @@ public class ChatImageAttachmentZone : MonoBehaviour
         var raw = thumbGo.AddComponent<RawImage>();
         raw.texture = att.thumb;
         raw.raycastTarget = false;
+        // Dim the thumbnail while a caption is being generated, so it's obvious
+        // why Send is greyed out. Reset to full opacity once the caption arrives.
+        raw.color = att.captionInFlight
+            ? new Color(1f, 1f, 1f, 0.55f)
+            : Color.white;
 
         var x = new GameObject("Remove");
         x.transform.SetParent(item.transform, false);
@@ -393,5 +562,53 @@ public class ChatImageAttachmentZone : MonoBehaviour
         {
             Debug.LogWarning("ChatImageAttachmentZone: clipboard image paste failed: " + ex.Message);
         }
+    }
+
+    /// <summary>
+    /// GPU bilinear downscale of <paramref name="src"/> so the longer edge fits
+    /// inside <paramref name="maxEdge"/> pixels, preserving aspect ratio. Returns
+    /// a freshly allocated Texture2D the caller takes ownership of (must be
+    /// Destroy()ed). Returns null on failure or when no scaling is needed.
+    /// </summary>
+    private static Texture2D ScaleToFit(Texture2D src, int maxEdge)
+    {
+        if (src == null || maxEdge <= 0) return null;
+        int sw = src.width, sh = src.height;
+        if (sw <= maxEdge && sh <= maxEdge) return null;
+
+        float scale = Mathf.Min((float)maxEdge / sw, (float)maxEdge / sh);
+        int nw = Mathf.Max(1, Mathf.RoundToInt(sw * scale));
+        int nh = Mathf.Max(1, Mathf.RoundToInt(sh * scale));
+
+        RenderTexture rt = null;
+        Texture2D dst = null;
+        var prevActive = RenderTexture.active;
+        var prevFilter = src.filterMode;
+        try
+        {
+            // Bilinear filter on the source so the GPU resampler produces a smooth
+            // mip-free downscale. Reset afterwards so we don't mutate the source's
+            // long-lived filterMode for any other code path that might display it.
+            src.filterMode = FilterMode.Bilinear;
+            rt = RenderTexture.GetTemporary(nw, nh, 0, RenderTextureFormat.ARGB32);
+            Graphics.Blit(src, rt);
+            RenderTexture.active = rt;
+            dst = new Texture2D(nw, nh, TextureFormat.RGBA32, false);
+            dst.ReadPixels(new Rect(0, 0, nw, nh), 0, 0);
+            dst.Apply();
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("ChatImageAttachmentZone: ScaleToFit failed: " + ex.Message);
+            if (dst != null) UnityEngine.Object.Destroy(dst);
+            dst = null;
+        }
+        finally
+        {
+            RenderTexture.active = prevActive;
+            src.filterMode = prevFilter;
+            if (rt != null) RenderTexture.ReleaseTemporary(rt);
+        }
+        return dst;
     }
 }

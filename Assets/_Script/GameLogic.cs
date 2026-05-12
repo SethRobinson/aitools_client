@@ -2016,6 +2016,7 @@ public string GetPrompt() { return m_prompt; }
 
         //Also delete temp files used for debugging if they exist
         RTUtil.DeleteFileIfItExists("text_completion_sent.json");
+        RTUtil.DeleteFileIfItExists("examine_image_sent.json");
         RTUtil.DeleteFileIfItExists("textgen_json_received.json");
         RTUtil.DeleteFileIfItExists("comfyui_workflow_to_send.json");
         RTUtil.DeleteFileIfItExists("comfyui_workflow_to_send_api.json");

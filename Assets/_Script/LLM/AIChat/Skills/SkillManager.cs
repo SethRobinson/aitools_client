@@ -47,6 +47,22 @@ namespace AITools.AIChat.Skills
         public string TestPostPromptPath { get; private set; }
 
         /// <summary>
+        /// Absolute path to the aichat/caption_prompt.txt file. This is the user-side
+        /// prompt the host sends with each one-shot vision call when captioning a
+        /// chat image. Editable without recompiling the client.
+        /// </summary>
+        public string CaptionPromptPath { get; private set; }
+
+        /// <summary>
+        /// Absolute path to the aichat/test_caption_prompt.txt override. If this file
+        /// exists it COMPLETELY REPLACES <see cref="CaptionPromptPath"/>'s contents -
+        /// useful for experimenting with stricter / looser caption instructions
+        /// (e.g. enabling explicit-content fields) without touching the default
+        /// caption_prompt.txt.
+        /// </summary>
+        public string TestCaptionPromptPath { get; private set; }
+
+        /// <summary>
         /// Cached body of aichat/main_prompt.txt (refreshed each <see cref="Reload"/> call).
         /// </summary>
         public string MainPrompt { get; private set; } = "";
@@ -64,6 +80,20 @@ namespace AITools.AIChat.Skills
         /// </summary>
         public bool PostPromptIsTestOverride { get; private set; }
 
+        /// <summary>
+        /// Cached body of either aichat/test_caption_prompt.txt (if it exists) or
+        /// aichat/caption_prompt.txt. Empty when neither file exists - the host
+        /// then falls back to a hardcoded default so captioning still works.
+        /// </summary>
+        public string CaptionPrompt { get; private set; } = "";
+
+        /// <summary>
+        /// True if the test caption override was actually used for the most recent
+        /// <see cref="Reload"/>. The host can surface this in logs or UI so it's
+        /// obvious which prompt is producing the captions.
+        /// </summary>
+        public bool CaptionPromptIsTestOverride { get; private set; }
+
         public SkillManager()
         {
             string root = GetAIChatRoot();
@@ -71,6 +101,8 @@ namespace AITools.AIChat.Skills
             MainPromptPath = Path.Combine(root, "main_prompt.txt");
             PostPromptPath = Path.Combine(root, "post_prompt.txt");
             TestPostPromptPath = Path.Combine(root, "test_post_prompt.txt");
+            CaptionPromptPath = Path.Combine(root, "caption_prompt.txt");
+            TestCaptionPromptPath = Path.Combine(root, "test_caption_prompt.txt");
         }
 
         public IReadOnlyList<Skill> GetSkills() => _skills;
@@ -96,6 +128,8 @@ namespace AITools.AIChat.Skills
             MainPrompt = "";
             PostPrompt = "";
             PostPromptIsTestOverride = false;
+            CaptionPrompt = "";
+            CaptionPromptIsTestOverride = false;
 
             EnsureDirectoryExists();
 
@@ -126,6 +160,26 @@ namespace AITools.AIChat.Skills
             catch (Exception ex)
             {
                 Debug.LogWarning("SkillManager: failed to read post_prompt: " + ex.Message);
+            }
+
+            // Caption prompt: same test-override-wins pattern as post_prompt. Empty body
+            // when neither file is present is a valid state - the host has a hardcoded
+            // fallback so captioning still works after a fresh checkout.
+            try
+            {
+                if (File.Exists(TestCaptionPromptPath))
+                {
+                    CaptionPrompt = File.ReadAllText(TestCaptionPromptPath);
+                    CaptionPromptIsTestOverride = true;
+                }
+                else if (File.Exists(CaptionPromptPath))
+                {
+                    CaptionPrompt = File.ReadAllText(CaptionPromptPath);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("SkillManager: failed to read caption_prompt: " + ex.Message);
             }
 
             try
@@ -181,6 +235,79 @@ namespace AITools.AIChat.Skills
                     sb.Append("    Template: ").AppendLine(s.Template);
             }
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// Returns full skill bodies for skills that opted into same-turn preload and
+        /// whose trigger terms match the latest user message. Trigger terms live in
+        /// skill front matter so adding a new autoloaded skill does not require code.
+        /// </summary>
+        public string BuildAutoloadSkillBodiesBlock(string latestUserMessage)
+        {
+            return BuildSkillReferenceMaterialBlock(GetAutoloadSkillsForMessage(latestUserMessage));
+        }
+
+        public string BuildSkillReferenceMaterialBlock(IEnumerable<Skill> skills)
+        {
+            var sb = new StringBuilder();
+            bool wroteAny = false;
+            sb.AppendLine("AUTO-LOADED SKILL REFERENCE MATERIAL:");
+            sb.AppendLine("The following skill bodies were loaded because a trigger word appeared in the conversation. Use them directly in this and later replies; do NOT call read_skill for these skills.");
+            foreach (var skill in skills ?? Array.Empty<Skill>())
+            {
+                if (skill == null || string.IsNullOrEmpty(skill.Id))
+                    continue;
+                wroteAny = true;
+                sb.AppendLine();
+                sb.Append("## ").AppendLine(skill.Id);
+                sb.Append("Summary: ").AppendLine(skill.Summary);
+                if (!string.IsNullOrEmpty(skill.Template))
+                    sb.Append("Template: ").AppendLine(skill.Template);
+                sb.AppendLine();
+                string body = ApplyPresetPrefix(skill.RawMarkdown ?? "");
+                sb.AppendLine(body.TrimEnd());
+            }
+            sb.AppendLine();
+            return wroteAny ? sb.ToString() : "";
+        }
+
+        public List<Skill> GetAutoloadSkillsForMessage(string latestUserMessage)
+        {
+            var result = new List<Skill>();
+            if (string.IsNullOrWhiteSpace(latestUserMessage))
+                return result;
+
+            foreach (var skill in _skills)
+            {
+                if (skill == null || !skill.Autoload || skill.Triggers == null || skill.Triggers.Count == 0)
+                    continue;
+
+                bool excluded = false;
+                if (skill.ExcludeTriggers != null)
+                {
+                    foreach (string exclude in skill.ExcludeTriggers)
+                    {
+                        if (TriggerMatches(latestUserMessage, exclude))
+                        {
+                            excluded = true;
+                            break;
+                        }
+                    }
+                }
+                if (excluded)
+                    continue;
+
+                foreach (string trigger in skill.Triggers)
+                {
+                    if (TriggerMatches(latestUserMessage, trigger))
+                    {
+                        result.Add(skill);
+                        break;
+                    }
+                }
+            }
+
+            return result;
         }
 
         /// <summary>
@@ -243,6 +370,9 @@ namespace AITools.AIChat.Skills
             string summary = "";
             string template = "";
             SkillInputs inputs = SkillInputs.None;
+            List<string> triggers = new List<string>();
+            List<string> excludeTriggers = new List<string>();
+            bool autoload = false;
             string body = text;
 
             // Front matter: --- ... ---  (only if file starts with ---)
@@ -275,6 +405,13 @@ namespace AITools.AIChat.Skills
                             case "summary":  summary = value; break;
                             case "inputs":   inputs = ParseInputs(value); break;
                             case "template": template = value; break;
+                            case "trigger":
+                            case "triggers": triggers = ParseTriggerList(value); break;
+                            case "exclude_trigger":
+                            case "exclude_triggers":
+                            case "autoload_exclude":
+                            case "autoload_excludes": excludeTriggers = ParseTriggerList(value); break;
+                            case "autoload": autoload = ParseBool(value); break;
                         }
                     }
                 }
@@ -286,7 +423,39 @@ namespace AITools.AIChat.Skills
             if (string.IsNullOrEmpty(summary))
                 summary = "(no summary - read the skill file for details)";
 
-            return new Skill(id, summary, inputs, template, body, filePath);
+            return new Skill(id, summary, inputs, template, triggers, excludeTriggers, autoload, body, filePath);
+        }
+
+        private static List<string> ParseTriggerList(string value)
+        {
+            var result = new List<string>();
+            if (string.IsNullOrEmpty(value))
+                return result;
+
+            foreach (string raw in value.Split(','))
+            {
+                string t = raw.Trim();
+                if (t.StartsWith("\"") && t.EndsWith("\"") && t.Length >= 2)
+                    t = t.Substring(1, t.Length - 2).Trim();
+                if (t.Length > 0)
+                    result.Add(t);
+            }
+            return result;
+        }
+
+        private static bool ParseBool(string value)
+        {
+            string v = (value ?? "").Trim().ToLowerInvariant();
+            return v == "true" || v == "1" || v == "yes" || v == "y" || v == "on";
+        }
+
+        private static bool TriggerMatches(string text, string trigger)
+        {
+            if (string.IsNullOrWhiteSpace(text) || string.IsNullOrWhiteSpace(trigger))
+                return false;
+
+            string pattern = @"(?<![A-Za-z0-9])" + Regex.Escape(trigger.Trim()) + @"(?![A-Za-z0-9])";
+            return Regex.IsMatch(text, pattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         }
 
         private static SkillInputs ParseInputs(string value)

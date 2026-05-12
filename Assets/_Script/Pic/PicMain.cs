@@ -61,7 +61,7 @@ public class PicJob
     public float _timeOfEnd = 0;
     
     // Multi-input upload support: filenames for INPUT_1 through INPUT_4
-    public string[] _inputFilenames = new string[4] { "", "", "", "" };
+    public string[] _inputFilenames = new string[5] { "", "", "", "", "" };
     // Pending uploads to process before running workflow
     public List<UploadInfo> _pendingUploads = new List<UploadInfo>();
     
@@ -139,6 +139,9 @@ public class PicMain : MonoBehaviour
     public SpriteRenderer m_pic;
     public SpriteRenderer m_mask;
     private Texture2D m_image2; // Secondary input texture for 2-input workflows (uploaded as "image2" via @upload). Not displayed.
+    private Texture2D m_image3; // 3rd-input texture for multi-image workflows (uploaded as "image3" via @upload). Not displayed.
+    private Texture2D m_image4; // 4th-input texture for multi-image workflows (uploaded as "image4" via @upload). Not displayed.
+    private Texture2D m_image5; // 5th-input texture for multi-image workflows (uploaded as "image5" via @upload). Not displayed.
     private bool m_editFileHasChanged;
     private FileSystemWatcher m_editFileWatcher;
     public PicMask m_picMaskScript;
@@ -169,6 +172,10 @@ public class PicMain : MonoBehaviour
     // ("the one with grandma") to chat_image="N" indices. Empty until the job
     // returns, or stays empty if no vision LLM is configured.
     public string Caption { get; set; } = "";
+    // Short (~one sentence) form of Caption, used where space is tight (chat
+    // image bubble label). Set in lockstep with Caption by the captioning
+    // pipeline. Empty until the job returns.
+    public string CaptionShort { get; set; } = "";
 
     bool m_bNeedsToUpdateInfoPanel = false;
 
@@ -177,6 +184,13 @@ public class PicMain : MonoBehaviour
     public string m_lastLLMReply = "";
     public Camera m_camera;
     List<string> m_jobList = new List<string>();
+    // Local (non-GPU) coroutines queued via AppendLocalOp. The job line in m_jobList
+    // is "local_op|<key>"; UpdateJobs pops the line, looks the key up here, and runs
+    // the coroutine. Dictionary entry is removed when the coroutine completes.
+    // Used by the AI Chat composition skills (draw_text, add_border, paste_image,
+    // crop_resize, draw_shape) so chain="true" works with the existing job pipeline.
+    Dictionary<string, Func<PicMain, IEnumerator>> m_pendingLocalOps = new Dictionary<string, Func<PicMain, IEnumerator>>();
+    int m_localOpCounter = 0;
     public bool m_allowServerJobOverrides = true;
     public bool m_isAutoPicJob = false; // Set to true for AutoPic jobs, enables per-server AutoPic override
     public int m_ownedServerID = -1; // When >= 0, this pic owns this server exclusively for AutoPic override
@@ -200,6 +214,8 @@ public class PicMain : MonoBehaviour
     float m_genericTimerStart = 0; //used to countdown for OpenAI Image API
     string m_genericTimerText = "Waiting...";
     string m_lastTimerDisplayText = ""; // Cache to avoid updating text every frame
+    static bool s_hideStatusTextOverlays = false;
+    static int s_lastOverlayToggleFrame = -1;
 
     // Streaming text display limiting - prevents TMP from choking on huge LLM output
     private StringBuilder _streamedTextBuffer = new StringBuilder();
@@ -1248,6 +1264,33 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             UnityEngine.Object.Destroy(m_image2);
         }
         m_image2 = tex;
+    }
+
+    public void SetImage3(Texture2D tex)
+    {
+        if (m_image3 != null)
+        {
+            UnityEngine.Object.Destroy(m_image3);
+        }
+        m_image3 = tex;
+    }
+
+    public void SetImage4(Texture2D tex)
+    {
+        if (m_image4 != null)
+        {
+            UnityEngine.Object.Destroy(m_image4);
+        }
+        m_image4 = tex;
+    }
+
+    public void SetImage5(Texture2D tex)
+    {
+        if (m_image5 != null)
+        {
+            UnityEngine.Object.Destroy(m_image5);
+        }
+        m_image5 = tex;
     }
 
     public void InvertMask()
@@ -2355,6 +2398,53 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     /// command string) so any character is safe in the prompt - the joblist parser
     /// splits on '|', which would otherwise corrupt arbitrary LLM-written text.
     /// </summary>
+    /// <summary>
+    /// Queue a local (non-GPU) coroutine to run after any pending workflow / LLM /
+    /// other local-op steps on this Pic finish. Used by the AI Chat composition
+    /// skills (draw_text, add_border, paste_image, crop_resize, draw_shape) so a
+    /// chain="true" tag emitted right after a generate_image properly waits for
+    /// the diffusion step to land before drawing on top of it.
+    ///
+    /// The op receives this PicMain as a parameter (so it can mutate
+    /// m_pic.sprite.texture, call AddBorder, etc.) and returns an IEnumerator that
+    /// is run on this MonoBehaviour. Its completion automatically advances the job
+    /// queue - same lifecycle as a workflow step.
+    /// </summary>
+    public void AppendLocalOp(Func<PicMain, IEnumerator> op)
+    {
+        if (op == null) return;
+        string key = "op" + (++m_localOpCounter);
+        m_pendingLocalOps[key] = op;
+        m_jobList.Add("local_op|" + key);
+        UpdateJobs();
+    }
+
+    /// <summary>
+    /// Run a local coroutine immediately on this Pic without going through the job
+    /// queue. Use when nothing else is queued and you want the op to start now (e.g.
+    /// the AI Chat composition skills spawn a fresh Pic, seed its texture, then call
+    /// this to apply the op without the queue indirection). Equivalent to
+    /// StartCoroutine(op(this)) but kept symmetric with AppendLocalOp.
+    /// </summary>
+    public Coroutine RunLocalOpImmediate(Func<PicMain, IEnumerator> op)
+    {
+        if (op == null) return null;
+        return StartCoroutine(op(this));
+    }
+
+    private IEnumerator RunLocalOpCoroutine(Func<PicMain, IEnumerator> op)
+    {
+        IEnumerator inner = null;
+        try { inner = op(this); }
+        catch (Exception ex)
+        {
+            Debug.LogError("PicMain local op threw on creation: " + ex);
+        }
+        if (inner != null) yield return StartCoroutine(inner);
+        m_waitingForPicJob = false;
+        UpdateJobs();
+    }
+
     public void AppendPresetJobs(string presetName, string promptOverride, string negPromptOverride)
     {
         var lines = GameLogic.Get().GetTempPicJobListAsListOfStrings(presetName);
@@ -2466,6 +2556,24 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     }
 
     /// <summary>
+    /// Best-effort preload for AI Chat when it needs to snapshot a chat_image whose
+    /// movie RenderTexture was unloaded while the world Pic was off-screen. Still
+    /// images are already resident in memory in the current Pic lifecycle, so this
+    /// mainly forces PicMovie to prepare its VideoPlayer without requiring the user
+    /// to pan the main canvas back to that Pic.
+    /// </summary>
+    public bool TryEnsureLoadedForChatSnapshot()
+    {
+        if (TryGetCurrentTexture(out Texture tex) && tex != null)
+            return true;
+
+        if (m_picMovie != null && m_picMovie.IsMovie())
+            return m_picMovie.TryEnsureLoadedForSnapshot();
+
+        return false;
+    }
+
+    /// <summary>
     /// Current human-readable status text from the Pic's world-space label (e.g.
     /// "Waiting for GPU...", "Rendering 12/30", ""). Exposed so chat-side mirrors can
     /// echo the live status without reaching into the TextMeshPro component directly.
@@ -2486,17 +2594,39 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     /// sources (movies) we read the current frame via a one-shot RGBA32 readback so
     /// the LLM/preset gets a stable still snapshot of the playing video.
     /// </summary>
+    // EncodeToPNG cache: keyed by the texture reference returned from
+    // TryGetCurrentTexture. PicMain replaces the texture wholesale on every
+    // workflow result (see SetImage / LoadImageByFilename), so a stale cache
+    // is naturally evicted by the reference-equality check. Eliminates the
+    // 100-500 ms re-encode hitch when the AI Chat path reads the same
+    // chat_image="N" multiple times across follow-up edits.
+    private byte[] _cachedPng;
+    private Texture _cachedPngSourceTex;
+
     public bool TryGetImageAsPng(out byte[] pngBytes)
     {
         pngBytes = null;
         if (!TryGetCurrentTexture(out Texture tex) || tex == null) return false;
+
+        // Cache hit: the same texture reference encoded earlier is still live.
+        if (_cachedPng != null && ReferenceEquals(_cachedPngSourceTex, tex))
+        {
+            pngBytes = _cachedPng;
+            return pngBytes.Length > 0;
+        }
 
         if (tex is Texture2D tex2d)
         {
             try
             {
                 pngBytes = tex2d.EncodeToPNG();
-                return pngBytes != null && pngBytes.Length > 0;
+                if (pngBytes != null && pngBytes.Length > 0)
+                {
+                    _cachedPng = pngBytes;
+                    _cachedPngSourceTex = tex;
+                    return true;
+                }
+                return false;
             }
             catch (System.Exception ex)
             {
@@ -2508,7 +2638,9 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         if (tex is RenderTexture rt)
         {
             // Movies render into a RenderTexture; copy current frame into a transient
-            // Texture2D so we can EncodeToPNG.
+            // Texture2D so we can EncodeToPNG. Cache by the RT reference too - movies
+            // change frames, but consecutive snapshots within the same playback frame
+            // (which is what the chat path hits) are identical.
             var prev = RenderTexture.active;
             Texture2D snap = null;
             try
@@ -2518,7 +2650,13 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 snap.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0);
                 snap.Apply();
                 pngBytes = snap.EncodeToPNG();
-                return pngBytes != null && pngBytes.Length > 0;
+                if (pngBytes != null && pngBytes.Length > 0)
+                {
+                    _cachedPng = pngBytes;
+                    _cachedPngSourceTex = tex;
+                    return true;
+                }
+                return false;
             }
             catch (System.Exception ex)
             {
@@ -3430,6 +3568,41 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             return;
         }
 
+        // Local (non-GPU) op short-circuit: if the next queued job line is a synthetic
+        // local_op marker, run its coroutine instead of going through the workflow /
+        // GPU-allocation path. Used by AI Chat composition skills (draw_text, etc.)
+        // so chain="true" can mix local image ops in with normal generate / edit
+        // workflows on the same Pic.
+        if (m_picJobs.Count == 0 && m_jobList.Count > 0 && m_jobList[0] != null && m_jobList[0].StartsWith("local_op|"))
+        {
+            string line = m_jobList[0];
+            m_jobList.RemoveAt(0);
+            string key = line.Length > 9 ? line.Substring(9) : "";
+            Func<PicMain, IEnumerator> op;
+            if (!m_pendingLocalOps.TryGetValue(key, out op) || op == null)
+            {
+                Debug.LogWarning("PicMain.UpdateJobs: local_op key '" + key + "' had no registered coroutine.");
+                UpdateJobs();
+                return;
+            }
+            m_pendingLocalOps.Remove(key);
+            m_waitingForPicJob = true;
+            // RunLocalOpCoroutine itself is exception-tolerant; if it throws BEFORE its
+            // first yield (e.g. font lookup, TMP setup), unset the wait flag so the
+            // queue isn't permanently stuck and let UpdateJobs continue.
+            try
+            {
+                StartCoroutine(RunLocalOpCoroutine(op));
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError("PicMain.UpdateJobs: local_op coroutine launch threw: " + ex);
+                m_waitingForPicJob = false;
+                UpdateJobs();
+            }
+            return;
+        }
+
         // Determine which renderer type is needed for the pending job
         RTRendererType neededRenderer = GameLogic.Get().GetGlobalRenderer();
         if (m_jobDefaultInfo != null)
@@ -3668,6 +3841,27 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                         if (m_image2 != null)
                         {
                             sourceTexture = m_image2;
+                        }
+                    }
+                    else if (source == "image3")
+                    {
+                        if (m_image3 != null)
+                        {
+                            sourceTexture = m_image3;
+                        }
+                    }
+                    else if (source == "image4")
+                    {
+                        if (m_image4 != null)
+                        {
+                            sourceTexture = m_image4;
+                        }
+                    }
+                    else if (source == "image5")
+                    {
+                        if (m_image5 != null)
+                        {
+                            sourceTexture = m_image5;
                         }
                     }
 
@@ -4344,18 +4538,19 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                         {
                             // Parse: @upload|source|inputN|
                             // source: image1, image2 (future), temp1, temp2, temp3
-                            // dest: input1, input2, input3, input4 (or just 1, 2, 3, 4)
+                            // dest: input1, input2, input3, input4, input5 (or just 1, 2, 3, 4, 5)
                             string source = picJobData._parm1.ToLower().Trim();
                             string dest = picJobData._parm2.ToLower().Trim();
-                            
+
                             // Parse input index from dest (input1 -> 0, input2 -> 1, etc.)
                             int inputIndex = -1;
                             if (dest == "input1" || dest == "1") inputIndex = 0;
                             else if (dest == "input2" || dest == "2") inputIndex = 1;
                             else if (dest == "input3" || dest == "3") inputIndex = 2;
                             else if (dest == "input4" || dest == "4") inputIndex = 3;
-                            
-                            if (inputIndex >= 0 && inputIndex < 4)
+                            else if (dest == "input5" || dest == "5") inputIndex = 4;
+
+                            if (inputIndex >= 0 && inputIndex < 5)
                             {
                                 // Generate a GUID filename for this upload
                                 string guidFilename = "pic_" + System.Guid.NewGuid() + ".png";
@@ -4373,7 +4568,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                             }
                             else
                             {
-                                RTConsole.Log("Error: Invalid upload destination '" + dest + "'. Use input1-input4 or 1-4.");
+                                RTConsole.Log("Error: Invalid upload destination '" + dest + "'. Use input1-input5 or 1-5.");
                             }
                         }
 
@@ -4483,6 +4678,21 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             UnityEngine.Object.Destroy(m_image2);
             m_image2 = null;
         }
+        if (m_image3 != null)
+        {
+            UnityEngine.Object.Destroy(m_image3);
+            m_image3 = null;
+        }
+        if (m_image4 != null)
+        {
+            UnityEngine.Object.Destroy(m_image4);
+            m_image4 = null;
+        }
+        if (m_image5 != null)
+        {
+            UnityEngine.Object.Destroy(m_image5);
+            m_image5 = null;
+        }
 
         KillUndoImageBuffers();
     }
@@ -4559,15 +4769,34 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             }
         }
 
-        // Hold Z to hide status text overlays so the image/video underneath is visible.
-        if (m_text != null)
+        UpdateStatusTextOverlayVisibility();
+    }
+
+    void UpdateStatusTextOverlayVisibility()
+    {
+        // Global toggle. Every PicMain sees the same Input.GetKeyDown frame, so guard
+        // by frame count to prevent multiple Pics from flipping the state repeatedly.
+        bool ctrl = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+        if (!ctrl
+            && Input.GetKeyDown(KeyCode.Z)
+            && !IsTypingInInputField()
+            && s_lastOverlayToggleFrame != Time.frameCount)
         {
-            bool wantHidden = Input.GetKey(KeyCode.Z) && !IsTypingInInputField();
-            if (m_text.enabled == wantHidden)
+            s_lastOverlayToggleFrame = Time.frameCount;
+            s_hideStatusTextOverlays = !s_hideStatusTextOverlays;
+
+            var quickMessage = RTQuickMessageManager.Get();
+            if (quickMessage != null)
             {
-                m_text.enabled = !wantHidden;
+                quickMessage.ShowMessage(
+                    s_hideStatusTextOverlays
+                        ? "Image overlays hidden. Press Z again to show them."
+                        : "Image overlays visible. Press Z again to hide them.");
             }
         }
+
+        if (m_text != null && m_text.enabled == s_hideStatusTextOverlays)
+            m_text.enabled = !s_hideStatusTextOverlays;
     }
 
     static bool IsTypingInInputField()

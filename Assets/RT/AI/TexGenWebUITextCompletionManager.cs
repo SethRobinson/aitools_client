@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Networking;
 using System.IO;
+using System.Threading.Tasks;
 
 
 [System.Serializable]
@@ -74,16 +75,17 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
 
     //*  EXAMPLE END */
     public bool SpawnChatCompleteRequest(string jsonRequest, Action<RTDB, JSONObject, string> myCallback, RTDB db, string serverAddress,
-        string apiCommandURL, Action<string> streamingUpdateChunkCallback = null, bool bStreaming = false, string apiKey = "none")
+        string apiCommandURL, Action<string> streamingUpdateChunkCallback = null, bool bStreaming = false, string apiKey = "none",
+        string sentJsonFilename = "text_completion_sent.json")
     {
         if (bStreaming)
         {
-            StartCoroutine(GetRequestStreaming(jsonRequest, myCallback, db, serverAddress, apiCommandURL, streamingUpdateChunkCallback, apiKey));
+            StartCoroutine(GetRequestStreaming(jsonRequest, myCallback, db, serverAddress, apiCommandURL, streamingUpdateChunkCallback, apiKey, sentJsonFilename));
 
         }
         else
         {
-            StartCoroutine(GetRequest(jsonRequest, myCallback, db, serverAddress, apiCommandURL));
+            StartCoroutine(GetRequest(jsonRequest, myCallback, db, serverAddress, apiCommandURL, sentJsonFilename));
         }
         return true;
     }
@@ -597,11 +599,19 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
             Debug.Log("Request aborted.");
         }
     }
-    IEnumerator GetRequest(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string serverAddress, string apiCommandURL)
+    IEnumerator GetRequest(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string serverAddress, string apiCommandURL, string sentJsonFilename)
     {
 
 //#if UNITY_STANDALONE && !RT_RELEASE
-        File.WriteAllText("text_completion_sent.json", json);
+        // Off-thread debug dump: a multi-MB caption-request JSON synchronously
+        // written here was the source of multi-second freezes during AI Chat
+        // image_to_image edits. Fire-and-forget Task.Run keeps the main thread
+        // free; the file is for post-mortem inspection only.
+        {
+            string sj = json;
+            string sf = string.IsNullOrEmpty(sentJsonFilename) ? "text_completion_sent.json" : sentJsonFilename;
+            Task.Run(() => { try { File.WriteAllText(sf, sj); } catch { /* best-effort */ } });
+        }
 //#endif
         string url;
         //        url = serverAddress + "/v1/chat/completions";
@@ -629,7 +639,10 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
                 Debug.Log(msg);
                 //Debug.Log(_currentRequest.downloadHandler.text);
                 //#if UNITY_STANDALONE && !RT_RELEASE
-                File.WriteAllText("last_error_returned.json", _currentRequest.downloadHandler.text);
+                {
+                    string body = _currentRequest.downloadHandler.text;
+                    Task.Run(() => { try { File.WriteAllText("last_error_returned.json", body); } catch { } });
+                }
                 //#endif
                 db.Set("status", "failed");
                 db.Set("msg", msg);
@@ -641,8 +654,10 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
 
 #if UNITY_STANDALONE && !RT_RELEASE
                 //                Debug.Log("Form upload complete! Downloaded " + _currentRequest.downloadedBytes);
-
-                File.WriteAllText("textgen_json_received.json", _currentRequest.downloadHandler.text);
+                {
+                    string body = _currentRequest.downloadHandler.text;
+                    Task.Run(() => { try { File.WriteAllText("textgen_json_received.json", body); } catch { } });
+                }
 #endif
 
                 JSONNode rootNode = JSON.Parse(_currentRequest.downloadHandler.text);
@@ -657,10 +672,15 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
     }
 
     IEnumerator GetRequestStreaming(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string serverAddress, string apiCommandURL,
-     Action<string> updateChunkCallback, string APIkey = "none")
+     Action<string> updateChunkCallback, string APIkey = "none", string sentJsonFilename = "text_completion_sent.json")
     {
 //#if UNITY_STANDALONE && !RT_RELEASE
-        File.WriteAllText("text_completion_sent.json", json);
+        // Off-thread debug dump - see GetRequest above for rationale.
+        {
+            string sj = json;
+            string sf = string.IsNullOrEmpty(sentJsonFilename) ? "text_completion_sent.json" : sentJsonFilename;
+            Task.Run(() => { try { File.WriteAllText(sf, sj); } catch { } });
+        }
 //#endif
 
         string url = serverAddress + apiCommandURL;
@@ -714,7 +734,10 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
                 Debug.Log($"Response Body: {errorResponse}");
 
 //#if UNITY_STANDALONE && !RT_RELEASE
-                File.WriteAllText("last_error_returned.json", errorResponse);
+                {
+                    string body = errorResponse;
+                    Task.Run(() => { try { File.WriteAllText("last_error_returned.json", body); } catch { } });
+                }
 //#endif
 
                 m_connectionActive = false;
@@ -725,7 +748,10 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
             else
             {
 //#if UNITY_STANDALONE && !RT_RELEASE
-                File.WriteAllText("textgen_json_received.json", downloadHandler.GetContentAsString());
+                {
+                    string body = downloadHandler.GetContentAsString();
+                    Task.Run(() => { try { File.WriteAllText("textgen_json_received.json", body); } catch { } });
+                }
 //#endif
 
                 m_connectionActive = false;

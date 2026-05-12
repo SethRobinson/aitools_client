@@ -10,7 +10,8 @@ namespace AITools.AIChat.Context
     ///   1. main_prompt.txt body (user-editable persona + house rules)
     ///   2. GPU snapshot (current state of every configured ComfyUI GPU/server)
     ///   3. LLM snapshot (current state of every configured LLM instance)
-    ///   4. Skill summaries (one line per skill; full body via read_skill action)
+    ///   4. Skill summaries (one line per skill; full bodies are injected separately
+    ///      by AIChatPanel when an autoload trigger appears)
     ///   5. Action protocol footer (re-iterates the XML invocation rules)
     ///
     /// Plain class - no Unity dependencies of its own; defers to the snapshot helpers
@@ -29,11 +30,11 @@ namespace AITools.AIChat.Context
         /// Builds the complete system prompt string. <paramref name="callingInstanceId"/>
         /// is the LLM instance currently handling the chat (so the snapshot can mark it
         /// "&lt;-- you"); pass -1 if running through the legacy single-provider settings
-        /// path with no instance id. <paramref name="reachableChatImageCount"/> is the
-        /// number of previously-generated chat images currently available to be reused
-        /// via chat_image="N" (1-based, in spawn order). Pass 0 if none.
+        /// path with no instance id. <paramref name="chatImageSlotCount"/> is the
+        /// number of numbered chat image slots available via chat_image="N" (1-based,
+        /// matching the visible Image #N / Movie #N labels). Pass 0 if none.
         /// </summary>
-        public string Build(int callingInstanceId, int reachableChatImageCount = 0, IReadOnlyList<string> chatImageCaptions = null)
+        public string Build(int callingInstanceId, int chatImageSlotCount = 0, IReadOnlyList<string> chatImageCaptions = null)
         {
             var sb = new StringBuilder();
 
@@ -57,10 +58,10 @@ namespace AITools.AIChat.Context
             // available we list each image with its short auto-generated description so
             // the LLM can resolve descriptive references ("the one with grandma") to
             // the right chat_image="N" without relying solely on visual recall.
-            if (reachableChatImageCount > 0)
+            if (chatImageSlotCount > 0)
             {
-                sb.AppendLine("CHAT IMAGES (still in chat, reusable as input via chat_image=\"N\"):");
-                for (int i = 0; i < reachableChatImageCount; i++)
+                sb.AppendLine("CHAT IMAGES (numbered slots reusable as input via chat_image=\"N\"):");
+                for (int i = 0; i < chatImageSlotCount; i++)
                 {
                     string caption = (chatImageCaptions != null && i < chatImageCaptions.Count)
                         ? (chatImageCaptions[i] ?? "")
@@ -100,7 +101,7 @@ namespace AITools.AIChat.Context
             sb.AppendLine("  commands. Treat them as examples/history; don't repeat an old action unless");
             sb.AppendLine("  the user asks for another result like it.");
             sb.AppendLine("- Built-in: <aitools_action skill=\"read_skill\" id=\"<skill_id>\"/> loads");
-            sb.AppendLine("  a skill's full body if the Template above isn't enough.");
+            sb.AppendLine("  a skill's full body for the NEXT assistant turn if the Template above isn't enough.");
 
             // 7. User's post-prompt overrides go LAST so they have the strongest "recency"
             // effect on the model. Lets the user dynamically tweak behavior via

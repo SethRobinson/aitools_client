@@ -48,15 +48,20 @@ Animate an image already in the chat from earlier (numbered bubble):
 
 ## Writing good image-to-video prompts
 
-The model already SEES the source - don't redescribe it, describe what
-CHANGES over time.
+The model sees the source, but the prompt still needs enough visual subject
+description to anchor the motion. For ordinary one-off images, keep the still
+scene brief and focus on what changes over time. For roleplay, recurring
+characters, or identity anchors, the first sentence MUST restate the visible
+person fully: apparent age, ethnicity/complexion, build, hair, face, wardrobe,
+and expression. Never animate "Mara", "Bob", "the heroine", or "the same
+person" by name only.
 
 ### LTX 2.3 (`{{Image To Video (LTX) 5s.txt}}`)
 
 Source: [docs.ltx.video](https://docs.ltx.video/api-documentation/prompting-guide).
 
 - **4-8 sentences, single flowing paragraph.** Tuned for this length.
-- Order: brief subject ref → **motion + ONE short line of dialog** →
+- Order: visual subject restatement → **motion + ONE short line of dialog** →
   one camera move → mood/lighting → short ambient-sound tag.
 - **Dialog is DEFAULT ON.** LTX 2.3 generates real audio for quoted
   lines - animating a person without giving them one wastes the
@@ -85,6 +90,19 @@ LTX 2.3 example for a previously-generated rooftop-smoking image:
 > drifts, and the Manhattan skyline glows soft behind her. Cinematic
 > style of a mid-2010s editorial portrait, Portra 400 film grain,
 > natural skin tones; ambient sound of distant city traffic.
+
+Roleplay / identity-anchor example style:
+
+> The woman from the reference image, in her late 20s with olive skin, compact
+> athletic build, short black undercut hair, angular cheekbones, dark focused
+> eyes, and a small split scar at the right eyebrow, stands waist-deep in a
+> flooded archive wearing a soaked charcoal tactical jacket and gripping a red
+> flare. She raises the flare, turns toward the glass tank, shoulders tight,
+> and whispers "It's still alive" in English with a tense low voice as red
+> sparks drift into the blue emergency light. The camera makes one slow push-in
+> from a chest-height 35mm medium shot. Server lights ripple awake behind her,
+> reflected across black water; ambient sound of humming machines, dripping
+> water, and flare crackle.
 
 ### Wan 2.2 (`{{Image To Video (Wan22).txt}}`)
 
@@ -123,7 +141,9 @@ aspect ratio - the auto-match is correct in 99% of cases.
   If both `attachment` and `chat_image` are set, `chat_image` wins. `chain="true"`
   must NOT be combined with the others - the chained step inherits the prior
   step's output automatically.
-- Describe MOTION/CAMERA over time, NOT the still scene.
+- Describe MOTION/CAMERA over time. For roleplay / identity anchors, also
+  restate the visible character identity in the first sentence; name-only
+  prompts are not valid.
 - Pick ONE camera move with magnitude. Two competing moves fight.
 - LTX 2.3: 4-8 sentence paragraph, motion-first, one camera move, and
   **ONE short quoted line of in-scene dialog** (language + accent) in

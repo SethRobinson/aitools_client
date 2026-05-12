@@ -189,7 +189,12 @@ public class PicMovie : MonoBehaviour
             if (_videoPlayer.isPlaying)
             {
                 GameObject go = GameLogic.Get().GetPicWereHoveringOver();
-                if (go == gameObject)
+                // GetPicWereHoveringOver() does a 2D physics raycast that ignores UI canvases,
+                // so it will happily report "hovering" even when an overlay panel (AI Chat,
+                // settings dialogs, etc.) is sitting on top of the movie - which would
+                // unmute audio for a video the user can't actually see. Treat any UI
+                // canvas in front of the mouse as "not hovering" so the audio stays muted.
+                if (go == gameObject && !IsMouseObscuredByOtherUI())
                 {
                     _videoPlayer.SetDirectAudioMute(0, GameLogic.Get().GetGlobalMute());
 
@@ -203,6 +208,39 @@ public class PicMovie : MonoBehaviour
             UpdateProgressBar();
         }
 
+    }
+
+    // Reused across all PicMovie instances to avoid GC churn each tick.
+    private static readonly List<RaycastResult> s_uiRaycastResults = new List<RaycastResult>();
+
+    /// <summary>
+    /// True when the mouse is over a UI element on a Canvas OTHER than this movie's own
+    /// PicMain canvas. Used to detect cases like the AI Chat panel covering the video -
+    /// the world-space 2D raycast in GetPicWereHoveringOver() can't see UI, so without
+    /// this check we'd unmute audio for a movie the user can't actually see.
+    /// The movie's own progress bar lives on _picMainScript.GetCanvas() and is excluded
+    /// so hovering it won't kill audio (it sits below the video quad anyway).
+    /// </summary>
+    private bool IsMouseObscuredByOtherUI()
+    {
+        var es = EventSystem.current;
+        if (es == null) return false;
+        if (!es.IsPointerOverGameObject()) return false;
+
+        var ped = new PointerEventData(es) { position = Input.mousePosition };
+        s_uiRaycastResults.Clear();
+        es.RaycastAll(ped, s_uiRaycastResults);
+        if (s_uiRaycastResults.Count == 0) return false;
+
+        Canvas myCanvas = _picMainScript != null ? _picMainScript.GetCanvas() : null;
+        Canvas myRoot = myCanvas != null ? myCanvas.rootCanvas : null;
+
+        var topGo = s_uiRaycastResults[0].gameObject;
+        if (topGo == null) return false;
+        var hitCanvas = topGo.GetComponentInParent<Canvas>();
+        if (hitCanvas == null) return false;
+
+        return hitCanvas.rootCanvas != myRoot;
     }
 
     void CreateProgressBarUI()
@@ -414,6 +452,8 @@ public class PicMovie : MonoBehaviour
 
         if (_renderTexture != null)
         {
+            if (_videoPlayer != null && _videoPlayer.targetTexture == _renderTexture)
+                _videoPlayer.targetTexture = null;
             _renderTexture.Release();
             Destroy(_renderTexture);
             _renderTexture = null;
@@ -472,9 +512,24 @@ public class PicMovie : MonoBehaviour
         }
     }
 
-    public void PlayMovie(string filename)
+    public bool TryEnsureLoadedForSnapshot()
     {
-        if (!Application.isFocused || !_picMainScript.IsVisible())
+        if (_renderTexture != null)
+            return true;
+
+        if (string.IsNullOrEmpty(m_fileName))
+            return false;
+
+        if (!System.IO.File.Exists(m_fileName))
+            return false;
+
+        PlayMovie(m_fileName, forceLoad: true);
+        return true;
+    }
+
+    public void PlayMovie(string filename, bool forceLoad = false)
+    {
+        if (!forceLoad && (!Application.isFocused || !_picMainScript.IsVisible()))
         {
         
             m_fileName = filename;
@@ -499,6 +554,7 @@ public class PicMovie : MonoBehaviour
 
             CleanupVideoResources();
             m_fileName = filename;
+            _bDidCleanupSoAllowReload = false;
             _movieObject.SetActive(true);
 
             _videoPlayer.source = VideoSource.Url;
@@ -517,6 +573,8 @@ public class PicMovie : MonoBehaviour
             //Debug.Log("Audio track count: " + _videoPlayer.audioTrackCount);
             //_videoPlayer.SetDirectAudioMute(0, false);
             //_videoPlayer.SetDirectAudioVolume(0, 1.0f);
+            if (forceLoad)
+                _videoPlayer.SetDirectAudioMute(0, true);
             
 
             _videoPlayer.Prepare();

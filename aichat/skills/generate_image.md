@@ -1,13 +1,18 @@
 ---
 id: generate_image
-summary: Generate a brand-new still image from a text prompt. Use when the user asks for a picture.
+summary: Generate a brand-new still image from a text prompt. Use when the user asks for a picture of a NEW subject. Do NOT use this when the user wants a scene combining people / things that already exist as numbered chat-image bubbles - that's image_to_image with the N-Input Klein preset, feeding each existing bubble as a chat_image anchor. generate_image cannot reproduce a specific past face from text alone; it will produce strangers no matter how detailed the description.
 inputs: none
 template: <aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="vivid visual description of the scene"/>
 ---
 # Generate an image
 
 Use this skill when the user asks you to create or show a still image
-(no input image required).
+of a brand-new subject with no input reference (no chat-image character
+to preserve, no pasted image to transform). If the user wants to put
+previously-shown chat-image characters together in a new scene - even
+if their wording is "create / make / generate an image of them" - that
+is **image_to_image** with the N-Input Klein preset, not this skill.
+generate_image cannot reproduce a specific past face from text.
 
 ## Available presets
 
@@ -112,22 +117,15 @@ stage finishes. See `image_to_movie` / `image_to_image` for the chained
 syntax. The chained step inherits this image's output automatically - do
 not pass attachment / chat_image alongside chain="true".
 
-## Roleplay / recurring characters - critical
+## Scenario / recurring characters
 
-Z-Image has NO memory of chat history. Every prompt must re-describe
-every visible attribute of every subject FROM SCRATCH, every time. In a
-roleplay where the same character (e.g. "Sara") recurs across turns:
+Detailed roleplay, scenario, character-sheet, and identity-anchor
+workflows live in `scenario_storytelling`. If that skill is auto-loaded,
+follow it for story prose, visual pacing, reference characters, and
+GPU-aware multi-shot planning.
 
-- NEVER put just the name in the prompt - "Sara walks down the alley"
-  generates a stranger because the model has never heard of Sara.
-- ALWAYS paste the full character sheet (age, ethnicity, build, hair,
-  eyes, distinguishing features, wardrobe) directly into every prompt
-  that includes the character, and layer per-shot details (pose,
-  location, action) on top. Names belong in your chat reply for the
-  human reader; the prompt= attribute uses ONLY visual descriptions.
-- A 1-line prompt referencing an established character is the SINGLE
-  most common reason roleplay images "look like a different person".
-  Defaulting to long, fully-described prompts every turn fixes it.
+Still keep every Z-Image prompt self-contained: visible identity,
+setting, pose/action, lighting, mood, camera, and style.
 
 ## Rules
 
@@ -137,4 +135,3 @@ roleplay where the same character (e.g. "Sara") recurs across turns:
   axes above. Decide every detail the user left out. Don't pass the
   user's 1-liner to the model verbatim.
 - `gpu="N"` is optional - omit to let the scheduler pick the best free GPU.
-

@@ -1,6 +1,8 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using SimpleJSON;
+using TMPro;
 using UnityEngine;
 
 namespace AITools.AIChat.Skills
@@ -25,6 +27,11 @@ namespace AITools.AIChat.Skills
     {
         private readonly SkillManager _skills;
         private readonly IChatHost _host;
+        private int _lastLocalOpOutputChatImageIndex = -1;
+        private PicMain _lastLocalOpOutputPic;
+        private readonly HashSet<SkillAction> _reloadAttemptedActions = new HashSet<SkillAction>();
+        private const float ChatImageReloadTimeoutSeconds = 12f;
+        private const float ChatImageReloadPollSeconds = 0.2f;
 
         public SkillActionExecutor(SkillManager skills, IChatHost host)
         {
@@ -38,6 +45,24 @@ namespace AITools.AIChat.Skills
             {
                 _host?.AddInfoBubble("Skill error: empty or malformed action tag.");
                 return;
+            }
+
+            if (_host?.GetLastSpawnedPicForTurn() == null)
+            {
+                _lastLocalOpOutputChatImageIndex = -1;
+                _lastLocalOpOutputPic = null;
+            }
+
+            // Normalize common short-form / alias names the LLM tends to invent
+            // (e.g. "paste" instead of "paste_image", "border" instead of
+            // "add_border"). The dispatcher below is exact-match on the canonical
+            // ids; without aliasing, every invented short name dies with "Skill X
+            // is not recognized" and wastes the user's turn. The mapping is small
+            // and one-way - canonical ids always win when they're already correct.
+            string normalizedId = NormalizeSkillId(action.SkillId);
+            if (normalizedId != action.SkillId)
+            {
+                action.SkillId = normalizedId;
             }
 
             switch (action.SkillId.ToLowerInvariant())
@@ -65,6 +90,30 @@ namespace AITools.AIChat.Skills
                     _host?.AddInfoBubble("(describe_image is a documentation-only skill - I'll answer in chat directly.)");
                     break;
 
+                // ----- Composition primitives (C#-side image ops, no GPU). -----
+                // Wrapped in a per-skill try so a buggy or malformed composition tag
+                // surfaces a useful error in the chat (and a full stack to the Unity
+                // console) instead of taking down the whole assistant turn with the
+                // generic "Skill error: ..." catch in AIChatPanel.OnSkillActionParsed.
+                case BuiltInSkillIds.DrawText:
+                    SafelyRunCompositionSkill(action, ExecuteDrawText);
+                    break;
+                case BuiltInSkillIds.AddBorder:
+                    SafelyRunCompositionSkill(action, ExecuteAddBorder);
+                    break;
+                case BuiltInSkillIds.PasteImage:
+                    SafelyRunCompositionSkill(action, ExecutePasteImage);
+                    break;
+                case BuiltInSkillIds.NewCanvas:
+                    SafelyRunCompositionSkill(action, ExecuteNewCanvas);
+                    break;
+                case BuiltInSkillIds.CropResize:
+                    SafelyRunCompositionSkill(action, ExecuteCropResize);
+                    break;
+                case BuiltInSkillIds.DrawShape:
+                    SafelyRunCompositionSkill(action, ExecuteDrawShape);
+                    break;
+
                 default:
                     _host?.AddSystemInjectionAndBubble(
                         $"Skill '{action.SkillId}' is not recognized. Use one of: " +
@@ -77,6 +126,9 @@ namespace AITools.AIChat.Skills
 
         private void ExecuteGenerate(SkillAction action, bool useAttachment)
         {
+            _lastLocalOpOutputChatImageIndex = -1;
+            _lastLocalOpOutputPic = null;
+
             // Generate-class skills with an empty prompt produce a workflow that runs
             // against whatever GameLogic.GetModifiedGlobalPrompt() happens to return -
             // typically the main GUI's prompt field, which has nothing to do with the
@@ -146,14 +198,19 @@ namespace AITools.AIChat.Skills
 
                 if (chatN > 0)
                 {
-                    attachmentBytes = _host?.GetChatImagePngBytes(chatN);
-                    if (attachmentBytes == null)
+                    if (!TryResolveChatImageBytesOrDefer(action, action.SkillId, "chat_image", chatN, out attachmentBytes, out bool deferred))
                     {
-                        _host?.AddSystemInjectionAndBubble(
-                            $"Skill '{action.SkillId}': chat_image=\"{chatN}\" is not available. " +
-                            $"There are {chatImageCount} reachable chat image(s) this session. " +
-                            $"Use a smaller index, ask the user to paste an image, or use generate_image instead.");
-                        return;
+                        if (deferred) return;
+                        byte[] fallbackBytes = TryFallbackChatImageBytes(action, action.SkillId, chatN, chatImageCount);
+                        if (fallbackBytes == null)
+                        {
+                            _host?.AddSystemInjectionAndBubble(
+                                $"Skill '{action.SkillId}': chat_image=\"{chatN}\" is not available. " +
+                                $"There are {chatImageCount} numbered chat image slot(s) this session. " +
+                                $"Use a smaller index, ask the user to paste an image, or use generate_image instead.");
+                            return;
+                        }
+                        attachmentBytes = fallbackBytes;
                     }
                 }
                 else if (turnAttachCount > 0)
@@ -170,6 +227,16 @@ namespace AITools.AIChat.Skills
                 }
                 else if (chatImageCount > 0)
                 {
+                    int implicitIdx = _host?.GetLatestChatImageIndex() ?? 0;
+                    if (implicitIdx <= 0)
+                    {
+                        _host?.AddSystemInjectionAndBubble(
+                            $"Skill '{action.SkillId}' needs the user to paste an image into the chat first " +
+                            "(or you can reference an earlier chat image once one exists, via chat_image=\"N\"). " +
+                            "There are no live chat images right now.");
+                        return;
+                    }
+
                     bool hasChainTarget = _host?.GetLastSpawnedPicForTurn() != null;
                     if (hasChainTarget)
                     {
@@ -190,10 +257,9 @@ namespace AITools.AIChat.Skills
                     // most recent chat image. Fall back to it instead of erroring; this
                     // is the single most common LLM omission with smaller models, and
                     // failing strictly here breaks the user's flow for no real benefit.
-                    int implicitIdx = chatImageCount;
-                    attachmentBytes = _host?.GetChatImagePngBytes(implicitIdx);
-                    if (attachmentBytes == null)
+                    if (!TryResolveChatImageBytesOrDefer(action, action.SkillId, "implicit chat_image", implicitIdx, out attachmentBytes, out bool deferred))
                     {
+                        if (deferred) return;
                         // Race: pic was destroyed between count and fetch. Fall through
                         // to the same explicit-error message the chat_image="N" path uses.
                         _host?.AddSystemInjectionAndBubble(
@@ -213,17 +279,23 @@ namespace AITools.AIChat.Skills
                         $"Skill '{action.SkillId}' needs the user to paste an image into the chat first " +
                         $"(or you can reference an earlier chat image once one exists, via chat_image=\"N\"). " +
                         chainHint +
-                        "There are 0 reachable images right now.");
+                        "There are no chat images right now.");
                     return;
                 }
             }
 
-            // Resolve optional 2nd-input image (attachment2 / chat_image2). Used by
-            // 2-input presets like Image To Image Klein Edit 2 Input. Returns null when
-            // the LLM didn't ask for a second image; returns null + emits a bubble when
-            // it asked for one that isn't reachable (caller bails).
-            byte[] attachmentBytes2 = ResolveSecondInputBytes(action, out bool secondInputErrored);
-            if (secondInputErrored) return;
+            // Resolve optional extra input images (slots 2..5). Used by N-input presets
+            // (Image To Image Klein Edit 2/3/4/5 Input). Each returns null when the LLM
+            // didn't ask for that slot; returns null + emits a bubble when it asked for
+            // one that isn't available (caller bails).
+            byte[] attachmentBytes2 = ResolveExtraInputBytes(action, 2, out bool errored2, out bool deferred2);
+            if (errored2 || deferred2) return;
+            byte[] attachmentBytes3 = ResolveExtraInputBytes(action, 3, out bool errored3, out bool deferred3);
+            if (errored3 || deferred3) return;
+            byte[] attachmentBytes4 = ResolveExtraInputBytes(action, 4, out bool errored4, out bool deferred4);
+            if (errored4 || deferred4) return;
+            byte[] attachmentBytes5 = ResolveExtraInputBytes(action, 5, out bool errored5, out bool deferred5);
+            if (errored5 || deferred5) return;
 
             if (string.IsNullOrEmpty(preset))
             {
@@ -293,23 +365,13 @@ namespace AITools.AIChat.Skills
                 }
             }
 
-            // Optional 2nd input - feeds the workflow's "image2" upload slot. The Pic
-            // takes ownership of the texture and uploads it (no display, no mask).
-            if (attachmentBytes2 != null)
-            {
-                var tex2 = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-                if (tex2.LoadImage(attachmentBytes2))
-                {
-                    picMain.SetImage2(tex2);
-                }
-                else
-                {
-                    UnityEngine.Object.Destroy(tex2);
-                    _host?.AddSystemInjectionAndBubble(
-                        $"Skill '{action.SkillId}': could not decode the 2nd input image.");
-                    return;
-                }
-            }
+            // Optional extra inputs (slots 2..5) - feed the workflow's "image2".."image5"
+            // upload slots. The Pic takes ownership of each texture and uploads it (no
+            // display, no mask).
+            if (!TryWireExtraInput(picMain, attachmentBytes2, 2, action.SkillId)) return;
+            if (!TryWireExtraInput(picMain, attachmentBytes3, 3, action.SkillId)) return;
+            if (!TryWireExtraInput(picMain, attachmentBytes4, 4, action.SkillId)) return;
+            if (!TryWireExtraInput(picMain, attachmentBytes5, 5, action.SkillId)) return;
 
             // Aspect-aware dimension override for img2X presets. Explicit width/height
             // attributes from the LLM win; otherwise fall back to "match the source's
@@ -395,13 +457,13 @@ namespace AITools.AIChat.Skills
                 // through the standard non-chain path. Smaller models (Qwen, etc) at
                 // low temperature persistently emit chain="true" by reflex even with
                 // explicit prompt warnings; this rescue keeps the user's flow alive.
-                int chatImageCount = _host?.GetChatImageCount() ?? 0;
-                if (chatImageCount > 0)
+                int latestChatImageIndex = _host?.GetLatestChatImageIndex() ?? 0;
+                if (latestChatImageIndex > 0)
                 {
-                    action.Args["chat_image"] = chatImageCount.ToString();
+                    action.Args["chat_image"] = latestChatImageIndex.ToString();
                     action.Args.Remove("chain");
                     _host?.AddInfoBubble(
-                        $"(translated chain=\"true\" -> chat_image=\"{chatImageCount}\" - chain only works within the SAME reply; using the latest chat image instead)");
+                        $"(translated chain=\"true\" -> chat_image=\"{latestChatImageIndex}\" - chain only works within the SAME reply; using the latest chat image instead)");
                     // Both image_to_image and image_to_movie are useAttachment=true in
                     // the dispatcher above (lines 50-52); chain rescue only applies to
                     // those two skills, so always pass true here.
@@ -446,26 +508,21 @@ namespace AITools.AIChat.Skills
                 return;
             }
 
-            // Optional 2nd input - chain inherits image1 from the prior step, but the
-            // LLM can still bring a separate image2 reference in via attachment2 /
-            // chat_image2 for 2-input presets.
-            byte[] chainBytes2 = ResolveSecondInputBytes(action, out bool chainSecondErrored);
-            if (chainSecondErrored) return;
-            if (chainBytes2 != null)
-            {
-                var tex2 = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-                if (tex2.LoadImage(chainBytes2))
-                {
-                    prevPic.SetImage2(tex2);
-                }
-                else
-                {
-                    UnityEngine.Object.Destroy(tex2);
-                    _host?.AddSystemInjectionAndBubble(
-                        $"Skill '{action.SkillId}' (chain=\"true\"): could not decode the 2nd input image.");
-                    return;
-                }
-            }
+            // Optional extra inputs (slots 2..5) - chain inherits image1 from the prior
+            // step, but the LLM can still bring separate image2..image5 references in via
+            // attachment{N} / chat_image{N} for N-input presets.
+            byte[] chainBytes2 = ResolveExtraInputBytes(action, 2, out bool chainErr2, out bool chainDef2);
+            if (chainErr2 || chainDef2) return;
+            byte[] chainBytes3 = ResolveExtraInputBytes(action, 3, out bool chainErr3, out bool chainDef3);
+            if (chainErr3 || chainDef3) return;
+            byte[] chainBytes4 = ResolveExtraInputBytes(action, 4, out bool chainErr4, out bool chainDef4);
+            if (chainErr4 || chainDef4) return;
+            byte[] chainBytes5 = ResolveExtraInputBytes(action, 5, out bool chainErr5, out bool chainDef5);
+            if (chainErr5 || chainDef5) return;
+            if (!TryWireExtraInput(prevPic, chainBytes2, 2, action.SkillId)) return;
+            if (!TryWireExtraInput(prevPic, chainBytes3, 3, action.SkillId)) return;
+            if (!TryWireExtraInput(prevPic, chainBytes4, 4, action.SkillId)) return;
+            if (!TryWireExtraInput(prevPic, chainBytes5, 5, action.SkillId)) return;
 
             // Same per-Pic negative-prompt extraction as the non-chained path so the
             // chained workflow inherits the preset author's negative prompt instead of
@@ -551,47 +608,95 @@ namespace AITools.AIChat.Skills
 
         /// <summary>
         /// Resolve the optional 2nd input image (attachment2 / chat_image2) to PNG bytes.
-        /// Returns null when the LLM didn't ask for a second image. Returns null and sets
-        /// <paramref name="errored"/>=true (after emitting a system-injection bubble) when
-        /// it asked for one that's not reachable; callers should bail in that case.
-        /// chat_image2 wins over attachment2 if both are set, mirroring the precedence on
-        /// the primary slot.
+        /// Thin wrapper over <see cref="ResolveExtraInputBytes"/> for backwards-compat call sites.
         /// </summary>
-        private byte[] ResolveSecondInputBytes(SkillAction action, out bool errored)
+        private byte[] ResolveSecondInputBytes(SkillAction action, out bool errored, out bool deferred)
+        {
+            return ResolveExtraInputBytes(action, 2, out errored, out deferred);
+        }
+
+        /// <summary>
+        /// Resolve an optional extra input image (slot 2..5) to PNG bytes. Reads
+        /// attachment{slot} / chat_image{slot} from the action args. Returns null when
+        /// the LLM didn't ask for an image at that slot; returns null and sets
+        /// <paramref name="errored"/>=true (after emitting a system-injection bubble)
+        /// when it asked for one that isn't available; callers should bail in that case.
+        /// chat_image{slot} wins over attachment{slot} if both are set, matching the
+        /// precedence rule on the primary slot.
+        /// </summary>
+        private byte[] ResolveExtraInputBytes(SkillAction action, int slot, out bool errored, out bool deferred)
         {
             errored = false;
-            int chatN2 = action.ChatImageIndex2 ?? -1;
-            int attachN2 = action.AttachmentIndex2 ?? -1;
-            if (chatN2 <= 0 && attachN2 <= 0) return null;
+            deferred = false;
+            if (slot < 2 || slot > 5) return null;
 
-            if (chatN2 > 0)
+            int chatN = action.GetExtraChatImageIndex(slot) ?? -1;
+            int attachN = action.GetExtraAttachmentIndex(slot) ?? -1;
+            if (chatN <= 0 && attachN <= 0) return null;
+
+            string chatKey = "chat_image" + slot;
+            string attachKey = "attachment" + slot;
+
+            if (chatN > 0)
             {
-                byte[] bytes = _host?.GetChatImagePngBytes(chatN2);
-                if (bytes == null)
+                if (!TryResolveChatImageBytesOrDefer(action, action.SkillId, chatKey, chatN, out byte[] bytes, out deferred))
                 {
+                    if (deferred) return null;
                     int chatImageCount = _host?.GetChatImageCount() ?? 0;
                     _host?.AddSystemInjectionAndBubble(
-                        $"Skill '{action.SkillId}': chat_image2=\"{chatN2}\" is not available. " +
-                        $"There are {chatImageCount} reachable chat image(s) this session. " +
-                        $"Use a smaller index, or drop chat_image2 if a 2nd image isn't needed.");
+                        $"Skill '{action.SkillId}': {chatKey}=\"{chatN}\" is not available. " +
+                        $"There are {chatImageCount} numbered chat image slot(s) this session. " +
+                        $"Use a smaller index, or drop {chatKey} if an input at slot {slot} isn't needed.");
                     errored = true;
                     return null;
                 }
                 return bytes;
             }
 
-            // attachN2 > 0
+            // attachN > 0
             int turnAttachCount = _host?.GetTurnAttachmentCount() ?? 0;
-            byte[] aBytes = _host?.GetTurnAttachmentBytes(attachN2);
+            byte[] aBytes = _host?.GetTurnAttachmentBytes(attachN);
             if (aBytes == null)
             {
                 _host?.AddSystemInjectionAndBubble(
-                    $"Skill '{action.SkillId}' wanted attachment2=\"{attachN2}\" but the user only attached {turnAttachCount} image(s) this turn. " +
-                    "Use a smaller index, or drop attachment2 if a 2nd image isn't needed.");
+                    $"Skill '{action.SkillId}' wanted {attachKey}=\"{attachN}\" but the user only attached {turnAttachCount} image(s) this turn. " +
+                    $"Use a smaller index, or drop {attachKey} if an input at slot {slot} isn't needed.");
                 errored = true;
                 return null;
             }
             return aBytes;
+        }
+
+        /// <summary>
+        /// Decode <paramref name="bytes"/> as a texture and attach it to <paramref name="pic"/>'s
+        /// image{slot} input slot (slot 2..5). Used by N-input presets. Returns false (after
+        /// emitting a system-injection bubble) when bytes are present but undecodable, so the
+        /// caller can bail before queuing the workflow.
+        /// </summary>
+        private bool TryWireExtraInput(PicMain pic, byte[] bytes, int slot, string skillId)
+        {
+            if (bytes == null) return true;
+            var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            if (!tex.LoadImage(bytes))
+            {
+                UnityEngine.Object.Destroy(tex);
+                _host?.AddSystemInjectionAndBubble(
+                    $"Skill '{skillId}': could not decode input image at slot {slot}.");
+                return false;
+            }
+            switch (slot)
+            {
+                case 2: pic.SetImage2(tex); break;
+                case 3: pic.SetImage3(tex); break;
+                case 4: pic.SetImage4(tex); break;
+                case 5: pic.SetImage5(tex); break;
+                default:
+                    UnityEngine.Object.Destroy(tex);
+                    _host?.AddSystemInjectionAndBubble(
+                        $"Skill '{skillId}': internal error - unsupported input slot {slot}.");
+                    return false;
+            }
+            return true;
         }
 
         private static string ResolvePresetName(string requested)
@@ -604,18 +709,48 @@ namespace AITools.AIChat.Skills
             string requestedFile = requested.EndsWith(".txt", StringComparison.OrdinalIgnoreCase)
                 ? requested : requested + ".txt";
 
-            // Exact match first.
+            string found = FindPresetFile(presetsDir, requestedFile);
+            if (found != null)
+                return found;
+
+            string prefix = PlayerPrefs.GetString(SkillManager.PresetPrefixPrefsKey, "");
+            if (!string.IsNullOrEmpty(prefix))
+            {
+                string withoutLeadingUnderscore = requestedFile.TrimStart('_');
+                if (!requestedFile.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    found = FindPresetFile(presetsDir, prefix + withoutLeadingUnderscore);
+                    if (found != null)
+                        return found;
+                }
+            }
+
+            if (requestedFile.StartsWith("_", StringComparison.Ordinal))
+            {
+                found = FindPresetFile(presetsDir, requestedFile.TrimStart('_'));
+                if (found != null)
+                    return found;
+            }
+
+            return null;
+        }
+
+        private static string FindPresetFile(string presetsDir, string requestedFile)
+        {
+            if (string.IsNullOrEmpty(requestedFile))
+                return null;
+
             string exact = System.IO.Path.Combine(presetsDir, requestedFile);
             if (System.IO.File.Exists(exact))
                 return requestedFile;
 
-            // Case-insensitive fallback.
             foreach (var path in System.IO.Directory.GetFiles(presetsDir, "*.txt"))
             {
                 string name = System.IO.Path.GetFileName(path);
                 if (string.Equals(name, requestedFile, StringComparison.OrdinalIgnoreCase))
                     return name;
             }
+
             return null;
         }
 
@@ -645,8 +780,25 @@ namespace AITools.AIChat.Skills
             // so a read_skill echo stays consistent with the Template line the LLM saw
             // in the main prompt.
             body = SkillManager.ApplyPresetPrefix(body);
-            _host?.AddSystemInjectionAndBubble(
-                "Full content of skill '" + skill.Id + "':\n" + body);
+
+            // Inject the body INTO THE LLM's context (so it sees it on its next turn)
+            // but DON'T splash the entire markdown body into the chat as a bubble. That
+            // pattern was loud, and the LLM can't act on the body within the current
+            // stream anyway (mid-stream skill output doesn't reach the model). Show a
+            // small info indicator so the user knows the load happened, plus a system
+            // injection telling the LLM that the body it just received is reference
+            // material - it should USE that knowledge on the very next user turn,
+            // not call read_skill again or wait for confirmation.
+            _host?.AddSystemInjectionSilent(
+                "Reference material for skill '" + skill.Id + "' (the full body of " +
+                "aichat/skills/" + skill.Id + ".md). Use this knowledge directly on " +
+                "the next assistant turn - do NOT call read_skill again for this id, " +
+                "and do NOT ask the user 'should I proceed' - just act on what they " +
+                "already requested using the patterns documented below.\n\n" + body);
+            _host?.AddInfoBubble(
+                "(loaded skill '" + skill.Id + "' - the LLM will use it on its next reply. " +
+                "read_skill cannot influence the CURRENT reply because mid-stream injections " +
+                "don't reach the model.)");
         }
 
         // ---------- summarize_with_small_llm ----------
@@ -757,7 +909,8 @@ namespace AITools.AIChat.Skills
             LLMInstanceInfo inst,
             Queue<GTPChatLine> lines,
             Action<RTDB, JSONObject, string> onDone,
-            string callerLabel)
+            string callerLabel,
+            string sentJsonFilename = "text_completion_sent.json")
         {
             var settings = inst.settings;
             var db = new RTDB();
@@ -775,7 +928,7 @@ namespace AITools.AIChat.Skills
                     {
                         try { onDone(rtdb, jn, str); }
                         finally { UnityEngine.Object.Destroy(mgr); }
-                    }, db, serverAddress, suggestedEndpoint, null, false, apiKey);
+                    }, db, serverAddress, suggestedEndpoint, null, false, apiKey, sentJsonFilename);
                     break;
                 }
                 case LLMProvider.LlamaCpp:
@@ -789,7 +942,7 @@ namespace AITools.AIChat.Skills
                     {
                         try { onDone(rtdb, jn, str); }
                         finally { UnityEngine.Object.Destroy(mgr); }
-                    }, db, serverAddress, suggestedEndpoint, null, false, apiKey);
+                    }, db, serverAddress, suggestedEndpoint, null, false, apiKey, sentJsonFilename);
                     break;
                 }
                 case LLMProvider.OpenAICompatible:
@@ -814,7 +967,7 @@ namespace AITools.AIChat.Skills
                     {
                         try { onDone(rtdb, jn, str); }
                         finally { UnityEngine.Object.Destroy(mgr); }
-                    }, db, apiKey, endpoint, null, false);
+                    }, db, apiKey, endpoint, null, false, sentJsonFilename);
                     break;
                 }
                 case LLMProvider.OpenAI:
@@ -827,7 +980,7 @@ namespace AITools.AIChat.Skills
                     {
                         try { onDone(rtdb, jn, str); }
                         finally { UnityEngine.Object.Destroy(mgr); }
-                    }, db, apiKey, endpoint, null, false);
+                    }, db, apiKey, endpoint, null, false, sentJsonFilename);
                     break;
                 }
                 default:
@@ -867,6 +1020,1121 @@ namespace AITools.AIChat.Skills
         {
             if (_skills == null) yield break;
             foreach (var s in _skills.GetSkills()) yield return s.Id;
+        }
+
+        /// <summary>
+        /// Map common short-form / abbreviated skill ids the LLM tends to invent
+        /// to their canonical names. Returns the input unchanged when no alias
+        /// applies. Aliases are intentionally one-way (no canonical -> short
+        /// rewrite) so the dispatcher's exact-match switch keeps working as is.
+        /// </summary>
+        private static string NormalizeSkillId(string id)
+        {
+            if (string.IsNullOrEmpty(id)) return id;
+            string lower = id.Trim().ToLowerInvariant();
+            switch (lower)
+            {
+                // paste / past / paste_img -> paste_image
+                case "paste":
+                case "past":
+                case "paste_img":
+                case "pasteimage":
+                    return BuiltInSkillIds.PasteImage;
+
+                // border / addborder -> add_border
+                case "border":
+                case "addborder":
+                    return BuiltInSkillIds.AddBorder;
+
+                // text / drawtext / write / write_text -> draw_text
+                case "text":
+                case "drawtext":
+                case "write":
+                case "write_text":
+                    return BuiltInSkillIds.DrawText;
+
+                // shape / drawshape / draw_rect / draw_circle -> draw_shape
+                case "shape":
+                case "drawshape":
+                case "draw_rect":
+                case "draw_circle":
+                case "rect":
+                case "circle":
+                    return BuiltInSkillIds.DrawShape;
+
+                // canvas / blank / blank_canvas / newcanvas -> new_canvas
+                case "canvas":
+                case "blank":
+                case "blank_canvas":
+                case "newcanvas":
+                case "create_canvas":
+                    return BuiltInSkillIds.NewCanvas;
+
+                // crop / resize / scale -> crop_resize
+                case "crop":
+                case "resize":
+                case "scale":
+                case "cropresize":
+                    return BuiltInSkillIds.CropResize;
+
+                // generate / gen / image -> generate_image
+                case "generate":
+                case "gen":
+                case "image":
+                case "generateimage":
+                    return BuiltInSkillIds.GenerateImage;
+
+                // movie / video / generatemovie -> generate_movie
+                case "movie":
+                case "video":
+                case "generatemovie":
+                case "generatevideo":
+                case "generate_video":
+                    return BuiltInSkillIds.GenerateMovie;
+
+                // edit / img2img / imagetoimage -> image_to_image
+                case "edit":
+                case "img2img":
+                case "imagetoimage":
+                    return BuiltInSkillIds.ImageToImage;
+
+                // animate / img2vid / img2movie / imagetomovie -> image_to_movie
+                case "animate":
+                case "img2vid":
+                case "img2movie":
+                case "imagetomovie":
+                case "image_to_video":
+                    return BuiltInSkillIds.ImageToMovie;
+
+                default:
+                    return id;
+            }
+        }
+
+        /// <summary>
+        /// Run one of the composition Execute* methods, catching any synchronous
+        /// exception and surfacing a user-friendly error in the chat (with the
+        /// skill id and exception type) instead of letting it bubble up to the
+        /// generic AIChatPanel catch. The full stack trace still goes to the
+        /// Unity console so we can debug.
+        /// </summary>
+        private void SafelyRunCompositionSkill(SkillAction action, Action<SkillAction> impl)
+        {
+            try
+            {
+                impl(action);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"SkillActionExecutor: '{action?.SkillId}' threw {ex.GetType().Name}: {ex}");
+                _host?.AddSystemInjectionAndBubble(
+                    $"Skill '{action?.SkillId}' failed with {ex.GetType().Name}: {ex.Message}. " +
+                    "See Unity console for the full stack trace. " +
+                    "Try simplifying the call (smaller dimensions, fewer attributes, or omit font_name) " +
+                    $"and re-emit. Re-read the skill body via <aitools_action skill=\"read_skill\" id=\"{action?.SkillId}\"/> if you're unsure of the attribute syntax.");
+            }
+        }
+
+        // ===========================================================================
+        //   Composition primitives (draw_text / add_border / paste_image /
+        //   new_canvas / crop_resize / draw_shape).
+        //
+        //   All non-canvas ops resolve a "canvas" image the same way image_to_image
+        //   does - chat_image="N", attachment="N", or chain="true". On a non-chained
+        //   call we spawn a fresh Pic seeded with that image (so the original bubble
+        //   is preserved); on chain="true" we stack the local op onto the most-recent
+        //   unchained Pic this turn via PicMain.AppendLocalOp so it runs after any
+        //   prior workflow steps land. new_canvas is the only skill that takes no
+        //   source image (and therefore can't chain).
+        // ===========================================================================
+
+        private void ExecuteDrawText(SkillAction action)
+        {
+            string text = action.GetArg("text") ?? "";
+            if (string.IsNullOrEmpty(text))
+            {
+                _host?.AddSystemInjectionAndBubble(
+                    "draw_text needs a non-empty text=\"...\" attribute.");
+                return;
+            }
+
+            byte[] canvasBytes = ResolveCanvasBytes(action, "draw_text", out bool errored, out bool deferred, allowMissing: false);
+            if (errored || deferred) return;
+
+            Func<PicMain, IEnumerator> op = (pic) => DrawTextCoroutine(pic, action, text);
+            RunOrChainLocalOp(action, "draw_text", canvasBytes, op);
+        }
+
+        private IEnumerator DrawTextCoroutine(PicMain pic, SkillAction action, string text)
+        {
+            var sprite = pic != null ? pic.m_pic?.sprite : null;
+            var dst = sprite != null ? sprite.texture as Texture2D : null;
+            if (dst == null)
+            {
+                Debug.LogWarning("draw_text: Pic has no texture to draw on.");
+                yield break;
+            }
+
+            int srcW = dst.width;
+            int srcH = dst.height;
+
+            int x = ParsePixelOrPercent(action.GetArg("x"), srcW) ?? 0;
+            int y = ParsePixelOrPercent(action.GetArg("y"), srcH) ?? 0;
+            int w = ParsePixelOrPercent(action.GetArg("width"), srcW) ?? srcW;
+            int h = ParsePixelOrPercent(action.GetArg("height"), srcH) ?? srcH;
+            int fontSize = ParsePixelOrPercent(action.GetArg("font_size"), srcH) ?? Mathf.Max(16, srcH / 16);
+            // Optional auto-size lower bound. When omitted, TMP uses its built-in
+            // default (18). Set higher to guarantee body text stays readable even
+            // when long; TMP will OVERFLOW the rect rather than shrink below this.
+            int minFontSize = ParsePixelOrPercent(action.GetArg("min_font_size"), srcH) ?? 0;
+
+            Color color = ParseColor(action.GetArg("color"), Color.white);
+            Color? bgColor = ParseColorOpt(action.GetArg("bg_color"));
+            Color? outlineColor = ParseColorOpt(action.GetArg("outline_color"));
+            int outlineWidth = ParsePixelOrPercent(action.GetArg("outline_width"), srcH) ?? 0;
+
+            bool bold = ParseBool(action.GetArg("bold"), false);
+            bool italic = ParseBool(action.GetArg("italic"), false);
+            // Default auto_size=true: we use OUR OWN fit logic (not TMP's built-in
+            // enableAutoSizing, which behaves unpredictably in the synchronous
+            // render-to-texture path). We measure the text's preferred bounds at a
+            // reference fontSize, then scale to fit the rect, clamped by font_size
+            // (max) and min_font_size (floor). Result: predictable text that
+            // actually fills the rect, regardless of canvas size or text length.
+            // Pass auto_size="false" to use font_size as the exact value with no
+            // fitting (useful for matching a specific design spec).
+            bool autoSize = ParseBool(action.GetArg("auto_size"), true);
+            bool wrap = ParseBool(action.GetArg("wrap"), true);
+            string align = (action.GetArg("align") ?? "center").Trim().ToLowerInvariant();
+            string valign = (action.GetArg("valign") ?? "middle").Trim().ToLowerInvariant();
+            TextAlignmentOptions tmpAlign = ResolveTmpAlignment(align, valign);
+
+            FontStyles styles = 0;
+            if (bold) styles |= FontStyles.Bold;
+            if (italic) styles |= FontStyles.Italic;
+
+            TMP_FontAsset font = ResolveFontByName(action.GetArg("font_name"));
+            if (font == null)
+            {
+                // No font was resolvable at all - TMP would crash internally with an
+                // IndexOutOfRange when trying to render. Surface this cleanly instead.
+                _host?.AddSystemInjectionAndBubble(
+                    "draw_text: no TMP font is available (AIGuideManager font array is empty " +
+                    "AND TMP_Settings.defaultFontAsset is null). Open the AI Guide popup once " +
+                    "to initialize fonts, or check the project's TMP setup.");
+                yield break;
+            }
+
+            // Optional background fill behind the text rect (drawn first so text sits on top).
+            if (bgColor.HasValue)
+            {
+                dst.DrawFilledRect(x, y, w, h, bgColor.Value, 0);
+                yield return null;
+            }
+
+            int textW = Mathf.Max(1, w);
+            int textH = Mathf.Max(1, h);
+
+            // Compute the actual fontSize to render at. When autoSize is on (default),
+            // we MEASURE the text's preferred bounds at a reference fontSize and
+            // scale to fit the rect - bypassing TMP's built-in enableAutoSizing
+            // which behaves unreliably here. font_size is the upper cap, min_font_size
+            // is the floor.
+            int renderFontSize = autoSize
+                ? ComputeFitFontSize(text, font, fontSize, minFontSize, textW, textH, styles, tmpAlign, wrap)
+                : fontSize;
+
+            // Outline: render the text 8x in the outline color offset by outlineWidth in
+            // each direction, then the main text in the fill color on top. Cheap halo
+            // that survives JPEG compression and works on busy backgrounds.
+            if (outlineColor.HasValue && outlineWidth > 0)
+            {
+                // Use bAutoSize=false here regardless - we already computed the fit size.
+                Texture2D outlineTex = RTUtil.RenderTextToTexture2D(text, textW, textH, font, renderFontSize, outlineColor.Value, false, new Vector2(1, 1), styles, tmpAlign, wrap, 0f, 0f);
+                int[] dxA = { -outlineWidth, 0, outlineWidth, -outlineWidth, outlineWidth, -outlineWidth, 0, outlineWidth };
+                int[] dyA = { -outlineWidth, -outlineWidth, -outlineWidth, 0, 0, outlineWidth, outlineWidth, outlineWidth };
+                for (int i = 0; i < 8; i++)
+                {
+                    BlitTextureClipped(dst, outlineTex, x + dxA[i], y + dyA[i]);
+                    if ((i & 1) == 0) yield return null;
+                }
+                UnityEngine.Object.Destroy(outlineTex);
+            }
+
+            Texture2D textTex = RTUtil.RenderTextToTexture2D(text, textW, textH, font, renderFontSize, color, false, new Vector2(1, 1), styles, tmpAlign, wrap, 0f, 0f);
+            BlitTextureClipped(dst, textTex, x, y);
+            UnityEngine.Object.Destroy(textTex);
+
+            dst.Apply();
+            yield return null;
+        }
+
+        /// <summary>
+        /// Compute the largest fontSize at which `text` fits inside a rect of
+        /// `rectW` x `rectH` pixels for the given font/style/wrap settings, clamped
+        /// to [minFont, maxFont]. Done by creating a temp TMP, measuring its
+        /// preferredWidth/preferredHeight at a reference fontSize of 100, and
+        /// scaling proportionally.
+        ///
+        /// We do this manually rather than relying on TMP's enableAutoSizing
+        /// because TMP's auto-sizer works unreliably in our synchronous
+        /// render-to-texture path - it tends to settle near fontSizeMin even when
+        /// the rect has plenty of room. Manual measurement uses TMP's actual
+        /// preferred-bounds calculation (which IS reliable) and lets us scale
+        /// linearly to fit.
+        /// </summary>
+        private static int ComputeFitFontSize(string text, TMP_FontAsset font, int maxFont, int minFont, int rectW, int rectH, FontStyles styles, TextAlignmentOptions alignment, bool wrap)
+        {
+            if (string.IsNullOrEmpty(text) || rectW <= 0 || rectH <= 0)
+                return Mathf.Max(1, minFont > 0 ? minFont : (maxFont > 0 ? maxFont : 64));
+
+            const float REFERENCE_FONT_SIZE = 100f;
+            GameObject go = null;
+            try
+            {
+                go = new GameObject("TMP_FitProbe");
+                go.layer = 31; // unused layer (matches RTUtil.RenderTextToTexture2D's pattern)
+                var tmp = go.AddComponent<TextMeshPro>();
+                tmp.text = text;
+                tmp.font = font;
+                tmp.fontStyle = styles;
+                tmp.alignment = alignment;
+                tmp.enableWordWrapping = wrap;
+                tmp.enableAutoSizing = false;
+                tmp.fontSize = REFERENCE_FONT_SIZE;
+                // Constrain width for word-wrap calc (height unconstrained so
+                // preferredHeight reflects natural multi-line wrapping).
+                tmp.rectTransform.sizeDelta = new Vector2(rectW, 99999f);
+                tmp.ForceMeshUpdate();
+
+                float pw = tmp.preferredWidth;
+                float ph = tmp.preferredHeight;
+
+                int fitSize;
+                if (pw > 0f && ph > 0f)
+                {
+                    // Scale fontSize so that preferred bounds fit both axes of the rect.
+                    float scaleW = rectW / pw;
+                    float scaleH = rectH / ph;
+                    float scale = Mathf.Min(scaleW, scaleH);
+                    fitSize = Mathf.RoundToInt(REFERENCE_FONT_SIZE * scale);
+                }
+                else
+                {
+                    fitSize = maxFont > 0 ? maxFont : 64;
+                }
+
+                if (maxFont > 0 && fitSize > maxFont) fitSize = maxFont;
+                if (minFont > 0 && fitSize < minFont) fitSize = minFont;
+                if (fitSize < 1) fitSize = 1;
+                return fitSize;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("ComputeFitFontSize failed: " + ex.Message);
+                return maxFont > 0 ? maxFont : 64;
+            }
+            finally
+            {
+                if (go != null) UnityEngine.Object.Destroy(go);
+            }
+        }
+
+        private static TextAlignmentOptions ResolveTmpAlignment(string align, string valign)
+        {
+            // TMP combines horizontal + vertical into a single enum (Top/Mid/Bottom +
+            // Left/Right/Center/Justified). Translate the LLM's two-axis args into the
+            // closest combo. Default = MidlineGEO Center.
+            bool top = valign == "top";
+            bool bottom = valign == "bottom";
+            if (align == "left")
+            {
+                if (top) return TextAlignmentOptions.TopLeft;
+                if (bottom) return TextAlignmentOptions.BottomLeft;
+                return TextAlignmentOptions.Left;
+            }
+            if (align == "right")
+            {
+                if (top) return TextAlignmentOptions.TopRight;
+                if (bottom) return TextAlignmentOptions.BottomRight;
+                return TextAlignmentOptions.Right;
+            }
+            // center / middle / unknown -> centered horizontally
+            if (top) return TextAlignmentOptions.Top;
+            if (bottom) return TextAlignmentOptions.Bottom;
+            return TextAlignmentOptions.Center;
+        }
+
+        private static void BlitTextureClipped(Texture2D dst, Texture2D src, int dstX, int dstY)
+        {
+            if (src == null || dst == null) return;
+            int dx = dstX, dy = dstY, dw = src.width, dh = src.height, sx = 0, sy = 0;
+            if (dx < 0) { sx = -dx; dw += dx; dx = 0; }
+            if (dy < 0) { sy = -dy; dh += dy; dy = 0; }
+            if (dx + dw > dst.width) dw = dst.width - dx;
+            if (dy + dh > dst.height) dh = dst.height - dy;
+            if (dw <= 0 || dh <= 0) return;
+            dst.BlitWithAlpha(dx, dy, src, sx, sy, dw, dh);
+        }
+
+        private void ExecuteAddBorder(SkillAction action)
+        {
+            byte[] canvasBytes = ResolveCanvasBytes(action, "add_border", out bool errored, out bool deferred, allowMissing: false);
+            if (errored || deferred) return;
+
+            Func<PicMain, IEnumerator> op = (pic) => AddBorderCoroutine(pic, action);
+            RunOrChainLocalOp(action, "add_border", canvasBytes, op);
+        }
+
+        private IEnumerator AddBorderCoroutine(PicMain pic, SkillAction action)
+        {
+            var sprite = pic != null ? pic.m_pic?.sprite : null;
+            var dst = sprite != null ? sprite.texture as Texture2D : null;
+            if (dst == null)
+            {
+                Debug.LogWarning("add_border: Pic has no texture to border.");
+                yield break;
+            }
+            int srcW = dst.width;
+            int srcH = dst.height;
+            // Percentages: left/right use source WIDTH (so "10%" = 10% of pic width);
+            // top/bottom use source HEIGHT (so "25%" bottom band = 25% of pic height).
+            // Different reference dim per axis is what keeps the band a STABLE
+            // fraction of the final canvas across portrait/square/landscape sources.
+            // Without this rule, a "bottom=35%" call on a 1280x720 landscape source
+            // produces a band of 35%-of-1280 = 448 pixels added to a 720-tall image,
+            // which makes the band 38% of the final canvas; the same "35%" call on
+            // a 1024x1024 source produces a band that's only 25% of the final canvas
+            // - so any text-position percentage the LLM picks lands in the wrong
+            // place depending on which source it gets. With this rule, "bottom=25%"
+            // always means "the bottom band is ~20% of the final canvas height".
+            int left = ParsePixelOrPercent(action.GetArg("left"), srcW) ?? 0;
+            int right = ParsePixelOrPercent(action.GetArg("right"), srcW) ?? 0;
+            int top = ParsePixelOrPercent(action.GetArg("top"), srcH) ?? 0;
+            int bottom = ParsePixelOrPercent(action.GetArg("bottom"), srcH) ?? 0;
+            Color color = ParseColor(action.GetArg("color"), Color.white);
+
+            if (left <= 0 && right <= 0 && top <= 0 && bottom <= 0)
+            {
+                _host?.AddInfoBubble("add_border: all borders were 0 - nothing to do.");
+                yield break;
+            }
+
+            // Reuse PicMain.AddBorder which handles texture resize, sprite swap, and
+            // mask resize. The bSetMaskToBorder=false matches the AIGuide motivational
+            // path - we want a colored border, not an outpaint mask.
+            yield return pic.StartCoroutine(pic.AddBorder(left, right, top, bottom, color, false));
+        }
+
+        private void ExecutePasteImage(SkillAction action)
+        {
+            // The "canvas" is the standard chat_image / attachment / chain source.
+            // The "source" (image being pasted) comes from source_chat_image /
+            // source_attachment to keep the two slots clearly distinct from the
+            // existing 2-input preset's chat_image2 / attachment2 conventions.
+            byte[] canvasBytes = ResolveCanvasBytes(action, "paste_image", out bool errored, out bool deferred, allowMissing: false);
+            if (errored || deferred) return;
+
+            byte[] sourceBytes = ResolveSourceImageBytes(action, "paste_image", out bool srcErrored, out bool srcDeferred);
+            if (srcErrored || srcDeferred) return;
+            if (sourceBytes == null)
+            {
+                _host?.AddSystemInjectionAndBubble(
+                    "paste_image needs a source image to paste. Use source_chat_image=\"N\" (an existing bubble) or source_attachment=\"N\" (a fresh paste).");
+                return;
+            }
+
+            Func<PicMain, IEnumerator> op = (pic) => PasteImageCoroutine(pic, action, sourceBytes);
+            RunOrChainLocalOp(action, "paste_image", canvasBytes, op);
+        }
+
+        private IEnumerator PasteImageCoroutine(PicMain pic, SkillAction action, byte[] sourceBytes)
+        {
+            var sprite = pic != null ? pic.m_pic?.sprite : null;
+            var dst = sprite != null ? sprite.texture as Texture2D : null;
+            if (dst == null)
+            {
+                Debug.LogWarning("paste_image: Pic has no texture to paste onto.");
+                yield break;
+            }
+
+            Texture2D src = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            if (!src.LoadImage(sourceBytes))
+            {
+                UnityEngine.Object.Destroy(src);
+                Debug.LogWarning("paste_image: could not decode source image bytes.");
+                yield break;
+            }
+
+            int srcW = dst.width;
+            int srcH = dst.height;
+            int x = ParsePixelOrPercent(action.GetArg("x"), srcW) ?? 0;
+            int y = ParsePixelOrPercent(action.GetArg("y"), srcH) ?? 0;
+            int w = ParsePixelOrPercent(action.GetArg("width"), srcW) ?? src.width;
+            int h = ParsePixelOrPercent(action.GetArg("height"), srcH) ?? src.height;
+            string mode = (action.GetArg("mode") ?? "fit").Trim().ToLowerInvariant();
+            float opacity = ParseFloat(action.GetArg("opacity"), 1f);
+            float hAlign = ParseAlign(action.GetArg("align"), 0.5f, isVertical: false);
+            float vAlign = ParseAlign(action.GetArg("valign"), 0.5f, isVertical: true);
+
+            dst.BlitImageFitted(src, x, y, w, h, mode, opacity, hAlign, vAlign);
+            dst.Apply();
+            UnityEngine.Object.Destroy(src);
+            yield return null;
+        }
+
+        private void ExecuteNewCanvas(SkillAction action)
+        {
+            int w = ParsePositiveInt(action.GetArg("width"), 1024);
+            int h = ParsePositiveInt(action.GetArg("height"), 1024);
+            Color color = ParseColor(action.GetArg("color"), Color.white);
+
+            // Hard cap to keep the LLM from accidentally allocating a 30000x30000 buffer.
+            const int MAX_DIM = 8192;
+            if (w > MAX_DIM || h > MAX_DIM)
+            {
+                _host?.AddSystemInjectionAndBubble(
+                    $"new_canvas: requested size {w}x{h} exceeds the {MAX_DIM}-pixel cap. Pick a smaller width/height.");
+                return;
+            }
+
+            var imageGen = ImageGenerator.Get();
+            if (imageGen == null)
+            {
+                _host?.AddInfoBubble("new_canvas error: ImageGenerator not initialized yet.");
+                return;
+            }
+
+            var blank = new Texture2D(w, h, TextureFormat.RGBA32, false);
+            blank.Fill(color);
+            blank.Apply();
+
+            GameObject picGO = imageGen.CreateNewPic();
+            if (picGO == null)
+            {
+                UnityEngine.Object.Destroy(blank);
+                _host?.AddInfoBubble("new_canvas error: failed to spawn a Pic.");
+                return;
+            }
+            var picMain = picGO.GetComponent<PicMain>();
+            if (picMain == null)
+            {
+                UnityEngine.Object.Destroy(blank);
+                _host?.AddInfoBubble("new_canvas error: spawned object has no PicMain.");
+                return;
+            }
+
+            // SetImage takes ownership when bDoFullCopy=false; do a full copy so the
+            // Pic owns its own buffer and we can dispose ours predictably.
+            picMain.SetImage(blank, true);
+            UnityEngine.Object.Destroy(blank);
+
+            _host?.AppendImageBubbleForPic(action, picMain);
+            _host?.SetLastSpawnedPicForTurn(picMain);
+            _lastLocalOpOutputChatImageIndex = _host?.GetLatestChatImageIndex() ?? -1;
+            _lastLocalOpOutputPic = picMain;
+        }
+
+        private void ExecuteCropResize(SkillAction action)
+        {
+            byte[] canvasBytes = ResolveCanvasBytes(action, "crop_resize", out bool errored, out bool deferred, allowMissing: false);
+            if (errored || deferred) return;
+
+            Func<PicMain, IEnumerator> op = (pic) => CropResizeCoroutine(pic, action);
+            RunOrChainLocalOp(action, "crop_resize", canvasBytes, op);
+        }
+
+        private IEnumerator CropResizeCoroutine(PicMain pic, SkillAction action)
+        {
+            var sprite = pic != null ? pic.m_pic?.sprite : null;
+            var dst = sprite != null ? sprite.texture as Texture2D : null;
+            if (dst == null)
+            {
+                Debug.LogWarning("crop_resize: Pic has no texture.");
+                yield break;
+            }
+
+            int srcW = dst.width;
+            int srcH = dst.height;
+            int targetW = ParsePixelOrPercent(action.GetArg("width"), srcW) ?? srcW;
+            int targetH = ParsePixelOrPercent(action.GetArg("height"), srcH) ?? srcH;
+            string mode = (action.GetArg("mode") ?? "resize").Trim().ToLowerInvariant();
+            Color bgColor = ParseColor(action.GetArg("bg_color"), new Color(0, 0, 0, 0));
+
+            if (targetW <= 0 || targetH <= 0)
+            {
+                Debug.LogWarning("crop_resize: width/height must be > 0.");
+                yield break;
+            }
+
+            switch (mode)
+            {
+                case "resize": // legacy "stretch" alias
+                case "stretch":
+                    pic.Resize(targetW, targetH, false, FilterMode.Bilinear);
+                    break;
+                case "fill":
+                    pic.Resize(targetW, targetH, true, FilterMode.Bilinear);
+                    break;
+                case "fit":
+                {
+                    var blank = new Texture2D(targetW, targetH, TextureFormat.RGBA32, false);
+                    blank.Fill(bgColor);
+                    blank.Apply();
+                    blank.BlitImageFitted(dst, 0, 0, targetW, targetH, "fit", 1f, 0.5f, 0.5f);
+                    blank.Apply();
+                    pic.SetImage(blank, true);
+                    UnityEngine.Object.Destroy(blank);
+                    break;
+                }
+                case "crop":
+                {
+                    int cropX = ParsePixelOrPercent(action.GetArg("x"), srcW) ?? 0;
+                    int cropY = ParsePixelOrPercent(action.GetArg("y"), srcH) ?? 0;
+                    cropX = Mathf.Clamp(cropX, 0, Mathf.Max(0, srcW - 1));
+                    cropY = Mathf.Clamp(cropY, 0, Mathf.Max(0, srcH - 1));
+                    int cropW = Mathf.Min(targetW, srcW - cropX);
+                    int cropH = Mathf.Min(targetH, srcH - cropY);
+                    // ResizeTool.CropTexture takes (x, y) as top-left in y-down terms.
+                    var cropped = ResizeTool.CropTexture(dst, new Rect(cropX, cropY, cropW, cropH));
+                    pic.SetImage(cropped, false);
+                    break;
+                }
+                default:
+                    _host?.AddSystemInjectionAndBubble(
+                        "crop_resize: mode=\"" + mode + "\" is not recognized. Use resize / fit / fill / crop.");
+                    yield break;
+            }
+            yield return null;
+        }
+
+        private void ExecuteDrawShape(SkillAction action)
+        {
+            byte[] canvasBytes = ResolveCanvasBytes(action, "draw_shape", out bool errored, out bool deferred, allowMissing: false);
+            if (errored || deferred) return;
+
+            Func<PicMain, IEnumerator> op = (pic) => DrawShapeCoroutine(pic, action);
+            RunOrChainLocalOp(action, "draw_shape", canvasBytes, op);
+        }
+
+        private IEnumerator DrawShapeCoroutine(PicMain pic, SkillAction action)
+        {
+            var sprite = pic != null ? pic.m_pic?.sprite : null;
+            var dst = sprite != null ? sprite.texture as Texture2D : null;
+            if (dst == null)
+            {
+                Debug.LogWarning("draw_shape: Pic has no texture.");
+                yield break;
+            }
+
+            int srcW = dst.width;
+            int srcH = dst.height;
+            string shape = (action.GetArg("shape") ?? "rect").Trim().ToLowerInvariant();
+            int x = ParsePixelOrPercent(action.GetArg("x"), srcW) ?? 0;
+            int y = ParsePixelOrPercent(action.GetArg("y"), srcH) ?? 0;
+            int w = ParsePixelOrPercent(action.GetArg("width"), srcW) ?? 0;
+            int h = ParsePixelOrPercent(action.GetArg("height"), srcH) ?? 0;
+            Color? fill = ParseColorOpt(action.GetArg("fill_color"));
+            Color? outline = ParseColorOpt(action.GetArg("outline_color"));
+            int outlineWidth = ParsePixelOrPercent(action.GetArg("outline_width"), srcW) ?? 1;
+            int cornerRadius = ParsePixelOrPercent(action.GetArg("corner_radius"), srcW) ?? 0;
+
+            if (!fill.HasValue && !outline.HasValue)
+            {
+                _host?.AddSystemInjectionAndBubble(
+                    "draw_shape needs at least fill_color or outline_color (or both). Got neither.");
+                yield break;
+            }
+
+            if (shape == "circle")
+            {
+                int cx = x + w / 2;
+                int cy = y + h / 2;
+                int radius = Mathf.Max(1, Mathf.Min(w, h) / 2);
+                if (fill.HasValue) dst.DrawFilledCircle(cx, cy, radius, fill.Value);
+                if (outline.HasValue) dst.DrawOutlineCircle(cx, cy, radius, outline.Value, outlineWidth);
+            }
+            else // rect (or anything else -> rect)
+            {
+                if (w <= 0 || h <= 0)
+                {
+                    _host?.AddSystemInjectionAndBubble("draw_shape rect needs width and height > 0.");
+                    yield break;
+                }
+                if (fill.HasValue) dst.DrawFilledRect(x, y, w, h, fill.Value, cornerRadius);
+                if (outline.HasValue) dst.DrawOutlineRect(x, y, w, h, outline.Value, outlineWidth, cornerRadius);
+            }
+
+            dst.Apply();
+            yield return null;
+        }
+
+        // ---------- Composition helpers ----------
+
+        private bool PromoteCanvasReferenceToChainIfNeeded(SkillAction action, string skillId, int chatN)
+        {
+            if (action == null || action.Chain || chatN <= 0)
+                return false;
+
+            PicMain currentTurnPic = _host?.GetLastSpawnedPicForTurn();
+            if (currentTurnPic == null)
+                return false;
+
+            bool referencesLatestLocalOutput = _lastLocalOpOutputChatImageIndex > 0
+                && chatN == _lastLocalOpOutputChatImageIndex
+                && _lastLocalOpOutputPic != null
+                && currentTurnPic == _lastLocalOpOutputPic;
+
+            if (!referencesLatestLocalOutput)
+                return false;
+
+            action.Args.Remove("chat_image");
+            action.Args["chain"] = "true";
+            _host?.AddInfoBubble(
+                $"(treated {skillId} chat_image=\"{chatN}\" as chain=\"true\" - it references the Pic just spawned earlier in this reply)");
+            return true;
+        }
+
+        private bool TryResolveChatImageBytesOrDefer(SkillAction action, string skillId, string argName, int chatN, out byte[] bytes, out bool deferred)
+        {
+            bytes = _host?.GetChatImagePngBytes(chatN);
+            deferred = false;
+            if (bytes != null)
+                return true;
+
+            if (TryDeferActionUntilChatImageReady(action, skillId, argName, chatN))
+            {
+                deferred = true;
+                return false;
+            }
+
+            return false;
+        }
+
+        private bool TryDeferActionUntilChatImageReady(SkillAction action, string skillId, string argName, int chatN)
+        {
+            if (action == null || chatN <= 0)
+                return false;
+            if (_reloadAttemptedActions.Contains(action))
+                return false;
+
+            var runner = _host?.CoroutineRunner;
+            if (runner == null)
+                return false;
+
+            bool preparing = _host?.TryPrepareChatImageForRead(chatN) ?? false;
+            if (!preparing)
+                return false;
+
+            _reloadAttemptedActions.Add(action);
+            _host?.AddInfoBubble(
+                $"(reloading {argName}=\"{chatN}\" before running {skillId})");
+            runner.StartCoroutine(ExecuteAfterChatImageReady(action, skillId, argName, chatN));
+            return true;
+        }
+
+        private IEnumerator ExecuteAfterChatImageReady(SkillAction action, string skillId, string argName, int chatN)
+        {
+            float deadline = Time.realtimeSinceStartup + ChatImageReloadTimeoutSeconds;
+            while (Time.realtimeSinceStartup < deadline)
+            {
+                byte[] bytes = _host?.GetChatImagePngBytes(chatN);
+                if (bytes != null && bytes.Length > 0)
+                {
+                    Execute(action);
+                    yield break;
+                }
+                yield return new WaitForSeconds(ChatImageReloadPollSeconds);
+            }
+
+            int chatImageCount = _host?.GetChatImageCount() ?? 0;
+            _host?.AddSystemInjectionAndBubble(
+                $"Skill '{skillId}': {argName}=\"{chatN}\" exists but could not be reloaded for reading. " +
+                $"There are {chatImageCount} numbered chat image slot(s) this session. " +
+                "Try focusing that Pic on the main canvas, or ask the user to paste the image again.");
+        }
+
+        private byte[] TryFallbackChatImageBytes(SkillAction action, string skillId, int requestedIndex, int chatImageCount)
+        {
+            if (requestedIndex <= 0 || chatImageCount <= 0)
+                return null;
+
+            if (_host?.GetLastSpawnedPicForTurn() != null)
+                return null;
+
+            int fallbackIndex = -1;
+            if (requestedIndex == chatImageCount + 1)
+                fallbackIndex = _host?.GetLatestChatImageIndex() ?? 0;
+
+            if (fallbackIndex <= 0)
+                return null;
+
+            byte[] bytes = _host?.GetChatImagePngBytes(fallbackIndex);
+            if (bytes == null)
+                return null;
+
+            if (action != null)
+                action.Args["chat_image"] = fallbackIndex.ToString();
+
+            _host?.AddInfoBubble(
+                $"(chat_image=\"{requestedIndex}\" is not available; using latest chat_image=\"{fallbackIndex}\" for {skillId})");
+            return bytes;
+        }
+
+        /// <summary>
+        /// Resolve the canvas image (the one the local op operates on / draws into)
+        /// using the same chat_image / attachment / chain semantics image_to_image
+        /// already has. Returns null bytes for the chain="true" case (caller knows
+        /// to inherit from the prior Pic). Sets <paramref name="errored"/> when the
+        /// LLM asked for a slot that isn't available; caller should bail.
+        /// When <paramref name="allowMissing"/> is true and no image slot is available,
+        /// returns null bytes without erroring (used by skills that can paint on a
+        /// freshly-implicit blank canvas - currently none, kept for forward-compat).
+        /// </summary>
+        private byte[] ResolveCanvasBytes(SkillAction action, string skillId, out bool errored, out bool deferred, bool allowMissing)
+        {
+            errored = false;
+            deferred = false;
+            if (action.Chain) return null; // caller routes to chain path
+
+            int chatN = action.ChatImageIndex ?? -1;
+            int turnAttachCount = _host?.GetTurnAttachmentCount() ?? 0;
+            int chatImageCount = _host?.GetChatImageCount() ?? 0;
+
+            if (chatN > 0)
+            {
+                if (PromoteCanvasReferenceToChainIfNeeded(action, skillId, chatN))
+                    return null;
+
+                if (!TryResolveChatImageBytesOrDefer(action, skillId, "chat_image", chatN, out byte[] bytes, out deferred))
+                {
+                    if (deferred) return null;
+                    bytes = TryFallbackChatImageBytes(action, skillId, chatN, chatImageCount);
+                    if (bytes != null)
+                        return bytes;
+
+                    _host?.AddSystemInjectionAndBubble(
+                        $"Skill '{skillId}': chat_image=\"{chatN}\" is not available. " +
+                        $"There are {chatImageCount} numbered chat image slot(s) this session.");
+                    errored = true;
+                    return null;
+                }
+                return bytes;
+            }
+            if (turnAttachCount > 0)
+            {
+                int idx = action.AttachmentIndex ?? 1;
+                byte[] bytes = _host?.GetTurnAttachmentBytes(idx);
+                if (bytes == null)
+                {
+                    _host?.AddSystemInjectionAndBubble(
+                        $"Skill '{skillId}' wanted attachment={idx} but the user only attached {turnAttachCount} image(s) this turn.");
+                    errored = true;
+                    return null;
+                }
+                return bytes;
+            }
+            if (chatImageCount > 0)
+            {
+                int implicitIdx = _host?.GetLatestChatImageIndex() ?? 0;
+                if (implicitIdx > 0
+                    && TryResolveChatImageBytesOrDefer(action, skillId, "implicit chat_image", implicitIdx, out byte[] bytes, out deferred))
+                {
+                    _host?.AddInfoBubble($"(auto-picked chat_image=\"{implicitIdx}\" - the latest image - as the canvas for {skillId})");
+                    return bytes;
+                }
+                if (deferred) return null;
+            }
+
+            if (allowMissing) return null;
+
+            _host?.AddSystemInjectionAndBubble(
+                $"Skill '{skillId}' needs a canvas image: pass chat_image=\"N\" / attachment=\"N\", " +
+                "set chain=\"true\" to stack onto a prior step in this same reply, " +
+                "or call new_canvas first to create a blank canvas.");
+            errored = true;
+            return null;
+        }
+
+        /// <summary>
+        /// Resolve the "source image" for paste_image (the image being pasted ONTO
+        /// the canvas). Looks at source_chat_image / source_attachment. Returns null
+        /// when the LLM didn't specify a source image; caller decides whether that's
+        /// an error.
+        /// </summary>
+        private byte[] ResolveSourceImageBytes(SkillAction action, string skillId, out bool errored, out bool deferred)
+        {
+            errored = false;
+            deferred = false;
+            string srcChat = action.GetArg("source_chat_image");
+            string srcAttach = action.GetArg("source_attachment");
+
+            if (!string.IsNullOrEmpty(srcChat) && int.TryParse(srcChat, out int chatN) && chatN > 0)
+            {
+                if (!TryResolveChatImageBytesOrDefer(action, skillId, "source_chat_image", chatN, out byte[] bytes, out deferred))
+                {
+                    if (deferred) return null;
+                    int chatImageCount = _host?.GetChatImageCount() ?? 0;
+                    _host?.AddSystemInjectionAndBubble(
+                        $"Skill '{skillId}': source_chat_image=\"{chatN}\" is not available. " +
+                        $"There are {chatImageCount} numbered chat image slot(s) this session.");
+                    errored = true;
+                    return null;
+                }
+                return bytes;
+            }
+            if (!string.IsNullOrEmpty(srcAttach) && int.TryParse(srcAttach, out int attachN) && attachN > 0)
+            {
+                int turnAttachCount = _host?.GetTurnAttachmentCount() ?? 0;
+                byte[] bytes = _host?.GetTurnAttachmentBytes(attachN);
+                if (bytes == null)
+                {
+                    _host?.AddSystemInjectionAndBubble(
+                        $"Skill '{skillId}' wanted source_attachment=\"{attachN}\" but the user only attached {turnAttachCount} image(s) this turn.");
+                    errored = true;
+                    return null;
+                }
+                return bytes;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Spawn a fresh Pic, seed its texture from canvasBytes, register the chat
+        /// bubble, then run the supplied local op coroutine. For chain="true" the
+        /// op is appended to the prior Pic's job queue instead. Single entry point so
+        /// every composition skill behaves identically with respect to bubbles and
+        /// chain semantics.
+        /// </summary>
+        private void RunOrChainLocalOp(SkillAction action, string skillId, byte[] canvasBytes, Func<PicMain, IEnumerator> op)
+        {
+            if (op == null) return;
+
+            if (action.Chain)
+            {
+                if (action.AttachmentIndex.HasValue || action.ChatImageIndex.HasValue)
+                {
+                    _host?.AddSystemInjectionAndBubble(
+                        $"Skill '{skillId}' with chain=\"true\" must NOT also set attachment / chat_image. " +
+                        "A chained step automatically uses the previous step's output as its canvas. " +
+                        "Drop the attachment/chat_image attribute and re-emit.");
+                    return;
+                }
+                var prevPic = _host?.ConsumeChainTarget();
+                if (prevPic == null)
+                {
+                    _host?.AddSystemInjectionAndBubble(
+                        $"Skill '{skillId}' was called with chain=\"true\" but no Pic was spawned earlier in this turn. " +
+                        "Either drop chain=\"true\" or emit a base generate_image / new_canvas / image_to_image action first.");
+                    return;
+                }
+                try
+                {
+                    prevPic.AppendLocalOp(op);
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"SkillActionExecutor: AppendLocalOp threw for '{skillId}': " + ex);
+                    _host?.AddSystemInjectionAndBubble(
+                        $"Skill '{skillId}' (chain=\"true\"): failed to append local op. See Unity console.");
+                }
+                return;
+            }
+
+            if (canvasBytes == null)
+            {
+                _host?.AddInfoBubble($"Skill '{skillId}': internal error - no canvas resolved.");
+                return;
+            }
+
+            var imageGen = ImageGenerator.Get();
+            if (imageGen == null)
+            {
+                _host?.AddInfoBubble($"Skill '{skillId}' error: ImageGenerator not initialized yet.");
+                return;
+            }
+            GameObject picGO = imageGen.CreateNewPic();
+            if (picGO == null)
+            {
+                _host?.AddInfoBubble($"Skill '{skillId}' error: failed to spawn a Pic.");
+                return;
+            }
+            var picMain = picGO.GetComponent<PicMain>();
+            if (picMain == null)
+            {
+                _host?.AddInfoBubble($"Skill '{skillId}' error: spawned object has no PicMain.");
+                return;
+            }
+
+            var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            if (!tex.LoadImage(canvasBytes))
+            {
+                UnityEngine.Object.Destroy(tex);
+                _host?.AddSystemInjectionAndBubble(
+                    $"Skill '{skillId}': could not decode the canvas image bytes.");
+                return;
+            }
+            picMain.SetImage(tex, false);
+
+            _host?.AppendImageBubbleForPic(action, picMain);
+            _host?.SetLastSpawnedPicForTurn(picMain);
+            _lastLocalOpOutputChatImageIndex = _host?.GetLatestChatImageIndex() ?? -1;
+            _lastLocalOpOutputPic = picMain;
+
+            // Wrap the coroutine launch so any synchronous exception thrown before
+            // the coroutine's first yield (TMP setup, font lookup, etc.) is logged
+            // with context instead of dropping the whole turn.
+            try
+            {
+                picMain.RunLocalOpImmediate(op);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"SkillActionExecutor: '{skillId}' coroutine launch threw {ex.GetType().Name}: {ex}");
+                _host?.AddSystemInjectionAndBubble(
+                    $"Skill '{skillId}': failed to start the local op ({ex.GetType().Name}: {ex.Message}). " +
+                    "See Unity console for the full stack trace.");
+            }
+        }
+
+        // ---------- Small parsers shared by the composition skills ----------
+
+        /// <summary>
+        /// Parse "120" as 120 pixels, "15%" as 15% of <paramref name="referenceDim"/>
+        /// (rounded to int). Returns null on missing / unparseable input. Used by
+        /// every composition skill so the LLM can express positions/sizes either way
+        /// without learning two attribute conventions.
+        /// </summary>
+        private static int? ParsePixelOrPercent(string s, int referenceDim)
+        {
+            if (string.IsNullOrEmpty(s)) return null;
+            s = s.Trim();
+            if (s.EndsWith("%"))
+            {
+                string num = s.Substring(0, s.Length - 1).Trim();
+                if (float.TryParse(num, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float pct))
+                    return Mathf.RoundToInt(pct * 0.01f * referenceDim);
+                return null;
+            }
+            if (float.TryParse(s, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float pixels))
+                return Mathf.RoundToInt(pixels);
+            return null;
+        }
+
+        private static int ParsePositiveInt(string s, int fallback)
+        {
+            if (string.IsNullOrEmpty(s)) return fallback;
+            if (int.TryParse(s.Trim(), out int v) && v > 0) return v;
+            return fallback;
+        }
+
+        private static float ParseFloat(string s, float fallback)
+        {
+            if (string.IsNullOrEmpty(s)) return fallback;
+            if (float.TryParse(s.Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float v))
+                return v;
+            return fallback;
+        }
+
+        private static bool ParseBool(string s, bool fallback)
+        {
+            if (string.IsNullOrEmpty(s)) return fallback;
+            s = s.Trim().ToLowerInvariant();
+            if (s == "true" || s == "1" || s == "yes" || s == "on") return true;
+            if (s == "false" || s == "0" || s == "no" || s == "off") return false;
+            return fallback;
+        }
+
+        private static float ParseAlign(string s, float fallback, bool isVertical)
+        {
+            if (string.IsNullOrEmpty(s)) return fallback;
+            s = s.Trim().ToLowerInvariant();
+            if (!isVertical)
+            {
+                if (s == "left" || s == "start") return 0f;
+                if (s == "right" || s == "end") return 1f;
+                if (s == "center" || s == "middle") return 0.5f;
+            }
+            else
+            {
+                if (s == "top") return 0f;
+                if (s == "bottom") return 1f;
+                if (s == "middle" || s == "center") return 0.5f;
+            }
+            if (float.TryParse(s, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float v))
+                return Mathf.Clamp01(v);
+            return fallback;
+        }
+
+        /// <summary>
+        /// Parse "#RGB" / "#RRGGBB" / "#RRGGBBAA" / named colors via Unity's HTML
+        /// parser, falling back to <paramref name="fallback"/> on failure. Use
+        /// <see cref="ParseColorOpt"/> when "missing" is meaningful (e.g. optional
+        /// fill / outline).
+        /// </summary>
+        private static Color ParseColor(string s, Color fallback)
+        {
+            if (string.IsNullOrEmpty(s)) return fallback;
+            s = s.Trim();
+            if (!s.StartsWith("#")) s = "#" + s;
+            if (ColorUtility.TryParseHtmlString(s, out Color c)) return c;
+            return fallback;
+        }
+
+        private static Color? ParseColorOpt(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return null;
+            string trimmed = s.Trim();
+            if (!trimmed.StartsWith("#")) trimmed = "#" + trimmed;
+            if (ColorUtility.TryParseHtmlString(trimmed, out Color c)) return c;
+            return null;
+        }
+
+        /// <summary>
+        /// Look up a TMP font by name via AIGuideManager's font array. Falls back to
+        /// AIGuideManager font[0], then to TMP_Settings.defaultFontAsset, then to a
+        /// global Resources lookup. Always returns a non-null TMP_FontAsset if at all
+        /// possible - passing a null font to RTUtil.RenderTextToTexture2D crashes
+        /// TextMeshPro internally with an IndexOutOfRangeException, which is the most
+        /// common reason a draw_text call dies before its first yield.
+        /// </summary>
+        private static TMP_FontAsset ResolveFontByName(string name)
+        {
+            // 1. AIGuideManager font array (the curated set the existing poster
+            //    pipeline already uses). Best font for our purposes since it's what
+            //    the rest of the app's text rendering targets.
+            var guide = AIGuideManager.Get();
+            if (guide != null)
+            {
+                if (!string.IsNullOrEmpty(name))
+                {
+                    var found = guide.GetFontByName(name);
+                    if (found != null) return found;
+                }
+                var byId = guide.GetFontByID(0);
+                if (byId != null) return byId;
+            }
+
+            // 2. TMP project default. This is what TMP uses when you create a
+            //    TextMeshPro component without setting font explicitly. Should
+            //    always be present in any project that has TMP installed.
+            try
+            {
+                if (TMP_Settings.defaultFontAsset != null)
+                    return TMP_Settings.defaultFontAsset;
+            }
+            catch { /* TMP_Settings missing - keep falling through */ }
+
+            // 3. Last-ditch Resources lookup. Built-in TMP ships LiberationSans SDF
+            //    in Resources/Fonts & Materials/.
+            try
+            {
+                var fallback = Resources.Load<TMP_FontAsset>("Fonts & Materials/LiberationSans SDF");
+                if (fallback != null) return fallback;
+            }
+            catch { /* nothing more we can do */ }
+
+            return null;
         }
 
     }

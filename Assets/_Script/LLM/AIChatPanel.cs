@@ -39,6 +39,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private ChatContextBuilder _contextBuilder;
     private SkillActionParser _actionParser;
     private SkillActionExecutor _actionExecutor;
+    private readonly HashSet<string> _stickyAutoloadSkillIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    private const string AUTOLOAD_SKILL_CONTEXT_TAG = "aichat_autoload_skill_context";
 
     // Header status pill - GPU busy count + LLM count, refreshed periodically.
     private TextMeshProUGUI _statusPillText;
@@ -112,6 +114,24 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // get/set helpers next to GetKeepLastNMedia. Both must stay in sync.
     private const string PREFS_PRESET_PREFIX = "aichat_preset_prefix";
     private const string DEFAULT_PRESET_PREFIX = "";
+    // Whether to ship the user's dragged/pasted images as base64 to the active
+    // LLM session. Off by default: only a one-line caption (computed by a
+    // separate one-shot vision call) plus dimensions ride along with the
+    // user message, and the raw bytes never enter chat history.
+    private const string PREFS_INCLUDE_IMAGE_DATA = "aichat_include_image_data";
+    // Cap on the largest edge (in pixels) of dragged/pasted images. Anything
+    // bigger gets bilinear-downscaled at attach time so that captioning,
+    // image_to_image source bytes, and chat-history embedding all run against
+    // a sane payload. 0 = no resize.
+    private const string PREFS_ATTACHMENT_MAX_EDGE = "aichat_attachment_max_edge";
+    private const int DEFAULT_ATTACHMENT_MAX_EDGE = 1024;
+    // Auto-continue: when the user clicks Send with no input (the "(continue)"
+    // path) and the Auto toggle is on, fire up to N additional Continue turns
+    // automatically. The toggle and N value live in PlayerPrefs so they stick
+    // across sessions.
+    private const string PREFS_AUTO_CONTINUE_ON = "aichat_auto_continue_on";
+    private const string PREFS_AUTO_CONTINUE_COUNT = "aichat_auto_continue_count";
+    private const int DEFAULT_AUTO_CONTINUE_COUNT = 10;
 
     // Footer
     private TMP_InputField _inputField;
@@ -121,6 +141,17 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private Button _clearButton;
     private Button _stopButton;
     private Button _copyButton;
+    private Toggle _includeImageDataToggle;
+    private Toggle _autoContinueToggle;
+    private TMP_InputField _autoContinueCountInput;
+    // Internal countdown for the auto-continue burst. Set from the N field
+    // when the user manually clicks Send with Auto on; decremented after each
+    // successful turn and re-fires another Send. Reset on Stop/Clear/abort
+    // (or when the user turns Auto off mid-burst).
+    private int _autoContinueRemaining = 0;
+    // Latch so re-entering OnSendClicked from inside an auto-fire does NOT
+    // reset _autoContinueRemaining back to N.
+    private bool _autoContinueFiring = false;
     private TextMeshProUGUI _statusText;
 
     // Image attachments (drag-drop / clipboard paste) - all the heavy lifting (drop
@@ -131,6 +162,31 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private RectTransform _attachmentsStrip;
     private RectTransform _footerRT;
     private const float ATTACHMENT_STRIP_HEIGHT = 70f;
+
+    // Watchdog timeout for vision-LLM caption requests. Local Ollama / llama.cpp
+    // models occasionally hang on a particular input or after long uptime; without
+    // a force-release the LLM slot stays marked busy forever and the user can't
+    // get the slot back. After this timeout we decrement the busy count and treat
+    // the caption as failed.
+    private const float CAPTION_TIMEOUT_SECONDS = 60f;
+
+    private class CaptionJob
+    {
+        // Mutual-exclusion latch between three completion paths: onDone (HTTP
+        // returned), watchdog (timeout), and OnCaptionCancelled (user X'd it).
+        // Whichever wins flips `completed`; the others become no-ops so we
+        // never decrement the busy count twice (which could steal a slot from
+        // a different task that has since been allocated to the same LLM).
+        public bool completed;
+        public bool cancelled;
+        public int targetId = -1;
+        public int replicaIndex;
+        public Coroutine watchdog;
+    }
+
+    // Outstanding caption jobs keyed by attachment id. Populated when an attachment
+    // arrives, drained either by completion or by the user clicking the X.
+    private readonly Dictionary<int, CaptionJob> _captionJobs = new Dictionary<int, CaptionJob>();
 
     // Conversation
     private GPTPromptManager _promptManager;
@@ -170,7 +226,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private const float MIN_WIDTH = 480f;
     private const float MIN_HEIGHT = 360f;
     private const float HEADER_HEIGHT = 40f;
-    private const float FOOTER_HEIGHT = 130f;
+    private const float FOOTER_HEIGHT = 156f;
     private const float FOOTER_DRAG_BAR_HEIGHT = 10f;
     private const float MOVE_FRAME_THICKNESS = 18f;
     private const float RESIZE_EDGE_THICKNESS = 10f;
@@ -794,6 +850,40 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _copyButton = CreateFooterButton(footer.transform, "Copy", new Vector2(-136, -68), new Vector2(58, 30), OnCopyClicked);
         _stopButton.interactable = false;
 
+        // Row 3: "Include image data" checkbox - mirrors the Send/Stop/Clear layout
+        // beneath them. Default is OFF: dragged/pasted images are captioned by a
+        // separate one-shot vision call and only the caption rides along with the
+        // user message, instead of shipping the raw base64 every turn.
+        _includeImageDataToggle = CreateFooterToggle(
+            footer.transform,
+            "Include image data",
+            new Vector2(-8, -104),
+            new Vector2(186, 22),
+            GetIncludeImageData(),
+            v => SetIncludeImageData(v));
+
+        // Row 4: "Auto" toggle on the left + small numeric N input on the right.
+        // When Auto is on, hitting Send fires the manual turn then automatically
+        // fires up to N additional "(continue)" turns once each one completes.
+        // Stop, Clear, an aborted turn, or toggling Auto off cancels the burst.
+        _autoContinueToggle = CreateFooterToggle(
+            footer.transform,
+            "Auto",
+            new Vector2(-72, -130),
+            new Vector2(122, 22),
+            GetAutoContinueEnabled(),
+            v =>
+            {
+                SetAutoContinueEnabled(v);
+                if (!v) _autoContinueRemaining = 0;
+            });
+        _autoContinueCountInput = CreateFooterIntInput(
+            footer.transform,
+            new Vector2(-8, -130),
+            new Vector2(60, 22),
+            GetAutoContinueCount(),
+            v => SetAutoContinueCount(v));
+
         CreateAttachmentsStrip(footer.transform);
 
         // The helper owns all attachment state (list, drop intercept, paste, thumb UI).
@@ -805,8 +895,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             stripContainer: _attachmentsStrip,
             pasteField: _inputField,
             font: _font,
-            stripHeight: ATTACHMENT_STRIP_HEIGHT);
+            stripHeight: ATTACHMENT_STRIP_HEIGHT,
+            // Live-read the cap so the user can change it in settings without
+            // having to reopen the chat panel; takes effect on the next drop.
+            maxEdgeProvider: GetAttachmentMaxEdge);
         _attachmentZone.OnAttachmentsChanged += OnAttachmentsChanged;
+        _attachmentZone.OnAttachmentAdded += OnAttachmentAdded;
+        _attachmentZone.OnCaptionCancelled += OnCaptionCancelled;
 
         CreateFooterDragBar(footer.transform);
     }
@@ -873,6 +968,125 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         return button;
     }
 
+    /// <summary>
+    /// Build a checkbox-style Toggle anchored to the top-right of <paramref name="parent"/>,
+    /// matching the visual style of <see cref="CreateFooterButton"/> so the row 3
+    /// "Include image data" toggle reads as part of the same control cluster. Box on
+    /// the left, label on the right. <paramref name="onChanged"/> fires for both user
+    /// clicks and programmatic SetIsOnWithoutNotify - callers are responsible for
+    /// PlayerPrefs persistence inside the callback.
+    /// </summary>
+    private Toggle CreateFooterToggle(Transform parent, string label, Vector2 anchoredPos, Vector2 size, bool initialOn, UnityEngine.Events.UnityAction<bool> onChanged)
+    {
+        var go = new GameObject("Toggle_" + label);
+        go.transform.SetParent(parent, false);
+        var rt = go.AddComponent<RectTransform>();
+        rt.anchorMin = new Vector2(1, 1);
+        rt.anchorMax = new Vector2(1, 1);
+        rt.pivot = new Vector2(1, 1);
+        rt.anchoredPosition = anchoredPos;
+        rt.sizeDelta = size;
+
+        // Box (target graphic) sits on the left side of the row.
+        const float boxSize = 16f;
+        var boxGo = new GameObject("Box");
+        boxGo.transform.SetParent(go.transform, false);
+        var boxRt = boxGo.AddComponent<RectTransform>();
+        boxRt.anchorMin = new Vector2(0, 0.5f);
+        boxRt.anchorMax = new Vector2(0, 0.5f);
+        boxRt.pivot = new Vector2(0, 0.5f);
+        boxRt.sizeDelta = new Vector2(boxSize, boxSize);
+        boxRt.anchoredPosition = new Vector2(0, 0);
+        var boxImg = boxGo.AddComponent<Image>();
+        boxImg.color = Color.white;
+
+        // Checkmark graphic - shown when the toggle is on.
+        var checkGo = new GameObject("Check");
+        checkGo.transform.SetParent(boxGo.transform, false);
+        var checkRt = checkGo.AddComponent<RectTransform>();
+        checkRt.anchorMin = Vector2.zero;
+        checkRt.anchorMax = Vector2.one;
+        checkRt.offsetMin = new Vector2(2, 2);
+        checkRt.offsetMax = new Vector2(-2, -2);
+        var checkTmp = checkGo.AddComponent<TextMeshProUGUI>();
+        checkTmp.font = _font;
+        checkTmp.text = "X";
+        checkTmp.fontSize = 14;
+        checkTmp.fontStyle = FontStyles.Bold;
+        checkTmp.color = TextTitle;
+        checkTmp.alignment = TextAlignmentOptions.Center;
+        checkTmp.raycastTarget = false;
+
+        // Label to the right of the box.
+        var lblGo = new GameObject("Label");
+        lblGo.transform.SetParent(go.transform, false);
+        var lblRt = lblGo.AddComponent<RectTransform>();
+        lblRt.anchorMin = new Vector2(0, 0);
+        lblRt.anchorMax = new Vector2(1, 1);
+        lblRt.offsetMin = new Vector2(boxSize + 6, 0);
+        lblRt.offsetMax = Vector2.zero;
+        var lblTmp = lblGo.AddComponent<TextMeshProUGUI>();
+        lblTmp.font = _font;
+        lblTmp.text = label;
+        lblTmp.fontSize = 12;
+        lblTmp.color = new Color(0.2f, 0.2f, 0.2f, 1f);
+        lblTmp.alignment = TextAlignmentOptions.MidlineLeft;
+        lblTmp.raycastTarget = false;
+
+        var toggle = go.AddComponent<Toggle>();
+        toggle.targetGraphic = boxImg;
+        toggle.graphic = checkTmp;
+        toggle.isOn = initialOn;
+        toggle.onValueChanged.AddListener(onChanged);
+        return toggle;
+    }
+
+    /// <summary>
+    /// Small integer input field, anchored top-right of <paramref name="parent"/>
+    /// using the same conventions as <see cref="CreateFooterButton"/>. Fires
+    /// <paramref name="onChanged"/> on end-of-edit with the parsed value (clamped
+    /// to &gt;= 0); caller is responsible for PlayerPrefs persistence.
+    /// </summary>
+    private TMP_InputField CreateFooterIntInput(Transform parent, Vector2 anchoredPos, Vector2 size, int initialValue, UnityEngine.Events.UnityAction<int> onChanged)
+    {
+        var go = TMP_DefaultControls.CreateInputField(new TMP_DefaultControls.Resources());
+        go.name = "Input_Int";
+        go.transform.SetParent(parent, false);
+        var rt = go.GetComponent<RectTransform>();
+        rt.anchorMin = new Vector2(1, 1);
+        rt.anchorMax = new Vector2(1, 1);
+        rt.pivot = new Vector2(1, 1);
+        rt.anchoredPosition = anchoredPos;
+        rt.sizeDelta = size;
+
+        var img = go.GetComponent<Image>();
+        if (img != null) img.color = InputFieldBg;
+
+        var input = go.GetComponent<TMP_InputField>();
+        input.lineType = TMP_InputField.LineType.SingleLine;
+        input.contentType = TMP_InputField.ContentType.IntegerNumber;
+        input.textComponent.alignment = TextAlignmentOptions.MidlineLeft;
+        input.textComponent.color = TextDark;
+        input.textComponent.font = _font;
+        input.textComponent.fontSize = 12;
+        if (input.placeholder is TextMeshProUGUI ph)
+        {
+            ph.text = "N";
+            ph.font = _font;
+            ph.fontSize = 12;
+            ph.color = TextPlaceholder;
+            ph.alignment = TextAlignmentOptions.MidlineLeft;
+        }
+        input.text = initialValue.ToString();
+        input.onEndEdit.AddListener(s =>
+        {
+            int parsed;
+            if (!int.TryParse(s, out parsed) || parsed < 0) parsed = 0;
+            onChanged?.Invoke(parsed);
+        });
+        return input;
+    }
+
     // ---------- Image attachments (drag-drop / clipboard paste) ----------
 
     private void CreateAttachmentsStrip(Transform footerTransform)
@@ -900,6 +1114,68 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     }
 
     /// <summary>
+    /// Fired by ChatImageAttachmentZone for each new attachment. We pre-emptively
+    /// caption the bytes against any vision LLM so the result is in hand by the
+    /// time the user clicks Send. While the caption is in flight the attachment
+    /// stays marked, and Send is disabled via RecomputeSendInteractable.
+    /// </summary>
+    private void OnAttachmentAdded(ChatImageAttachmentZone.AttachmentInfo info)
+    {
+        if (_attachmentZone == null) return;
+        int id = info.id;
+        // Reflect the new in-flight caption count on the Send button immediately.
+        RecomputeSendInteractable();
+        var job = TryCaptionBytes(info.bytes, result =>
+        {
+            _captionJobs.Remove(id);
+            // SetCaption is keyed by id, so it's safe even if earlier attachments
+            // were removed and the visible index has shifted in the meantime.
+            if (_attachmentZone != null)
+                _attachmentZone.SetCaption(id, result.shortCaption, result.longCaption);
+        });
+        if (job != null) _captionJobs[id] = job;
+    }
+
+    /// <summary>
+    /// Fired by ChatImageAttachmentZone when the user X'd an attachment whose
+    /// caption was still in flight. Free the LLM busy slot immediately so it
+    /// can be reused for the next message - we have no way to abort the HTTP
+    /// request itself, but we can stop pretending to wait for it. The job's
+    /// completed/cancelled latches make sure the eventual onDone (or the
+    /// watchdog) is a no-op so we don't double-decrement the busy count.
+    /// </summary>
+    private void OnCaptionCancelled(int attachmentId)
+    {
+        if (!_captionJobs.TryGetValue(attachmentId, out var job)) return;
+        _captionJobs.Remove(attachmentId);
+        if (job.completed) return;  // race: onDone or watchdog already finished it
+        job.cancelled = true;
+        job.completed = true;
+        if (job.watchdog != null)
+        {
+            try { StopCoroutine(job.watchdog); } catch { /* coroutine may already be done */ }
+            job.watchdog = null;
+        }
+        if (job.targetId >= 0)
+        {
+            var instanceMgr = LLMInstanceManager.Get();
+            instanceMgr?.SetLLMBusy(job.targetId, job.replicaIndex, false);
+        }
+    }
+
+    /// <summary>
+    /// Recompute Send button interactability from both the streaming flag AND
+    /// the count of in-flight attachment captions. Call this whenever either
+    /// signal can change (SetBusyUI, OnAttachmentsChanged, OnAttachmentAdded).
+    /// </summary>
+    private void RecomputeSendInteractable()
+    {
+        if (_sendButton == null) return;
+        bool captionsPending = _attachmentZone != null && _attachmentZone.CountInFlightCaptions() > 0;
+        _sendButton.interactable = !_isStreaming && !captionsPending;
+    }
+
+    /// <summary>
     /// Fired by ChatImageAttachmentZone whenever the attachment count changes. We only
     /// need to grow / shrink the footer (and matching chat scroll area) so the typing
     /// field keeps its full height when the strip appears.
@@ -908,6 +1184,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     {
         bool hasAttachments = _attachmentZone != null && _attachmentZone.HasAttachments;
         float extraFooterHeight = hasAttachments ? ATTACHMENT_STRIP_HEIGHT : 0f;
+        // Caption may have just arrived (or an attachment was removed); refresh Send.
+        RecomputeSendInteractable();
 
         // 1) Grow / shrink the footer itself so the input field still has its original
         //    height after the strip reserves space at its top.
@@ -1198,9 +1476,30 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     {
         input.onEndEdit.AddListener(text =>
         {
-            string clean = OpenAITextCompletionManager.RemoveTMPTagsFromString(text ?? "");
+            // Reverse the display-only escapes ConvertMarkdownToTMP applied to the
+            // bubble text (fullwidth '＜' / '＞' substitution). Without this, when
+            // the user edits an assistant bubble - or even when the bubble loses
+            // focus after EnableBubbleEditing flips it to readOnly=false - the
+            // bubble's CURRENT (display-escaped) text gets written back into the
+            // GTPChatLine, then sent to the LLM verbatim on the next turn, which
+            // makes the LLM start mimicking '＜aitools' fullwidth syntax instead of
+            // the real '<aitools_action' tags.
+            string raw = ReverseTmpDisplayEscapes(text ?? "");
+            string clean = OpenAITextCompletionManager.RemoveTMPTagsFromString(raw);
             interaction._content = clean;
         });
+    }
+
+    /// <summary>
+    /// Reverse the display-only character substitutions that ConvertMarkdownToTMP
+    /// applies to bubble text. Currently: fullwidth '＜' (U+FF1C) and '＞' (U+FF1E)
+    /// back to ASCII '<' / '>'. Used when bubble text needs to be persisted as
+    /// raw chat history (e.g. user-edited assistant bubbles).
+    /// </summary>
+    private static string ReverseTmpDisplayEscapes(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+        return text.Replace('\uFF1C', '<').Replace('\uFF1E', '>');
     }
 
     private IEnumerator ResizeBubbleDeferred(TMP_InputField input, LayoutElement inputLE)
@@ -1312,6 +1611,24 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (string.IsNullOrEmpty(text)) return text;
         try
         {
+            // Replace LITERAL angle brackets in the input with their Unicode fullwidth
+            // equivalents (U+FF1C, U+FF1E). TMP's rich-text parser ALWAYS scans for
+            // <tag> patterns and crashes hard (IndexOutOfRangeException in
+            // TMP_Text.ValidateHtmlTag) on unrecognised tag-shaped content like
+            // "<aitools_action skill=...>", List<int>, raw XML, code samples, etc.
+            // A zero-width space immediately after '<' is NOT enough - TMP keeps
+            // walking forward looking for '>'. Substituting the chars entirely is the
+            // only reliable fix. Fullwidth '＜' / '＞' look visually like '<' / '>'
+            // (slightly wider, monospace-style); the user can still copy-paste and
+            // read the content. Done BEFORE markdown expansion so our own injected
+            // tags (<b>, <i>, <size=...>, <color=...>, <font=...>, <mark=...>) below
+            // use FRESH ASCII '<' / '>' chars from string literals and ARE recognised
+            // by TMP. The ORIGINAL text (with real '<>') is preserved in the LLM
+            // context via AddSystemInjectionAndBubble's AddInteraction call - that
+            // happens BEFORE this display path, so the LLM still sees real angle
+            // brackets in its context.
+            text = text.Replace('<', '\uFF1C').Replace('>', '\uFF1E');
+
             // Bold (must run before single * italic so ** isn't eaten by it)
             text = Regex.Replace(text, @"\*\*(.+?)\*\*", "<b>$1</b>", RegexOptions.Singleline);
             // Italic / single-asterisk emphasis -> bold (matches AdventureText behavior)
@@ -1337,12 +1654,35 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private void OnSendClicked()
     {
         if (_isStreaming) return;
+        // Guard the Enter-key path: the Send button is greyed via
+        // RecomputeSendInteractable while attachment captions are pending, but
+        // Enter bypasses the button. Show a hint and bail.
+        if (_attachmentZone != null && _attachmentZone.CountInFlightCaptions() > 0)
+        {
+            AddSystemMessage("Captioning attached image(s)... waiting for description before send.");
+            return;
+        }
+
+        // Manual click (not an auto-fire) seeds the auto-continue burst counter
+        // from the Auto toggle + N field. Auto-fires re-enter through here too,
+        // so the _autoContinueFiring latch keeps the counter from resetting
+        // back to N every iteration.
+        if (!_autoContinueFiring)
+        {
+            if (_autoContinueToggle != null && _autoContinueToggle.isOn)
+                _autoContinueRemaining = GetAutoContinueCount();
+            else
+                _autoContinueRemaining = 0;
+        }
+
         string text = _inputField != null ? _inputField.text : "";
 
         // Allow sending with images even if there's no text (vision models often work
         // better with a short prompt, but "describe this image" is a valid bare-image use).
-        var attachmentBytes = _attachmentZone != null ? _attachmentZone.GetAttachmentBytes() : null;
-        int attachedCount = attachmentBytes?.Count ?? 0;
+        var attachmentInfos = _attachmentZone != null
+            ? _attachmentZone.GetAttachmentInfo()
+            : (IReadOnlyList<ChatImageAttachmentZone.AttachmentInfo>)System.Array.Empty<ChatImageAttachmentZone.AttachmentInfo>();
+        int attachedCount = attachmentInfos.Count;
         if (string.IsNullOrWhiteSpace(text))
             text = attachedCount > 0 ? "(no caption)" : "(continue)";
 
@@ -1352,34 +1692,56 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _lastSpawnedPicThisTurn = null;
         _unchainedPicsThisTurn.Clear();
 
-        // Stage attached images so GPTPromptManager auto-attaches them to the user line
-        // we're about to add. AddInteraction consumes the pending list internally.
-        // ALSO snapshot the bytes into _lastTurnAttachments so a SkillActionExecutor
-        // invoked mid-stream can resolve attachment="N" by index even after the strip
-        // has been cleared.
+        // Build the visible attachment metadata block + (optionally) stage base64
+        // images on the prompt manager. The block is appended to the user message
+        // text so the LLM sees concrete dimensions + caption for each image on
+        // THIS turn (the system prompt's CHAT IMAGES list catches up next turn,
+        // but the user is asking about the just-attached image RIGHT NOW). Both
+        // bubble and LLM see the same augmented text per the user's preference.
         _lastTurnAttachments.Clear();
         if (attachedCount > 0)
         {
-            // Each attachment is about to become Image #(_chatImagePics.Count + 1 + offset)
-            // via PromoteAttachmentsToChatImages below. Capture the starting index here so
-            // we can label the multipart image_url parts with their stable chat_image="N".
+            bool includeBytes = GetIncludeImageData();
             int firstChatIdx = _chatImagePics.Count + 1;
-            int promoteOffset = 0;
-            foreach (var bytes in attachmentBytes)
+            var metadataBlock = new StringBuilder();
+            for (int i = 0; i < attachedCount; i++)
             {
-                if (bytes == null) continue;
-                _promptManager.AddPendingImage(System.Convert.ToBase64String(bytes), firstChatIdx + promoteOffset);
-                _lastTurnAttachments.Add(bytes);
-                promoteOffset++;
+                var info = attachmentInfos[i];
+                if (info.bytes == null) continue;
+                int chatIdx = firstChatIdx + i;
+                if (includeBytes)
+                    _promptManager.AddPendingImage(System.Convert.ToBase64String(info.bytes), chatIdx);
+                _lastTurnAttachments.Add(info.bytes);
+
+                // Header line carries dimensions + the short label (if any).
+                // The long description follows on its own indented line so the
+                // LLM has the full ~200-word context for THIS turn without
+                // visually drowning the user's typed message.
+                metadataBlock.Append("[Attached Image #").Append(chatIdx);
+                if (info.width > 0 && info.height > 0)
+                    metadataBlock.Append(", ").Append(info.width).Append('x').Append(info.height);
+                metadataBlock.Append(", PNG");
+                if (!string.IsNullOrEmpty(info.captionShort))
+                    metadataBlock.Append(" - ").Append(info.captionShort);
+                metadataBlock.AppendLine("]");
+                if (!string.IsNullOrEmpty(info.captionLong))
+                    metadataBlock.AppendLine(info.captionLong);
             }
+            string metadataText = metadataBlock.ToString().TrimEnd();
+            if (metadataText.Length > 0)
+                text = text + "\n\n" + metadataText;
+
             // Promote each attachment to a real PicMain. This makes the image persist in
             // the media column, gives the user a world Pic they can edit, AND registers it
             // in _chatImagePics so the LLM can reach it via chat_image="N" on this and all
             // future turns. Without this, ChatImageAttachmentZone.ClearAttachments below
             // would wipe the only UI surface holding the image, and SkillActionExecutor's
-            // image_to_image validation would report "0 reachable images" on the next turn.
-            PromoteAttachmentsToChatImages(attachmentBytes);
-            AddSystemMessage($"Attached {attachedCount} image{(attachedCount == 1 ? "" : "s")} to the next message.");
+            // image_to_image validation would report no chat images on the next turn.
+            // Pre-supplied caption is set on the PicMain synchronously so the next
+            // turn's CHAT IMAGES block has it without re-running the caption coroutine.
+            PromoteAttachmentsToChatImages(attachmentInfos);
+            string mode = includeBytes ? "with image data" : "caption only";
+            AddSystemMessage($"Attached {attachedCount} image{(attachedCount == 1 ? "" : "s")} to the next message ({mode}).");
         }
 
         // Add the interaction first so we can link the bubble to it - that link is what
@@ -1397,18 +1759,20 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _inputUndo?.ResetHistory();
         FocusInputDeferred();
 
-        SendChatTurn();
+        SendChatTurn(text);
     }
 
     private void OnStopClicked()
     {
         if (!_isStreaming) return;
+        _autoContinueRemaining = 0;
         TryCancelActiveRequests();
         FinalizeAssistantTurn(aborted: true);
     }
 
     private void OnClearClicked()
     {
+        _autoContinueRemaining = 0;
         if (_isStreaming)
         {
             TryCancelActiveRequests();
@@ -1416,6 +1780,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         }
 
         _promptManager.Reset();
+        _stickyAutoloadSkillIds.Clear();
         _attachmentZone?.ClearAttachments();
         _lastTurnAttachments?.Clear();
         _chatImagePics?.Clear();
@@ -1529,7 +1894,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     // ---------- LLM provider routing (mirrors PicMain.call_llm) ----------
 
-    private void SendChatTurn()
+    private void SendChatTurn(string latestUserMessage = null)
     {
         var settingsMgr = LLMSettingsManager.Get();
         if (settingsMgr == null)
@@ -1582,13 +1947,14 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // resolution so GPU/LLM/skill/chat-image state is fresh.
         if (_contextBuilder != null && _promptManager != null)
         {
-            int reachable = ((IChatHost)this).GetChatImageCount();
+            int chatImageSlots = ((IChatHost)this).GetChatImageCount();
             // Snapshot captions in chat-image order so the CHAT IMAGES block can
             // print "- Image #N: <caption>" entries for the LLM.
-            var captions = new List<string>(reachable);
-            for (int i = 1; i <= reachable; i++)
+            var captions = new List<string>(chatImageSlots);
+            for (int i = 1; i <= chatImageSlots; i++)
                 captions.Add(((IChatHost)this).GetChatImageCaption(i));
-            _promptManager.SetBaseSystemPrompt(_contextBuilder.Build(llmInstanceID, reachable, captions));
+            _promptManager.SetBaseSystemPrompt(_contextBuilder.Build(llmInstanceID, chatImageSlots, captions));
+            InjectTriggeredSkillContextIfNeeded(latestUserMessage);
         }
 
         _activeProviderInFlight = activeProvider;
@@ -1784,6 +2150,38 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 FinalizeAssistantTurn(aborted: true);
                 return;
         }
+    }
+
+    private void InjectTriggeredSkillContextIfNeeded(string latestUserMessage)
+    {
+        if (_skillManager == null || _promptManager == null || string.IsNullOrWhiteSpace(latestUserMessage))
+            return;
+
+        var matched = _skillManager.GetAutoloadSkillsForMessage(latestUserMessage);
+        if (matched == null || matched.Count == 0)
+            return;
+
+        var newlyLoaded = new List<Skill>();
+        foreach (var skill in matched)
+        {
+            if (skill == null || string.IsNullOrEmpty(skill.Id))
+                continue;
+            if (_stickyAutoloadSkillIds.Contains(skill.Id))
+                continue;
+
+            _stickyAutoloadSkillIds.Add(skill.Id);
+            newlyLoaded.Add(skill);
+        }
+
+        if (newlyLoaded.Count == 0)
+            return;
+
+        string block = _skillManager.BuildSkillReferenceMaterialBlock(newlyLoaded);
+        if (string.IsNullOrWhiteSpace(block))
+            return;
+
+        _promptManager.AddInteraction("system", block, AUTOLOAD_SKILL_CONTEXT_TAG);
+        Debug.Log("AIChatPanel: auto-loaded skill context: " + string.Join(", ", newlyLoaded.ConvertAll(s => s.Id)));
     }
 
     private static bool HasUserMessage(Queue<GTPChatLine> lines)
@@ -1982,12 +2380,60 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _streamingAssistantField = null;
         _streamingAssistantRT = null;
         ReleaseActiveLLM();
-        SetBusyUI(false, aborted ? "Stopped" : "Idle");
+
+        // Auto-continue: if this turn finished cleanly and there are auto-fires
+        // left in the burst, decrement and schedule the next "(continue)" Send.
+        // Aborts (Stop / errors) drain the counter so the burst doesn't resume
+        // on its own.
+        bool willAutoContinue = false;
+        if (aborted)
+        {
+            _autoContinueRemaining = 0;
+        }
+        else if (_autoContinueRemaining > 0
+                 && _autoContinueToggle != null && _autoContinueToggle.isOn)
+        {
+            _autoContinueRemaining--;
+            willAutoContinue = true;
+        }
+
+        SetBusyUI(false, aborted ? "Stopped" : (willAutoContinue ? $"Auto-continue ({_autoContinueRemaining + 1} left)" : "Idle"));
         if (shouldAutoScroll)
             StartCoroutine(ScrollToBottomDeferred());
-        // Re-focus the chat input so the user can immediately type their next message
-        // (unless they're in the middle of editing some other input - e.g. a bubble).
-        FocusInputDeferred();
+
+        if (willAutoContinue)
+        {
+            StartCoroutine(FireAutoContinueNextFrame());
+        }
+        else
+        {
+            // Re-focus the chat input so the user can immediately type their next message
+            // (unless they're in the middle of editing some other input - e.g. a bubble).
+            FocusInputDeferred();
+        }
+    }
+
+    /// <summary>
+    /// Defer the next auto-continue Send by one frame so the previous turn's
+    /// FinalizeAssistantTurn fully unwinds (status text settled, bubble edit
+    /// hookups complete) before we re-enter the send pipeline.
+    /// </summary>
+    private IEnumerator FireAutoContinueNextFrame()
+    {
+        yield return null;
+        // Bail if anything cancelled the burst during the yield (user hit Stop,
+        // toggled Auto off, cleared, or kicked off a manual send themselves).
+        if (_autoContinueToggle == null || !_autoContinueToggle.isOn) yield break;
+        if (_isStreaming) yield break;
+        _autoContinueFiring = true;
+        try
+        {
+            OnSendClicked();
+        }
+        finally
+        {
+            _autoContinueFiring = false;
+        }
     }
 
     private void ReleaseActiveLLM()
@@ -2006,7 +2452,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     private void SetBusyUI(bool busy, string status)
     {
-        if (_sendButton != null) _sendButton.interactable = !busy;
+        // _isStreaming is updated alongside this call (see SendChatTurn / FinalizeAssistantTurn);
+        // RecomputeSendInteractable also factors in any pending attachment caption jobs.
+        RecomputeSendInteractable();
         // Keep the input field interactable while the LLM is streaming so the user (a)
         // doesn't lose focus / their composed-but-not-sent text and (b) can compose the
         // next message while reading the in-progress reply. The _isStreaming guard in
@@ -2022,6 +2470,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private static string PreserveActionTagsForHistory(string text)
     {
         if (string.IsNullOrEmpty(text)) return text;
+        // Self-healing reverse of the display-only fullwidth angle bracket
+        // substitution: if the LLM ever outputs '＜aitools_action ...＞' (e.g.
+        // because a previous turn's corrupted history taught it to mimic
+        // fullwidth), normalize back to ASCII so the action parser recognizes
+        // it AND so the saved history is clean for future turns.
+        text = ReverseTmpDisplayEscapes(text);
         return text.Trim();
     }
 
@@ -2032,6 +2486,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             // Reload from disk so any user edits to main_prompt.txt or skill files take
             // effect on the very next turn (rebuilt by ChatContextBuilder.Build()).
             _skillManager?.Reload();
+            _promptManager?.RemoveInteractionsByInternalTag(AUTOLOAD_SKILL_CONTEXT_TAG);
+            _stickyAutoloadSkillIds.Clear();
             int n = _skillManager?.GetSkills().Count ?? 0;
             AddSystemMessage($"Reloaded aichat config: {n} skill{(n == 1 ? "" : "s")}.");
         });
@@ -2063,66 +2519,277 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     }
 
     /// <summary>
+    /// Fallback caption prompt used only when neither aichat/caption_prompt.txt
+    /// nor aichat/test_caption_prompt.txt exists. Kept intentionally short so
+    /// captioning still works on a fresh checkout; the maintained version is
+    /// the on-disk file.
+    /// </summary>
+    private const string DefaultCaptionPrompt =
+        "Describe this image factually for a downstream image-editing AI. " +
+        "Return BOTH descriptions, each prefixed exactly as shown:\n" +
+        "\n" +
+        "SHORT: <one sentence, max 15 words, suitable as a UI label>\n" +
+        "LONG: <a detailed paragraph (200-300 words). For EACH person visible, " +
+        "state apparent age, gender, ethnicity / skin tone, body type and build, " +
+        "hair, expression, pose, and clothing. Then describe setting, composition, " +
+        "lighting, colors, mood, art style, and any visible text. No preamble, " +
+        "no markdown, no quotes>\n" +
+        "\n" +
+        "Output exactly those two lines (LONG can wrap), nothing else.";
+
+    /// <summary>
+    /// Result of a one-shot caption call: a short, label-friendly summary plus
+    /// a long, detailed description. Either may be empty if the LLM call
+    /// failed or no vision LLM was available - callers should treat both
+    /// fields as best-effort.
+    /// </summary>
+    private struct CaptionResult
+    {
+        public string shortCaption;
+        public string longCaption;
+
+        public bool IsEmpty => string.IsNullOrEmpty(shortCaption) && string.IsNullOrEmpty(longCaption);
+    }
+
+    /// <summary>
     /// Fire a one-shot caption request against any vision-capable LLM for the
-    /// supplied PNG bytes. On completion, sets pic.Caption (overwriting any prior
-    /// value), updates the bubble label, and invokes <paramref name="onComplete"/>
-    /// (success or failure - the caller uses it to clear an "in-flight" gate).
-    /// No-op if no vision LLM is available (onComplete still fires so the caller
-    /// doesn't deadlock).
+    /// supplied PNG bytes. The model is asked to return BOTH a short label
+    /// (~15 words) and a long detailed description (~200-300 words) in a
+    /// labelled format we parse in <see cref="ParseCaptionResponse"/>.
+    /// Result fires via <paramref name="onResult"/>; the callback always
+    /// runs (even on failure / no vision LLM) so callers can use it to
+    /// clear in-flight gates.
+    /// </summary>
+    private CaptionJob TryCaptionBytes(byte[] png, Action<CaptionResult> onResult)
+    {
+        var job = new CaptionJob();
+        Action<CaptionResult> safeResult = (r) =>
+        {
+            // Cancelled jobs drop their result entirely - the attachment is
+            // gone, so writing a caption back would do nothing useful and
+            // could confuse the host's state.
+            if (job.cancelled) return;
+            try { onResult?.Invoke(r); } catch { }
+        };
+
+        if (png == null || png.Length == 0) { job.completed = true; safeResult(default); return job; }
+
+        var instanceMgr = LLMInstanceManager.Get();
+        if (instanceMgr == null || instanceMgr.GetInstanceCount() == 0) { job.completed = true; safeResult(default); return job; }
+
+        int targetId = instanceMgr.GetFreeLLM(isSmallJob: false, isVisionJob: true, out int replicaIndex);
+        if (targetId < 0)
+            targetId = instanceMgr.GetLeastBusyLLM(isSmallJob: false, isVisionJob: true, out replicaIndex);
+        if (targetId < 0) { job.completed = true; safeResult(default); return job; }
+
+        var inst = instanceMgr.GetInstance(targetId);
+        if (inst == null || inst.settings == null) { job.completed = true; safeResult(default); return job; }
+
+        instanceMgr.SetLLMBusy(targetId, replicaIndex, true);
+        job.targetId = targetId;
+        job.replicaIndex = replicaIndex;
+
+        // The two-section format keeps the parser dead simple AND lets the
+        // model "warm up" on the short description before committing to the
+        // long one. Explicit prefix labels are easier for small open-weights
+        // vision models to follow than JSON.
+        //
+        // The active prompt body lives in aichat/caption_prompt.txt (or
+        // aichat/test_caption_prompt.txt if the user staged an override) so it
+        // can be tuned without recompiling. The fallback below is only used
+        // when neither file exists.
+        string captionPrompt = (_skillManager != null && !string.IsNullOrWhiteSpace(_skillManager.CaptionPrompt))
+            ? _skillManager.CaptionPrompt
+            : DefaultCaptionPrompt;
+
+        var lines = new Queue<GTPChatLine>();
+        var userLine = new GTPChatLine("user", captionPrompt);
+        userLine.AddImage(System.Convert.ToBase64String(png), -1);
+        lines.Enqueue(userLine);
+
+        int capturedTargetId = targetId;
+        int capturedReplicaIndex = replicaIndex;
+
+        Action<RTDB, JSONObject, string> onDone = (db, json, text) =>
+        {
+            // Mutual exclusion: if the watchdog or a user-cancel beat us, the
+            // LLM busy count was already decremented (and possibly that slot
+            // re-allocated to another job). Decrementing again here would
+            // steal a slot from an unrelated task.
+            if (job.completed) return;
+            job.completed = true;
+            if (job.watchdog != null)
+            {
+                try { StopCoroutine(job.watchdog); } catch { }
+                job.watchdog = null;
+            }
+            instanceMgr.SetLLMBusy(capturedTargetId, capturedReplicaIndex, false);
+            CaptionResult result = default;
+            try
+            {
+                string raw = (text ?? "").Trim();
+                if (string.IsNullOrEmpty(raw) && json != null)
+                {
+                    try { raw = json["choices"][0]["message"]["content"]; } catch { /* no-op */ }
+                }
+                result = ParseCaptionResponse(raw);
+            }
+            finally { safeResult(result); }
+        };
+
+        SkillActionExecutor.DispatchOneShot(this, inst, lines, onDone, "ImageCaption", "examine_image_sent.json");
+
+        // Watchdog: if the request never returns (hung local model), force-release
+        // the LLM slot after CAPTION_TIMEOUT_SECONDS so the user isn't stuck.
+        job.watchdog = StartCoroutine(CaptionWatchdog(job, instanceMgr, safeResult));
+        return job;
+    }
+
+    private IEnumerator CaptionWatchdog(CaptionJob job, LLMInstanceManager instanceMgr, Action<CaptionResult> safeResult)
+    {
+        yield return new WaitForSeconds(CAPTION_TIMEOUT_SECONDS);
+        if (job.completed) yield break;
+        job.completed = true;
+        job.watchdog = null;
+        Debug.LogWarning($"AIChatPanel: vision-LLM caption request didn't return in {CAPTION_TIMEOUT_SECONDS:0}s - force-releasing LLM slot.");
+        if (job.targetId >= 0 && instanceMgr != null)
+            instanceMgr.SetLLMBusy(job.targetId, job.replicaIndex, false);
+        safeResult(default);
+    }
+
+    /// <summary>
+    /// Extract SHORT: / LONG: sections from a vision LLM response. Tolerates
+    /// loose formatting (extra blank lines, the model wrapping in quotes or
+    /// emitting only one section). If only one section is present, the other
+    /// is derived: missing LONG falls back to the whole response; missing
+    /// SHORT falls back to the first sentence (or first ~80 chars) of LONG.
+    /// </summary>
+    private static CaptionResult ParseCaptionResponse(string raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return default;
+        string text = raw.Trim();
+        // Strip wrapping triple-backtick fences if the model decided to be helpful.
+        if (text.StartsWith("```"))
+        {
+            int firstNL = text.IndexOf('\n');
+            if (firstNL > 0) text = text.Substring(firstNL + 1);
+            if (text.EndsWith("```")) text = text.Substring(0, text.Length - 3);
+            text = text.Trim();
+        }
+
+        string sh = "";
+        string lo = "";
+
+        // Locate "SHORT:" and "LONG:" labels at the start of a line. Tolerates
+        // markdown bold (**SHORT:**) and a leading bullet/dash that small
+        // open-weights models sometimes prepend. The LONG body is anchored to
+        // end-of-input so a multi-paragraph long caption stays intact.
+        const string labelPrefix = @"^\s*[\-\*]?\s*\**\s*";
+        const string labelSuffix = @"\s*\**\s*:\s*";
+        var shortMatch = Regex.Match(text,
+            labelPrefix + "SHORT" + labelSuffix +
+            @"(.+?)(?=" + labelPrefix + "LONG" + labelSuffix + @"|\z)",
+            RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.Singleline);
+        var longMatch = Regex.Match(text,
+            labelPrefix + "LONG" + labelSuffix + @"(.+)\z",
+            RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.Singleline);
+
+        if (shortMatch.Success) sh = StripTrailingBold(shortMatch.Groups[1].Value.Trim());
+        if (longMatch.Success)  lo = StripTrailingBold(longMatch.Groups[1].Value.Trim());
+
+        // Fallbacks when the model ignored the format.
+        if (string.IsNullOrEmpty(lo) && string.IsNullOrEmpty(sh))
+            lo = text;
+        if (string.IsNullOrEmpty(lo) && !string.IsNullOrEmpty(sh))
+            lo = sh;
+        if (string.IsNullOrEmpty(sh) && !string.IsNullOrEmpty(lo))
+            sh = DeriveShortFromLong(lo);
+
+        sh = ClampCaption(sh);
+        lo = CleanLongCaption(lo);
+
+        return new CaptionResult { shortCaption = sh, longCaption = lo };
+    }
+
+    /// <summary>
+    /// Derive a one-line label from a long caption: first sentence, capped at
+    /// ~100 chars with an ellipsis. Used when the model returned only the
+    /// LONG section.
+    /// </summary>
+    private static string DeriveShortFromLong(string lo)
+    {
+        if (string.IsNullOrEmpty(lo)) return "";
+        string s = lo.Replace("\r\n", " ").Replace('\n', ' ').Replace('\r', ' ').Trim();
+        int stop = s.IndexOfAny(new[] { '.', '!', '?' });
+        string head = (stop > 0 && stop + 1 <= s.Length) ? s.Substring(0, stop + 1) : s;
+        if (head.Length > 100) head = head.Substring(0, 97) + "…";
+        return head.Trim();
+    }
+
+    /// <summary>
+    /// Remove a trailing "**" the model sometimes leaves on a SHORT/LONG
+    /// section when it bolded the value as well as the label.
+    /// </summary>
+    private static string StripTrailingBold(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return s;
+        s = s.TrimEnd();
+        while (s.EndsWith("**")) s = s.Substring(0, s.Length - 2).TrimEnd();
+        return s;
+    }
+
+    /// <summary>
+    /// Trim wrapping quotes / markdown fences from a long caption but leave
+    /// the body (including newlines) intact - <see cref="ClampCaption"/>'s
+    /// 25-word cap is unsuitable for a 200-word description.
+    /// </summary>
+    private static string CleanLongCaption(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        s = s.Trim();
+        if (s.Length >= 2)
+        {
+            char a = s[0], b = s[s.Length - 1];
+            if ((a == '"' && b == '"') || (a == '\'' && b == '\'') || (a == '`' && b == '`'))
+                s = s.Substring(1, s.Length - 2).Trim();
+        }
+        return s;
+    }
+
+    /// <summary>
+    /// Pic-bound caption helper used by WaitForPicAndCaption for generated
+    /// images. Delegates to <see cref="TryCaptionBytes"/>; on success writes
+    /// <c>pic.Caption</c> (long) and <c>pic.CaptionShort</c>, and updates
+    /// the bubble label with the short form. The onComplete callback
+    /// always fires so the polling coroutine can clear its inFlight latch.
     /// </summary>
     private void TryCaptionPic(PicMain pic, byte[] png, Action onComplete)
     {
         Action safeComplete = () => { try { onComplete?.Invoke(); } catch { } };
 
         if (pic == null || pic.gameObject == null) { safeComplete(); return; }
-        if (png == null || png.Length == 0) { safeComplete(); return; }
 
-        var instanceMgr = LLMInstanceManager.Get();
-        if (instanceMgr == null || instanceMgr.GetInstanceCount() == 0) { safeComplete(); return; }
-
-        int targetId = instanceMgr.GetFreeLLM(isSmallJob: false, isVisionJob: true, out int replicaIndex);
-        if (targetId < 0)
-            targetId = instanceMgr.GetLeastBusyLLM(isSmallJob: false, isVisionJob: true, out replicaIndex);
-        if (targetId < 0) { safeComplete(); return; }
-
-        var inst = instanceMgr.GetInstance(targetId);
-        if (inst == null || inst.settings == null) { safeComplete(); return; }
-
-        instanceMgr.SetLLMBusy(targetId, replicaIndex, true);
-
-        var lines = new Queue<GTPChatLine>();
-        var userLine = new GTPChatLine("user", "Describe this image in one short sentence (max 15 words). Just the description, no preamble, no quotes, no markdown.");
-        userLine.AddImage(System.Convert.ToBase64String(png), -1);
-        lines.Enqueue(userLine);
-
-        int capturedTargetId = targetId;
-        int capturedReplicaIndex = replicaIndex;
         PicMain capturedPic = pic;
-
-        Action<RTDB, JSONObject, string> onDone = (db, json, text) =>
+        TryCaptionBytes(png, result =>
         {
-            instanceMgr.SetLLMBusy(capturedTargetId, capturedReplicaIndex, false);
             try
             {
-                string clean = (text ?? "").Trim();
-                if (string.IsNullOrEmpty(clean) && json != null)
-                {
-                    try { clean = json["choices"][0]["message"]["content"]; } catch { /* no-op */ }
-                }
-                clean = ClampCaption(clean);
-                if (string.IsNullOrEmpty(clean)) return;
-
+                if (result.IsEmpty) return;
                 if (capturedPic != null && capturedPic.gameObject != null)
                 {
-                    capturedPic.Caption = clean;
-                    if (_captionLabels.TryGetValue(capturedPic, out var entry) && entry.label != null)
-                        entry.label.text = entry.baseText + " - " + clean;
+                    capturedPic.Caption = result.longCaption ?? "";
+                    capturedPic.CaptionShort = result.shortCaption ?? "";
+                    string labelSuffix = !string.IsNullOrEmpty(result.shortCaption)
+                        ? result.shortCaption
+                        : result.longCaption;
+                    if (!string.IsNullOrEmpty(labelSuffix)
+                        && _captionLabels.TryGetValue(capturedPic, out var entry)
+                        && entry.label != null)
+                        entry.label.text = entry.baseText + " - " + labelSuffix;
                 }
             }
             finally { safeComplete(); }
-        };
-
-        SkillActionExecutor.DispatchOneShot(this, inst, lines, onDone, "ImageCaption");
+        });
     }
 
     /// <summary>
@@ -2212,13 +2879,21 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         hlg.childForceExpandHeight = false;
 
         var fitter = _captionTooltipRoot.AddComponent<ContentSizeFitter>();
-        fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+        // Both axes track the inner LayoutElement's preferredWidth/Height. With
+        // horizontalFit=Unconstrained the container sat at sizeDelta.x=0 and
+        // ignored preferredWidth, so the text wrapped to 0px and the tooltip
+        // grew vertically forever on long captions. PreferredSize makes the
+        // container honour the 640px width below.
+        fitter.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
         fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
         var textGo = new GameObject("Text");
         textGo.transform.SetParent(_captionTooltipRoot.transform, false);
         var textLE = textGo.AddComponent<LayoutElement>();
-        textLE.preferredWidth = 320f;
+        // Wide tooltip: long (~200-300 word) captions otherwise snake down the
+        // entire screen vertically. 640 keeps a 250-word caption around 8-10
+        // wrapped lines at 13pt.
+        textLE.preferredWidth = 640f;
         _captionTooltipText = textGo.AddComponent<TextMeshProUGUI>();
         _captionTooltipText.font = _font;
         _captionTooltipText.fontSize = 13f;
@@ -2281,21 +2956,24 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     /// gallery and a chat-image bubble in the media column. After this, attachments
     /// have the same lifecycle as AI-generated images: addressable via
     /// chat_image="N", visible in the media column, mirrored in the chat by
-    /// ChatPicMirror, and editable by the user as a normal world Pic.
+    /// ChatPicMirror, and editable by the user as a normal world Pic. If the info
+    /// already carries a pre-computed caption (set by the on-attach captioning
+    /// path), we propagate it to <see cref="PicMain.Caption"/> synchronously so
+    /// the next system-prompt rebuild has it without re-running the coroutine.
     /// </summary>
-    private void PromoteAttachmentsToChatImages(IReadOnlyList<byte[]> attachments)
+    private void PromoteAttachmentsToChatImages(IReadOnlyList<ChatImageAttachmentZone.AttachmentInfo> attachments)
     {
         if (attachments == null || attachments.Count == 0) return;
         var imageGen = ImageGenerator.Get();
         if (imageGen == null) return;
 
-        foreach (var bytes in attachments)
+        foreach (var info in attachments)
         {
-            if (bytes == null || bytes.Length == 0) continue;
+            if (info.bytes == null || info.bytes.Length == 0) continue;
             // Same decode pattern SkillActionExecutor uses for chat_image inputs, so
             // round-trips of the same PNG are byte-identical.
             var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-            if (!tex.LoadImage(bytes))
+            if (!tex.LoadImage(info.bytes))
             {
                 UnityEngine.Object.Destroy(tex);
                 continue;
@@ -2304,7 +2982,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             if (go == null) continue;
             var pic = go.GetComponent<PicMain>();
             if (pic == null) continue;
-            AppendUserAttachmentBubble(pic);
+            AppendUserAttachmentBubble(pic, info.captionShort, info.captionLong);
         }
     }
 
@@ -2423,17 +3101,37 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     /// reuse, visible in the media column, and live-mirrored from a real PicMain
     /// (which the user can also see / edit in the world gallery).
     /// </summary>
-    private void AppendUserAttachmentBubble(PicMain pic)
+    private void AppendUserAttachmentBubble(PicMain pic, string preCaptionShort = null, string preCaptionLong = null)
     {
         if (pic == null || _mediaContent == null) return;
         _chatImagePics.Add(pic);
         int chatImageNumber = _chatImagePics.Count;
         string label = $"Image #{chatImageNumber} (you)";
         AppendImageBubbleInternal(pic, label, isMovie: false);
-        // User attachments have a stable texture loaded synchronously in
-        // PromoteAttachmentsToChatImages - the same stability-aware coroutine
-        // we use for generated images works fine here too (it'll just settle
-        // and caption immediately).
+
+        if (!string.IsNullOrEmpty(preCaptionShort) || !string.IsNullOrEmpty(preCaptionLong))
+        {
+            // Caption was already computed at attach time. Set both fields on
+            // the PicMain synchronously so the next system-prompt rebuild
+            // (in SendChatTurn) and the hover tooltip see them, and patch the
+            // bubble label with the short form so the cramped media column
+            // stays readable.
+            pic.Caption = preCaptionLong ?? "";
+            pic.CaptionShort = preCaptionShort ?? "";
+            string labelSuffix = !string.IsNullOrEmpty(preCaptionShort)
+                ? preCaptionShort
+                : preCaptionLong;
+            if (!string.IsNullOrEmpty(labelSuffix)
+                && _captionLabels.TryGetValue(pic, out var entry)
+                && entry.label != null)
+                entry.label.text = entry.baseText + " - " + labelSuffix;
+            return;
+        }
+
+        // No pre-caption (e.g. no vision LLM was available at attach time).
+        // Fall back to the stability-aware polling coroutine - same one used
+        // for AI-generated images - which will retry captioning whenever the
+        // texture settles.
         StartCoroutine(WaitForPicAndCaption(pic));
     }
 
@@ -2618,6 +3316,65 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     }
 
     /// <summary>
+    /// True when the user has opted to ship raw image bytes to the active LLM
+    /// session (legacy path, expensive). Default false: only the auto-caption +
+    /// dimensions are sent, while the image still lives locally as a chat_image
+    /// for skills like image_to_image.
+    /// </summary>
+    public static bool GetIncludeImageData()
+    {
+        return PlayerPrefs.GetInt(PREFS_INCLUDE_IMAGE_DATA, 0) != 0;
+    }
+
+    public static void SetIncludeImageData(bool v)
+    {
+        PlayerPrefs.SetInt(PREFS_INCLUDE_IMAGE_DATA, v ? 1 : 0);
+        PlayerPrefs.Save();
+    }
+
+    /// <summary>
+    /// Largest edge (in pixels) any dragged/pasted attachment is allowed to
+    /// have. The attachment zone reads this at attach time and bilinear-scales
+    /// oversized images down so the long edge fits, preserving aspect ratio.
+    /// 0 (or any value &lt;= 0) means "do not resize". Default 1024.
+    /// </summary>
+    public static int GetAttachmentMaxEdge()
+    {
+        return PlayerPrefs.GetInt(PREFS_ATTACHMENT_MAX_EDGE, DEFAULT_ATTACHMENT_MAX_EDGE);
+    }
+
+    public static void SetAttachmentMaxEdge(int v)
+    {
+        // Clamp to sane bounds: 0 disables, otherwise must be at least 64 to
+        // avoid pointlessly tiny images that the captioner can't make sense of.
+        int clamped = v <= 0 ? 0 : Mathf.Clamp(v, 64, 8192);
+        PlayerPrefs.SetInt(PREFS_ATTACHMENT_MAX_EDGE, clamped);
+        PlayerPrefs.Save();
+    }
+
+    public static bool GetAutoContinueEnabled()
+    {
+        return PlayerPrefs.GetInt(PREFS_AUTO_CONTINUE_ON, 0) != 0;
+    }
+
+    public static void SetAutoContinueEnabled(bool v)
+    {
+        PlayerPrefs.SetInt(PREFS_AUTO_CONTINUE_ON, v ? 1 : 0);
+        PlayerPrefs.Save();
+    }
+
+    public static int GetAutoContinueCount()
+    {
+        return Mathf.Max(0, PlayerPrefs.GetInt(PREFS_AUTO_CONTINUE_COUNT, DEFAULT_AUTO_CONTINUE_COUNT));
+    }
+
+    public static void SetAutoContinueCount(int v)
+    {
+        PlayerPrefs.SetInt(PREFS_AUTO_CONTINUE_COUNT, Mathf.Max(0, v));
+        PlayerPrefs.Save();
+    }
+
+    /// <summary>
     /// Trims the media panel to the last <see cref="GetKeepLastNMedia"/> bubbles.
     /// The matching entries are also removed from <see cref="_chatImagePics"/> so
     /// the LLM's chat_image="N" indices stay aligned with what's visible. Doesn't
@@ -2693,6 +3450,16 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         AddSystemMessage(text);
     }
 
+    void IChatHost.AddSystemInjectionSilent(string text)
+    {
+        // Inject the message as a system role so the LLM sees it on the NEXT turn.
+        // Skip the chat bubble entirely - used for large-body injections (e.g.
+        // read_skill dumping a full skill markdown body) where the user doesn't need
+        // to see the content, just that something was loaded behind the scenes.
+        if (_promptManager != null)
+            _promptManager.AddInteraction("system", text);
+    }
+
     void IChatHost.AppendImageBubbleForPic(SkillAction action, PicMain spawnedPic)
     {
         AppendImageBubble(action, spawnedPic);
@@ -2700,36 +3467,51 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     byte[] IChatHost.GetChatImagePngBytes(int oneBasedIndex)
     {
-        int idx0 = oneBasedIndex - 1;
-        if (_chatImagePics == null || idx0 < 0 || idx0 >= _chatImagePics.Count) return null;
-        var pic = _chatImagePics[idx0];
-        if (pic == null || pic.gameObject == null) return null; // user deleted the world Pic
+        var pic = GetChatImagePic(oneBasedIndex);
+        if (pic == null) return null;
         return pic.TryGetImageAsPng(out byte[] png) ? png : null;
     }
 
     int IChatHost.GetChatImageCount()
     {
         if (_chatImagePics == null) return 0;
-        // Only count entries whose world Pic is still alive AND has a renderable texture.
-        // Stale entries (pic destroyed by user, or render still queued) are advertised as
-        // 0 so the LLM doesn't try to reference them.
-        int n = 0;
-        foreach (var pic in _chatImagePics)
+        return _chatImagePics.Count;
+    }
+
+    int IChatHost.GetLatestChatImageIndex()
+    {
+        if (_chatImagePics == null) return 0;
+        for (int i = _chatImagePics.Count - 1; i >= 0; i--)
         {
-            if (pic == null || pic.gameObject == null) continue;
-            if (!pic.TryGetCurrentTexture(out var tex) || tex == null) continue;
-            n++;
+            var pic = _chatImagePics[i];
+            if (pic != null && pic.gameObject != null)
+                return i + 1;
         }
-        return n;
+        return 0;
+    }
+
+    bool IChatHost.TryPrepareChatImageForRead(int oneBasedIndex)
+    {
+        var pic = GetChatImagePic(oneBasedIndex);
+        if (pic == null) return false;
+        if (pic.TryGetCurrentTexture(out var tex) && tex != null) return true;
+        return pic.TryEnsureLoadedForChatSnapshot();
     }
 
     string IChatHost.GetChatImageCaption(int oneBasedIndex)
     {
-        int idx0 = oneBasedIndex - 1;
-        if (_chatImagePics == null || idx0 < 0 || idx0 >= _chatImagePics.Count) return "";
-        var pic = _chatImagePics[idx0];
-        if (pic == null || pic.gameObject == null) return "";
+        var pic = GetChatImagePic(oneBasedIndex);
+        if (pic == null) return "(world Pic was deleted; not reusable)";
         return pic.Caption ?? "";
+    }
+
+    private PicMain GetChatImagePic(int oneBasedIndex)
+    {
+        int idx0 = oneBasedIndex - 1;
+        if (_chatImagePics == null || idx0 < 0 || idx0 >= _chatImagePics.Count) return null;
+        var pic = _chatImagePics[idx0];
+        if (pic == null || pic.gameObject == null) return null;
+        return pic;
     }
 
     PicMain IChatHost.GetLastSpawnedPicForTurn()

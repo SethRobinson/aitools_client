@@ -455,6 +455,328 @@ public static class Tex2DExtension
        
     }
 
+    /// <summary>
+    /// Composite a source image onto a destination at a (top-left) rect with a fit
+    /// mode. Uses top-left coordinates (caller passes y-from-top; the function flips
+    /// internally to match Unity's y-up texture convention, same as <see cref="Blit"/>
+    /// and <see cref="BlitWithAlpha"/>). Supported modes:
+    /// <list type="bullet">
+    /// <item><c>fit</c>: preserve the source aspect, letterbox inside (w,h). The source
+    /// is placed inside the rect according to <paramref name="hAlign"/>/<paramref name="vAlign"/>
+    /// (0=left/top, 0.5=center, 1=right/bottom). Pixels outside the fitted area are
+    /// untouched (transparent letterbox - draw a colored rect first if you want a
+    /// visible bar).</item>
+    /// <item><c>fill</c>: preserve the source aspect, crop to fully cover the rect.
+    /// hAlign/vAlign pick which part of the source is kept.</item>
+    /// <item><c>stretch</c>: ignore aspect, scale source to exactly fill the rect.</item>
+    /// </list>
+    /// Source alpha is honored. <paramref name="opacity"/> multiplies the final alpha
+    /// (0..1) - use it to fade overlays. Out-of-bounds rects are clipped, not asserted.
+    /// Caller must call <c>dst.Apply()</c> after.
+    /// </summary>
+    public static void BlitImageFitted(this Texture2D dst, Texture2D src, int dstX, int dstY, int dstW, int dstH,
+        string mode = "fit", float opacity = 1f, float hAlign = 0.5f, float vAlign = 0.5f)
+    {
+        if (src == null || dst == null || dstW <= 0 || dstH <= 0) return;
+        opacity = Mathf.Clamp01(opacity);
+        if (string.IsNullOrEmpty(mode)) mode = "fit";
+        mode = mode.Trim().ToLowerInvariant();
+
+        // Resolve target rect (where the source will land inside the dst rect).
+        int targetX = dstX, targetY = dstY, targetW = dstW, targetH = dstH;
+
+        if (mode == "fit")
+        {
+            float srcAspect = (float)src.width / src.height;
+            float dstAspect = (float)dstW / dstH;
+            if (srcAspect > dstAspect)
+            {
+                targetW = dstW;
+                targetH = Mathf.Max(1, Mathf.RoundToInt(dstW / srcAspect));
+            }
+            else
+            {
+                targetH = dstH;
+                targetW = Mathf.Max(1, Mathf.RoundToInt(dstH * srcAspect));
+            }
+            targetX = dstX + Mathf.RoundToInt((dstW - targetW) * hAlign);
+            targetY = dstY + Mathf.RoundToInt((dstH - targetH) * vAlign);
+        }
+
+        // Build a resized/cropped temp at the *target* pixel size, then alpha-blit it.
+        Texture2D scaled = null;
+        try
+        {
+            if (mode == "fill")
+            {
+                // Crop source to dst aspect, then resize. Center-crop variant of CropTextureToAspectRatio
+                // with hAlign/vAlign so the LLM can keep the top of a portrait, etc.
+                float dstAspect = (float)targetW / targetH;
+                float srcAspect = (float)src.width / src.height;
+                int cropW = src.width, cropH = src.height, cx = 0, cy = 0;
+                if (dstAspect < srcAspect)
+                {
+                    cropW = Mathf.Max(1, Mathf.RoundToInt(src.height * dstAspect));
+                    cx = Mathf.RoundToInt((src.width - cropW) * hAlign);
+                }
+                else
+                {
+                    cropH = Mathf.Max(1, Mathf.RoundToInt(src.width / dstAspect));
+                    // Source pixel rows are y-up. The LLM's vAlign is from-top, so flip.
+                    cy = Mathf.RoundToInt((src.height - cropH) * (1f - vAlign));
+                }
+                Color[] cropPixels = src.GetPixels(cx, cy, cropW, cropH);
+                var cropped = new Texture2D(cropW, cropH, TextureFormat.RGBA32, false);
+                cropped.SetPixels(cropPixels);
+                cropped.Apply();
+                ResizeTool.Resize(cropped, targetW, targetH, false, FilterMode.Bilinear);
+                scaled = cropped;
+            }
+            else if (mode == "stretch")
+            {
+                // Duplicate (so we don't mutate the caller's src), then resize to dst.
+                scaled = src.Duplicate();
+                ResizeTool.Resize(scaled, targetW, targetH, false, FilterMode.Bilinear);
+            }
+            else // fit (or unknown -> fit)
+            {
+                scaled = src.Duplicate();
+                ResizeTool.Resize(scaled, targetW, targetH, false, FilterMode.Bilinear);
+            }
+
+            // Clip to dst bounds. Source slice mirrors the clipped dst.
+            int dx = targetX, dy = targetY, dw = scaled.width, dh = scaled.height;
+            int sx = 0, sy = 0;
+            if (dx < 0) { sx = -dx; dw += dx; dx = 0; }
+            if (dy < 0) { sy = -dy; dh += dy; dy = 0; }
+            if (dx + dw > dst.width) dw = dst.width - dx;
+            if (dy + dh > dst.height) dh = dst.height - dy;
+            if (dw <= 0 || dh <= 0) return;
+
+            // Inline alpha blit with opacity multiplier (BlitWithAlpha doesn't take one).
+            for (int x = 0; x < dw; x++)
+            {
+                for (int y = 0; y < dh; y++)
+                {
+                    Color dstColor = dst.GetPixel(dx + x, (dst.height - 1) - (dy + y));
+                    Color srcColor = scaled.GetPixel(sx + x, (scaled.height - 1) - (sy + y));
+                    float alpha = srcColor.a * opacity;
+                    Color blended = new Color(
+                        srcColor.r * alpha + dstColor.r * (1 - alpha),
+                        srcColor.g * alpha + dstColor.g * (1 - alpha),
+                        srcColor.b * alpha + dstColor.b * (1 - alpha),
+                        alpha + dstColor.a * (1 - alpha));
+                    dst.SetPixel(dx + x, (dst.height - 1) - (dy + y), blended);
+                }
+            }
+        }
+        finally
+        {
+            if (scaled != null) UnityEngine.Object.Destroy(scaled);
+        }
+    }
+
+    /// <summary>
+    /// Draw a filled rectangle using top-left coordinates (LLM-friendly y-from-top).
+    /// Optional <paramref name="cornerRadius"/> rounds the corners. Color alpha is
+    /// honored - pass a semi-transparent fill for legibility overlays. Out-of-bounds
+    /// rects are clipped. Caller must call <c>dst.Apply()</c> after.
+    /// </summary>
+    public static void DrawFilledRect(this Texture2D dst, int x, int y, int w, int h, Color fill, int cornerRadius = 0)
+    {
+        if (dst == null || w <= 0 || h <= 0) return;
+        cornerRadius = Mathf.Max(0, Mathf.Min(cornerRadius, Mathf.Min(w, h) / 2));
+
+        for (int px = 0; px < w; px++)
+        {
+            for (int py = 0; py < h; py++)
+            {
+                if (cornerRadius > 0)
+                {
+                    // Skip pixels outside the rounded-corner mask.
+                    int rx = -1, ry = -1;
+                    if (px < cornerRadius && py < cornerRadius) { rx = cornerRadius - px; ry = cornerRadius - py; }
+                    else if (px >= w - cornerRadius && py < cornerRadius) { rx = px - (w - cornerRadius - 1); ry = cornerRadius - py; }
+                    else if (px < cornerRadius && py >= h - cornerRadius) { rx = cornerRadius - px; ry = py - (h - cornerRadius - 1); }
+                    else if (px >= w - cornerRadius && py >= h - cornerRadius) { rx = px - (w - cornerRadius - 1); ry = py - (h - cornerRadius - 1); }
+                    if (rx > 0 && rx * rx + ry * ry > cornerRadius * cornerRadius) continue;
+                }
+
+                int dxAbs = x + px;
+                int dyAbs = y + py;
+                if (dxAbs < 0 || dxAbs >= dst.width || dyAbs < 0 || dyAbs >= dst.height) continue;
+                int texY = (dst.height - 1) - dyAbs;
+                if (fill.a >= 0.999f)
+                {
+                    dst.SetPixel(dxAbs, texY, fill);
+                }
+                else
+                {
+                    Color cur = dst.GetPixel(dxAbs, texY);
+                    float a = fill.a;
+                    Color blended = new Color(
+                        fill.r * a + cur.r * (1 - a),
+                        fill.g * a + cur.g * (1 - a),
+                        fill.b * a + cur.b * (1 - a),
+                        a + cur.a * (1 - a));
+                    dst.SetPixel(dxAbs, texY, blended);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Draw an outlined rectangle using top-left coordinates. <paramref name="outlineWidth"/>
+    /// is the stroke thickness in pixels (drawn inside the rect bounds). Optional
+    /// <paramref name="cornerRadius"/> rounds the corners. Caller must call
+    /// <c>dst.Apply()</c> after.
+    /// </summary>
+    public static void DrawOutlineRect(this Texture2D dst, int x, int y, int w, int h, Color outline, int outlineWidth = 1, int cornerRadius = 0)
+    {
+        if (dst == null || w <= 0 || h <= 0) return;
+        outlineWidth = Mathf.Max(1, Mathf.Min(outlineWidth, Mathf.Min(w, h) / 2));
+        cornerRadius = Mathf.Max(0, Mathf.Min(cornerRadius, Mathf.Min(w, h) / 2));
+
+        // Trick: filled outer rect minus filled inner rect (handled with two passes).
+        // Simpler than computing the stroke band per-corner directly, and gives us
+        // rounded outlines for free since we reuse DrawFilledRect's corner logic.
+        // We build an alpha mask in a temp Color[] sized to the rect, mark outline
+        // pixels, then write through.
+        for (int px = 0; px < w; px++)
+        {
+            for (int py = 0; py < h; py++)
+            {
+                bool insideOuter = true;
+                bool insideInner;
+
+                if (cornerRadius > 0)
+                {
+                    int rx = -1, ry = -1;
+                    if (px < cornerRadius && py < cornerRadius) { rx = cornerRadius - px; ry = cornerRadius - py; }
+                    else if (px >= w - cornerRadius && py < cornerRadius) { rx = px - (w - cornerRadius - 1); ry = cornerRadius - py; }
+                    else if (px < cornerRadius && py >= h - cornerRadius) { rx = cornerRadius - px; ry = py - (h - cornerRadius - 1); }
+                    else if (px >= w - cornerRadius && py >= h - cornerRadius) { rx = px - (w - cornerRadius - 1); ry = py - (h - cornerRadius - 1); }
+                    if (rx > 0 && rx * rx + ry * ry > cornerRadius * cornerRadius) insideOuter = false;
+                }
+
+                int innerX = px - outlineWidth;
+                int innerY = py - outlineWidth;
+                int innerW = w - 2 * outlineWidth;
+                int innerH = h - 2 * outlineWidth;
+                int innerRadius = Mathf.Max(0, cornerRadius - outlineWidth);
+                insideInner = innerX >= 0 && innerY >= 0 && innerX < innerW && innerY < innerH;
+                if (insideInner && innerRadius > 0)
+                {
+                    int rx = -1, ry = -1;
+                    if (innerX < innerRadius && innerY < innerRadius) { rx = innerRadius - innerX; ry = innerRadius - innerY; }
+                    else if (innerX >= innerW - innerRadius && innerY < innerRadius) { rx = innerX - (innerW - innerRadius - 1); ry = innerRadius - innerY; }
+                    else if (innerX < innerRadius && innerY >= innerH - innerRadius) { rx = innerRadius - innerX; ry = innerY - (innerH - innerRadius - 1); }
+                    else if (innerX >= innerW - innerRadius && innerY >= innerH - innerRadius) { rx = innerX - (innerW - innerRadius - 1); ry = innerY - (innerH - innerRadius - 1); }
+                    if (rx > 0 && rx * rx + ry * ry > innerRadius * innerRadius) insideInner = false;
+                }
+
+                if (!insideOuter || insideInner) continue;
+
+                int dxAbs = x + px;
+                int dyAbs = y + py;
+                if (dxAbs < 0 || dxAbs >= dst.width || dyAbs < 0 || dyAbs >= dst.height) continue;
+                int texY = (dst.height - 1) - dyAbs;
+                if (outline.a >= 0.999f)
+                {
+                    dst.SetPixel(dxAbs, texY, outline);
+                }
+                else
+                {
+                    Color cur = dst.GetPixel(dxAbs, texY);
+                    float a = outline.a;
+                    Color blended = new Color(
+                        outline.r * a + cur.r * (1 - a),
+                        outline.g * a + cur.g * (1 - a),
+                        outline.b * a + cur.b * (1 - a),
+                        a + cur.a * (1 - a));
+                    dst.SetPixel(dxAbs, texY, blended);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Draw a filled circle. <paramref name="cx"/>/<paramref name="cy"/> are the
+    /// center in top-left coordinates. Color alpha is honored. Caller must call
+    /// <c>dst.Apply()</c> after.
+    /// </summary>
+    public static void DrawFilledCircle(this Texture2D dst, int cx, int cy, int radius, Color fill)
+    {
+        if (dst == null || radius <= 0) return;
+        int r2 = radius * radius;
+        for (int dx = -radius; dx <= radius; dx++)
+        {
+            for (int dy = -radius; dy <= radius; dy++)
+            {
+                if (dx * dx + dy * dy > r2) continue;
+                int dxAbs = cx + dx;
+                int dyAbs = cy + dy;
+                if (dxAbs < 0 || dxAbs >= dst.width || dyAbs < 0 || dyAbs >= dst.height) continue;
+                int texY = (dst.height - 1) - dyAbs;
+                if (fill.a >= 0.999f)
+                {
+                    dst.SetPixel(dxAbs, texY, fill);
+                }
+                else
+                {
+                    Color cur = dst.GetPixel(dxAbs, texY);
+                    float a = fill.a;
+                    Color blended = new Color(
+                        fill.r * a + cur.r * (1 - a),
+                        fill.g * a + cur.g * (1 - a),
+                        fill.b * a + cur.b * (1 - a),
+                        a + cur.a * (1 - a));
+                    dst.SetPixel(dxAbs, texY, blended);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Draw an outlined circle (stroke = filled outer minus filled inner).
+    /// Caller must call <c>dst.Apply()</c> after.
+    /// </summary>
+    public static void DrawOutlineCircle(this Texture2D dst, int cx, int cy, int radius, Color outline, int outlineWidth = 1)
+    {
+        if (dst == null || radius <= 0) return;
+        outlineWidth = Mathf.Max(1, Mathf.Min(outlineWidth, radius));
+        int rOuter2 = radius * radius;
+        int innerR = radius - outlineWidth;
+        int rInner2 = innerR * innerR;
+        for (int dx = -radius; dx <= radius; dx++)
+        {
+            for (int dy = -radius; dy <= radius; dy++)
+            {
+                int d2 = dx * dx + dy * dy;
+                if (d2 > rOuter2 || d2 < rInner2) continue;
+                int dxAbs = cx + dx;
+                int dyAbs = cy + dy;
+                if (dxAbs < 0 || dxAbs >= dst.width || dyAbs < 0 || dyAbs >= dst.height) continue;
+                int texY = (dst.height - 1) - dyAbs;
+                if (outline.a >= 0.999f)
+                {
+                    dst.SetPixel(dxAbs, texY, outline);
+                }
+                else
+                {
+                    Color cur = dst.GetPixel(dxAbs, texY);
+                    float a = outline.a;
+                    Color blended = new Color(
+                        outline.r * a + cur.r * (1 - a),
+                        outline.g * a + cur.g * (1 - a),
+                        outline.b * a + cur.b * (1 - a),
+                        a + cur.a * (1 - a));
+                    dst.SetPixel(dxAbs, texY, blended);
+                }
+            }
+        }
+    }
+
     //Don't forget to .Apply() after doing this!
     public static void Fill(this Texture2D tex, Color color)
     {
@@ -2056,6 +2378,40 @@ public class RTUtil
 
     public static Texture2D RenderTextToTexture2D(string text, int width, int height, TMP_FontAsset font, float fontSize, Color color, bool bAutoSize, Vector2 vTextRectSizeMod, FontStyles fontStyles = 0)
     {
+        return RenderTextToTexture2D(text, width, height, font, fontSize, color, bAutoSize, vTextRectSizeMod, fontStyles, TextAlignmentOptions.Center, true, 0f);
+    }
+
+    /// <summary>
+    /// Same as the legacy <see cref="RenderTextToTexture2D(string, int, int, TMP_FontAsset, float, Color, bool, Vector2, FontStyles)"/>
+    /// but lets the caller pick alignment and word-wrap. Used by the AI Chat
+    /// composition skills (draw_text) so the LLM can place a left-aligned caption
+    /// strip, a top-aligned title, etc., without baking those choices into TMP's
+    /// renderer flags. The legacy overload remains center-aligned + word-wrap=true.
+    /// </summary>
+    public static Texture2D RenderTextToTexture2D(string text, int width, int height, TMP_FontAsset font, float fontSize, Color color, bool bAutoSize, Vector2 vTextRectSizeMod, FontStyles fontStyles, TextAlignmentOptions alignment, bool wordWrap)
+    {
+        return RenderTextToTexture2D(text, width, height, font, fontSize, color, bAutoSize, vTextRectSizeMod, fontStyles, alignment, wordWrap, 0f);
+    }
+
+    /// <summary>
+    /// Full-control overload. <paramref name="fontSizeMax"/> (when &gt; 0) caps the
+    /// auto-size upper bound so the LLM-supplied <c>font_size</c> still acts as a
+    /// "do not grow beyond this" hint when <paramref name="bAutoSize"/> is true.
+    /// Pass 0 to leave fontSizeMax unbounded (legacy behavior, text fills the rect).
+    /// </summary>
+    public static Texture2D RenderTextToTexture2D(string text, int width, int height, TMP_FontAsset font, float fontSize, Color color, bool bAutoSize, Vector2 vTextRectSizeMod, FontStyles fontStyles, TextAlignmentOptions alignment, bool wordWrap, float fontSizeMax)
+    {
+        return RenderTextToTexture2D(text, width, height, font, fontSize, color, bAutoSize, vTextRectSizeMod, fontStyles, alignment, wordWrap, fontSizeMax, 0f);
+    }
+
+    /// <summary>
+    /// Full-control overload with both auto-size bounds. <paramref name="fontSizeMin"/>
+    /// (when &gt; 0) raises TMP's auto-size lower bound so long text doesn't shrink
+    /// past readability. The default min is 18 (TMP's own default); set higher to
+    /// guarantee legibility in poster body text. Pass 0 to keep TMP's default min.
+    /// </summary>
+    public static Texture2D RenderTextToTexture2D(string text, int width, int height, TMP_FontAsset font, float fontSize, Color color, bool bAutoSize, Vector2 vTextRectSizeMod, FontStyles fontStyles, TextAlignmentOptions alignment, bool wordWrap, float fontSizeMax, float fontSizeMin)
+    {
         //Debug.Log("Creating tex sized " + width + "x" + height);
         // Create GameObject and TextMeshPro components
         GameObject go = new GameObject();
@@ -2067,7 +2423,7 @@ public class RTUtil
         tmp.font = font;
         tmp.fontSize = fontSize;
         tmp.color = color;
-        tmp.alignment = TextAlignmentOptions.Center;
+        tmp.alignment = alignment;
         tmp.rectTransform.pivot = new Vector2(0.5f, 0.5f);
         tmp.rectTransform.anchoredPosition3D = Vector3.zero;
 
@@ -2076,11 +2432,21 @@ public class RTUtil
         tmp.rectTransform.sizeDelta = new Vector2(width * vTextRectSizeMod.x, height * vTextRectSizeMod.y);
 
         tmp.enableAutoSizing = bAutoSize;
-        tmp.fontSizeMax = 9999999;
+        // When fontSizeMax > 0, treat it as a "don't grow above this" cap during
+        // auto-sizing. Lets the AI Chat draw_text skill default to auto_size=true
+        // (so text fills small rects nicely) while still respecting the LLM's
+        // font_size as an upper bound (so a "small caption" call doesn't blow up
+        // to fill an oversized rect). Passing 0 = unbounded (legacy behaviour).
+        tmp.fontSizeMax = fontSizeMax > 0f ? fontSizeMax : 9999999;
+        // Raise the auto-size lower bound when fontSizeMin > 0. Stops poster body
+        // text from shrinking past readability when the rect is small relative to
+        // the text length. TMP's default min is 18; use bigger when you'd rather
+        // overflow than render unreadably small.
+        if (fontSizeMin > 0f) tmp.fontSizeMin = fontSizeMin;
         //set the font to be bold
         tmp.fontStyle = fontStyles;
         tmp.name = "TextMeshProATemp";
-        tmp.enableWordWrapping = true;
+        tmp.enableWordWrapping = wordWrap;
         //set largest allowed font size
         // Create a RenderTexture
         RenderTexture renderTexture = new RenderTexture(width, height, 24);

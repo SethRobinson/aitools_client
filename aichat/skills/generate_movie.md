@@ -73,20 +73,20 @@ User asked: "a woman writing at a desk". Ship something like:
 > Deakins night interior, Portra 400 film grain, natural skin tones;
 > ambient sound of distant traffic and a slow ceiling fan.
 
-## Roleplay / recurring characters - critical
+## Scenario / recurring characters
 
-LTX 2.3 (text-to-video) has NO memory of chat history or earlier
-generations. Every prompt must re-describe every visible attribute of
-every subject FROM SCRATCH, every time, in the FIRST (subject) sentence.
+Detailed roleplay, scenario, character-sheet, and identity-anchor
+workflows live in `scenario_storytelling`. If that skill is auto-loaded,
+follow it for story prose, visual pacing, reference characters, and
+GPU-aware multi-shot planning.
 
-- NEVER put just a name - "Sara walks down the alley and says X"
-  produces a stranger because the model has never heard of Sara.
-- ALWAYS paste the full character sheet (age, ethnicity, build, hair,
-  eyes, distinguishing features, wardrobe) into the subject sentence,
-  THEN move to motion + dialog. Names belong in your chat reply for the
-  human reader; the prompt= attribute uses ONLY visual descriptions.
-- This applies even when the same character was generated last turn -
-  text-to-video has no source image to anchor identity.
+Text-to-video has no source image to anchor identity. For recurring
+fictional characters, keep the FIRST subject sentence fully
+self-contained: apparent age, ethnicity/complexion, build, hair, face,
+wardrobe, expression, and posture. Never prompt only with a character
+name. For user-supplied reference identities, do not use `generate_movie`;
+use `image_to_image` followed by `image_to_movie` with `chain="true"` as
+described in `scenario_storytelling`.
 
 ## Rules
 
