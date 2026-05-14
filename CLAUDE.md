@@ -98,6 +98,5 @@ Key classes:
 
 ### File Access Restrictions
 
-- **NEVER** read or write any file that starts with `test_`, `Test_`, or `TEST_` (case-insensitive)
-- This includes files like `test_*.cs`, `TEST_*.txt`, `Test_*.json`, etc.
-- Skip these files when searching or processing directories
+- By default, **avoid** files starting with `test_`, `Test_`, or `TEST_` (case-insensitive) — skip them when searching or scanning directories
+- If the user **explicitly** names or asks you to work with a `test_*` file, you may read / write / create it normally
