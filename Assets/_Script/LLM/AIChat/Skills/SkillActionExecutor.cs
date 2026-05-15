@@ -1132,11 +1132,12 @@ namespace AITools.AIChat.Skills
         /// <summary>
         /// Fire-and-forget chat completion for delegated one-shot calls (used by both
         /// <see cref="ExecuteSummarizeWithSmallLlm"/> and AIChatPanel's image-caption job).
-        /// Supports OpenAI-compatible / Ollama / LlamaCpp / OpenAI / Anthropic. Other
-        /// providers fall back to a clear error so the LLM can pick a different instance
-        /// next turn. Image data carried by lines (via GTPChatLine.AddImage) is preserved
-        /// through the OpenAI-compatible / LlamaCpp / Anthropic serializers, so this path
-        /// covers the vision-caption sidecar as well as plain text summarization.
+        /// Supports OpenAI-compatible / Ollama / LlamaCpp / OpenAI / Anthropic / Gemini.
+        /// Other providers fall back to a clear error so the LLM can pick a different
+        /// instance next turn. Image data carried by lines (via GTPChatLine.AddImage) is
+        /// preserved through the OpenAI-compatible / LlamaCpp / Anthropic / Gemini
+        /// serializers, so this path covers the vision-caption sidecar as well as plain
+        /// text summarization.
         /// </summary>
         public static void DispatchOneShot(
             MonoBehaviour runner,
@@ -1252,10 +1253,31 @@ namespace AITools.AIChat.Skills
                     }, db, anthropicKey, endpoint, null, false, sentJsonFilename);
                     break;
                 }
+                case LLMProvider.Gemini:
+                {
+                    var mgr = runner.gameObject.AddComponent<GeminiTextCompletionManager>();
+                    string model = string.IsNullOrEmpty(settings.selectedModel) ? "gemini-2.5-pro" : settings.selectedModel;
+                    string baseEndpoint = string.IsNullOrEmpty(settings.endpoint)
+                        ? "https://generativelanguage.googleapis.com/v1beta/models"
+                        : settings.endpoint;
+                    // Non-streaming one-shot: GeminiTextCompletionManager hands the
+                    // already-extracted response text back as `str`. Images carried
+                    // by `lines` (via GTPChatLine.AddImage) are serialized as
+                    // inlineData parts, so this path covers the vision-caption
+                    // sidecar as well as plain text summarization.
+                    string endpoint = GeminiTextCompletionManager.BuildEndpointUrl(baseEndpoint, model, false);
+                    string json = mgr.BuildChatCompleteJSON(lines, 1024, 0.4f, model, false, settings.enableThinking);
+                    mgr.SpawnChatCompleteRequest(json, (rtdb, jn, str) =>
+                    {
+                        try { onDone(rtdb, jn, str ?? ""); }
+                        finally { UnityEngine.Object.Destroy(mgr); }
+                    }, db, apiKey, endpoint, null, false);
+                    break;
+                }
                 default:
                     onDone?.Invoke(db, null,
                         $"({callerLabel}) Provider {inst.providerType} is not supported by summarize_with_small_llm yet. " +
-                        "Use a small Ollama / OpenAICompatible / LlamaCpp / OpenAI / Anthropic instance instead.");
+                        "Use a small Ollama / OpenAICompatible / LlamaCpp / OpenAI / Anthropic / Gemini instance instead.");
                     break;
             }
         }
@@ -1504,6 +1526,38 @@ namespace AITools.AIChat.Skills
             int textW = Mathf.Max(1, w);
             int textH = Mathf.Max(1, h);
 
+            // ---- World-unit vs pixel reconciliation -------------------------
+            // The fit/measure helpers below use TMP's GetPreferredValues, which
+            // reports text size in TMP WORLD UNITS. But RTUtil.RenderTextToTexture2D
+            // rasterizes through an orthographic camera whose orthographicSize is
+            // min(rectW,rectH)/2 - so one world unit maps to a NON-1:1 number of
+            // pixels that depends on the rect's shape, and TMP fontSize maps to
+            // world units by a per-font-asset ratio (~0.25 for the bundled fonts).
+            // The old code compared raw world units straight against the pixel
+            // rect and fed the LLM's pixel font_size in as a TMP fontSize cap.
+            // Net effect: poster titles capped ~4x too small, and the error
+            // changed with rect shape / resolved font - exactly the "sometimes
+            // fine, sometimes tiny" bug. Reconcile everything into one space so
+            // the result is exact regardless of canvas size or font asset.
+            float pxPerWorld = (float)textH / Mathf.Max(1, Mathf.Min(textW, textH));
+            // World units produced per 1 unit of TMP fontSize for THIS font.
+            float worldPerFont = MeasurePreferredHeight("Hg", font, 100, 100000, styles, tmpAlign, false) / 100f;
+            if (worldPerFont <= 0.0001f) worldPerFont = 0.25f; // TMP fallback if the probe failed
+            float pxPerFont = worldPerFont * pxPerWorld;       // 1 TMP fontSize unit -> rendered pixels
+
+            // font_size / min_font_size arrive as PIXEL heights (the skill docs
+            // and the LLM treat them that way). Convert to the TMP-fontSize
+            // cap/floor the search and renderer actually consume.
+            int PxToTmpFont(int px) =>
+                px <= 0 ? 0 : Mathf.Clamp(Mathf.RoundToInt(px / pxPerFont), 1, 4000);
+            int tmpMaxFont = fontSize > 0 ? PxToTmpFont(fontSize) : 0;
+            int tmpMinFont = PxToTmpFont(minFontSize);
+            // The fit helpers measure in world units, so hand them the rect in
+            // world units too (pixels / pxPerWorld). Returned value is a TMP
+            // fontSize, which is exactly what the renderer wants.
+            int worldRectW = Mathf.Max(1, Mathf.RoundToInt(textW / pxPerWorld));
+            int worldRectH = Mathf.Max(1, Mathf.RoundToInt(textH / pxPerWorld));
+
             // Compute the actual fontSize to render at. When autoSize is on (default),
             // we MEASURE the text's preferred bounds at a reference fontSize and
             // scale to fit the rect - bypassing TMP's built-in enableAutoSizing
@@ -1516,12 +1570,12 @@ namespace AITools.AIChat.Skills
             {
                 if (autoSize)
                 {
-                    renderFontSize = ComputeFitFontSizeWithManualWrap(text, font, fontSize, minFontSize, textW, textH, styles, tmpAlign, out renderText);
+                    renderFontSize = ComputeFitFontSizeWithManualWrap(text, font, tmpMaxFont, tmpMinFont, worldRectW, worldRectH, styles, tmpAlign, out renderText);
                 }
                 else
                 {
-                    renderFontSize = fontSize;
-                    renderText = WrapTextToWidth(text, font, renderFontSize, textW, styles, tmpAlign);
+                    renderFontSize = tmpMaxFont;
+                    renderText = WrapTextToWidth(text, font, renderFontSize, worldRectW, styles, tmpAlign);
                 }
 
                 // The render-to-texture path has proven inconsistent when relying
@@ -1532,8 +1586,8 @@ namespace AITools.AIChat.Skills
             else
             {
                 renderFontSize = autoSize
-                    ? ComputeFitFontSize(text, font, fontSize, minFontSize, textW, textH, styles, tmpAlign, false)
-                    : fontSize;
+                    ? ComputeFitFontSize(text, font, tmpMaxFont, tmpMinFont, worldRectW, worldRectH, styles, tmpAlign, false)
+                    : tmpMaxFont;
             }
 
             // Measure the ACTUAL preferred height at the chosen fontSize. When TMP's
@@ -1545,7 +1599,10 @@ namespace AITools.AIChat.Skills
             // clipped mid-glyph inside the per-rect render texture. That silent
             // clip is the bug that crops the "y" descender in poster body text
             // like "Activated. Do not disturb until January.".
-            int measuredH = MeasurePreferredHeight(renderText, font, renderFontSize, textW, styles, tmpAlign, renderWrap);
+            // MeasurePreferredHeight returns world units; the render texture is
+            // sized in pixels, so scale by pxPerWorld before comparing to textH.
+            int measuredWorldH = MeasurePreferredHeight(renderText, font, renderFontSize, worldRectW, styles, tmpAlign, renderWrap);
+            int measuredH = Mathf.CeilToInt(measuredWorldH * pxPerWorld);
             int extraH = Mathf.Max(0, measuredH - textH);
             int slackTop, slackBot;
             DistributeOverflowSlack(valign, extraH, out slackTop, out slackBot);
@@ -1575,18 +1632,17 @@ namespace AITools.AIChat.Skills
             UnityEngine.Object.Destroy(textTex);
 
 #if UNITY_STANDALONE && !RT_RELEASE
-            // Probe TMP's actual world-unit-per-em scaling on this font asset.
-            // If 'Hg' at TMP fontSize=100 reports preferredH significantly less
-            // than 100 world units, TMP's fontSize is NOT 1:1 with our render
-            // pixels and the TmpFontSizePixelRatio constant above needs tuning.
-            int probeReportedH = MeasurePreferredHeight("Hg", font, 100, 99999, styles, tmpAlign, false);
+            // The font_size_arg is the LLM's PIXEL request; renderFontSize is the
+            // TMP fontSize we resolved it to via pxPerFont. They differ by design
+            // (pxPerFont is ~0.25 for the bundled fonts); the rendered pixel
+            // height should track font_size_arg / fill the rect, not renderFontSize.
             Debug.Log($"draw_text: canvas={srcW}x{srcH} rect=({x},{y}) {w}x{h} " +
-                      $"fontSize_arg={action.GetArg("font_size") ?? "(unset)"} " +
-                      $"min_arg={action.GetArg("min_font_size") ?? "(unset)"} " +
-                      $"auto={autoSize} wrap={wrap} -> renderFontSize={renderFontSize} " +
-                      $"measuredH={measuredH} renderTexH={renderTexH} chars={(text ?? "").Length} " +
-                      $"| TMP probe: 'Hg' at fontSize=100 -> preferredH={probeReportedH} " +
-                      $"(world units per em; if ~25, TMP scale is ~0.25 and font_size acts as TMP fontSize not pixels)");
+                      $"fontSize_arg={action.GetArg("font_size") ?? "(unset)"}px " +
+                      $"min_arg={action.GetArg("min_font_size") ?? "(unset)"}px " +
+                      $"auto={autoSize} wrap={wrap} -> renderFontSize={renderFontSize}(TMP) " +
+                      $"measuredH={measuredH}px renderTexH={renderTexH}px chars={(text ?? "").Length} " +
+                      $"| pxPerWorld={pxPerWorld:0.###} worldPerFont={worldPerFont:0.###} " +
+                      $"pxPerFont={pxPerFont:0.###} tmpFontCap=[{tmpMinFont},{tmpMaxFont}]");
 #endif
 
             dst.Apply();
@@ -1596,9 +1652,12 @@ namespace AITools.AIChat.Skills
         /// <summary>
         /// Measure TMP's preferredHeight for <paramref name="text"/> at the given
         /// <paramref name="fontSize"/>, with the same width-wrap constraint the
-        /// renderer will use. Returns the actual rendered text height in pixels
-        /// (rounded up) so the caller can decide whether to expand the render
-        /// texture to capture overflow.
+        /// renderer will use. NOTE: the returned value is in TMP WORLD UNITS, not
+        /// pixels (TMP fontSize is ~0.25 world units/unit for the bundled fonts).
+        /// Callers must scale by pxPerWorld to compare against a pixel rect - the
+        /// historical assumption that this returned pixels is what made poster
+        /// text size unpredictable. <paramref name="rectW"/> is likewise in world
+        /// units when used as a wrap width.
         /// </summary>
         private static int MeasurePreferredHeight(string text, TMP_FontAsset font, int fontSize, int rectW, FontStyles styles, TextAlignmentOptions alignment, bool wrap)
         {

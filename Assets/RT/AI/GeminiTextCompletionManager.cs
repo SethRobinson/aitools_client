@@ -74,10 +74,40 @@ public class GeminiTextCompletionManager : MonoBehaviour
             {
                 // Convert role names: assistant -> model
                 string geminiRole = obj._role == "assistant" ? "model" : obj._role;
-                
+
                 var contentObj = new JSONObject();
                 contentObj["role"] = geminiRole;
                 var partsArray = new JSONArray();
+
+                // Vision support: emit any attached images as inlineData parts.
+                // Gemini's part order is flexible, but putting the image(s) first
+                // followed by the text mirrors Google's own examples. The
+                // "[Image #N]" text labels mirror what OpenAITextCompletionManager
+                // and AnthropicAITextCompletionManager emit so the model can
+                // cross-reference chat_image="N" tags. Only user-role content can
+                // legally carry images (model turns are text-only echoes).
+                if (obj.HasImages())
+                {
+                    for (int i = 0; i < obj._images.Count; i++)
+                    {
+                        int idx = (obj._imageChatIndices != null && i < obj._imageChatIndices.Count)
+                            ? obj._imageChatIndices[i]
+                            : -1;
+                        int labelN = idx >= 0 ? idx : (i + 1);
+
+                        var labelPart = new JSONObject();
+                        labelPart["text"] = $"[Image #{labelN}]";
+                        partsArray.Add(labelPart);
+
+                        var imagePart = new JSONObject();
+                        var inlineData = new JSONObject();
+                        inlineData["mimeType"] = "image/png";
+                        inlineData["data"] = obj._images[i];
+                        imagePart["inlineData"] = inlineData;
+                        partsArray.Add(imagePart);
+                    }
+                }
+
                 var textPart = new JSONObject();
                 textPart["text"] = obj._content;
                 partsArray.Add(textPart);
@@ -156,9 +186,7 @@ public class GeminiTextCompletionManager : MonoBehaviour
     {
         m_connectionActive = true;
 
-#if UNITY_STANDALONE && !RT_RELEASE
-        File.WriteAllText("gemini_request_sent.json", json);
-#endif
+        LLMDebugLog.LogRequest(json);
 
         using (_currentRequest = UnityWebRequest.PostWwwForm(endpoint, "POST"))
         {
@@ -166,7 +194,7 @@ public class GeminiTextCompletionManager : MonoBehaviour
             _currentRequest.uploadHandler = (UploadHandler)new UploadHandlerRaw(bodyRaw);
             _currentRequest.SetRequestHeader("Content-Type", "application/json");
             _currentRequest.SetRequestHeader("x-goog-api-key", gemini_APIKey);
-            
+
             yield return _currentRequest.SendWebRequest();
 
             if (_currentRequest == null)
@@ -187,10 +215,8 @@ public class GeminiTextCompletionManager : MonoBehaviour
                 catch { }
                 
                 Debug.Log("Gemini Response: " + responseBody);
-                
-#if UNITY_STANDALONE && !RT_RELEASE
-                File.WriteAllText("gemini_last_error.json", responseBody);
-#endif
+
+                LLMDebugLog.LogError(responseBody);
                 m_connectionActive = false;
 
                 db.Set("status", "failed");
@@ -199,9 +225,7 @@ public class GeminiTextCompletionManager : MonoBehaviour
             }
             else
             {
-#if UNITY_STANDALONE && !RT_RELEASE
-                File.WriteAllText("gemini_response.json", _currentRequest.downloadHandler.text);
-#endif
+                LLMDebugLog.LogResponse(_currentRequest.downloadHandler.text);
 
                 JSONNode rootNode = JSON.Parse(_currentRequest.downloadHandler.text);
                 yield return null;
@@ -235,9 +259,7 @@ public class GeminiTextCompletionManager : MonoBehaviour
     {
         m_connectionActive = true;
 
-#if UNITY_STANDALONE && !RT_RELEASE
-        File.WriteAllText("gemini_request_sent.json", json);
-#endif
+        LLMDebugLog.LogRequest(json);
 
         using (_currentRequest = UnityWebRequest.PostWwwForm(endpoint, "POST"))
         {
@@ -273,10 +295,8 @@ public class GeminiTextCompletionManager : MonoBehaviour
                 }
                 
                 Debug.Log("Gemini Error Response: " + errorBody);
-                
-#if UNITY_STANDALONE && !RT_RELEASE
-                File.WriteAllText("gemini_last_error.json", errorBody);
-#endif
+
+                LLMDebugLog.LogError(errorBody);
                 m_connectionActive = false;
 
                 db.Set("status", "failed");
@@ -285,9 +305,7 @@ public class GeminiTextCompletionManager : MonoBehaviour
             }
             else
             {
-#if UNITY_STANDALONE && !RT_RELEASE
-                File.WriteAllText("gemini_streaming_response.json", downloadHandler.GetContent());
-#endif
+                LLMDebugLog.LogResponse(downloadHandler.GetContent());
                 m_connectionActive = false;
 
                 db.Set("status", "success");

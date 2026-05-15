@@ -2499,8 +2499,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         switch (provider)
         {
             case LLMProvider.Anthropic:
-            case LLMProvider.Gemini:
                 return true;
+
+            case LLMProvider.Gemini:
+                // GeminiTextCompletionManager.BuildChatCompleteJSON serializes
+                // attached images as inlineData parts (used by both the main chat
+                // path and the vision-caption sidecar).
+                return false;
 
             case LLMProvider.OpenAI:
                 // Both OpenAI request shapes used by this app serialize image payloads:

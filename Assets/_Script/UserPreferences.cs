@@ -19,6 +19,10 @@ public class UserPreferences : MonoBehaviour
     public string DefaultAutoPicScript { get; set; } = "AutoPic.txt";
     // Adventure mode quote highlight color (hex format like #FFFF66). Empty string disables quote coloring.
     public string AdventureQuoteColor { get; set; } = "#FFFF66";
+    // When on, LLM request/response/error bodies are dumped to llm_*.json in
+    // the working dir for debugging (see LLMDebugLog). Defaults on, and now
+    // works in release builds too - it used to be compiled out of releases.
+    public bool WriteDebugJsonFiles { get; set; } = true;
 
     private void Awake()
     {
@@ -94,6 +98,10 @@ public class UserPreferences : MonoBehaviour
             case "adventure_quote_color":
                 AdventureQuoteColor = value;
                 break;
+            case "write_debug_json_files":
+                if (bool.TryParse(value, out bool writeDebug))
+                    WriteDebugJsonFiles = writeDebug;
+                break;
         }
     }
 
@@ -127,6 +135,9 @@ public class UserPreferences : MonoBehaviour
 
                 // Always write adventure_quote_color (empty string means disabled)
                 writer.WriteLine("adventure_quote_color|" + (AdventureQuoteColor ?? "") + "|");
+
+                // Always write so an explicit "off" survives a restart (default is on).
+                writer.WriteLine("write_debug_json_files|" + WriteDebugJsonFiles.ToString() + "|");
             }
             RTConsole.Log("Saved user preferences to " + PREFERENCES_FILE);
         }

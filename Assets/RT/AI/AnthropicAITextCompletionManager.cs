@@ -174,9 +174,8 @@ public class AnthropicAITextCompletionManager : MonoBehaviour
         m_connectionActive = true;
 
         // Persist the outbound body so callers can inspect what we actually sent
-        // when the response is empty or malformed. (The streaming path already
-        // does this; mirror it here so non-streaming one-shots are debuggable.)
-        try { if (!string.IsNullOrEmpty(sentJsonFilename)) File.WriteAllText(sentJsonFilename, json); } catch { /* writing diagnostics shouldn't break the request */ }
+        // when the response is empty or malformed.
+        LLMDebugLog.LogRequest(json);
 
         using (_currentRequest = UnityWebRequest.PostWwwForm(endpoint, "POST"))
         {
@@ -196,7 +195,7 @@ public class AnthropicAITextCompletionManager : MonoBehaviour
             {
                 string msg = _currentRequest.error;
                 Debug.Log(msg);
-                File.WriteAllText("last_error_returned.json", _currentRequest.downloadHandler.text);
+                LLMDebugLog.LogError(_currentRequest.downloadHandler.text);
                 m_connectionActive = false;
 
                 db.Set("status", "failed");
@@ -205,7 +204,7 @@ public class AnthropicAITextCompletionManager : MonoBehaviour
             }
             else
             {
-                File.WriteAllText("claude_json_received.json", _currentRequest.downloadHandler.text);
+                LLMDebugLog.LogResponse(_currentRequest.downloadHandler.text);
                 JSONNode rootNode = JSON.Parse(_currentRequest.downloadHandler.text);
                 yield return null;
 
@@ -244,9 +243,7 @@ public class AnthropicAITextCompletionManager : MonoBehaviour
 
         m_connectionActive = true;
 
-//#if UNITY_STANDALONE && !RT_RELEASE
-        File.WriteAllText("text_completion_sent.json", json);
-//#endif
+        LLMDebugLog.LogRequest(json);
 
         using (_currentRequest = UnityWebRequest.PostWwwForm(endpoint, "POST"))
         {
@@ -278,7 +275,7 @@ public class AnthropicAITextCompletionManager : MonoBehaviour
                 Debug.Log("Response Code: " + _currentRequest.responseCode);
                 Debug.Log("Response Headers: " + _currentRequest.GetResponseHeaders());
                 Debug.Log("Response Body: " + rawBody);
-                File.WriteAllText("last_error_returned.json", rawBody);
+                LLMDebugLog.LogError(rawBody);
                 m_connectionActive = false;
 
                 db.Set("status", "failed");
@@ -288,7 +285,7 @@ public class AnthropicAITextCompletionManager : MonoBehaviour
             }
             else
             {
-                File.WriteAllText("claude_json_received.json", _currentRequest.downloadHandler.text);
+                LLMDebugLog.LogResponse(_currentRequest.downloadHandler.text);
                 m_connectionActive = false;
 
                 db.Set("status", "success");

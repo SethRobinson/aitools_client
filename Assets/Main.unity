@@ -15324,7 +15324,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 1319.9998, y: -84.9}
+  m_AnchoredPosition: {x: 1319.9998, y: -29.7}
   m_SizeDelta: {x: 82.53, y: 15.869}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &385424253
@@ -15409,7 +15409,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
-  m_Color: {r: 1, g: 1, b: 1, a: 1}
+  m_Color: {r: 0.5424528, g: 0.920235, b: 1, a: 1}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -23774,6 +23774,7 @@ Canvas:
   m_OverridePixelPerfect: 0
   m_SortingBucketNormalizedSize: 0
   m_VertexColorAlwaysGammaSpace: 0
+  m_UseReflectionProbes: 0
   m_AdditionalShaderChannelsFlag: 25
   m_UpdateRectTransformForStandalone: 0
   m_SortingLayerID: 0
@@ -26799,6 +26800,7 @@ Canvas:
   m_OverridePixelPerfect: 0
   m_SortingBucketNormalizedSize: 0
   m_VertexColorAlwaysGammaSpace: 0
+  m_UseReflectionProbes: 0
   m_AdditionalShaderChannelsFlag: 25
   m_UpdateRectTransformForStandalone: 0
   m_SortingLayerID: 0
@@ -38436,7 +38438,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 1319.9998, y: -48.90001}
+  m_AnchoredPosition: {x: 1319.9998, y: -65.8}
   m_SizeDelta: {x: 82.5, y: 15.869}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &976146362
@@ -38523,7 +38525,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
-  m_Color: {r: 0.043137256, g: 0.79607844, b: 1, a: 1}
+  m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -39779,6 +39781,7 @@ Canvas:
   m_OverridePixelPerfect: 0
   m_SortingBucketNormalizedSize: 0
   m_VertexColorAlwaysGammaSpace: 0
+  m_UseReflectionProbes: 0
   m_AdditionalShaderChannelsFlag: 25
   m_UpdateRectTransformForStandalone: 0
   m_SortingLayerID: 0
@@ -50930,7 +50933,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 1319.9998, y: -30.900002}
+  m_AnchoredPosition: {x: 1319.9998, y: -47.8}
   m_SizeDelta: {x: 82.5, y: 15.869}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1277069547
@@ -51016,7 +51019,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
-  m_Color: {r: 0.042452812, g: 0.7947537, b: 1, a: 1}
+  m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -56088,7 +56091,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 1319.9998, y: -67.30001}
+  m_AnchoredPosition: {x: 1319.9998, y: -83.7}
   m_SizeDelta: {x: 82.53, y: 15.869}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1399506085
@@ -61465,6 +61468,7 @@ Canvas:
   m_OverridePixelPerfect: 0
   m_SortingBucketNormalizedSize: 0
   m_VertexColorAlwaysGammaSpace: 1
+  m_UseReflectionProbes: 0
   m_AdditionalShaderChannelsFlag: 25
   m_UpdateRectTransformForStandalone: 0
   m_SortingLayerID: 0
@@ -63097,7 +63101,7 @@ Light:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1592991365}
   m_Enabled: 1
-  serializedVersion: 12
+  serializedVersion: 13
   m_Type: 1
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_Intensity: 1
@@ -63149,7 +63153,7 @@ Light:
   m_UseBoundingSphereOverride: 0
   m_UseViewFrustumForShadowCasterCull: 1
   m_ForceVisible: 0
-  m_ShadowRadius: 0
+  m_ShapeRadius: 0
   m_ShadowAngle: 0
   m_LightUnit: 1
   m_LuxAtDistance: 1
@@ -65434,7 +65438,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 1320, y: -103.4}
+  m_AnchoredPosition: {x: 1320, y: -101}
   m_SizeDelta: {x: 82.5257, y: 15.869}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1691278867
@@ -84715,6 +84719,7 @@ Canvas:
   m_OverridePixelPerfect: 0
   m_SortingBucketNormalizedSize: 0
   m_VertexColorAlwaysGammaSpace: 0
+  m_UseReflectionProbes: 0
   m_AdditionalShaderChannelsFlag: 25
   m_UpdateRectTransformForStandalone: 0
   m_SortingLayerID: 0
@@ -85794,27 +85799,23 @@ PrefabInstance:
     - target: {fileID: 8335936608596666549, guid: f13496bcc6225004ebb72d41e2bd85b8,
         type: 3}
       propertyPath: m_text
-      value: "This is a Unity engine based app that uses ComfyUI and LLMs together
-        to do fun things.\n\nTo get started: Add at least one ComfyUI server with
-        the Configuration button.  Click LLM Settings to add your local LLM info
-        (or API keys for OpenAI/Anthropic ones).\n\nSome shortcuts/controls to know:\n\n\u2022
-        Pan around -  Hold down right mouse button.  To zoom, use the mouse wheel\n\u2022
-        Middle Mouse Button + Drag to move pics around\n\u2022 Drawing masks - Left
-        mouse button to add to selection, hold Alt to remove\n\u2022 Show/hide mask
-        - M.  You can also use Ctrl-I to inverse the selection mask\n\u2022 U for
-        Undo, P to pause/resume movie (cursor must be over the image/movie)\n\u2022
-        Hold H while on a movie to hide it\n\nComyUI issues?  Drag workflows from
-        the ComfyUI directory into ComfyUI and and use the install missing node feature.\n\nClick
-        the Configuration button to setup where your ComfyUI server(s) is/are.  Click
-        LLM Settings to setup the LLM parts.\n\nSeth's source code to this Unity
-        project is <link=\"https://github.com/SethRobinson/aitools_client\"><u>on
+      value: "This is an app that uses ComfyUI and LLMs together to do fun things.\n\nTo
+        get started: Add at least one ComfyUI server with the Configuration button. 
+        Click LLM Settings to add the LLMs you want to use.\n\nSome shortcuts/controls
+        to know:\n\n\u2022 Pan around -  Hold down right mouse button.  To zoom,
+        use the mouse wheel\n\u2022 Middle Mouse Button + Drag to move pics around\n\u2022
+        U for Undo, P to pause/resume movie (cursor must be over the image/movie)\n\u2022
+        Hold H while on a movie to hide it\n\nComfyUI issues?  Drag workflows from
+        the ComfyUI directory into ComfyUI and and use the install missing nodes
+        or models. Once it's working there, it will work here.\n\nSeth's source code
+        to this Unity project is <link=\"https://github.com/SethRobinson/aitools_client\"><u>on
         github</u></link>.  Please make an account and post there if you have any
         problems or questions."
       objectReference: {fileID: 0}
     - target: {fileID: 8335936608596666549, guid: f13496bcc6225004ebb72d41e2bd85b8,
         type: 3}
       propertyPath: m_fontSize
-      value: 29.8
+      value: 31
       objectReference: {fileID: 0}
     - target: {fileID: 8335936608596666549, guid: f13496bcc6225004ebb72d41e2bd85b8,
         type: 3}

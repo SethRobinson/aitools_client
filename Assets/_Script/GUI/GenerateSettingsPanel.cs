@@ -23,6 +23,7 @@ public class GenerateSettingsPanel : MonoBehaviour
     private Toggle _autoSaveToggle;
     private Toggle _autoSavePNGToggle;
     private Toggle _stripThinkTagsToggle;
+    private Toggle _writeDebugJsonToggle;
     private TMP_InputField _maxPicsInput;
     private TMP_InputField _adventureQuoteColorInput;
     private TextMeshProUGUI _statusText;
@@ -529,6 +530,10 @@ public class GenerateSettingsPanel : MonoBehaviour
         _stripThinkTagsToggle = CreateToggleRow(content.transform, "Strip <think> tags when sending to LLMs",
             null, OnStripThinkTagsChanged, 24);
 
+        _writeDebugJsonToggle = CreateToggleRow(content.transform, "Write debug .json files",
+            "Dumps each LLM request/response/error to llm_*.json in the app folder for troubleshooting.",
+            OnWriteDebugJsonToggleChanged, 70);
+
         CreateSectionHeader(content.transform, "Current status:");
         CreateStatusTextRow(content.transform);
     }
@@ -1016,6 +1021,13 @@ public class GenerateSettingsPanel : MonoBehaviour
         {
             _adventureQuoteColorInput.text = UserPreferences.Get().AdventureQuoteColor ?? "";
         }
+
+        // Write debug .json files toggle from UserPreferences (defaults on)
+        if (_writeDebugJsonToggle != null)
+        {
+            var prefs = UserPreferences.Get();
+            _writeDebugJsonToggle.isOn = prefs == null ? true : prefs.WriteDebugJsonFiles;
+        }
     }
 
     private void RefreshAutoPicDropdown()
@@ -1091,6 +1103,16 @@ public class GenerateSettingsPanel : MonoBehaviour
     private void OnStripThinkTagsChanged(bool value)
     {
         // This is read directly from the toggle by other code
+    }
+
+    private void OnWriteDebugJsonToggleChanged(bool value)
+    {
+        var prefs = UserPreferences.Get();
+        if (prefs != null)
+        {
+            prefs.WriteDebugJsonFiles = value;
+            prefs.Save();
+        }
     }
 
     private void OnMaxPicsChanged(string value)
