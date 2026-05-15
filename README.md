@@ -7,29 +7,34 @@ License:  BSD style attribution, see LICENSE.md
 </p>
 
 
-## Download the latest: V2.52 (Mar 16th, 2026) [AI Tools Client (Windows, 62 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip)
+## Download the latest: V3.0 (May 16th, 2026) [AI Tools Client (Windows, 62 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip)
 
 Need an old version? The last pre-V2 version (that still supports Auto1111) can be downloaded [here](https://www.rtsoft.com/files/SethsAIToolsWindowsV095.zip).
 
-NOTE: This software is hard to use because it kind of assumes you already know a lot of about ComfyUI and how to use local LLMs like llama.cpp. 
+NOTE: This software is hard to use because it kind of assumes you already know a lot of about ComfyUI and how to use local LLMs like llama.cpp or vllm. 
 
-If this is all weird and strange, this is probably not the place for you to start.  Although, you could just enter an OpenAI API key for both image creation and LLM I guess and this app could do some fun stuff, but the main point of this is to do everything in your home lab locally.
+If this is all weird and strange, this is probably not the place for you to start. 
 
 ## Features
 
 - It's not a web app, it's a native locally run Windows .exe (Unity with C#)
-- It's kind of like lego, it can run ComfyUI workflows that chain together.  You need to understand ComfyUI and workflow tweaking as you'll still need to install all the needed custom nodes and models there. (you do have ComfyUI Manager installed, right?!)
+- AI Chat mode is kind of nano-banana at home, can just "ask" it to make images, posters, intelligently use anchor images, this is probably the coolest feature
 - Drag and drop images in as well as paste images from the windows clipboard
 - Built-in image processing like cropping and resizing, mask painting
 - Pan/zoom with thousands of images on the screen
-- Built to utilize many ComfyUI servers at once
+- Built to utilize many ComfyUI servers and or LLMS at once
+- AI Guide feature harnesses the power of AI to create motivational posters, illustrated stories 
+- Adventure mode allows playing a realtime illustrated adventure (kind of like AI Dungeon) or generate quizes and choose your own adventures that can be exported to self contained playable HTML versions
 - Privacy respected - does not phone home or collect any statistics, purely local usage. (it does check a single file on github.com to check for newer versions, but that's it)
-- Includes "experiments", little built-in games and apps designed to test AI. May be broken
-- AI Guide feature harnesses the power of AI to create motivational posters, illustrated stories or whatever
-- Adventure mode allows playing a realtime illustrated adventure (kind of like AI Dungeon) or generate quizes and choose your own adventures that can be exported to self contained playable HTML versions.
-
 
 ## Recent changes
+
+### V3.0 (May 16th, 2026)
+
+* New "AI Chat" feature - use natural language to do anything, even complex things like attaching/generating images and telling it to use those as visual anchors for stories, posters, movies, etc
+* Support for the latest LLMs, local and cloud.  Comes with 17 "skills" so the LLM can use most of this apps abilities directly
+* Tons of tweaks and bug fixes
+* Updates to Klein 2 9B edit, Z-Image, and LTX 2.3 workflows, those are the main ones that AI Chat needs to work
 
 ### V2.52 (Mar 16th, 2026)
 
