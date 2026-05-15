@@ -26,6 +26,7 @@ public class PresetPickerDialog : MonoBehaviour
         public string Title = "Select Preset";
         public string CurrentSelection;
         public string FileFilterPrefix;
+        public bool ExcludeAutoPicAndSummarize; // Hide AutoPic*/AdventureSummarize.txt (job-script pickers)
         public string SpecialNoneLabel;
         public string InitialFilterText;
     }
@@ -466,7 +467,7 @@ public class PresetPickerDialog : MonoBehaviour
         _allEntries.Clear();
         if (!string.IsNullOrEmpty(_opts.SpecialNoneLabel))
             _allEntries.Add(_opts.SpecialNoneLabel);
-        var fileNames = PresetManager.GetPresetFileNames(_opts.FileFilterPrefix);
+        var fileNames = PresetManager.GetPresetFileNames(_opts.FileFilterPrefix, _opts.ExcludeAutoPicAndSummarize);
         _allEntries.AddRange(fileNames);
     }
 

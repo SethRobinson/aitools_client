@@ -83,19 +83,19 @@ public class LLMModelData
         data.openAI = new LLMProviderModelData
         {
             defaultEndpoint = "https://api.openai.com/v1/responses",
-            models = new List<string> { "gpt-5.2", "gpt-5.2-pro" }
+            models = new List<string> { "gpt-5.5", "gpt-5.5-pro" }
         };
 
         data.anthropic = new LLMProviderModelData
         {
             defaultEndpoint = "https://api.anthropic.com/v1/messages",
-            models = new List<string> { "claude-sonnet-4-5", "claude-haiku-4-5", "claude-opus-4-5" }
+            models = new List<string> { "claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5" }
         };
 
         data.gemini = new LLMProviderModelData
         {
             defaultEndpoint = "https://generativelanguage.googleapis.com/v1beta/models",
-            models = new List<string> { "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3-pro-preview", "gemini-3-flash-preview" }
+            models = new List<string> { "gemini-3.1-pro-preview", "gemini-3.1-flash-lite", "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite" }
         };
 
         return data;

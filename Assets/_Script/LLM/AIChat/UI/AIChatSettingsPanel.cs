@@ -38,13 +38,14 @@ namespace AITools.AIChat.UI
         private RectTransform _skillsContent;
         private TMP_InputField _keepLastNField;
         private TMP_InputField _presetPrefixField;
+        private TMP_InputField _compactKeepNField;
 
         private const float DEFAULT_WIDTH = 760f;
         private const float DEFAULT_HEIGHT = 620f;
         private const float HEADER_HEIGHT = 40f;
-        // Tall enough for one compact settings row (left-justified label +
-        // input pairs) above the bottom button row.
-        private const float FOOTER_HEIGHT = 85f;
+        // Tall enough for the Compact row + one settings row (left-justified
+        // label + input pairs) above the bottom button row.
+        private const float FOOTER_HEIGHT = 122f;
         private const float BaseFontSize = 13f;
 
         private static readonly Color PanelBg = new Color(0.80f, 0.80f, 0.82f, 1f);
@@ -442,6 +443,70 @@ namespace AITools.AIChat.UI
                 kp.fontSize = BaseFontSize;
                 kp.alignment = TextAlignmentOptions.Center;
             }
+
+            // ---- Compact row (above the settings row): shrink a long chat
+            // without deleting any images. "keep last N exchanges" feeds both
+            // buttons; Truncate just drops older messages, Summarize replaces
+            // them with one LLM-written recap.
+            const float kCompactRowY = 84f;
+
+            const float kCompactLabelW = 235f;
+            const float kCompactInputW = 46f;
+            BuildSettingPair(
+                footer.transform,
+                "CompactPair",
+                "Compact chat - keep last N exchanges:",
+                kCompactLabelW,
+                kCompactInputW,
+                new Vector2(kSettingsLeftPad, kCompactRowY),
+                "Shrinks a long, slow conversation. \"Truncate\" simply drops everything older than the last N user/assistant exchanges. \"Summarize\" asks the active LLM to condense everything older into one recap message (preserving key points and what each chat_image=\"N\" depicts), then keeps the last N exchanges verbatim. Neither deletes any images - the media panel and image references stay intact.",
+                out _compactKeepNField);
+            _compactKeepNField.contentType = TMP_InputField.ContentType.IntegerNumber;
+            _compactKeepNField.characterLimit = 4;
+            _compactKeepNField.textComponent.alignment = TextAlignmentOptions.Center;
+            if (_compactKeepNField.placeholder is TextMeshProUGUI cp)
+            {
+                cp.text = "5";
+                cp.color = new Color(0, 0, 0, 0.4f);
+                cp.font = _font;
+                cp.fontSize = BaseFontSize;
+                cp.alignment = TextAlignmentOptions.Center;
+            }
+
+            float compactBtnX = kSettingsLeftPad + kCompactLabelW + 4f + kCompactInputW + 12f;
+            var truncBtn = MakeButton(footer.transform, "Truncate", new Vector2(compactBtnX, kCompactRowY), new Vector2(110, 26), OnCompactTruncate);
+            truncBtn.GetComponent<RectTransform>().anchorMin = new Vector2(0, 0);
+            truncBtn.GetComponent<RectTransform>().anchorMax = new Vector2(0, 0);
+            truncBtn.GetComponent<RectTransform>().pivot = new Vector2(0, 0);
+
+            var sumBtn = MakeButton(footer.transform, "Summarize", new Vector2(compactBtnX + 118f, kCompactRowY), new Vector2(120, 26), OnCompactSummarize);
+            sumBtn.GetComponent<RectTransform>().anchorMin = new Vector2(0, 0);
+            sumBtn.GetComponent<RectTransform>().anchorMax = new Vector2(0, 0);
+            sumBtn.GetComponent<RectTransform>().pivot = new Vector2(0, 0);
+        }
+
+        // Parse the keep-N field, clamping to a sane value; persists it too.
+        private int ReadCompactKeepN()
+        {
+            int n = AIChatPanel.GetCompactKeepN();
+            if (_compactKeepNField != null && int.TryParse(_compactKeepNField.text, out int parsed))
+                n = Mathf.Max(0, parsed);
+            AIChatPanel.SetCompactKeepN(n);
+            return n;
+        }
+
+        private void OnCompactTruncate()
+        {
+            int n = ReadCompactKeepN();
+            AIChatPanel.CompactTruncate(n);
+            SaveAndClose();
+        }
+
+        private void OnCompactSummarize()
+        {
+            int n = ReadCompactKeepN();
+            AIChatPanel.CompactSummarize(n);
+            SaveAndClose();
         }
 
         // Builds a "[Label:] [InputField]" pair anchored to the bottom-left of
@@ -557,6 +622,8 @@ namespace AITools.AIChat.UI
                 _presetPrefixField.text = AIChatPanel.GetPresetPrefix();
             if (_maxEdgeField != null)
                 _maxEdgeField.text = AIChatPanel.GetAttachmentMaxEdge().ToString();
+            if (_compactKeepNField != null)
+                _compactKeepNField.text = AIChatPanel.GetCompactKeepN().ToString();
             RebuildSkillRows();
         }
 
@@ -642,6 +709,11 @@ namespace AITools.AIChat.UI
             // existing value untouched. SetAttachmentMaxEdge clamps to a sane range.
             if (_maxEdgeField != null && int.TryParse(_maxEdgeField.text, out int maxEdge))
                 AIChatPanel.SetAttachmentMaxEdge(maxEdge);
+
+            // Persist the compact "keep last N exchanges" value (used by both the
+            // Truncate and Summarize buttons).
+            if (_compactKeepNField != null && int.TryParse(_compactKeepNField.text, out int compactN))
+                AIChatPanel.SetCompactKeepN(compactN);
 
             // Trigger the host's reload + UI update.
             _staticSkillManager?.Reload();

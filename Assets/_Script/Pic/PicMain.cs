@@ -237,9 +237,6 @@ public class PicMain : MonoBehaviour
     bool m_hasOriginalPicColor = false; // Track if we've captured the original color
     static readonly Color SELECTION_TINT = new Color(0.7f, 0.85f, 1f, 1f); // Light blue tint when selected
     LineRenderer m_selectionFrame; // Visual selection frame
-    float m_genericTimerStart = 0; //used to countdown for OpenAI Image API
-    string m_genericTimerText = "Waiting...";
-    string m_lastTimerDisplayText = ""; // Cache to avoid updating text every frame
     static bool s_hideStatusTextOverlays = false;
     static int s_lastOverlayToggleFrame = -1;
 
@@ -755,9 +752,6 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         {
             m_text.text = msg;
         }
-
-        m_genericTimerStart = 0; //disable any timer
-        m_lastTimerDisplayText = ""; //clear timer cache
     }
 
    
@@ -1922,169 +1916,6 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         return jobList;
     }
 
-  
-
-    public void OnRenderWithOpenAIImageButton()
-    {
-       OnRenderWithOpenAIImage();
-    }
-
-    public void StartGenericTimer(string text)
-    {
-        m_genericTimerText = text;
-        m_genericTimerStart = Time.realtimeSinceStartup;
-    }
-
-    public void StopGenericTimer()
-    {
-        m_genericTimerText = "Done";
-        m_genericTimerStart = 0;
-        m_lastTimerDisplayText = ""; //clear timer cache
-    }
-
-    public void OnRenderWithOpenAIImage()
-    {
-        var e = new ScheduledGPUEvent();
-        GetCurrentStats().m_requestedRenderer = RTRendererType.OpenAI_Image;
-
-        // First check if an OpenAI API key is configured
-        string apiKey = Config.Get().GetOpenAI_APIKey();
-        if (string.IsNullOrEmpty(apiKey) || apiKey.Length < 10)
-        {
-            RTQuickMessageManager.Get().ShowMessage("OpenAI API key not set. Go to LLM Settings and add your OpenAI API key.", 5);
-            SetStatusMessage("No OpenAI API key");
-            OnFinishedRenderingWorkflow(false);
-            return;
-        }
-
-        // Try to add OpenAI Image GPU if not already added (in case key was added after startup)
-        Config.Get().TryAddOpenAIImageGPU();
-
-        GetCurrentStats().m_gpu = Config.Get().GetFreeGPU(RTRendererType.OpenAI_Image, true);
-
-        if (GetCurrentStats().m_gpu == -1)
-        {
-            // This shouldn't happen if API key is set, but just in case
-            RTQuickMessageManager.Get().ShowMessage("OpenAI Image not available. Check LLM Settings for your API key.", 5);
-            SetStatusMessage("OpenAI Image unavailable");
-            OnFinishedRenderingWorkflow(false);
-            return;
-        }
-
-        SetStatusMessage("Waiting for OpenAI...");
-
-        //if prompt is null, we'll set it
-        if (m_picTextToImageScript.GetPrompt() == null || m_picTextToImageScript.GetPrompt().Length < 1)
-        {
-            m_picTextToImageScript.SetPrompt(GameLogic.Get().GetPrompt());
-        }
-
-        Dalle3Manager openAIImageScript = gameObject.GetComponent<Dalle3Manager>();
-
-        if (openAIImageScript == null)
-        {
-            Debug.Log("Adding OpenAI Image script");
-            openAIImageScript = gameObject.AddComponent<Dalle3Manager>();
-        }
-
-        string json = openAIImageScript.BuildJSON(m_picTextToImageScript.GetPrompt(), "gpt-image-1.5");
-
-        RTDB db = new RTDB();
-        openAIImageScript.SpawnRequest(json, OnOpenAIImageCompletedCallback, db, apiKey);
-
-        //Oh, let's start a timer
-        StartGenericTimer("OpenAI Image...");
-    }
-
-    public void OnOpenAIImageCompletedCallback(RTDB db, Texture2D texture)
-    {
-        StopGenericTimer();
-        if (texture == null)
-        {
-            string errorMsg = db.GetString("msg");
-            string httpError = db.GetStringWithDefault("http_error", "");
-            
-            // Log full error details to console
-            RTConsole.Log("OpenAI Image Error: " + errorMsg);
-            if (!string.IsNullOrEmpty(httpError) && httpError != errorMsg)
-            {
-                RTConsole.Log("HTTP Error: " + httpError);
-            }
-
-            //if 429 (Too Many Requests) is in the text we'll wait and try again
-            if (errorMsg.Contains("429") || httpError.Contains("429"))
-            {
-               Debug.Log("Got 429, waiting 5 seconds and trying again");
-               RTMessageManager.Get().Schedule(UnityEngine.Random.Range(5.0f, 10.0f), OnRenderWithOpenAIImage);
-            }
-            else if (errorMsg.Contains("401") || errorMsg.Contains("Unauthorized") || 
-                     httpError.Contains("401") || httpError.Contains("Unauthorized"))
-            {
-                // API key is invalid
-                RTQuickMessageManager.Get().ShowMessage("OpenAI API key is invalid. Check LLM Settings.", 5);
-                SetStatusMessage("Invalid API key");
-                OnFinishedRenderingWorkflow(false);
-            }
-            else
-            {
-                // For moderation blocked, show a cleaner message
-                string displayMsg = errorMsg;
-                if (errorMsg.Contains("safety system") || errorMsg.Contains("moderation"))
-                {
-                    // Extract key part of message and make it more readable
-                    displayMsg = "Content blocked by\nOpenAI safety filter";
-                    RTQuickMessageManager.Get().ShowMessage(errorMsg, 8); // Show full message in popup
-                }
-                else if (displayMsg.Length > 100)
-                {
-                    // Truncate very long messages for display, but show full in popup
-                    RTQuickMessageManager.Get().ShowMessage(errorMsg, 8);
-                    displayMsg = displayMsg.Substring(0, 100) + "...";
-                }
-                
-                SetStatusMessage(displayMsg);
-                // Mark job as finished so the pic is no longer considered busy
-                OnFinishedRenderingWorkflow(false);
-            }
-            return;
-        }
-
-        AddImageUndo(true);
-
-        SetStatusMessage("");
-        //only do the undo if our sprite texture is valid
-
-        SetImage(texture, true);
-      
-        /*
-        GetCurrentStats().m_picJob.requestedPrompt = m_picTextToImageScript.GetPrompt();
-        GetCurrentStats().m_lastNegativePromptUsed = "";
-        GetCurrentStats().m_lastSteps = 0;
-        GetCurrentStats().m_lastCFGScale = 0;
-        GetCurrentStats().m_lastSampler = "N/A";
-        GetCurrentStats().m_tiling = false;
-        GetCurrentStats().m_fixFaces = false;
-        GetCurrentStats().m_lastSeed = 0;
-        GetCurrentStats().m_lastModel = "OpenAI Image";
-        GetCurrentStats().m_bUsingControlNet = false;
-        GetCurrentStats().m_bUsingPix2Pix = false;
-        GetCurrentStats().m_lastOperation = "OpenAI Image";
-        */
-        SetNeedsToUpdateInfoPanelFlag();
-        AutoSaveImageIfNeeded();
-        
-        // Mark job as finished so the pic is no longer considered busy
-        OnFinishedRenderingWorkflow(true);
-
-        if (m_onFinishedRenderingCallback != null)
-            m_onFinishedRenderingCallback.Invoke(gameObject);
-    }
-    void RemoveScheduledCalls()
-    {
-        RTMessageManager.Get().Schedule(UnityEngine.Random.Range(5.0f, 10.0f), OnRenderWithOpenAIImage);
-
-        RTMessageManager.Get().RemoveScheduledCalls((System.Action)OnRenderWithOpenAIImage);
-    }
     public void OnRenderWithAITOrA1111()
     {
         int gpuID = Config.Get().GetFreeGPU(RTRendererType.AI_Tools_or_A1111, false);
@@ -2099,7 +1930,6 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         GetCurrentStats().m_requestedRenderer = RTRendererType.AI_Tools_or_A1111;
         GetCurrentStats().m_gpu = Config.Get().GetFreeGPU(GetCurrentStats().m_requestedRenderer, true); //show we don't care
 
-        RemoveScheduledCalls();
         OnReRenderNewSeedButton();
     }
 
@@ -2117,7 +1947,6 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         GetCurrentStats().m_requestedRenderer = RTRendererType.ComfyUI;
         GetCurrentStats().m_gpu = Config.Get().GetFreeGPU(GetCurrentStats().m_requestedRenderer, true); //show we don't care
 
-        RemoveScheduledCalls();
         OnReRenderNewSeedButton();
     }
     public void ClearErrorsAndJobs()
@@ -2190,7 +2019,6 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             return;
         }
 
-        RemoveScheduledCalls();
         m_picMovie.KillMovie();
         AddImageUndo(true);
 
@@ -2221,7 +2049,6 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     //I return it, in case the caller wants to set additional parms
     public ScheduledGPUEvent OnRenderButton(string promptAddition)
     {
-        RemoveScheduledCalls();
         var e = new ScheduledGPUEvent();
         e.mode = "render";
         e.targetObj = this.gameObject;
@@ -3540,7 +3367,6 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         if (text == null || text.Length == 0) return;
 
         _streamedTextBuffer.Append(text);
-        m_genericTimerStart = 0;
 
         if (Time.time - _streamLastUpdateTime < STREAM_UPDATE_INTERVAL) return;
         _streamLastUpdateTime = Time.time;
@@ -3663,12 +3489,6 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             neededRenderer = m_picJobs[0].requestedRenderer;
         }
 
-        // Special handling for OpenAI_Image - try to add GPU if API key exists
-        if (neededRenderer == RTRendererType.OpenAI_Image)
-        {
-            Config.Get().TryAddOpenAIImageGPU();
-        }
-
         int serverID = -1;
         
         // If we own a server (from AutoPic override), use it exclusively
@@ -3702,20 +3522,6 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
         if (serverID == -1 && m_requirements == "gpu")
         {
-            // Special handling for OpenAI_Image - show helpful error message
-            if (neededRenderer == RTRendererType.OpenAI_Image)
-            {
-                string apiKey = Config.Get().GetOpenAI_APIKey();
-                if (string.IsNullOrEmpty(apiKey) || apiKey.Length < 10)
-                {
-                    RTQuickMessageManager.Get().ShowMessage("OpenAI API key not set. Go to LLM Settings and add your OpenAI API key.", 5);
-                    SetStatusMessage("No OpenAI API key");
-                    ClearJobs();
-                    OnFinishedRenderingWorkflow(false);
-                    return;
-                }
-            }
-            
             SetStatusMessage("Waiting for GPU...");
             //nothing available yet
             return;
@@ -4059,64 +3865,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                         {
                             string apiKey = activeSettings.apiKey;
                             string model = activeSettings.selectedModel;
-                            string endpoint = "https://api.openai.com/v1/chat/completions";
-                            
-                            // Check for GPT-5/Responses API models (matching AIGuideManager logic)
-                            bool useResponsesAPI = false;
-                            bool isReasoningModel = false;
-                            bool includeTemperature = true;
-                            string reasoningEffort = null;
-                            
-                            if (model.Contains("gpt-5"))
-                            {
-                                // All GPT-5 models use Responses API
-                                useResponsesAPI = true;
-                                endpoint = "https://api.openai.com/v1/responses";
-                                
-                                if (model.Contains("gpt-5.2-pro"))
-                                {
-                                    // Pro reasoning model: high reasoning effort, no temperature
-                                    isReasoningModel = true;
-                                    includeTemperature = false;
-                                    reasoningEffort = "high";
-                                }
-                                else if (model.Contains("gpt-5.2"))
-                                {
-                                    // Base 5.2 reasoning model: medium reasoning effort, no temperature
-                                    isReasoningModel = true;
-                                    includeTemperature = false;
-                                    reasoningEffort = "medium";
-                                }
-                                else if (model.Contains("gpt-5-mini") || model.Contains("gpt-5-nano"))
-                                {
-                                    // Mini/nano: Use Chat Completions API
-                                    useResponsesAPI = false;
-                                    isReasoningModel = false;
-                                    includeTemperature = false;  // Fixed temp=1, don't send parameter
-                                    reasoningEffort = null;
-                                    endpoint = "https://api.openai.com/v1/chat/completions";
-                                }
-                                else
-                                {
-                                    // Base gpt-5: no reasoning, allow temperature
-                                    isReasoningModel = false;
-                                    includeTemperature = true;
-                                }
-                            }
-                            else if (model.StartsWith("o3") || model.StartsWith("o4"))
-                            {
-                                useResponsesAPI = true;
-                                endpoint = "https://api.openai.com/v1/responses";
-                                isReasoningModel = true;
-                                includeTemperature = false;
-                                reasoningEffort = "medium";
-                            }
-                            else if (model.StartsWith("o1"))
-                            {
-                                isReasoningModel = true;
-                                includeTemperature = false;
-                            }
-                            
+
                             // OpenAI APIs require at least one user message - add placeholder if missing
                             bool hasUserMessage = false;
                             foreach (var line in lines)
@@ -4131,24 +3880,17 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                             {
                                 lines.Enqueue(new GTPChatLine("user", "Please proceed."));
                             }
-                            
-                            // When a custom (non-OpenAI) endpoint is configured, use it and pass enableThinking
-                            bool? openAIEnableThinking = null;
-                            string settingsEndpoint = activeSettings.endpoint ?? "";
-                            if (!string.IsNullOrEmpty(settingsEndpoint) && !settingsEndpoint.Contains("api.openai.com"))
-                            {
-                                openAIEnableThinking = activeSettings.enableThinking;
-                                string customEndpoint = LLMInstanceManager.ApplyReplicaPortOffset(settingsEndpoint, llmReplicaIndex);
-                                endpoint = customEndpoint.TrimEnd('/');
-                                if (!endpoint.EndsWith("/v1/chat/completions"))
-                                    endpoint += "/v1/chat/completions";
-                            }
-                            
+
+                            // Single source of truth for "which OpenAI request shape does this model want?".
+                            // Edit OpenAIRequestProfileResolver to add new model families.
+                            var profile = OpenAIRequestProfileResolver.Resolve(model, activeSettings, llmReplicaIndex);
+
                             string json = _openAITextCompletionManager.BuildChatCompleteJSON(
                                 lines, 4096, temperature, model, true,
-                                useResponsesAPI, isReasoningModel, includeTemperature, reasoningEffort, openAIEnableThinking);
-                            RTConsole.Log("Contacting OpenAI at " + endpoint);
-                            _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
+                                profile.useResponsesAPI, profile.isReasoningModel, profile.includeTemperature,
+                                profile.reasoningEffort, profile.enableThinking);
+                            RTConsole.Log("Contacting OpenAI at " + profile.endpoint);
+                            _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, profile.endpoint, OnStreamingTextCallback, true);
                             SetLLMActive(true, llmInstanceID, llmReplicaIndex);
                         }
                         break;
@@ -4868,18 +4610,6 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             if (m_infoPanelScript.IsPanelOpen())
             {
                 UpdateInfoPanel();
-            }
-        }
-
-        if (m_genericTimerStart != 0)
-        {
-            float elapsed = Time.realtimeSinceStartup - m_genericTimerStart;
-            // Only update text when the displayed value changes (every 0.1s) to avoid TMP layout spam
-            string newText = m_genericTimerText + " " + elapsed.ToString("0.0");
-            if (newText != m_lastTimerDisplayText)
-            {
-                m_lastTimerDisplayText = newText;
-                m_text.text = newText;
             }
         }
 

@@ -126,5 +126,13 @@ namespace AITools.AIChat.Skills
         /// usable chain target exists this turn.
         /// </summary>
         PicMain ConsumeChainTarget();
+
+        /// <summary>
+        /// True if the Nth chat image's underlying Pic still has an active or
+        /// queued generation job (GPU render or queued local op). Used by the
+        /// deferred-action wait so a slow anchor render doesn't time out
+        /// prematurely. False for an out-of-range or destroyed slot.
+        /// </summary>
+        bool IsChatImagePicGenerating(int oneBasedIndex);
     }
 }

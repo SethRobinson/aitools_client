@@ -210,10 +210,12 @@ public class PresetManager : MonoBehaviour
 
     /// <summary>
     /// Enumerate preset .txt files. Optional case-insensitive filename prefix (e.g. "AutoPic"
-    /// to get just AutoPic*.txt). Results are sorted alphabetically.
+    /// to get just AutoPic*.txt). When <paramref name="excludeAutoPicAndSummarize"/> is true,
+    /// AutoPic scripts and AdventureSummarize.txt are hidden (they aren't meant to be used as
+    /// regular job scripts). Results are sorted alphabetically.
     /// Single source of truth for every preset/AutoPic picker in the app.
     /// </summary>
-    public static List<string> GetPresetFileNames(string filenamePrefix = null)
+    public static List<string> GetPresetFileNames(string filenamePrefix = null, bool excludeAutoPicAndSummarize = false)
     {
         var fileNames = new List<string>();
         if (!Directory.Exists("Presets"))
@@ -226,6 +228,12 @@ public class PresetManager : MonoBehaviour
             if (!string.IsNullOrEmpty(filenamePrefix) &&
                 !name.StartsWith(filenamePrefix, StringComparison.OrdinalIgnoreCase) &&
                 !name.StartsWith("test_" + filenamePrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+            if (excludeAutoPicAndSummarize &&
+                (name.IndexOf("AutoPic", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                 name.Equals("AdventureSummarize.txt", StringComparison.OrdinalIgnoreCase)))
             {
                 continue;
             }

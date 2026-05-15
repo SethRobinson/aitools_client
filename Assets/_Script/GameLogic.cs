@@ -249,6 +249,7 @@ public class GameLogic : MonoBehaviour
             Title = "Select Main Job Script (Preset)",
             CurrentSelection = m_currentPresetName,
             FileFilterPrefix = null,
+            ExcludeAutoPicAndSummarize = true,
             SpecialNoneLabel = null,
         }, OnPresetPicked);
     }
@@ -260,6 +261,7 @@ public class GameLogic : MonoBehaviour
             Title = "Select Temp Job Script (Preset)",
             CurrentSelection = m_currentTempPresetName,
             FileFilterPrefix = null,
+            ExcludeAutoPicAndSummarize = true,
             SpecialNoneLabel = null,
         }, OnTempPresetPicked);
     }

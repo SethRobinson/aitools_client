@@ -271,7 +271,7 @@ public class OpenAITextCompletionManager : MonoBehaviour
         }
         */
 
-        string reply = jsonNode["choices"][0]["message"]["content"];
+        string reply = ExtractTextFromResponseJSON(jsonNode);
         // NOTE: Don't show full LLM reply as quick message - it can be extremely long and crash TMPro
         // RTQuickMessageManager.Get().ShowMessage(reply);
         Debug.Log("LLM Reply: " + reply);
@@ -307,7 +307,8 @@ public class OpenAITextCompletionManager : MonoBehaviour
 
         if (useResponsesAPI)
         {
-            // Responses API format: uses "input" instead of "messages", and "instructions" for system messages
+            // Responses API format: uses "input" instead of "messages", and "instructions" for system messages.
+            // Multimodal user lines use content arrays with input_text/input_image items.
             string instructions = "";
             string inputMessages = "";
 
@@ -329,7 +330,7 @@ public class OpenAITextCompletionManager : MonoBehaviour
                     {
                         inputMessages += ",\n";
                     }
-                    inputMessages += "{\"role\": \"" + obj._role + "\", \"content\": \"" + SimpleJSON.JSONNode.Escape(obj._content) + "\"}";
+                    inputMessages += BuildResponsesInputMessageJSON(obj);
                 }
             }
 
@@ -492,6 +493,145 @@ public class OpenAITextCompletionManager : MonoBehaviour
         }
         return result;
     }
+
+    private static string BuildResponsesInputMessageJSON(GTPChatLine obj)
+    {
+        string role = string.IsNullOrEmpty(obj?._role) ? "user" : obj._role;
+        if (obj != null && obj.HasImages())
+        {
+            return "{\"role\": \"" + SimpleJSON.JSONNode.Escape(role) + "\", \"content\": "
+                   + BuildResponsesContentArrayJSON(obj) + "}";
+        }
+
+        string content = obj != null ? (obj._content ?? "") : "";
+        return "{\"role\": \"" + SimpleJSON.JSONNode.Escape(role) + "\", \"content\": \""
+               + SimpleJSON.JSONNode.Escape(content) + "\"}";
+    }
+
+    private static string BuildResponsesContentArrayJSON(GTPChatLine obj)
+    {
+        var contentSb = new StringBuilder();
+        contentSb.Append("[");
+        bool wroteAny = false;
+
+        void AppendCommaIfNeeded()
+        {
+            if (wroteAny) contentSb.Append(",");
+            wroteAny = true;
+        }
+
+        string text = obj?._content ?? "";
+        if (!string.IsNullOrEmpty(text))
+        {
+            AppendCommaIfNeeded();
+            contentSb.Append("{\"type\":\"input_text\",\"text\":\"")
+                     .Append(SimpleJSON.JSONNode.Escape(text))
+                     .Append("\"}");
+        }
+
+        if (obj?._images != null)
+        {
+            for (int i = 0; i < obj._images.Count; i++)
+            {
+                int idx = (obj._imageChatIndices != null && i < obj._imageChatIndices.Count)
+                    ? obj._imageChatIndices[i]
+                    : -1;
+
+                if (idx >= 0)
+                {
+                    AppendCommaIfNeeded();
+                    contentSb.Append("{\"type\":\"input_text\",\"text\":\"[Image #")
+                             .Append(idx)
+                             .Append("]\"}");
+                }
+
+                AppendCommaIfNeeded();
+                contentSb.Append("{\"type\":\"input_image\",\"image_url\":\"data:image/png;base64,")
+                         .Append(SimpleJSON.JSONNode.Escape(obj._images[i] ?? ""))
+                         .Append("\"}");
+            }
+        }
+
+        contentSb.Append("]");
+        return contentSb.ToString();
+    }
+
+    public static string ExtractTextFromResponseJSON(JSONNode rootNode)
+    {
+        if (rootNode == null) return "";
+
+        var sb = new StringBuilder();
+
+        try
+        {
+            AppendTextFromContentNode(sb, rootNode["choices"][0]["message"]["content"]);
+            if (sb.Length > 0) return sb.ToString();
+        }
+        catch { /* not a Chat Completions response */ }
+
+        try
+        {
+            string outputText = rootNode["output_text"];
+            if (!string.IsNullOrEmpty(outputText)) return outputText;
+        }
+        catch { /* optional Responses API convenience field */ }
+
+        try
+        {
+            JSONNode output = rootNode["output"];
+            if (output != null && output.IsArray)
+            {
+                for (int i = 0; i < output.Count; i++)
+                {
+                    AppendTextFromContentNode(sb, output[i]["content"]);
+                    AppendTextFromContentNode(sb, output[i]["text"]);
+                }
+            }
+        }
+        catch { /* malformed/unknown response shape */ }
+
+        return sb.ToString();
+    }
+
+    private static void AppendTextFromContentNode(StringBuilder sb, JSONNode node)
+    {
+        if (sb == null || node == null) return;
+        if (node.Tag == JSONNodeType.None || node.Tag == JSONNodeType.NullValue) return;
+
+        if (node.IsString)
+        {
+            AppendTextPiece(sb, node.Value);
+            return;
+        }
+
+        if (node.IsArray)
+        {
+            for (int i = 0; i < node.Count; i++)
+            {
+                JSONNode item = node[i];
+                if (item == null) continue;
+                if (item.IsString)
+                {
+                    AppendTextPiece(sb, item.Value);
+                    continue;
+                }
+
+                AppendTextFromContentNode(sb, item["text"]);
+                AppendTextFromContentNode(sb, item["content"]);
+            }
+            return;
+        }
+
+        AppendTextFromContentNode(sb, node["text"]);
+        AppendTextFromContentNode(sb, node["content"]);
+    }
+
+    private static void AppendTextPiece(StringBuilder sb, string piece)
+    {
+        if (sb == null || string.IsNullOrEmpty(piece)) return;
+        if (sb.Length > 0) sb.Append('\n');
+        sb.Append(piece);
+    }
     //     ""reasoning_effort"":  ""medium"",
          
 //                 ""max_tokens"": {max_tokens,
@@ -566,7 +706,7 @@ public class OpenAITextCompletionManager : MonoBehaviour
                 m_connectionActive = false;
 
                 db.Set("status", "success");
-                myCallback.Invoke(db, (JSONObject)rootNode, "");
+                myCallback.Invoke(db, (JSONObject)rootNode, ExtractTextFromResponseJSON(rootNode));
                
             }
         }

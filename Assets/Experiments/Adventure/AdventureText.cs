@@ -1349,82 +1349,22 @@ public class AdventureText : MonoBehaviour
                     if (string.IsNullOrEmpty(apiKey)) apiKey = Config.Get().GetOpenAI_APIKey();
                     if (string.IsNullOrEmpty(model)) model = Config.Get().GetOpenAI_APIModel();
 
-                    // All GPT-5 models use Responses API - just with different parameters
-                    bool useResponsesAPI = false;
-                    bool isReasoningModel = false;
-                    bool includeTemperature = true;
-                    string reasoningEffort = null;
-                    string endpoint;
+                    // Single source of truth for "which OpenAI request shape does this model want?".
+                    // Edit OpenAIRequestProfileResolver to add new model families.
+                    var profile = OpenAIRequestProfileResolver.Resolve(model, activeSettings, _activeLLMReplicaIndex);
 
-                    if (model.Contains("gpt-5"))
-                    {
-                        // All GPT-5 models use Responses API
-                        useResponsesAPI = true;
-                        endpoint = "https://api.openai.com/v1/responses";
-                        
-                        if (model.Contains("gpt-5.2-pro"))
-                        {
-                            // Pro reasoning model: high reasoning effort, no temperature
-                            isReasoningModel = true;
-                            includeTemperature = false;
-                            reasoningEffort = "high";
-                        }
-                        else if (model.Contains("gpt-5.2"))
-                        {
-                            // Base 5.2 reasoning model: medium reasoning effort, no temperature
-                            isReasoningModel = true;
-                            includeTemperature = false;
-                            reasoningEffort = "medium";
-                        }
-                        else if (model.Contains("gpt-5-mini") || model.Contains("gpt-5-nano"))
-                        {
-                            // Mini/nano: Use Chat Completions API (they may not fully support Responses API)
-                            useResponsesAPI = false;
-                            isReasoningModel = false;
-                            includeTemperature = false;  // Fixed temp=1, don't send parameter
-                            reasoningEffort = null;
-                            endpoint = "https://api.openai.com/v1/chat/completions";
-                        }
-                        else
-                        {
-                            // Base gpt-5: no reasoning, allow temperature
-                            isReasoningModel = false;
-                            includeTemperature = true;
-                        }
-                    }
-                    else
-                    {
-                        // Non-GPT-5 models: use Chat Completions API
-                        useResponsesAPI = false;
-                        isReasoningModel = false;
-                        includeTemperature = true;
-                        endpoint = "https://api.openai.com/v1/chat/completions";
-                    }
-
-                    // When a custom (non-OpenAI) endpoint is configured, use it and pass enableThinking
-                    bool? adventureEnableThinking = null;
-                    string adventureSettingsEndpoint = activeSettings?.endpoint ?? "";
-                    if (!string.IsNullOrEmpty(adventureSettingsEndpoint) && !adventureSettingsEndpoint.Contains("api.openai.com"))
-                    {
-                        adventureEnableThinking = activeSettings.enableThinking;
-                        string customEndpoint = LLMInstanceManager.ApplyReplicaPortOffset(adventureSettingsEndpoint, _activeLLMReplicaIndex);
-                        endpoint = customEndpoint.TrimEnd('/');
-                        if (!endpoint.EndsWith("/v1/chat/completions"))
-                            endpoint += "/v1/chat/completions";
-                    }
-                    
                     string json = _openAITextCompletionManager.BuildChatCompleteJSON(
                         lines,
                         4096,
                         AdventureLogic.Get().GetExtractor().Temperature,
                         model,
                         true,
-                        useResponsesAPI,
-                        isReasoningModel,
-                        includeTemperature,
-                        reasoningEffort,
-                        adventureEnableThinking);
-                    _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
+                        profile.useResponsesAPI,
+                        profile.isReasoningModel,
+                        profile.includeTemperature,
+                        profile.reasoningEffort,
+                        profile.enableThinking);
+                    _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, profile.endpoint, OnStreamingTextCallback, true);
                     SetLLMActive(true);
                 }
                 break;

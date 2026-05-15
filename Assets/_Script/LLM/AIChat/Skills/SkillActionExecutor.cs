@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Text;
 using SimpleJSON;
 using TMPro;
 using UnityEngine;
@@ -30,8 +31,39 @@ namespace AITools.AIChat.Skills
         private int _lastLocalOpOutputChatImageIndex = -1;
         private PicMain _lastLocalOpOutputPic;
         private readonly HashSet<SkillAction> _reloadAttemptedActions = new HashSet<SkillAction>();
-        private const float ChatImageReloadTimeoutSeconds = 12f;
         private const float ChatImageReloadPollSeconds = 0.2f;
+        // Anchor GPU renders routinely exceed the old fixed 12s deadline. We now
+        // wait as long as the referenced chat-image Pic is still generating, with
+        // a generous absolute safety cap and a short grace for "not busy yet"
+        // (job queued but no GPU server has picked it up).
+        private const float ChatImageReloadAbsoluteCapSeconds = 600f;
+        private const float ChatImageNotYetBusyGraceSeconds = 20f;
+
+        // ----- Per-turn serial action scheduler -----
+        // Skill action tags stream from the LLM and were historically executed
+        // synchronously in arrival order. When an action defers (waits for an
+        // anchor image to finish rendering), later actions used to keep running
+        // immediately and chain="true" steps landed on the wrong Pic (the raw
+        // anchor) instead of the not-yet-spawned page. This queue enforces
+        // strict ordering: once an action defers, every following action stays
+        // queued until the deferred one completes. All on the Unity main thread,
+        // so no locking is needed.
+        private readonly Queue<SkillAction> _actionQueue = new Queue<SkillAction>();
+        private enum PumpState { Idle, Running, Blocked }
+        private PumpState _pumpState = PumpState.Idle;
+        // True while inside the synchronous drain loop - a nested Execute() call
+        // (from the deferred coroutine or the chain-rescue re-dispatch) must run
+        // its one action without starting a second drain.
+        private bool _draining = false;
+        // Set deep in the call stack (TryDeferActionUntilChatImageReady) to tell
+        // the pump the action it just ran has parked itself on a coroutine.
+        private bool _lastActionDeferred = false;
+        // The action currently blocking the pump (diagnostics + resume match).
+        private SkillAction _blockingAction = null;
+        // Incremented every turn reset. A deferred coroutine captures the epoch
+        // at start and bails if it changed, so a previous turn's book page can
+        // never spawn into a new turn.
+        private int _turnEpoch = 0;
 
         public SkillActionExecutor(SkillManager skills, IChatHost host)
         {
@@ -39,7 +71,109 @@ namespace AITools.AIChat.Skills
             _host = host;
         }
 
+        /// <summary>
+        /// Enqueue a parsed action for in-order execution. The pump drains the
+        /// queue synchronously; if an action defers, the pump parks and the rest
+        /// of the turn's actions wait behind it.
+        /// </summary>
+        public void EnqueueAction(SkillAction action)
+        {
+            _actionQueue.Enqueue(action);
+            PumpQueue();
+        }
+
+        private void PumpQueue()
+        {
+            if (_pumpState == PumpState.Blocked) return; // parked on a deferred action
+            if (_draining) return;                       // re-entrant; outer loop continues
+
+            _draining = true;
+            _pumpState = PumpState.Running;
+            try
+            {
+                while (_actionQueue.Count > 0)
+                {
+                    var action = _actionQueue.Peek(); // keep at head until it completes
+                    _lastActionDeferred = false;
+                    try
+                    {
+                        ExecuteInternal(action);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.LogError("SkillActionExecutor: ExecuteInternal threw: " + ex);
+                        _host?.AddInfoBubble("Skill error: " + ex.Message);
+                        // Swallow: treat as completed so one bad action can't wedge
+                        // the whole queue (matches the old per-action isolation).
+                    }
+
+                    if (_lastActionDeferred)
+                    {
+                        // Action parked itself on a coroutine. Leave it at the
+                        // head and stop draining; the coroutine resumes us.
+                        _blockingAction = action;
+                        _pumpState = PumpState.Blocked;
+                        return;
+                    }
+
+                    _actionQueue.Dequeue();
+                }
+                _pumpState = PumpState.Idle;
+            }
+            finally
+            {
+                _draining = false;
+            }
+        }
+
+        /// <summary>
+        /// Called by the deferred-action coroutine once its resource is ready
+        /// (or it gave up). Drops the finished action from the head and resumes
+        /// the pump so queued followers run - now correctly onto the page Pic
+        /// the deferred action just spawned.
+        /// </summary>
+        private void ResumePumpAfterDeferredComplete(SkillAction completed)
+        {
+            if (_actionQueue.Count > 0 && ReferenceEquals(_actionQueue.Peek(), completed))
+                _actionQueue.Dequeue();
+            _blockingAction = null;
+            if (_pumpState == PumpState.Blocked)
+                _pumpState = PumpState.Idle;
+            PumpQueue();
+        }
+
+        /// <summary>
+        /// Reset all per-turn scheduler state. Called in lockstep with the
+        /// host's chain-target reset on send / clear / stop. Bumps the turn
+        /// epoch so any still-alive deferred coroutine from the previous turn
+        /// bails instead of spawning a stale page.
+        /// </summary>
+        public void ResetForNewTurn()
+        {
+            _actionQueue.Clear();
+            _reloadAttemptedActions.Clear();
+            _pumpState = PumpState.Idle;
+            _draining = false;
+            _lastActionDeferred = false;
+            _blockingAction = null;
+            _lastLocalOpOutputChatImageIndex = -1;
+            _lastLocalOpOutputPic = null;
+            _turnEpoch++;
+        }
+
+        /// <summary>
+        /// Run a single action synchronously, end to end. This is the legacy /
+        /// recursive entry point: the deferred-action coroutine re-runs its
+        /// action through here, and the chain-rescue path re-dispatches through
+        /// here. It deliberately does NOT touch the queue or pump - ordering for
+        /// those callers is handled by <see cref="ResumePumpAfterDeferredComplete"/>.
+        /// </summary>
         public void Execute(SkillAction action)
+        {
+            ExecuteInternal(action);
+        }
+
+        private void ExecuteInternal(SkillAction action)
         {
             if (action == null || string.IsNullOrEmpty(action.SkillId))
             {
@@ -980,7 +1114,7 @@ namespace AITools.AIChat.Skills
                 string clean = (text ?? "").Trim();
                 if (string.IsNullOrEmpty(clean) && json != null)
                 {
-                    try { clean = json["choices"][0]["message"]["content"]; } catch { /* no-op */ }
+                    try { clean = OpenAITextCompletionManager.ExtractTextFromResponseJSON(json); } catch { /* no-op */ }
                 }
                 if (string.IsNullOrEmpty(clean))
                 {
@@ -998,11 +1132,11 @@ namespace AITools.AIChat.Skills
         /// <summary>
         /// Fire-and-forget chat completion for delegated one-shot calls (used by both
         /// <see cref="ExecuteSummarizeWithSmallLlm"/> and AIChatPanel's image-caption job).
-        /// Supports the OpenAI-compatible / Ollama / LlamaCpp / OpenAI flow (which is
-        /// where small/local models almost always live in this app). Other providers fall
-        /// back to a clear error so the LLM can pick a different instance next turn.
-        /// Image data carried by lines (via GTPChatLine.AddImage) is preserved through the
-        /// OpenAI-compatible / LlamaCpp providers' multipart serializers.
+        /// Supports OpenAI-compatible / Ollama / LlamaCpp / OpenAI / Anthropic. Other
+        /// providers fall back to a clear error so the LLM can pick a different instance
+        /// next turn. Image data carried by lines (via GTPChatLine.AddImage) is preserved
+        /// through the OpenAI-compatible / LlamaCpp / Anthropic serializers, so this path
+        /// covers the vision-caption sidecar as well as plain text summarization.
         /// </summary>
         public static void DispatchOneShot(
             MonoBehaviour runner,
@@ -1074,19 +1208,54 @@ namespace AITools.AIChat.Skills
                 {
                     var mgr = runner.gameObject.AddComponent<OpenAITextCompletionManager>();
                     string model = string.IsNullOrEmpty(settings.selectedModel) ? "gpt-4o-mini" : settings.selectedModel;
-                    string endpoint = "https://api.openai.com/v1/chat/completions";
-                    string json = mgr.BuildChatCompleteJSON(lines, 1024, 0.4f, model, false);
+                    var profile = OpenAIRequestProfileResolver.Resolve(model, settings, 0);
+                    string json = mgr.BuildChatCompleteJSON(lines, 1024, 0.4f, model, false,
+                        profile.useResponsesAPI, profile.isReasoningModel, profile.includeTemperature,
+                        profile.reasoningEffort, profile.enableThinking);
                     mgr.SpawnChatCompleteRequest(json, (rtdb, jn, str) =>
                     {
                         try { onDone(rtdb, jn, str); }
                         finally { UnityEngine.Object.Destroy(mgr); }
-                    }, db, apiKey, endpoint, null, false, sentJsonFilename);
+                    }, db, apiKey, profile.endpoint, null, false, sentJsonFilename);
+                    break;
+                }
+                case LLMProvider.Anthropic:
+                {
+                    var mgr = runner.gameObject.AddComponent<AnthropicAITextCompletionManager>();
+                    string model = string.IsNullOrEmpty(settings.selectedModel)
+                        ? Config.Get().GetAnthropicAI_APIModel()
+                        : settings.selectedModel;
+                    string endpoint = string.IsNullOrEmpty(settings.endpoint)
+                        ? Config.Get().GetAnthropicAI_APIEndpoint()
+                        : settings.endpoint;
+                    string anthropicKey = string.IsNullOrEmpty(apiKey) ? Config.Get().GetAnthropicAI_APIKey() : apiKey;
+                    // Non-streaming: simpler for one-shots, mirrors the OpenAI/Ollama path
+                    // above. Anthropic returns content as a typed-block array; we pull text
+                    // out via ExtractTextFromResponseJSON so callers see plain text in `str`.
+                    string json = mgr.BuildChatCompleteJSON(lines, 1024, 0.4f, model, false);
+                    mgr.SpawnChatCompletionRequest(json, (rtdb, jn, str) =>
+                    {
+                        try
+                        {
+                            string extracted = str;
+                            if (string.IsNullOrEmpty(extracted) && jn != null)
+                            {
+                                try { extracted = AnthropicAITextCompletionManager.ExtractTextFromResponseJSON(jn); }
+                                catch { /* leave empty so caller can report nothing-returned */ }
+                            }
+                            int extractedLen = extracted == null ? 0 : extracted.Length;
+                            Debug.Log($"DispatchOneShot[Anthropic/{callerLabel}]: extracted {extractedLen} chars" +
+                                      (extractedLen > 0 ? " preview: " + extracted.Substring(0, System.Math.Min(120, extractedLen)) : ""));
+                            onDone(rtdb, jn, extracted ?? "");
+                        }
+                        finally { UnityEngine.Object.Destroy(mgr); }
+                    }, db, anthropicKey, endpoint, null, false, sentJsonFilename);
                     break;
                 }
                 default:
                     onDone?.Invoke(db, null,
                         $"({callerLabel}) Provider {inst.providerType} is not supported by summarize_with_small_llm yet. " +
-                        "Use a small Ollama / OpenAICompatible / LlamaCpp / OpenAI instance instead.");
+                        "Use a small Ollama / OpenAICompatible / LlamaCpp / OpenAI / Anthropic instance instead.");
                     break;
             }
         }
@@ -1340,9 +1509,32 @@ namespace AITools.AIChat.Skills
             // scale to fit the rect - bypassing TMP's built-in enableAutoSizing
             // which behaves unreliably here. font_size is the upper cap, min_font_size
             // is the floor.
-            int renderFontSize = autoSize
-                ? ComputeFitFontSize(text, font, fontSize, minFontSize, textW, textH, styles, tmpAlign, wrap)
-                : fontSize;
+            string renderText = text;
+            bool renderWrap = wrap;
+            int renderFontSize;
+            if (wrap)
+            {
+                if (autoSize)
+                {
+                    renderFontSize = ComputeFitFontSizeWithManualWrap(text, font, fontSize, minFontSize, textW, textH, styles, tmpAlign, out renderText);
+                }
+                else
+                {
+                    renderFontSize = fontSize;
+                    renderText = WrapTextToWidth(text, font, renderFontSize, textW, styles, tmpAlign);
+                }
+
+                // The render-to-texture path has proven inconsistent when relying
+                // on TMP's runtime word wrapping. Forced line breaks make final
+                // book/page text deterministic and prevent one-line shrinkage.
+                renderWrap = false;
+            }
+            else
+            {
+                renderFontSize = autoSize
+                    ? ComputeFitFontSize(text, font, fontSize, minFontSize, textW, textH, styles, tmpAlign, false)
+                    : fontSize;
+            }
 
             // Measure the ACTUAL preferred height at the chosen fontSize. When TMP's
             // preferred height exceeds the rect (because min_font_size forced a
@@ -1353,7 +1545,7 @@ namespace AITools.AIChat.Skills
             // clipped mid-glyph inside the per-rect render texture. That silent
             // clip is the bug that crops the "y" descender in poster body text
             // like "Activated. Do not disturb until January.".
-            int measuredH = MeasurePreferredHeight(text, font, renderFontSize, textW, styles, tmpAlign, wrap);
+            int measuredH = MeasurePreferredHeight(renderText, font, renderFontSize, textW, styles, tmpAlign, renderWrap);
             int extraH = Mathf.Max(0, measuredH - textH);
             int slackTop, slackBot;
             DistributeOverflowSlack(valign, extraH, out slackTop, out slackBot);
@@ -1367,7 +1559,7 @@ namespace AITools.AIChat.Skills
             if (outlineColor.HasValue && outlineWidth > 0)
             {
                 // Use bAutoSize=false here regardless - we already computed the fit size.
-                Texture2D outlineTex = RTUtil.RenderTextToTexture2D(text, textW, renderTexH, font, renderFontSize, outlineColor.Value, false, new Vector2(1, 1), styles, tmpAlign, wrap, 0f, 0f);
+                Texture2D outlineTex = RTUtil.RenderTextToTexture2D(renderText, textW, renderTexH, font, renderFontSize, outlineColor.Value, false, new Vector2(1, 1), styles, tmpAlign, renderWrap, 0f, 0f);
                 int[] dxA = { -outlineWidth, 0, outlineWidth, -outlineWidth, outlineWidth, -outlineWidth, 0, outlineWidth };
                 int[] dyA = { -outlineWidth, -outlineWidth, -outlineWidth, 0, 0, outlineWidth, outlineWidth, outlineWidth };
                 for (int i = 0; i < 8; i++)
@@ -1378,9 +1570,24 @@ namespace AITools.AIChat.Skills
                 UnityEngine.Object.Destroy(outlineTex);
             }
 
-            Texture2D textTex = RTUtil.RenderTextToTexture2D(text, textW, renderTexH, font, renderFontSize, color, false, new Vector2(1, 1), styles, tmpAlign, wrap, 0f, 0f);
+            Texture2D textTex = RTUtil.RenderTextToTexture2D(renderText, textW, renderTexH, font, renderFontSize, color, false, new Vector2(1, 1), styles, tmpAlign, renderWrap, 0f, 0f);
             BlitTextureClipped(dst, textTex, blitX, blitY);
             UnityEngine.Object.Destroy(textTex);
+
+#if UNITY_STANDALONE && !RT_RELEASE
+            // Probe TMP's actual world-unit-per-em scaling on this font asset.
+            // If 'Hg' at TMP fontSize=100 reports preferredH significantly less
+            // than 100 world units, TMP's fontSize is NOT 1:1 with our render
+            // pixels and the TmpFontSizePixelRatio constant above needs tuning.
+            int probeReportedH = MeasurePreferredHeight("Hg", font, 100, 99999, styles, tmpAlign, false);
+            Debug.Log($"draw_text: canvas={srcW}x{srcH} rect=({x},{y}) {w}x{h} " +
+                      $"fontSize_arg={action.GetArg("font_size") ?? "(unset)"} " +
+                      $"min_arg={action.GetArg("min_font_size") ?? "(unset)"} " +
+                      $"auto={autoSize} wrap={wrap} -> renderFontSize={renderFontSize} " +
+                      $"measuredH={measuredH} renderTexH={renderTexH} chars={(text ?? "").Length} " +
+                      $"| TMP probe: 'Hg' at fontSize=100 -> preferredH={probeReportedH} " +
+                      $"(world units per em; if ~25, TMP scale is ~0.25 and font_size acts as TMP fontSize not pixels)");
+#endif
 
             dst.Apply();
             yield return null;
@@ -1406,12 +1613,15 @@ namespace AITools.AIChat.Skills
                 tmp.font = font;
                 tmp.fontStyle = styles;
                 tmp.alignment = alignment;
+                tmp.textWrappingMode = wrap ? TextWrappingModes.Normal : TextWrappingModes.NoWrap;
+#pragma warning disable CS0618
                 tmp.enableWordWrapping = wrap;
+#pragma warning restore CS0618
                 tmp.enableAutoSizing = false;
                 tmp.fontSize = fontSize;
                 tmp.rectTransform.sizeDelta = new Vector2(rectW, 99999f);
-                tmp.ForceMeshUpdate();
-                return Mathf.CeilToInt(tmp.preferredHeight);
+                Vector2 preferred = tmp.GetPreferredValues(text, wrap ? rectW : Mathf.Infinity, Mathf.Infinity);
+                return Mathf.CeilToInt(preferred.y);
             }
             catch (Exception ex)
             {
@@ -1439,6 +1649,156 @@ namespace AITools.AIChat.Skills
             // middle (default)
             slackTop = extra / 2;
             slackBot = extra - slackTop;
+        }
+
+        private static int ComputeFitFontSizeWithManualWrap(string text, TMP_FontAsset font, int maxFont, int minFont, int rectW, int rectH, FontStyles styles, TextAlignmentOptions alignment, out string wrappedText)
+        {
+            if (string.IsNullOrEmpty(text) || rectW <= 0 || rectH <= 0)
+            {
+                wrappedText = text ?? "";
+                return Mathf.Max(1, minFont > 0 ? minFont : (maxFont > 0 ? maxFont : 64));
+            }
+
+            int hardMax = maxFont > 0 ? maxFont : 9999;
+            int hardMin = Mathf.Max(1, minFont);
+            if (hardMax < hardMin) hardMax = hardMin;
+
+            int bestSize = hardMin;
+            string bestText = WrapTextToWidth(text, font, hardMin, rectW, styles, alignment);
+
+            int low = hardMin;
+            int high = hardMax;
+            for (int i = 0; i < 16 && low <= high; i++)
+            {
+                int mid = low + ((high - low) / 2);
+                string candidate = WrapTextToWidth(text, font, mid, rectW, styles, alignment);
+                int candidateH = MeasurePreferredHeight(candidate, font, mid, rectW, styles, alignment, false);
+                if (candidateH <= rectH)
+                {
+                    bestSize = mid;
+                    bestText = candidate;
+                    low = mid + 1;
+                }
+                else
+                {
+                    high = mid - 1;
+                }
+            }
+
+            wrappedText = bestText;
+            return Mathf.Max(1, bestSize);
+        }
+
+        private static string WrapTextToWidth(string text, TMP_FontAsset font, int fontSize, int rectW, FontStyles styles, TextAlignmentOptions alignment)
+        {
+            if (string.IsNullOrEmpty(text) || font == null || fontSize <= 0 || rectW <= 0)
+                return text ?? "";
+
+            GameObject go = null;
+            try
+            {
+                go = new GameObject("TMP_ManualWrapProbe");
+                go.layer = 31;
+                var tmp = go.AddComponent<TextMeshPro>();
+                tmp.font = font;
+                tmp.fontStyle = styles;
+                tmp.alignment = alignment;
+                tmp.textWrappingMode = TextWrappingModes.NoWrap;
+#pragma warning disable CS0618
+                tmp.enableWordWrapping = false;
+#pragma warning restore CS0618
+                tmp.enableAutoSizing = false;
+                tmp.fontSize = fontSize;
+                tmp.rectTransform.sizeDelta = new Vector2(99999f, 99999f);
+
+                float WidthOf(string value)
+                {
+                    if (string.IsNullOrEmpty(value)) return 0f;
+                    return tmp.GetPreferredValues(value, Mathf.Infinity, Mathf.Infinity).x;
+                }
+
+                var lines = new List<string>();
+                string current = "";
+
+                void CommitCurrent()
+                {
+                    if (current.Length == 0) return;
+                    lines.Add(current);
+                    current = "";
+                }
+
+                void AddToken(string token)
+                {
+                    if (string.IsNullOrEmpty(token)) return;
+
+                    if (current.Length > 0)
+                    {
+                        string candidate = current + " " + token;
+                        if (WidthOf(candidate) <= rectW)
+                        {
+                            current = candidate;
+                            return;
+                        }
+
+                        CommitCurrent();
+                    }
+
+                    if (WidthOf(token) <= rectW)
+                    {
+                        current = token;
+                        return;
+                    }
+
+                    var chunk = new StringBuilder();
+                    for (int i = 0; i < token.Length; i++)
+                    {
+                        string candidate = chunk.ToString() + token[i];
+                        if (chunk.Length > 0 && WidthOf(candidate) > rectW)
+                        {
+                            lines.Add(chunk.ToString());
+                            chunk.Length = 0;
+                        }
+                        chunk.Append(token[i]);
+                    }
+                    current = chunk.ToString();
+                }
+
+                string normalized = text.Replace("\r\n", "\n").Replace('\r', '\n');
+                string[] paragraphs = normalized.Split('\n');
+                for (int p = 0; p < paragraphs.Length; p++)
+                {
+                    if (p > 0)
+                    {
+                        CommitCurrent();
+                        lines.Add("");
+                    }
+
+                    string paragraph = paragraphs[p];
+                    if (string.IsNullOrWhiteSpace(paragraph))
+                    {
+                        CommitCurrent();
+                        continue;
+                    }
+
+                    string[] words = paragraph.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                    for (int i = 0; i < words.Length; i++)
+                    {
+                        AddToken(words[i]);
+                    }
+                }
+
+                CommitCurrent();
+                return string.Join("\n", lines);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("WrapTextToWidth failed: " + ex.Message);
+                return text ?? "";
+            }
+            finally
+            {
+                if (go != null) UnityEngine.Object.Destroy(go);
+            }
         }
 
         /// <summary>
@@ -1485,16 +1845,19 @@ namespace AITools.AIChat.Skills
                 tmp.font = font;
                 tmp.fontStyle = styles;
                 tmp.alignment = alignment;
+                tmp.textWrappingMode = wrap ? TextWrappingModes.Normal : TextWrappingModes.NoWrap;
+#pragma warning disable CS0618
                 tmp.enableWordWrapping = wrap;
+#pragma warning restore CS0618
                 tmp.enableAutoSizing = false;
                 tmp.fontSize = REFERENCE_FONT_SIZE;
                 // Constrain width for word-wrap calc (height unconstrained so
                 // preferredHeight reflects natural multi-line wrapping).
                 tmp.rectTransform.sizeDelta = new Vector2(rectW, 99999f);
-                tmp.ForceMeshUpdate();
+                Vector2 preferred = tmp.GetPreferredValues(text, wrap ? rectW : Mathf.Infinity, Mathf.Infinity);
 
-                float pw = tmp.preferredWidth;
-                float ph = tmp.preferredHeight;
+                float pw = wrap ? Mathf.Min(preferred.x, rectW) : preferred.x;
+                float ph = preferred.y;
 
                 int fitSize;
                 if (pw > 0f && ph > 0f)
@@ -1523,9 +1886,9 @@ namespace AITools.AIChat.Skills
                 for (int i = 0; i < 8 && fitSize > hardMin; i++)
                 {
                     tmp.fontSize = fitSize;
-                    tmp.ForceMeshUpdate();
-                    float aw = tmp.preferredWidth;
-                    float ah = tmp.preferredHeight;
+                    Vector2 actual = tmp.GetPreferredValues(text, wrap ? rectW : Mathf.Infinity, Mathf.Infinity);
+                    float aw = wrap ? Mathf.Min(actual.x, rectW) : actual.x;
+                    float ah = actual.y;
                     if (ah <= rectH && aw <= rectW) break;
                     float shrink = Mathf.Min(rectW / Mathf.Max(aw, 1f), rectH / Mathf.Max(ah, 1f));
                     int next = Mathf.FloorToInt(fitSize * shrink);
@@ -1938,29 +2301,94 @@ namespace AITools.AIChat.Skills
             _reloadAttemptedActions.Add(action);
             _host?.AddInfoBubble(
                 $"(reloading {argName}=\"{chatN}\" before running {skillId})");
+            // Signal the pump that this action parked itself - it must hold all
+            // following actions in the turn until the coroutine resumes us.
+            _lastActionDeferred = true;
             runner.StartCoroutine(ExecuteAfterChatImageReady(action, skillId, argName, chatN));
             return true;
         }
 
+        /// <summary>
+        /// True when every chat image this action references (primary
+        /// chat_image plus chat_image2..5 for N-input presets) has readable
+        /// bytes. <paramref name="anyBusy"/> reports whether any referenced Pic
+        /// is still generating, so the wait can persist for slow GPUs instead
+        /// of timing out on a fixed wall clock.
+        /// </summary>
+        private bool AllReferencedChatImagesReady(SkillAction action, out bool anyBusy)
+        {
+            anyBusy = false;
+            if (action == null) return false;
+
+            bool allReady = true;
+            for (int slot = 1; slot <= 5; slot++)
+            {
+                int idx = slot == 1
+                    ? (action.ChatImageIndex ?? -1)
+                    : (action.GetExtraChatImageIndex(slot) ?? -1);
+                if (idx <= 0) continue;
+
+                byte[] bytes = _host?.GetChatImagePngBytes(idx);
+                if (bytes == null || bytes.Length == 0)
+                {
+                    allReady = false;
+                    if (_host?.IsChatImagePicGenerating(idx) ?? false)
+                        anyBusy = true;
+                }
+            }
+            return allReady;
+        }
+
         private IEnumerator ExecuteAfterChatImageReady(SkillAction action, string skillId, string argName, int chatN)
         {
-            float deadline = Time.realtimeSinceStartup + ChatImageReloadTimeoutSeconds;
-            while (Time.realtimeSinceStartup < deadline)
+            int epoch = _turnEpoch;
+            float start = Time.realtimeSinceStartup;
+
+            while (true)
             {
-                byte[] bytes = _host?.GetChatImagePngBytes(chatN);
-                if (bytes != null && bytes.Length > 0)
-                {
-                    Execute(action);
-                    yield break;
-                }
+                if (AllReferencedChatImagesReady(action, out bool anyBusy))
+                    break;
+
+                float elapsed = Time.realtimeSinceStartup - start;
+                if (elapsed >= ChatImageReloadAbsoluteCapSeconds)
+                    break;
+                // Job queued but no GPU server has picked it up yet: give it a
+                // short grace before concluding the image is never coming.
+                if (!anyBusy && elapsed >= ChatImageNotYetBusyGraceSeconds)
+                    break;
+
                 yield return new WaitForSeconds(ChatImageReloadPollSeconds);
             }
 
-            int chatImageCount = _host?.GetChatImageCount() ?? 0;
-            _host?.AddSystemInjectionAndBubble(
-                $"Skill '{skillId}': {argName}=\"{chatN}\" exists but could not be reloaded for reading. " +
-                $"There are {chatImageCount} numbered chat image slot(s) this session. " +
-                "Try focusing that Pic on the main canvas, or ask the user to paste the image again.");
+            // A new turn started while we were waiting - do NOT spawn this old
+            // book's page into the new conversation turn.
+            if (_turnEpoch != epoch)
+                yield break;
+
+            try
+            {
+                if (AllReferencedChatImagesReady(action, out _))
+                {
+                    // Re-run end to end. The _reloadAttemptedActions guard
+                    // prevents a second defer, so this spawns the page Pic and
+                    // pushes it as the chain target before we resume followers.
+                    Execute(action);
+                }
+                else
+                {
+                    int chatImageCount = _host?.GetChatImageCount() ?? 0;
+                    _host?.AddSystemInjectionAndBubble(
+                        $"Skill '{skillId}': {argName}=\"{chatN}\" exists but could not be reloaded for reading. " +
+                        $"There are {chatImageCount} numbered chat image slot(s) this session. " +
+                        "Try focusing that Pic on the main canvas, or ask the user to paste the image again.");
+                }
+            }
+            finally
+            {
+                // Always unblock the pump so the rest of the book never hangs,
+                // even if this page failed.
+                ResumePumpAfterDeferredComplete(action);
+            }
         }
 
         private byte[] TryFallbackChatImageBytes(SkillAction action, string skillId, int requestedIndex, int chatImageCount)

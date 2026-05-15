@@ -2446,7 +2446,10 @@ public class RTUtil
         //set the font to be bold
         tmp.fontStyle = fontStyles;
         tmp.name = "TextMeshProATemp";
+        tmp.textWrappingMode = wordWrap ? TextWrappingModes.Normal : TextWrappingModes.NoWrap;
+#pragma warning disable CS0618
         tmp.enableWordWrapping = wordWrap;
+#pragma warning restore CS0618
         //set largest allowed font size
         // Create a RenderTexture
         RenderTexture renderTexture = new RenderTexture(width, height, 24);
@@ -2480,6 +2483,8 @@ public class RTUtil
         tempCamera.name = "TextCamera";
         //tempCamera.nearClipPlane = 0;
         //tempCamera.farClipPlane = 100000;
+
+        tmp.ForceMeshUpdate(true, true);
 
         // Wait for the camera to finish rendering
         tempCamera.Render();

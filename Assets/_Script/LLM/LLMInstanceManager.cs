@@ -89,12 +89,100 @@ public class LLMInstanceManager : MonoBehaviour
             }
             
             RTConsole.Log($"LLMInstanceManager: Loaded {_config.instances.Count} instance(s)");
+            
+            // Merge any newly-shipped cloud models from model_data.json into existing instances
+            // so users see new models (gpt-5.5, claude-opus-4-7, gemini-3.1-pro, etc.) without
+            // having to recreate their configurations.
+            if (RefreshCloudModelsFromModelData())
+            {
+                SaveConfig();
+            }
         }
         catch (Exception e)
         {
             Debug.LogWarning("LLMInstanceManager: Error loading config: " + e.Message);
             _config = LLMInstancesConfig.CreateDefault();
         }
+    }
+
+    /// <summary>
+    /// Walk every cloud-provider instance (OpenAI / Anthropic / Gemini) and merge the latest
+    /// models from model_data.json into its availableModels list. The shipped list goes first
+    /// (so newly-released models surface at the top of the dropdown), and any extra models
+    /// the user already had (custom typed entries, deprecated names, etc.) are appended after
+    /// to preserve their setup. The currently selectedModel is never changed here.
+    ///
+    /// Local providers (Ollama / LlamaCpp / OpenAICompatible) are skipped — their model lists
+    /// come from the server itself, not from model_data.json.
+    /// </summary>
+    /// <returns>True if any instance's availableModels list was modified.</returns>
+    private bool RefreshCloudModelsFromModelData()
+    {
+        if (_config == null || _config.instances == null || _config.instances.Count == 0)
+            return false;
+
+        var modelData = LLMModelData.Load();
+        bool anyChanged = false;
+
+        foreach (var instance in _config.instances)
+        {
+            if (instance == null || instance.settings == null) continue;
+
+            List<string> shippedModels = null;
+            switch (instance.providerType)
+            {
+                case LLMProvider.OpenAI:
+                    shippedModels = modelData.openAI?.models;
+                    break;
+                case LLMProvider.Anthropic:
+                    shippedModels = modelData.anthropic?.models;
+                    break;
+                case LLMProvider.Gemini:
+                    shippedModels = modelData.gemini?.models;
+                    break;
+                default:
+                    // Local providers fetch their own model lists from the server.
+                    continue;
+            }
+
+            if (shippedModels == null || shippedModels.Count == 0) continue;
+
+            var existing = instance.settings.availableModels ?? new List<string>();
+            var merged = new List<string>(shippedModels.Count + existing.Count);
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var m in shippedModels)
+            {
+                if (string.IsNullOrEmpty(m)) continue;
+                if (seen.Add(m)) merged.Add(m);
+            }
+            // Preserve any custom/legacy models the user already had.
+            foreach (var m in existing)
+            {
+                if (string.IsNullOrEmpty(m)) continue;
+                if (seen.Add(m)) merged.Add(m);
+            }
+
+            if (!ListsEqual(existing, merged))
+            {
+                instance.settings.availableModels = merged;
+                anyChanged = true;
+                RTConsole.Log($"LLMInstanceManager: Refreshed model list for instance '{instance.name}' ({instance.providerType}): {merged.Count} models");
+            }
+        }
+
+        return anyChanged;
+    }
+
+    private static bool ListsEqual(List<string> a, List<string> b)
+    {
+        if (a == null || b == null) return a == b;
+        if (a.Count != b.Count) return false;
+        for (int i = 0; i < a.Count; i++)
+        {
+            if (!string.Equals(a[i], b[i], StringComparison.Ordinal)) return false;
+        }
+        return true;
     }
     
     /// <summary>

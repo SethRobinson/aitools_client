@@ -50,10 +50,6 @@ public class ServerButtonScript : MonoBehaviour
         if (m_serverType == RTRendererType.ComfyUI)
         {
             aitools = "Comfy";
-        } else
-        if (m_serverType == RTRendererType.OpenAI_Image)
-        {
-            aitools = "OpenAI Image";
         }
 
 

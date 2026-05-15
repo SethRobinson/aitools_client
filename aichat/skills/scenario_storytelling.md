@@ -4,7 +4,7 @@ summary: Scenario and roleplay workflow for recurring characters, identity ancho
 inputs: none
 autoload: true
 triggers: roleplay, role-play, rp, scenario, scenarios, story, stories, storytelling, tell a story, continue the story, adventure, campaign, quest, character, characters, protagonist, hero, heroine, villain, companion, party, reference character, reference characters, main character, use this person, use this image as, these are the characters, identity anchor, anchor image, illustrate the story, illustrate this
-exclude_triggers: storyboard, storyboards, comic, comics, comic panel, comic strip, comic book, manga panel, manga page, magazine cover, poster, posters, motivational poster, meme, memes, info card, quote card, infographic, filmstrip, diptych, before/after, picture book, childrens book, children's book, storybook, fairy tale, fairytale, side by side, side-by-side, photo grid, image grid, collage
+exclude_triggers: storyboard, storyboards, comic, comics, comic panel, comic strip, comic book, manga panel, manga page, magazine cover, poster, posters, motivational poster, meme, memes, info card, quote card, infographic, filmstrip, diptych, before/after, picture book, childrens book, children's book, storybook, story book, story-book, illustrated story, illustrated stories, fairy tale, fairytale, side by side, side-by-side, photo grid, image grid, collage
 template: <aitools_action skill="read_skill" id="scenario_storytelling"/>
 ---
 # Scenario storytelling

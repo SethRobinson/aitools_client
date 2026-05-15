@@ -1022,6 +1022,7 @@ public class ServerSettingsPanel : MonoBehaviour
             Title = "Server " + _serverID + " - Job Script Override",
             CurrentSelection = _presetSelection,
             FileFilterPrefix = null,
+            ExcludeAutoPicAndSummarize = true,
             SpecialNoneLabel = PRESET_NO_SELECTION_LABEL,
         }, OnPresetPicked);
     }

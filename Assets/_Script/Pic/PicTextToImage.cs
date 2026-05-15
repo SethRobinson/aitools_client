@@ -289,13 +289,6 @@ public class PicTextToImage : MonoBehaviour
 
         var gpuInfo = Config.Get().GetGPUInfo(m_gpu);
 
-        if (gpuInfo._requestedRendererType == RTRendererType.OpenAI_Image)
-        {
-            //TODO;  If we want to show a timer, we would kind of start it here...
-            m_picScript.OnRenderWithOpenAIImage();
-            return;
-        }
-
         if (Config.Get().IsGPUBusy(m_gpu))
         {
             Debug.LogError("Why is GPU busy?!");

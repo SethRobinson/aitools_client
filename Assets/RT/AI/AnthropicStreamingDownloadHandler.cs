@@ -9,6 +9,9 @@ public class AnthropicStreamingDownloadHandler : DownloadHandlerScript
     private Action<string> m_textChunkUpdateCallback;
     private StringBuilder stringBuilder = new StringBuilder();
     private StringBuilder incompleteChunk = new StringBuilder();
+    // Capture every raw byte we receive so HTTP error responses (e.g. 400 with a JSON body)
+    // can still be inspected even though they don't follow the SSE event format.
+    private StringBuilder rawResponse = new StringBuilder();
 
     public AnthropicStreamingDownloadHandler(Action<string> textChunkUpdateCallback) : base(new byte[1024])
     {
@@ -24,8 +27,18 @@ public class AnthropicStreamingDownloadHandler : DownloadHandlerScript
         }
 
         string text = Encoding.UTF8.GetString(data, 0, dataLength);
+        rawResponse.Append(text);
         ProcessChunk(text);
         return true;
+    }
+
+    /// <summary>
+    /// Returns the raw response bytes as text. Useful for logging error bodies that
+    /// don't follow the SSE format (like HTTP 4xx / 5xx error JSON from Anthropic).
+    /// </summary>
+    public string GetRawResponse()
+    {
+        return rawResponse.ToString();
     }
 
     protected void ProcessChunk(string chunk)

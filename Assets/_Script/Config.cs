@@ -19,12 +19,11 @@ public enum LLM_Type
 
 public enum RTRendererType
 {
-    ComfyUI,
-    OpenAI_Image, //openai gpt-image
-    Any_Local,
-    A1111,
-    AI_Tools,
-    AI_Tools_or_A1111 //(this means either A1111 or AIT)
+    ComfyUI = 0,
+    Any_Local = 2,
+    A1111 = 3,
+    AI_Tools = 4,
+    AI_Tools_or_A1111 = 5 //(this means either A1111 or AIT)
 }
 
 public class GPUInfo
@@ -39,7 +38,7 @@ public class GPUInfo
     public ServerButtonScript buttonScript = null;
     public bool serverIsWindows = false;
     public RTRendererType _requestedRendererType = RTRendererType.ComfyUI;
-    public bool isLocal = true; //false would mean an unlimited API like OpenAI's Image API.  Local means TextGen WebUI, AI Tools server or ComfyUI (doesn't actually have to be local)
+    public bool isLocal = true; //false would mean a non-local API renderer. Local means TextGen WebUI, AI Tools server or ComfyUI (doesn't actually have to be local)
     public bool _usesDetailedPrompts = false; //simple is the default
     public int _comfyUIWorkFlowOverride = -1;
     public bool _bIsActive = true;
@@ -340,64 +339,12 @@ set_default_audio_negative_prompt|music|
         LoadCrazyCamConfig();
     }
 
-    /// <summary>
-    /// Checks if an OpenAI API key is available and adds a virtual OpenAI_Image GPU if needed.
-    /// This allows using the OpenAI Image renderer without needing an add_server command.
-    /// </summary>
-    public void TryAddOpenAIImageGPU()
-    {
-        // Check if we already have an OpenAI_Image GPU
-        for (int i = 0; i < GetGPUCount(); i++)
-        {
-            if (GetGPUInfo(i)._requestedRendererType == RTRendererType.OpenAI_Image)
-            {
-                Debug.Log("TryAddOpenAIImageGPU: Already have OpenAI_Image GPU at index " + i);
-                return; // Already have one
-            }
-        }
-
-        // Check if OpenAI API key is available
-        string apiKey = GetOpenAI_APIKey();
-        Debug.Log("TryAddOpenAIImageGPU: API key length = " + (apiKey != null ? apiKey.Length.ToString() : "null"));
-        
-        if (!string.IsNullOrEmpty(apiKey) && apiKey.Length > 10)
-        {
-            // Add a virtual OpenAI_Image GPU
-            GPUInfo gpuInfo = new GPUInfo();
-            gpuInfo._requestedRendererType = RTRendererType.OpenAI_Image;
-            gpuInfo.isLocal = false; // OpenAI API is not local
-            gpuInfo.remoteURL = "https://api.openai.com";
-            gpuInfo._name = "OpenAI Image";
-            gpuInfo._bIsActive = true;
-            AddGPU(gpuInfo);
-            
-            Debug.Log("TryAddOpenAIImageGPU: Added OpenAI Image GPU successfully");
-            RTConsole.Log("Added OpenAI Image GPU (API key found)");
-        }
-        else
-        {
-            Debug.Log("TryAddOpenAIImageGPU: No valid API key found, cannot add OpenAI GPU");
-        }
-    }
-
     public void PopulateRendererDropDown(TMP_Dropdown rendererSelectionDropdown)
     {
-        //populate the list based on the enums from RTServerType
         rendererSelectionDropdown.ClearOptions();
-        List<string> options = new List<string>();
-        int count = 0;
-        foreach (RTRendererType r in System.Enum.GetValues(typeof(RTRendererType)))
-        {
-            string option = r.ToString().Replace("_", " "); // Replace underscore with space
-            options.Add(option);
-
-            count++;
-            if (count == 2)
-            {
-                break; //hack to not show the rest of the types, I don't use them anymore
-            }
-        }
-        rendererSelectionDropdown.AddOptions(options);
+        rendererSelectionDropdown.AddOptions(new List<string> { RTRendererType.ComfyUI.ToString() });
+        rendererSelectionDropdown.value = 0;
+        rendererSelectionDropdown.RefreshShownValue();
     }
 
     public string GetBaseFileDir(string subdir)
@@ -426,29 +373,6 @@ set_default_audio_negative_prompt|music|
         }
 
         return true; //no local servers
-    }
-
-    public int GetFirstGPUIncludingOpenAI()
-    {
-        // First, prefer an OpenAI_Image GPU if available
-        for (int i = 0; i < GetGPUCount(); i++)
-        {
-            if (GetGPUInfo(i)._requestedRendererType == RTRendererType.OpenAI_Image && GetGPUInfo(i)._bIsActive)
-            {
-                return i;
-            }
-        }
-        
-        // If no OpenAI GPU found, return first available GPU
-        for (int i = 0; i < GetGPUCount(); i++)
-        {
-            if (GetGPUInfo(i)._bIsActive)
-            {
-                return i;
-            }
-        }
-
-        return -1;
     }
 
     /// <summary>
@@ -1178,12 +1102,7 @@ set_default_audio_negative_prompt|music|
                 }
             }
         }
-
-
         // LLM server detection is now handled by LLMSettingsManager
-        
-        // After processing config, check if we should add an OpenAI Image GPU
-        TryAddOpenAIImageGPU();
     }
 
     public void SendRequestToAllServers(string optionKey, string optionValue)

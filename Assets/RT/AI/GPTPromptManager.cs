@@ -230,6 +230,27 @@ public class GPTPromptManager : MonoBehaviour
             _interactions.Dequeue();
         }
     }
+
+    public int GetInteractionCount()
+    {
+        return _interactions.Count;
+    }
+
+    // Snapshot of the live interaction objects (NOT clones) in chronological order,
+    // so callers can relink editable chat bubbles to the same GTPChatLine instances.
+    public List<GTPChatLine> GetInteractionsList()
+    {
+        return _interactions.ToList();
+    }
+
+    // Wholesale-replace the interaction history (used by the chat Compact feature).
+    // Pending images and system prompts are left untouched.
+    public void ReplaceInteractions(IEnumerable<GTPChatLine> newLines)
+    {
+        _interactions = newLines != null
+            ? new Queue<GTPChatLine>(newLines)
+            : new Queue<GTPChatLine>();
+    }
      
 
     public string GetAllText()

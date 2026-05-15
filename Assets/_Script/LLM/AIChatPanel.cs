@@ -152,6 +152,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private const string PREFS_AUTO_CONTINUE_ON = "aichat_auto_continue_on";
     private const string PREFS_AUTO_CONTINUE_COUNT = "aichat_auto_continue_count";
     private const int DEFAULT_AUTO_CONTINUE_COUNT = 10;
+    // Compact: how many of the most recent user->assistant exchanges to keep
+    // verbatim when the user compacts the chat (either by plain truncation or
+    // by summarizing everything older into one message). Shared by both modes.
+    private const string PREFS_COMPACT_KEEP_N = "aichat_compact_keep_n";
+    private const int DEFAULT_COMPACT_KEEP_N = 5;
 
     // Footer
     private TMP_InputField _inputField;
@@ -189,6 +194,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // get the slot back. After this timeout we decrement the busy count and treat
     // the caption as failed.
     private const float CAPTION_TIMEOUT_SECONDS = 60f;
+
+    // Watchdog timeout for the one-shot "compact to summary" LLM request. Longer
+    // than the caption timeout because it digests the whole conversation.
+    private const float COMPACT_TIMEOUT_SECONDS = 180f;
+    // Guards against overlapping compact-summary requests (the button is in the
+    // settings panel, which can be reopened while one is still in flight).
+    private bool _compactSummaryInFlight;
 
     private class CaptionJob
     {
@@ -246,7 +258,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private const float MIN_WIDTH = 480f;
     private const float MIN_HEIGHT = 360f;
     private const float HEADER_HEIGHT = 40f;
-    private const float FOOTER_HEIGHT = 156f;
+    // 168 (not 156): the bottom "Auto" row reaches ~152px below the footer top,
+    // and the 10px resize edge band sits in the footer's bottom 10px. At 156 the
+    // band clipped the lower third of the Auto toggle / N box; 168 gives the row
+    // ~6px clearance above the band.
+    private const float FOOTER_HEIGHT = 168f;
     private const float FOOTER_DRAG_BAR_HEIGHT = 10f;
     private const float RESIZE_EDGE_THICKNESS = 10f;
     private const float RESIZE_CORNER_SIZE = 16f;
@@ -1111,6 +1127,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             ph.alignment = TextAlignmentOptions.MidlineLeft;
         }
         input.text = initialValue.ToString();
+        // Same fat-caret treatment as the main chat input / settings-dialog fields,
+        // otherwise TMP renders a near-invisible 1px caret in this little box.
+        ApplyFatCaret(input);
+        var caretFixer = input.gameObject.AddComponent<AIChatCaretFixer>();
+        caretFixer.Set(input);
         input.onEndEdit.AddListener(s =>
         {
             int parsed;
@@ -1752,6 +1773,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // most-recent ref AND the LIFO stack need clearing.
         _lastSpawnedPicThisTurn = null;
         _unchainedPicsThisTurn.Clear();
+        // Reset the serial action scheduler in lockstep, and bump its turn
+        // epoch so any deferred coroutine still alive from a prior turn bails
+        // instead of spawning a stale page into this new turn.
+        _actionExecutor?.ResetForNewTurn();
 
         // Build the visible attachment metadata block + (optionally) stage base64
         // images on the prompt manager. The block is appended to the user message
@@ -1838,6 +1863,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _autoContinueRemaining = 0;
         TryCancelActiveRequests();
         FinalizeAssistantTurn(aborted: true);
+        // Invalidate any parked pump / in-flight deferred coroutine so a
+        // stopped book doesn't keep spawning pages after the user bailed.
+        _actionExecutor?.ResetForNewTurn();
     }
 
     private void OnClearClicked()
@@ -1857,6 +1885,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _captionLabels?.Clear();
         _infoMessages.Clear();
         _actionParser?.Reset();
+        _actionExecutor?.ResetForNewTurn();
         for (int i = _chatContent.childCount - 1; i >= 0; i--)
         {
             Destroy(_chatContent.GetChild(i).gameObject);
@@ -1872,6 +1901,241 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         }
         UpdateMediaHeader();
         AddSystemMessage("Conversation cleared.", includeInLLMRecap: false);
+    }
+
+    // ---------------------------------------------------------------------
+    // Compact: shrink a long conversation without deleting any images. Two
+    // modes share one "keep last N exchanges" value:
+    //   - Truncate : drop everything older than the last N exchanges.
+    //   - Summarize: replace everything older with one LLM-written recap,
+    //                keeping the last N exchanges verbatim.
+    // Neither touches _chatImagePics or the media panel, so chat_image="N"
+    // references in surviving messages stay valid.
+    // ---------------------------------------------------------------------
+
+    // Index into <paramref name="all"/> at which the "kept tail" begins: the
+    // start of the keepExchanges-th-from-last user message. Returns 0 if the
+    // conversation has fewer exchanges than that (keep everything).
+    private int FindKeepFromIndex(List<GTPChatLine> all, int keepExchanges)
+    {
+        if (all == null || all.Count == 0) return 0;
+        if (keepExchanges <= 0) return all.Count; // keep nothing verbatim
+        int userSeen = 0;
+        for (int i = all.Count - 1; i >= 0; i--)
+        {
+            if (all[i] != null && all[i]._role == "user")
+            {
+                userSeen++;
+                if (userSeen >= keepExchanges)
+                    return i;
+            }
+        }
+        return 0;
+    }
+
+    // Turn a stored RAW assistant reply (with <aitools_action> tags + optional
+    // <think> blocks) into the same display-safe text the live stream shows on
+    // completion. A throwaway parser with no OnActionParsed subscriber strips /
+    // sentinel-replaces the tags WITHOUT re-executing any skills; then the
+    // same think-tag handling the stream uses is applied.
+    private static string BuildDisplaySafeAssistantText(string rawContent)
+    {
+        if (string.IsNullOrEmpty(rawContent)) return rawContent;
+        var p = new SkillActionParser();
+        p.Feed(rawContent);            // no OnActionParsed listener -> parse only
+        string display = p.Flush();    // full buffer -> tags replaced/removed
+        return BuildVisibleStreamText(display ?? "");
+    }
+
+    // Tear down every chat bubble and recreate it from the (post-compact)
+    // interaction history, relinking user/assistant bubbles to their live
+    // GTPChatLine so inline editing still works.
+    private void RebuildChatBubblesFromHistory()
+    {
+        if (_chatContent == null || _promptManager == null) return;
+
+        for (int i = _chatContent.childCount - 1; i >= 0; i--)
+            Destroy(_chatContent.GetChild(i).gameObject);
+
+        // The pending-recap queue referenced Info bubbles that no longer exist;
+        // clear it so a stale "for the future" block doesn't ride along on send.
+        _infoMessages.Clear();
+
+        foreach (var line in _promptManager.GetInteractionsList())
+        {
+            if (line == null || string.IsNullOrEmpty(line._content)) continue;
+            if (line._role == "user")
+            {
+                AddUserMessage(line._content, line);
+            }
+            else if (line._role == "assistant")
+            {
+                // line._content keeps the RAW reply (with <aitools_action> tags) so
+                // the LLM still sees its own prior actions. The bubble must show the
+                // display-safe text, exactly like the live stream does on completion
+                // (OnLLMCompletedCallback uses _actionParser.Flush() for the bubble
+                // but stores the raw text in history). Without this, a rebuild after
+                // Compact/edit leaks the raw markup into the chat.
+                string display = BuildDisplaySafeAssistantText(line._content);
+                if (!string.IsNullOrWhiteSpace(display))
+                    AppendBubble("Assistant", new Color(0.10f, 0.45f, 0.20f), display, AssistantBubbleBg, line);
+            }
+            else
+            {
+                // Internal system context. Skip bulky autoloaded skill blocks;
+                // surface the compact summary (and other plain notes) as Info.
+                if (line._internalTag == AUTOLOAD_SKILL_CONTEXT_TAG) continue;
+                AppendBubble("Info", new Color(0.35f, 0.35f, 0.45f), line._content, new Color(0.92f, 0.92f, 0.95f, 1f));
+            }
+        }
+        StartCoroutine(ScrollToBottomDeferred());
+    }
+
+    private void DoCompactTruncate(int keepExchanges)
+    {
+        if (_promptManager == null) return;
+        if (_isStreaming)
+        {
+            RTQuickMessageManager.Get().ShowMessage("Wait for the current reply to finish before compacting");
+            return;
+        }
+
+        var all = _promptManager.GetInteractionsList();
+        int from = FindKeepFromIndex(all, keepExchanges);
+        if (from <= 0)
+        {
+            AddSystemMessage($"Nothing to compact - the conversation is already within the last {keepExchanges} exchange(s).", includeInLLMRecap: false);
+            return;
+        }
+
+        var keptTail = all.GetRange(from, all.Count - from);
+        _promptManager.ReplaceInteractions(keptTail);
+        RebuildChatBubblesFromHistory();
+        AddSystemMessage($"Compacted: removed {from} older message(s), kept the last {keepExchanges} exchange(s). All images are intact.", includeInLLMRecap: false);
+    }
+
+    private void DoCompactSummarize(int keepExchanges)
+    {
+        if (_promptManager == null) return;
+        if (_compactSummaryInFlight)
+        {
+            RTQuickMessageManager.Get().ShowMessage("A compact-summary request is already running");
+            return;
+        }
+        if (_isStreaming)
+        {
+            RTQuickMessageManager.Get().ShowMessage("Wait for the current reply to finish before compacting");
+            return;
+        }
+
+        var all = _promptManager.GetInteractionsList();
+        int from = FindKeepFromIndex(all, keepExchanges);
+        if (from <= 0)
+        {
+            AddSystemMessage($"Nothing to compact - the conversation is already within the last {keepExchanges} exchange(s).", includeInLLMRecap: false);
+            return;
+        }
+
+        var older = all.GetRange(0, from);
+        var keptTail = all.GetRange(from, all.Count - from);
+
+        var instanceMgr = LLMInstanceManager.Get();
+        if (instanceMgr == null || instanceMgr.GetInstanceCount() == 0)
+        {
+            AddSystemMessage("No LLM is configured, so the conversation can't be summarized. Use Truncate instead.", includeInLLMRecap: false);
+            return;
+        }
+        int targetId = instanceMgr.GetFreeLLM(isSmallJob: false, isVisionJob: false, out int replicaIndex);
+        if (targetId < 0)
+            targetId = instanceMgr.GetLeastBusyLLM(isSmallJob: false, isVisionJob: false, out replicaIndex);
+        if (targetId < 0)
+        {
+            AddSystemMessage("No LLM slot is available right now. Try again shortly, or use Truncate.", includeInLLMRecap: false);
+            return;
+        }
+        var inst = instanceMgr.GetInstance(targetId);
+        if (inst == null || inst.settings == null)
+        {
+            AddSystemMessage("The selected LLM is not ready. Use Truncate instead.", includeInLLMRecap: false);
+            return;
+        }
+
+        instanceMgr.SetLLMBusy(targetId, replicaIndex, true);
+        _compactSummaryInFlight = true;
+
+        int imageCount = _chatImagePics?.Count ?? 0;
+
+        // A bare summarizer instruction + the OLDER history (cloned) + the ask.
+        // We intentionally omit the chat's own base/roleplay system prompt so the
+        // model summarizes rather than continuing in character.
+        var lines = new Queue<GTPChatLine>();
+        lines.Enqueue(new GTPChatLine("system",
+            "You are a precise conversation summarizer. You will be given the earlier portion of a chat. Produce a dense recap and nothing else."));
+        foreach (var line in older)
+        {
+            if (line == null || string.IsNullOrEmpty(line._content)) continue;
+            lines.Enqueue(line.Clone());
+        }
+        string instruction =
+            "Summarize the conversation so far into a concise but information-dense recap that a continuation of this chat can rely on. " +
+            "Preserve: the user's goals; any decisions, rules or constraints agreed on; key facts established; and where things currently stand. " +
+            "CRUCIALLY, for every generated or attached image referred to as chat_image=\"N\", keep a one-line note of what image #N depicts and any name/identity tied to it, so it can still be referenced later. " +
+            "There are currently " + imageCount + " chat image(s). Output the recap only - no preamble and no sign-off.";
+        lines.Enqueue(new GTPChatLine("user", instruction));
+
+        AddSystemMessage($"Compacting: summarizing {older.Count} older message(s) with the active LLM... the last {keepExchanges} exchange(s) and all images are kept.", includeInLLMRecap: false);
+
+        bool done = false;
+        Coroutine watchdog = null;
+        int capId = targetId, capReplica = replicaIndex;
+
+        Action release = () =>
+        {
+            if (done) return;
+            done = true;
+            if (watchdog != null) { try { StopCoroutine(watchdog); } catch { } }
+            instanceMgr.SetLLMBusy(capId, capReplica, false);
+            _compactSummaryInFlight = false;
+        };
+
+        Action<RTDB, JSONObject, string> onDone = (db, json, text) =>
+        {
+            if (done) return;
+            release();
+
+            string raw = (text ?? "").Trim();
+            if (string.IsNullOrEmpty(raw) && json != null)
+            {
+                try { raw = OpenAITextCompletionManager.ExtractTextFromResponseJSON(json); } catch { }
+            }
+            if (GenerateSettingsPanel.GetStripThinkTags())
+                raw = OpenAITextCompletionManager.RemoveThinkTagsFromString(raw ?? "");
+            raw = (raw ?? "").Trim();
+            if (string.IsNullOrEmpty(raw))
+            {
+                AddSystemMessage("Compact failed: the LLM returned an empty summary. History is unchanged.", includeInLLMRecap: false);
+                return;
+            }
+
+            var summaryLine = new GTPChatLine("system",
+                "[Conversation summary - earlier history was compacted to save space]\n" + raw);
+            var rebuilt = new List<GTPChatLine>(keptTail.Count + 1) { summaryLine };
+            rebuilt.AddRange(keptTail);
+            _promptManager.ReplaceInteractions(rebuilt);
+            RebuildChatBubblesFromHistory();
+            AddSystemMessage($"Compacted {older.Count} older message(s) into a summary. Kept the last {keepExchanges} exchange(s); all images are intact.", includeInLLMRecap: false);
+        };
+
+        watchdog = StartCoroutine(CompactSummaryWatchdog(() => done, release));
+        SkillActionExecutor.DispatchOneShot(this, inst, lines, onDone, "CompactSummary", "compact_summary_sent.json");
+    }
+
+    private IEnumerator CompactSummaryWatchdog(Func<bool> isDone, Action release)
+    {
+        yield return new WaitForSeconds(COMPACT_TIMEOUT_SECONDS);
+        if (isDone()) yield break;
+        release();
+        AddSystemMessage("Compact timed out - the LLM didn't return a summary in time. History is unchanged.", includeInLLMRecap: false);
     }
 
     private void OnCopyClicked()
@@ -2014,6 +2278,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             return;
         }
 
+        ReloadSkillConfigForNextTurn();
+
         // Rebuild the dynamic system prompt every turn after final provider/model
         // resolution so GPU/LLM/skill/chat-image state is fresh.
         if (_contextBuilder != null && _promptManager != null)
@@ -2067,59 +2333,18 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             {
                 string apiKey = activeSettings.apiKey;
                 string model = string.IsNullOrEmpty(activeSettings.selectedModel) ? "gpt-4o-mini" : activeSettings.selectedModel;
-                string endpoint = "https://api.openai.com/v1/chat/completions";
-
-                bool useResponsesAPI = false;
-                bool isReasoningModel = false;
-                bool includeTemperature = true;
-                string reasoningEffort = null;
-
-                if (model.Contains("gpt-5"))
-                {
-                    useResponsesAPI = true;
-                    endpoint = "https://api.openai.com/v1/responses";
-                    if (model.Contains("gpt-5.2-pro"))
-                    {
-                        isReasoningModel = true; includeTemperature = false; reasoningEffort = "high";
-                    }
-                    else if (model.Contains("gpt-5.2"))
-                    {
-                        isReasoningModel = true; includeTemperature = false; reasoningEffort = "medium";
-                    }
-                    else if (model.Contains("gpt-5-mini") || model.Contains("gpt-5-nano"))
-                    {
-                        useResponsesAPI = false; includeTemperature = false;
-                        endpoint = "https://api.openai.com/v1/chat/completions";
-                    }
-                }
-                else if (model.StartsWith("o3") || model.StartsWith("o4"))
-                {
-                    useResponsesAPI = true;
-                    endpoint = "https://api.openai.com/v1/responses";
-                    isReasoningModel = true; includeTemperature = false; reasoningEffort = "medium";
-                }
-                else if (model.StartsWith("o1"))
-                {
-                    isReasoningModel = true; includeTemperature = false;
-                }
 
                 if (!HasUserMessage(lines))
                     lines.Enqueue(new GTPChatLine("user", "Please proceed."));
 
-                bool? openAIEnableThinking = null;
-                string settingsEndpoint = activeSettings.endpoint ?? "";
-                if (!string.IsNullOrEmpty(settingsEndpoint) && !settingsEndpoint.Contains("api.openai.com"))
-                {
-                    openAIEnableThinking = activeSettings.enableThinking;
-                    string customEndpoint = LLMInstanceManager.ApplyReplicaPortOffset(settingsEndpoint, llmReplicaIndex);
-                    endpoint = customEndpoint.TrimEnd('/');
-                    if (!endpoint.EndsWith("/v1/chat/completions"))
-                        endpoint += "/v1/chat/completions";
-                }
+                // Single source of truth for "which OpenAI request shape does this model want?".
+                // Edit OpenAIRequestProfileResolver to add new model families.
+                var profile = OpenAIRequestProfileResolver.Resolve(model, activeSettings, llmReplicaIndex);
 
                 string json = _openAIMgr.BuildChatCompleteJSON(lines, AI_CHAT_NO_EXPLICIT_OUTPUT_TOKEN_CAP, temperature, model, true,
-                    useResponsesAPI, isReasoningModel, includeTemperature, reasoningEffort, openAIEnableThinking);
-                _openAIMgr.SpawnChatCompleteRequest(json, OnLLMCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
+                    profile.useResponsesAPI, profile.isReasoningModel, profile.includeTemperature,
+                    profile.reasoningEffort, profile.enableThinking);
+                _openAIMgr.SpawnChatCompleteRequest(json, OnLLMCompletedCallback, db, apiKey, profile.endpoint, OnStreamingTextCallback, true);
                 break;
             }
 
@@ -2278,25 +2503,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 return true;
 
             case LLMProvider.OpenAI:
-            {
-                // Mirror the useResponsesAPI logic in the OpenAI branch of SendChatTurn.
-                // The Responses-API branch of OpenAITextCompletionManager.BuildChatCompleteJSON
-                // does not emit multimodal content arrays today; only the Chat Completions
-                // branch does.
-                string model = settings != null ? (settings.selectedModel ?? "") : "";
-                bool useResponses = false;
-                if (model.Contains("gpt-5"))
-                {
-                    useResponses = true;
-                    if (model.Contains("gpt-5-mini") || model.Contains("gpt-5-nano"))
-                        useResponses = false;
-                }
-                else if (model.StartsWith("o3") || model.StartsWith("o4"))
-                {
-                    useResponses = true;
-                }
-                return useResponses;
-            }
+                // Both OpenAI request shapes used by this app serialize image payloads:
+                // Chat Completions uses image_url content items, Responses uses
+                // input_image content items.
+                return false;
 
             default:
                 // OpenAICompatible / Ollama / LlamaCpp all flow through builders that
@@ -2376,11 +2586,14 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (_actionExecutor == null) return;
         try
         {
-            _actionExecutor.Execute(action);
+            // Enqueue, don't execute directly: the executor's serial pump runs
+            // actions in arrival order and parks the rest of the turn behind
+            // any action that defers (e.g. a page waiting for its anchor).
+            _actionExecutor.EnqueueAction(action);
         }
         catch (Exception ex)
         {
-            Debug.LogError("AIChatPanel: SkillActionExecutor.Execute threw: " + ex);
+            Debug.LogError("AIChatPanel: SkillActionExecutor.EnqueueAction threw: " + ex);
             AddSystemMessage("Skill error: " + ex.Message);
         }
     }
@@ -2550,6 +2763,39 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         return text.Trim();
     }
 
+    private void ReloadSkillConfigForNextTurn()
+    {
+        if (_skillManager == null)
+            return;
+
+        var previouslyLoadedIds = new List<string>(_stickyAutoloadSkillIds);
+        _skillManager.Reload();
+
+        if (previouslyLoadedIds.Count == 0)
+            return;
+
+        _promptManager?.RemoveInteractionsByInternalTag(AUTOLOAD_SKILL_CONTEXT_TAG);
+        _stickyAutoloadSkillIds.Clear();
+
+        var refreshedSkills = new List<Skill>();
+        foreach (string id in previouslyLoadedIds)
+        {
+            var skill = _skillManager.GetById(id);
+            if (skill == null)
+                continue;
+
+            refreshedSkills.Add(skill);
+            _stickyAutoloadSkillIds.Add(skill.Id);
+        }
+
+        if (refreshedSkills.Count == 0 || _promptManager == null)
+            return;
+
+        string block = _skillManager.BuildSkillReferenceMaterialBlock(refreshedSkills);
+        if (!string.IsNullOrWhiteSpace(block))
+            _promptManager.AddInteraction("system", block, AUTOLOAD_SKILL_CONTEXT_TAG);
+    }
+
     private void OnSettingsClicked()
     {
         AIChatSettingsPanel.Show(_skillManager, () =>
@@ -2701,7 +2947,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 string raw = (text ?? "").Trim();
                 if (string.IsNullOrEmpty(raw) && json != null)
                 {
-                    try { raw = json["choices"][0]["message"]["content"]; } catch { /* no-op */ }
+                    try { raw = OpenAITextCompletionManager.ExtractTextFromResponseJSON(json); } catch { /* no-op */ }
                 }
                 result = ParseCaptionResponse(raw);
             }
@@ -2845,14 +3091,15 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         {
             try
             {
-                if (result.IsEmpty) return;
                 if (capturedPic != null && capturedPic.gameObject != null)
                 {
-                    capturedPic.Caption = result.longCaption ?? "";
-                    capturedPic.CaptionShort = result.shortCaption ?? "";
+                    string shortCaption = result.IsEmpty ? "caption unavailable" : (result.shortCaption ?? "");
+                    string longCaption = result.IsEmpty ? "caption unavailable" : (result.longCaption ?? "");
+                    capturedPic.Caption = longCaption;
+                    capturedPic.CaptionShort = shortCaption;
                     string labelSuffix = !string.IsNullOrEmpty(result.shortCaption)
                         ? result.shortCaption
-                        : result.longCaption;
+                        : longCaption;
                     if (!string.IsNullOrEmpty(labelSuffix)
                         && _captionLabels.TryGetValue(capturedPic, out var entry)
                         && entry.label != null)
@@ -3160,7 +3407,17 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             // FPS hitch: with N generated bubbles open, N encodes (~10-50ms each on
             // a 1024^2 image) stacked up on the same 1.5s cadence. inFlight gates
             // overlapping caption jobs; the next stable tick re-fires if needed.
-            if (curTex != captionedTex && !inFlight && stableTicks >= stableTicksRequired)
+            //
+            // The !IsBusy() guard is what skips the black placeholder on AI-
+            // *generated* images: a freshly spawned Pic shows a blank/black
+            // texture that sits "stable" for the first few seconds while the
+            // render job is still queued/running, which used to burn an LLM
+            // call describing a black square before the real result landed.
+            // Captioning only an idle Pic means we describe the finished image
+            // once. (User-dragged images arrive idle with the real texture, so
+            // they still caption immediately - no regression.)
+            if (curTex != captionedTex && !inFlight && stableTicks >= stableTicksRequired
+                && !pic.IsBusy())
             {
                 if (pic.TryGetImageAsPng(out byte[] png) && png != null && png.Length > 0)
                 {
@@ -3389,6 +3646,55 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     }
 
     /// <summary>
+    /// How many of the most recent user-&gt;assistant exchanges the Compact feature
+    /// keeps verbatim. Clamped to at least 0 (0 = keep nothing raw / summarize all).
+    /// </summary>
+    public static int GetCompactKeepN()
+    {
+        int n = PlayerPrefs.GetInt(PREFS_COMPACT_KEEP_N, DEFAULT_COMPACT_KEEP_N);
+        return Mathf.Max(0, n);
+    }
+
+    public static void SetCompactKeepN(int n)
+    {
+        PlayerPrefs.SetInt(PREFS_COMPACT_KEEP_N, Mathf.Max(0, n));
+        PlayerPrefs.Save();
+    }
+
+    /// <summary>True when a chat panel instance is alive to compact.</summary>
+    public static bool IsChatActive => _instance != null;
+
+    /// <summary>
+    /// Settings-panel entry point: drop everything except the last
+    /// <paramref name="keepExchanges"/> exchanges. No LLM call; images are NOT
+    /// touched (the media panel and chat_image="N" indices stay intact).
+    /// </summary>
+    public static void CompactTruncate(int keepExchanges)
+    {
+        if (_instance == null)
+        {
+            RTQuickMessageManager.Get().ShowMessage("AI Chat is not open");
+            return;
+        }
+        _instance.DoCompactTruncate(Mathf.Max(0, keepExchanges));
+    }
+
+    /// <summary>
+    /// Settings-panel entry point: summarize everything older than the last
+    /// <paramref name="keepExchanges"/> exchanges into one message via the active
+    /// LLM (async), keeping the recent exchanges verbatim. Images are NOT touched.
+    /// </summary>
+    public static void CompactSummarize(int keepExchanges)
+    {
+        if (_instance == null)
+        {
+            RTQuickMessageManager.Get().ShowMessage("AI Chat is not open");
+            return;
+        }
+        _instance.DoCompactSummarize(Mathf.Max(0, keepExchanges));
+    }
+
+    /// <summary>
     /// Global prefix prepended to every {{Preset Name.txt}} sentinel in the system
     /// prompt before it goes to the LLM. Empty string = use bare names. Lets the
     /// user swap in a parallel set of presets (e.g. "test_") without editing any
@@ -3589,6 +3895,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (pic == null) return false;
         if (pic.TryGetCurrentTexture(out var tex) && tex != null) return true;
         return pic.TryEnsureLoadedForChatSnapshot();
+    }
+
+    bool IChatHost.IsChatImagePicGenerating(int oneBasedIndex)
+    {
+        var pic = GetChatImagePic(oneBasedIndex);
+        if (pic == null) return false;
+        return pic.IsBusy();
     }
 
     string IChatHost.GetChatImageCaption(int oneBasedIndex)
@@ -3912,7 +4225,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             int approxTokens = _streamCharsReceived / 4;
             float tps = approxTokens / elapsed;
             string tpsStr = tps >= 10 ? tps.ToString("F0") : tps.ToString("F1");
-            _statusText.text = $"{spin} Talking to LLM   {approxTokens} tok   {tpsStr} t/s";
+            // While an Auto burst is running, keep the remaining auto-continue
+            // count visible the whole time the turn streams (otherwise it only
+            // flashes for one frame between turns and you can't tell how many
+            // of the N you queued are still to come).
+            string autoLeft = (_autoContinueToggle != null && _autoContinueToggle.isOn && _autoContinueRemaining > 0)
+                ? $"   auto: {_autoContinueRemaining} left" : "";
+            _statusText.text = $"{spin} Talking to LLM   {approxTokens} tok   {tpsStr} t/s{autoLeft}";
         }
 
         // Periodic header status pill refresh (cheap; reads counters from Config/LLM mgr).
