@@ -64,6 +64,13 @@ public class PicJob
     public string[] _inputFilenames = new string[5] { "", "", "", "", "" };
     // Pending uploads to process before running workflow
     public List<UploadInfo> _pendingUploads = new List<UploadInfo>();
+
+    // PNG bytes of the input images that were uploaded for this job (slots 0..4 match
+    // _inputFilenames). Captured during upload_to_comfy and carried into _jobHistory so
+    // the "?" info panel can show the user which images fed an N-input workflow.
+    // Null slots mean "no input was uploaded for that index". Bytes are immutable and
+    // shared by reference across Clones to avoid re-allocating thumbnails.
+    public byte[][] _inputImagePngs = new byte[5][];
     
     // Multi-prompt support: extended prompts for workflows that need multiple distinct prompts
     // (e.g., multi-segment movie generation with different prompts for each segment)
@@ -97,6 +104,10 @@ public class PicJob
         
         // Deep copy extended prompts array
         clone._requestedPrompts = (string[])this._requestedPrompts.Clone();
+
+        // Shallow-copy the outer byte[][]; inner byte[] are treated as immutable PNGs
+        // and shared by reference so we don't pay for a copy each Clone.
+        clone._inputImagePngs = (byte[][])this._inputImagePngs.Clone();
 
         return clone;
     }
@@ -142,6 +153,21 @@ public class PicMain : MonoBehaviour
     private Texture2D m_image3; // 3rd-input texture for multi-image workflows (uploaded as "image3" via @upload). Not displayed.
     private Texture2D m_image4; // 4th-input texture for multi-image workflows (uploaded as "image4" via @upload). Not displayed.
     private Texture2D m_image5; // 5th-input texture for multi-image workflows (uploaded as "image5" via @upload). Not displayed.
+
+    // Optional callback the AI Chat host installs so workflow-runtime aborts (e.g.
+    // "Need image5 image first!" when an @upload step finds no source texture) get
+    // surfaced back to the LLM as a system injection. Without this, the abort only
+    // shows up as the Pic's status text and the LLM has no idea anything went wrong
+    // - so it keeps emitting the same broken action. Cleared after a single invoke
+    // per workflow run so cascading internal failures don't re-spam the chat.
+    public System.Action<string> m_workflowErrorReporter;
+
+    // Holds the PNG bytes captured by each upload_to_comfy job that runs before a
+    // run_workflow. When the run_workflow PicJob is cloned into _jobHistory we move
+    // these into the cloned PicJob._inputImagePngs and clear the buffer so the next
+    // job starts empty. This is how the "?" info panel learns which images were
+    // actually sent for an N-input image-to-image job (e.g. img_to_img_klein_edit_4_input).
+    byte[][] m_pendingInputImagePngs = new byte[5][];
     private bool m_editFileHasChanged;
     private FileSystemWatcher m_editFileWatcher;
     public PicMask m_picMaskScript;
@@ -629,7 +655,14 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         m_jobList.Clear();
         m_waitingForPicJob = false;
         m_requirements = m_default_requirements;
-        
+
+        // Drop any captured input PNGs that never made it onto a run_workflow job, so
+        // they can't leak into the next unrelated job.
+        for (int __ii = 0; __ii < m_pendingInputImagePngs.Length; __ii++)
+        {
+            m_pendingInputImagePngs[__ii] = null;
+        }
+
         // Release server ownership when jobs are cleared (cancellation, error, etc.)
         ReleaseServerOwnership();
     }
@@ -2096,6 +2129,22 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         {
             StartCoroutine(m_picTextToImageScript.CancelRender());
         }
+    }
+
+    /// <summary>
+    /// Surface a workflow-runtime abort back to whoever installed
+    /// <see cref="m_workflowErrorReporter"/> (currently only the AI Chat host) and
+    /// then null out the reporter so cascading internal failures from the same
+    /// workflow run don't re-spam the chat. Safe to call when no reporter is wired -
+    /// it's a no-op in that case.
+    /// </summary>
+    private void ReportWorkflowAbortOnce(string message)
+    {
+        var reporter = m_workflowErrorReporter;
+        if (reporter == null) return;
+        m_workflowErrorReporter = null;
+        try { reporter(message); }
+        catch (Exception ex) { Debug.LogError("PicMain: workflow error reporter threw: " + ex); }
     }
 
     /// <summary>
@@ -3731,6 +3780,16 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 e.requestedRenderer = job.requestedRenderer;
                 PassInTempInfoPicJob(job);
 
+                // Move any input PNGs captured by upload_to_comfy onto this job before it
+                // becomes the history record so the info panel can show what was sent.
+                // We hand them to the live job too (so PassInTempInfoPicJob's reference,
+                // which is the same object, has them as well).
+                for (int __ii = 0; __ii < m_pendingInputImagePngs.Length; __ii++)
+                {
+                    job._inputImagePngs[__ii] = m_pendingInputImagePngs[__ii];
+                    m_pendingInputImagePngs[__ii] = null;
+                }
+
                 _jobHistory.Add(job.Clone());
                 SetNeedsToUpdateInfoPanelFlag();
 
@@ -3833,6 +3892,9 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                             ClearErrorsAndJobs();
                             SetStatusMessage("Need video\nloaded first!");
                             RTConsole.Log("Error: No video loaded for video upload");
+                            ReportWorkflowAbortOnce(
+                                "Workflow aborted: the preset expected a loaded video, but the Pic had none. " +
+                                "If you wanted to operate on an existing chat movie, reference it via chat_image=\"N\" pointing at the Movie #N bubble.");
                             return;
                         }
                     }
@@ -3870,6 +3932,19 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                         ClearErrorsAndJobs();
                         SetStatusMessage("Need " + source + "\nimage first!");
                         RTConsole.Log("Error: Source '" + source + "' has no valid texture for upload");
+                        // Map "imageN" to the chat_imageN / attachmentN slot suffix the
+                        // LLM uses (image1 / image == primary slot, suffix-less; image2..5
+                        // use the explicit number). Anything else falls back to no suffix
+                        // so we don't crash on an unexpected source token.
+                        string slotSuffix = "";
+                        if (source != null && source.StartsWith("image") && source.Length > "image".Length)
+                        {
+                            string tail = source.Substring("image".Length);
+                            if (tail != "1") slotSuffix = tail;
+                        }
+                        ReportWorkflowAbortOnce(
+                            $"Workflow aborted: the preset's @upload step needed source '{source}' but no image is wired into that slot. " +
+                            $"If you used a multi-input preset, pass one chat_image{slotSuffix}=\"N\" (or attachment{slotSuffix}=\"N\") per required input, OR pick a smaller N-Input preset that matches the number of references you have.");
                         return;
                     }
                     
@@ -3883,7 +3958,16 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                     {
                         pngBytes = sourceTexture.EncodeToPNG();
                     }
-                    
+
+                    // Stash a copy for the "?" info panel so the user can see which images
+                    // fed this N-input job. The bytes get transferred onto the run_workflow
+                    // PicJob when it's cloned into _jobHistory below.
+                    int capturedIdx;
+                    if (int.TryParse(uploadParts[1], out capturedIdx) && capturedIdx >= 0 && capturedIdx < m_pendingInputImagePngs.Length)
+                    {
+                        m_pendingInputImagePngs[capturedIdx] = pngBytes;
+                    }
+
                     uploaderScript.UploadFileInMemory(serverID, pngBytes, remoteFileName, OnUploadFinished);
                 }
                 else
@@ -3892,6 +3976,9 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                     RTConsole.Log("Error: Invalid upload_to_comfy format. Expected 'source|inputIndex|filename', got: " + job._parm_1_string);
                     ClearErrorsAndJobs();
                     SetStatusMessage("Upload format\nerror!");
+                    ReportWorkflowAbortOnce(
+                        "Workflow aborted: an @upload step in the preset has a malformed format. Expected 'source|inputIndex|filename'. " +
+                        "This is a preset-file bug, not a usage error - tell the user to check the preset's @upload directives.");
                 }
             } else  if (job._job == "call_llm")
             {
@@ -4714,6 +4801,33 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     public void UpdateInfoPanel()
     {
         m_infoPanelScript.SetInfoText(GetInfoText());
+
+        // Show the input thumbnails for the most recent job that captured any (if a
+        // newer job ran without uploads it correctly hides the strip again). We use
+        // the live byte[][] reference straight off the history record - PicInfoPanel
+        // caches by reference equality to avoid re-compositing on every update tick.
+        byte[][] latestInputs = null;
+        for (int i = _jobHistory.Count - 1; i >= 0; i--)
+        {
+            var hj = _jobHistory[i];
+            if (hj == null || hj._inputImagePngs == null) continue;
+            bool hasAny = false;
+            for (int k = 0; k < hj._inputImagePngs.Length; k++)
+            {
+                if (hj._inputImagePngs[k] != null && hj._inputImagePngs[k].Length > 0)
+                {
+                    hasAny = true;
+                    break;
+                }
+            }
+            if (hasAny)
+            {
+                latestInputs = hj._inputImagePngs;
+                break;
+            }
+        }
+        m_infoPanelScript.SetInputImages(latestInputs);
+
         m_bNeedsToUpdateInfoPanel = false;
     }
 

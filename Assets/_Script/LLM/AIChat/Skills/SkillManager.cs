@@ -260,9 +260,10 @@ namespace AITools.AIChat.Skills
                 wroteAny = true;
                 sb.AppendLine();
                 sb.Append("## ").AppendLine(skill.Id);
-                sb.Append("Summary: ").AppendLine(skill.Summary);
-                if (!string.IsNullOrEmpty(skill.Template))
-                    sb.Append("Template: ").AppendLine(skill.Template);
+                // Skip the Summary: and Template: lines here - the SKILLS section in the
+                // base system prompt already shows both, so re-emitting them wastes ~600
+                // tokens per auto-loaded skill (a measurable chunk of the context window
+                // for a 27B model). The body below is the only non-duplicate content.
                 sb.AppendLine();
                 string body = ApplyPresetPrefix(skill.RawMarkdown ?? "");
                 sb.AppendLine(body.TrimEnd());

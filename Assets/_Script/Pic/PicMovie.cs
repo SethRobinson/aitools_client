@@ -30,6 +30,26 @@ public class PicMovie : MonoBehaviour
     bool _progressBarCreated = false;
     const float PROGRESS_BAR_HEIGHT = 8f;
 
+    // Audio is routed through an AudioSource (not VideoAudioOutputMode.Direct) because
+    // Direct mode desyncs the audio track from the video pipeline on the first play
+    // of every new clip (visible as a frozen first frame + chipmunk-speed audio,
+    // then a clean second loop). Unity marked this Won't-Fix on issuetracker — it
+    // stems from the underlying platform decoder (Media Foundation / AVPlayer) — and
+    // the official workaround is AudioOutputMode.AudioSource.
+    AudioSource _audioSource;
+
+    // Set true by overlay UI (e.g. ChatPicMirror) while the pointer is over a
+    // chat-side mirror of this movie. World-space hover can't detect chat overlays,
+    // so the mirror has to grant permission explicitly. Still gated by global mute.
+    bool _bExternalAudioPermit = false;
+
+    // Two-stage prepare: the first Prepare() runs with targetTexture=null because we
+    // don't know the video dimensions yet. Once prepareCompleted gives us those, we
+    // create the real RT, bind it, and Prepare() AGAIN so the decoder pipeline
+    // initializes against the actual target. Without this the very first playback of
+    // every new clip shows a frozen frame while audio races (Unity 6 / Media Foundation).
+    bool _waitingForSecondPrepare = false;
+
     void Start()
     {
         if (_videoPlayer == null)
@@ -37,7 +57,27 @@ public class PicMovie : MonoBehaviour
             _videoPlayer = gameObject.AddComponent<VideoPlayer>();
         }
 
-        _videoPlayer.audioOutputMode = VideoAudioOutputMode.Direct;
+        if (_audioSource == null)
+        {
+            _audioSource = gameObject.GetComponent<AudioSource>();
+            if (_audioSource == null)
+                _audioSource = gameObject.AddComponent<AudioSource>();
+        }
+        _audioSource.playOnAwake = false;
+
+        _videoPlayer.audioOutputMode = VideoAudioOutputMode.AudioSource;
+        _videoPlayer.SetTargetAudioSource(0, _audioSource);
+        // Unity 6 enforces these more strictly than older versions. Setting them once
+        // here keeps PlayMovie() from racing the first frame onto a stale/null target.
+        _videoPlayer.renderMode = VideoRenderMode.RenderTexture;
+        _videoPlayer.waitForFirstFrame = true;
+        _videoPlayer.playOnAwake = false;
+        // DSPTime drives video time from the audio clock — without this, in Unity 6
+        // the game clock can race ahead of the decoder on the first play of a clip,
+        // producing a frozen first frame while audio sprints. skipOnDrop=false stops
+        // the player from "catching up" by skipping the frames it hasn't decoded yet.
+        _videoPlayer.timeUpdateMode = VideoTimeUpdateMode.DSPTime;
+        _videoPlayer.skipOnDrop = false;
         CreateProgressBarUI();
     }
     public void OnSetHidden()
@@ -51,6 +91,15 @@ public class PicMovie : MonoBehaviour
     {
         m_bAutoDeleteFileWhenDone = bAutoDelete;
     }
+
+    // Called by chat-side mirrors (ChatPicMirror) on pointer enter/exit. Lets a UI
+    // overlay grant unmute permission when the world Pic itself is obscured by the
+    // panel containing that mirror. Cleared automatically in CleanupVideoResources.
+    public void SetExternalAudioPermit(bool on)
+    {
+        _bExternalAudioPermit = on;
+    }
+
     public Vector2Int GetMovieSize() { return m_movieSize; }
     public void TogglePlay()
     {
@@ -186,7 +235,7 @@ public class PicMovie : MonoBehaviour
                 _bDidCleanupSoAllowReload = false;
             }
 
-            if (_videoPlayer.isPlaying)
+            if (_videoPlayer.isPlaying && _audioSource != null)
             {
                 GameObject go = GameLogic.Get().GetPicWereHoveringOver();
                 // GetPicWereHoveringOver() does a 2D physics raycast that ignores UI canvases,
@@ -194,14 +243,16 @@ public class PicMovie : MonoBehaviour
                 // settings dialogs, etc.) is sitting on top of the movie - which would
                 // unmute audio for a video the user can't actually see. Treat any UI
                 // canvas in front of the mouse as "not hovering" so the audio stays muted.
-                if (go == gameObject && !IsMouseObscuredByOtherUI())
+                // _bExternalAudioPermit lets a chat-side mirror grant unmute permission
+                // for cases where the world Pic is covered by the chat panel itself.
+                bool worldHover = (go == gameObject && !IsMouseObscuredByOtherUI());
+                if (worldHover || _bExternalAudioPermit)
                 {
-                    _videoPlayer.SetDirectAudioMute(0, GameLogic.Get().GetGlobalMute());
-
+                    _audioSource.mute = GameLogic.Get().GetGlobalMute();
                 }
                 else
                 {
-                    _videoPlayer.SetDirectAudioMute(0, true);
+                    _audioSource.mute = true;
                 }
             }
 
@@ -389,7 +440,17 @@ public class PicMovie : MonoBehaviour
             return;
 
         float normalized = Mathf.Clamp01((localPoint.x + barRect.rect.width * barRect.pivot.x) / barRect.rect.width);
+
+        // Capture-then-restore the play state: with waitForFirstFrame=true and
+        // skipOnDrop=false (set in Start() to fix the Unity 6 first-play glitch),
+        // assigning _videoPlayer.time halts playback while the seek resolves. If we
+        // don't kick Play() back ourselves the movie stays paused after a seek,
+        // which feels like an unintended pause to the user. Respect a deliberate
+        // pause by only resuming if it was already playing.
+        bool wasPlaying = _videoPlayer.isPlaying;
         _videoPlayer.time = normalized * _videoPlayer.length;
+        if (wasPlaying)
+            _videoPlayer.Play();
     }
 
     void UpdateProgressBar()
@@ -445,6 +506,8 @@ public class PicMovie : MonoBehaviour
 
     private void CleanupVideoResources()
     {
+        _waitingForSecondPrepare = false;
+        _bExternalAudioPermit = false;
         if (_videoPlayer.isPlaying)
         {
             _videoPlayer.Stop();
@@ -560,21 +623,28 @@ public class PicMovie : MonoBehaviour
             _videoPlayer.source = VideoSource.Url;
             _videoPlayer.url = filename;
             _videoPlayer.isLooping = true;
-            _videoPlayer.playOnAwake = false;  // Changed to false
-            
+            _videoPlayer.playOnAwake = false;
+            // Defensive re-assert — Start() sets these too, but if the prefab is
+            // re-imported or another script touches the VideoPlayer at runtime we
+            // want to be certain the first prepare/play uses the right mode and
+            // doesn't race ahead of the first decoded frame.
+            _videoPlayer.renderMode = VideoRenderMode.RenderTexture;
+            _videoPlayer.waitForFirstFrame = true;
+
             _videoPlayer.prepareCompleted -= OnVideoPrepared;
             _videoPlayer.prepareCompleted += OnVideoPrepared;
             _videoPlayer.errorReceived -= OnVideoError;
             _videoPlayer.errorReceived += OnVideoError;
             _videoPlayer.loopPointReached -= OnVideoLoop;
             _videoPlayer.loopPointReached += OnVideoLoop;
-            //_videoPlayer.EnableAudioTrack(0, true);
             _videoPlayer.controlledAudioTrackCount = 1;
-            //Debug.Log("Audio track count: " + _videoPlayer.audioTrackCount);
-            //_videoPlayer.SetDirectAudioMute(0, false);
-            //_videoPlayer.SetDirectAudioVolume(0, 1.0f);
-            if (forceLoad)
-                _videoPlayer.SetDirectAudioMute(0, true);
+            _videoPlayer.EnableAudioTrack(0, true);
+            // Re-bind the AudioSource each play — controlledAudioTrackCount is a
+            // serialized field that can reset the per-track target bindings.
+            if (_audioSource != null)
+                _videoPlayer.SetTargetAudioSource(0, _audioSource);
+            if (forceLoad && _audioSource != null)
+                _audioSource.mute = true;
             
 
             _videoPlayer.Prepare();
@@ -616,6 +686,17 @@ public class PicMovie : MonoBehaviour
     {
         try
         {
+            // Second prepare callback — decoder is now bound to the real RT, safe to play.
+            if (_waitingForSecondPrepare)
+            {
+                _waitingForSecondPrepare = false;
+                source.Play();
+                return;
+            }
+
+            // First prepare callback — we finally know the video dimensions, so build
+            // the RT and bind it, then re-prepare to give the decoder a chance to
+            // initialize against the actual target.
             _renderTexture = new RenderTexture((int)source.width, (int)source.height, 0);
             if (!_renderTexture.Create())
             {
@@ -638,11 +719,34 @@ public class PicMovie : MonoBehaviour
             scale.y = scale.x * ((float)videoHeight / videoWidth);
             _movieObject.transform.localScale = scale;
 
-            source.Play();
+            // Stop() flips isPrepared back to false so Prepare() actually re-runs and
+            // fires the second prepareCompleted — without this, Prepare() on an
+            // already-prepared player is a no-op and the second callback never fires
+            // (which broke auto-play).
+            _waitingForSecondPrepare = true;
+            source.Stop();
+            source.Prepare();
+            // Safety net: if for any reason the second callback doesn't fire (some
+            // Unity 6 builds skip it even after Stop), kick playback ourselves after
+            // a short delay so the video still auto-plays.
+            StartCoroutine(SecondPrepareSafetyNet(source));
         }
         catch (System.Exception e)
         {
             HandleVideoError($"Error in OnVideoPrepared: {e.Message}");
+        }
+    }
+
+    private IEnumerator SecondPrepareSafetyNet(VideoPlayer source)
+    {
+        // Give the decoder a moment to re-prepare against the freshly bound RT.
+        // 0.25s is plenty for a local file decode and short enough that the user
+        // won't notice if the normal prepareCompleted path is already firing.
+        yield return new WaitForSeconds(0.25f);
+        if (_waitingForSecondPrepare && source != null && !source.isPlaying)
+        {
+            _waitingForSecondPrepare = false;
+            source.Play();
         }
     }
 }

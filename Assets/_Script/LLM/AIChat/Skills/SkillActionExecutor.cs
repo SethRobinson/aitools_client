@@ -297,6 +297,19 @@ namespace AITools.AIChat.Skills
             byte[] attachmentBytes5 = ResolveExtraInputBytes(action, 5, out bool errored5, out bool deferred5);
             if (errored5 || deferred5) return;
 
+            // Auto-downgrade preset name when fewer inputs were wired than the preset
+            // expects. The LLM frequently picks a "5 Input" preset but only supplies 4
+            // anchors (or picks "3 Input" with only one anchor) - without this rescue,
+            // PicMain's @upload|imageN|inputN| step aborts at runtime with "Need imageN
+            // image first!" and the failure NEVER reaches the LLM, so it can't learn.
+            // Rewriting the preset to match the actual input count avoids the dead-end.
+            int wiredInputCount = (useAttachment && attachmentBytes != null ? 1 : 0)
+                + (attachmentBytes2 != null ? 1 : 0)
+                + (attachmentBytes3 != null ? 1 : 0)
+                + (attachmentBytes4 != null ? 1 : 0)
+                + (attachmentBytes5 != null ? 1 : 0);
+            preset = DowngradePresetToInputCount(preset, wiredInputCount, action.SkillId);
+
             if (string.IsNullOrEmpty(preset))
             {
                 // The system prompt's SKILLS block shows a Template line per skill with
@@ -397,6 +410,13 @@ namespace AITools.AIChat.Skills
                 if (gpu >= 0 && gpu < Config.Get().GetGPUCount())
                     picMain.m_requestedServerID = gpu;
             }
+
+            // Install a workflow-error reporter so PicMain's runtime aborts (e.g.
+            // "Need image5 image first!" when an @upload step can't find its source)
+            // surface back to the AI Chat as a system injection. Otherwise those errors
+            // only land in the Pic's status text and the LLM has no idea anything went
+            // wrong - it just keeps emitting the same broken action on subsequent turns.
+            WireWorkflowErrorReporter(picMain, action.SkillId, resolved);
 
             // Pull the preset's default_negative_prompt so AI Chat matches the normal UI
             // "Load preset" behavior. Without this, RunPresetByName falls back to whatever
@@ -499,15 +519,6 @@ namespace AITools.AIChat.Skills
                 return;
             }
 
-            string resolved = ResolvePresetName(preset);
-            if (resolved == null)
-            {
-                _host?.AddSystemInjectionAndBubble(
-                    $"Skill '{action.SkillId}' (chain=\"true\"): preset '{preset}' was not found in Presets/. " +
-                    "Re-pick from the list shown in your skill description.");
-                return;
-            }
-
             // Optional extra inputs (slots 2..5) - chain inherits image1 from the prior
             // step, but the LLM can still bring separate image2..image5 references in via
             // attachment{N} / chat_image{N} for N-input presets.
@@ -519,6 +530,27 @@ namespace AITools.AIChat.Skills
             if (chainErr4 || chainDef4) return;
             byte[] chainBytes5 = ResolveExtraInputBytes(action, 5, out bool chainErr5, out bool chainDef5);
             if (chainErr5 || chainDef5) return;
+
+            // Auto-downgrade preset to match wired input count (see ExecuteGenerate for
+            // the rationale). Chain always provides image1 from the prior step's output,
+            // so wired = 1 + (non-null extras). Done BEFORE ResolvePresetName so the
+            // resolver sees the corrected filename.
+            int chainWiredInputCount = 1
+                + (chainBytes2 != null ? 1 : 0)
+                + (chainBytes3 != null ? 1 : 0)
+                + (chainBytes4 != null ? 1 : 0)
+                + (chainBytes5 != null ? 1 : 0);
+            preset = DowngradePresetToInputCount(preset, chainWiredInputCount, action.SkillId);
+
+            string resolved = ResolvePresetName(preset);
+            if (resolved == null)
+            {
+                _host?.AddSystemInjectionAndBubble(
+                    $"Skill '{action.SkillId}' (chain=\"true\"): preset '{preset}' was not found in Presets/. " +
+                    "Re-pick from the list shown in your skill description.");
+                return;
+            }
+
             if (!TryWireExtraInput(prevPic, chainBytes2, 2, action.SkillId)) return;
             if (!TryWireExtraInput(prevPic, chainBytes3, 3, action.SkillId)) return;
             if (!TryWireExtraInput(prevPic, chainBytes4, 4, action.SkillId)) return;
@@ -560,6 +592,10 @@ namespace AITools.AIChat.Skills
                 if (chainSrcW > 0 && chainSrcH > 0)
                     prevPic.SetWorkflowAspectSource(chainSrcW, chainSrcH);
             }
+
+            // Same workflow-error reporter as the non-chained path: surface PicMain
+            // runtime aborts back to the LLM as a system injection.
+            WireWorkflowErrorReporter(prevPic, action.SkillId, resolved);
 
             try
             {
@@ -697,6 +733,70 @@ namespace AITools.AIChat.Skills
                     return false;
             }
             return true;
+        }
+
+        /// <summary>
+        /// Install a callback on <paramref name="pic"/> that surfaces workflow-runtime
+        /// aborts back to the chat as a system injection (so the LLM sees the failure
+        /// on its next turn). The callback also tags the message with the spawning
+        /// skill + preset for context, since the abort itself fires deep inside
+        /// PicMain's job queue with no knowledge of either. <see cref="IChatHost"/>
+        /// captured into a local so the callback survives even if <c>_host</c> is
+        /// later replaced. Idempotent per Pic - PicMain self-nulls the field after
+        /// invoking it (see <c>ReportWorkflowAbortOnce</c>).
+        /// </summary>
+        private void WireWorkflowErrorReporter(PicMain pic, string skillId, string presetName)
+        {
+            if (pic == null) return;
+            IChatHost capturedHost = _host;
+            if (capturedHost == null) return;
+            pic.m_workflowErrorReporter = (msg) =>
+            {
+                capturedHost.AddSystemInjectionAndBubble(
+                    $"Skill '{skillId}' (preset '{presetName}'): {msg}");
+            };
+        }
+
+        /// <summary>
+        /// If <paramref name="preset"/> names an "N Input" multi-input variant (e.g.
+        /// "Image To Image Klein Edit 5 Input.txt") and the actual <paramref name="wiredCount"/>
+        /// of inputs is smaller than N, return the smaller-N variant instead (or the
+        /// suffix-less base name when wired==1). Returns <paramref name="preset"/>
+        /// unchanged when no rewrite applies. Emits an info bubble whenever a rewrite
+        /// happens so the user (and the LLM, on its next turn via the bubble) sees the
+        /// switch. <paramref name="wiredCount"/> ≤ 0 disables the downgrade (used for
+        /// generate-only skills where no source image is wired).
+        /// </summary>
+        private string DowngradePresetToInputCount(string preset, int wiredCount, string skillId)
+        {
+            if (string.IsNullOrEmpty(preset) || wiredCount <= 0) return preset;
+
+            // Strip the .txt extension if present so we can pattern-match on the stem,
+            // then re-attach it at the end. Match is case-insensitive to forgive LLM
+            // capitalization drift ("5 input" / "5 Input" / "5 INPUT").
+            bool hadTxt = preset.EndsWith(".txt", StringComparison.OrdinalIgnoreCase);
+            string stem = hadTxt ? preset.Substring(0, preset.Length - 4) : preset;
+
+            // Look for " <N> Input" at the END of the stem (N in 2..5). Don't match
+            // mid-string variants - that would corrupt presets that legitimately have
+            // "Input" elsewhere in their name.
+            var match = System.Text.RegularExpressions.Regex.Match(
+                stem, @"\s([2-5])\s+Input\s*$",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (!match.Success) return preset;
+
+            int presetN = int.Parse(match.Groups[1].Value);
+            if (wiredCount >= presetN) return preset; // already matches or oversupplied
+
+            string stemBase = stem.Substring(0, match.Index); // drop the " N Input" suffix
+            string newStem = wiredCount == 1
+                ? stemBase
+                : stemBase + " " + wiredCount + " Input";
+            string newPreset = hadTxt ? newStem + ".txt" : newStem;
+
+            _host?.AddInfoBubble(
+                $"(auto-downgraded preset '{preset}' -> '{newPreset}' for {skillId} - only {wiredCount} input(s) were wired, but the preset wanted {presetN}.)");
+            return newPreset;
         }
 
         private static string ResolvePresetName(string requested)
@@ -1244,25 +1344,42 @@ namespace AITools.AIChat.Skills
                 ? ComputeFitFontSize(text, font, fontSize, minFontSize, textW, textH, styles, tmpAlign, wrap)
                 : fontSize;
 
+            // Measure the ACTUAL preferred height at the chosen fontSize. When TMP's
+            // preferred height exceeds the rect (because min_font_size forced a
+            // larger size than the rect can hold, or word-wrap re-flowed to an
+            // extra line at the target size that the linear estimate missed), we
+            // expand the render texture so the overflow stays VISIBLE - spilling
+            // slightly into the surrounding canvas - instead of being silently
+            // clipped mid-glyph inside the per-rect render texture. That silent
+            // clip is the bug that crops the "y" descender in poster body text
+            // like "Activated. Do not disturb until January.".
+            int measuredH = MeasurePreferredHeight(text, font, renderFontSize, textW, styles, tmpAlign, wrap);
+            int extraH = Mathf.Max(0, measuredH - textH);
+            int slackTop, slackBot;
+            DistributeOverflowSlack(valign, extraH, out slackTop, out slackBot);
+            int renderTexH = textH + slackTop + slackBot;
+            int blitX = x;
+            int blitY = y - slackTop;
+
             // Outline: render the text 8x in the outline color offset by outlineWidth in
             // each direction, then the main text in the fill color on top. Cheap halo
             // that survives JPEG compression and works on busy backgrounds.
             if (outlineColor.HasValue && outlineWidth > 0)
             {
                 // Use bAutoSize=false here regardless - we already computed the fit size.
-                Texture2D outlineTex = RTUtil.RenderTextToTexture2D(text, textW, textH, font, renderFontSize, outlineColor.Value, false, new Vector2(1, 1), styles, tmpAlign, wrap, 0f, 0f);
+                Texture2D outlineTex = RTUtil.RenderTextToTexture2D(text, textW, renderTexH, font, renderFontSize, outlineColor.Value, false, new Vector2(1, 1), styles, tmpAlign, wrap, 0f, 0f);
                 int[] dxA = { -outlineWidth, 0, outlineWidth, -outlineWidth, outlineWidth, -outlineWidth, 0, outlineWidth };
                 int[] dyA = { -outlineWidth, -outlineWidth, -outlineWidth, 0, 0, outlineWidth, outlineWidth, outlineWidth };
                 for (int i = 0; i < 8; i++)
                 {
-                    BlitTextureClipped(dst, outlineTex, x + dxA[i], y + dyA[i]);
+                    BlitTextureClipped(dst, outlineTex, blitX + dxA[i], blitY + dyA[i]);
                     if ((i & 1) == 0) yield return null;
                 }
                 UnityEngine.Object.Destroy(outlineTex);
             }
 
-            Texture2D textTex = RTUtil.RenderTextToTexture2D(text, textW, textH, font, renderFontSize, color, false, new Vector2(1, 1), styles, tmpAlign, wrap, 0f, 0f);
-            BlitTextureClipped(dst, textTex, x, y);
+            Texture2D textTex = RTUtil.RenderTextToTexture2D(text, textW, renderTexH, font, renderFontSize, color, false, new Vector2(1, 1), styles, tmpAlign, wrap, 0f, 0f);
+            BlitTextureClipped(dst, textTex, blitX, blitY);
             UnityEngine.Object.Destroy(textTex);
 
             dst.Apply();
@@ -1270,11 +1387,67 @@ namespace AITools.AIChat.Skills
         }
 
         /// <summary>
+        /// Measure TMP's preferredHeight for <paramref name="text"/> at the given
+        /// <paramref name="fontSize"/>, with the same width-wrap constraint the
+        /// renderer will use. Returns the actual rendered text height in pixels
+        /// (rounded up) so the caller can decide whether to expand the render
+        /// texture to capture overflow.
+        /// </summary>
+        private static int MeasurePreferredHeight(string text, TMP_FontAsset font, int fontSize, int rectW, FontStyles styles, TextAlignmentOptions alignment, bool wrap)
+        {
+            if (string.IsNullOrEmpty(text) || rectW <= 0 || fontSize <= 0) return 0;
+            GameObject go = null;
+            try
+            {
+                go = new GameObject("TMP_HeightProbe");
+                go.layer = 31;
+                var tmp = go.AddComponent<TextMeshPro>();
+                tmp.text = text;
+                tmp.font = font;
+                tmp.fontStyle = styles;
+                tmp.alignment = alignment;
+                tmp.enableWordWrapping = wrap;
+                tmp.enableAutoSizing = false;
+                tmp.fontSize = fontSize;
+                tmp.rectTransform.sizeDelta = new Vector2(rectW, 99999f);
+                tmp.ForceMeshUpdate();
+                return Mathf.CeilToInt(tmp.preferredHeight);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("MeasurePreferredHeight failed: " + ex.Message);
+                return 0;
+            }
+            finally
+            {
+                if (go != null) UnityEngine.Object.Destroy(go);
+            }
+        }
+
+        /// <summary>
+        /// Distribute extra render-texture height above and below the user's rect
+        /// so a TMP <c>valign</c> still anchors the text to the same edge of the
+        /// rect after expansion. <c>middle</c> splits evenly (text stays centered
+        /// on the rect), <c>top</c> puts all slack at the bottom (top-of-text
+        /// stays pinned to top-of-rect), <c>bottom</c> puts all slack at the top.
+        /// </summary>
+        private static void DistributeOverflowSlack(string valign, int extra, out int slackTop, out int slackBot)
+        {
+            if (extra <= 0) { slackTop = 0; slackBot = 0; return; }
+            if (valign == "top") { slackTop = 0; slackBot = extra; return; }
+            if (valign == "bottom") { slackTop = extra; slackBot = 0; return; }
+            // middle (default)
+            slackTop = extra / 2;
+            slackBot = extra - slackTop;
+        }
+
+        /// <summary>
         /// Compute the largest fontSize at which `text` fits inside a rect of
         /// `rectW` x `rectH` pixels for the given font/style/wrap settings, clamped
         /// to [minFont, maxFont]. Done by creating a temp TMP, measuring its
-        /// preferredWidth/preferredHeight at a reference fontSize of 100, and
-        /// scaling proportionally.
+        /// preferredWidth/preferredHeight at a reference fontSize of 100, scaling
+        /// proportionally, and then iteratively verifying that the chosen size
+        /// actually fits.
         ///
         /// We do this manually rather than relying on TMP's enableAutoSizing
         /// because TMP's auto-sizer works unreliably in our synchronous
@@ -1282,11 +1455,24 @@ namespace AITools.AIChat.Skills
         /// the rect has plenty of room. Manual measurement uses TMP's actual
         /// preferred-bounds calculation (which IS reliable) and lets us scale
         /// linearly to fit.
+        ///
+        /// The follow-up iterative shrink matters because word-wrap line count is
+        /// a step function of fontSize: at the 100-unit reference the text might
+        /// wrap to N lines, but at the linear-scaled target it can wrap to N+1,
+        /// pushing preferredHeight past the rect. Without re-verification that
+        /// overflow would get silently clipped at the render texture edge -
+        /// which is exactly the descender-cropping bug. The shrink stops at
+        /// minFont (the readability floor); when even minFont overflows, the
+        /// render path adds slack so the overflow stays visible instead of being
+        /// chopped mid-glyph.
         /// </summary>
         private static int ComputeFitFontSize(string text, TMP_FontAsset font, int maxFont, int minFont, int rectW, int rectH, FontStyles styles, TextAlignmentOptions alignment, bool wrap)
         {
             if (string.IsNullOrEmpty(text) || rectW <= 0 || rectH <= 0)
                 return Mathf.Max(1, minFont > 0 ? minFont : (maxFont > 0 ? maxFont : 64));
+
+            int hardMax = maxFont > 0 ? maxFont : 9999;
+            int hardMin = Mathf.Max(1, minFont);
 
             const float REFERENCE_FONT_SIZE = 100f;
             GameObject go = null;
@@ -1321,10 +1507,33 @@ namespace AITools.AIChat.Skills
                 }
                 else
                 {
-                    fitSize = maxFont > 0 ? maxFont : 64;
+                    fitSize = hardMax;
                 }
 
-                if (maxFont > 0 && fitSize > maxFont) fitSize = maxFont;
+                if (fitSize > hardMax) fitSize = hardMax;
+                if (fitSize < 1) fitSize = 1;
+
+                // Iteratively verify the candidate ACTUALLY fits at that fontSize.
+                // The linear estimate above can over-shoot when word-wrap re-flows
+                // to an extra line at the target size that the reference size did
+                // not have. Shrink toward hardMin until the measured bounds fit.
+                // We never go below hardMin (readability floor); when text genuinely
+                // can't fit at minFont the caller's render path adds slack to keep
+                // the overflow visible instead of clipping it mid-glyph.
+                for (int i = 0; i < 8 && fitSize > hardMin; i++)
+                {
+                    tmp.fontSize = fitSize;
+                    tmp.ForceMeshUpdate();
+                    float aw = tmp.preferredWidth;
+                    float ah = tmp.preferredHeight;
+                    if (ah <= rectH && aw <= rectW) break;
+                    float shrink = Mathf.Min(rectW / Mathf.Max(aw, 1f), rectH / Mathf.Max(ah, 1f));
+                    int next = Mathf.FloorToInt(fitSize * shrink);
+                    if (next >= fitSize) next = fitSize - 1;
+                    if (next < hardMin) next = hardMin;
+                    fitSize = next;
+                }
+
                 if (minFont > 0 && fitSize < minFont) fitSize = minFont;
                 if (fitSize < 1) fitSize = 1;
                 return fitSize;

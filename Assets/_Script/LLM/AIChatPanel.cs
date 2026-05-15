@@ -52,6 +52,26 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // even after ChatImageAttachmentZone has cleared its own thumbnail strip.
     private List<byte[]> _lastTurnAttachments = new List<byte[]>();
 
+    // Tracks "Info" bubbles (warnings/notes from skill execution, etc.) so that on
+    // the user's NEXT send we can quietly recap any messages the LLM hasn't already
+    // seen - giving it a chance to learn from its own mistakes without forcing the
+    // user to copy-paste them. Bubbles authored as pure UI confirmations (e.g.
+    // "New chat", "Conversation cleared") opt out via includeInLLMRecap=false at
+    // the AddSystemMessage call site. Cleared with the rest of the chat in
+    // OnClearClicked so a fresh conversation starts with no carry-over.
+    private class InfoMessage
+    {
+        public string m_text;
+        public bool m_alreadySentToLLM;
+
+        public InfoMessage(string text)
+        {
+            m_text = text;
+            m_alreadySentToLLM = false;
+        }
+    }
+    private readonly List<InfoMessage> _infoMessages = new List<InfoMessage>();
+
     // Per-Pic label TMP + the base "Image #N (...)" text it was created with, so a
     // caption arriving asynchronously can append " - <caption>" to the existing
     // label without disturbing the index/source prefix. Stale entries (Pic destroyed)
@@ -228,7 +248,6 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private const float HEADER_HEIGHT = 40f;
     private const float FOOTER_HEIGHT = 156f;
     private const float FOOTER_DRAG_BAR_HEIGHT = 10f;
-    private const float MOVE_FRAME_THICKNESS = 18f;
     private const float RESIZE_EDGE_THICKNESS = 10f;
     private const float RESIZE_CORNER_SIZE = 16f;
     private const int AI_CHAT_NO_EXPLICIT_OUTPUT_TOKEN_CAP = 0;
@@ -259,6 +278,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private static readonly Color TextTitle = new Color(0f, 0f, 0f, 1f);
     private static readonly Color TextPlaceholder = new Color(0.196f, 0.196f, 0.196f, 0.5f);
     private static readonly Color ResizeGripColor = new Color(0.45f, 0.45f, 0.50f, 1f);
+    // Visible tint for the four edge-resize bars (the outer 10px band). Lighter and
+    // cooler than the move frame so the two zones read as distinct without shouting.
+    private static readonly Color ResizeEdgeColor = new Color(0.40f, 0.60f, 0.78f, 0.55f);
 
     // Tracks the visibility state independently of _panelRoot.SetActive, because we
     // intentionally keep _panelRoot active even when "hidden" so that coroutines on
@@ -388,7 +410,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         RefreshHeaderTitle();
         UpdateStatusPill();
         int loadedSkills = _skillManager.GetSkills().Count;
-        AddSystemMessage($"New chat. {loadedSkills} skill{(loadedSkills == 1 ? "" : "s")} loaded from aichat/skills/. Conversation history is kept until you click Clear or close the app.");
+        AddSystemMessage($"New chat. {loadedSkills} skill{(loadedSkills == 1 ? "" : "s")} loaded from aichat/skills/. Conversation history is kept until you click Clear or close the app.", includeInLLMRecap: false);
 
         FocusInputDeferred();
     }
@@ -861,6 +883,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             new Vector2(186, 22),
             GetIncludeImageData(),
             v => SetIncludeImageData(v));
+        {
+            var tt = _includeImageDataToggle.gameObject.AddComponent<RTToolTip>();
+            tt._text = "If checked, raw image bytes are fed into the main chat context every turn - usually a bad idea and wasteful of tokens. If unchecked (recommended), a separate vision call 'looks' at each attached image once and only its description is added to the conversation.";
+        }
 
         // Row 4: "Auto" toggle on the left + small numeric N input on the right.
         // When Auto is on, hitting Send fires the manual turn then automatically
@@ -877,6 +903,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 SetAutoContinueEnabled(v);
                 if (!v) _autoContinueRemaining = 0;
             });
+        {
+            var tt = _autoContinueToggle.gameObject.AddComponent<RTToolTip>();
+            tt._text = "When enabled, after you press Send the chat automatically fires up to N additional '(continue)' turns - one per completed reply - to keep the LLM going on long tasks. Stop, Clear, an aborted turn, or toggling this off cancels the remaining burst. N is the number in the field to the right.";
+        }
         _autoContinueCountInput = CreateFooterIntInput(
             footer.transform,
             new Vector2(-8, -130),
@@ -1031,7 +1061,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         lblTmp.fontSize = 12;
         lblTmp.color = new Color(0.2f, 0.2f, 0.2f, 1f);
         lblTmp.alignment = TextAlignmentOptions.MidlineLeft;
-        lblTmp.raycastTarget = false;
+        // Raycast on so hovering the label propagates PointerEnter up to the
+        // toggle root for any RTToolTip mounted there (and clicks bubble up to
+        // the Toggle's IPointerClickHandler, matching standard checkbox UX).
+        lblTmp.raycastTarget = true;
 
         var toggle = go.AddComponent<Toggle>();
         toggle.targetGraphic = boxImg;
@@ -1204,14 +1237,14 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     private void CreateResizeGrip()
     {
-        CreateMoveFrameHandles();
-
+        // Full-length edges (no corner inset). The corner regions are covered by invisible
+        // diagonal-resize caps below, plus the visible bottom-right ResizeGrip on top.
         CreateResizeEdgeHandle(
             "ResizeTop",
             new Vector2(0f, 1f),
             new Vector2(1f, 1f),
             new Vector2(0.5f, 1f),
-            new Vector2(-RESIZE_CORNER_SIZE * 2f, RESIZE_EDGE_THICKNESS),
+            new Vector2(0f, RESIZE_EDGE_THICKNESS),
             Vector2.zero,
             new Vector2(0f, 1f));
         CreateResizeEdgeHandle(
@@ -1219,7 +1252,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             new Vector2(0f, 0f),
             new Vector2(1f, 0f),
             new Vector2(0.5f, 0f),
-            new Vector2(-RESIZE_CORNER_SIZE * 2f, RESIZE_EDGE_THICKNESS),
+            new Vector2(0f, RESIZE_EDGE_THICKNESS),
             Vector2.zero,
             new Vector2(0f, -1f));
         CreateResizeEdgeHandle(
@@ -1227,7 +1260,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             new Vector2(0f, 0f),
             new Vector2(0f, 1f),
             new Vector2(0f, 0.5f),
-            new Vector2(RESIZE_EDGE_THICKNESS, -RESIZE_CORNER_SIZE * 2f),
+            new Vector2(RESIZE_EDGE_THICKNESS, 0f),
             Vector2.zero,
             new Vector2(-1f, 0f));
         CreateResizeEdgeHandle(
@@ -1235,9 +1268,19 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             new Vector2(1f, 0f),
             new Vector2(1f, 1f),
             new Vector2(1f, 0.5f),
-            new Vector2(RESIZE_EDGE_THICKNESS, -RESIZE_CORNER_SIZE * 2f),
+            new Vector2(RESIZE_EDGE_THICKNESS, 0f),
             Vector2.zero,
             new Vector2(1f, 0f));
+
+        // Invisible diagonal-resize caps for the three corners that don't have a styled
+        // grip widget. They sit on top of the now-full-length edges, so the blue border
+        // reads as continuous while the corner pixels still resize on both axes at once.
+        CreateResizeCornerCap("ResizeCornerTopLeft",
+            new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(-1f,  1f));
+        CreateResizeCornerCap("ResizeCornerTopRight",
+            new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2( 1f,  1f));
+        CreateResizeCornerCap("ResizeCornerBottomLeft",
+            new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(-1f, -1f));
 
         var grip = new GameObject("ResizeGrip");
         grip.transform.SetParent(_mainPanel, false);
@@ -1283,59 +1326,36 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         rt.anchoredPosition = anchoredPosition;
 
         var img = edge.AddComponent<Image>();
-        img.color = new Color(0f, 0f, 0f, 0.001f);
+        img.color = ResizeEdgeColor;
 
         var resize = edge.AddComponent<PanelResizeHandle>();
         resize.SetTarget(_mainPanel, new Vector2(MIN_WIDTH, MIN_HEIGHT), resizeDirection, OnPanelResized);
     }
 
-    private void CreateMoveFrameHandles()
+    /// <summary>
+    /// Invisible 16x16 cap parked at a panel corner. Acts as a diagonal-resize hot zone -
+    /// pointer events go to this cap (highest sibling at the corner), so the cursor swap
+    /// and the resize direction read as diagonal. The continuous blue look comes from the
+    /// full-length edge handles rendered underneath, not from this cap.
+    /// </summary>
+    private void CreateResizeCornerCap(string name, Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot, Vector2 resizeDirection)
     {
-        CreateMoveFrameHandle(
-            "MoveFrameLeft",
-            new Vector2(0f, 0f),
-            new Vector2(0f, 1f),
-            new Vector2(1f, 0.5f),
-            new Vector2(MOVE_FRAME_THICKNESS, 0f),
-            Vector2.zero);
-        CreateMoveFrameHandle(
-            "MoveFrameRight",
-            new Vector2(1f, 0f),
-            new Vector2(1f, 1f),
-            new Vector2(0f, 0.5f),
-            new Vector2(MOVE_FRAME_THICKNESS, 0f),
-            Vector2.zero);
-        CreateMoveFrameHandle(
-            "MoveFrameBottom",
-            new Vector2(0f, 0f),
-            new Vector2(1f, 0f),
-            new Vector2(0.5f, 1f),
-            new Vector2(0f, MOVE_FRAME_THICKNESS),
-            Vector2.zero);
-        CreateMoveFrameHandle(
-            "MoveFrameTop",
-            new Vector2(0f, 1f),
-            new Vector2(1f, 1f),
-            new Vector2(0.5f, 0f),
-            new Vector2(0f, MOVE_FRAME_THICKNESS),
-            Vector2.zero);
-    }
-
-    private void CreateMoveFrameHandle(string name, Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot, Vector2 sizeDelta, Vector2 anchoredPosition)
-    {
-        var frame = new GameObject(name);
-        frame.transform.SetParent(_mainPanel, false);
-        var rt = frame.AddComponent<RectTransform>();
+        var corner = new GameObject(name);
+        corner.transform.SetParent(_mainPanel, false);
+        var rt = corner.AddComponent<RectTransform>();
         rt.anchorMin = anchorMin;
         rt.anchorMax = anchorMax;
         rt.pivot = pivot;
-        rt.sizeDelta = sizeDelta;
-        rt.anchoredPosition = anchoredPosition;
+        rt.sizeDelta = new Vector2(RESIZE_CORNER_SIZE, RESIZE_CORNER_SIZE);
+        rt.anchoredPosition = Vector2.zero;
 
-        var img = frame.AddComponent<Image>();
-        img.color = new Color(0.35f, 0.35f, 0.40f, 0.35f);
+        // Image is required for raycast targeting, but fully transparent so the edge
+        // colors underneath define the visible look.
+        var img = corner.AddComponent<Image>();
+        img.color = new Color(0f, 0f, 0f, 0f);
 
-        frame.AddComponent<PanelDragHandler>().SetTarget(_mainPanel, HEADER_HEIGHT);
+        var resize = corner.AddComponent<PanelResizeHandle>();
+        resize.SetTarget(_mainPanel, new Vector2(MIN_WIDTH, MIN_HEIGHT), resizeDirection, OnPanelResized);
     }
 
     private void OnPanelResized()
@@ -1532,11 +1552,52 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (_chatContent != null) LayoutRebuilder.ForceRebuildLayoutImmediate(_chatContent);
     }
 
-    private void AddSystemMessage(string text)
+    private void AddSystemMessage(string text, bool includeInLLMRecap = true)
     {
         // Info / system bubbles aren't part of the LLM conversation, so leave them readOnly
         // (linkedInteraction = null).
         AppendBubble("Info", new Color(0.35f, 0.35f, 0.45f), text, new Color(0.92f, 0.92f, 0.95f, 1f));
+
+        // Queue this message for the "for the future, please keep this in mind"
+        // recap that gets quietly appended to the user's NEXT outgoing message.
+        // Pure UI confirmations / bail-path errors (config not initialized, etc.)
+        // pass false so they don't pollute the LLM's reminder list.
+        if (includeInLLMRecap && !string.IsNullOrWhiteSpace(text))
+            _infoMessages.Add(new InfoMessage(text));
+    }
+
+    /// <summary>
+    /// Wrap the user's just-typed message with a quiet "for the future" recap of any
+    /// Info bubbles that have appeared since the last send (typically skill warnings
+    /// or auto-corrections from the assistant's previous turn). The recap is what the
+    /// LLM sees in the user message; the human-visible bubble keeps the original text.
+    /// Each recapped entry is marked sent so it never gets attached twice. If nothing
+    /// is pending the original text is returned verbatim - behaviour is unchanged for
+    /// chats that don't accumulate Info bubbles.
+    /// </summary>
+    private string BuildLLMPayloadWithInfoRecap(string userTypedText)
+    {
+        if (_infoMessages == null || _infoMessages.Count == 0)
+            return userTypedText;
+
+        var unsent = new List<InfoMessage>();
+        for (int i = 0; i < _infoMessages.Count; i++)
+        {
+            if (!_infoMessages[i].m_alreadySentToLLM)
+                unsent.Add(_infoMessages[i]);
+        }
+        if (unsent.Count == 0)
+            return userTypedText;
+
+        var sb = new StringBuilder();
+        sb.Append(userTypedText ?? "");
+        sb.Append("\n\n---\nAlso, for the future, please keep this in mind:");
+        for (int i = 0; i < unsent.Count; i++)
+        {
+            sb.Append("\n- ").Append(unsent[i].m_text);
+            unsent[i].m_alreadySentToLLM = true;
+        }
+        return sb.ToString();
     }
 
     /// <summary>
@@ -1659,7 +1720,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // Enter bypasses the button. Show a hint and bail.
         if (_attachmentZone != null && _attachmentZone.CountInFlightCaptions() > 0)
         {
-            AddSystemMessage("Captioning attached image(s)... waiting for description before send.");
+            AddSystemMessage("Captioning attached image(s)... waiting for description before send.", includeInLLMRecap: false);
             return;
         }
 
@@ -1741,13 +1802,22 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             // turn's CHAT IMAGES block has it without re-running the caption coroutine.
             PromoteAttachmentsToChatImages(attachmentInfos);
             string mode = includeBytes ? "with image data" : "caption only";
-            AddSystemMessage($"Attached {attachedCount} image{(attachedCount == 1 ? "" : "s")} to the next message ({mode}).");
+            AddSystemMessage($"Attached {attachedCount} image{(attachedCount == 1 ? "" : "s")} to the next message ({mode}).", includeInLLMRecap: false);
         }
+
+        // Quietly fold any unsent Info bubbles (skill warnings/errors that have piled
+        // up since the last send) into the LLM payload as a "for the future, please
+        // keep this in mind" recap, so the model can learn from its own mistakes
+        // without forcing the user to copy-paste them. The user-visible bubble below
+        // intentionally stays clean - it shows ONLY what the user actually typed -
+        // while the prompt-manager history gets the augmented text. Marking each
+        // recapped entry as already-sent prevents re-attaching it on subsequent turns.
+        string llmPayloadText = BuildLLMPayloadWithInfoRecap(text);
 
         // Add the interaction first so we can link the bubble to it - that link is what
         // makes the bubble editable (and what makes user edits flow back into the prompt
         // history sent to the LLM on subsequent turns).
-        _promptManager.AddInteraction("user", text);
+        _promptManager.AddInteraction("user", llmPayloadText);
         var userInteraction = _promptManager.GetLastInteraction();
         AddUserMessage(text, userInteraction);
 
@@ -1785,6 +1855,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _lastTurnAttachments?.Clear();
         _chatImagePics?.Clear();
         _captionLabels?.Clear();
+        _infoMessages.Clear();
         _actionParser?.Reset();
         for (int i = _chatContent.childCount - 1; i >= 0; i--)
         {
@@ -1800,7 +1871,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             }
         }
         UpdateMediaHeader();
-        AddSystemMessage("Conversation cleared.");
+        AddSystemMessage("Conversation cleared.", includeInLLMRecap: false);
     }
 
     private void OnCopyClicked()
@@ -1899,7 +1970,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         var settingsMgr = LLMSettingsManager.Get();
         if (settingsMgr == null)
         {
-            AddSystemMessage("LLM settings are not initialized yet. Open LLM Settings and configure a provider first.");
+            AddSystemMessage("LLM settings are not initialized yet. Open LLM Settings and configure a provider first.", includeInLLMRecap: false);
             return;
         }
 
@@ -1938,7 +2009,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         if (activeSettings == null)
         {
-            AddSystemMessage("No LLM provider settings found. Configure one via LLM Settings.");
+            AddSystemMessage("No LLM provider settings found. Configure one via LLM Settings.", includeInLLMRecap: false);
             ReleaseActiveLLM();
             return;
         }
@@ -1985,7 +2056,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // all emit multimodal content arrays today; the others don't.
         if (isVisionJob && WillProviderDropImages(activeProvider, activeSettings))
         {
-            AddSystemMessage($"Note: {activeProvider} chat path is not configured to send images yet; only text will be sent.");
+            AddSystemMessage($"Note: {activeProvider} chat path is not configured to send images yet; only text will be sent.", includeInLLMRecap: false);
         }
 
         RTDB db = new RTDB();
@@ -2146,7 +2217,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             }
 
             default:
-                AddSystemMessage("Unsupported provider: " + activeProvider);
+                AddSystemMessage("Unsupported provider: " + activeProvider, includeInLLMRecap: false);
                 FinalizeAssistantTurn(aborted: true);
                 return;
         }
@@ -2328,7 +2399,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                     ? "LLM returned an empty response. Check text_completion_sent.json and textgen_json_received.json for the raw exchange."
                     : "Unknown error";
             }
-            AddSystemMessage("LLM error: " + error);
+            AddSystemMessage("LLM error: " + error, includeInLLMRecap: false);
             FinalizeAssistantTurn(aborted: true);
             return;
         }
@@ -2489,7 +2560,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             _promptManager?.RemoveInteractionsByInternalTag(AUTOLOAD_SKILL_CONTEXT_TAG);
             _stickyAutoloadSkillIds.Clear();
             int n = _skillManager?.GetSkills().Count ?? 0;
-            AddSystemMessage($"Reloaded aichat config: {n} skill{(n == 1 ? "" : "s")}.");
+            AddSystemMessage($"Reloaded aichat config: {n} skill{(n == 1 ? "" : "s")}.", includeInLLMRecap: false);
         });
     }
 
@@ -3007,6 +3078,25 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         string label = $"{kindLabel} #{chatImageNumber} ({skillId})";
         AppendImageBubbleInternal(spawnedPic, label, isMovie);
 
+        // Tell the LLM what number this bubble got, so when the user follows up with
+        // "tell me about them" or "put them in a scene", the model references the
+        // ACTUAL slot numbers instead of predicting future ones. The model has shown
+        // it will hallucinate numbers (e.g. claim "#5..#8" right after generating
+        // bubbles that actually became #1..#4) even though CHAT IMAGES is rebuilt
+        // every turn - this explicit per-bubble confirmation gives it an anchor that
+        // survives in conversation history regardless of caption-readiness. Silent
+        // injection: the chat already shows the labeled bubble, so a bubble would
+        // just be visual noise.
+        if (_promptManager != null)
+        {
+            _promptManager.AddInteraction(
+                "system",
+                $"({kindLabel} just spawned is {kindLabel} #{chatImageNumber} in CHAT IMAGES. " +
+                $"Refer to it on later turns via chat_image=\"{chatImageNumber}\". " +
+                "Do NOT predict higher slot numbers for bubbles you generated in this same reply - " +
+                "the actual slot number is the one stated here.)");
+        }
+
         // Generated images don't have texture data yet (workflow hasn't run). The
         // PicMain callbacks (m_onFinishedRenderingCallback / m_onFinishedScriptCallback)
         // are unreliable signals here - they're reset between steps, multiple
@@ -3447,7 +3537,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // can see what was injected.
         if (_promptManager != null)
             _promptManager.AddInteraction("system", text);
-        AddSystemMessage(text);
+        // Skip the "for the future, please keep this in mind" recap on next-send: the
+        // text is already in conversation history as a system role above, so re-pasting
+        // it into the user's next message would be pure duplication.
+        AddSystemMessage(text, includeInLLMRecap: false);
     }
 
     void IChatHost.AddSystemInjectionSilent(string text)
@@ -3903,9 +3996,11 @@ public class ChatSplitterHandle : MonoBehaviour, IBeginDragHandler, IDragHandler
 
 /// <summary>
 /// Edge/corner resize handle for a panel. Drags adjust the target's sizeDelta and move
-/// the target so the opposite edge stays fixed. Min size enforced.
+/// the target so the opposite edge stays fixed. Min size enforced. On pointer hover the
+/// system cursor swaps to a directional resize arrow generated procedurally - no asset
+/// imports required, no Windows-specific P/Invoke.
 /// </summary>
-public class PanelResizeHandle : MonoBehaviour, IBeginDragHandler, IDragHandler
+public class PanelResizeHandle : MonoBehaviour, IBeginDragHandler, IDragHandler, IPointerEnterHandler, IPointerExitHandler
 {
     private RectTransform _target;
     private Vector2 _minSize = new Vector2(200, 200);
@@ -3914,6 +4009,14 @@ public class PanelResizeHandle : MonoBehaviour, IBeginDragHandler, IDragHandler
     private Vector2 _startPointerLocal;
     private Vector2 _startSize;
     private Vector2 _startAnchoredPosition;
+
+    private enum ResizeCursorKind { None, Horizontal, Vertical, DiagonalNWSE, DiagonalNESW }
+    private ResizeCursorKind _cursorKind = ResizeCursorKind.DiagonalNWSE;
+    private bool _cursorActive;
+
+    private const int CursorTexSize = 32;
+    private static readonly Vector2 CursorHotspot = new Vector2(CursorTexSize / 2f, CursorTexSize / 2f);
+    private static Texture2D _hCursor, _vCursor, _nwseCursor, _neswCursor;
 
     public void SetTarget(RectTransform target, Vector2 minSize)
     {
@@ -3926,6 +4029,215 @@ public class PanelResizeHandle : MonoBehaviour, IBeginDragHandler, IDragHandler
         _minSize = minSize;
         _resizeDirection = resizeDirection;
         _onResized = onResized;
+        _cursorKind = DeriveCursorKind(resizeDirection);
+    }
+
+    private static ResizeCursorKind DeriveCursorKind(Vector2 dir)
+    {
+        bool hasX = Mathf.Abs(dir.x) > 0.01f;
+        bool hasY = Mathf.Abs(dir.y) > 0.01f;
+        if (hasX && hasY)
+            return Mathf.Sign(dir.x) == Mathf.Sign(dir.y) ? ResizeCursorKind.DiagonalNESW : ResizeCursorKind.DiagonalNWSE;
+        if (hasX) return ResizeCursorKind.Horizontal;
+        if (hasY) return ResizeCursorKind.Vertical;
+        return ResizeCursorKind.None;
+    }
+
+    public void OnPointerEnter(PointerEventData eventData)
+    {
+        var tex = GetCursorTexture(_cursorKind);
+        if (tex == null) return;
+        Cursor.SetCursor(tex, CursorHotspot, CursorMode.Auto);
+        _cursorActive = true;
+    }
+
+    public void OnPointerExit(PointerEventData eventData)
+    {
+        ResetCursorIfActive();
+    }
+
+    private void OnDisable()
+    {
+        // Belt-and-suspenders: if the panel hides while the pointer is over us, OnPointerExit
+        // may not fire. Without this the OS cursor would stay as the resize arrow until the
+        // user hovers something else that resets it.
+        ResetCursorIfActive();
+    }
+
+    private void ResetCursorIfActive()
+    {
+        if (!_cursorActive) return;
+        Cursor.SetCursor(null, Vector2.zero, CursorMode.Auto);
+        _cursorActive = false;
+    }
+
+    private static Texture2D GetCursorTexture(ResizeCursorKind kind)
+    {
+        switch (kind)
+        {
+            case ResizeCursorKind.Horizontal:
+                if (_hCursor == null) _hCursor = BuildCursorTexture(kind);
+                return _hCursor;
+            case ResizeCursorKind.Vertical:
+                if (_vCursor == null) _vCursor = BuildCursorTexture(kind);
+                return _vCursor;
+            case ResizeCursorKind.DiagonalNWSE:
+                if (_nwseCursor == null) _nwseCursor = BuildCursorTexture(kind);
+                return _nwseCursor;
+            case ResizeCursorKind.DiagonalNESW:
+                if (_neswCursor == null) _neswCursor = BuildCursorTexture(kind);
+                return _neswCursor;
+            default:
+                return null;
+        }
+    }
+
+    // Texture y=0 is the BOTTOM row but Cursor.SetCursor draws the texture as-is with its
+    // hotspot measured from the top-left of the rendered cursor. For symmetric horizontal
+    // / vertical arrows that's irrelevant; for diagonals we carefully map "visual top"
+    // (i.e. small screen-y) to the HIGH y rows of the pixel array.
+    private static Texture2D BuildCursorTexture(ResizeCursorKind kind)
+    {
+        const int W = CursorTexSize, H = CursorTexSize;
+        var px = new Color[W * H]; // default (0,0,0,0) = transparent
+        int cx = W / 2, cy = H / 2;
+        Color fill = Color.white;
+
+        switch (kind)
+        {
+            case ResizeCursorKind.Horizontal:
+                for (int x = 7; x <= 24; x++)
+                    for (int dy = -1; dy <= 1; dy++)
+                        SetPx(px, W, H, x, cy + dy, fill);
+                for (int x = 2; x <= 7; x++)
+                {
+                    int half = x - 2;
+                    for (int y = cy - half; y <= cy + half; y++) SetPx(px, W, H, x, y, fill);
+                }
+                for (int x = 24; x <= 29; x++)
+                {
+                    int half = 29 - x;
+                    for (int y = cy - half; y <= cy + half; y++) SetPx(px, W, H, x, y, fill);
+                }
+                break;
+
+            case ResizeCursorKind.Vertical:
+                for (int y = 7; y <= 24; y++)
+                    for (int dx = -1; dx <= 1; dx++)
+                        SetPx(px, W, H, cx + dx, y, fill);
+                for (int y = 2; y <= 7; y++)
+                {
+                    int half = y - 2;
+                    for (int x = cx - half; x <= cx + half; x++) SetPx(px, W, H, x, y, fill);
+                }
+                for (int y = 24; y <= 29; y++)
+                {
+                    int half = 29 - y;
+                    for (int x = cx - half; x <= cx + half; x++) SetPx(px, W, H, x, y, fill);
+                }
+                break;
+
+            case ResizeCursorKind.DiagonalNWSE:
+            case ResizeCursorKind.DiagonalNESW:
+            {
+                // NWSE = "↖↘" : visual top-left to visual bottom-right
+                // NESW = "↗↙" : visual top-right to visual bottom-left
+                // In array coords (y=0 at bottom), top-left = (small x, large y), bottom-right = (large x, small y).
+                bool nwse = (kind == ResizeCursorKind.DiagonalNWSE);
+                int x0 = 7,  y0 = nwse ? H - 1 - 7  : 7;
+                int x1 = 24, y1 = nwse ? H - 1 - 24 : 24;
+                int steps = 18;
+                for (int s = 0; s <= steps; s++)
+                {
+                    float t = (float)s / steps;
+                    int x = Mathf.RoundToInt(Mathf.Lerp(x0, x1, t));
+                    int y = Mathf.RoundToInt(Mathf.Lerp(y0, y1, t));
+                    // Plus-shaped brush, 2px effective thickness along the diagonal.
+                    SetPx(px, W, H, x,     y,     fill);
+                    SetPx(px, W, H, x - 1, y,     fill);
+                    SetPx(px, W, H, x + 1, y,     fill);
+                    SetPx(px, W, H, x,     y - 1, fill);
+                    SetPx(px, W, H, x,     y + 1, fill);
+                }
+                if (nwse)
+                {
+                    // NW (visual top-left): array (2..8, 23..29). Filled corner.
+                    FillTri(px, W, H, 2, 29, 8, 29, 2, 23, fill);
+                    // SE (visual bottom-right): array (23..29, 2..8).
+                    FillTri(px, W, H, 29, 2, 23, 2, 29, 8, fill);
+                }
+                else
+                {
+                    // NE (visual top-right): array (23..29, 23..29).
+                    FillTri(px, W, H, 29, 29, 23, 29, 29, 23, fill);
+                    // SW (visual bottom-left): array (2..8, 2..8).
+                    FillTri(px, W, H, 2, 2, 8, 2, 2, 8, fill);
+                }
+                break;
+            }
+        }
+
+        // 1-pixel black outline so the cursor stays legible on white / light UIs.
+        AddOutline(px, W, H, Color.black);
+
+        var tex = new Texture2D(W, H, TextureFormat.RGBA32, false);
+        tex.filterMode = FilterMode.Point;
+        tex.wrapMode = TextureWrapMode.Clamp;
+        tex.SetPixels(px);
+        tex.Apply();
+        return tex;
+    }
+
+    private static void SetPx(Color[] px, int W, int H, int x, int y, Color c)
+    {
+        if (x < 0 || x >= W || y < 0 || y >= H) return;
+        px[y * W + x] = c;
+    }
+
+    private static void FillTri(Color[] px, int W, int H, int x0, int y0, int x1, int y1, int x2, int y2, Color c)
+    {
+        int minX = Mathf.Max(0, Mathf.Min(x0, Mathf.Min(x1, x2)));
+        int maxX = Mathf.Min(W - 1, Mathf.Max(x0, Mathf.Max(x1, x2)));
+        int minY = Mathf.Max(0, Mathf.Min(y0, Mathf.Min(y1, y2)));
+        int maxY = Mathf.Min(H - 1, Mathf.Max(y0, Mathf.Max(y1, y2)));
+        for (int y = minY; y <= maxY; y++)
+        {
+            for (int x = minX; x <= maxX; x++)
+            {
+                int d1 = (x - x1) * (y0 - y1) - (x0 - x1) * (y - y1);
+                int d2 = (x - x2) * (y1 - y2) - (x1 - x2) * (y - y2);
+                int d3 = (x - x0) * (y2 - y0) - (x2 - x0) * (y - y0);
+                bool hasNeg = d1 < 0 || d2 < 0 || d3 < 0;
+                bool hasPos = d1 > 0 || d2 > 0 || d3 > 0;
+                if (!(hasNeg && hasPos)) px[y * W + x] = c;
+            }
+        }
+    }
+
+    private static void AddOutline(Color[] px, int W, int H, Color outline)
+    {
+        var dst = new Color[W * H];
+        Array.Copy(px, dst, px.Length);
+        for (int y = 0; y < H; y++)
+        {
+            for (int x = 0; x < W; x++)
+            {
+                if (px[y * W + x].a > 0.5f) continue;
+                bool nearFill = false;
+                for (int dy = -1; dy <= 1 && !nearFill; dy++)
+                {
+                    for (int dx = -1; dx <= 1 && !nearFill; dx++)
+                    {
+                        if (dx == 0 && dy == 0) continue;
+                        int nx = x + dx, ny = y + dy;
+                        if (nx < 0 || nx >= W || ny < 0 || ny >= H) continue;
+                        if (px[ny * W + nx].a > 0.5f) nearFill = true;
+                    }
+                }
+                if (nearFill) dst[y * W + x] = outline;
+            }
+        }
+        Array.Copy(dst, px, px.Length);
     }
 
     public void OnBeginDrag(PointerEventData eventData)
@@ -3992,7 +4304,7 @@ public class AIChatCaretFixer : MonoBehaviour, ISelectHandler
 
     private static readonly Color CaretColor = new Color(0f, 0f, 0f, 1f);
     private static readonly Color SelectionColor = new Color(0.25f, 0.5f, 1f, 0.55f);
-    private const int CaretWidth = 4;
+    private const int CaretWidth = 5;
 
     public void Set(TMP_InputField input)
     {

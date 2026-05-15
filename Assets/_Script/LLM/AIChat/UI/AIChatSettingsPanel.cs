@@ -214,6 +214,8 @@ namespace AITools.AIChat.UI
             _mainPromptField.textComponent.font = _font;
             _mainPromptField.textComponent.fontSize = BaseFontSize;
             _mainPromptField.textComponent.textWrappingMode = TextWrappingModes.Normal;
+            ApplyFatCaret(_mainPromptField);
+            InstallCaretFixer(_mainPromptField);
             if (_mainPromptField.placeholder is TextMeshProUGUI pp)
             {
                 pp.text = "Type the main system prompt here...";
@@ -510,6 +512,36 @@ namespace AITools.AIChat.UI
             inputOut.textComponent.font = _font;
             inputOut.textComponent.fontSize = BaseFontSize;
             inputOut.textComponent.color = TextDark;
+            ApplyFatCaret(inputOut);
+            InstallCaretFixer(inputOut);
+        }
+
+        // Unity's default TMP caret is 1px wide which is nearly invisible against
+        // a white field background, especially with a slow blink. Force a thicker
+        // high-contrast caret so users can actually see where they're typing.
+        private static void ApplyFatCaret(TMP_InputField input)
+        {
+            if (input == null) return;
+            input.customCaretColor = true;
+            input.caretColor = new Color(0f, 0f, 0f, 1f);
+            input.caretWidth = 5;
+            input.caretBlinkRate = 0.6f;
+            input.selectionColor = new Color(0.25f, 0.5f, 1f, 0.45f);
+        }
+
+        // Setting caret properties once isn't enough on Unity 6 / TMP 3: the spawned
+        // TMP_SelectionCaret graphic isn't created/tinted on first selection, so the
+        // caret renders invisible. AIChatCaretFixer (defined in AIChatPanel.cs) does
+        // the bullet-proof toggle-enabled + ForceLabelUpdate + caret-child tint dance
+        // on every OnEnable/OnSelect, plus reasserts the caret config periodically
+        // while focused. We use the same component the chat input field relies on.
+        private static void InstallCaretFixer(TMP_InputField input)
+        {
+            if (input == null) return;
+            var fixer = input.gameObject.GetComponent<AIChatCaretFixer>();
+            if (fixer == null)
+                fixer = input.gameObject.AddComponent<AIChatCaretFixer>();
+            fixer.Set(input);
         }
 
         // ---------- Behavior ----------

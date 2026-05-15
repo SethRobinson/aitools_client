@@ -23,7 +23,7 @@ namespace AITools.AIChat.Mirroring
     /// Click on the image bubble to pan the camera over the world Pic so the user can
     /// keep editing/inspecting it normally.
     /// </summary>
-    public class ChatPicMirror : MonoBehaviour, IPointerClickHandler
+    public class ChatPicMirror : MonoBehaviour, IPointerClickHandler, IPointerEnterHandler, IPointerExitHandler
     {
         public RawImage targetImage;
         public TMP_Text statusLabel;
@@ -281,6 +281,30 @@ namespace AITools.AIChat.Mirroring
             Canvas.ForceUpdateCanvases();
             if (scroll != null)
                 scroll.verticalNormalizedPosition = 0f;
+        }
+
+        // Pointer enter/exit grant audio-unmute permission to the source PicMovie
+        // while the user is hovering the chat-side mirror. The world Pic itself is
+        // typically obscured by the AI Chat panel, so its own world-space hover
+        // detection can't unmute audio without this assist.
+        public void OnPointerEnter(PointerEventData eventData)
+        {
+            if (sourcePic != null && sourcePic.m_picMovie != null)
+                sourcePic.m_picMovie.SetExternalAudioPermit(true);
+        }
+
+        public void OnPointerExit(PointerEventData eventData)
+        {
+            if (sourcePic != null && sourcePic.m_picMovie != null)
+                sourcePic.m_picMovie.SetExternalAudioPermit(false);
+        }
+
+        private void OnDisable()
+        {
+            // Catch the case where the bubble is destroyed / panel is closed while
+            // the pointer was still over it (no PointerExit fires in that path).
+            if (sourcePic != null && sourcePic.m_picMovie != null)
+                sourcePic.m_picMovie.SetExternalAudioPermit(false);
         }
 
         public void OnPointerClick(PointerEventData eventData)

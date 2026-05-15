@@ -86,6 +86,25 @@ public class RTToolTip : MonoBehaviour, IPointerEnterHandler, IPointerExitHandle
 
                 var myCanvas = gameObject.GetComponentInParent<Canvas>();
 
+                // Make sure the tooltip renders above the canvas it's hosted on.
+                // The prefab's Canvas has overrideSorting + sortingOrder=15 baked in,
+                // which is fine for default UI (host canvas at sortingOrder 0) but
+                // gets buried when the host canvas uses a high sortingOrder (e.g.
+                // AIChatSettingsPanel at 110, sitting on top of AIChatPanel at 100).
+                // Bump sortingOrder so the tooltip is always above its host, while
+                // leaving the default-15 behaviour untouched for low-order hosts.
+                if (myCanvas != null && myCanvas.renderMode != RenderMode.WorldSpace)
+                {
+                    var tipCanvas = m_tipInstance.GetComponent<Canvas>();
+                    if (tipCanvas != null)
+                    {
+                        tipCanvas.overrideSorting = true;
+                        int desired = myCanvas.sortingOrder + 10;
+                        if (tipCanvas.sortingOrder < desired)
+                            tipCanvas.sortingOrder = desired;
+                    }
+                }
+
                 if (!myCanvas || myCanvas.renderMode == RenderMode.WorldSpace)
                 {
                     var cam = RTUtil.FindObjectOrCreate("Camera").GetComponent<Camera>();
