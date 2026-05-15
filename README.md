@@ -31,7 +31,7 @@ If this is all weird and strange, this is probably not the place for you to star
 
 ### V3.0 (May 16th, 2026)
 
-* New "AI Chat" feature - use natural language to do anything, even complex things like attaching/generating images and telling it to use those as visual anchors for stories, posters, movies, etc
+* New "AI Chat" feature - use natural language to do anything, even complex things like attaching/generating images and telling it to use those as visual anchors for stories, posters, movies, etc.  I recommend Qwen 3.6 27B, works great with it.
 * Support for the latest LLMs, local and cloud.  Comes with 17 "skills" so the LLM can use most of this apps abilities directly
 * Tons of tweaks and bug fixes
 * Updates to Klein 2 9B edit, Z-Image, and LTX 2.3 workflows, those are the main ones that AI Chat needs to work
