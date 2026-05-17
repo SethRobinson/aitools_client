@@ -4,6 +4,8 @@ import sys
 
 import websocket
 
+import auth
+
 WS_RECV_TIMEOUT = 120
 
 
@@ -31,7 +33,7 @@ def connect_ws(server_url, client_id):
               + f"/ws?clientId={client_id}")
     ws = websocket.WebSocket()
     ws.settimeout(WS_RECV_TIMEOUT)
-    ws.connect(ws_url)
+    ws.connect(ws_url, header=auth.ws_header_for(server_url))
     return ws
 
 

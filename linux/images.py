@@ -11,6 +11,7 @@ from pathlib import Path
 import requests
 from PIL import Image
 
+import auth
 from util import die
 
 UPLOAD_TIMEOUT = 60
@@ -99,6 +100,7 @@ def upload_image(server_url: str, img: Image.Image, verbose: bool = False) -> st
             f"{server_url}/upload/image",
             files={"image": (fname, buf.getvalue(), "image/png")},
             data={"type": "temp", "overwrite": "true"},
+            headers=auth.headers_for(server_url),
             timeout=UPLOAD_TIMEOUT,
         )
     except requests.RequestException as e:

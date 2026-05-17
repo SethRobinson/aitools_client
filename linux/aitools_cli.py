@@ -22,6 +22,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 import re
 
+import auth
 import comfy_api
 import images
 import presets
@@ -68,6 +69,10 @@ def build_argparser():
                    help="Skip /history clear cleanup")
     p.add_argument("--server", default=None,
                    help="Override server URL (skip queue probe)")
+    p.add_argument("--server-token", default=None, dest="server_token",
+                   metavar="TOKEN",
+                   help="Bearer token for --server (ComfyUI-Login). Ignored "
+                        "without --server; for config servers use |token= instead")
     p.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     return p
 
@@ -177,9 +182,15 @@ def main():
     # Pick server.
     if args.server:
         server_url = args.server.rstrip("/")
+        if args.server_token:
+            auth.register(server_url, args.server_token)
         if args.verbose:
-            print(f"using override server: {server_url}")
+            tok = " (with token)" if args.server_token else ""
+            print(f"using override server: {server_url}{tok}")
     else:
+        if args.server_token and args.verbose:
+            print("warning: --server-token ignored without --server "
+                  "(config servers carry their token via |token=)")
         if not cfg["servers"]:
             die("no servers in config", 1)
         if args.verbose:

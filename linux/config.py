@@ -1,6 +1,7 @@
 """Parser for linux/config.txt — `key|value` lines, # comments, blank lines."""
 from pathlib import Path
 
+import auth
 from util import die
 
 
@@ -20,5 +21,13 @@ def parse_config(path: Path):
         if key == "default_workflow" and len(parts) >= 2:
             cfg["default_workflow"] = parts[1].strip()
         elif key == "add_server" and len(parts) >= 2:
-            cfg["servers"].append(parts[1].strip().rstrip("/"))
+            url = parts[1].strip().rstrip("/")
+            cfg["servers"].append(url)
+            # Any later field starting with "token=" is an optional bearer
+            # token for a protected ComfyUI (e.g. the ComfyUI-Login node).
+            # Other extra fields (e.g. a display name) are ignored here.
+            for extra in parts[2:]:
+                extra = extra.strip()
+                if extra.startswith("token="):
+                    auth.register(url, extra[len("token="):].strip())
     return cfg

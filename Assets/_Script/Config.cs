@@ -45,11 +45,13 @@ public class GPUInfo
     public string _jobListOverride = "";
     public string _autoPicOverride = ""; // Empty = use global AutoPic setting, otherwise the preset filename to use
     public string _name = ""; //if blank, we'll use our own
+    public string _authToken = ""; // Optional bearer token sent as "Authorization: Bearer <token>" to a protected ComfyUI (e.g. ComfyUI-Login custom node). Blank = no auth. Set via the |token=... field on add_server in config.txt.
     public float _vramGB = 0f; // User-declared VRAM in GB (0 = unknown). Set via set_gpu_vram|gpuID|gb| in config.txt. Surfaced to AI Chat skills so the LLM can pick a GPU with enough memory.
     public int _adventureRenderCount = 0; // Per-server render count for Adventure mode (0 = don't auto-spawn for this server)
     public bool _ignoredByExtraGenerators = false; // If true, Gen Extra and global render count skip this server
     public bool _gpuLocked = true; // If true (default), per-server autopics are reserved to this GPU; if false, any free GPU can process them
     public string _gpuNameMatchFilter = ""; // Only meaningful when _gpuLocked == false. If set, per-server-spawned jobs only run on GPUs whose _name contains this substring (case-insensitive).
+    public int _configOrder = int.MaxValue; // Position of this server's add_server line in config.txt. Used to keep the GPU list in config order regardless of which server responds first. MaxValue = no explicit order (sorts to the end).
 
     /// <summary>
     /// Checks if this server's job list override has LLM calls before GPU work.
@@ -91,6 +93,11 @@ public class Config : MonoBehaviour
     public static bool _isTestMode = false; //could do anything, _testMode is checked by random functions
   
     List<GPUInfo> m_gpuInfo = new List<GPUInfo>();
+
+    // Maps a configured ComfyUI server base URL (exactly as written on its add_server line) to its
+    // optional bearer token. Populated while parsing config.txt, consulted by every ComfyUI request
+    // (including server discovery, before any GPUInfo exists). Empty = no server uses auth.
+    Dictionary<string, string> m_comfyAuthTokens = new Dictionary<string, string>();
     List<LLMParm> m_llmParms = new List<LLMParm>();
 
     static Config _this;
@@ -639,9 +646,25 @@ set_default_audio_negative_prompt|music|
 
     public void AddGPU(GPUInfo g)
     {
-        g.localGPUID = m_gpuInfo.Count;
+        //servers are probed asynchronously, so they don't necessarily arrive in config.txt order.
+        //Insert this one so the list stays sorted by _configOrder (its add_server line position).
+        //Equal/unset orders keep arrival order, so non-add_server GPUs still land at the end.
+        int insertIndex = m_gpuInfo.Count;
+        for (int i = 0; i < m_gpuInfo.Count; i++)
+        {
+            if (m_gpuInfo[i]._configOrder > g._configOrder)
+            {
+                insertIndex = i;
+                break;
+            }
+        }
+        m_gpuInfo.Insert(insertIndex, g);
 
-        m_gpuInfo.Add(g);
+        //re-number every GPU to its new list position (inserting in the middle shifts the rest)
+        for (int i = 0; i < m_gpuInfo.Count; i++)
+        {
+            m_gpuInfo[i].localGPUID = i;
+        }
 
         //we have at least one GPU now, kill the no servers button
         RTUtil.KillAllObjectsByName(RTUtil.FindIncludingInactive("Panel").gameObject, "NoServersButtonPrefab", true);
@@ -656,15 +679,21 @@ set_default_audio_negative_prompt|music|
         buttonObj.name = "ServerButtonPrefab"; //don't change, we delete these by this exact name
         //move it down
         float spacerY = -20;
-        var vPos = buttonObj.transform.localPosition;
 
         //replace X, dynamically adjust to how big the main tool panel is now? Well, I tried for 1 minute and it seems tricky due to parenting/etc so forget it, I'll just move the
         //prefab for now
         //Debug.Log("Top right of panel is " + GetTopRightPosition(panel));
 
-        //use existing Y and just add some spacing
-        vPos.y += spacerY* g.localGPUID;
-        buttonObj.transform.localPosition = vPos;
+        //all buttons come from the same prefab, so its default localPosition is our shared baseline.
+        //Re-stack every existing button by its (possibly shifted) localGPUID so the order matches the list.
+        float baseY = buttonObj.transform.localPosition.y;
+        foreach (var gi in m_gpuInfo)
+        {
+            if (gi.buttonScript == null) continue;
+            var giPos = gi.buttonScript.transform.localPosition;
+            giPos.y = baseY + spacerY * gi.localGPUID;
+            gi.buttonScript.transform.localPosition = giPos;
+        }
 
             if (g._requestedRendererType == RTRendererType.AI_Tools || g._requestedRendererType == RTRendererType.A1111)
             {
@@ -858,6 +887,41 @@ set_default_audio_negative_prompt|music|
         return webScript;
     }
 
+    /// <summary>
+    /// Returns the bearer token for whichever configured ComfyUI server URL is the longest prefix of
+    /// anyUrl (so e.g. a /prompt or /view request URL still resolves to its server's token), or null
+    /// if no configured server with a token matches. Safe to call before any GPUInfo exists.
+    /// </summary>
+    public string GetComfyAuthToken(string anyUrl)
+    {
+        if (string.IsNullOrEmpty(anyUrl) || m_comfyAuthTokens.Count == 0) return null;
+
+        string bestKey = null;
+        foreach (var kvp in m_comfyAuthTokens)
+        {
+            if (anyUrl.StartsWith(kvp.Key) && (bestKey == null || kvp.Key.Length > bestKey.Length))
+            {
+                bestKey = kvp.Key;
+            }
+        }
+        return bestKey == null ? null : m_comfyAuthTokens[bestKey];
+    }
+
+    /// <summary>
+    /// Single choke point for ComfyUI auth: if the request's target URL belongs to a configured
+    /// server that has a token, attach it as an Authorization: Bearer header. No-op otherwise, so
+    /// it's safe (and cheap) to call on every ComfyUI request unconditionally.
+    /// </summary>
+    public void ApplyComfyAuth(UnityEngine.Networking.UnityWebRequest req)
+    {
+        if (req == null) return;
+        string token = GetComfyAuthToken(req.url);
+        if (!string.IsNullOrEmpty(token))
+        {
+            req.SetRequestHeader("Authorization", "Bearer " + token);
+        }
+    }
+
     public void CheckForUpdate()
     {
         GameObject go = new GameObject("UpdateCheck");
@@ -891,11 +955,14 @@ set_default_audio_negative_prompt|music|
 
         //reset old config. This will likely do bad things if you're using GPUs at the time of loading
         ClearGPU();
+        m_comfyAuthTokens.Clear();
         CrazyCamLogic.Get().ClearSnapshotPresets();
 
         m_configText = newConfig;
 
         //process it line by line
+
+        int serverConfigOrder = 0; //incremented per add_server so the GPU list can be kept in config.txt order
 
         using (var reader = new StringReader(m_configText))
         {
@@ -917,14 +984,32 @@ set_default_audio_negative_prompt|music|
                   
                     var webScript = CreateWebRequestObject();
 
+                    // Any field after the URL that starts with "token=" is the optional auth bearer
+                    // token; the first other field (if any) is still the display name. Order doesn't
+                    // matter and a token-only line (no name) is fine. Fully backward compatible.
                     string extra = "";
+                    string authToken = "";
 
-                    if (words.Length > 2)
+                    for (int wi = 2; wi < words.Length; wi++)
                     {
-                        extra = words[2];
+                        string field = words[wi];
+                        if (field.StartsWith("token="))
+                        {
+                            authToken = field.Substring("token=".Length).Trim();
+                        }
+                        else if (extra == "")
+                        {
+                            extra = field;
+                        }
                     }
 
-                    webScript.StartComfyUIRequest(-1, words[1], extra);
+                    if (!string.IsNullOrEmpty(authToken))
+                    {
+                        m_comfyAuthTokens[words[1]] = authToken;
+                    }
+
+                    webScript.StartComfyUIRequest(-1, words[1], extra, serverConfigOrder, authToken);
+                    serverConfigOrder++;
                 } else
                 if (words[0] == "add_snapshot_preset")
                 {

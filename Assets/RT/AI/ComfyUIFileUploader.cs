@@ -149,6 +149,7 @@ public class ComfyUIFileUploader : MonoBehaviour
         // Create the UnityWebRequest for a POST.
         using (UnityWebRequest www = UnityWebRequest.Post(httpDest, form))
         {
+            Config.Get().ApplyComfyAuth(www);
             // Send the request and wait until it is done.
             yield return www.SendWebRequest();
 

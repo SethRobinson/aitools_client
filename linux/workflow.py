@@ -5,6 +5,7 @@ from pathlib import Path
 
 import requests
 
+import auth
 from util import die
 
 HTTP_TIMEOUT = 30
@@ -47,7 +48,8 @@ def load_or_convert_workflow(workflow_dir: Path, workflow_name: str,
         r = requests.post(
             f"{server_url}/workflow/convert",
             data=src_text.encode("utf-8"),
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json",
+                     **auth.headers_for(server_url)},
             timeout=HTTP_TIMEOUT,
         )
     except requests.RequestException as e:

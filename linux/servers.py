@@ -1,6 +1,7 @@
 """Probe ComfyUI servers via /queue and pick the lowest-loaded one."""
 import requests
 
+import auth
 from util import die
 
 QUEUE_PROBE_TIMEOUT = 2.0
@@ -9,7 +10,8 @@ QUEUE_PROBE_TIMEOUT = 2.0
 def probe_server(url):
     """Return current queue depth (running + pending), or None if unreachable."""
     try:
-        r = requests.get(f"{url}/queue", timeout=QUEUE_PROBE_TIMEOUT)
+        r = requests.get(f"{url}/queue", headers=auth.headers_for(url),
+                         timeout=QUEUE_PROBE_TIMEOUT)
         if r.status_code != 200:
             return None
         d = r.json()

@@ -7,6 +7,7 @@ from urllib.parse import urlencode
 
 import requests
 
+import auth
 from util import die
 
 HTTP_TIMEOUT = 30
@@ -17,7 +18,8 @@ HISTORY_TIMEOUT = 120
 def submit(server_url, api_workflow, client_id, verbose=False):
     payload = {"prompt": api_workflow, "client_id": client_id}
     try:
-        r = requests.post(f"{server_url}/prompt", json=payload, timeout=HTTP_TIMEOUT)
+        r = requests.post(f"{server_url}/prompt", json=payload,
+                          headers=auth.headers_for(server_url), timeout=HTTP_TIMEOUT)
     except requests.RequestException as e:
         die(f"submit request failed: {e}", 2)
     if r.status_code != 200:
@@ -34,7 +36,8 @@ def fetch_outputs(server_url, prompt_id):
     deadline = time.time() + HISTORY_TIMEOUT
     while time.time() < deadline:
         try:
-            r = requests.get(f"{server_url}/history/{prompt_id}", timeout=HTTP_TIMEOUT)
+            r = requests.get(f"{server_url}/history/{prompt_id}",
+                             headers=auth.headers_for(server_url), timeout=HTTP_TIMEOUT)
         except requests.RequestException as e:
             die(f"history request failed: {e}", 2)
         if r.status_code == 200:
@@ -69,7 +72,8 @@ def download_image(server_url, image_ref):
         "type": image_ref.get("type", "output"),
     })
     try:
-        r = requests.get(f"{server_url}/view?{qs}", timeout=HTTP_TIMEOUT)
+        r = requests.get(f"{server_url}/view?{qs}",
+                         headers=auth.headers_for(server_url), timeout=HTTP_TIMEOUT)
     except requests.RequestException as e:
         die(f"download failed: {e}", 2)
     if r.status_code != 200:
@@ -94,6 +98,7 @@ def cleanup(server_url, prompt_id):
         requests.post(
             f"{server_url}/history",
             json={"clear": True, "prompt_id": prompt_id},
+            headers=auth.headers_for(server_url),
             timeout=5,
         )
     except Exception:

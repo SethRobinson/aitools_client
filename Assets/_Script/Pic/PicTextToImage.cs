@@ -80,6 +80,7 @@ public class PicTextToImage : MonoBehaviour
             // Send interrupt request synchronously
             using (var interruptRequest = new UnityWebRequest(url + "/interrupt", "POST"))
             {
+                Config.Get().ApplyComfyAuth(interruptRequest);
                 interruptRequest.SendWebRequest();
             }
 
@@ -93,6 +94,7 @@ public class PicTextToImage : MonoBehaviour
                     byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
                     queueRequest.uploadHandler = new UploadHandlerRaw(bodyRaw);
                     queueRequest.SetRequestHeader("Content-Type", "application/json");
+                    Config.Get().ApplyComfyAuth(queueRequest);
                     queueRequest.SendWebRequest();
                 }
             }
@@ -512,7 +514,8 @@ public class PicTextToImage : MonoBehaviour
                 convertRequest.uploadHandler = new UploadHandlerRaw(bodyRaw);
                 convertRequest.downloadHandler = new DownloadHandlerBuffer();
                 convertRequest.SetRequestHeader("Content-Type", "application/json");
-                
+                Config.Get().ApplyComfyAuth(convertRequest);
+
                 yield return convertRequest.SendWebRequest();
                 
                 if (convertRequest.result == UnityWebRequest.Result.Success)
@@ -707,6 +710,7 @@ public class PicTextToImage : MonoBehaviour
             postRequest.uploadHandler = (UploadHandler)new UploadHandlerRaw(bodyRaw);
 
             postRequest.SetRequestHeader("Content-Type", "application/json");
+            Config.Get().ApplyComfyAuth(postRequest);
 
             //Start the request with a method instead of the object itself
             yield return postRequest.SendWebRequest();
@@ -790,6 +794,13 @@ public class PicTextToImage : MonoBehaviour
         try
         {
             m_ws = new ClientWebSocket();
+            // ComfyUI-Login checks the Authorization header before the ?token query param, so the
+            // header alone is enough to authenticate the ws:// connection on a protected server.
+            string wsAuthToken = Config.Get().GetComfyAuthToken(baseUrl);
+            if (!string.IsNullOrEmpty(wsAuthToken))
+            {
+                m_ws.Options.SetRequestHeader("Authorization", "Bearer " + wsAuthToken);
+            }
             m_cancellationTokenSource = new CancellationTokenSource();
             uri = new Uri(wsUrl);
         }
@@ -1091,6 +1102,7 @@ public class PicTextToImage : MonoBehaviour
             // Check history for completion
             using (UnityWebRequest historyRequest = UnityWebRequest.Get(historyURL))
             {
+                Config.Get().ApplyComfyAuth(historyRequest);
                 yield return historyRequest.SendWebRequest();
 
                 if (historyRequest.result != UnityWebRequest.Result.Success)
@@ -1329,6 +1341,7 @@ public class PicTextToImage : MonoBehaviour
             byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(clearJson);
             postRequest.uploadHandler = (UploadHandler)new UploadHandlerRaw(bodyRaw);
             postRequest.SetRequestHeader("Content-Type", "application/json");
+            Config.Get().ApplyComfyAuth(postRequest);
             //Start the request with a method instead of the object itself
             yield return postRequest.SendWebRequest();
             if (postRequest.result != UnityWebRequest.Result.Success)
@@ -1366,6 +1379,7 @@ public class PicTextToImage : MonoBehaviour
 
         using (UnityWebRequest getRequest = UnityWebRequest.Get(finalURL))
         {
+            Config.Get().ApplyComfyAuth(getRequest);
             // Start the request
             yield return getRequest.SendWebRequest();
 
@@ -1458,6 +1472,7 @@ public class PicTextToImage : MonoBehaviour
         // First send interrupt request
         using (var interruptRequest = UnityWebRequest.PostWwwForm(url + "/interrupt", ""))
         {
+            Config.Get().ApplyComfyAuth(interruptRequest);
             yield return interruptRequest.SendWebRequest();
 
             if (interruptRequest.result != UnityWebRequest.Result.Success)
@@ -1476,6 +1491,7 @@ public class PicTextToImage : MonoBehaviour
                 byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
                 queueRequest.uploadHandler = new UploadHandlerRaw(bodyRaw);
                 queueRequest.SetRequestHeader("Content-Type", "application/json");
+                Config.Get().ApplyComfyAuth(queueRequest);
 
                 yield return queueRequest.SendWebRequest();
 
@@ -1562,6 +1578,7 @@ public class PicTextToImage : MonoBehaviour
 
         using (UnityWebRequest getRequest = UnityWebRequest.Get(finalURL))
         {
+            Config.Get().ApplyComfyAuth(getRequest);
             // Start the request
             yield return getRequest.SendWebRequest();
 

@@ -62,3 +62,5 @@ gemini_streaming_response.json
 config_preferences.txt
 __pycache__/
 compact_summary_sent.json
+llm_request_sent.json
+llm_response.json

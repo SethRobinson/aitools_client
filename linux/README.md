@@ -24,6 +24,16 @@ resulting image via `/view`.
    Unreachable servers are silently skipped; the lowest-queue one wins. If
    `config.txt` is missing, the CLI will tell you and point at the example.
 
+   If a server is protected by the
+   [ComfyUI-Login](https://github.com/liusida/ComfyUI-Login) custom node,
+   append its bearer token (the `$2b$12$...` string it prints to its
+   console as *"For direct API calls, use token=..."*):
+   ```
+   add_server|http://secured-box.lan:8188|token=$2b$12$qUfJfV942n...
+   ```
+   It is sent as an `Authorization: Bearer` header on every request and
+   the WebSocket. Servers without a token work unchanged.
+
 2. Servers must be running with `--listen` and have the
    [comfyui-workflow-to-api-converter-endpoint](https://github.com/SethRobinson/comfyui-workflow-to-api-converter-endpoint)
    custom node installed (used to convert "full" workflows on the fly).
@@ -120,6 +130,7 @@ aitools_cli.py "put the cat from image2 into image1" combined.png \
 | `-s, --seed INT` | Seed (default: random in `0..2⁶³-1`) |
 | `-c, --config PATH` | Config file path (default: `./config.txt`) |
 | `--server URL` | Skip queue probe, use this server |
+| `--server-token TOKEN` | Bearer token for `--server` (ComfyUI-Login); ignored without `--server` |
 | `--no-cache` | Force workflow re-conversion (refresh `_cached_api_version.json`) |
 | `--keep-server-files` | Skip the `/history` clear cleanup call |
 | `-v, --verbose` | Verbose output |
@@ -238,6 +249,7 @@ never resolve to anything useful here:
 linux/
   aitools_cli.py      # entry point: argparse + glue
   config.py           # config.txt parser
+  auth.py             # optional per-server bearer-token auth
   presets.py          # Presets/*.txt parser
   workflow.py         # load/convert/cache + @replace + placeholders + seed
   servers.py          # /queue probe + selection

@@ -41,7 +41,7 @@ public class WebRequestServerInfo : MonoBehaviour
         return name;
     }
 
-    IEnumerator GetRequestToCheckForComfyUI(int gpuID, String server, string optionalName)
+    IEnumerator GetRequestToCheckForComfyUI(int gpuID, String server, string optionalName, int configOrder = int.MaxValue, string authToken = "")
     {
 
         WWWForm form = new WWWForm();
@@ -54,6 +54,7 @@ public class WebRequestServerInfo : MonoBehaviour
         var statsURL = server + "/system_stats";
         using (var statsRequest = UnityWebRequest.Get(statsURL))
         {
+            Config.Get().ApplyComfyAuth(statsRequest);
             yield return statsRequest.SendWebRequest();
             
             if (statsRequest.result == UnityWebRequest.Result.Success)
@@ -129,6 +130,7 @@ public class WebRequestServerInfo : MonoBehaviour
 
         using (var postRequest = UnityWebRequest.Get(finalURL))
         {
+            Config.Get().ApplyComfyAuth(postRequest);
             //Start the request with a method instead of the object itself
             yield return postRequest.SendWebRequest();
 
@@ -140,7 +142,7 @@ public class WebRequestServerInfo : MonoBehaviour
                 {
                     RTConsole.Log("Server " + serverClickableURL + " isn't a ComfyUI server or is down!");
                     var webScript = Config.Get().CreateWebRequestObject();
-                    webScript.StartConfigRequest(-1, server);
+                    webScript.StartConfigRequest(-1, server, configOrder);
                     //either way, we're done with us
                     GameObject.Destroy(gameObject);
                     yield break;
@@ -199,6 +201,8 @@ public class WebRequestServerInfo : MonoBehaviour
                     g._requestedRendererType = RTRendererType.ComfyUI;
                     g._usesDetailedPrompts = true; //we're assuming ComfyUI is always FLUX, probably a bad assumption
                     g._name = nameToUse;
+                    g._configOrder = configOrder;
+                    g._authToken = authToken;
 
                 Config.Get().AddGPU(g);
                
@@ -209,13 +213,13 @@ public class WebRequestServerInfo : MonoBehaviour
         GameObject.Destroy(gameObject);
     }
 
-    public void StartConfigRequest(int gpuID, string remoteURL)
+    public void StartConfigRequest(int gpuID, string remoteURL, int configOrder = int.MaxValue)
     {
-        StartCoroutine(GetConfigRequest(gpuID, remoteURL));
+        StartCoroutine(GetConfigRequest(gpuID, remoteURL, configOrder));
     }
-    public void StartComfyUIRequest(int gpuID, string remoteURL, string optionalName)
+    public void StartComfyUIRequest(int gpuID, string remoteURL, string optionalName, int configOrder = int.MaxValue, string authToken = "")
     {
-        StartCoroutine(GetRequestToCheckForComfyUI(gpuID, remoteURL, optionalName));
+        StartCoroutine(GetRequestToCheckForComfyUI(gpuID, remoteURL, optionalName, configOrder, authToken));
     }
     public void StartPopulateModelsRequest(GPUInfo g)
     {
@@ -257,7 +261,7 @@ public class WebRequestServerInfo : MonoBehaviour
         StartCoroutine(GetServerConfigRequest(gpuID, optionKey, optionValue));
     }
     
-    IEnumerator GetConfigRequest(int gpuID, String server)
+    IEnumerator GetConfigRequest(int gpuID, String server, int configOrder = int.MaxValue)
     {
 
         WWWForm form = new WWWForm();
@@ -305,6 +309,7 @@ public class WebRequestServerInfo : MonoBehaviour
                         temp.remoteURL = server;
                         temp.remoteGPUID = 0;
                         temp.supportsAITools = false;
+                        temp._configOrder = configOrder;
                         Config.Get().AddGPU(temp);
                         gpuID = temp.localGPUID;
                         RTConsole.Log("Connected to server " + temp.localGPUID + ", it's a vanilla AUTOMATIC1111 server, certain AI Tools server only features will be disabled.");

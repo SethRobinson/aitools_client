@@ -6,14 +6,20 @@
 #   Workflow JSON in ../ComfyUI/ to use when neither -p nor -w is given.
 #   Optional; can also be set per-run with -w or implied by a preset (-p).
 #
-# add_server|<url>
+# add_server|<url>[|token=<bearer-token>]
 #   ComfyUI server. Add one line per server. Each must be running with
 #   --listen and have the comfyui-workflow-to-api-converter-endpoint
 #   custom node installed. Unreachable servers are silently skipped;
 #   the lowest-queue one wins.
+#
+#   Optional |token=<bearer-token>: if the server is protected by the
+#   ComfyUI-Login custom node, pass the token it prints to its console
+#   ("For direct API calls, use token=$2b$12$..."). It is sent as an
+#   Authorization: Bearer header on every request. Omit for open servers.
 
 default_workflow|text_to_img_zimage.json
 
 add_server|http://localhost:8188
 # add_server|http://other-host:8188
 # add_server|http://gpu-box.lan:7861
+# add_server|http://secured-box.lan:8188|token=$2b$12$qUfJfV942n...
