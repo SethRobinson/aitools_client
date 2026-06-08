@@ -636,14 +636,19 @@ public class OpenAITextCompletionManager : MonoBehaviour
          
 //                 ""max_tokens"": {max_tokens,
 
-    IEnumerator GetRequest(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string openAI_APIKey, string endpoint, string sentJsonFilename)
+    IEnumerator GetRequest(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string openAI_APIKey, string endpoint, string sentJsonFilename, bool retriedSamplingStrip = false)
     {
+        // Pre-strip samplers this endpoint already rejected this session (see streaming path).
+        if (!retriedSamplingStrip)
+            json = LLMSamplingCompat.ApplyKnownStrips(endpoint, json);
 
         LLMDebugLog.LogRequest(json);
         string url;
         url = endpoint;
         m_connectionActive = true;
         //Debug.Log("Sending request " + url );
+
+        string retryJson = null;
 
         using (_currentRequest = UnityWebRequest.PostWwwForm(url, "POST"))
         {
@@ -660,24 +665,48 @@ public class OpenAITextCompletionManager : MonoBehaviour
                 yield break;
             }
 
-            if (_currentRequest.result != UnityWebRequest.Result.Success)
+            string body = "";
+            try { body = _currentRequest.downloadHandler != null ? _currentRequest.downloadHandler.text : ""; } catch { }
+
+            // A 200 response can still carry an {"error":{...}} body; treat that as a failure too.
+            bool httpFailed = _currentRequest.result != UnityWebRequest.Result.Success;
+            bool bodyIsError = false;
+            JSONNode rootNode = null;
+            if (!httpFailed)
             {
-                string msg = _currentRequest.error;
-                Debug.Log(msg);
-                //Debug.Log(_currentRequest.downloadHandler.text);
-                LLMDebugLog.LogError(_currentRequest.downloadHandler.text);
+                rootNode = JSON.Parse(body);
+                // Unparseable or {"error":...} body on a 200 still means "no usable completion".
+                bodyIsError = rootNode == null || rootNode.Tag != JSONNodeType.Object || rootNode.HasKey("error");
+            }
+            bool serverError = httpFailed || bodyIsError;
+
+            if (serverError && !retriedSamplingStrip)
+            {
+                string stripped = LLMSamplingCompat.TryStripUnsupportedSampling(json, body, endpoint);
+                if (stripped != null)
+                    retryJson = stripped;
+            }
+
+            if (retryJson != null)
+            {
+                // Fall through to retry below; suppress this attempt's callback.
+            }
+            else if (serverError)
+            {
+                string transportError = httpFailed ? _currentRequest.error : "";
+                string shown = LLMSamplingCompat.BestErrorMessage(body, transportError);
+                Debug.Log("LLM error response: " + shown);
+
+                LLMDebugLog.LogError(string.IsNullOrEmpty(body) ? (transportError ?? "(No response body)") : body);
                 m_connectionActive = false;
 
                 db.Set("status", "failed");
-                db.Set("msg", msg);
+                db.Set("msg", shown);
                 myCallback.Invoke(db, null, "");
             }
             else
             {
-
-                LLMDebugLog.LogResponse(_currentRequest.downloadHandler.text);
-
-                JSONNode rootNode = JSON.Parse(_currentRequest.downloadHandler.text);
+                LLMDebugLog.LogResponse(body);
                 yield return null; //wait a frame to lesson the jerkiness
 
                 Debug.Assert(rootNode.Tag == JSONNodeType.Object);
@@ -685,8 +714,13 @@ public class OpenAITextCompletionManager : MonoBehaviour
 
                 db.Set("status", "success");
                 myCallback.Invoke(db, (JSONObject)rootNode, ExtractTextFromResponseJSON(rootNode));
-               
             }
+        }
+
+        if (retryJson != null)
+        {
+            Debug.Log("Retrying LLM request with server-rejected sampling params removed.");
+            yield return StartCoroutine(GetRequest(retryJson, myCallback, db, openAI_APIKey, endpoint, sentJsonFilename, retriedSamplingStrip: true));
         }
     }
 
@@ -708,14 +742,24 @@ public class OpenAITextCompletionManager : MonoBehaviour
 
 
     IEnumerator GetRequestStreaming(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string openAI_APIKey, string endpoint,
-         Action<string> updateChunkCallback, string sentJsonFilename)
+         Action<string> updateChunkCallback, string sentJsonFilename, bool retriedSamplingStrip = false)
     {
+        // Pre-strip any sampling params this endpoint already rejected earlier this
+        // session, so the request goes through on the first try. Skipped on the retry
+        // pass (the body is already stripped).
+        if (!retriedSamplingStrip)
+            json = LLMSamplingCompat.ApplyKnownStrips(endpoint, json);
 
         LLMDebugLog.LogRequest(json);
         string url;
         url = endpoint;
         //Debug.Log("Sending request " + url );
         m_connectionActive = true;
+
+        // Non-null after the using-block means: re-issue with these sampling params
+        // dropped, and suppress this attempt's callback. Set inside the block so the
+        // retry coroutine starts cleanly after _currentRequest is disposed.
+        string retryJson = null;
 
         using (_currentRequest = UnityWebRequest.PostWwwForm(url, "POST"))
         {
@@ -746,48 +790,61 @@ public class OpenAITextCompletionManager : MonoBehaviour
                 yield break;
             }
 
-            if (_currentRequest.result != UnityWebRequest.Result.Success)
-            {
-                string msg = _currentRequest.error;
-                Debug.Log(msg);
-                
-                // Try to get error response body from streaming handler first
-                string errorBody = downloadHandler.GetContentAsString();
-                
-                // If streaming handler doesn't have it, try accessing the response directly
-                if (string.IsNullOrEmpty(errorBody) && _currentRequest.downloadHandler != null)
-                {
-                    // For non-streaming errors, the downloadHandler might have the text
-                    try
-                    {
-                        errorBody = _currentRequest.downloadHandler.text;
-                    }
-                    catch { }
-                }
-                
-                if (string.IsNullOrEmpty(errorBody))
-                {
-                    errorBody = "(No response body)";
-                }
-                Debug.Log("Error response body: " + errorBody);
+            // A server error can arrive two ways: a real HTTP failure, or HTTP 200
+            // carrying an {"error":{...}} body (the streaming handler flags the latter
+            // via IsError()). Treat both as failures so they don't render as a blank
+            // assistant bubble.
+            bool httpFailed = _currentRequest.result != UnityWebRequest.Result.Success;
+            bool serverError = httpFailed || downloadHandler.IsError();
 
-                LLMDebugLog.LogError(errorBody);
+            // Best-available response body for diagnostics / error surfacing.
+            string body = downloadHandler.GetContentAsString();
+            if (string.IsNullOrEmpty(body) && _currentRequest.downloadHandler != null)
+            {
+                try { body = _currentRequest.downloadHandler.text; } catch { }
+            }
+
+            if (serverError && !retriedSamplingStrip)
+            {
+                // If the server rejected a specific sampler (min_p, logit_bias, ...),
+                // drop it and retry once instead of failing the turn.
+                string stripped = LLMSamplingCompat.TryStripUnsupportedSampling(json, body, endpoint);
+                if (stripped != null)
+                    retryJson = stripped;
+            }
+
+            if (retryJson != null)
+            {
+                // Fall through to the retry below; don't fire the callback for this attempt.
+            }
+            else if (serverError)
+            {
+                string transportError = httpFailed ? _currentRequest.error : "";
+                string shown = LLMSamplingCompat.BestErrorMessage(body, transportError);
+                Debug.Log("LLM error response: " + shown);
+
+                LLMDebugLog.LogError(string.IsNullOrEmpty(body) ? (transportError ?? "(No response body)") : body);
                 m_connectionActive = false;
 
                 db.Set("status", "failed");
-                db.Set("msg", msg);
+                db.Set("msg", shown);
                 myCallback.Invoke(db, null, "");
             }
             else
             {
-
                 LLMDebugLog.LogResponse(_currentRequest.downloadHandler.text);
                 m_connectionActive = false;
 
                 db.Set("status", "success");
-                myCallback.Invoke(db, null, downloadHandler.GetContentAsString());
-
+                myCallback.Invoke(db, null, body);
             }
+        }
+
+        if (retryJson != null)
+        {
+            Debug.Log("Retrying LLM request with server-rejected sampling params removed.");
+            yield return StartCoroutine(GetRequestStreaming(retryJson, myCallback, db, openAI_APIKey, endpoint,
+                updateChunkCallback, sentJsonFilename, retriedSamplingStrip: true));
         }
     }
 }

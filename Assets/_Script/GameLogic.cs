@@ -2029,7 +2029,12 @@ public string GetPrompt() { return m_prompt; }
         RTUtil.DeleteFileIfItExists("claude_json_received.json");
         RTUtil.DeleteFileIfItExists("last_error_returned.json");
         RTUtil.DeleteFileIfItExists("json_error.json");
-       
+
+        //Current unified LLM debug files (see LLMDebugLog)
+        RTUtil.DeleteFileIfItExists(LLMDebugLog.RequestFile);
+        RTUtil.DeleteFileIfItExists(LLMDebugLog.ResponseFile);
+        RTUtil.DeleteFileIfItExists(LLMDebugLog.ErrorFile);
+
 
 
     }
