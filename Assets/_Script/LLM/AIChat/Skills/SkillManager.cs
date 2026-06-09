@@ -33,6 +33,23 @@ namespace AITools.AIChat.Skills
         public string MainPromptPath { get; private set; }
 
         /// <summary>
+        /// Absolute path to the aichat/test_main_prompt.txt override. Used in place of
+        /// <see cref="MainPromptPath"/> for BOTH loading and saving while the preset
+        /// prefix is "test_", so the production system prompt can be experimented with
+        /// as part of the "test_" preset family without ever clobbering main_prompt.txt.
+        /// </summary>
+        public string TestMainPromptPath { get; private set; }
+
+        /// <summary>
+        /// The main-prompt file currently active for editing and saving:
+        /// test_main_prompt.txt while the preset prefix is "test_", otherwise the normal
+        /// main_prompt.txt. The settings panel writes here so a test prompt is never
+        /// saved over the real one.
+        /// </summary>
+        public string ActiveMainPromptPath =>
+            IsTestPresetPrefixActive() ? TestMainPromptPath : MainPromptPath;
+
+        /// <summary>
         /// Absolute path to the aichat/post_prompt.txt file (appended at the END of the
         /// system prompt - the "last word" the LLM reads). Lets the user tack on quick
         /// behavioral tweaks without editing main_prompt or any skill file.
@@ -40,9 +57,11 @@ namespace AITools.AIChat.Skills
         public string PostPromptPath { get; private set; }
 
         /// <summary>
-        /// Absolute path to the aichat/test_post_prompt.txt override. If this file exists
-        /// it COMPLETELY REPLACES <see cref="PostPromptPath"/>'s contents - useful for
-        /// experimenting without touching the real post_prompt.txt.
+        /// Absolute path to the aichat/test_post_prompt.txt override. While the preset
+        /// prefix is "test_" and this file exists it COMPLETELY REPLACES
+        /// <see cref="PostPromptPath"/>'s contents - useful for experimenting as part of
+        /// the "test_" family without touching the real post_prompt.txt. Falls back to
+        /// post_prompt.txt otherwise.
         /// </summary>
         public string TestPostPromptPath { get; private set; }
 
@@ -54,22 +73,33 @@ namespace AITools.AIChat.Skills
         public string CaptionPromptPath { get; private set; }
 
         /// <summary>
-        /// Absolute path to the aichat/test_caption_prompt.txt override. If this file
-        /// exists it COMPLETELY REPLACES <see cref="CaptionPromptPath"/>'s contents -
-        /// useful for experimenting with stricter / looser caption instructions
-        /// (e.g. enabling explicit-content fields) without touching the default
-        /// caption_prompt.txt.
+        /// Absolute path to the aichat/test_caption_prompt.txt override. While the preset
+        /// prefix is "test_" and this file exists it COMPLETELY REPLACES
+        /// <see cref="CaptionPromptPath"/>'s contents - useful for experimenting with
+        /// stricter / looser caption instructions (e.g. enabling explicit-content fields)
+        /// without touching the default caption_prompt.txt. Falls back to caption_prompt.txt
+        /// otherwise.
         /// </summary>
         public string TestCaptionPromptPath { get; private set; }
 
         /// <summary>
-        /// Cached body of aichat/main_prompt.txt (refreshed each <see cref="Reload"/> call).
+        /// Cached body of either aichat/test_main_prompt.txt (if the preset prefix is
+        /// "test_" and that file exists) or aichat/main_prompt.txt (refreshed each
+        /// <see cref="Reload"/> call).
         /// </summary>
         public string MainPrompt { get; private set; } = "";
 
         /// <summary>
-        /// Cached body of either aichat/test_post_prompt.txt (if it exists) or
-        /// aichat/post_prompt.txt. Empty when neither file exists.
+        /// True if the test override (aichat/test_main_prompt.txt) was actually read for
+        /// the most recent <see cref="Reload"/> - i.e. the preset prefix is "test_" and
+        /// the file exists. Surfaced so the chat can flag that an experimental system
+        /// prompt is live, same as <see cref="PostPromptIsTestOverride"/>.
+        /// </summary>
+        public bool MainPromptIsTestOverride { get; private set; }
+
+        /// <summary>
+        /// Cached body of either aichat/test_post_prompt.txt (if the preset prefix is
+        /// "test_" and it exists) or aichat/post_prompt.txt. Empty when neither file exists.
         /// </summary>
         public string PostPrompt { get; private set; } = "";
 
@@ -81,9 +111,9 @@ namespace AITools.AIChat.Skills
         public bool PostPromptIsTestOverride { get; private set; }
 
         /// <summary>
-        /// Cached body of either aichat/test_caption_prompt.txt (if it exists) or
-        /// aichat/caption_prompt.txt. Empty when neither file exists - the host
-        /// then falls back to a hardcoded default so captioning still works.
+        /// Cached body of either aichat/test_caption_prompt.txt (if the preset prefix is
+        /// "test_" and it exists) or aichat/caption_prompt.txt. Empty when neither file
+        /// exists - the host then falls back to a hardcoded default so captioning still works.
         /// </summary>
         public string CaptionPrompt { get; private set; } = "";
 
@@ -99,6 +129,7 @@ namespace AITools.AIChat.Skills
             string root = GetAIChatRoot();
             SkillsDirectory = Path.Combine(root, "skills");
             MainPromptPath = Path.Combine(root, "main_prompt.txt");
+            TestMainPromptPath = Path.Combine(root, "test_main_prompt.txt");
             PostPromptPath = Path.Combine(root, "post_prompt.txt");
             TestPostPromptPath = Path.Combine(root, "test_post_prompt.txt");
             CaptionPromptPath = Path.Combine(root, "caption_prompt.txt");
@@ -126,6 +157,7 @@ namespace AITools.AIChat.Skills
             _skills.Clear();
             _byId.Clear();
             MainPrompt = "";
+            MainPromptIsTestOverride = false;
             PostPrompt = "";
             PostPromptIsTestOverride = false;
             CaptionPrompt = "";
@@ -133,21 +165,33 @@ namespace AITools.AIChat.Skills
 
             EnsureDirectoryExists();
 
+            // Main prompt. While the preset prefix is "test_" we prefer test_main_prompt.txt
+            // so the whole "test_" family (presets + system prompt) swaps in as a unit.
+            // Falls back to main_prompt.txt when the test file doesn't exist yet, so the
+            // chat always has a system prompt and the editor opens seeded from the real one.
             try
             {
-                if (File.Exists(MainPromptPath))
+                if (IsTestPresetPrefixActive() && File.Exists(TestMainPromptPath))
+                {
+                    MainPrompt = File.ReadAllText(TestMainPromptPath);
+                    MainPromptIsTestOverride = true;
+                }
+                else if (File.Exists(MainPromptPath))
+                {
                     MainPrompt = File.ReadAllText(MainPromptPath);
+                }
             }
             catch (Exception ex)
             {
-                Debug.LogWarning("SkillManager: failed to read main_prompt.txt: " + ex.Message);
+                Debug.LogWarning("SkillManager: failed to read main_prompt: " + ex.Message);
             }
 
-            // Post-prompt: test override takes precedence over the real file when present
-            // so the user can experiment with prompt tweaks without losing their main one.
+            // Post-prompt: while the preset prefix is "test_" the test override wins (so the
+            // user can experiment with prompt tweaks as part of the "test_" family without
+            // losing their real one). Falls back to post_prompt.txt otherwise.
             try
             {
-                if (File.Exists(TestPostPromptPath))
+                if (IsTestPresetPrefixActive() && File.Exists(TestPostPromptPath))
                 {
                     PostPrompt = File.ReadAllText(TestPostPromptPath);
                     PostPromptIsTestOverride = true;
@@ -162,12 +206,12 @@ namespace AITools.AIChat.Skills
                 Debug.LogWarning("SkillManager: failed to read post_prompt: " + ex.Message);
             }
 
-            // Caption prompt: same test-override-wins pattern as post_prompt. Empty body
-            // when neither file is present is a valid state - the host has a hardcoded
-            // fallback so captioning still works after a fresh checkout.
+            // Caption prompt: same "test_" prefix gating as post_prompt. Empty body when
+            // neither file is present is a valid state - the host has a hardcoded fallback
+            // so captioning still works after a fresh checkout.
             try
             {
-                if (File.Exists(TestCaptionPromptPath))
+                if (IsTestPresetPrefixActive() && File.Exists(TestCaptionPromptPath))
                 {
                     CaptionPrompt = File.ReadAllText(TestCaptionPromptPath);
                     CaptionPromptIsTestOverride = true;
@@ -315,6 +359,47 @@ namespace AITools.AIChat.Skills
         /// PlayerPrefs key for the global preset prefix. Empty string = no prefix.
         /// </summary>
         public const string PresetPrefixPrefsKey = "aichat_preset_prefix";
+
+        /// <summary>
+        /// True when the global preset prefix is exactly "test_" (case-insensitive) - the
+        /// marker that swaps in the parallel "test_" family of presets. When set, the main
+        /// system prompt is read from / written to <see cref="TestMainPromptPath"/> instead
+        /// of <see cref="MainPromptPath"/>.
+        /// </summary>
+        public static bool IsTestPresetPrefixActive()
+        {
+            string prefix = PlayerPrefs.GetString(PresetPrefixPrefsKey, "");
+            return prefix != null && prefix.Trim().Equals("test_", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// A short, human-readable summary of the active preset prefix and exactly which
+        /// prompt files are in effect after the most recent <see cref="Reload"/> (resolving
+        /// each test_ override vs its fallback). Intended purely for a local UI notice so
+        /// the user can confirm a renamed / "test_" prompt was actually picked up - it is
+        /// never added to chat history or sent to an LLM.
+        /// </summary>
+        public string BuildActivePromptStatus()
+        {
+            string prefix = PlayerPrefs.GetString(PresetPrefixPrefsKey, "");
+            if (string.IsNullOrEmpty(prefix))
+                return "Preset prefix: none - using the default prompt files (main_prompt.txt, etc.).";
+
+            string mainFile = MainPromptIsTestOverride
+                ? Path.GetFileName(TestMainPromptPath)
+                : (File.Exists(MainPromptPath) ? Path.GetFileName(MainPromptPath) : "(none)");
+            string postFile = PostPromptIsTestOverride
+                ? Path.GetFileName(TestPostPromptPath)
+                : (string.IsNullOrEmpty(PostPrompt) ? "(none)" : Path.GetFileName(PostPromptPath));
+            string captionFile = CaptionPromptIsTestOverride
+                ? Path.GetFileName(TestCaptionPromptPath)
+                : (string.IsNullOrEmpty(CaptionPrompt) ? "built-in default" : Path.GetFileName(CaptionPromptPath));
+
+            // No angle-bracket placeholder here - the bubble renders through TMP rich
+            // text, which would swallow a literal <name> as an unknown tag.
+            return $"Preset prefix '{prefix}' active - preset names are prefixed with '{prefix}'. " +
+                   $"Prompt files in use: system={mainFile}, post={postFile}, caption={captionFile}.";
+        }
 
         // <c>{{Preset Name.txt}}</c> sentinel - inner text excludes braces. Compiled
         // once for the lifetime of the AppDomain.

@@ -34,6 +34,12 @@ namespace AITools.AIChat.UI
         private TMP_FontAsset _font;
         private RectTransform _mainPanel;
         private TMP_InputField _mainPromptField;
+        private TextMeshProUGUI _mainPromptLabelTmp;
+        // The main-prompt file the editor loaded from, and the text it loaded, captured
+        // at load time. SaveAndClose writes back to this exact path (so a test_ edit
+        // never lands on main_prompt.txt) and only when the text actually changed.
+        private string _activeMainPromptPath;
+        private string _loadedMainPromptText = "";
         private TMP_InputField _maxEdgeField;
         private RectTransform _skillsContent;
         private TMP_InputField _keepLastNField;
@@ -187,9 +193,12 @@ namespace AITools.AIChat.UI
             rt.offsetMin = new Vector2(8, FOOTER_HEIGHT);
             rt.offsetMax = new Vector2(-8, -HEADER_HEIGHT - 4f);
 
-            // Top half: main_prompt.txt editor.
+            // Top half: main_prompt.txt editor. Label text is finalized in
+            // LoadFromManager so it names the file actually in play (main_prompt.txt or,
+            // in "test_" preset mode, test_main_prompt.txt).
             var promptLabel = MakeLabel("Main system prompt (aichat/main_prompt.txt) - edited live; saved when you close this panel:");
             promptLabel.transform.SetParent(body.transform, false);
+            _mainPromptLabelTmp = promptLabel.GetComponent<TextMeshProUGUI>();
             var labRt = promptLabel.GetComponent<RectTransform>();
             labRt.anchorMin = new Vector2(0, 1);
             labRt.anchorMax = new Vector2(1, 1);
@@ -231,31 +240,9 @@ namespace AITools.AIChat.UI
             if (_mainPromptField.textViewport != null)
             {
                 var vp = _mainPromptField.textViewport;
-                vp.offsetMax = new Vector2(-18, vp.offsetMax.y);
+                vp.offsetMax = new Vector2(-22, vp.offsetMax.y);
             }
-            var promptSb = new GameObject("Scrollbar");
-            promptSb.transform.SetParent(promptInputGo.transform, false);
-            var promptSbRt = promptSb.AddComponent<RectTransform>();
-            promptSbRt.anchorMin = new Vector2(1, 0);
-            promptSbRt.anchorMax = new Vector2(1, 1);
-            promptSbRt.pivot = new Vector2(1, 0.5f);
-            promptSbRt.sizeDelta = new Vector2(16, 0);
-            promptSbRt.anchoredPosition = Vector2.zero;
-            promptSb.AddComponent<Image>().color = new Color(0.78f, 0.78f, 0.80f, 1f);
-            var promptSbComp = promptSb.AddComponent<Scrollbar>();
-            promptSbComp.direction = Scrollbar.Direction.BottomToTop;
-            var promptSbHandle = new GameObject("Handle");
-            promptSbHandle.transform.SetParent(promptSb.transform, false);
-            var promptSbHandleRt = promptSbHandle.AddComponent<RectTransform>();
-            promptSbHandleRt.anchorMin = Vector2.zero;
-            promptSbHandleRt.anchorMax = Vector2.one;
-            promptSbHandleRt.offsetMin = new Vector2(2, 2);
-            promptSbHandleRt.offsetMax = new Vector2(-2, -2);
-            var promptSbHandleImg = promptSbHandle.AddComponent<Image>();
-            promptSbHandleImg.color = new Color(0.50f, 0.50f, 0.55f, 1f);
-            promptSbComp.handleRect = promptSbHandleRt;
-            promptSbComp.targetGraphic = promptSbHandleImg;
-            _mainPromptField.verticalScrollbar = promptSbComp;
+            _mainPromptField.verticalScrollbar = CreateVerticalScrollbar(promptInputGo.transform);
 
             // Bottom half: scrollable skill list.
             var skillsLabel = MakeLabel("Loaded skills (aichat/skills/*.md) - call read_skill in chat to load full body for any:");
@@ -307,29 +294,40 @@ namespace AITools.AIChat.UI
             skScroll.viewport = skVpRt;
             skScroll.content = _skillsContent;
 
-            var skSb = new GameObject("Scrollbar");
-            skSb.transform.SetParent(skScrollGo.transform, false);
-            var skSbRt = skSb.AddComponent<RectTransform>();
-            skSbRt.anchorMin = new Vector2(1, 0);
-            skSbRt.anchorMax = new Vector2(1, 1);
-            skSbRt.pivot = new Vector2(1, 0.5f);
-            skSbRt.sizeDelta = new Vector2(18, 0);
-            skSbRt.anchoredPosition = Vector2.zero;
-            skSb.AddComponent<Image>().color = new Color(0.22f, 0.22f, 0.24f, 1f);
-            var sb = skSb.AddComponent<Scrollbar>();
+            skScroll.verticalScrollbar = CreateVerticalScrollbar(skScrollGo.transform);
+        }
+
+        // The single dark vertical-scrollbar style shared by both scroll regions of
+        // this panel (the main-prompt editor and the skills list). Returns the
+        // Scrollbar so the caller can wire it to a TMP_InputField or a ScrollRect.
+        // One source of truth so the two bars can't drift apart again.
+        private static Scrollbar CreateVerticalScrollbar(Transform parent)
+        {
+            var sbGo = new GameObject("Scrollbar");
+            sbGo.transform.SetParent(parent, false);
+            var sbRt = sbGo.AddComponent<RectTransform>();
+            sbRt.anchorMin = new Vector2(1, 0);
+            sbRt.anchorMax = new Vector2(1, 1);
+            sbRt.pivot = new Vector2(1, 0.5f);
+            sbRt.sizeDelta = new Vector2(18, 0);
+            sbRt.anchoredPosition = Vector2.zero;
+            sbGo.AddComponent<Image>().color = new Color(0.22f, 0.22f, 0.24f, 1f);
+
+            var sb = sbGo.AddComponent<Scrollbar>();
             sb.direction = Scrollbar.Direction.BottomToTop;
-            var sbHandle = new GameObject("Handle");
-            sbHandle.transform.SetParent(skSb.transform, false);
-            var sbHandleRt = sbHandle.AddComponent<RectTransform>();
-            sbHandleRt.anchorMin = Vector2.zero;
-            sbHandleRt.anchorMax = Vector2.one;
-            sbHandleRt.offsetMin = new Vector2(3, 3);
-            sbHandleRt.offsetMax = new Vector2(-3, -3);
-            var sbHandleImg = sbHandle.AddComponent<Image>();
-            sbHandleImg.color = new Color(0.45f, 0.45f, 0.5f, 1f);
-            sb.handleRect = sbHandleRt;
-            sb.targetGraphic = sbHandleImg;
-            skScroll.verticalScrollbar = sb;
+
+            var handle = new GameObject("Handle");
+            handle.transform.SetParent(sbGo.transform, false);
+            var handleRt = handle.AddComponent<RectTransform>();
+            handleRt.anchorMin = Vector2.zero;
+            handleRt.anchorMax = Vector2.one;
+            handleRt.offsetMin = new Vector2(3, 3);
+            handleRt.offsetMax = new Vector2(-3, -3);
+            var handleImg = handle.AddComponent<Image>();
+            handleImg.color = new Color(0.45f, 0.45f, 0.5f, 1f);
+            sb.handleRect = handleRt;
+            sb.targetGraphic = handleImg;
+            return sb;
         }
 
         private void CreateFooter()
@@ -614,8 +612,20 @@ namespace AITools.AIChat.UI
         private void LoadFromManager()
         {
             if (_staticSkillManager == null) return;
+            // Capture which file we're editing (main_prompt.txt vs test_main_prompt.txt)
+            // and its text now, so SaveAndClose writes back to the same file and can skip
+            // a no-op write.
+            _activeMainPromptPath = _staticSkillManager.ActiveMainPromptPath;
+            _loadedMainPromptText = _staticSkillManager.MainPrompt ?? "";
             if (_mainPromptField != null)
-                _mainPromptField.text = _staticSkillManager.MainPrompt ?? "";
+                _mainPromptField.text = _loadedMainPromptText;
+            if (_mainPromptLabelTmp != null)
+            {
+                string file = string.IsNullOrEmpty(_activeMainPromptPath)
+                    ? "main_prompt.txt"
+                    : Path.GetFileName(_activeMainPromptPath);
+                _mainPromptLabelTmp.text = "Main system prompt (aichat/" + file + ") - edited live; saved when you close this panel:";
+            }
             if (_keepLastNField != null)
                 _keepLastNField.text = AIChatPanel.GetKeepLastNMedia().ToString();
             if (_presetPrefixField != null)
@@ -683,17 +693,27 @@ namespace AITools.AIChat.UI
             {
                 if (_staticSkillManager != null && _mainPromptField != null)
                 {
-                    string path = _staticSkillManager.MainPromptPath;
+                    // Write back to the SAME file the editor loaded from. In "test_"
+                    // preset mode that's test_main_prompt.txt, so an experimental prompt
+                    // is never saved over the production main_prompt.txt. Only write when
+                    // the text actually changed - this also avoids forking a
+                    // test_main_prompt.txt into existence just by opening + closing.
+                    string path = string.IsNullOrEmpty(_activeMainPromptPath)
+                        ? _staticSkillManager.ActiveMainPromptPath
+                        : _activeMainPromptPath;
                     string newText = _mainPromptField.text ?? "";
-                    string dir = Path.GetDirectoryName(path);
-                    if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-                        Directory.CreateDirectory(dir);
-                    File.WriteAllText(path, newText);
+                    if (!string.IsNullOrEmpty(path) && newText != _loadedMainPromptText)
+                    {
+                        string dir = Path.GetDirectoryName(path);
+                        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                            Directory.CreateDirectory(dir);
+                        File.WriteAllText(path, newText);
+                    }
                 }
             }
             catch (Exception ex)
             {
-                Debug.LogError("AIChatSettingsPanel: failed to save main_prompt.txt: " + ex.Message);
+                Debug.LogError("AIChatSettingsPanel: failed to save the main system prompt: " + ex.Message);
             }
 
             // Persist the keep-last-N setting to PlayerPrefs.

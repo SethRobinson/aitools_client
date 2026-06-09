@@ -427,6 +427,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         UpdateStatusPill();
         int loadedSkills = _skillManager.GetSkills().Count;
         AddSystemMessage($"New chat. {loadedSkills} skill{(loadedSkills == 1 ? "" : "s")} loaded from aichat/skills/. Conversation history is kept until you click Clear or close the app.", includeInLLMRecap: false);
+        AddPromptConfigNotice();
 
         FocusInputDeferred();
     }
@@ -1587,6 +1588,16 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             _infoMessages.Add(new InfoMessage(text));
     }
 
+    // Drops a local-only "Info" bubble naming the active preset prefix and the exact
+    // prompt files in play (resolving any test_ overrides). Shown on the reset/init
+    // events (new chat, Clear, settings/preset change) so the user can confirm a
+    // renamed prompt was picked up. includeInLLMRecap:false -> never seen by the LLM.
+    private void AddPromptConfigNotice()
+    {
+        if (_skillManager == null) return;
+        AddSystemMessage(_skillManager.BuildActivePromptStatus(), includeInLLMRecap: false);
+    }
+
     /// <summary>
     /// Wrap the user's just-typed message with a quiet "for the future" recap of any
     /// Info bubbles that have appeared since the last send (typically skill warnings
@@ -1901,6 +1912,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         }
         UpdateMediaHeader();
         AddSystemMessage("Conversation cleared.", includeInLLMRecap: false);
+        AddPromptConfigNotice();
     }
 
     // ---------------------------------------------------------------------
@@ -2812,6 +2824,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             _stickyAutoloadSkillIds.Clear();
             int n = _skillManager?.GetSkills().Count ?? 0;
             AddSystemMessage($"Reloaded aichat config: {n} skill{(n == 1 ? "" : "s")}.", includeInLLMRecap: false);
+            AddPromptConfigNotice();
         });
     }
 
@@ -2833,10 +2846,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             if (cfg.IsGPUBusy(i)) gpuBusy++;
         }
         int llmCount = im != null ? im.GetInstanceCount() : 0;
-        // Suffix the pill with a visible TEST flag whenever the test_post_prompt.txt
-        // override is active, so the user can't accidentally forget they've hot-patched
-        // the system prompt.
-        string testFlag = (_skillManager != null && _skillManager.PostPromptIsTestOverride) ? "  [TEST PROMPT]" : "";
+        // Suffix the pill with a visible TEST flag whenever a test prompt override is
+        // active (test_post_prompt.txt, or test_main_prompt.txt via the "test_" preset
+        // prefix), so the user can't accidentally forget they've hot-patched the system
+        // prompt.
+        bool testPromptActive = _skillManager != null &&
+            (_skillManager.PostPromptIsTestOverride || _skillManager.MainPromptIsTestOverride);
+        string testFlag = testPromptActive ? "  [TEST PROMPT]" : "";
         _statusPillText.text = $"GPUs: {gpuBusy}/{gpuTotal} busy   LLMs: {llmCount}{testFlag}";
     }
 
