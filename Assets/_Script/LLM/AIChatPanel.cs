@@ -3359,6 +3359,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // just be visual noise.
         if (_promptManager != null)
         {
+            string kindLabel = isMovie ? "Movie" : "Image";
             _promptManager.AddInteraction(
                 "system",
                 $"({kindLabel} just spawned is {kindLabel} #{chatImageNumber} in CHAT IMAGES. " +
