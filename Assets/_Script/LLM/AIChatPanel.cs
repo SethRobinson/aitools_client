@@ -3124,7 +3124,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                     if (!string.IsNullOrEmpty(labelSuffix)
                         && _captionLabels.TryGetValue(capturedPic, out var entry)
                         && entry.label != null)
-                        entry.label.text = entry.baseText + " - " + labelSuffix;
+                        entry.label.text = entry.baseText + " " + labelSuffix;
                 }
             }
             finally { safeComplete(); }
@@ -3342,8 +3342,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         string skillId = action != null ? (action.SkillId ?? "") : "";
         bool isMovie = skillId == BuiltInSkillIds.GenerateMovie || skillId == BuiltInSkillIds.ImageToMovie;
-        string kindLabel = isMovie ? "Movie" : "Image";
-        string label = $"{kindLabel} #{chatImageNumber} ({skillId})";
+        // Keep the bubble label compact so the caption (appended async below) has
+        // room: just "#N". The Image/Movie kind and skillId are visually obvious
+        // from the bubble itself and still tracked for the LLM in ChatContextBuilder.
+        string label = $"#{chatImageNumber}";
         AppendImageBubbleInternal(spawnedPic, label, isMovie);
 
         // Tell the LLM what number this bubble got, so when the user follows up with
@@ -3474,7 +3476,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (pic == null || _mediaContent == null) return;
         _chatImagePics.Add(pic);
         int chatImageNumber = _chatImagePics.Count;
-        string label = $"Image #{chatImageNumber} (you)";
+        string label = $"#{chatImageNumber} (you)";
         AppendImageBubbleInternal(pic, label, isMovie: false);
 
         if (!string.IsNullOrEmpty(preCaptionShort) || !string.IsNullOrEmpty(preCaptionLong))
@@ -3492,7 +3494,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             if (!string.IsNullOrEmpty(labelSuffix)
                 && _captionLabels.TryGetValue(pic, out var entry)
                 && entry.label != null)
-                entry.label.text = entry.baseText + " - " + labelSuffix;
+                entry.label.text = entry.baseText + " " + labelSuffix;
             return;
         }
 
