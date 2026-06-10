@@ -470,16 +470,18 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _titleText.alignment = TextAlignmentOptions.MidlineLeft;
         _titleText.overflowMode = TextOverflowModes.Ellipsis;
 
-        // Status pill: shows "GPUs: 1/2 busy   LLMs: 3" so the user can see at a glance
-        // what the LLM is "told" about the rest of the system. Refreshed every 1.5s in
-        // Update() while the panel is visible.
+        // Status pill: shows a compact "GPUs 1/2 · LLMs 1/4" (busy/total for GPUs,
+        // active calls/total capacity for LLMs) so the user can see render and LLM
+        // load at a glance. LLM capacity = sum over enabled instances of
+        // (maxConcurrentTasks x replicas). Refreshed every 1.5s in Update() while the
+        // panel is visible.
         var pillObj = new GameObject("StatusPill");
         pillObj.transform.SetParent(header.transform, false);
         var pillRt = pillObj.AddComponent<RectTransform>();
         pillRt.anchorMin = new Vector2(1, 0.5f);
         pillRt.anchorMax = new Vector2(1, 0.5f);
         pillRt.pivot = new Vector2(1, 0.5f);
-        pillRt.sizeDelta = new Vector2(150, 22);
+        pillRt.sizeDelta = new Vector2(118, 20);
         // Sits to the LEFT of the Settings button (which is at -114) and the close
         // button (at -6, 30 wide). Gap of 6px from Settings.
         pillRt.anchoredPosition = new Vector2(-200, 0);
@@ -494,9 +496,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         pillTxtRt.offsetMin = new Vector2(6, 0);
         pillTxtRt.offsetMax = new Vector2(-6, 0);
         _statusPillText = pillTxtObj.AddComponent<TextMeshProUGUI>();
-        _statusPillText.text = "GPUs: ?  LLMs: ?";
+        _statusPillText.text = "GPUs -/- · LLMs -/-";
         _statusPillText.font = _font;
-        _statusPillText.fontSize = 12;
+        _statusPillText.fontSize = 11;
         _statusPillText.color = new Color(0.18f, 0.18f, 0.22f, 1f);
         _statusPillText.alignment = TextAlignmentOptions.Center;
         _statusPillText.raycastTarget = false;
@@ -2077,22 +2079,41 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         int imageCount = _chatImagePics?.Count ?? 0;
 
-        // A bare summarizer instruction + the OLDER history (cloned) + the ask.
+        // Flatten the OLDER history into a single plain-text transcript carried by
+        // one user message, rather than replaying it as multi-role chat messages.
         // We intentionally omit the chat's own base/roleplay system prompt so the
         // model summarizes rather than continuing in character.
-        var lines = new Queue<GTPChatLine>();
-        lines.Enqueue(new GTPChatLine("system",
-            "You are a precise conversation summarizer. You will be given the earlier portion of a chat. Produce a dense recap and nothing else."));
+        //
+        // Flattening (instead of cloning each line back into the request) avoids two
+        // llama.cpp-specific failure modes that otherwise produce an empty summary:
+        //   1. llama.cpp applies the model's chat template strictly. Replaying an
+        //      arbitrary system/user/assistant sequence - e.g. a prior compact
+        //      summary stored as a second "system" line - trips templates that
+        //      require a single leading system message and strict user/assistant
+        //      alternation, and the server returns an empty completion.
+        //   2. Clone() carries each line's attached images along as image_url
+        //      content blocks; a text-only summarizer model rejects those.
+        // A clean system->user pair with the history as text is template-proof and
+        // behaves identically across every provider.
+        var transcript = new StringBuilder();
         foreach (var line in older)
         {
             if (line == null || string.IsNullOrEmpty(line._content)) continue;
-            lines.Enqueue(line.Clone());
+            string roleLabel = line._role == "user" ? "User"
+                : line._role == "assistant" ? "Assistant"
+                : "Note";
+            transcript.Append(roleLabel).Append(": ").Append(line._content).Append("\n\n");
         }
+
+        var lines = new Queue<GTPChatLine>();
+        lines.Enqueue(new GTPChatLine("system",
+            "You are a precise conversation summarizer. You will be given the earlier portion of a chat. Produce a dense recap and nothing else."));
         string instruction =
             "Summarize the conversation so far into a concise but information-dense recap that a continuation of this chat can rely on. " +
             "Preserve: the user's goals; any decisions, rules or constraints agreed on; key facts established; and where things currently stand. " +
             "CRUCIALLY, for every generated or attached image referred to as chat_image=\"N\", keep a one-line note of what image #N depicts and any name/identity tied to it, so it can still be referenced later. " +
-            "There are currently " + imageCount + " chat image(s). Output the recap only - no preamble and no sign-off.";
+            "There are currently " + imageCount + " chat image(s). Output the recap only - no preamble and no sign-off.\n\n" +
+            "Here is the earlier conversation to summarize:\n\n" + transcript.ToString();
         lines.Enqueue(new GTPChatLine("user", instruction));
 
         AddSystemMessage($"Compacting: summarizing {older.Count} older message(s) with the active LLM... the last {keepExchanges} exchange(s) and all images are kept.", includeInLLMRecap: false);
@@ -2125,7 +2146,21 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             raw = (raw ?? "").Trim();
             if (string.IsNullOrEmpty(raw))
             {
-                AddSystemMessage("Compact failed: the LLM returned an empty summary. History is unchanged.", includeInLLMRecap: false);
+                // Surface the server's error payload (if any) so a template/role
+                // rejection or rejected sampling param is diagnosable instead of a
+                // bare "empty summary".
+                string detail = "";
+                if (json != null)
+                {
+                    try
+                    {
+                        string js = json.ToString();
+                        if (!string.IsNullOrEmpty(js) && js.IndexOf("error", StringComparison.OrdinalIgnoreCase) >= 0)
+                            detail = " Server said: " + (js.Length > 300 ? js.Substring(0, 300) + "..." : js);
+                    }
+                    catch { }
+                }
+                AddSystemMessage("Compact failed: the LLM returned an empty summary. History is unchanged." + detail, includeInLLMRecap: false);
                 return;
             }
 
@@ -2829,7 +2864,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     }
 
     /// <summary>
-    /// Refreshes the header status pill: "GPUs: 1/2 busy   LLMs: 3". Cheap; called from
+    /// Refreshes the header status pill: "GPUs 1/2 · LLMs 1/4". Cheap; called from
     /// Update() at most every STATUS_PILL_REFRESH_INTERVAL seconds while the panel is
     /// visible.
     /// </summary>
@@ -2845,15 +2880,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         {
             if (cfg.IsGPUBusy(i)) gpuBusy++;
         }
-        int llmCount = im != null ? im.GetInstanceCount() : 0;
-        // Suffix the pill with a visible TEST flag whenever a test prompt override is
-        // active (test_post_prompt.txt, or test_main_prompt.txt via the "test_" preset
-        // prefix), so the user can't accidentally forget they've hot-patched the system
-        // prompt.
-        bool testPromptActive = _skillManager != null &&
-            (_skillManager.PostPromptIsTestOverride || _skillManager.MainPromptIsTestOverride);
-        string testFlag = testPromptActive ? "  [TEST PROMPT]" : "";
-        _statusPillText.text = $"GPUs: {gpuBusy}/{gpuTotal} busy   LLMs: {llmCount}{testFlag}";
+        // "LLMs" mirrors the GPU usage style: active calls / total capacity. Capacity
+        // is the sum over enabled instances of (maxConcurrentTasks x replicas), so a
+        // single instance set to 2 replicas x 2 concurrent tasks reads ".../4".
+        int llmActive = im != null ? im.GetTotalActiveTaskCount() : 0;
+        int llmCapacity = im != null ? im.GetTotalLLMCapacity() : 0;
+        _statusPillText.text = $"GPUs {gpuBusy}/{gpuTotal} · LLMs {llmActive}/{llmCapacity}";
     }
 
     /// <summary>
@@ -3989,89 +4021,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private void RefreshHeaderTitle()
     {
         if (_titleText == null) return;
-
-        string label = "AI Chat";
-
-        try
-        {
-            var instance = ResolveHeaderLLMInstance();
-            if (instance != null)
-            {
-                label = BuildHeaderTitle(instance.providerType, instance.settings);
-            }
-            else
-            {
-                var settingsMgr = LLMSettingsManager.Get();
-                if (settingsMgr != null)
-                {
-                    var p = settingsMgr.GetActiveProvider();
-                    var s = settingsMgr.GetProviderSettings(p);
-                    label = BuildHeaderTitle(p, s);
-                }
-            }
-        }
-        catch
-        {
-            // Fallback - keep the simple "AI Chat" label.
-        }
-
-        _titleText.text = label;
-    }
-
-    /// <summary>
-    /// Resolve the LLM instance the chat header should display. This mirrors the
-    /// allocation order in SendChatTurn without changing busy counters.
-    /// </summary>
-    private LLMInstanceInfo ResolveHeaderLLMInstance()
-    {
-        var instanceMgr = LLMInstanceManager.Get();
-        if (instanceMgr == null || instanceMgr.GetInstanceCount() <= 0)
-            return null;
-
-        if (_activeLLMInstanceID >= 0)
-        {
-            var inFlight = instanceMgr.GetInstance(_activeLLMInstanceID);
-            if (inFlight != null)
-                return inFlight;
-        }
-
-        bool isVisionJob = _promptManager != null && _promptManager.HasAnyImages();
-        int replicaIndex;
-        int instanceID = instanceMgr.GetFreeLLM(isSmallJob: true, isVisionJob: isVisionJob, out replicaIndex);
-        if (instanceID < 0)
-            instanceID = instanceMgr.GetLeastBusyLLM(isSmallJob: true, isVisionJob: isVisionJob, out replicaIndex);
-
-        return instanceID >= 0 ? instanceMgr.GetInstance(instanceID) : null;
-    }
-
-    private static string BuildHeaderTitle(LLMProvider provider, LLMProviderSettings settings)
-    {
-        string providerName = GetLLMProviderDisplayName(provider);
-        string model = settings != null ? settings.selectedModel : "";
-        return string.IsNullOrEmpty(model)
-            ? $"AI Chat - {providerName}"
-            : $"AI Chat - {providerName} ({model})";
-    }
-
-    private static string GetLLMProviderDisplayName(LLMProvider provider)
-    {
-        switch (provider)
-        {
-            case LLMProvider.OpenAI:
-                return "OpenAI";
-            case LLMProvider.Anthropic:
-                return "Anthropic";
-            case LLMProvider.LlamaCpp:
-                return "llama.cpp";
-            case LLMProvider.Ollama:
-                return "Ollama";
-            case LLMProvider.Gemini:
-                return "Gemini";
-            case LLMProvider.OpenAICompatible:
-                return "OpenAI Compatible";
-            default:
-                return provider.ToString();
-        }
+        // Title is just "AI Chat" - the provider/model used to be appended here
+        // ("AI Chat - llama.cpp (model)"), but with multi-instance routing the
+        // header can't name a single provider meaningfully, and it crowded the
+        // header. The active LLM is shown in the status pill / settings instead.
+        _titleText.text = "AI Chat";
     }
 
     /// <summary>

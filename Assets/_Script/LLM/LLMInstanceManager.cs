@@ -244,7 +244,27 @@ public class LLMInstanceManager : MonoBehaviour
     {
         return _config?.instances.Count ?? 0;
     }
-    
+
+    /// <summary>
+    /// Get the total concurrent LLM capacity across every ENABLED instance: the sum
+    /// of (maxConcurrentTasks * effective replica count) per instance. This matches
+    /// LLMSnapshot.Capacity and is what "LLMs" in the chat header reflects - how many
+    /// LLM calls can run in parallel right now - rather than the raw count of
+    /// configured instance entries or replicas alone. A single instance set to
+    /// 2 replicas x 2 concurrent tasks therefore reports 4.
+    /// </summary>
+    public int GetTotalLLMCapacity()
+    {
+        if (_config == null) return 0;
+        int total = 0;
+        foreach (var instance in _config.instances)
+        {
+            if (instance == null || !instance.isActive) continue;
+            total += Math.Max(1, instance.maxConcurrentTasks) * instance.GetEffectiveReplicaCount();
+        }
+        return total;
+    }
+
     /// <summary>
     /// Get an instance by ID.
     /// </summary>
