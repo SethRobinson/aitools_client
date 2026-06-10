@@ -201,6 +201,17 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // Guards against overlapping compact-summary requests (the button is in the
     // settings panel, which can be reopened while one is still in flight).
     private bool _compactSummaryInFlight;
+    // Compact-summary progress readout (spinner + elapsed in the status line).
+    // The settings panel closes itself after the click, so the chat status line
+    // is the only place the user can watch the request work.
+    private float _compactSummaryStartTime = 0f;
+    private int _compactSummaryMsgCount = 0;
+    private float _compactStatusNextRefresh = 0f;
+    private int _compactSpinnerStep = 0;
+    // Set while a compact-summary is in flight; invoking it flips the request's
+    // done-latch so a late HTTP response is discarded. Clear (which resets the
+    // whole conversation) uses this so the summary can't resurrect old history.
+    private Action _compactSummaryCancel;
 
     private class CaptionJob
     {
@@ -238,6 +249,14 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // we don't thrash _statusText every chunk.
     private int _streamCharsReceived = 0;
     private float _streamStartTime = 0f;
+    // Wall-clock when the FIRST chunk of this turn arrived (0 = still waiting).
+    // Generation t/s is measured from here, not from _streamStartTime - otherwise
+    // a long prefill (10s+ on big contexts) drags the displayed TPS way down even
+    // though the model is generating at full speed once it starts.
+    private float _streamFirstTokenTime = 0f;
+    // Approx size (chars) of the prompt we sent this turn, so the prefill phase
+    // can show an estimated prompt-token count and prefill speed.
+    private int _streamPromptApproxChars = 0;
     private float _streamStatusNextRefresh = 0f;
     private int _streamSpinnerStep = 0;
     private const float STREAM_STATUS_INTERVAL = 0.15f;
@@ -615,7 +634,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _chatPanelRT.anchorMin = new Vector2(0, 0);
         _chatPanelRT.anchorMax = new Vector2(1, 1);
         _chatPanelRT.offsetMin = new Vector2(_splitX + SPLITTER_WIDTH, 0);
-        _chatPanelRT.offsetMax = Vector2.zero;
+        // Inset from the panel's right edge by the resize-strip width. The ResizeRight
+        // handle is a later sibling, so it wins raycasts over anything in its 10px
+        // column - flush against the edge, the chat scrollbar's handle was completely
+        // under it and couldn't be grabbed (the cursor flipped to the resize arrows).
+        _chatPanelRT.offsetMax = new Vector2(-RESIZE_EDGE_THICKNESS, 0);
         BuildScrollView(chatGo, out _chatScroll, out _chatContent);
 
         // Splitter (drawn LAST so it renders on top of the panels at the seam).
@@ -1749,6 +1772,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private void OnSendClicked()
     {
         if (_isStreaming) return;
+        // A compact-summary will ReplaceInteractions() when it lands; letting a new
+        // turn start mid-flight means that replace silently throws the turn away.
+        if (_compactSummaryInFlight)
+        {
+            RTQuickMessageManager.Get().ShowMessage("Summarizing the conversation - wait for it to finish before sending");
+            return;
+        }
         // Guard the Enter-key path: the Send button is greyed via
         // RecomputeSendInteractable while attachment captions are pending, but
         // Enter bypasses the button. Show a hint and bail.
@@ -1884,6 +1914,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private void OnClearClicked()
     {
         _autoContinueRemaining = 0;
+        // Discard any in-flight compact-summary; if its response landed after this
+        // reset it would ReplaceInteractions() the old history right back in.
+        _compactSummaryCancel?.Invoke();
         if (_isStreaming)
         {
             TryCancelActiveRequests();
@@ -2013,6 +2046,14 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             RTQuickMessageManager.Get().ShowMessage("Wait for the current reply to finish before compacting");
             return;
         }
+        // The in-flight summary snapshotted the history it will ReplaceInteractions()
+        // with; truncating now would just be undone (and resurrect the dropped lines)
+        // when that snapshot lands.
+        if (_compactSummaryInFlight)
+        {
+            RTQuickMessageManager.Get().ShowMessage("A compact-summary request is already running");
+            return;
+        }
 
         var all = _promptManager.GetInteractionsList();
         int from = FindKeepFromIndex(all, keepExchanges);
@@ -2076,6 +2117,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         instanceMgr.SetLLMBusy(targetId, replicaIndex, true);
         _compactSummaryInFlight = true;
+        _compactSummaryStartTime = Time.unscaledTime;
+        _compactSummaryMsgCount = from;
+        _compactStatusNextRefresh = 0f;
+        _compactSpinnerStep = 0;
 
         int imageCount = _chatImagePics?.Count ?? 0;
 
@@ -2129,7 +2174,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             if (watchdog != null) { try { StopCoroutine(watchdog); } catch { } }
             instanceMgr.SetLLMBusy(capId, capReplica, false);
             _compactSummaryInFlight = false;
+            _compactSummaryCancel = null;
+            // Hand the status line back; Update() stops repainting it the moment
+            // the in-flight flag drops, so it would otherwise freeze mid-spinner.
+            if (!_isStreaming && _statusText != null) _statusText.text = "Idle";
         };
+        _compactSummaryCancel = release;
 
         Action<RTDB, JSONObject, string> onDone = (db, json, text) =>
         {
@@ -2171,6 +2221,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             _promptManager.ReplaceInteractions(rebuilt);
             RebuildChatBubblesFromHistory();
             AddSystemMessage($"Compacted {older.Count} older message(s) into a summary. Kept the last {keepExchanges} exchange(s); all images are intact.", includeInLLMRecap: false);
+            // release() above reset the status to Idle; leave the result on screen
+            // instead, matching how finished turns keep their token stats visible.
+            if (!_isStreaming && _statusText != null)
+                _statusText.text = $"Summarized {older.Count} msgs in {Time.unscaledTime - _compactSummaryStartTime:F0}s";
         };
 
         watchdog = StartCoroutine(CompactSummaryWatchdog(() => done, release));
@@ -2347,6 +2401,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _streamLastUpdate = 0;
         _streamCharsReceived = 0;
         _streamStartTime = Time.unscaledTime;
+        _streamFirstTokenTime = 0f;
         _streamStatusNextRefresh = 0f;
         _streamSpinnerStep = 0;
         SetBusyUI(true, $"{StreamSpinnerFrames[0]} Talking to LLM...");
@@ -2357,6 +2412,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // Strip TMP markup from any prior assistant bubbles before sending (safety - the
         // GPTPromptManager only ever stores raw text we put in, but be defensive).
         lines = OpenAITextCompletionManager.RemoveTMPTags(lines);
+
+        // Total prompt size feeds the status line's prefill estimate (chars/4 ~ tokens).
+        _streamPromptApproxChars = 0;
+        foreach (var promptLine in lines)
+            if (promptLine != null && promptLine._content != null)
+                _streamPromptApproxChars += promptLine._content.Length;
 
         float temperature = 0.7f;
         var advLogic = AdventureLogic.Get();
@@ -2576,6 +2637,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // Count visible chars for the status line's TPS estimate. Chunk size is the
         // closest cheap proxy for "bytes received" without having to plumb HTTP body
         // length through every provider manager.
+        if (_streamCharsReceived == 0)
+            _streamFirstTokenTime = Time.unscaledTime;
         _streamCharsReceived += text.Length;
 
         // Feed the action parser first - this fires OnSkillActionParsed callbacks for any
@@ -2710,6 +2773,30 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         FinalizeAssistantTurn(aborted: false, shouldAutoScroll);
     }
 
+    /// <summary>
+    /// "142 tok   45 t/s   (prefill 9.8s ~326 t/s)" for the current/just-finished
+    /// turn, or "" if no tokens were received. Generation t/s is measured from the
+    /// first received chunk; the prefill note only appears once the first-byte delay
+    /// is long enough to matter. All numbers are chars/4 estimates, not exact tokens.
+    /// </summary>
+    private string BuildStreamStatsText()
+    {
+        if (_streamCharsReceived <= 0 || _streamFirstTokenTime <= 0f) return "";
+        float elapsed = Mathf.Max(0.001f, Time.unscaledTime - _streamFirstTokenTime);
+        int approxTokens = _streamCharsReceived / 4;
+        float tps = approxTokens / elapsed;
+        string tpsStr = tps >= 10 ? tps.ToString("F0") : tps.ToString("F1");
+        string prefillStr = "";
+        float prefillSecs = _streamFirstTokenTime - _streamStartTime;
+        if (prefillSecs >= 1f)
+        {
+            int promptTokens = _streamPromptApproxChars / 4;
+            string prefillTps = promptTokens > 0 ? $" ~{promptTokens / prefillSecs:F0} t/s" : "";
+            prefillStr = $"   (prefill {prefillSecs:F1}s{prefillTps})";
+        }
+        return $"{approxTokens} tok   {tpsStr} t/s{prefillStr}";
+    }
+
     private void FinalizeAssistantTurn(bool aborted, bool shouldAutoScroll = false)
     {
         _isStreaming = false;
@@ -2733,7 +2820,17 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             willAutoContinue = true;
         }
 
-        SetBusyUI(false, aborted ? "Stopped" : (willAutoContinue ? $"Auto-continue ({_autoContinueRemaining + 1} left)" : "Idle"));
+        // Keep the turn's final token/speed numbers on screen instead of snapping
+        // straight to Idle - they used to vanish before the user could read them.
+        string stats = BuildStreamStatsText();
+        string doneStatus;
+        if (aborted)
+            doneStatus = string.IsNullOrEmpty(stats) ? "Stopped" : $"Stopped   {stats}";
+        else if (willAutoContinue)
+            doneStatus = $"Auto-continue ({_autoContinueRemaining + 1} left)";
+        else
+            doneStatus = string.IsNullOrEmpty(stats) ? "Idle" : $"Done   {stats}";
+        SetBusyUI(false, doneStatus);
         if (shouldAutoScroll)
             StartCoroutine(ScrollToBottomDeferred());
 
@@ -4197,19 +4294,40 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             _streamStatusNextRefresh = Time.unscaledTime + STREAM_STATUS_INTERVAL;
             _streamSpinnerStep = (_streamSpinnerStep + 1) % StreamSpinnerFrames.Length;
             char spin = StreamSpinnerFrames[_streamSpinnerStep];
-            float elapsed = Mathf.Max(0.001f, Time.unscaledTime - _streamStartTime);
-            // ~4 chars per token is a good rough average for English completions; the
-            // user gets a sense of pace, not a token-exact count.
-            int approxTokens = _streamCharsReceived / 4;
-            float tps = approxTokens / elapsed;
-            string tpsStr = tps >= 10 ? tps.ToString("F0") : tps.ToString("F1");
             // While an Auto burst is running, keep the remaining auto-continue
             // count visible the whole time the turn streams (otherwise it only
             // flashes for one frame between turns and you can't tell how many
             // of the N you queued are still to come).
             string autoLeft = (_autoContinueToggle != null && _autoContinueToggle.isOn && _autoContinueRemaining > 0)
                 ? $"   auto: {_autoContinueRemaining} left" : "";
-            _statusText.text = $"{spin} Talking to LLM   {approxTokens} tok   {tpsStr} t/s{autoLeft}";
+            // ~4 chars per token is a good rough average for English text; the user
+            // gets a sense of pace, not a token-exact count.
+            if (_streamFirstTokenTime <= 0f)
+            {
+                // Prefill phase: nothing has arrived yet, so a t/s readout would just
+                // decay toward zero. Show what the server is actually doing instead -
+                // chewing through ~N prompt tokens - and how long it's been at it.
+                float waiting = Time.unscaledTime - _streamStartTime;
+                int promptTokens = _streamPromptApproxChars / 4;
+                _statusText.text = $"{spin} Prefill (~{promptTokens} tok prompt)   {waiting:F0}s{autoLeft}";
+            }
+            else
+            {
+                _statusText.text = $"{spin} Talking to LLM   {BuildStreamStatsText()}{autoLeft}";
+            }
+        }
+
+        // Live progress for the settings panel's "Summarize" compact - same spinner
+        // treatment as streaming so the user can tell the one-shot summary request
+        // is still working (it can take a minute+ on a long history). Streaming is
+        // blocked while this runs, so the two never fight over the status line.
+        if (_compactSummaryInFlight && !_isStreaming && _statusText != null
+            && Time.unscaledTime >= _compactStatusNextRefresh)
+        {
+            _compactStatusNextRefresh = Time.unscaledTime + STREAM_STATUS_INTERVAL;
+            _compactSpinnerStep = (_compactSpinnerStep + 1) % StreamSpinnerFrames.Length;
+            float elapsed = Time.unscaledTime - _compactSummaryStartTime;
+            _statusText.text = $"{StreamSpinnerFrames[_compactSpinnerStep]} Summarizing {_compactSummaryMsgCount} msgs   {elapsed:F0}s";
         }
 
         // Periodic header status pill refresh (cheap; reads counters from Config/LLM mgr).
