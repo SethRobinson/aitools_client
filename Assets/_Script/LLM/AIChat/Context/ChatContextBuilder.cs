@@ -106,16 +106,14 @@ namespace AITools.AIChat.Context
             // 7. User's post-prompt overrides go LAST so they have the strongest "recency"
             // effect on the model. Lets the user dynamically tweak behavior via
             // aichat/post_prompt.txt (or aichat/test_post_prompt.txt) without editing any
-            // code or skill file. When the test override is active we add a banner so the
-            // LLM (and a curious dev reading the prompt) knows the experiment is live.
+            // code or skill file. No banner or filename is emitted - the model sees only
+            // the instructions, never an internal path. Which file is live (and whether
+            // it's the test override) is surfaced locally instead, via the [TEST PROMPT]
+            // status pill and the "active config" notice on Clear/init/preset change.
             string post = _skills?.PostPrompt ?? "";
             if (!string.IsNullOrEmpty(post))
             {
                 sb.AppendLine();
-                if (_skills.PostPromptIsTestOverride)
-                    sb.AppendLine("[TEST POST-PROMPT OVERRIDE - aichat/test_post_prompt.txt]");
-                else
-                    sb.AppendLine("[POST-PROMPT - aichat/post_prompt.txt]");
                 sb.AppendLine(post.TrimEnd());
             }
 
