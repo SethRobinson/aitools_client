@@ -10,7 +10,7 @@ Current local facts:
 - Unity editor version: `6000.4.6f1` (`ProjectSettings/ProjectVersion.txt`)
 - App version in code/version metadata: `2.52`
 - Main scene: `Assets/Main.unity`
-- Primary platform: Windows desktop; a limited Linux Python CLI also exists under `linux/`
+- Primary platform: Windows desktop; a limited Python CLI (Windows + Linux) also exists under `cli/`
 
 ## Hard Rules
 
@@ -38,13 +38,24 @@ There is no current root `BuildWebGL.bat`. WebGL build support is present in `As
 
 For editor development, open `Assets/Main.unity` in Unity and enter Play mode.
 
-For the Linux CLI subset:
+For the Python CLI subset:
 
 ```bash
-python linux/aitools_cli.py "<prompt>" output.png -p "Prompt To Image (Z-Image)"
+python cli/aitools_cli.py "<prompt>" output.png -p "Prompt To Image (Z-Image)"
 ```
 
-The CLI uses `linux/config.txt`, `../ComfyUI`, and `../Presets`. Dependencies are `requests`, `websocket-client`, and `Pillow`. See `linux/README.md` before changing CLI behavior.
+On Windows, use `cli\aitools_cli.bat` instead — the first run creates `cli\venv\` and installs dependencies automatically.
+
+The CLI uses `cli/config.txt`, `../ComfyUI`, and `../Presets`. Dependencies are `requests`, `websocket-client`, and `Pillow` (`cli/requirements.txt`). See `cli/README.md` before changing CLI behavior.
+
+AI agents (Claude, Codex, etc.) can and should use this CLI themselves — on Windows or Linux — to generate images and verify workflow/preset changes end-to-end against the user's ComfyUI servers, e.g.:
+
+```bat
+cli\aitools_cli.bat "a cat" out.png -p "Prompt To Image (Z-Image)" -v
+cli\aitools_cli.bat "make the sky red" out.png -p "Image To Image Klein Edit" -i input.png
+```
+
+Text-to-image and single-step image-to-image presets (`-i` / `-i2` inputs) both work; multi-step chains and LLM presets error out by design.
 
 ## Current Architecture
 
@@ -108,11 +119,12 @@ Experiment code lives in `Assets/Experiments/`:
 
 Prompt/template text for higher-level modes also exists in root `Adventure/` and `AIGuide/`.
 
-### Linux CLI
+### Python CLI
 
-The `linux/` folder is a separate Python command-line front-end for ComfyUI generation. It intentionally implements only a subset of the Unity app:
+The `cli/` folder is a separate Python command-line front-end for ComfyUI generation (Windows + Linux). It intentionally implements only a subset of the Unity app:
 - `aitools_cli.py` - argparse entry point
-- `config.py` - `linux/config.txt` parser
+- `aitools_cli.bat` - Windows launcher (auto-creates `cli/venv/`, installs `requirements.txt`)
+- `config.py` - `cli/config.txt` parser
 - `presets.py` - subset parser for `Presets/*.txt`
 - `workflow.py` - workflow load/convert/cache, replacements, placeholders, seed override
 - `servers.py`, `comfy_api.py`, `progress.py`, `images.py`, `util.py` - server probing, ComfyUI HTTP/WebSocket calls, image upload/resizing, output save
@@ -132,7 +144,7 @@ Do not assume every Unity job-script feature works in the CLI. Multi-step chains
 - `ComfyUI/` - source workflows plus generated cached API workflow files
 - `Presets/` - preset/job scripts
 - `aichat/` - editable AI Chat prompts and skill markdown files
-- `linux/` - Linux Python CLI subset
+- `cli/` - Python CLI subset (Windows + Linux)
 - `web/`, `utils/`, `Packaging/` - runtime/package support files
 - `Media/` - README screenshots and media
 

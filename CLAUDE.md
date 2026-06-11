@@ -28,6 +28,17 @@ GenerateBuildDate.bat
 - Open scene "Main" and click play to run in editor
 - Missing fonts: Assets/GUI/GOTHIC.TFF and Assets/GUI/times.ttf may cause issues
 
+### Testing ComfyUI workflows from the command line
+The `cli/` folder contains a Python CLI that can run workflows/presets against
+the configured ComfyUI servers without launching the Unity app — useful for
+verifying workflow or preset changes end-to-end:
+```bat
+cli\aitools_cli.bat "a cat" out.png -p "Prompt To Image (Z-Image)" -v
+```
+The first run auto-creates `cli\venv\` and installs deps. It needs a
+`cli/config.txt` (copy `cli/config.example.txt`). See `cli/README.md` for
+flags and the supported preset subset (single-step image jobs only).
+
 ## Architecture Overview
 
 ### Core Systems

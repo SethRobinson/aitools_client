@@ -1,8 +1,8 @@
 # aitools_cli
 
-A Linux command-line front-end for the same ComfyUI servers used by Seth's AI
-Tools (the Unity app one directory up). Generates an image from a text prompt
-using a workflow JSON or one of the existing presets.
+A command-line front-end (Windows + Linux) for the same ComfyUI servers used
+by Seth's AI Tools (the Unity app one directory up). Generates an image from a
+text prompt using a workflow JSON or one of the existing presets.
 
 It mirrors what `PicTextToImage.cs` + `PresetManager.cs` do in the Unity app:
 load a workflow, ask the ComfyUI server to convert it to API format (cached on
@@ -14,7 +14,8 @@ resulting image via `/view`.
 
 1. Copy `config.example.txt` to `config.txt` and list your ComfyUI servers:
    ```
-   cp config.example.txt config.txt
+   cp config.example.txt config.txt      # Linux
+   copy config.example.txt config.txt    # Windows
    ```
    ```
    default_workflow|text_to_img_zimage.json
@@ -38,16 +39,25 @@ resulting image via `/view`.
    [comfyui-workflow-to-api-converter-endpoint](https://github.com/SethRobinson/comfyui-workflow-to-api-converter-endpoint)
    custom node installed (used to convert "full" workflows on the fly).
 
-3. Python deps: `requests`, `websocket-client`, `Pillow`. Already present in
-   the existing `comfyui_env`.
+3. Python deps: `requests`, `websocket-client`, `Pillow` (see
+   `requirements.txt`).
 
-4. (Optional) `chmod +x aitools_cli.py` and add `linux/` to your PATH or
+   **Windows:** just run `aitools_cli.bat` — the first run creates a local
+   `venv\` folder next to the script and installs the requirements
+   automatically (re-installs if `requirements.txt` changes). Needs Python 3
+   on PATH (the `py` launcher or `python`).
+
+   **Linux:** `pip install -r requirements.txt` into your environment of
+   choice (already present in the existing `comfyui_env`).
+
+4. (Optional, Linux) `chmod +x aitools_cli.py` and add `cli/` to your PATH or
    symlink the script.
 
 ## Usage
 
 ```
-aitools_cli.py "<prompt>" <output> [options]
+aitools_cli.py "<prompt>" <output> [options]     # Linux
+aitools_cli.bat "<prompt>" <output> [options]    # Windows
 ```
 
 Output is **always** written as PNG (extension is forced to `.png` to keep
@@ -246,8 +256,10 @@ never resolve to anything useful here:
 ## File layout
 
 ```
-linux/
+cli/
   aitools_cli.py      # entry point: argparse + glue
+  aitools_cli.bat     # Windows launcher: creates venv/, installs deps, runs the script
+  requirements.txt    # Python deps (requests, websocket-client, Pillow)
   config.py           # config.txt parser
   auth.py             # optional per-server bearer-token auth
   presets.py          # Presets/*.txt parser

@@ -249,6 +249,24 @@ namespace AITools.AIChat.Skills
                     break;
 
                 default:
+                    // Rescue: the LLM emitted a RECIPE skill id directly (e.g.
+                    // skill="ideo" or skill="books") instead of that skill's actual
+                    // template (read_skill, or generate_image with a specific preset).
+                    // Easy mistake - the SKILLS summary block lists recipe ids right
+                    // next to the executable ones. Treat it as read_skill for that id:
+                    // the full body lands in the LLM's context with "act on this next
+                    // turn" framing, so the turn isn't wasted on a dead-end error.
+                    if (_skills?.GetById(action.SkillId) != null)
+                    {
+                        _host?.AddSystemInjectionSilent(
+                            $"'{action.SkillId}' is a recipe/knowledge skill, not a directly executable action - " +
+                            "never emit it as skill=\"...\". Its body has been loaded below; on your NEXT turn, " +
+                            "follow the Invocation section in it (typically generate_image / image_to_image " +
+                            "with a specific preset) to fulfill the user's request.");
+                        action.Args["id"] = action.SkillId;
+                        ExecuteReadSkill(action);
+                        break;
+                    }
                     _host?.AddSystemInjectionAndBubble(
                         $"Skill '{action.SkillId}' is not recognized. Use one of: " +
                         string.Join(", ", GetKnownSkillIds()));
@@ -954,6 +972,17 @@ namespace AITools.AIChat.Skills
                 if (!requestedFile.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
                 {
                     found = FindPresetFile(presetsDir, prefix + withoutLeadingUnderscore);
+                    if (found != null)
+                        return found;
+                }
+                else
+                {
+                    // Reverse fallback: the system prompt shows every {{...}} preset
+                    // sentinel WITH the prefix applied (ApplyPresetPrefix), so the LLM
+                    // faithfully asks for e.g. "test_Prompt To Image (Ideogram 4).txt"
+                    // even when no test_ variant of that particular preset exists on
+                    // disk. Fall back to the unprefixed file instead of dead-ending.
+                    found = FindPresetFile(presetsDir, requestedFile.Substring(prefix.Length));
                     if (found != null)
                         return found;
                 }

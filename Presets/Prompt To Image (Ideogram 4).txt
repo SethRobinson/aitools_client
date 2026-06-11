@@ -1,0 +1,22 @@
+COMMAND_START|joblist
+#Generate image using Ideogram 4. The prompt must be a single-line structured JSON caption (see aichat/skills/ideo.md), not plain prose.
+#Official sampling tiers: Turbo 12 steps (std 1.75, mu 0.5) / Default 20 steps (std 1.75, mu 0.0) / Quality 48 steps (std 1.5, mu 0.0).
+#Two known-good recipes:
+#  OFFICIAL:  %sampler%="euler"           %cfg_main%="7.0" %cfg_polish%="3.0" (sharp, but skin can look waxy/AI at cfg 7)
+#  COMMUNITY: %sampler%="euler_ancestral" %cfg_main%="3.5" %cfg_polish%="3.5" (more natural, current setting)
+#Steps currently Quality 48 (~2.5x gen time); for Default set %steps%="20" and %std%="1.75".
+%width%="1024"
+%height%="1024"
+%steps%="48"
+%std%="1.5"
+%cfg_polish_start%="0.94"
+%sampler%="euler_ancestral"
+%cfg_main%="3.5"
+%cfg_polish%="3.5"
+
+text_to_img_ideogram4.json @replace|"width": 1024|"width": %width%| @replace|"height": 1024|"height": %height%| @replace|"steps": 20|"steps": %steps%| @replace|"std": 1.75|"std": %std%| @replace|"start_percent": 0.9|"start_percent": %cfg_polish_start%| @replace|"sampler_name": "euler"|"sampler_name": "%sampler%"| @replace|"cfg": 7.0|"cfg": %cfg_main%| @replace|"cfg": 3.0|"cfg": %cfg_polish%|
+COMMAND_END
+COMMAND_START|default_negative_prompt
+COMMAND_END
+COMMAND_START|default_pre_prompt
+COMMAND_END
