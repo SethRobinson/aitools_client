@@ -100,6 +100,14 @@ Your ComfyUI server needs to be started using the --listen parm, so the API can 
 
 After running it, a config.txt will be made. There is a config edit button inside the app, it's kind of self-documented, just go through it and update as necessary.
 
+If your ComfyUI server is password protected, for example with the [ComfyUI-Login](https://github.com/liusida/ComfyUI-Login) custom node, append its direct API bearer token to the `add_server` line:
+
+```txt
+add_server|http://secured-box.lan:8188|token=$2b$12$qUfJfV942n...
+```
+
+This is optional; leave `|token=...` off for normal open ComfyUI servers. For ComfyUI-Login, use the token it prints for direct API calls, not your web UI password. AITools sends it as an `Authorization: Bearer` header for ComfyUI HTTP and WebSocket requests.
+
 # Setting up with ComfyUI
 
 First, install [ComfyUI](https://github.com/comfyanonymous/ComfyUI) and get it rendering stuff.

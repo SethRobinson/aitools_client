@@ -324,6 +324,12 @@ public class Config : MonoBehaviour
 #default port is usually 8000 or 8188
 add_server|http://localhost:8000|
 
+#Optional: If a ComfyUI server is password protected, for example with the
+#ComfyUI-Login custom node, append its direct API bearer token to the server line.
+#Leave this off for normal open ComfyUI servers. Use the token printed for direct
+#API calls, not your web UI password.
+#add_server|http://secured-box.lan:8188|token=$2b$12$qUfJfV942n...
+
 #Add more add_server commands like this, uncomment below
 #add_server|http://localhost:8001|
 
