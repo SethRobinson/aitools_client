@@ -734,7 +734,7 @@
         }
       },
       "widgets_values": [
-        "output_D",
+        "output_D_%year%%month%%day%-%hour%%minute%%second%",
         "auto",
         "auto"
       ]

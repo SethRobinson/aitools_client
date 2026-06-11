@@ -1,6 +1,6 @@
 ---
 id: generate_movie
-summary: Generate a short video clip from a text prompt. LTX 2.3 has audio - include ONE short quoted line of in-scene dialog (with language+accent) in the motion beat unless the scene has no plausible speaker.
+summary: Generate a short video clip from a text prompt. LTX 2.3 has audio - include ONE short quoted line of in-scene dialog (with language+accent) in the motion beat unless the scene has no plausible speaker. Wan 2.2 preset = higher quality but slow and silent (no dialog/sound tags).
 inputs: none
 template: <aitools_action skill="generate_movie" preset="{{Prompt To Video (LTX) 5s.txt}}" prompt="4-8 sentences: subject, then motion with ONE short line of in-scene dialog in double-quotes (language+accent), then one camera move, then mood/lighting, then ambient sound"/>
 ---
@@ -11,7 +11,11 @@ movie from a text prompt (no input image required).
 
 ## Available presets
 
-- `{{Prompt To Video (LTX) 5s.txt}}` - fast 5s clip (LTX 2.3)
+- `{{Prompt To Video (Wan22).txt}}` - high-quality 5s, slow (Wan 2.2, no audio)
+- `{{Prompt To Video (LTX) 5s.txt}}` - fast 5s clip (LTX 2.3, with audio)
+
+Default to LTX. Pick Wan 2.2 when the user asks for it by name or wants
+maximum visual quality and doesn't need sound/dialog.
 
 ## Invocation
 
@@ -19,7 +23,7 @@ movie from a text prompt (no input image required).
 <aitools_action skill="generate_movie" preset="{{Prompt To Video (LTX) 5s.txt}}" prompt="vivid visual description with motion"/>
 ```
 
-## Writing good LTX 2.3 prompts
+## Writing good LTX 2.3 prompts (`{{Prompt To Video (LTX) 5s.txt}}`)
 
 Source: [docs.ltx.video](https://docs.ltx.video/api-documentation/prompting-guide).
 
@@ -73,6 +77,24 @@ User asked: "a woman writing at a desk". Ship something like:
 > Deakins night interior, Portra 400 film grain, natural skin tones;
 > ambient sound of distant traffic and a slow ceiling fan.
 
+## Writing good Wan 2.2 prompts (`{{Prompt To Video (Wan22).txt}}`)
+
+Source: [wan2-2.app/prompt](https://wan2-2.app/prompt).
+
+- Formula: **Subject → Scene → Motion → Aesthetic Control →
+  Stylization**. No strict word count - "more complete = higher quality".
+- Handles longer multi-beat motion than LTX. 200-400 words of timed
+  motion + environmental motion + lighting evolution work well.
+- **No audio.** Wan 2.2 generates silent video - do NOT add the quoted
+  dialog line or an ambient-sound tag; spend those words on motion and
+  lighting instead.
+- There's no source image, so the first subject sentence must be fully
+  self-contained: physical detail, wardrobe, expression, posture.
+- **Wan 2.2 uses negative prompts** (unlike LTX / Z-Image). The preset
+  ships a good default; only pass `negative_prompt="..."` to override it
+  for a specific need.
+- Same hard-cut rule: avoid "suddenly", "flashes", "cuts to".
+
 ## Scenario / recurring characters
 
 Detailed roleplay, scenario, character-sheet, and identity-anchor
@@ -91,8 +113,12 @@ described in `scenario_storytelling`.
 ## Rules
 
 - User asked for a video → spawn it, no confirmation.
-- 4-8 sentences, order Subject → Motion+Dialog → Camera → Mood → Ambient.
-  Don't pass the user's 1-liner verbatim; don't pad past 8 sentences.
-- **Always include ONE short quoted in-scene line** (language + accent)
-  in the motion beat, unless no plausible speaker. Write EXACT words.
+- Default to the LTX preset; use Wan 2.2 when asked for it or for
+  max-quality silent clips.
+- LTX 2.3: 4-8 sentences, order Subject → Motion+Dialog → Camera → Mood →
+  Ambient. Don't pass the user's 1-liner verbatim; don't pad past 8
+  sentences. **Always include ONE short quoted in-scene line** (language +
+  accent) in the motion beat, unless no plausible speaker. Write EXACT words.
+- Wan 2.2: longer multi-beat motion (200-400 words) is fine, but NO
+  dialog or ambient-sound tags - it renders silent video.
 - Default to 5s unless the user asks longer.

@@ -65,3 +65,4 @@ cli/venv/
 compact_summary_sent.json
 llm_request_sent.json
 llm_response.json
+.claude/settings.json

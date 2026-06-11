@@ -12,7 +12,7 @@ def parse_config(path: Path):
         hint = (f" — copy {example.name} to {path.name} and edit it"
                 if example.exists() else "")
         die(f"config not found: {path}{hint}", 1)
-    for raw in path.read_text().splitlines():
+    for raw in path.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
         if not line or line.startswith("#"):
             continue

@@ -60,9 +60,11 @@ aitools_cli.py "<prompt>" <output> [options]     # Linux
 aitools_cli.bat "<prompt>" <output> [options]    # Windows
 ```
 
-Output is **always** written as PNG (extension is forced to `.png` to keep
-any alpha channel intact). If the workflow produces multiple images, the
-extras are saved as `name_2.png`, `name_3.png`, ...
+Image output is **always** written as PNG (extension is forced to `.png` to
+keep any alpha channel intact). Video output (e.g. from a `SaveVideo` node)
+is saved as-is with its original container extension (`.mp4`, `.webm`, ...).
+If the workflow produces multiple outputs, the extras are saved as
+`name_2.png`, `name_3.png`, ...
 
 ### Examples
 

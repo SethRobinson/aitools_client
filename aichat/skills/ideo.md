@@ -413,6 +413,16 @@ For photographic prompts:
   and smeary at 1024px. Go full wide-establishing (small figure in a big
   scene) ONLY when the user asks for the environment to dominate - and say
   so in the HLD ("a small lone figure dwarfed by...").
+- **Skin is NEVER smooth.** Writing `smooth skin`, `clear skin`,
+  `flawless`, `porcelain`, or `glowing skin` renders a waxy plastic doll -
+  these are banned in photographic captions. Every photographed person's
+  desc MUST include one concrete imperfection/texture clause instead:
+  `natural skin with visible pores and slight unevenness`, `faint freckles
+  across the nose and cheeks`, `slightly flushed from the cold, a few
+  stray hairs`. Real skin has texture; describe it.
+- **Don't write the word `photorealistic`.** It signals glossy AI gloss,
+  not realism. Name the capture instead: `a candid iPhone snapshot`,
+  `a 35mm film photo`, `an unedited phone photo`.
 - No motion blur in candid/realistic photos. Mention saturation at most ONCE,
   and only when the user asked.
 

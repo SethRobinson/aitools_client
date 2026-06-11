@@ -4,12 +4,12 @@ COMMAND_START|joblist
 #Two known-good recipes:
 #  OFFICIAL:  %sampler%="euler"           %cfg_main%="7.0" %cfg_polish%="3.0" (sharp, but skin can look waxy/AI at cfg 7)
 #  COMMUNITY: %sampler%="euler_ancestral" %cfg_main%="3.5" %cfg_polish%="3.5" (more natural, current setting)
-#Steps currently Quality 48 (~2.5x gen time); for Default set %steps%="20" and %std%="1.75".
+#Steps currently Default 20; for Quality 48 set %steps%="48", %std%="1.5", %cfg_polish_start%="0.94".
 %width%="1024"
 %height%="1024"
-%steps%="48"
-%std%="1.5"
-%cfg_polish_start%="0.94"
+%steps%="20"
+%std%="1.75"
+%cfg_polish_start%="0.9"
 %sampler%="euler_ancestral"
 %cfg_main%="3.5"
 %cfg_polish%="3.5"

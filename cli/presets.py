@@ -111,7 +111,7 @@ def resolve_preset_path(name_or_path: str) -> Path:
 
 def load_preset(name_or_path: str) -> PresetData:
     path = resolve_preset_path(name_or_path)
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     blocks = _split_blocks(text, path)
 
     data = PresetData(source_path=path, workflow="")

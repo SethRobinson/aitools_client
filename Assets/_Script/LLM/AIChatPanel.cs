@@ -257,6 +257,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // Approx size (chars) of the prompt we sent this turn, so the prefill phase
     // can show an estimated prompt-token count and prefill speed.
     private int _streamPromptApproxChars = 0;
+    // Best-known total context window (tokens) for the provider serving this turn,
+    // 0 if unknown. Lets the status line show context fill as "ctx ~33k/131k".
+    private int _streamMaxContextTokens = 0;
+    // llama.cpp /props lookups (server address -> loaded n_ctx). Cached per app run
+    // so each server is only probed once; the in-flight set stops duplicate probes.
+    private static readonly Dictionary<string, int> _llamaCppCtxCache = new Dictionary<string, int>();
+    private static readonly HashSet<string> _llamaCppCtxProbesInFlight = new HashSet<string>();
     private float _streamStatusNextRefresh = 0f;
     private int _streamSpinnerStep = 0;
     private const float STREAM_STATUS_INTERVAL = 0.15f;
@@ -855,11 +862,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         }
 
         _inputField = inputGo.GetComponent<TMP_InputField>();
-        // MultiLineNewline: Enter naturally inserts a newline. We then intercept Enter
-        // via onValidateInput below: when Shift is NOT held we reject the newline and
-        // defer-send instead. (TMP's built-in MultiLineSubmit mode is supposed to do
-        // Shift+Enter newline natively, but Shift+Enter doesn't actually insert a
-        // newline in Unity 6 / TMP 3, so we handle it ourselves.)
+        // MultiLineNewline: Enter naturally inserts a newline. LateUpdate() then removes
+        // the just-inserted '\n' and defer-sends when Shift is NOT held. (TMP's built-in
+        // MultiLineSubmit mode is supposed to do Shift+Enter newline natively, but
+        // Shift+Enter doesn't actually insert a newline in Unity 6 / TMP 3, so we
+        // handle it ourselves.)
         _inputField.lineType = TMP_InputField.LineType.MultiLineNewline;
         _inputField.contentType = TMP_InputField.ContentType.Standard;
         _inputField.textComponent.alignment = TextAlignmentOptions.TopLeft;
@@ -884,10 +891,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         caretFixer.Set(_inputField);
         _inputUndo = _inputField.gameObject.AddComponent<TMPInputFieldUndo>();
 
-        // Note: Enter / Shift+Enter handling is in Update() below. Using onValidateInput
+        // Note: Enter / Shift+Enter handling is in LateUpdate() below. Using onValidateInput
         // is unreliable because Input.GetKey(Shift) can return false from inside that
         // callback (it runs during TMP's text-event processing, not the regular Update
-        // phase). Detecting in Update reads shift state at a time it's guaranteed valid.
+        // phase). Detecting in LateUpdate reads shift state when it's guaranteed valid
+        // AND runs after TMP has already consumed the keystroke.
 
         // Status text along the top of the right side
         var statusObj = new GameObject("Status");
@@ -1801,6 +1809,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         }
 
         string text = _inputField != null ? _inputField.text : "";
+        // Never send outer whitespace - stray newlines have leaked into the field via
+        // the Enter-key race (see LateUpdate) and showed up as blank lines in the bubble.
+        text = text.Trim();
 
         // Allow sending with images even if there's no text (vision models often work
         // better with a short prompt, but "describe this image" is a valid bare-image use).
@@ -2418,6 +2429,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         foreach (var promptLine in lines)
             if (promptLine != null && promptLine._content != null)
                 _streamPromptApproxChars += promptLine._content.Length;
+        _streamMaxContextTokens = ResolveMaxContextTokens(activeProvider, activeSettings, llmReplicaIndex);
 
         float temperature = 0.7f;
         var advLogic = AdventureLogic.Get();
@@ -2774,10 +2786,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     }
 
     /// <summary>
-    /// "142 tok   45 t/s   (prefill 9.8s ~326 t/s)" for the current/just-finished
-    /// turn, or "" if no tokens were received. Generation t/s is measured from the
-    /// first received chunk; the prefill note only appears once the first-byte delay
-    /// is long enough to matter. All numbers are chars/4 estimates, not exact tokens.
+    /// "142 tok   45 t/s   ctx ~33k/131k   (prefill 9.8s ~326 t/s)" for the
+    /// current/just-finished turn, or "" if no tokens were received. Generation t/s
+    /// is measured from the first received chunk; the prefill note only appears once
+    /// the first-byte delay is long enough to matter. ctx is prompt + everything
+    /// generated so far, against the model's window when we know it. All numbers
+    /// are chars/4 estimates, not exact tokens.
     /// </summary>
     private string BuildStreamStatsText()
     {
@@ -2794,7 +2808,99 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             string prefillTps = promptTokens > 0 ? $" ~{promptTokens / prefillSecs:F0} t/s" : "";
             prefillStr = $"   (prefill {prefillSecs:F1}s{prefillTps})";
         }
-        return $"{approxTokens} tok   {tpsStr} t/s{prefillStr}";
+        return $"{approxTokens} tok   {tpsStr} t/s{BuildContextFillText()}{prefillStr}";
+    }
+
+    /// <summary>
+    /// "   ctx ~33k/131k" (or "   ctx ~33k" when the model's window is unknown) for
+    /// the turn in flight - prompt plus everything generated so far. "" if nothing
+    /// was sent yet.
+    /// </summary>
+    private string BuildContextFillText()
+    {
+        int ctxTokens = (_streamPromptApproxChars + _streamCharsReceived) / 4;
+        if (ctxTokens <= 0) return "";
+        string totalStr = _streamMaxContextTokens > 0 ? $"/{FormatTokenCount(_streamMaxContextTokens)}" : "";
+        return $"   ctx ~{FormatTokenCount(ctxTokens)}{totalStr}";
+    }
+
+    /// <summary>"653", "9.8k", "33k" - compact token counts for the status line.</summary>
+    private static string FormatTokenCount(int tokens)
+    {
+        if (tokens < 1000) return tokens.ToString();
+        float k = tokens / 1000f;
+        return k < 10 ? $"{k:F1}k" : $"{Mathf.RoundToInt(k)}k";
+    }
+
+    /// <summary>
+    /// Best-known total context window (tokens) for this turn's provider, or 0 if
+    /// unknown. Ollama settings carry the model's discovered context (or the user's
+    /// override - whichever num_ctx we actually request); llama.cpp servers are
+    /// probed via /props for the loaded n_ctx. Hosted APIs (OpenAI/Anthropic/Gemini)
+    /// have no reliable source here, so they stay unknown.
+    /// </summary>
+    private int ResolveMaxContextTokens(LLMProvider provider, LLMProviderSettings settings, int replicaIndex)
+    {
+        if (settings == null) return 0;
+        switch (provider)
+        {
+            case LLMProvider.Ollama:
+                if (settings.overrideContextLength && settings.contextLength > 0)
+                    return settings.contextLength;
+                return Mathf.Max(0, settings.maxContextLength);
+
+            case LLMProvider.LlamaCpp:
+            {
+                string srv = LLMInstanceManager.ApplyReplicaPortOffset(settings.endpoint, replicaIndex);
+                if (string.IsNullOrEmpty(srv)) return 0;
+                if (_llamaCppCtxCache.TryGetValue(srv, out int ctx)) return ctx;
+                // Kick off a one-shot probe; if it lands while this turn is still
+                // streaming, the live status refresh picks it up mid-turn.
+                if (_llamaCppCtxProbesInFlight.Add(srv))
+                    StartCoroutine(ProbeLlamaCppContextSize(srv, settings.apiKey));
+                return 0;
+            }
+
+            default:
+                return 0;
+        }
+    }
+
+    /// <summary>
+    /// Fetches llama.cpp's /props once to learn the server's loaded context window
+    /// (default_generation_settings.n_ctx) and caches it per server address.
+    /// Failures aren't cached so a server that was down gets re-probed next turn.
+    /// </summary>
+    private IEnumerator ProbeLlamaCppContextSize(string serverAddress, string apiKey)
+    {
+        string url = serverAddress.TrimEnd('/') + "/props";
+        using (var req = UnityEngine.Networking.UnityWebRequest.Get(url))
+        {
+            req.timeout = 10;
+            if (!string.IsNullOrEmpty(apiKey))
+                req.SetRequestHeader("Authorization", "Bearer " + apiKey);
+            yield return req.SendWebRequest();
+
+            int ctx = 0;
+            if (req.result == UnityEngine.Networking.UnityWebRequest.Result.Success)
+            {
+                try
+                {
+                    var root = JSON.Parse(req.downloadHandler.text);
+                    if (root != null)
+                        ctx = root["default_generation_settings"]["n_ctx"].AsInt;
+                }
+                catch (Exception) { ctx = 0; }
+            }
+
+            _llamaCppCtxProbesInFlight.Remove(serverAddress);
+            if (ctx > 0)
+            {
+                _llamaCppCtxCache[serverAddress] = ctx;
+                if (_isStreaming && _activeProviderInFlight == LLMProvider.LlamaCpp && _streamMaxContextTokens <= 0)
+                    _streamMaxContextTokens = ctx;
+            }
+        }
     }
 
     private void FinalizeAssistantTurn(bool aborted, bool shouldAutoScroll = false)
@@ -4253,30 +4359,6 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             }
         }
 
-        // Enter / Shift+Enter handling for the chat input. Done here (not via TMP_InputField's
-        // own MultiLineSubmit mode or onValidateInput) because both of those are unreliable
-        // about reading the Shift modifier in Unity 6 / TMP 3.
-        if (_isVisible && _inputField != null && _inputField.isFocused
-            && (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter)))
-        {
-            bool shift = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
-            if (!shift)
-            {
-                // Plain Enter: lineType=MultiLineNewline already inserted a '\n' into the
-                // text this same frame - strip it before sending.
-                if (_inputField.text.EndsWith("\n"))
-                    _inputField.text = _inputField.text.Substring(0, _inputField.text.Length - 1);
-                OnSendClicked();
-            }
-            else
-            {
-                // Shift+Enter: in Unity 6 / TMP 3, Shift+Enter does NOT insert a newline
-                // (TMP's character event for Shift+Enter doesn't carry '\n'). Insert it
-                // ourselves at the current caret position (replacing any selected range).
-                InsertCharAtCaret(_inputField, '\n');
-            }
-        }
-
         // Throttled streaming UI flush so a long pause between chunks still updates the bubble.
         if (_isStreaming && _streamingAssistantField != null
             && Time.unscaledTime - _streamLastUpdate >= STREAM_UPDATE_INTERVAL && _streamBuffer.Length > 0)
@@ -4306,10 +4388,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             {
                 // Prefill phase: nothing has arrived yet, so a t/s readout would just
                 // decay toward zero. Show what the server is actually doing instead -
-                // chewing through ~N prompt tokens - and how long it's been at it.
+                // chewing through ~N prompt tokens (of the model's window, when
+                // known) - and how long it's been at it.
                 float waiting = Time.unscaledTime - _streamStartTime;
                 int promptTokens = _streamPromptApproxChars / 4;
-                _statusText.text = $"{spin} Prefill (~{promptTokens} tok prompt)   {waiting:F0}s{autoLeft}";
+                string ctxOf = _streamMaxContextTokens > 0 ? $"/{FormatTokenCount(_streamMaxContextTokens)}" : "";
+                _statusText.text = $"{spin} Prefill (~{FormatTokenCount(promptTokens)}{ctxOf} tok prompt)   {waiting:F0}s{autoLeft}";
             }
             else
             {
@@ -4336,6 +4420,45 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             _statusPillNextRefresh = Time.unscaledTime + STATUS_PILL_REFRESH_INTERVAL;
             RefreshHeaderTitle();
             UpdateStatusPill();
+        }
+    }
+
+    private void LateUpdate()
+    {
+        // Enter / Shift+Enter handling for the chat input. Must run in LateUpdate, not
+        // Update: TMP_InputField consumes the keystroke from EventSystem.Update(), whose
+        // order relative to our own Update() is undefined. When we ran first, the field
+        // got cleared by the send and TMP then dropped its '\n' into the EMPTY field,
+        // leaving a stray blank line behind after every send. LateUpdate guarantees TMP
+        // has already processed the key. (Not handled via TMP's own MultiLineSubmit mode
+        // or onValidateInput because both are unreliable about reading the Shift
+        // modifier in Unity 6 / TMP 3.)
+        if (_isVisible && _inputField != null && _inputField.isFocused
+            && (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter)))
+        {
+            bool shift = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+            if (!shift)
+            {
+                // Plain Enter: lineType=MultiLineNewline inserted a '\n' AT THE CARET
+                // this frame - which is not necessarily the end of the text (the user
+                // may send right after jumping back to fix a typo). Remove that exact
+                // character, otherwise the message goes out with a newline embedded
+                // wherever the caret happened to sit.
+                string text = _inputField.text ?? "";
+                int caretIdx = Mathf.Clamp(_inputField.stringPosition, 0, text.Length);
+                if (caretIdx > 0 && text[caretIdx - 1] == '\n')
+                    _inputField.text = text.Remove(caretIdx - 1, 1);
+                else if (text.EndsWith("\n"))
+                    _inputField.text = text.Substring(0, text.Length - 1);
+                OnSendClicked();
+            }
+            else
+            {
+                // Shift+Enter: in Unity 6 / TMP 3, Shift+Enter does NOT insert a newline
+                // (TMP's character event for Shift+Enter doesn't carry '\n'). Insert it
+                // ourselves at the current caret position (replacing any selected range).
+                InsertCharAtCaret(_inputField, '\n');
+            }
         }
     }
 

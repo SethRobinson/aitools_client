@@ -81,11 +81,21 @@ def download_image(server_url, image_ref):
     return r.content
 
 
+VIDEO_EXTS = {".mp4", ".webm", ".mov", ".avi", ".mkv", ".gif"}
+
+
+def save_extension(src_filename):
+    """Extension the output will be saved with: videos keep their original
+    container, everything else is normalized to .png."""
+    ext = os.path.splitext(src_filename)[1].lower()
+    return ext if ext in VIDEO_EXTS else ".png"
+
+
 def save_image(data, src_filename, out_path: Path):
-    """Always write PNG (preserves alpha). If the server already gave us PNG
-    bytes, write them directly; otherwise re-encode via Pillow."""
+    """Images are written as PNG (preserves alpha) — re-encoded via Pillow
+    unless already PNG. Videos are written as-is (raw container bytes)."""
     src_ext = os.path.splitext(src_filename)[1].lower()
-    if src_ext == ".png":
+    if src_ext == ".png" or src_ext in VIDEO_EXTS:
         out_path.write_bytes(data)
         return
     from PIL import Image

@@ -20,6 +20,13 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
+# Windows consoles can default to a legacy codepage (cp1252) that can't
+# encode emoji found in some node titles (e.g. VHS nodes) — don't crash,
+# just substitute the characters the console can't show.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(errors="replace")
+
 import re
 
 import auth
@@ -288,20 +295,22 @@ def main():
 
     output_images = comfy_api.fetch_outputs(server_url, prompt_id)
 
-    # Always write PNG to preserve any alpha channel.
-    out_path = Path(args.output).with_suffix(".png")
-    if args.verbose and out_path.name != args.output:
-        print(f"output forced to PNG: {out_path}")
+    # Images are always written as PNG to preserve any alpha channel;
+    # videos keep their original container/extension (e.g. .mp4).
+    out_base = Path(args.output)
     saved = []
     for i, img in enumerate(output_images):
-        if i == 0:
-            target = out_path
-        else:
-            target = out_path.with_name(f"{out_path.stem}_{i+1}.png")
-        if args.verbose:
-            print(f"downloading {img.get('filename')} -> {target}")
-        data = comfy_api.download_image(server_url, img)
         src_filename = img.get("filename", "")
+        ext = comfy_api.save_extension(src_filename)
+        if i == 0:
+            target = out_base.with_suffix(ext)
+            if args.verbose and target.name != args.output:
+                print(f"output extension adjusted: {target}")
+        else:
+            target = out_base.with_name(f"{out_base.stem}_{i+1}{ext}")
+        if args.verbose:
+            print(f"downloading {src_filename} -> {target}")
+        data = comfy_api.download_image(server_url, img)
         if preset and preset.invert_alpha:
             data = images.invert_alpha_bytes(data, args.verbose)
             src_filename = "x.png"  # bytes are now PNG regardless of source

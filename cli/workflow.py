@@ -28,7 +28,7 @@ def load_or_convert_workflow(workflow_dir: Path, workflow_name: str,
     src = workflow_dir / workflow_name
     if not src.exists():
         die(f"workflow not found: {src}", 1)
-    src_text = src.read_text()
+    src_text = src.read_text(encoding="utf-8")
     src_data = json.loads(src_text)
 
     if not looks_like_full_workflow(src_data):
@@ -40,7 +40,7 @@ def load_or_convert_workflow(workflow_dir: Path, workflow_name: str,
     if not force and cache.exists() and cache.stat().st_mtime >= src.stat().st_mtime:
         if verbose:
             print(f"using cached API workflow: {cache.name}")
-        return json.loads(cache.read_text())
+        return json.loads(cache.read_text(encoding="utf-8"))
 
     if verbose:
         print(f"converting {src.name} -> API format via {server_url}")
@@ -61,7 +61,7 @@ def load_or_convert_workflow(workflow_dir: Path, workflow_name: str,
             2,
         )
     api_text = r.text
-    cache.write_text(api_text)
+    cache.write_text(api_text, encoding="utf-8")
     if verbose:
         print(f"cached: {cache.name}")
     return json.loads(api_text)
