@@ -20,6 +20,10 @@ Pick the preset whose strengths best match the user's request. If unsure,
 default to `{{Prompt To Image (Z-Image).txt}}` (high-quality general purpose).
 
 - `{{Prompt To Image (Z-Image).txt}}` - balanced quality/speed
+- `{{Prompt To Image (Ideogram 4).txt}}` - excels at rendered text, posters,
+  and precise layout, BUT its prompt must be a structured JSON caption, never
+  prose. Use ONLY when the user says "ideo"/"ideogram" - the `ideo` skill
+  auto-loads with the required JSON format and invocation rules; follow it.
 
 
 ## Invocation
