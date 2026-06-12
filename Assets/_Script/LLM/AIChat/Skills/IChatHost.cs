@@ -35,18 +35,21 @@ namespace AITools.AIChat.Skills
         void AddInfoBubble(string text);
 
         /// <summary>
-        /// Append a system / info bubble AND inject the same text as a system-role
-        /// interaction in the prompt manager so the LLM sees it on its next turn.
+        /// Append a system / info bubble AND queue the same text for the LLM, delivered
+        /// inside the user's NEXT outgoing message (info-recap section). Deliberately
+        /// NOT a system-role interaction: those get folded into the front system
+        /// message, and growing the prompt head mid-conversation breaks server-side
+        /// prompt caching for the whole history.
         /// </summary>
         void AddSystemInjectionAndBubble(string text);
 
         /// <summary>
-        /// Inject a system-role interaction into the prompt manager so the LLM sees
-        /// it on its NEXT turn, without spamming the chat with the full content.
-        /// Use when the injected text is large (e.g. a full skill markdown body) and
-        /// the user doesn't need to see it in their chat - they only care that
-        /// "something was loaded". Pair with a small <see cref="AddInfoBubble"/> if
-        /// you want a visual confirmation.
+        /// Queue text for the LLM (delivered inside the user's NEXT outgoing message,
+        /// same cache-friendly recap path as <see cref="AddSystemInjectionAndBubble"/>)
+        /// without spamming the chat with the full content. Use when the injected text
+        /// is large (e.g. a full skill markdown body) and the user doesn't need to see
+        /// it in their chat - they only care that "something was loaded". Pair with a
+        /// small <see cref="AddInfoBubble"/> if you want a visual confirmation.
         /// </summary>
         void AddSystemInjectionSilent(string text);
 

@@ -21,7 +21,8 @@ using AITools.AIChat.UI;
 /// user gets styled output AND native text selection / Ctrl+C copy.
 ///
 /// Routes requests to whichever LLM the rest of the app is using:
-///   1. Tries LLMInstanceManager.GetFreeLLM/GetLeastBusyLLM (small job, no vision).
+///   1. Tries LLMInstanceManager.GetFreeLLM/GetLeastBusyLLM (big job; vision when
+///      the history carries pasted image data).
 ///   2. Falls back to LLMSettingsManager.GetActiveProvider/GetProviderSettings.
 /// </summary>
 public class AIChatPanel : MonoBehaviour, IChatHost
@@ -29,12 +30,14 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private static AIChatPanel _instance;
     private static GameObject _panelRoot;
 
-    // ---- Skills system: dynamic system prompt + LLM-callable actions ----
+    // ---- Skills system: system prompt + LLM-callable actions ----
     // Created in CreateUI(); torn down with the panel. SkillManager loads aichat/skills/*.md
-    // and aichat/main_prompt.txt; ChatContextBuilder rebuilds the system prompt every
-    // turn (so GPU/LLM state is always fresh); SkillActionParser extracts <aitools_action>
-    // tags from the LLM's stream; SkillActionExecutor dispatches them to the rest of the
-    // app (PicMain.RunPresetByName, LLM delegation, etc.).
+    // and aichat/main_prompt.txt; ChatContextBuilder builds the STABLE system prompt
+    // (cache-friendly - it only changes when prompt/skill files change) plus the
+    // volatile CURRENT STATE block (GPU busy/idle, chat-image captions) that gets
+    // appended to each outgoing user message at send time; SkillActionParser extracts
+    // <aitools_action> tags from the LLM's stream; SkillActionExecutor dispatches them
+    // to the rest of the app (PicMain.RunPresetByName, LLM delegation, etc.).
     private SkillManager _skillManager;
     private ChatContextBuilder _contextBuilder;
     private SkillActionParser _actionParser;
@@ -1749,9 +1752,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             // read the content. Done BEFORE markdown expansion so our own injected
             // tags (<b>, <i>, <size=...>, <color=...>, <font=...>, <mark=...>) below
             // use FRESH ASCII '<' / '>' chars from string literals and ARE recognised
-            // by TMP. The ORIGINAL text (with real '<>') is preserved in the LLM
-            // context via AddSystemInjectionAndBubble's AddInteraction call - that
-            // happens BEFORE this display path, so the LLM still sees real angle
+            // by TMP. The ORIGINAL text (with real '<>') is what reaches the LLM -
+            // AddSystemInjectionAndBubble queues the raw string into the info recap
+            // before this display-only path runs, so the LLM still sees real angle
             // brackets in its context.
             text = text.Replace('<', '\uFF1C').Replace('>', '\uFF1E');
 
@@ -2353,14 +2356,19 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         var instanceMgr = LLMInstanceManager.Get();
         int llmReplicaIndex = 0;
         bool isVisionJob = _promptManager != null && _promptManager.HasAnyImages();
-        int llmInstanceID = instanceMgr?.GetFreeLLM(isSmallJob: true, isVisionJob: isVisionJob, out llmReplicaIndex) ?? -1;
+        // The main chat turn is a BIG job - it carries the full system prompt plus
+        // the whole conversation - so BigJobsOnly instances accept it and
+        // SmallJobsOnly instances (meant for caption/delegation one-shots) don't
+        // steal it. This also keeps the chat on one instance when the user splits
+        // roles via job modes, which is what lets that server's prompt cache work.
+        int llmInstanceID = instanceMgr?.GetFreeLLM(isSmallJob: false, isVisionJob: isVisionJob, out llmReplicaIndex) ?? -1;
 
         // Reset the streaming-action parser for this turn (counters + buffer state).
         _actionParser?.Reset();
 
         if (llmInstanceID < 0 && instanceMgr != null && instanceMgr.GetInstanceCount() > 0)
         {
-            llmInstanceID = instanceMgr.GetLeastBusyLLM(isSmallJob: true, isVisionJob: isVisionJob, out llmReplicaIndex);
+            llmInstanceID = instanceMgr.GetLeastBusyLLM(isSmallJob: false, isVisionJob: isVisionJob, out llmReplicaIndex);
         }
 
         LLMInstanceInfo llmInstance = llmInstanceID >= 0 ? instanceMgr?.GetInstance(llmInstanceID) : null;
@@ -2392,17 +2400,14 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         ReloadSkillConfigForNextTurn();
 
-        // Rebuild the dynamic system prompt every turn after final provider/model
-        // resolution so GPU/LLM/skill/chat-image state is fresh.
+        // Set the STABLE system prompt (persona + skill summaries + protocol).
+        // Volatile per-turn state (GPU busy/idle, chat-image captions) is appended
+        // to the outgoing user message in AppendCurrentStateToOutgoingLines instead;
+        // putting it here would change the very top of the request every turn and
+        // defeat server-side prompt caching for the entire conversation.
         if (_contextBuilder != null && _promptManager != null)
         {
-            int chatImageSlots = ((IChatHost)this).GetChatImageCount();
-            // Snapshot captions in chat-image order so the CHAT IMAGES block can
-            // print "- Image #N: <caption>" entries for the LLM.
-            var captions = new List<string>(chatImageSlots);
-            for (int i = 1; i <= chatImageSlots; i++)
-                captions.Add(((IChatHost)this).GetChatImageCaption(i));
-            _promptManager.SetBaseSystemPrompt(_contextBuilder.Build(llmInstanceID, chatImageSlots, captions));
+            _promptManager.SetBaseSystemPrompt(_contextBuilder.Build());
             InjectTriggeredSkillContextIfNeeded(latestUserMessage);
         }
 
@@ -2423,6 +2428,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // Strip TMP markup from any prior assistant bubbles before sending (safety - the
         // GPTPromptManager only ever stores raw text we put in, but be defensive).
         lines = OpenAITextCompletionManager.RemoveTMPTags(lines);
+
+        // Tack the volatile CURRENT STATE block (GPU busy/idle, chat-image captions)
+        // onto the outgoing copy of the latest user message - the request tail, where
+        // churn is cheap. Ephemeral by design: stored history never contains it, so
+        // next turn's request still prefix-matches everything the server cached.
+        AppendCurrentStateToOutgoingLines(lines);
 
         // Total prompt size feeds the status line's prefill estimate (chars/4 ~ tokens).
         _streamPromptApproxChars = 0;
@@ -2598,6 +2609,37 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         _promptManager.AddInteraction("system", block, AUTOLOAD_SKILL_CONTEXT_TAG);
         Debug.Log("AIChatPanel: auto-loaded skill context: " + string.Join(", ", newlyLoaded.ConvertAll(s => s.Id)));
+    }
+
+    /// <summary>
+    /// Append the volatile CURRENT STATE block (GPU busy/idle, chat-image list with
+    /// captions) to the last user line of the outgoing request. Operates on the
+    /// clones BuildPromptChat/RemoveTMPTags returned - stored history is never
+    /// touched, which is what keeps the conversation's server-side prompt cache
+    /// valid while GPU state and captions churn between turns. If no user line
+    /// exists (shouldn't happen - sends always follow a user message) the block is
+    /// simply skipped; it's advisory context, not required for a valid request.
+    /// </summary>
+    private void AppendCurrentStateToOutgoingLines(Queue<GTPChatLine> lines)
+    {
+        if (_contextBuilder == null || lines == null) return;
+
+        GTPChatLine lastUser = null;
+        foreach (var line in lines)
+            if (line != null && line._role == "user") lastUser = line;
+        if (lastUser == null) return;
+
+        int chatImageSlots = ((IChatHost)this).GetChatImageCount();
+        // Snapshot captions in chat-image order so the CHAT IMAGES block can
+        // print "- Image #N: <caption>" entries for the LLM.
+        var captions = new List<string>(chatImageSlots);
+        for (int i = 1; i <= chatImageSlots; i++)
+            captions.Add(((IChatHost)this).GetChatImageCaption(i));
+
+        string state = _contextBuilder.BuildCurrentStateBlock(chatImageSlots, captions);
+        if (string.IsNullOrEmpty(state)) return;
+
+        lastUser._content = (lastUser._content ?? "") + "\n\n" + state;
     }
 
     private static bool HasUserMessage(Queue<GTPChatLine> lines)
@@ -3589,18 +3631,19 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // it will hallucinate numbers (e.g. claim "#5..#8" right after generating
         // bubbles that actually became #1..#4) even though CHAT IMAGES is rebuilt
         // every turn - this explicit per-bubble confirmation gives it an anchor that
-        // survives in conversation history regardless of caption-readiness. Silent
-        // injection: the chat already shows the labeled bubble, so a bubble would
-        // just be visual noise.
-        if (_promptManager != null)
+        // survives in conversation history regardless of caption-readiness. Delivered
+        // via the info recap (rides the tail of the user's NEXT outgoing message),
+        // NOT as a system-role interaction: BuildPromptChat folds system lines into
+        // the FRONT system message, and growing the prompt head per image invalidated
+        // the server's prompt cache for the entire conversation every generation.
+        // No bubble: the chat already shows the labeled image bubble.
         {
             string kindLabel = isMovie ? "Movie" : "Image";
-            _promptManager.AddInteraction(
-                "system",
+            _infoMessages.Add(new InfoMessage(
                 $"({kindLabel} just spawned is {kindLabel} #{chatImageNumber} in CHAT IMAGES. " +
                 $"Refer to it on later turns via chat_image=\"{chatImageNumber}\". " +
                 "Do NOT predict higher slot numbers for bubbles you generated in this same reply - " +
-                "the actual slot number is the one stated here.)");
+                "the actual slot number is the one stated here.)"));
         }
 
         // Generated images don't have texture data yet (workflow hasn't run). The
@@ -4097,25 +4140,24 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     void IChatHost.AddSystemInjectionAndBubble(string text)
     {
-        // Inject the message as a system role so the LLM sees it on the NEXT turn (after
-        // the current assistant reply finishes). Also display it in the chat so the user
-        // can see what was injected.
-        if (_promptManager != null)
-            _promptManager.AddInteraction("system", text);
-        // Skip the "for the future, please keep this in mind" recap on next-send: the
-        // text is already in conversation history as a system role above, so re-pasting
-        // it into the user's next message would be pure duplication.
-        AddSystemMessage(text, includeInLLMRecap: false);
+        // Display the message in the chat and queue it into the info recap, which is
+        // folded into the tail of the user's NEXT outgoing message. This used to be
+        // stored as a system-role interaction, but BuildPromptChat folds those into
+        // the FRONT system message - growing the prompt head mid-conversation, which
+        // invalidated the server-side prompt cache for the entire history every time
+        // a skill emitted a note. The recap path is append-only at the request tail,
+        // so the cached prefix survives; the LLM still sees the text on its next turn.
+        AddSystemMessage(text);
     }
 
     void IChatHost.AddSystemInjectionSilent(string text)
     {
-        // Inject the message as a system role so the LLM sees it on the NEXT turn.
-        // Skip the chat bubble entirely - used for large-body injections (e.g.
-        // read_skill dumping a full skill markdown body) where the user doesn't need
-        // to see the content, just that something was loaded behind the scenes.
-        if (_promptManager != null)
-            _promptManager.AddInteraction("system", text);
+        // Same recap delivery (and cache reasoning) as AddSystemInjectionAndBubble,
+        // minus the chat bubble - used for large-body injections (e.g. read_skill
+        // dumping a full skill markdown body) where the user doesn't need to see the
+        // content, just that something was loaded behind the scenes.
+        if (!string.IsNullOrWhiteSpace(text))
+            _infoMessages.Add(new InfoMessage(text));
     }
 
     void IChatHost.AppendImageBubbleForPic(SkillAction action, PicMain spawnedPic)
