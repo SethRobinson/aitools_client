@@ -1,203 +1,142 @@
 ---
 id: scenario_storytelling
-summary: Scenario and roleplay workflow for recurring characters, identity anchors, story prose plus illustrations/movies, and GPU-aware multi-shot planning.
+summary: Roleplay / story workflow. Mint one NAMED character anchor per character in the setup turn (generate_image with anchor="Name"), then on later turns compose them with image_to_image referencing each by anchor name, and chain image_to_movie for video. Keeps a recurring cast visually consistent across turns and into video.
 inputs: none
 autoload: true
-triggers: roleplay, role-play, rp, scenario, scenarios, story, stories, storytelling, tell a story, continue the story, adventure, campaign, quest, character, characters, protagonist, hero, heroine, villain, companion, party, reference character, reference characters, main character, use this person, use this image as, these are the characters, identity anchor, anchor image, illustrate the story, illustrate this
+triggers: roleplay, role-play, rp, scenario, scenarios, storytelling, tell a story, tell me a story, continue the story, continue our story, start a story, these are the characters, this is the heroine, this is the hero, use this person, use this image as, use these as the characters, reference character, reference characters, main character, identity anchor, anchor image, illustrate the story, let's roleplay, lets roleplay
 exclude_triggers: storyboard, storyboards, comic, comics, comic panel, comic strip, comic book, manga panel, manga page, magazine cover, poster, posters, motivational poster, meme, memes, info card, quote card, infographic, filmstrip, diptych, before/after, picture book, childrens book, children's book, storybook, story book, story-book, illustrated story, illustrated stories, fairy tale, fairytale, side by side, side-by-side, photo grid, image grid, collage
 template: <aitools_action skill="read_skill" id="scenario_storytelling"/>
 ---
 # Scenario storytelling
 
-Use this for roleplay, stories, recurring characters, and user-supplied
-character reference images.
+For roleplay, stories, and recurring characters that must stay visually
+consistent across many turns and into video.
 
-## Always Do This
+## How to behave EVERY turn - the user WILL notice violations
 
-Every story / roleplay turn has this shape:
+DO:
+- Write the story prose FIRST (1-3 short paragraphs; names fine in prose),
+  THEN emit the action tags for the beat.
+- DRIVE the story yourself. Narrate the next beat, let the other characters
+  act and speak, introduce complications, stop on a story line.
+- SHIP THE VISUAL every beat. If the user has EVER asked for movies
+  ("provide movies", "illustrate with movies", "two movies each turn"),
+  treat it as a STANDING default for the whole session and render each beat
+  as a MOVIE (the two-step below), not a still and not prose alone. (The
+  SETUP turn is the exception: its visuals are the anchor portraits;
+  scene movies start the next turn.)
 
-1. Write visible story prose first: 1-3 concise paragraphs of narration,
-   dialogue, or in-character response. Names are fine here.
-2. Then emit image/movie action tags for important visual beats, unless the
-   user explicitly asked for text-only / no images / no video.
-3. In action prompts, do not rely on names. Describe each visible person by
-   apparent age, ethnicity/complexion, build, hair, face, wardrobe,
-   expression, pose/action, setting, lighting, camera, and style.
+DO NOT (these are the exact things users keep having to correct - never do
+them):
+- Do NOT narrate your tool use. NEVER write "I'll render this as a movie",
+  "Here's the next beat", "Let me generate", "Now I'll make", or any
+  sentence describing what you are about to create. Write the story, then
+  emit the action tags silently - the host shows the result.
+- Do NOT end with a menu or a request for the user's next move. NEVER write
+  "Your move", "Your turn", "Write what Jeff does next", or a bulleted
+  "Do you: A / B / C?". End on the last line of story prose. The user writes
+  their own next action without being asked.
+- Do NOT compliment the user or react to their input ("Nice", "Perfect",
+  "Good call", "Got it", "You're taking the lead", "I like that"). Just
+  continue the fiction straight from what they wrote.
+- Keep NPC dialogue SHORT: ONE brief sentence per character per beat. No
+  speeches. Trim hard.
+- In EVERY `prompt=` (stills AND movies), describe people by appearance, not
+  by name - the image/video model has no names. "the Latina woman in the
+  field jacket", never "Lena whispers...".
 
+## The two-turn anchor flow (this is the whole workflow)
 
-## Anchor Tracking
+Recurring characters stay consistent via ANCHORS: one canonical portrait
+per character, tagged with a name. Mint them once; reuse them by name
+forever. The live name->slot map shows up every turn in the `ANCHORS:`
+line of CURRENT STATE.
 
-If the user says an image is a character ("use this person as Bob",
-"these are the two main characters", "this is the heroine"), remember:
-
-- character name -> Image #N
-- character name -> visual identity sheet
-- for pairs/groups, remember which character maps to which Image #N
-
-For a user-supplied anchor, never use raw `generate_image` or
-`generate_movie` for that character. Use `image_to_image` to compose the
-anchored character into the scene first.
-
-## Setup turn (when YOU invent the characters)
-
-If the user kicks off a roleplay without supplying any reference images
-("create a random situation and characters" / "make up some characters and
-let's roleplay" / "start a story with 3 characters"), you are inventing
-the cast. In the SETUP reply you MUST:
-
-1. Write the visible chat prose introducing the setting and the cast.
-2. Emit ONE `generate_image` per named character you intend to anchor
-   later - in the SAME setup reply, before the user replies again. Each
-   one spawns its own numbered chat bubble.
-3. Record in chat prose which character maps to which Image #N (e.g.
-   "Jax (Image #1)", "Elara (Image #2)") so the user and you both know.
-
-If you introduce 3 characters in prose, you MUST emit 3 generate_image
-tags (one per character). Skipping anchor portraits and then trying to
-reference `chat_image2="N"` on the next turn will fail - that bubble
-does not exist. Establishing anchors up front is the whole point of
-this workflow.
-
-The setup turn is the ONLY exception to "use image_to_image for anchored
-characters" - on the setup turn there's nothing to anchor TO yet, so
-generate_image is correct for minting each portrait. From the NEXT reply
-onward, treat every named character as an anchor and use Patterns C-F.
-
-### Precondition for Pattern E / F (multi-anchor) on follow-up turns
-
-Before emitting an `image_to_image` with `chat_image2`/`chat_image3`/...,
-look at the CHAT IMAGES block: every chat_image{N} attribute you set MUST
-point to a bubble that ALREADY exists in CHAT IMAGES. If a character you
-want to anchor has no portrait yet, you have two options:
-
-- (preferred) Mint the missing anchor portrait FIRST in this same reply
-  via `generate_image`, then reference its predicted new Image #N in the
-  follow-up `image_to_image`. Remember each `generate_image` appends one
-  bubble at the next available number - if CHAT IMAGES currently shows
-  K images and you emit a generate_image for the missing anchor, that
-  anchor becomes Image #K+1.
-- (fallback) Drop to a smaller-N preset (e.g. use the 1-Input preset
-  with only the anchor that DOES exist, and describe the un-anchored
-  characters visually in the prompt - they won't stay consistent across
-  renders, but the action won't fail).
-
-Never reference a chat_image{N} that doesn't exist yet just because you
-"plan" to make it later. Either generate it earlier in the same reply,
-or pick a different pattern.
-
-## Pick Exactly One Pattern
-
-After the visible story prose, choose the simplest matching pattern below.
-
-### Pattern A: No Anchor, Still Image
-
-Use for invented/new characters or scenes with no user-supplied identity
-anchor.
+**Setup turn** (you invent the cast, or the user supplies references).
+Introduce the cast in prose, then emit ONE `generate_image` per character,
+each tagged `anchor="Name"` - that mints and names the anchor in one step:
 
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full visual prompt: people, setting, action, lighting, camera, style>"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full Z-Image portrait of the swordswoman>" anchor="Reya"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full Z-Image portrait of the old mage>" anchor="Doran"/>
 ```
 
-### Pattern B: No Anchor, Movie
+Say in prose which name is which ("Reya the swordswoman, Doran the mage").
+Do NOT also compose a group scene on the setup turn - the anchors aren't
+finished rendering yet. Let them settle; compose from the next turn on.
 
-Generate the still first, then animate that same Pic.
-
-```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full visual prompt: people, setting, action, lighting, camera, style>"/>
-<aitools_action skill="image_to_movie" preset="{{Image To Video (LTX) 5s.txt}}" prompt="<full LTX prompt: describe subjects visually again, concrete motion, one quoted in-scene dialog line unless silent, one camera move, lighting/mood, ambient sound>" chain="true"/>
-```
-
-### Pattern C: One Anchor, Still Image
-
-Use the 1-input image-to-image preset. The prompt must both anchor identity
-and describe the new scene.
+**Every later turn.** Compose the shot from the EXISTING anchors,
+referencing each character by NAME. The host turns each name into its
+current slot, so you never track numbers and never drift onto a composite.
+The `image_to_image` SKILLS summary (always visible above) has the prose
+rules; the example below is usually enough - call
+`read_skill id="image_to_image"` only if you need the full reference.
 
 ```
-<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit.txt}}" prompt="Use the person from reference image as <full visual identity: apparent age, ethnicity/complexion, build, hair, face, notable features>; keep facial identity, apparent age, complexion, and hair recognizably consistent. <new scene, wardrobe-of-the-day, pose/action, expression, setting, lighting, camera, style>" chat_image="<anchor N>"/>
+<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 2 Input.txt}}" prompt="image 1's woman (athletic, ~30, dark braid, leather armor) and image 2's man (frail, ~70, white beard, blue robe) standing in a torch-lit stone hall, maintaining exact likeness - image 1's woman on the left hand on sword hilt, image 2's man on the right leaning on a staff. Warm torchlight from the left." chat_image="Reya" chat_image2="Doran"/>
 ```
 
-### Pattern D: One Anchor, Movie
+The `prompt=` still says "image 1" / "image 2" (Klein sees the feed in
+slot order: slot 1 = whatever is in `chat_image`, slot 2 = `chat_image2`).
+Names go ONLY in the `chat_image*` attributes.
 
-This is the most important anchor-video rule. Always do both steps in one
-reply:
+## Which actions - one table, two questions
 
-1. `image_to_image` composes the anchored person into the new scene.
-2. `image_to_movie chain="true"` animates that composed scene.
+After the prose, pick by (a) how many anchored characters appear IN THIS
+shot and (b) still image or movie:
 
-```
-<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit.txt}}" prompt="Use the person from reference image as <full visual identity: apparent age, ethnicity/complexion, build, hair, face, notable features>; keep facial identity, apparent age, complexion, and hair recognizably consistent. <new scene, wardrobe-of-the-day, pose/action, expression, setting, lighting, camera, style>" chat_image="<anchor N>"/>
-<aitools_action skill="image_to_movie" preset="{{Image To Video (LTX) 5s.txt}}" prompt="<full LTX prompt: the same visually-described person, concrete motion, one quoted in-scene dialog line unless silent, one camera move, lighting/mood, ambient sound>" chain="true"/>
-```
+| Anchored chars in shot | Still image | Movie |
+|---|---|---|
+| 0 (brand-new / invented) | `generate_image` | `generate_image`, then `image_to_movie chain="true"` |
+| 1 | `image_to_image` (1-Input Klein), `chat_image="Name"` | ...then `image_to_movie chain="true"` |
+| 2-5 | `image_to_image` (N-Input Klein), one `chat_image*` per name | ...then `image_to_movie chain="true"` |
 
-Never skip the first line. Never animate the raw anchor portrait directly
-unless the user specifically asks for a portrait animation.
+Rules for the table:
+- A movie of EXISTING characters is ALWAYS two steps in one reply: compose
+  the scene with `image_to_image` (feeding each character by anchor name)
+  FIRST, then `image_to_movie chain="true"` to animate that composite.
+  `generate_movie` and `image_to_movie chain` on a bare text prompt CANNOT
+  show an existing anchored character (Reya, Doran, ...) - text alone
+  produces strangers. Only use `generate_movie` for a brand-new character
+  who has no anchor. Never animate a raw anchor portrait directly either -
+  compose the scene first.
+- Multiple movies/beats in one turn: repeat the WHOLE pair per beat -
+  `image_to_image` then `image_to_movie chain="true"`, then the next
+  `image_to_image` then its `image_to_movie chain="true"`. "Three movies a
+  turn" = SIX action tags (three pairs), one striking beat each. Each
+  `image_to_movie chain="true"` auto-pairs with the `image_to_image` right
+  before it.
+- The chained `image_to_movie` carries ONLY `chain="true"` (plus preset and
+  prompt). NEVER add `chat_image=`, `attachment=`, or a guessed slot number
+  to it - chain already feeds it the previous step's image, and a number
+  there is wrong (you cannot know the new bubble's number yet). WRONG:
+  `image_to_movie ... chat_image="3" chain="true"`. RIGHT:
+  `image_to_movie ... chain="true"`.
+- N-Input preset count = number of anchors in the shot (2 chars -> 2
+  Input). If a shot has more than 5 characters, feed the 5 most important
+  by name and describe the rest visually in the prose.
+- The LTX video prompt still needs its one quoted in-scene dialog line -
+  see `generate_movie` / `image_to_movie` for the exact rule.
 
-### Pattern E: Two Anchors, Still Image
+## Updating a character's look
 
-Use the 2-input preset. Map image 1 and image 2 explicitly in the prompt.
+New outfit, injury, aged up: generate a fresh image of them FROM their
+current anchor and re-tag the SAME `anchor="Name"`, which re-points the
+name to the new image. Worked example is in the `image_to_image` skill.
 
-```
-<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 2 Input.txt}}" prompt="Use the person from image 1 as <full visual identity for character A>; use the person from image 2 as <full visual identity for character B>; keep both facial identities, apparent ages, complexions, and hair recognizably consistent. <new scene, explicit position/action for each person, wardrobe-of-the-day, expressions, setting, lighting, camera, style>" chat_image="<anchor A>" chat_image2="<anchor B>"/>
-```
+## "Don't use anchors" mode
 
-### Pattern F: Two Anchors, Movie
+If the user says they don't want anchors ("don't use anchors", "stop using
+anchors", "just freestyle the images"), switch for the rest of the session
+to anchor-free beats: build each movie as `generate_image` (Z-Image) ->
+`image_to_movie chain="true"`, and do NOT use `image_to_image` / Klein or
+any `chat_image="Name"` reference. Describe everyone visually in each
+`generate_image` prompt. The cast won't stay perfectly consistent shot to
+shot - that is the tradeoff the user chose. (This is the "0 anchors" row of
+the table; it's also the right path for a brand-new character who has no
+anchor yet.)
 
-Compose both anchored people first, then animate that composite.
+## Final gate (re-read before sending)
 
-```
-<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 2 Input.txt}}" prompt="Use the person from image 1 as <full visual identity for character A>; use the person from image 2 as <full visual identity for character B>; keep both facial identities, apparent ages, complexions, and hair recognizably consistent. <new scene, explicit position/action for each person, wardrobe-of-the-day, expressions, setting, lighting, camera, style>" chat_image="<anchor A>" chat_image2="<anchor B>"/>
-<aitools_action skill="image_to_movie" preset="{{Image To Video (LTX) 5s.txt}}" prompt="<full LTX prompt: both people described visually again, concrete motion for each, one quoted in-scene dialog line unless silent, one camera move, lighting/mood, ambient sound>" chain="true"/>
-```
-
-If a scene uses two known characters but only one anchor is visible in the
-shot, use Pattern C or D with that one anchor. If there are three or more
-anchored characters, feed the two most important anchors and describe the
-others visually in the prompt.
-
-## Multiple Beats
-
-For multiple shots, repeat one complete pattern per shot. Do not mix parts
-of different shots together. Example: two anchored movie shots means:
-
-1. story prose
-2. `image_to_image` for shot 1
-3. `image_to_movie chain="true"` for shot 1
-4. `image_to_image` for shot 2
-5. `image_to_movie chain="true"` for shot 2
-
-You may add `gpu="N"` to independent first actions when the GPUS block shows
-idle GPUs, but GPU planning must not change the required pattern.
-
-## Prompt Rules
-
-- Chat prose can use names. Action prompts must use visual descriptions.
-- Every action prompt must be self-contained.
-- For anchored people, always include both:
-  - "Use the person from reference image / image 1 / image 2..."
-  - "keep facial identity, apparent age, complexion, and hair recognizably
-    consistent"
-- For LTX prompts, include one short quoted in-scene dialog line unless the
-  scene has no plausible speaker or the user asked for silence.
-- If you catch yourself writing "Mara", "Reyes", "Bob", "the heroine", or
-  "the same person" in an action prompt without a full visual restatement,
-  rewrite the prompt before emitting it.
-
-## Failure Checklist
-
-Before finalizing a roleplay/story reply, check:
-
-- Did I write visible narration/dialogue before action tags?
-- SETUP TURN: if I introduced N named characters and I intend to anchor
-  them in future turns, did I emit N `generate_image` tags in THIS reply
-  (one per character) and tell the user which Image # maps to which name?
-- For every `chat_image{N}` / `chat_image2{N}` / `chat_image3{N}` ... in
-  my action tags this turn: does that Image #N already exist in CHAT
-  IMAGES, OR will it exist because I'm generating it earlier in this same
-  reply? If neither is true, the action will fail - rewrite it.
-- If there is a user-supplied anchor, did I use `image_to_image` first?
-- If making an anchored movie, did I include `image_to_movie chain="true"`
-  immediately after that `image_to_image`?
-- If there are two anchored people, did I use the 2-input preset with
-  `chat_image` and `chat_image2`?
-- Did every action prompt restate the character visually instead of relying
-  on a name?
+No tool-narration, no menu, no compliments. Short NPC lines, appearance-only
+prompts. Ship the beat's visual (a movie if movies were asked for).

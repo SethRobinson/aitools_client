@@ -1,6 +1,6 @@
 ---
 id: ideo
-summary: Ideogram 4 structured-caption image generation. When the user says "ideo" or "ideogram" (e.g. "ideo: a ramen shop at night"), you write a structured JSON caption and send THAT JSON as the prompt of a generate_image action using the Ideogram 4 preset. This is a recipe, NOT an executable action - NEVER emit skill="ideo"; the recipe auto-loads when triggered, then follow its Invocation section. Excellent at rendered text, posters, signage, and precisely composed scenes.
+summary: Ideogram 4 image generation - great at rendered text, posters, signage, precise layouts. Triggered by "ideo" / "ideogram". It is a RECIPE, not an executable action - never emit skill="ideo"; when triggered it auto-loads, then follow its Invocation section to emit a generate_image with the Ideogram 4 preset and a structured-JSON prompt.
 inputs: none
 autoload: true
 triggers: ideo, ideogram, ideogram4, ideogram 4

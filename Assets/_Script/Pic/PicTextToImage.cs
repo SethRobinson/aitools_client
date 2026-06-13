@@ -1443,6 +1443,11 @@ public class PicTextToImage : MonoBehaviour
                     m_picScript.GetCurrentStats().m_lastOperation = "Generate";
                     m_picScript.GetCurrentStats().m_gpu = m_gpu;
 
+                    // Stash the result so the "?" info panel can show it next to the input
+                    // images that fed this job. Clone the bytes so our copy is independent
+                    // of the UnityWebRequest that's about to be disposed.
+                    m_picScript.SetLastGeneratedResultPng((byte[])getRequest.downloadHandler.data.Clone());
+
                     m_picScript.SetNeedsToUpdateInfoPanelFlag();
                     m_picScript.AutoSaveImageIfNeeded();
 

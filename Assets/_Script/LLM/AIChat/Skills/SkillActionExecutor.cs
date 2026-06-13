@@ -199,6 +199,13 @@ namespace AITools.AIChat.Skills
                 action.SkillId = normalizedId;
             }
 
+            // Rewrite any chat_image="<name>" into chat_image="<number>" using the host's
+            // character-anchor registry, BEFORE the slot logic below (which parses those
+            // attributes as integers). Idempotent, so the deferred re-execution path is
+            // safe. Done here in the dispatcher so every skill that reads chat_image*
+            // benefits, not just image_to_image.
+            NormalizeAnchorRefs(action);
+
             switch (action.SkillId.ToLowerInvariant())
             {
                 case BuiltInSkillIds.GenerateImage:
@@ -649,13 +656,20 @@ namespace AITools.AIChat.Skills
                 return;
             }
 
+            // Tolerate the very common small-model slip of pairing chain="true" with a
+            // (usually self-predicted) primary chat_image / attachment - e.g. a multi-beat
+            // reply where the model both chains the movie onto its just-made composite AND
+            // redundantly points chat_image at that same composite's guessed slot number.
+            // We only reach here when a real same-reply chain target exists (prevPic was
+            // non-null above), so chain is the correct intent: silently drop the stray
+            // primary input and proceed instead of erroring and throwing away the render.
+            // Extra slots chat_image2..5 / attachment2..5 are left intact - those are
+            // legitimate multi-input references resolved below.
             if (action.AttachmentIndex.HasValue || action.ChatImageIndex.HasValue)
             {
-                _host?.AddSystemInjectionAndBubble(
-                    $"Skill '{action.SkillId}' with chain=\"true\" must NOT also set attachment / chat_image. " +
-                    "A chained step automatically uses the previous step's output as its input. " +
-                    "Drop the attachment/chat_image attribute and re-emit.");
-                return;
+                action.Args.Remove("chat_image");
+                action.Args.Remove("attachment");
+                Debug.Log($"SkillActionExecutor: dropped stray primary chat_image/attachment on chained '{action.SkillId}' - chain=\"true\" already supplies input1.");
             }
 
             string preset = action.Preset;
@@ -1340,6 +1354,50 @@ namespace AITools.AIChat.Skills
         {
             if (_skills == null) yield break;
             foreach (var s in _skills.GetSkills()) yield return s.Id;
+        }
+
+        // chat_image slot attributes that may carry a character-anchor NAME instead of
+        // a number. Resolved to live slot numbers in NormalizeAnchorRefs so the rest of
+        // the executor (which int-parses these) needs no changes.
+        private static readonly string[] AnchorRefArgKeys =
+            { "chat_image", "chat_image2", "chat_image3", "chat_image4", "chat_image5" };
+
+        /// <summary>
+        /// Rewrite any chat_image* attribute whose value is a character-anchor NAME
+        /// (e.g. <c>chat_image="Bob"</c>) into its current numeric slot using the host's
+        /// anchor registry. Numeric values are left untouched. A name that resolves to no
+        /// live slot is dropped (with a help bubble) so the downstream integer parse
+        /// doesn't silently treat it as "missing" and the LLM learns to use a valid
+        /// anchor or number. Safe to call more than once on the same action (numbers
+        /// pass straight through), which the deferred re-execution path relies on.
+        /// </summary>
+        private void NormalizeAnchorRefs(SkillAction action)
+        {
+            if (action == null || _host == null) return;
+
+            foreach (string key in AnchorRefArgKeys)
+            {
+                if (!action.Args.TryGetValue(key, out string raw) || string.IsNullOrWhiteSpace(raw))
+                    continue;
+
+                string val = raw.Trim();
+                if (int.TryParse(val, out _))
+                    continue; // already a slot number
+
+                int resolved = _host.ResolveAnchorToIndex(val);
+                if (resolved > 0)
+                {
+                    action.Args[key] = resolved.ToString();
+                }
+                else
+                {
+                    action.Args.Remove(key);
+                    _host.AddSystemInjectionAndBubble(
+                        $"{key}=\"{val}\" did not match any known character anchor. Known anchors are " +
+                        "listed in the ANCHORS line of CURRENT STATE - reference one of those by name, " +
+                        "or use a numeric chat_image=\"N\".");
+                }
+            }
         }
 
         /// <summary>

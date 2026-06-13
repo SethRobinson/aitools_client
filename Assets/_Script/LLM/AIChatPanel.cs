@@ -45,6 +45,17 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private readonly HashSet<string> _stickyAutoloadSkillIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     private const string AUTOLOAD_SKILL_CONTEXT_TAG = "aichat_autoload_skill_context";
 
+    // Auto-loaded skill bodies are large (150-500 lines each) and used to pile up
+    // forever - every skill whose trigger ever fired stayed pinned for the rest of the
+    // session, easily dragging 800+ lines of overlapping instructions into a small
+    // model's context. We now keep only the most-recently-triggered few. _autoloadLru
+    // is oldest-first; re-triggering a skill moves it to the end. PinnedAutoloadSkillId
+    // (the roleplay spine) is never evicted because mid-story turns still need it even
+    // when the user's latest line is just "now make it night".
+    private readonly List<string> _autoloadLru = new List<string>();
+    private const int MaxAutoloadSkillBodies = 3;
+    private const string PinnedAutoloadSkillId = "scenario_storytelling";
+
     // Header status pill - GPU busy count + LLM count, refreshed periodically.
     private TextMeshProUGUI _statusPillText;
     private float _statusPillNextRefresh;
@@ -86,6 +97,15 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // OnClearClicked; persists across turns. Entries can become stale if the user deletes
     // the world Pic - we just return null on read in that case.
     private readonly List<PicMain> _chatImagePics = new List<PicMain>();
+
+    // Character-anchor registry: maps a character NAME ("Bob") to the PicMain that is
+    // currently its canonical anchor. Stores the Pic REFERENCE, not a slot number,
+    // because chat_image numbers shift downward whenever TrimMediaToKeepLastN pops old
+    // bubbles off the head of _chatImagePics - a name must keep pointing at the right
+    // image even after a renumber. Declared via anchor="Name" on a generate_image /
+    // image_to_image action; re-declaring an existing name re-points it (the "Bob
+    // changed clothes" update path). Cleared with the chat; dead entries pruned on trim.
+    private readonly Dictionary<string, PicMain> _anchors = new Dictionary<string, PicMain>(StringComparer.OrdinalIgnoreCase);
 
     // Most-recent Pic spawned by a non-chained skill action in the current user turn.
     // Reset on each OnSendClicked() so chain="true" can never reach back into a prior
@@ -1939,9 +1959,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         _promptManager.Reset();
         _stickyAutoloadSkillIds.Clear();
+        _autoloadLru.Clear();
         _attachmentZone?.ClearAttachments();
         _lastTurnAttachments?.Clear();
         _chatImagePics?.Clear();
+        _anchors?.Clear();
         _captionLabels?.Clear();
         _infoMessages.Clear();
         _actionParser?.Reset();
@@ -2588,27 +2610,100 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (matched == null || matched.Count == 0)
             return;
 
-        var newlyLoaded = new List<Skill>();
+        // Bump every triggered skill to most-recent in the LRU (newest at the tail).
+        bool anyNew = false;
         foreach (var skill in matched)
         {
             if (skill == null || string.IsNullOrEmpty(skill.Id))
                 continue;
-            if (_stickyAutoloadSkillIds.Contains(skill.Id))
-                continue;
-
-            _stickyAutoloadSkillIds.Add(skill.Id);
-            newlyLoaded.Add(skill);
+            if (!_autoloadLru.Contains(skill.Id))
+                anyNew = true;
+            _autoloadLru.Remove(skill.Id);
+            _autoloadLru.Add(skill.Id);
         }
 
-        if (newlyLoaded.Count == 0)
+        // Nothing new triggered: the live set is unchanged (we only refreshed recency
+        // for future eviction), so leave the cached context block alone.
+        if (!anyNew)
             return;
 
-        string block = _skillManager.BuildSkillReferenceMaterialBlock(newlyLoaded);
-        if (string.IsNullOrWhiteSpace(block))
+        RebuildAutoloadSkillContext();
+    }
+
+    /// <summary>
+    /// Recompute which auto-loaded skill bodies are live - the most-recently-triggered
+    /// <see cref="MaxAutoloadSkillBodies"/>, always retaining <see cref="PinnedAutoloadSkillId"/>
+    /// - and rewrite the single tagged context block to match. Bulk remove + re-add
+    /// mirrors the long-standing per-turn refresh; the STABLE base system prompt is
+    /// untouched, so only this block (now at the tail) re-prefills while the rest of the
+    /// cached conversation prefix survives. Also drives the per-turn reload path so the
+    /// cap and ordering stay consistent across both callers.
+    /// </summary>
+    private void RebuildAutoloadSkillContext()
+    {
+        if (_skillManager == null || _promptManager == null)
             return;
 
-        _promptManager.AddInteraction("system", block, AUTOLOAD_SKILL_CONTEXT_TAG);
-        Debug.Log("AIChatPanel: auto-loaded skill context: " + string.Join(", ", newlyLoaded.ConvertAll(s => s.Id)));
+        // Drop ids whose skill file disappeared (e.g. user deleted/renamed it and the
+        // config was reloaded) so the LRU doesn't leak dead entries.
+        _autoloadLru.RemoveAll(id => _skillManager.GetById(id) == null);
+
+        var keep = ComputeKeptAutoloadSkills();
+
+        _promptManager.RemoveInteractionsByInternalTag(AUTOLOAD_SKILL_CONTEXT_TAG);
+        _stickyAutoloadSkillIds.Clear();
+        foreach (var s in keep)
+            _stickyAutoloadSkillIds.Add(s.Id);
+
+        if (keep.Count == 0)
+            return;
+
+        string block = _skillManager.BuildSkillReferenceMaterialBlock(keep);
+        if (!string.IsNullOrWhiteSpace(block))
+            _promptManager.AddInteraction("system", block, AUTOLOAD_SKILL_CONTEXT_TAG);
+
+        Debug.Log("AIChatPanel: auto-loaded skill context now: " + string.Join(", ", keep.ConvertAll(s => s.Id)));
+    }
+
+    /// <summary>
+    /// Resolve the LRU id list to at most <see cref="MaxAutoloadSkillBodies"/> live Skill
+    /// objects, always keeping <see cref="PinnedAutoloadSkillId"/> when loaded (mid-story
+    /// turns still need the roleplay spine even when only a composition skill triggered
+    /// this turn). The oldest non-pinned recents are dropped first. Returned oldest-first
+    /// for a stable block ordering.
+    /// </summary>
+    private List<Skill> ComputeKeptAutoloadSkills()
+    {
+        var keptIds = new List<string>();
+        int budget = MaxAutoloadSkillBodies;
+
+        bool pinnedLoaded = _autoloadLru.Contains(PinnedAutoloadSkillId);
+        if (pinnedLoaded)
+        {
+            keptIds.Add(PinnedAutoloadSkillId);
+            budget--;
+        }
+
+        // Fill the remaining budget from most-recent (tail) backwards, skipping pinned.
+        for (int i = _autoloadLru.Count - 1; i >= 0 && budget > 0; i--)
+        {
+            string id = _autoloadLru[i];
+            if (id == PinnedAutoloadSkillId) continue;
+            if (keptIds.Contains(id)) continue;
+            keptIds.Add(id);
+            budget--;
+        }
+
+        // Emit oldest-first (pinned tends to be the oldest anyway) for stable text.
+        keptIds.Reverse();
+
+        var skills = new List<Skill>();
+        foreach (string id in keptIds)
+        {
+            var s = _skillManager?.GetById(id);
+            if (s != null) skills.Add(s);
+        }
+        return skills;
     }
 
     /// <summary>
@@ -2636,7 +2731,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         for (int i = 1; i <= chatImageSlots; i++)
             captions.Add(((IChatHost)this).GetChatImageCaption(i));
 
-        string state = _contextBuilder.BuildCurrentStateBlock(chatImageSlots, captions);
+        string anchorsLine = BuildAnchorsStateLine();
+        string state = _contextBuilder.BuildCurrentStateBlock(chatImageSlots, captions, anchorsLine);
         if (string.IsNullOrEmpty(state)) return;
 
         lastUser._content = (lastUser._content ?? "") + "\n\n" + state;
@@ -3065,32 +3161,16 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (_skillManager == null)
             return;
 
-        var previouslyLoadedIds = new List<string>(_stickyAutoloadSkillIds);
+        bool hadAutoload = _autoloadLru.Count > 0;
         _skillManager.Reload();
 
-        if (previouslyLoadedIds.Count == 0)
+        if (!hadAutoload)
             return;
 
-        _promptManager?.RemoveInteractionsByInternalTag(AUTOLOAD_SKILL_CONTEXT_TAG);
-        _stickyAutoloadSkillIds.Clear();
-
-        var refreshedSkills = new List<Skill>();
-        foreach (string id in previouslyLoadedIds)
-        {
-            var skill = _skillManager.GetById(id);
-            if (skill == null)
-                continue;
-
-            refreshedSkills.Add(skill);
-            _stickyAutoloadSkillIds.Add(skill.Id);
-        }
-
-        if (refreshedSkills.Count == 0 || _promptManager == null)
-            return;
-
-        string block = _skillManager.BuildSkillReferenceMaterialBlock(refreshedSkills);
-        if (!string.IsNullOrWhiteSpace(block))
-            _promptManager.AddInteraction("system", block, AUTOLOAD_SKILL_CONTEXT_TAG);
+        // Re-emit the (possibly user-edited) bodies for the still-loaded set, honoring
+        // the cap and dropping any skill whose file vanished. Driving this through the
+        // shared helper keeps the reload path and the trigger path on one code path.
+        RebuildAutoloadSkillContext();
     }
 
     private void OnSettingsClicked()
@@ -3102,6 +3182,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             _skillManager?.Reload();
             _promptManager?.RemoveInteractionsByInternalTag(AUTOLOAD_SKILL_CONTEXT_TAG);
             _stickyAutoloadSkillIds.Clear();
+            _autoloadLru.Clear();
             int n = _skillManager?.GetSkills().Count ?? 0;
             AddSystemMessage($"Reloaded aichat config: {n} skill{(n == 1 ? "" : "s")}.", includeInLLMRecap: false);
             AddPromptConfigNotice();
@@ -3617,6 +3698,16 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _chatImagePics.Add(spawnedPic);
         int chatImageNumber = _chatImagePics.Count;
 
+        // If the action named a character anchor (anchor="Bob"), bind/re-bind that name
+        // to this freshly-spawned Pic. Re-binding is intentional: it's how a character's
+        // look gets updated (generate a new image of Bob, re-tag anchor="Bob", and later
+        // chat_image="Bob" references now resolve to the new image).
+        if (!string.IsNullOrEmpty(action?.AnchorName))
+        {
+            _anchors[action.AnchorName] = spawnedPic;
+            Debug.Log($"AIChatPanel: anchor '{action.AnchorName}' -> Image #{chatImageNumber}");
+        }
+
         string skillId = action != null ? (action.SkillId ?? "") : "";
         bool isMovie = skillId == BuiltInSkillIds.GenerateMovie || skillId == BuiltInSkillIds.ImageToMovie;
         // Keep the bubble label compact so the caption (appended async below) has
@@ -4116,6 +4207,21 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 if (poppedPic != null) _captionLabels.Remove(poppedPic);
             }
             _chatImagePics.RemoveRange(0, popN);
+
+            // Drop any character anchors whose Pic just fell out of the numbered list,
+            // so the ANCHORS line never advertises a name that can no longer resolve.
+            if (_anchors.Count > 0)
+            {
+                var deadNames = new List<string>();
+                foreach (var kv in _anchors)
+                {
+                    var pic = kv.Value;
+                    if (pic == null || pic.gameObject == null || !_chatImagePics.Contains(pic))
+                        deadNames.Add(kv.Key);
+                }
+                foreach (string name in deadNames)
+                    _anchors.Remove(name);
+            }
         }
     }
 
@@ -4219,6 +4325,49 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         var pic = _chatImagePics[idx0];
         if (pic == null || pic.gameObject == null) return null;
         return pic;
+    }
+
+    int IChatHost.ResolveAnchorToIndex(string anchorName)
+    {
+        if (string.IsNullOrWhiteSpace(anchorName) || _anchors == null) return 0;
+        if (!_anchors.TryGetValue(anchorName.Trim(), out var pic) || pic == null || pic.gameObject == null)
+        {
+            // Unknown name, or its Pic was deleted/trimmed - drop the stale entry so the
+            // ANCHORS line and future lookups stay honest.
+            _anchors.Remove(anchorName.Trim());
+            return 0;
+        }
+        int idx0 = _chatImagePics != null ? _chatImagePics.IndexOf(pic) : -1;
+        if (idx0 < 0)
+        {
+            _anchors.Remove(anchorName.Trim());
+            return 0;
+        }
+        return idx0 + 1; // 1-based slot, current as of right now
+    }
+
+    /// <summary>
+    /// Build the "ANCHORS: Bob=#3, Elara=#5" line for the volatile CURRENT STATE block,
+    /// listing only anchors whose Pic still has a live slot (resolving each name through
+    /// the same path the executor uses, which also prunes dead entries). Returns "" when
+    /// no live anchors exist, so the state block simply omits the line.
+    /// </summary>
+    private string BuildAnchorsStateLine()
+    {
+        if (_anchors == null || _anchors.Count == 0) return "";
+
+        // Snapshot keys first: ResolveAnchorToIndex may remove dead entries mid-iteration.
+        var names = new List<string>(_anchors.Keys);
+        var parts = new List<string>();
+        foreach (string name in names)
+        {
+            int idx = ((IChatHost)this).ResolveAnchorToIndex(name);
+            if (idx > 0)
+                parts.Add($"{name}=#{idx}");
+        }
+        if (parts.Count == 0) return "";
+        return "ANCHORS (recurring characters - reference by NAME via chat_image=\"<name>\"): "
+               + string.Join(", ", parts);
     }
 
     PicMain IChatHost.GetLastSpawnedPicForTurn()

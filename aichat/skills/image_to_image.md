@@ -3,33 +3,40 @@ id: image_to_image
 summary: Edit / compose an image with a prompt (Klein, Flux 2 family). Pick the preset by INPUT COUNT (1/2/3/4/5 Input) - one input per distinct REFERENCE image. Klein wants NARRATIVE PROSE (40-70 words total), NOT keyword soup or repeated "Keep X identical" boilerplate. Reference each subject by SLOT NUMBER (image 1, image 2, ...) - NEVER by chat name (Klein has no chat history). Multi-person scenes need (a) "maintaining exact likeness of image N's face, hair, build" as a concise identity clause per slot, (b) PER-SUBJECT PLACEMENT ("image 1's man on the left holding a mug, image 2's woman on the right beside the tree"), and (c) explicit left-to-right ordering. Generic "all four together smiling" produces vague placement - place each subject individually. Result spawns as a new image; originals unchanged.
 inputs: attachment
 autoload: true
-triggers: edit, edit the image, modify, modify the image, alter, alter the image, change, change the image, change her, change him, change them, change the, tweak, tweak the image, adjust, adjust the image, retouch, refine the image, transform, transform the image, restyle, restyle the image, redo, redo the image, redraw, repaint, repose, reposition, new pose, different pose, change pose, change the pose, change his pose, change her pose, pose her, pose him, make her, make him, give her, give him, dress her, dress him, undress, put her in, put him in, put a, put on, add a, add to the image, remove the, remove from the image, take off, replace the, swap the, swap out, restyle as, in the style of, but make it, but with, now show, but now, picture but, image but, photo but, them together, all together, together being, side by side, group photo of them, group shot of, all five of them, all four of them, all three of them, both of them in, the two of them in, all in one, in one image, as anchors, use them as anchors, use these as anchors, anchor images, anchor each, combine these, combine them, combine the, put them together, put them all, put all of them, image of them, image where they, picture of them, scene with them, scene with all, hanging out together, friends together, meet up, posing together, line them up
+triggers: edit the image, edit this image, modify the image, alter the image, change the image, tweak the image, adjust the image, retouch, refine the image, transform the image, restyle, restyle as, redraw, repaint, change the pose, change her pose, change his pose, new pose, different pose, dress her, dress him, undress, replace the, swap the, swap out, remove from the image, in the style of, them together, all together, side by side, group photo of them, group shot of, all three of them, all four of them, all five of them, both of them in, the two of them in, in one image, all in one, use them as anchors, use these as anchors, combine them, combine these, put them together, put them all, put all of them, scene with them, scene with all, posing together, line them up, hanging out together
 exclude_triggers: generate a brand new, brand new image, fresh image of a, fresh image from scratch, picture from scratch
 template: <aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit.txt}}" prompt="<narrative prose, 40-70 words. For multi-input: name each subject by slot, give each a placement, end with scene + lighting. See examples below.>" chat_image="N"/>  # 1-INPUT (default): one source via chat_image / attachment / chain. For multi-input use preset="{{Image To Image Klein Edit N Input.txt}}" with chat_image2..chat_image5 (or attachment2..attachment5). Pick N = EXACT count of references you're feeding (4 people -> 4 Input). 5 Input is the absolute maximum.
 ---
 # Image-to-image (Klein / Flux 2 edit family)
 
-## ANCHOR DISCIPLINE - ALWAYS use the ORIGINAL anchor bubbles
+## ANCHOR DISCIPLINE - reference recurring characters BY NAME
 
 The single most common drift failure: a multi-character scene works once,
-then on every follow-up turn the LLM points at the most-recent composite
-instead of going back to the original per-character anchor portraits.
-Every composite has already drifted slightly from the sources; chaining
-off the composite compounds the drift every turn until the characters
-stop looking like themselves.
+then on every follow-up turn the model points `chat_image` at the
+most-recent composite instead of the original per-character anchor.
+Every composite has already drifted slightly; chaining off it compounds
+the drift every turn until the characters stop looking like themselves.
 
-If you generated anchor portraits up-front (typically Image #1..#K, one
-per character), those bubbles are the CANONICAL references for those
-characters for the rest of the session. EVERY subsequent image that
-includes those characters MUST feed THOSE SAME original numbers as
-`chat_image` / `chat_image2` / ... never feed a downstream composite.
+**Named anchors remove the bookkeeping.** When a character first appears
+as a portrait, tag that action with `anchor="Name"`:
 
-WRONG (drift trap - composite is Image #5, anchors were #1..#4):
+```
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full portrait of the clockmaker>" anchor="Elias"/>
+```
+
+From then on, refer to that character by name in any `chat_image` slot -
+`chat_image="Elias"` - and the host resolves the name to that
+character's CURRENT anchor image automatically. You do NOT track slot
+numbers, and the name always points at the canonical portrait, never a
+drifted composite. The live name->slot map is printed every turn in the
+`ANCHORS:` line of CURRENT STATE - read it to see who exists.
+
+WRONG (drift trap - points at the composite, and guesses a number):
 > User: "now show them at the beach"
 > `<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit.txt}}"
 >   prompt="Move them to a sunny beach scene..." chat_image="5"/>`
 
-RIGHT (always re-anchor to the originals):
+RIGHT (reference each character by anchor name):
 > User: "now show them at the beach"
 > `<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 4 Input.txt}}"
 >   prompt="The four people from images 1, 2, 3, and 4 together on a sunny
@@ -38,16 +45,30 @@ RIGHT (always re-anchor to the originals):
 >   woman (East Asian, ~28) next to him in the surf, image 3's man
 >   (Caucasian, ~35) building a sandcastle with image 4's woman
 >   (Middle Eastern, ~40) on the right. Golden hour light from the west,
->   waves rolling in." chat_image="1" chat_image2="2" chat_image3="3" chat_image4="4"/>`
+>   waves rolling in." chat_image="Elias" chat_image2="Mei" chat_image3="Jonah" chat_image4="Layla"/>`
 
-The right form is more work to write but it's the only way the
-characters keep looking like the originals across a series. This rule
-applies even when many chat images exist downstream - the original
-anchor portraits are the canonical references, no matter how old.
+Note the `prompt=` still uses SLOT numbers ("image 1's man", "image 2's
+woman") because Klein sees the images in feed order - slot 1 is whichever
+name you put in `chat_image`, slot 2 is `chat_image2`, and so on. Names
+are ONLY for the `chat_image*` attributes; the prose always says "image N".
 
-Single-character variation series follow the same rule: if Image #1 is
-the canonical portrait, every "show her doing X" follow-up feeds
-`chat_image="1"`, NOT the previous variant's bubble.
+If a character has no anchor name yet (older session, or a user-supplied
+reference), fall back to the numeric slot from the `ANCHORS:` / `CHAT
+IMAGES:` lines - same rule, just feed the canonical portrait's number,
+never a composite.
+
+**Updating a character's look** (new outfit, haircut, scar): generate a
+fresh image of them FROM their current anchor and re-tag the SAME name -
+`anchor="Elias"` - which re-points the name to the new image. Every later
+`chat_image="Elias"` then uses the updated look:
+
+```
+<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit.txt}}" prompt="Keep his face, white beard, and ~60s age exactly as is. Change his outfit to a charcoal three-piece suit." chat_image="Elias" anchor="Elias"/>
+```
+
+Single-character variation series follow the same rule: feed
+`chat_image="Elias"` (the anchor) for every "show him doing X" follow-up,
+NOT the previous variant's bubble.
 
 ## NEVER use chat character names in the prompt - HARDEST RULE
 
@@ -117,12 +138,15 @@ Specify EXACTLY ONE primary source:
 - `attachment="N"` - Nth image the user pasted/dragged into the CURRENT
   message (1-based).
 - `chat_image="N"` - Nth existing chat-image bubble (matches the
-  "Image #N" label).
+  "Image #N" label). May also be a character ANCHOR NAME
+  (`chat_image="Elias"`) - the host rewrites it to that character's
+  current slot number (see Anchor Discipline above).
 - `chain="true"` - output of a generate-class action emitted earlier in
   THIS SAME reply. Do not also pass attachment / chat_image with it.
 
 Extra slots (for N-Input presets) go in `chat_image2`..`chat_image5` or
-`attachment2`..`attachment5`. `chat_image{N}` wins over `attachment{N}`.
+`attachment2`..`attachment5` (each may be a number or an anchor name).
+`chat_image{N}` wins over `attachment{N}`.
 
 ## Presets - pick by INPUT COUNT
 
@@ -192,10 +216,13 @@ That last example is ~80 words - on the high side but acceptable for
 ## Rules summary
 
 - Pick exactly ONE primary source.
-- Refer to each subject by slot number, never by chat name.
+- Recurring characters: feed them by anchor NAME in `chat_image*`
+  (`chat_image="Elias"`); the prose still refers to "image 1", "image 2".
+- Never feed a downstream composite as the anchor; names already prevent
+  this. Update a look by re-tagging `anchor="Name"` on a fresh edit.
+- Inside `prompt=`, refer to each subject by slot number, never by chat
+  name (Klein has no chat history).
 - Open with a concise per-slot identity clause; don't repeat boilerplate.
 - For multi-person scenes, always include per-subject placement +
   left-to-right ordering.
 - Describe the CHANGE, not the whole image (model sees the input).
-- For variations, emit multiple action tags with deliberately different
-  scene/placement choices.

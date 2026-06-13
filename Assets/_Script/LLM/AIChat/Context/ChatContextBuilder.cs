@@ -116,13 +116,20 @@ namespace AITools.AIChat.Context
         /// GPU flipping busy or a caption arriving never rewrites earlier request
         /// content the server already cached.
         /// </summary>
-        public string BuildCurrentStateBlock(int chatImageSlotCount = 0, IReadOnlyList<string> chatImageCaptions = null)
+        public string BuildCurrentStateBlock(int chatImageSlotCount = 0, IReadOnlyList<string> chatImageCaptions = null, string anchorsLine = null)
         {
             var sb = new StringBuilder();
             sb.AppendLine("[CURRENT STATE - attached automatically to the newest message; the user did not type this. Earlier messages had their copies removed to save space.]");
 
             sb.Append(GpuSnapshot.BuildBlock());
             sb.AppendLine();
+
+            // Named character anchors (recurring cast). Printed ABOVE the raw chat-image
+            // list so the model reaches for stable names ("Bob") instead of slot numbers
+            // that shift when the media column trims. The host resolves each name to its
+            // CURRENT slot every turn, so this stays correct across renumbers.
+            if (!string.IsNullOrEmpty(anchorsLine))
+                sb.AppendLine(anchorsLine);
 
             // Reachable chat images (for chat_image="N" reuse). When captions are
             // available we list each image with its short auto-generated description so

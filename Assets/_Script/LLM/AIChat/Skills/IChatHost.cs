@@ -137,5 +137,15 @@ namespace AITools.AIChat.Skills
         /// prematurely. False for an out-of-range or destroyed slot.
         /// </summary>
         bool IsChatImagePicGenerating(int oneBasedIndex);
+
+        /// <summary>
+        /// Resolve a named character anchor (declared earlier via <c>anchor="Name"</c>)
+        /// to its CURRENT 1-based chat-image slot, or 0 if the name is unknown or its
+        /// underlying Pic has been trimmed/destroyed. Lets the executor accept
+        /// <c>chat_image="Bob"</c> and rewrite it to the live number, which is robust
+        /// against the renumbering that happens when the media list is trimmed. Names
+        /// are matched case-insensitively.
+        /// </summary>
+        int ResolveAnchorToIndex(string anchorName);
     }
 }

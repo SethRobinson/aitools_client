@@ -71,6 +71,12 @@ public class PicJob
     // Null slots mean "no input was uploaded for that index". Bytes are immutable and
     // shared by reference across Clones to avoid re-allocating thumbnails.
     public byte[][] _inputImagePngs = new byte[5][];
+
+    // PNG bytes of the generated result for this job, stamped on once the image comes
+    // back so the "?" info panel can show "inputs + output" together. Null until the
+    // result arrives. Immutable and shared by reference across Clones (MemberwiseClone
+    // copies the reference) just like the input PNGs above.
+    public byte[] _outputImagePng = null;
     
     // Multi-prompt support: extended prompts for workflows that need multiple distinct prompts
     // (e.g., multi-segment movie generation with different prompts for each segment)
@@ -4111,6 +4117,18 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 job._data.Clear();
                 job._serverID = -1;
 
+                // Per-render upload/snapshot state must NOT carry over from the previous
+                // job. @upload directives below APPEND to these, and the upload-job builder
+                // re-uploads everything in _pendingUploads - so without this reset a chained
+                // step (e.g. img2img -> img2video) re-uploads the prior step's extra inputs
+                // and the "?" info panel shows them (and the prior result) as belonging to
+                // this step. Each workflow re-declares its own @upload directives, so these
+                // get repopulated fresh for whatever this render actually needs.
+                job._inputFilenames = new string[5] { "", "", "", "", "" };
+                job._pendingUploads = new List<UploadInfo>();
+                job._inputImagePngs = new byte[5][];
+                job._outputImagePng = null;
+
 
                 if (m_jobDefaultInfo != null)
                 {
@@ -4540,35 +4558,69 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         m_infoPanelScript.SetSprite(newSprite);
     }
 
+    // Attach the generated result PNG to the most-recently-run job so the "?" panel can
+    // show "inputs + output". Jobs run sequentially and only run_* jobs are added to
+    // history, so the last history entry is the job that just produced this result.
+    //
+    // We stamp BOTH the current-stats job and the last history record: OnFinishedRenderingWorkflow
+    // overwrites _jobHistory[last] with GetCurrentStats().m_picJob after the render, so if we
+    // only stamped the history clone the result would be lost on that rewrite. Stamping the
+    // live job covers the workflow path; stamping the history record covers any path that
+    // doesn't run that rewrite (e.g. DALL-E / OpenAI image).
+    public void SetLastGeneratedResultPng(byte[] pngBytes)
+    {
+        if (pngBytes == null || pngBytes.Length == 0) return;
+
+        var curStats = GetCurrentStats();
+        if (curStats != null && curStats.m_picJob != null)
+            curStats.m_picJob._outputImagePng = pngBytes;
+
+        if (_jobHistory != null && _jobHistory.Count > 0)
+            _jobHistory[_jobHistory.Count - 1]._outputImagePng = pngBytes;
+    }
+
     public void UpdateInfoPanel()
     {
         m_infoPanelScript.SetInfoText(GetInfoText());
 
-        // Show the input thumbnails for the most recent job that captured any (if a
-        // newer job ran without uploads it correctly hides the strip again). We use
-        // the live byte[][] reference straight off the history record - PicInfoPanel
-        // caches by reference equality to avoid re-compositing on every update tick.
-        byte[][] latestInputs = null;
-        for (int i = _jobHistory.Count - 1; i >= 0; i--)
+        // Build a chronological timeline of every generation step's input images and its
+        // result, so the "?" panel can show how a chained/composited image (or movie) was
+        // built up - including the original anchor images used in earlier steps, which the
+        // latest step only sees as a single already-composited input. The per-job PNG
+        // snapshots are captured at upload time / on result and persist in _jobHistory; we
+        // pass the live byte[][] / byte[] references straight through (PicInfoPanel caches
+        // by reference to avoid re-compositing every update tick).
+        var rows = new List<PicInfoPanel.ImageHistoryRow>();
+        bool anyInputs = false;
+        foreach (var hj in _jobHistory)
         {
-            var hj = _jobHistory[i];
-            if (hj == null || hj._inputImagePngs == null) continue;
-            bool hasAny = false;
-            for (int k = 0; k < hj._inputImagePngs.Length; k++)
+            if (hj == null) continue;
+
+            bool hasInputs = false;
+            if (hj._inputImagePngs != null)
             {
-                if (hj._inputImagePngs[k] != null && hj._inputImagePngs[k].Length > 0)
+                for (int k = 0; k < hj._inputImagePngs.Length; k++)
                 {
-                    hasAny = true;
-                    break;
+                    if (hj._inputImagePngs[k] != null && hj._inputImagePngs[k].Length > 0)
+                    {
+                        hasInputs = true;
+                        break;
+                    }
                 }
             }
-            if (hasAny)
-            {
-                latestInputs = hj._inputImagePngs;
-                break;
-            }
+            bool hasOutput = hj._outputImagePng != null && hj._outputImagePng.Length > 0;
+            if (!hasInputs && !hasOutput) continue;
+
+            if (hasInputs) anyInputs = true;
+            rows.Add(new PicInfoPanel.ImageHistoryRow { inputs = hj._inputImagePngs, output = hj._outputImagePng });
         }
-        m_infoPanelScript.SetInputImages(latestInputs);
+
+        // Preserve the "no strip for plain prompt-to-image" behavior: only show the
+        // timeline once at least one step actually fed an input image (i.e. an
+        // image-to-image / chain happened). A history of pure generations shows nothing.
+        if (!anyInputs) rows.Clear();
+
+        m_infoPanelScript.SetImageHistory(rows);
 
         m_bNeedsToUpdateInfoPanel = false;
     }

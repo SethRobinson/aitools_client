@@ -19,12 +19,33 @@ public class PicInfoPanel : MonoBehaviour
     // thumbnail strip on every UpdateInfoPanel tick while the panel is open. The
     // byte[][] reference is stable for a given history record, so a simple identity
     // check is enough.
-    private byte[][] _lastInputImagePngs;
+    // Cache of the last history we composited, so we don't re-decode every PNG and
+    // re-blit the whole timeline on every UpdateInfoPanel tick while the panel is open.
+    // We compare by the underlying (byte[][] inputs, byte[] output) references, which are
+    // stable per _jobHistory record until that record actually changes.
+    private List<ImageHistoryRow> _lastHistory;
 
-    // Per-thumbnail edge length in pixels for the composite strip. 256 keeps each
-    // input recognizable without producing megabyte-scale composites for 5-input jobs.
+    // One generation step of the Pic's history: the input images it was fed (slots 0..4,
+    // empty slots null) and the result it produced (null until the result arrives).
+    public class ImageHistoryRow
+    {
+        public byte[][] inputs;
+        public byte[] output;
+    }
+
+    // Per-thumbnail edge length in pixels. 256 keeps each image recognizable without
+    // producing huge composites; shrunk automatically for very long histories (below).
     private const int InputThumbSize = 256;
     private const int InputThumbGap = 4;
+    // Wider gap + a thin colored bar separating a step's input thumbnails from its result.
+    private const int OutputSeparatorGap = InputThumbSize / 4;
+    private const int OutputDividerWidth = 3;
+    private static readonly Color OutputDividerColor = new Color(0.2f, 0.85f, 0.3f, 1f);
+    // Vertical gap between timeline rows (one row per generation step).
+    private const int InputRowGap = 12;
+    // Clamp the composite texture's largest edge; thumbnails shrink for long chains so we
+    // never blow past Unity's texture size limit.
+    private const int MaxCompositeEdge = 8192;
 
     void Start()
     {
@@ -63,91 +84,138 @@ public class PicInfoPanel : MonoBehaviour
     }
 
     /// <summary>
-    /// Show the input images that fed an N-input image-to-image job as a horizontal
-    /// thumbnail strip in the info panel's existing sprite slot (the same slot the
-    /// legacy ControlNet preview used). Pass null or an all-null array to clear.
+    /// Show the Pic's full image history as a vertical timeline in the info panel's
+    /// existing sprite slot (the same slot the legacy ControlNet preview used). One row
+    /// per generation step, oldest at top -> newest at bottom; each row shows that step's
+    /// input thumbnails, a green divider, then its result. This surfaces the original
+    /// anchor images used in early steps, which the latest step only sees as a single
+    /// already-composited input. Pass null or an empty list to clear.
     ///
     /// We re-use the existing prefab fields (_spriteOne / _spriteRendererOne) and the
     /// existing SetSprite path so no prefab edit is required to enable this feature.
     /// </summary>
-    public void SetInputImages(byte[][] inputPngs)
+    public void SetImageHistory(List<ImageHistoryRow> rows)
     {
-        // No inputs: clear whatever was last shown (incl. the cached strip below).
-        if (inputPngs == null)
+        // Nothing to show: clear whatever was last shown.
+        if (rows == null || rows.Count == 0)
         {
-            if (_lastInputImagePngs != null)
+            if (_lastHistory != null)
             {
                 SetSprite(null);
-                _lastInputImagePngs = null;
+                _lastHistory = null;
                 UpdateVisuals();
             }
             return;
         }
 
-        // Same job's inputs as last call -> nothing to do. Avoids decoding 4 PNGs and
-        // BlitImageFitted'ing the strip every frame the panel is open.
-        if (ReferenceEquals(inputPngs, _lastInputImagePngs))
+        // Same history as last call -> nothing to do. Avoids re-decoding every PNG and
+        // re-blitting the whole timeline each frame the panel is open. Compared by the
+        // underlying byte-array references, which are stable per history record.
+        if (HistoryMatchesCache(rows))
         {
             return;
         }
 
-        // Collect the non-empty slots in their original input-index order so the strip
-        // reads left-to-right input1, input2, input3, ... (skipping holes).
-        List<byte[]> valid = new List<byte[]>();
-        for (int i = 0; i < inputPngs.Length; i++)
-        {
-            if (inputPngs[i] != null && inputPngs[i].Length > 0)
-                valid.Add(inputPngs[i]);
-        }
-        if (valid.Count == 0)
-        {
-            SetSprite(null);
-            _lastInputImagePngs = inputPngs;
-            UpdateVisuals();
-            return;
-        }
+        // Decode every cell. Per row: input textures (empty slots skipped) + optional output.
+        int rowCount = rows.Count;
+        var rowInputs = new List<List<Texture2D>>(rowCount);
+        var rowOutput = new List<Texture2D>(rowCount);
+        int maxInputCols = 0;
+        bool anyOutput = false;
 
-        // Decode each PNG into a temp Texture2D - we throw these away after the blit.
-        List<Texture2D> decoded = new List<Texture2D>(valid.Count);
-        for (int i = 0; i < valid.Count; i++)
+        for (int r = 0; r < rowCount; r++)
         {
-            Texture2D tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-            if (tex.LoadImage(valid[i]))
+            var ins = new List<Texture2D>();
+            byte[][] inPngs = rows[r].inputs;
+            if (inPngs != null)
             {
-                decoded.Add(tex);
+                for (int i = 0; i < inPngs.Length; i++)
+                {
+                    if (inPngs[i] == null || inPngs[i].Length == 0) continue;
+                    var t = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                    if (t.LoadImage(inPngs[i])) ins.Add(t);
+                    else UnityEngine.Object.Destroy(t);
+                }
             }
-            else
+            Texture2D outT = null;
+            byte[] outPng = rows[r].output;
+            if (outPng != null && outPng.Length > 0)
             {
-                UnityEngine.Object.Destroy(tex);
+                outT = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                if (!outT.LoadImage(outPng)) { UnityEngine.Object.Destroy(outT); outT = null; }
             }
-        }
-        if (decoded.Count == 0)
-        {
-            SetSprite(null);
-            _lastInputImagePngs = inputPngs;
-            UpdateVisuals();
-            return;
+            rowInputs.Add(ins);
+            rowOutput.Add(outT);
+            if (ins.Count > maxInputCols) maxInputCols = ins.Count;
+            if (outT != null) anyOutput = true;
         }
 
-        int count = decoded.Count;
-        int compW = (InputThumbSize * count) + (InputThumbGap * Mathf.Max(0, count - 1));
-        int compH = InputThumbSize;
+        // Pick a thumbnail size that keeps the composite within texture limits for long chains.
+        int thumb = InputThumbSize;
+        int sepWidth = anyOutput ? (OutputSeparatorGap + OutputDividerWidth + OutputSeparatorGap) : 0;
+        int natW = maxInputCols * thumb + Mathf.Max(0, maxInputCols - 1) * InputThumbGap + sepWidth + (anyOutput ? thumb : 0);
+        int natH = rowCount * thumb + Mathf.Max(0, rowCount - 1) * InputRowGap;
+        int biggest = Mathf.Max(natW, natH);
+        if (biggest > MaxCompositeEdge)
+        {
+            float scale = (float)MaxCompositeEdge / biggest;
+            thumb = Mathf.Max(24, Mathf.FloorToInt(thumb * scale));
+        }
+
+        // Compute exact per-row widths with the chosen thumb, then the overall composite size.
+        int compW = 1;
+        for (int r = 0; r < rowCount; r++)
+        {
+            int inCount = rowInputs[r].Count;
+            int w = inCount * thumb + Mathf.Max(0, inCount - 1) * InputThumbGap;
+            if (rowOutput[r] != null)
+            {
+                if (inCount > 0) w += OutputSeparatorGap + OutputDividerWidth + OutputSeparatorGap;
+                w += thumb;
+            }
+            if (w > compW) compW = w;
+        }
+        int compH = Mathf.Max(1, rowCount * thumb + Mathf.Max(0, rowCount - 1) * InputRowGap);
 
         Texture2D comp = new Texture2D(compW, compH, TextureFormat.RGBA32, false);
         // Start with transparent so letterbox gaps from "fit" mode don't show garbage.
         comp.Fill(new Color(0f, 0f, 0f, 0f));
 
-        int cursorX = 0;
-        for (int i = 0; i < count; i++)
+        for (int r = 0; r < rowCount; r++)
         {
-            comp.BlitImageFitted(decoded[i], cursorX, 0, InputThumbSize, InputThumbSize, "fit", 1f);
-            cursorX += InputThumbSize + InputThumbGap;
+            // Oldest row (index 0) on top. Texture y is bottom-up, so top = highest y.
+            int rowY = (rowCount - 1 - r) * (thumb + InputRowGap);
+            int cursorX = 0;
+            var ins = rowInputs[r];
+            for (int i = 0; i < ins.Count; i++)
+            {
+                comp.BlitImageFitted(ins[i], cursorX, rowY, thumb, thumb, "fit", 1f);
+                cursorX += thumb + InputThumbGap;
+            }
+            if (rowOutput[r] != null)
+            {
+                if (ins.Count > 0)
+                {
+                    // Reclaim the trailing gap after the last input, then: gap, divider, gap.
+                    cursorX -= InputThumbGap;
+                    cursorX += OutputSeparatorGap;
+                    int dividerX0 = cursorX;
+                    for (int x = dividerX0; x < dividerX0 + OutputDividerWidth && x < comp.width; x++)
+                        for (int y = rowY; y < rowY + thumb && y < comp.height; y++)
+                            comp.SetPixel(x, y, OutputDividerColor);
+                    cursorX += OutputDividerWidth + OutputSeparatorGap;
+                }
+                comp.BlitImageFitted(rowOutput[r], cursorX, rowY, thumb, thumb, "fit", 1f);
+            }
         }
+
         comp.Apply();
 
-        for (int i = 0; i < decoded.Count; i++)
+        // Destroy temps.
+        for (int r = 0; r < rowCount; r++)
         {
-            UnityEngine.Object.Destroy(decoded[i]);
+            foreach (var t in rowInputs[r]) UnityEngine.Object.Destroy(t);
+            if (rowOutput[r] != null) UnityEngine.Object.Destroy(rowOutput[r]);
         }
 
         // Match SetControlImage's pixelsPerUnit math so the strip lives in the same
@@ -162,10 +230,23 @@ public class PicInfoPanel : MonoBehaviour
             SpriteMeshType.FullRect);
 
         SetSprite(strip);
-        _lastInputImagePngs = inputPngs;
+        _lastHistory = rows;
         UpdateVisuals();
     }
-        
+
+    // True when the new history is the same as what we last composited - compared by the
+    // underlying (inputs, output) references so we skip the expensive re-decode/re-blit.
+    private bool HistoryMatchesCache(List<ImageHistoryRow> rows)
+    {
+        if (_lastHistory == null || _lastHistory.Count != rows.Count) return false;
+        for (int i = 0; i < rows.Count; i++)
+        {
+            if (!ReferenceEquals(_lastHistory[i].inputs, rows[i].inputs)) return false;
+            if (!ReferenceEquals(_lastHistory[i].output, rows[i].output)) return false;
+        }
+        return true;
+    }
+
       public void OnInfoButtonClicked()
     {
         if (IsPanelOpen())
