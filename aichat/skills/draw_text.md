@@ -35,18 +35,18 @@ canvas height for font_size, canvas width for outline_width).
 - `text="..."` - the text to render. REQUIRED, non-empty.
 - `x`, `y`, `width`, `height` - the rect to render into, top-left origin,
   pixels or percent. Defaults: full canvas.
-- `font_size` - **upper CAP** when `auto_size="true"` (the default).
-  draw_text measures the text and scales it to fit the rect; font_size
-  prevents it from growing beyond this value (so a single short word
-  doesn't blow up to fill a giant rect). When `auto_size="false"`,
-  font_size is used exactly as the TMP fontSize. Sensible caps:
-  600-1000 for titles, 300-500 for body. Going higher rarely matters
-  because the rect dimensions usually constrain first.
-- `min_font_size` - lower bound (floor). When the auto-fit calculation
-  would produce text smaller than this, it's clamped UP - text may
-  overflow the rect rather than shrink past readability. Sensible
-  floors: 80-120 for poster body, 150-200 for poster titles. Ignored
-  when `auto_size="false"`.
+- `font_size` - the text's pixel height, or a percent of canvas height
+  (e.g. `font_size="12%"`). It is the **UPPER CAP** when `auto_size="true"`
+  (the default): draw_text measures the text and scales it to fit the rect,
+  and font_size only stops a short line from growing bigger than this (so one
+  word doesn't blow up to fill a giant rect). The box ALWAYS WINS - the text
+  auto-shrinks to fit and never overflows, overlaps the next element, or
+  clips at the edge - so just set the cap near (or a little above) the rect
+  height. When `auto_size="false"`, font_size is used exactly, no fitting.
+- `min_font_size` - soft hint only, kept for backward compatibility; you can
+  omit it. The box always wins now: when the rect can hold the text at this
+  size the fitted size comes out at least this big anyway, and when it can't
+  the text shrinks below it to fit rather than overflowing the rect.
 - `font_name` - TMP font asset name (e.g. `LiberationSans SDF`). Optional;
   defaults to the app's default UI font. Common available names: see the
   list at the bottom of this doc - they're the same TMP fonts the AI
@@ -67,11 +67,11 @@ canvas height for font_size, canvas width for outline_width).
 - `wrap="true"` - word-wrap inside the rect (default true). Set false to
   force a single line that may overflow.
 - `auto_size` - default `"true"`. When on, draw_text measures the
-  text's preferred bounds and scales font_size to fit the rect (clamped
-  to [min_font_size, font_size]). This is much more reliable than
-  TMP's built-in auto-sizer in our render-to-texture path. Pass
-  `"false"` to use font_size as the EXACT TMP fontSize value (useful
-  for matching a precise design spec; rare).
+  text's preferred bounds and scales the font DOWN to fit the rect (up to
+  the `font_size` cap, shrinking as small as needed so the text always fits
+  - the box wins). This is much more reliable than TMP's built-in auto-sizer
+  in our render-to-texture path. Pass `"false"` to use font_size as the
+  EXACT size with no fitting (useful for matching a precise design spec; rare).
 
 ## Available fonts
 

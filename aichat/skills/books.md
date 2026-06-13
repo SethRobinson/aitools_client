@@ -66,7 +66,7 @@ For each page, after the `image_to_image` (or `generate_image` on page 1):
 
 ```
 <aitools_action skill="add_border" chain="true" left="6%" right="6%" top="6%" bottom="60%" color="#FBF7EE"/>
-<aitools_action skill="draw_text" chain="true" text="<one short paragraph of body prose for this page>" x="10%" y="68%" width="80%" height="28%" font_size="20%" min_font_size="12%" color="#2A1F12" align="left" valign="top" wrap="true"/>
+<aitools_action skill="draw_text" chain="true" text="<one short paragraph of body prose for this page>" x="10%" y="68%" width="80%" height="28%" font_size="10%" color="#2A1F12" align="left" valign="top" wrap="true"/>
 <aitools_action skill="draw_text" chain="true" text="<page number>" x="92%" y="95%" width="6%" height="4%" font_size="8%" color="#777777" align="right" valign="middle"/>
 ```
 
@@ -74,17 +74,14 @@ For each page, after the `image_to_image` (or `generate_image` on page 1):
 The body text must start inside that band, around `y="68%"`; do not use
 `y="46%"`, which lands on top of the illustration on a normal page.
 
-The `font_size` values look large because `font_size` is a TMP fontSize
-value, NOT a literal pixel height - empirically TMP renders text at
-roughly `font_size / 4` pixels tall. So `font_size="20%"` of a 2000-tall
-canvas (= TMP fontSize 400) renders at ~100 pixels per line, which is
-about 5% of canvas height per line - the actual visible size we want.
-This is the same convention `posters.md`, `comics.md`, and `layouts.md`
-use (`font_size="500"`, `font_size="900"`, etc. for headlines). DO NOT
-use small values like `font_size="64"` for body text - that renders as
-~16 px text, which disappears in the chat preview. The auto-fit (no
-`auto_size` attribute) binary-searches between `min_font_size` and
-`font_size` for the largest size that fits.
+`font_size` is the text's pixel height, or (with a `%`) a percent of canvas
+height - here `font_size="10%"` caps a body line at ~10% of canvas height.
+It is only the UPPER CAP: draw_text auto-shrinks the text so the whole
+paragraph fits the `height="28%"` band, no matter how long it is. The box
+always wins, so the text never overflows the band, runs past the page, or
+overlaps the page number - you do NOT need `min_font_size` (it's a soft hint
+now; the box wins). Keep the cap a little above one line's worth (≈8-12% for
+body); too small a cap just makes short pages render smaller than they could.
 
 For a printable feel use `#FBF7EE` (cream paper) or `#FFFFFF` (white).
 
@@ -104,19 +101,19 @@ the pristine raw character.
 # page 1 - image_to_image from the anchor, then chain border + text.
 <aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit.txt}}" prompt="Use the fox from the reference image: a small russet-orange fox with fluffy white-tipped tail, large amber eyes, soft black ear tips, single white chest patch, curious tilted-head expression; keep the fox's coat color, markings, eye color, and proportions recognizably consistent. He stands on a mossy log at the edge of a sunlit pine forest in early autumn, dappled gold light filtering through the trees, low camera angle, warm watercolor storybook style, hand-drawn ink linework." chat_image="<anchor idx>"/>
 <aitools_action skill="add_border" chain="true" left="6%" right="6%" top="6%" bottom="60%" color="#FBF7EE"/>
-<aitools_action skill="draw_text" chain="true" text="Once upon a time, in a pine forest at the edge of the world, there lived a small russet fox named Fen. Fen had always wondered what it would be like to fly." x="10%" y="68%" width="80%" height="28%" font_size="20%" min_font_size="12%" color="#2A1F12" align="left" valign="top" wrap="true"/>
+<aitools_action skill="draw_text" chain="true" text="Once upon a time, in a pine forest at the edge of the world, there lived a small russet fox named Fen. Fen had always wondered what it would be like to fly." x="10%" y="68%" width="80%" height="28%" font_size="10%" color="#2A1F12" align="left" valign="top" wrap="true"/>
 <aitools_action skill="draw_text" chain="true" text="1" x="92%" y="95%" width="6%" height="4%" font_size="8%" color="#777777" align="right" valign="middle"/>
 
 # page 2 - same anchor, new scene
 <aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit.txt}}" prompt="Use the fox from the reference image: a small russet-orange fox with fluffy white-tipped tail, large amber eyes, soft black ear tips, single white chest patch, curious tilted-head expression; keep the fox's coat color, markings, eye color, and proportions recognizably consistent. Place him at the top of a tall pine tree, paws gripping a swaying branch, looking down at the forest floor far below, wind ruffling his fur, late afternoon golden light, slightly nervous expression. Same warm watercolor storybook style, hand-drawn ink linework." chat_image="<anchor idx>"/>
 <aitools_action skill="add_border" chain="true" left="6%" right="6%" top="6%" bottom="60%" color="#FBF7EE"/>
-<aitools_action skill="draw_text" chain="true" text="One blustery morning, Fen climbed to the very top of the tallest pine. The wind tugged at his fur and the world looked very small below." x="10%" y="68%" width="80%" height="28%" font_size="20%" min_font_size="12%" color="#2A1F12" align="left" valign="top" wrap="true"/>
+<aitools_action skill="draw_text" chain="true" text="One blustery morning, Fen climbed to the very top of the tallest pine. The wind tugged at his fur and the world looked very small below." x="10%" y="68%" width="80%" height="28%" font_size="10%" color="#2A1F12" align="left" valign="top" wrap="true"/>
 <aitools_action skill="draw_text" chain="true" text="2" x="92%" y="95%" width="6%" height="4%" font_size="8%" color="#777777" align="right" valign="middle"/>
 
 # page 3 - same anchor, mid-flight
 <aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit.txt}}" prompt="Use the fox from the reference image: a small russet-orange fox with fluffy white-tipped tail, large amber eyes, soft black ear tips, single white chest patch; keep the fox's coat color, markings, eye color, and proportions recognizably consistent. Show him airborne in a graceful arc, all four paws spread wide, tail streaming, wide delighted eyes and an open-mouthed grin, sailing past pine boughs with autumn leaves swirling around him, low golden sun behind him casting a warm rim light. Same warm watercolor storybook style, hand-drawn ink linework." chat_image="<anchor idx>"/>
 <aitools_action skill="add_border" chain="true" left="6%" right="6%" top="6%" bottom="60%" color="#FBF7EE"/>
-<aitools_action skill="draw_text" chain="true" text="And just like that - leaves spinning, wind in his ears - Fen was flying. Or falling. He decided it didn't matter which." x="10%" y="68%" width="80%" height="28%" font_size="20%" min_font_size="12%" color="#2A1F12" align="left" valign="top" wrap="true"/>
+<aitools_action skill="draw_text" chain="true" text="And just like that - leaves spinning, wind in his ears - Fen was flying. Or falling. He decided it didn't matter which." x="10%" y="68%" width="80%" height="28%" font_size="10%" color="#2A1F12" align="left" valign="top" wrap="true"/>
 <aitools_action skill="draw_text" chain="true" text="3" x="92%" y="95%" width="6%" height="4%" font_size="8%" color="#777777" align="right" valign="middle"/>
 ```
 
@@ -149,7 +146,7 @@ this short form is enough:
 ```
 <aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<illustration scene description>"/>
 <aitools_action skill="add_border" chain="true" left="6%" right="6%" top="6%" bottom="60%" color="#FBF7EE"/>
-<aitools_action skill="draw_text" chain="true" text="Once upon a time, in a small village at the edge of the forest..." x="10%" y="68%" width="80%" height="28%" font_size="20%" min_font_size="12%" color="#2A1F12" align="left" valign="top" wrap="true"/>
+<aitools_action skill="draw_text" chain="true" text="Once upon a time, in a small village at the edge of the forest..." x="10%" y="68%" width="80%" height="28%" font_size="10%" color="#2A1F12" align="left" valign="top" wrap="true"/>
 <aitools_action skill="draw_text" chain="true" text="3" x="92%" y="95%" width="6%" height="4%" font_size="8%" color="#777777" align="right" valign="middle"/>
 ```
 

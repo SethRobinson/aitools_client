@@ -39,14 +39,19 @@ Steps per poster:
 4. `draw_text` - body sentence (below the title, smaller, wrapped)
 
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full Z-Image scene description>"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full Z-Image scene description - the ILLUSTRATION ONLY. Do NOT ask the image model to render the poster's title/caption/quote text; that text is drawn cleanly by draw_text below. Baked-in diffusion text comes out garbled/overlapping.>"/>
 <aitools_action skill="add_border" chain="true" left="6%" right="6%" top="6%" bottom="25%" color="#FFFFFF"/>
-<aitools_action skill="draw_text" chain="true" text="PERSEVERANCE" x="10%" y="82%" width="80%" height="8%" font_size="900" min_font_size="160" color="#000000" bold="true" align="center" valign="middle"/>
-<aitools_action skill="draw_text" chain="true" text="The only way through is through." x="10%" y="91%" width="80%" height="7%" font_size="500" min_font_size="90" color="#222222" align="center" valign="middle"/>
+<aitools_action skill="draw_text" chain="true" text="PERSEVERANCE" x="10%" y="82%" width="80%" height="8%" font_size="12%" color="#000000" bold="true" align="center" valign="middle"/>
+<aitools_action skill="draw_text" chain="true" text="The only way through is through." x="10%" y="91%" width="80%" height="7%" font_size="9%" color="#222222" align="center" valign="middle"/>
 ```
 
-Keep `font_size` caps high (600-1000 for titles, 300-500 for body) and
-set `min_font_size` floors (80-200). Tiny caps make unreadable posters.
+`font_size` is the text's pixel height (or `%` of canvas height) - it is just
+the UPPER CAP. The box always wins: draw_text auto-shrinks the text to fit the
+rect, so a long line never overflows the band, overlaps the next line, or clips
+at the edge. The band `height=` is what actually sets the size, so just pick a
+cap a little above each box's own `height=` (here the title and body bands).
+You do NOT need `min_font_size` - it's a soft hint now (the box wins regardless).
+Want a bigger title? Give it a taller band (bigger `height=`), not a bigger cap.
 
 For five posters in one reply, repeat the 4-step pattern five times.
 Each `generate_image` starts a fresh non-chained Pic; each chained step
@@ -65,8 +70,8 @@ chain. Do not add 1 to the listed image number.
 
 ```
 <aitools_action skill="add_border" chat_image="<existing_idx>" left="6%" right="6%" top="6%" bottom="25%" color="#FFFFFF"/>
-<aitools_action skill="draw_text" chain="true" text="PERSEVERANCE" x="10%" y="82%" width="80%" height="8%" font_size="900" min_font_size="160" color="#000000" bold="true" align="center" valign="middle"/>
-<aitools_action skill="draw_text" chain="true" text="The only way through is through." x="10%" y="91%" width="80%" height="7%" font_size="500" min_font_size="90" color="#222222" align="center" valign="middle"/>
+<aitools_action skill="draw_text" chain="true" text="PERSEVERANCE" x="10%" y="82%" width="80%" height="8%" font_size="12%" color="#000000" bold="true" align="center" valign="middle"/>
+<aitools_action skill="draw_text" chain="true" text="The only way through is through." x="10%" y="91%" width="80%" height="7%" font_size="9%" color="#222222" align="center" valign="middle"/>
 ```
 
 ---
@@ -118,8 +123,8 @@ Top-and-bottom Impact-style caption over an image.
 
 ```
 <aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full scene description>"/>
-<aitools_action skill="draw_text" chain="true" text="WHEN YOU SAID YOU'D" x="0" y="3%" width="100%" height="14%" font_size="600" min_font_size="120" color="#FFFFFF" outline_color="#000000" outline_width="6" bold="true" align="center" valign="middle"/>
-<aitools_action skill="draw_text" chain="true" text="BE READY IN FIVE MINUTES" x="0" y="83%" width="100%" height="14%" font_size="600" min_font_size="120" color="#FFFFFF" outline_color="#000000" outline_width="6" bold="true" align="center" valign="middle"/>
+<aitools_action skill="draw_text" chain="true" text="WHEN YOU SAID YOU'D" x="0" y="3%" width="100%" height="14%" font_size="14%" color="#FFFFFF" outline_color="#000000" outline_width="6" bold="true" align="center" valign="middle"/>
+<aitools_action skill="draw_text" chain="true" text="BE READY IN FIVE MINUTES" x="0" y="83%" width="100%" height="14%" font_size="14%" color="#FFFFFF" outline_color="#000000" outline_width="6" bold="true" align="center" valign="middle"/>
 ```
 
 For an existing image, drop the `generate_image` and use

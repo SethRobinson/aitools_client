@@ -2032,7 +2032,8 @@ public string GetPrompt() { return m_prompt; }
 
         //Current unified LLM debug files (see LLMDebugLog)
         RTUtil.DeleteFileIfItExists(LLMDebugLog.RequestFile);
-        RTUtil.DeleteFileIfItExists(LLMDebugLog.AIChatRequestFile);
+        RTUtil.DeleteFileIfItExists("llm_request_sent_aichat.json"); // retired -> AIChatLog; clean up stale copies
+        RTUtil.DeleteFileIfItExists(AIChatLog.LogFile);
         RTUtil.DeleteFileIfItExists(LLMDebugLog.ResponseFile);
         RTUtil.DeleteFileIfItExists(LLMDebugLog.ErrorFile);
 

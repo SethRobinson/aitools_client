@@ -10,16 +10,18 @@ using System.Threading.Tasks;
 /// "look at llm_response.json" works no matter which backend served the
 /// request:
 ///
-///   llm_request_sent.json        - the exact JSON body we POSTed (sidecar/default)
-///   llm_request_sent_aichat.json - same, but for the main AI Chat conversational turn
-///   llm_response.json            - raw HTTP response body on success
-///   llm_last_error.json          - raw HTTP response body on failure
+///   llm_request_sent.json - the exact JSON body we POSTed
+///   llm_response.json     - raw HTTP response body on success
+///   llm_last_error.json   - raw HTTP response body on failure
 ///
-/// Request bodies are split into two files so the big conversational AI Chat
-/// turn doesn't get clobbered by the small vision-caption / summarization
-/// "sidecar" requests that the same managers also serve. The main chat send
-/// wraps its dispatch in RequestFileScope(AIChatRequestFile); everything else
-/// falls through to the default RequestFile.
+/// These are last-writer-wins single-shot files: the big conversational AI Chat
+/// turn and the small vision-caption / summarization "sidecar" requests the same
+/// managers serve all clobber each other here. For a full, un-clobbered picture
+/// of an AI Chat exchange (request + reply + the emitted tool calls), the main
+/// send and each sidecar wrap their dispatch in <see cref="PurposeScope"/>, which
+/// forwards every request body to the editor-only <see cref="AIChatLog"/>
+/// (llm_aichat_log.json) tagged with its purpose. Responses are logged there
+/// explicitly by the AI Chat callbacks (they arrive async, outside the scope).
 ///
 /// Before this existed, each manager wrote its own differently-named files
 /// behind inconsistent compile guards (gemini_response.json,
@@ -40,29 +42,38 @@ using System.Threading.Tasks;
 public static class LLMDebugLog
 {
     public const string RequestFile = "llm_request_sent.json";
-    public const string AIChatRequestFile = "llm_request_sent_aichat.json";
     public const string ResponseFile = "llm_response.json";
     public const string ErrorFile = "llm_last_error.json";
 
-    // Target file for LogRequest(). Defaults to the shared sidecar file; the main
-    // AI Chat send temporarily redirects it via RequestFileScope. Main-thread only.
-    private static string s_requestFile = RequestFile;
+    // When non-null, LogRequest also forwards the body to AIChatLog under this
+    // purpose label (e.g. "chat", "ImageCaption"). Set for the duration of an AI
+    // Chat dispatch via PurposeScope. Main-thread only.
+    private static string s_purpose = null;
 
     /// <summary>The exact request body about to be POSTed to the provider.</summary>
-    public static void LogRequest(string json) { WriteAsync(s_requestFile, json); }
+    public static void LogRequest(string json)
+    {
+        // Forward to the editor-only AI Chat log when we're inside an AI Chat
+        // dispatch. Relies on every manager calling LogRequest synchronously
+        // before its first yield, while the PurposeScope below is still active.
+        if (!string.IsNullOrEmpty(s_purpose))
+            AIChatLog.Request(s_purpose, json);
+        WriteAsync(RequestFile, json);
+    }
 
     /// <summary>
-    /// Routes LogRequest() to <paramref name="file"/> until the returned token is
-    /// disposed, then restores the previous target. Relies on Unity coroutines
+    /// Tags every request logged until the returned token is disposed as belonging
+    /// to <paramref name="purpose"/>, so AIChatLog can attribute it (the main chat
+    /// turn = "chat", sidecars = their caller label). Relies on Unity coroutines
     /// running synchronously up to their first yield: every manager calls
-    /// LogRequest() before its first yield, so the request is logged while this
+    /// LogRequest() before its first yield, so the request is captured while this
     /// scope is still active (the dispatch happens inside the using block).
     /// Main-thread only.
     /// </summary>
-    public static IDisposable RequestFileScope(string file)
+    public static IDisposable PurposeScope(string purpose)
     {
-        var prev = s_requestFile;
-        s_requestFile = file;
+        var prev = s_purpose;
+        s_purpose = purpose;
         return new Scope(prev);
     }
 
@@ -75,7 +86,7 @@ public static class LLMDebugLog
         {
             if (_done) return;
             _done = true;
-            s_requestFile = _prev;
+            s_purpose = _prev;
         }
     }
 

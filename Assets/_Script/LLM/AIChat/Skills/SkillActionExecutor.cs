@@ -206,6 +206,12 @@ namespace AITools.AIChat.Skills
             // benefits, not just image_to_image.
             NormalizeAnchorRefs(action);
 
+            // Editor-only: record the raw tool call (skill id + every attribute) so
+            // the AI Chat log shows exactly what the model emitted - including the
+            // full generate_image prompt (where poster/book text sometimes gets
+            // baked in instead of being laid out with draw_text).
+            AIChatLog.Action(action.SkillId, action.Args);
+
             switch (action.SkillId.ToLowerInvariant())
             {
                 case BuiltInSkillIds.GenerateImage:
@@ -1194,6 +1200,20 @@ namespace AITools.AIChat.Skills
             var db = new RTDB();
             string apiKey = settings.apiKey ?? "";
 
+            // Editor-only: log this sidecar's reply to the AI Chat log under its
+            // caller label (e.g. "ImageCaption"). The replies arrive async, outside
+            // the request scope below, so wrap onDone to capture them here.
+            var realOnDone = onDone;
+            onDone = (rtdb, jn, str) =>
+            {
+                try { AIChatLog.Response(callerLabel, !string.IsNullOrEmpty(str) ? str : (jn != null ? jn.ToString() : "")); } catch { }
+                realOnDone?.Invoke(rtdb, jn, str);
+            };
+
+            // Forward the request body to the AI Chat log tagged with the caller
+            // label. Managers call LogRequest synchronously before their first
+            // yield, so this scope is still active when the dispatch below fires.
+            using (LLMDebugLog.PurposeScope(callerLabel))
             switch (inst.providerType)
             {
                 case LLMProvider.Ollama:
@@ -1638,7 +1658,17 @@ namespace AITools.AIChat.Skills
             int PxToTmpFont(int px) =>
                 px <= 0 ? 0 : Mathf.Clamp(Mathf.RoundToInt(px / pxPerFont), 1, 4000);
             int tmpMaxFont = fontSize > 0 ? PxToTmpFont(fontSize) : 0;
-            int tmpMinFont = PxToTmpFont(minFontSize);
+            int tmpMinFont = PxToTmpFont(minFontSize); // the LLM's requested floor (logged below; now a soft hint)
+            // BOX ALWAYS WINS. The auto-fitter is allowed to shrink text all the way
+            // down to this tiny absolute floor so it ALWAYS fits the rect, instead of
+            // honoring the requested min_font_size when that floor is bigger than the
+            // box (the old behavior - it forced poster titles / book body text to
+            // overflow the band, overlap the next line, and clip at the canvas edge).
+            // min_font_size is therefore a soft hint now: when the box can hold it the
+            // fitted size comes out >= it anyway; when it can't, the box wins and the
+            // text shrinks to fit. MIN_FIT_PX just keeps text from collapsing to 0.
+            const int MIN_FIT_PX = 6;
+            int tmpFitFloor = Mathf.Max(1, PxToTmpFont(MIN_FIT_PX));
             // The fit helpers measure in world units, so hand them the rect in
             // world units too (pixels / pxPerWorld). Returned value is a TMP
             // fontSize, which is exactly what the renderer wants.
@@ -1648,8 +1678,8 @@ namespace AITools.AIChat.Skills
             // Compute the actual fontSize to render at. When autoSize is on (default),
             // we MEASURE the text's preferred bounds at a reference fontSize and
             // scale to fit the rect - bypassing TMP's built-in enableAutoSizing
-            // which behaves unreliably here. font_size is the upper cap, min_font_size
-            // is the floor.
+            // which behaves unreliably here. font_size is the upper cap; the fitter
+            // shrinks down to tmpFitFloor so the text always fits the box.
             string renderText = text;
             bool renderWrap = wrap;
             int renderFontSize;
@@ -1657,7 +1687,7 @@ namespace AITools.AIChat.Skills
             {
                 if (autoSize)
                 {
-                    renderFontSize = ComputeFitFontSizeWithManualWrap(text, font, tmpMaxFont, tmpMinFont, worldRectW, worldRectH, styles, tmpAlign, out renderText);
+                    renderFontSize = ComputeFitFontSizeWithManualWrap(text, font, tmpMaxFont, tmpFitFloor, worldRectW, worldRectH, styles, tmpAlign, out renderText);
                 }
                 else
                 {
@@ -1673,7 +1703,7 @@ namespace AITools.AIChat.Skills
             else
             {
                 renderFontSize = autoSize
-                    ? ComputeFitFontSize(text, font, tmpMaxFont, tmpMinFont, worldRectW, worldRectH, styles, tmpAlign, false)
+                    ? ComputeFitFontSize(text, font, tmpMaxFont, tmpFitFloor, worldRectW, worldRectH, styles, tmpAlign, false)
                     : tmpMaxFont;
             }
 
@@ -1729,8 +1759,20 @@ namespace AITools.AIChat.Skills
                       $"auto={autoSize} wrap={wrap} -> renderFontSize={renderFontSize}(TMP) " +
                       $"measuredH={measuredH}px renderTexH={renderTexH}px chars={(text ?? "").Length} " +
                       $"| pxPerWorld={pxPerWorld:0.###} worldPerFont={worldPerFont:0.###} " +
-                      $"pxPerFont={pxPerFont:0.###} tmpFontCap=[{tmpMinFont},{tmpMaxFont}]");
+                      $"pxPerFont={pxPerFont:0.###} tmpFontCap=[{tmpFitFloor},{tmpMaxFont}] reqMin={tmpMinFont}");
 #endif
+
+            // Editor-only: mirror the fit math into the AI Chat log. overflowPx > 0
+            // means the floor (min_font_size) forced text taller than the rect can
+            // hold, so it spills past the box and clips at the canvas edge - the
+            // classic "poster title too big / lines overlap" symptom.
+            AIChatLog.Note("draw_text",
+                $"text=\"{((text != null && text.Length > 120) ? text.Substring(0, 120) + "…" : text)}\" " +
+                $"canvas={srcW}x{srcH} rect=({x},{y}) {w}x{h} " +
+                $"font_size_arg={action.GetArg("font_size") ?? "(unset)"} min_arg={action.GetArg("min_font_size") ?? "(unset)"} " +
+                $"auto={autoSize} wrap={wrap} renderFontSize(TMP)={renderFontSize} " +
+                $"rectH={textH}px measuredH={measuredH}px overflowPx={extraH} renderTexH={renderTexH}px " +
+                $"lines={(renderText ?? "").Split('\n').Length} pxPerFont={pxPerFont:0.###} tmpFontCap=[{tmpFitFloor},{tmpMaxFont}] reqMin={tmpMinFont}");
 
             dst.Apply();
             yield return null;

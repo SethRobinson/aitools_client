@@ -2480,11 +2480,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         RTDB db = new RTDB();
 
-        // Log this conversational turn to its own request file, separate from the
+        // Tag this conversational turn as "chat" so its request body is forwarded
+        // to the editor-only AIChatLog (llm_aichat_log.json), separate from the
         // vision-caption / summarization sidecar traffic the same managers serve.
         // The dispatch below runs each provider's coroutine synchronously up to its
         // first yield (where LogRequest fires), so the scope is still active then.
-        using (LLMDebugLog.RequestFileScope(LLMDebugLog.AIChatRequestFile))
+        using (LLMDebugLog.PurposeScope("chat"))
         switch (activeProvider)
         {
             case LLMProvider.OpenAI:
@@ -2912,6 +2913,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         string visibleText = _streamBuffer.ToString();
         string historyText = PreserveActionTagsForHistory(streamedText);
         visibleText = BuildVisibleStreamText(visibleText);
+
+        // Editor-only: record the raw assistant reply WITH its <aitools_action>
+        // tool-call tags inline. This is the half the old "sent only" request log
+        // never captured - it's what reveals e.g. poster text being baked into a
+        // generate_image prompt vs. laid out with draw_text. Pairs with the "chat"
+        // request logged via PurposeScope at send time.
+        AIChatLog.Response("chat", historyText);
 
         // Final visual update (body only, the "Assistant" label is a separate TMP_Text)
         var completedField = _streamingAssistantField;
