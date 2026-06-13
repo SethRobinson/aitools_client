@@ -2032,6 +2032,7 @@ public string GetPrompt() { return m_prompt; }
 
         //Current unified LLM debug files (see LLMDebugLog)
         RTUtil.DeleteFileIfItExists(LLMDebugLog.RequestFile);
+        RTUtil.DeleteFileIfItExists(LLMDebugLog.AIChatRequestFile);
         RTUtil.DeleteFileIfItExists(LLMDebugLog.ResponseFile);
         RTUtil.DeleteFileIfItExists(LLMDebugLog.ErrorFile);
 

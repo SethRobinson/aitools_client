@@ -2480,6 +2480,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         RTDB db = new RTDB();
 
+        // Log this conversational turn to its own request file, separate from the
+        // vision-caption / summarization sidecar traffic the same managers serve.
+        // The dispatch below runs each provider's coroutine synchronously up to its
+        // first yield (where LogRequest fires), so the scope is still active then.
+        using (LLMDebugLog.RequestFileScope(LLMDebugLog.AIChatRequestFile))
         switch (activeProvider)
         {
             case LLMProvider.OpenAI:
