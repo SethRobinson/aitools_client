@@ -696,6 +696,7 @@ set_default_audio_negative_prompt|music|
         foreach (var gi in m_gpuInfo)
         {
             if (gi.buttonScript == null) continue;
+            gi.buttonScript.Setup(gi); //refresh the button's cached index/text to match the (possibly renumbered) localGPUID, otherwise a later busy repaint pulls the wrong server's name
             var giPos = gi.buttonScript.transform.localPosition;
             giPos.y = baseY + spacerY * gi.localGPUID;
             gi.buttonScript.transform.localPosition = giPos;
