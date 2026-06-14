@@ -597,12 +597,21 @@ namespace AITools.AIChat.Skills
             }
 
             // Optional GPU hint - reuses the existing per-server "wait for this server"
-            // slot on PicMain (see PicMain.UpdateJobs around m_requestedServerID).
+            // slot on PicMain (see PicMain.UpdateJobs around m_requestedServerID), but as a
+            // SOFT preference: if the chosen GPU is busy when this pic is ready to run, the
+            // scheduler falls back to any free GPU instead of waiting. The LLM picks GPUs
+            // from a snapshot frozen at turn-start and routinely collides (e.g. pins 4 movies
+            // to gpus 0,2,0,2), so a hard pin would deadlock half the batch on busy GPUs
+            // while others sit idle. Soft fallback also keeps the main_prompt's promise that
+            // a specified-but-busy gpu falls back automatically.
             if (action.GpuId.HasValue)
             {
                 int gpu = action.GpuId.Value;
                 if (gpu >= 0 && gpu < Config.Get().GetGPUCount())
+                {
                     picMain.m_requestedServerID = gpu;
+                    picMain.m_requestedServerIsPreference = true;
+                }
             }
 
             // Install a workflow-error reporter so PicMain's runtime aborts (e.g.

@@ -228,7 +228,8 @@ public class PicMain : MonoBehaviour
     public int m_ownedServerID = -1; // When >= 0, this pic owns this server exclusively for AutoPic override
     public string m_autoPicScriptName = ""; // Tracks which AutoPic script was used for this pic
     public bool m_stopAfterScript = false; // Set by @stopjob command - tells callback not to add more jobs
-    public int m_requestedServerID = -1; // When >= 0, this pic will only use this specific server (waits if busy)
+    public int m_requestedServerID = -1; // When >= 0, this pic will only use this specific server (waits if busy, unless m_requestedServerIsPreference)
+    public bool m_requestedServerIsPreference = false; // When true, m_requestedServerID is a SOFT hint: if that server is busy/unavailable, fall back to any free GPU instead of waiting. Used by AI Chat's gpu="N" hint (Adventure leaves this false for a hard per-server pin).
     public bool m_skipIgnoredServers = false; // When true, GetFreeGPU skips servers with _ignoredByExtraGenerators
     public string m_gpuNameMatchFilter = ""; // When non-empty AND m_requestedServerID < 0 AND m_ownedServerID < 0, restrict free-GPU lookup to servers whose _name contains this substring (case-insensitive)
     public bool m_autoPicOverridePreApplied = false; // When true, skip per-server AutoPic override (already applied at creation)
@@ -3519,6 +3520,17 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             {
                 serverID = m_requestedServerID;
             }
+            else if (m_requestedServerIsPreference)
+            {
+                // Soft GPU hint (e.g. AI Chat's gpu="N"): the preferred server is busy or
+                // unavailable, so fall back to ANY free GPU rather than waiting forever for
+                // that one. This matches the AI Chat prompt's documented promise ("if you
+                // specify a gpu and it's busy, the scheduler will fall back automatically")
+                // and prevents the multi-movie deadlock where the LLM pins several pics to
+                // the same/busy GPUs while other GPUs sit idle.
+                serverID = Config.Get().GetFreeGPU(neededRenderer, false, m_skipIgnoredServers, m_gpuNameMatchFilter);
+            }
+            // else: hard pin (Adventure per-server render) - leave serverID == -1 and wait.
         }
         else
         {

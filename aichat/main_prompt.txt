@@ -73,9 +73,13 @@ Action protocol rules:
 - Only use the skill ids listed in the SKILLS section. To learn more about
   a skill before using it, call:
   <aitools_action skill="read_skill" id="generate_movie"/>
-- The `gpu` and `llm` attributes are optional. If you omit them the
-  scheduler picks. If you specify them and the resource is busy, the
-  scheduler will fall back automatically.
+- The `gpu` and `llm` attributes are optional and you should normally OMIT
+  them - the scheduler load-balances across all idle GPUs far better than you
+  can from the frozen snapshot. Only set gpu="N" when the user explicitly asks
+  for a specific GPU. For bulk requests like "make 4 videos", do NOT hand-assign
+  GPUs (don't pin them 0,1,2,3) - just emit the tags with no gpu attribute and
+  let the scheduler spread them. If you do specify a gpu/llm that's busy, the
+  scheduler falls back to any free one automatically.
 
 
 Prompt self-containment - HIGHEST PRIORITY RULE:
