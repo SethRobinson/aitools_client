@@ -1948,10 +1948,48 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (!_isStreaming) return;
         _autoContinueRemaining = 0;
         TryCancelActiveRequests();
+        // Aborting the web request means OnLLMCompletedCallback never fires, so the
+        // partial reply that already streamed in would otherwise never get committed
+        // to history or made editable. Commit it ourselves before finalizing so the
+        // stopped bubble behaves like a completed one (editable, sent on next turn).
+        CommitPartialAssistantReply();
         FinalizeAssistantTurn(aborted: true);
         // Invalidate any parked pump / in-flight deferred coroutine so a
         // stopped book doesn't keep spawning pages after the user bailed.
         _actionExecutor?.ResetForNewTurn();
+    }
+
+    /// <summary>
+    /// Commit whatever the assistant streamed before the user hit Stop: flush the
+    /// action parser, push the partial text into the conversation history, and flip
+    /// the bubble from readOnly to editable. Mirrors the tail of OnLLMCompletedCallback,
+    /// which the abort path skips because CancelCurrentRequest() suppresses that callback.
+    /// </summary>
+    private void CommitPartialAssistantReply()
+    {
+        var completedField = _streamingAssistantField;
+        if (completedField == null) return;
+
+        // Flush any text the action parser was holding back (e.g. a trailing partial
+        // "<" awaiting a tag that will now never arrive).
+        if (_actionParser != null)
+        {
+            string finalDisplay = _actionParser.Flush();
+            if (!string.IsNullOrEmpty(finalDisplay))
+                _streamBuffer.Append(finalDisplay);
+        }
+
+        string visibleText = BuildVisibleStreamText(_streamBuffer.ToString());
+        completedField.text = ConvertMarkdownToTMP(visibleText);
+
+        // Nothing streamed in yet -> leave the empty bubble readOnly and don't pollute
+        // history with a blank assistant turn.
+        string historyText = PreserveActionTagsForHistory(visibleText);
+        if (string.IsNullOrEmpty(historyText)) return;
+
+        AIChatLog.Response("chat", historyText);
+        _promptManager.AddInteraction("assistant", historyText);
+        EnableBubbleEditing(completedField, _promptManager.GetLastInteraction());
     }
 
     private void OnClearClicked()
