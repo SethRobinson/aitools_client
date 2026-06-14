@@ -123,6 +123,14 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // we need to skip dead Pics during pop without losing position.
     private readonly List<PicMain> _unchainedPicsThisTurn = new List<PicMain>();
 
+    // True when a fresh (unchained) spawn was attempted but has NOT succeeded yet (in
+    // progress, deferred, or FAILED). Set at the start of each unchained spawn via
+    // MarkChainTargetStale(); cleared the instant a spawn succeeds (SetLastSpawnedPicForTurn).
+    // While set, PeekChainTarget/ConsumeChainTarget return null so a chained decorator after
+    // a FAILED base (e.g. a bad-preset image_to_image) errors instead of stacking onto - and
+    // corrupting - the previous page's Pic.
+    private bool _chainTargetStale;
+
     private TMP_FontAsset _font;
     private RectTransform _mainPanel;
 
@@ -1850,6 +1858,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // most-recent ref AND the LIFO stack need clearing.
         _lastSpawnedPicThisTurn = null;
         _unchainedPicsThisTurn.Clear();
+        _chainTargetStale = false;
         // Reset the serial action scheduler in lockstep, and bump its turn
         // epoch so any deferred coroutine still alive from a prior turn bails
         // instead of spawning a stale page into this new turn.
@@ -3745,9 +3754,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             string kindLabel = isMovie ? "Movie" : "Image";
             _infoMessages.Add(new InfoMessage(
                 $"({kindLabel} just spawned is {kindLabel} #{chatImageNumber} in CHAT IMAGES. " +
-                $"Refer to it on later turns via chat_image=\"{chatImageNumber}\". " +
-                "Do NOT predict higher slot numbers for bubbles you generated in this same reply - " +
-                "the actual slot number is the one stated here.)"));
+                $"Reference it via chat_image=\"{chatImageNumber}\" - in THIS same reply (the host waits " +
+                "for it to finish rendering) or on any later turn - or by its anchor name if one was set. " +
+                "Don't guess slot numbers for bubbles you generated earlier in this same reply; " +
+                "the actual number is the one stated here.)"));
         }
 
         // Generated images don't have texture data yet (workflow hasn't run). The
@@ -4397,11 +4407,25 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     {
         _lastSpawnedPicThisTurn = spawnedPic;
         if (spawnedPic != null)
+        {
             _unchainedPicsThisTurn.Add(spawnedPic);
+            _chainTargetStale = false; // a fresh Pic landed - the head is a valid chain target again
+        }
+    }
+
+    void IChatHost.MarkChainTargetStale()
+    {
+        _chainTargetStale = true;
     }
 
     PicMain IChatHost.ConsumeChainTarget()
     {
+        // A fresh unchained spawn was attempted but hasn't succeeded (in progress / failed):
+        // the head is not a valid chain target. Return null so a chained step doesn't attach
+        // to a stale earlier Pic. SetLastSpawnedPicForTurn clears this the moment a spawn lands.
+        if (_chainTargetStale)
+            return null;
+
         // LIFO: walk from the END (most-recent push) so a chain action animates the
         // Pic the LLM most recently emitted - the natural "the image I just made"
         // intent. If a reply interleaves standalone gens with paired stacks (gen,
@@ -4420,6 +4444,25 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // Stack exhausted - fall back to the most-recent Pic so a 3+ step chain
         // (gen_image -> img_to_image chain -> img_to_movie chain) keeps stacking on
         // the same root after its stack entry was consumed by step 2.
+        if (_lastSpawnedPicThisTurn == null || _lastSpawnedPicThisTurn.gameObject == null)
+            return null;
+        return _lastSpawnedPicThisTurn;
+    }
+
+    PicMain IChatHost.PeekChainTarget()
+    {
+        // Same staleness rule as ConsumeChainTarget: if a fresh unchained spawn was attempted
+        // but hasn't succeeded (in progress / FAILED), the head is invalid - a chained local
+        // decorator must NOT fall back onto the previous page's Pic and corrupt it.
+        if (_chainTargetStale)
+            return null;
+
+        // Non-consuming: SetLastSpawnedPicForTurn sets _lastSpawnedPicThisTurn and pushes
+        // the LIFO in lockstep, so the head IS the stack top - returning it is a peek
+        // without the pop. Chained LOCAL composition ops use this (instead of
+        // ConsumeChainTarget) so border + body text + page number all decorate the SAME
+        // most-recent Pic, rather than each popping a different (older) Pic off the stack.
+        // Null-safe against a Pic destroyed mid-reply.
         if (_lastSpawnedPicThisTurn == null || _lastSpawnedPicThisTurn.gameObject == null)
             return null;
         return _lastSpawnedPicThisTurn;

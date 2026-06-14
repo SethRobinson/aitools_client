@@ -114,21 +114,43 @@ namespace AITools.AIChat.Skills
         /// chain="true" actions in this same turn. Called by the executor right after
         /// <see cref="AppendImageBubbleForPic"/>. Chained steps do NOT update this -
         /// a 3-step chain (base -> chain -> chain) all references the same root Pic.
-        /// Also pushes the Pic onto the per-turn FIFO queue consumed by
-        /// <see cref="ConsumeChainTarget"/>.
+        /// Also pushes the Pic onto the per-turn LIFO stack consumed by
+        /// <see cref="ConsumeChainTarget"/> / peeked by <see cref="PeekChainTarget"/>.
         /// </summary>
         void SetLastSpawnedPicForTurn(PicMain spawnedPic);
 
         /// <summary>
-        /// Resolve and CONSUME the next chain target. Pops the oldest unmatched Pic
-        /// from this turn's FIFO queue, so when the LLM emits N generate-class actions
-        /// followed by N chain="true" actions (a "grouped" reply), each chain pairs
-        /// first-with-first instead of every chain stacking on the most recent Pic.
-        /// Falls back to <see cref="GetLastSpawnedPicForTurn"/> when the queue is empty
-        /// (so 3+ step chains on the same root Pic still work). Returns null if no
-        /// usable chain target exists this turn.
+        /// Resolve and CONSUME the next chain target. Pops the MOST-RECENT unmatched Pic
+        /// from this turn's LIFO stack, so when the LLM emits N generate-class actions
+        /// followed by N chain="true" GENERATES (a "grouped" reply), each chain pairs
+        /// with a distinct source (most-recent first) instead of every chain stacking on
+        /// the same Pic. Falls back to <see cref="GetLastSpawnedPicForTurn"/> when the
+        /// stack is empty (so 3+ step chains on the same root Pic still work). Returns
+        /// null if no usable chain target exists this turn. NOTE: only chained GENERATES
+        /// consume; chained LOCAL composition ops use <see cref="PeekChainTarget"/>
+        /// (non-consuming) so several decorations stack onto one working image.
         /// </summary>
         PicMain ConsumeChainTarget();
+
+        /// <summary>
+        /// Resolve the current chain target WITHOUT consuming it: the most-recent
+        /// unchained Pic this turn (the LIFO head), or null if none is usable. Chained
+        /// LOCAL composition ops (draw_text, add_border, draw_shape, paste_image,
+        /// crop_resize) use this so MANY decorations stack onto the SAME working image.
+        /// Only chained GENERATES consume via <see cref="ConsumeChainTarget"/>.
+        /// </summary>
+        PicMain PeekChainTarget();
+
+        /// <summary>
+        /// Mark the chain target STALE: called by the executor at the start of every
+        /// fresh (unchained) spawn attempt. A successful spawn clears it via
+        /// <see cref="SetLastSpawnedPicForTurn"/>; a FAILED spawn (bad preset, missing
+        /// source, decode error) leaves it set, so a following chain="true" decorator
+        /// (border/text) sees a null target and errors cleanly instead of silently
+        /// stacking onto - and corrupting - the PREVIOUS page's Pic. Both
+        /// <see cref="PeekChainTarget"/> and <see cref="ConsumeChainTarget"/> honor it.
+        /// </summary>
+        void MarkChainTargetStale();
 
         /// <summary>
         /// True if the Nth chat image's underlying Pic still has an active or

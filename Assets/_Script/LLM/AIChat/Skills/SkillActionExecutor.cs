@@ -65,6 +65,24 @@ namespace AITools.AIChat.Skills
         // never spawn into a new turn.
         private int _turnEpoch = 0;
 
+        // Preset filenames the chat successfully resolved this SESSION, most-recent first
+        // (capped). Used as the tiebreaker when a fuzzy preset match is otherwise
+        // ambiguous: the model almost always re-typos a name it JUST used correctly (e.g.
+        // used "...Klein Edit", then asks for "...Edit"), and several real presets can be
+        // equally close by raw edit distance ("Klein Edit" vs "Qwen Edit"). NOT reset per
+        // turn - cross-turn usage is exactly the disambiguation signal we want.
+        private readonly List<string> _recentlyResolvedPresets = new List<string>();
+        private const int RecentPresetCap = 12;
+
+        private void RecordResolvedPreset(string onDiskName)
+        {
+            if (string.IsNullOrEmpty(onDiskName)) return;
+            _recentlyResolvedPresets.RemoveAll(p => string.Equals(p, onDiskName, StringComparison.OrdinalIgnoreCase));
+            _recentlyResolvedPresets.Insert(0, onDiskName);
+            if (_recentlyResolvedPresets.Count > RecentPresetCap)
+                _recentlyResolvedPresets.RemoveAt(_recentlyResolvedPresets.Count - 1);
+        }
+
         public SkillActionExecutor(SkillManager skills, IChatHost host)
         {
             _skills = skills;
@@ -343,6 +361,13 @@ namespace AITools.AIChat.Skills
                 return;
             }
 
+            // Past here this is a fresh, unchained spawn. Mark the chain target stale so that
+            // if this spawn FAILS below (preset not found, unresolved source, decode error), a
+            // following chain="true" decorator errors cleanly instead of stacking onto - and
+            // corrupting - the previous page's Pic. The successful spawn clears it via
+            // SetLastSpawnedPicForTurn; a deferred spawn re-runs and clears it on completion.
+            _host?.MarkChainTargetStale();
+
             string preset = action.Preset;
             string prompt = action.Prompt;
 
@@ -493,7 +518,7 @@ namespace AITools.AIChat.Skills
             }
 
             // Resolve the preset filename robustly (case-insensitive, with/without .txt).
-            string resolved = ResolvePresetName(preset);
+            string resolved = ResolvePresetName(preset, _recentlyResolvedPresets, out bool presetFuzzy);
             if (resolved == null)
             {
                 _host?.AddSystemInjectionAndBubble(
@@ -501,6 +526,10 @@ namespace AITools.AIChat.Skills
                     "Re-pick from the list shown in your skill description.");
                 return;
             }
+            if (presetFuzzy)
+                _host?.AddInfoBubble(
+                    $"(preset '{preset}' wasn't found - used the closest match '{resolved}' instead. Use that exact name next time.)");
+            RecordResolvedPreset(resolved);
 
             var imageGen = ImageGenerator.Get();
             if (imageGen == null)
@@ -626,12 +655,15 @@ namespace AITools.AIChat.Skills
         /// </summary>
         private void ExecuteChainedGenerate(SkillAction action)
         {
-            // FIFO match: pop the OLDEST unchained Pic from the queue (or fall back to
-            // the most-recent if the queue is empty - keeps 3+ step chains working).
-            // The previous design used GetLastSpawnedPicForTurn directly, which made
-            // every chain pile onto the most-recent Pic - so a "grouped" reply like
-            // gen_image, gen_image, img_to_movie, img_to_movie produced two LTX videos
-            // stacked on the second image instead of one each.
+            // LIFO match: pop the MOST-RECENT unchained Pic from the stack so a paired
+            // "gen A, gen B, mov, mov" reply animates mov1->B, mov2->A (each chained
+            // generate gets a distinct source). Falls back to GetLastSpawnedPicForTurn (the
+            // head) when the stack is empty, so a 3+ step chain on one root Pic still works.
+            // The previous design used GetLastSpawnedPicForTurn directly, which made every
+            // chain pile onto the most-recent Pic - so the grouped reply above produced two
+            // LTX videos stacked on the second image instead of one each. NOTE: this CONSUME
+            // (pop) is correct for chained GENERATES; chained LOCAL composition ops use
+            // PeekChainTarget() (non-consuming) so border+text+number all decorate one image.
             var prevPic = _host?.ConsumeChainTarget();
             if (prevPic == null)
             {
@@ -714,7 +746,7 @@ namespace AITools.AIChat.Skills
                 + (chainBytes5 != null ? 1 : 0);
             preset = DowngradePresetToInputCount(preset, chainWiredInputCount, action.SkillId);
 
-            string resolved = ResolvePresetName(preset);
+            string resolved = ResolvePresetName(preset, _recentlyResolvedPresets, out bool presetFuzzy);
             if (resolved == null)
             {
                 _host?.AddSystemInjectionAndBubble(
@@ -722,6 +754,10 @@ namespace AITools.AIChat.Skills
                     "Re-pick from the list shown in your skill description.");
                 return;
             }
+            if (presetFuzzy)
+                _host?.AddInfoBubble(
+                    $"(preset '{preset}' wasn't found - used the closest match '{resolved}' instead. Use that exact name next time.)");
+            RecordResolvedPreset(resolved);
 
             if (!TryWireExtraInput(prevPic, chainBytes2, 2, action.SkillId)) return;
             if (!TryWireExtraInput(prevPic, chainBytes3, 3, action.SkillId)) return;
@@ -971,8 +1007,9 @@ namespace AITools.AIChat.Skills
             return newPreset;
         }
 
-        private static string ResolvePresetName(string requested)
+        private static string ResolvePresetName(string requested, IReadOnlyList<string> recentPresets, out bool fuzzyCorrected)
         {
+            fuzzyCorrected = false;
             if (string.IsNullOrEmpty(requested)) return null;
             string projectRoot = System.IO.Path.GetFullPath(System.IO.Path.Combine(Application.dataPath, ".."));
             string presetsDir = System.IO.Path.Combine(projectRoot, "Presets");
@@ -1015,6 +1052,17 @@ namespace AITools.AIChat.Skills
                     return found;
             }
 
+            // Fuzzy last resort: the LLM often drops or garbles a word in a long preset
+            // name ("Image To Image Edit" / "Image To Image Klein" for "Image To Image
+            // Klein Edit"). If exactly one preset is a close, unambiguous match, use it
+            // instead of dead-ending - which otherwise costs the model a whole turn.
+            string fuzzy = FindClosestPresetFile(presetsDir, requestedFile, prefix, recentPresets);
+            if (fuzzy != null)
+            {
+                fuzzyCorrected = true;
+                return fuzzy;
+            }
+
             return null;
         }
 
@@ -1035,6 +1083,150 @@ namespace AITools.AIChat.Skills
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Last-resort fuzzy resolver: return the on-disk preset whose normalized name is
+        /// the CLOSEST match to <paramref name="requestedFile"/>, but ONLY when that match
+        /// is both close and clearly unambiguous. Catches the common LLM slip of dropping
+        /// or garbling a word in a long preset name ("Image To Image Edit" ->
+        /// "Image To Image Klein Edit"). Returns the on-disk filename, or null when no
+        /// confident match exists (caller then errors as before). Deliberately conservative
+        /// so two similarly-named presets never silently resolve to the wrong one.
+        /// </summary>
+        private static string FindClosestPresetFile(string presetsDir, string requestedFile, string prefix, IReadOnlyList<string> recentPresets)
+        {
+            string reqNorm = NormalizePresetName(requestedFile, prefix);
+            if (reqNorm.Length < 4) return null; // too short to disambiguate safely
+            int maxAllowed = Math.Min(8, Math.Max(2, reqNorm.Length / 3));
+
+            // Anchor on the FIRST WORD and trust it: the model reliably gets the leading
+            // token right, and that token is where any preset PREFIX lives ("custom_Image",
+            // "hirez_Image", "test_Image", ...). Only presets sharing that EXACT first word
+            // are candidates, so fuzzy matching can fix a dropped/garbled LATER word but can
+            // never jump across prefixes or onto an unrelated preset family.
+            string reqFirst = FirstWord(requestedFile);
+            if (reqFirst.Length == 0) return null;
+
+            // Group surviving files by normalized name so any same-name duplicates collapse
+            // to one candidate (they share the first word, so the same prefix too).
+            var byNorm = new Dictionary<string, List<string>>();
+            var dist = new Dictionary<string, int>();
+            string bestNorm = null;
+            int best = int.MaxValue, second = int.MaxValue;
+            foreach (var path in System.IO.Directory.GetFiles(presetsDir, "*.txt"))
+            {
+                string name = System.IO.Path.GetFileName(path);
+                if (!string.Equals(FirstWord(name), reqFirst, StringComparison.OrdinalIgnoreCase))
+                    continue; // different first word (incl. a different prefix) - never substitute
+                string nm = NormalizePresetName(name, prefix);
+                if (!byNorm.TryGetValue(nm, out var list))
+                {
+                    list = new List<string>();
+                    byNorm[nm] = list;
+                    int d = LevenshteinDistance(reqNorm, nm);
+                    dist[nm] = d;
+                    if (d < best) { second = best; best = d; bestNorm = nm; }
+                    else if (d < second) { second = d; }
+                }
+                list.Add(name);
+            }
+            if (bestNorm == null || best > maxAllowed) return null;
+
+            // When the closest match isn't strictly unique (a near-tie within 1 edit - e.g.
+            // "...Edit" is equally close to "...Klein Edit" AND "...Qwen Edit"), break the
+            // tie with RECENT successful usage: the model overwhelmingly re-typos a name it
+            // just used. Prefer the closest in-range preset that was recently resolved.
+            if (second - best < 2)
+            {
+                string recentPick = null;
+                int recentBest = int.MaxValue;
+                if (recentPresets != null)
+                {
+                    foreach (string recent in recentPresets)
+                    {
+                        string rn = NormalizePresetName(recent, prefix);
+                        if (dist.TryGetValue(rn, out int rd) && rd <= maxAllowed && rd < recentBest)
+                        {
+                            recentBest = rd;
+                            recentPick = rn;
+                        }
+                    }
+                }
+                if (recentPick == null) return null; // genuinely ambiguous, no usage hint - don't guess
+                bestNorm = recentPick;
+            }
+
+            // All candidates share the first word (hence the same prefix), so just return
+            // the winning preset's on-disk file.
+            return byNorm[bestNorm][0];
+        }
+
+        /// <summary>
+        /// The first whitespace-delimited token of a preset filename (".txt" dropped, any
+        /// prefix kept, lowercased). Fuzzy matching requires this to match EXACTLY, so a
+        /// prefix baked into the first token ("custom_Image") is never silently swapped for
+        /// another ("hirez_Image" / "Image") and the model's leading word is taken as truth.
+        /// </summary>
+        private static string FirstWord(string fileName)
+        {
+            if (string.IsNullOrEmpty(fileName)) return "";
+            string s = fileName.Trim();
+            if (s.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
+                s = s.Substring(0, s.Length - 4);
+            var parts = s.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            return parts.Length > 0 ? parts[0].ToLowerInvariant() : "";
+        }
+
+        /// <summary>
+        /// Normalize a preset filename for fuzzy comparison: drop ".txt" and the active
+        /// preset prefix / leading underscore, lowercase, and collapse whitespace runs.
+        /// "test_Image To Image  Klein Edit.txt" -> "image to image klein edit".
+        /// </summary>
+        private static string NormalizePresetName(string fileName, string prefix)
+        {
+            if (string.IsNullOrEmpty(fileName)) return "";
+            string s = fileName.Trim();
+            if (s.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
+                s = s.Substring(0, s.Length - 4);
+            if (!string.IsNullOrEmpty(prefix) && s.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                s = s.Substring(prefix.Length);
+            s = s.TrimStart('_').Trim().ToLowerInvariant();
+            var sb = new System.Text.StringBuilder(s.Length);
+            bool prevSpace = false;
+            foreach (char c in s)
+            {
+                bool isSpace = char.IsWhiteSpace(c);
+                if (isSpace) { if (!prevSpace) sb.Append(' '); }
+                else sb.Append(c);
+                prevSpace = isSpace;
+            }
+            return sb.ToString().Trim();
+        }
+
+        /// <summary>
+        /// Iterative two-row Levenshtein edit distance. Inputs are short preset names, so
+        /// the per-call allocation is negligible.
+        /// </summary>
+        private static int LevenshteinDistance(string a, string b)
+        {
+            if (string.IsNullOrEmpty(a)) return b?.Length ?? 0;
+            if (string.IsNullOrEmpty(b)) return a.Length;
+            int n = a.Length, m = b.Length;
+            var prev = new int[m + 1];
+            var cur = new int[m + 1];
+            for (int j = 0; j <= m; j++) prev[j] = j;
+            for (int i = 1; i <= n; i++)
+            {
+                cur[0] = i;
+                for (int j = 1; j <= m; j++)
+                {
+                    int cost = a[i - 1] == b[j - 1] ? 0 : 1;
+                    cur[j] = Math.Min(Math.Min(prev[j] + 1, cur[j - 1] + 1), prev[j - 1] + cost);
+                }
+                var tmp = prev; prev = cur; cur = tmp;
+            }
+            return prev[m];
         }
 
         // ---------- read_skill ----------
@@ -2245,6 +2437,11 @@ namespace AITools.AIChat.Skills
 
         private void ExecuteNewCanvas(SkillAction action)
         {
+            // Fresh unchained spawn: mark stale so a chained decorator after a FAILED
+            // new_canvas errors instead of corrupting the previous page (cleared on the
+            // successful SetLastSpawnedPicForTurn below).
+            _host?.MarkChainTargetStale();
+
             int w = ParsePositiveInt(action.GetArg("width"), 1024);
             int h = ParsePositiveInt(action.GetArg("height"), 1024);
             Color color = ParseColor(action.GetArg("color"), Color.white);
@@ -2459,7 +2656,14 @@ namespace AITools.AIChat.Skills
         {
             bytes = _host?.GetChatImagePngBytes(chatN);
             deferred = false;
-            if (bytes != null)
+
+            // Non-null bytes are NOT proof the source is ready: a freshly-spawned Pic
+            // carries a 512x512 BLACK default texture (PicMain.Awake) until its GPU render
+            // lands, so an anchor referenced in the SAME reply that generated it would
+            // otherwise feed that black placeholder into img2img. If the source Pic is
+            // still generating, defer until the real image exists.
+            bool stillGenerating = _host?.IsChatImagePicGenerating(chatN) ?? false;
+            if (bytes != null && !stillGenerating)
                 return true;
 
             if (TryDeferActionUntilChatImageReady(action, skillId, argName, chatN))
@@ -2467,6 +2671,11 @@ namespace AITools.AIChat.Skills
                 deferred = true;
                 return false;
             }
+
+            // Couldn't defer (no coroutine runner, or this action already deferred once and
+            // the wait elapsed): use whatever bytes we have rather than failing outright.
+            if (bytes != null)
+                return true;
 
             return false;
         }
@@ -2517,10 +2726,14 @@ namespace AITools.AIChat.Skills
                 if (idx <= 0) continue;
 
                 byte[] bytes = _host?.GetChatImagePngBytes(idx);
-                if (bytes == null || bytes.Length == 0)
+                bool generating = _host?.IsChatImagePicGenerating(idx) ?? false;
+                // "Ready" requires BOTH readable bytes AND a finished render: a still-
+                // generating Pic only has its black placeholder texture, so treat it as
+                // not-ready (and keep waiting via anyBusy) even though bytes != null.
+                if (bytes == null || bytes.Length == 0 || generating)
                 {
                     allReady = false;
-                    if (_host?.IsChatImagePicGenerating(idx) ?? false)
+                    if (generating)
                         anyBusy = true;
                 }
             }
@@ -2737,15 +2950,25 @@ namespace AITools.AIChat.Skills
 
             if (action.Chain)
             {
+                // Tolerate the common slip of pairing chain="true" with a stray PRIMARY
+                // chat_image / attachment - the canvas the chain ALREADY supplies. Drop the
+                // redundant ref and proceed instead of erroring, so chained LOCAL ops behave
+                // the same as chained GENERATES (see ExecuteChainedGenerate). NOTE: paste_image's
+                // source_chat_image / source_attachment (the image being PASTED, not the canvas)
+                // are SEPARATE args and are deliberately left intact.
                 if (action.AttachmentIndex.HasValue || action.ChatImageIndex.HasValue)
                 {
-                    _host?.AddSystemInjectionAndBubble(
-                        $"Skill '{skillId}' with chain=\"true\" must NOT also set attachment / chat_image. " +
-                        "A chained step automatically uses the previous step's output as its canvas. " +
-                        "Drop the attachment/chat_image attribute and re-emit.");
-                    return;
+                    action.Args.Remove("chat_image");
+                    action.Args.Remove("attachment");
+                    Debug.Log($"SkillActionExecutor: dropped stray primary chat_image/attachment on chained '{skillId}' - chain=\"true\" already supplies the canvas.");
                 }
-                var prevPic = _host?.ConsumeChainTarget();
+                // Chained LOCAL ops decorate the current working image: border + body text
+                // + page number all target the SAME most-recent Pic, so PEEK the head
+                // instead of popping the LIFO. Popping here was the storybook bug - page 1's
+                // add_border pops Page1, then the body draw_text pops the underlying anchor
+                // and bakes text into it, corrupting the source every later page reuses.
+                // Chained GENERATES still ConsumeChainTarget() (pop); see ExecuteChainedGenerate.
+                var prevPic = _host?.PeekChainTarget();
                 if (prevPic == null)
                 {
                     _host?.AddSystemInjectionAndBubble(
@@ -2765,6 +2988,11 @@ namespace AITools.AIChat.Skills
                 }
                 return;
             }
+
+            // Fresh unchained composition spawn (non-chain path): mark stale so a chained
+            // decorator after a FAILED spawn (decode/spawn error) errors instead of
+            // corrupting the previous page. Cleared by the successful SetLastSpawnedPicForTurn.
+            _host?.MarkChainTargetStale();
 
             if (canvasBytes == null)
             {

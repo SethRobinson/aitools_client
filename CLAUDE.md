@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Also read AGENTS.md
+
+This repo has an `AGENTS.md` at the root with shared, authoritative guidance used by other AI agents (Codex, etc.): current build commands, architecture map, hard rules, and debugging tips — including how to debug AI Chat via `llm_aichat_log.json`. Read it at the start of a task and keep the two files consistent. When you learn something generally useful for any agent (build steps, architecture, a debugging tip), record it in `AGENTS.md` so every agent benefits — not just here.
+
 ## Project Overview
 
 Seth's AI Tools is a Unity-based Windows application (v2.00) that provides a native front-end for AI services like ComfyUI and Ollama. It specializes in image/video generation, LLM interactions, and interactive AI experiments.

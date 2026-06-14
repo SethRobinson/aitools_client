@@ -68,3 +68,4 @@ llm_request_sent_aichat.json
 llm_response.json
 .claude/settings.json
 llm_aichat_log.json
+CLAUDE.md

@@ -108,6 +108,8 @@ ComfyUI servers must be reachable over HTTP and should be started with `--listen
 - `SkillActionParser` and `SkillActionExecutor` parse and execute `<aitools_action .../>` tags. Image/movie skills reuse `PicMain.RunPresetByName()` and the existing preset/job pipeline.
 - `ChatPicMirror.cs` mirrors generated pics into chat image bubbles so later actions can reference `chat_image="N"`.
 
+**Debugging AI Chat:** the editor appends the whole exchange to `llm_aichat_log.json` in the working dir (project root in-editor). It is one chronological JSON array of `request` / `response` / `action` / `note` events: the outgoing LLM body, the raw reply with its inline `<aitools_action .../>` tags, each parsed tool call about to run (so `generate_image` prompts and `draw_text` rect/font/`chat_image` are visible), and per-action notes (e.g. `draw_text` auto-fit results: chosen font size, canvas size, overflow). It is truncated at the start of each play session and deleted on exit. Read this FIRST when a poster/book page comes out wrong — it shows exactly which Pic each action targeted and what the model emitted. The provider-agnostic `llm_request_sent.json` / `llm_response.json` / `llm_last_error.json` are last-writer-wins and get clobbered by sidecar calls (image captioning, etc.), so `llm_aichat_log.json` is the only un-clobbered picture of a full exchange. Source: `Assets/RT/AI/AIChatLog.cs` and `Assets/RT/AI/LLMDebugLog.cs`.
+
 ### Experiments
 
 Experiment code lives in `Assets/Experiments/`:

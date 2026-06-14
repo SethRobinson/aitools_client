@@ -62,8 +62,12 @@ each tagged `anchor="Name"` - that mints and names the anchor in one step:
 ```
 
 Say in prose which name is which ("Reya the swordswoman, Doran the mage").
-Do NOT also compose a group scene on the setup turn - the anchors aren't
-finished rendering yet. Let them settle; compose from the next turn on.
+For roleplay, keep the setup turn to just the cast portraits and start the
+scenes the next turn - it reads better as a story rhythm. (You CAN compose in
+the same turn if you want: the host WAITS for a freshly-minted anchor to finish
+rendering before the image_to_image that references it runs, so the old
+"anchors aren't ready yet" limitation no longer applies. A book or poster set
+SHOULD do the anchor and every page/panel in ONE reply - see the `books` skill.)
 
 **Every later turn.** Compose the shot from the EXISTING anchors,
 referencing each character by NAME. The host turns each name into its

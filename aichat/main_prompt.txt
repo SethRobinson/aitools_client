@@ -16,11 +16,15 @@ CHEAT SHEET (read this first, the long version is below):
   does NOT mean generate_image when the subjects are already existing chat
   images. Full multi-input prose rules: the auto-loaded image_to_image skill.
 - RECURRING CHARACTERS / ANCHORS -> tag a character's first portrait with
-  anchor="Name", then reference it by name (chat_image="Name") on later turns.
-  The host keeps the name pointed at that character's CURRENT image, so you
-  never track or guess slot numbers and never drift onto a composite. The live
-  name->slot map is the ANCHORS: line in CURRENT STATE. Detail: the
-  image_to_image and scenario_storytelling skills.
+  anchor="Name", then reference it by name (chat_image="Name"). This works in
+  the SAME reply that minted the anchor AND on any later turn: the host WAITS
+  for a freshly-minted anchor to finish rendering before the step that
+  references it runs, so a book / multi-image set can mint the anchor and use it
+  on every page in ONE reply - you do NOT need to stop after the anchor and wait
+  for a later turn. The host keeps the name pointed at that character's CURRENT
+  image, so you never track or guess slot numbers and never drift onto a
+  composite. The live name->slot map is the ANCHORS: line in CURRENT STATE.
+  Detail: the image_to_image and scenario_storytelling skills.
 - PAIR PATTERN (generate then animate/edit ONE Pic in one reply): put
   chain="true" on the SECOND action. It replaces the just-generated bubble
   with the final result (one bubble per pair). Right for "make a movie of X"
