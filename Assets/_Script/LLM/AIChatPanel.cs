@@ -176,9 +176,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // a sane payload. 0 = no resize.
     private const string PREFS_ATTACHMENT_MAX_EDGE = "aichat_attachment_max_edge";
     private const int DEFAULT_ATTACHMENT_MAX_EDGE = 1024;
-    // Auto-continue: when the user clicks Send with no input (the "(continue)"
-    // path) and the Auto toggle is on, fire up to N additional Continue turns
-    // automatically. The toggle and N value live in PlayerPrefs so they stick
+    // Auto repeat msg: when the toggle is checked, automatically re-send whatever
+    // is in the input box, once per completed reply, up to N times total - then
+    // auto-uncheck. The toggle and N value live in PlayerPrefs so they stick
     // across sessions.
     private const string PREFS_AUTO_CONTINUE_ON = "aichat_auto_continue_on";
     private const string PREFS_AUTO_CONTINUE_COUNT = "aichat_auto_continue_count";
@@ -200,13 +200,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private Toggle _includeImageDataToggle;
     private Toggle _autoContinueToggle;
     private TMP_InputField _autoContinueCountInput;
-    // Internal countdown for the auto-continue burst. Set from the N field
-    // when the user manually clicks Send with Auto on; decremented after each
-    // successful turn and re-fires another Send. Reset on Stop/Clear/abort
-    // (or when the user turns Auto off mid-burst).
+    // Internal countdown for the auto-repeat burst. Seeded from the N field when
+    // the toggle is checked; decremented as each repeat fires. Drained on
+    // Stop/Clear/abort or when the toggle is unchecked (including the auto-uncheck
+    // when the burst finishes).
     private int _autoContinueRemaining = 0;
-    // Latch so re-entering OnSendClicked from inside an auto-fire does NOT
-    // reset _autoContinueRemaining back to N.
+    // Latch marking that the current OnSendClicked call came from an auto-fire
+    // rather than a manual Send / Enter press.
     private bool _autoContinueFiring = false;
     private TextMeshProUGUI _statusText;
 
@@ -966,34 +966,49 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             v => SetIncludeImageData(v));
         {
             var tt = _includeImageDataToggle.gameObject.AddComponent<RTToolTip>();
-            tt._text = "If checked, raw image bytes are fed into the main chat context every turn - usually a bad idea and wasteful of tokens. If unchecked (recommended), a separate vision call 'looks' at each attached image once and only its description is added to the conversation.";
+            tt._text =
+                "If checked, raw image bytes are fed into the main chat\n" +
+                "context every turn - usually a bad idea and wasteful\n" +
+                "of tokens.\n" +
+                "\n" +
+                "If unchecked (recommended), a separate vision call\n" +
+                "'looks' at each attached image once and only its\n" +
+                "description is added to the conversation.";
         }
 
-        // Row 4: "Auto" toggle on the left + small numeric N input on the right.
-        // When Auto is on, hitting Send fires the manual turn then automatically
-        // fires up to N additional "(continue)" turns once each one completes.
-        // Stop, Clear, an aborted turn, or toggling Auto off cancels the burst.
+        // Row 4: "Auto repeat msg" toggle on the left + small numeric N input on
+        // the right. Checking the box (not pressing Send) drives the loop: it sends
+        // whatever is currently in the input box, waits for the reply, and repeats -
+        // up to N times total - then auto-unchecks itself. The input box is NOT
+        // cleared between repeats, so editing it mid-run changes what the next send
+        // delivers. Stop, an aborted turn, or unchecking the box stops it.
         _autoContinueToggle = CreateFooterToggle(
             footer.transform,
-            "Auto",
+            "Auto repeat msg",
             new Vector2(-72, -130),
             new Vector2(122, 22),
             GetAutoContinueEnabled(),
-            v =>
-            {
-                SetAutoContinueEnabled(v);
-                if (!v) _autoContinueRemaining = 0;
-            });
+            OnAutoRepeatToggled);
         {
             var tt = _autoContinueToggle.gameObject.AddComponent<RTToolTip>();
-            tt._text = "When enabled, after you press Send the chat automatically fires up to N additional '(continue)' turns - one per completed reply - to keep the LLM going on long tasks. Stop, Clear, an aborted turn, or toggling this off cancels the remaining burst. N is the number in the field to the right.";
+            tt._text =
+                "When checked, automatically re-sends whatever text is\n" +
+                "in the input box, once per completed reply, up to N\n" +
+                "times (the field on the right) - then unchecks itself.\n" +
+                "\n" +
+                "You don't have to press Send to start it; if a reply is\n" +
+                "already streaming it kicks in once that one finishes.\n" +
+                "\n" +
+                "The box is never cleared while running, so editing it\n" +
+                "changes what the next repeat sends. The N field\n" +
+                "counts down as it goes. Uncheck (or Stop) to halt.";
         }
         _autoContinueCountInput = CreateFooterIntInput(
             footer.transform,
             new Vector2(-8, -130),
             new Vector2(60, 22),
             GetAutoContinueCount(),
-            v => SetAutoContinueCount(v));
+            OnAutoRepeatCountEdited);
 
         CreateAttachmentsStrip(footer.transform);
 
@@ -1808,6 +1823,73 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     // ---------- Send / Stop / Clear ----------
 
+    /// <summary>
+    /// Handles the "Auto repeat msg" checkbox. Checking it seeds the repeat counter
+    /// from the N field and starts the loop: if the chat is idle we kick the first
+    /// send next frame, otherwise FinalizeAssistantTurn picks it up once the current
+    /// reply finishes. Unchecking (including the auto-uncheck when the burst ends)
+    /// just drains the counter so no further sends fire.
+    /// </summary>
+    private void OnAutoRepeatToggled(bool on)
+    {
+        SetAutoContinueEnabled(on);
+        if (!on)
+        {
+            _autoContinueRemaining = 0;
+            // Restore the N field to the saved target (it was showing the live
+            // countdown) so it's ready at the full count for the next run.
+            SetAutoRepeatCountField(GetAutoContinueCount());
+            return;
+        }
+
+        _autoContinueRemaining = GetAutoContinueCount();
+        if (_autoContinueRemaining <= 0)
+        {
+            // N is 0 (or blank) - nothing to repeat. Drop the check back off so the
+            // box never sits checked-but-idle doing nothing.
+            if (_autoContinueToggle != null) _autoContinueToggle.isOn = false;
+            return;
+        }
+
+        // Only auto-start now if a send is actually possible. If a reply is mid-flight
+        // (or a summary/captions are pending), the loop starts from FinalizeAssistantTurn
+        // / the next send opportunity instead.
+        bool captionsPending = _attachmentZone != null && _attachmentZone.CountInFlightCaptions() > 0;
+        if (!_isStreaming && !_compactSummaryInFlight && !captionsPending)
+            StartCoroutine(FireAutoContinueNextFrame());
+    }
+
+    /// <summary>
+    /// Sets the "Auto repeat msg" N field's displayed value. Uses SetTextWithoutNotify
+    /// (so it never fires onEndEdit / overwrites the saved N) and ForceLabelUpdate -
+    /// a plain .text assignment on an unfocused TMP_InputField doesn't reliably
+    /// refresh the visible glyphs, which is why the live countdown wasn't showing.
+    /// Skips the update while the user is actively typing in the field so the live
+    /// countdown can't clobber an in-progress edit.
+    /// </summary>
+    private void SetAutoRepeatCountField(int value)
+    {
+        if (_autoContinueCountInput == null) return;
+        if (_autoContinueCountInput.isFocused) return;
+        _autoContinueCountInput.SetTextWithoutNotify(value.ToString());
+        _autoContinueCountInput.ForceLabelUpdate();
+    }
+
+    /// <summary>
+    /// Called when the user commits an edit to the N field. Always updates the saved
+    /// target; if a repeat run is currently active, the new value also takes effect
+    /// immediately on the live countdown (setting it to 0 ends the run).
+    /// </summary>
+    private void OnAutoRepeatCountEdited(int value)
+    {
+        SetAutoContinueCount(value);
+        if (_autoContinueToggle != null && _autoContinueToggle.isOn)
+        {
+            _autoContinueRemaining = value;
+            if (value <= 0) _autoContinueToggle.isOn = false;
+        }
+    }
+
     private void OnSendClicked()
     {
         if (_isStreaming) return;
@@ -1827,18 +1909,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             return;
         }
 
-        // Manual click (not an auto-fire) seeds the auto-continue burst counter
-        // from the Auto toggle + N field. Auto-fires re-enter through here too,
-        // so the _autoContinueFiring latch keeps the counter from resetting
-        // back to N every iteration.
-        if (!_autoContinueFiring)
-        {
-            if (_autoContinueToggle != null && _autoContinueToggle.isOn)
-                _autoContinueRemaining = GetAutoContinueCount();
-            else
-                _autoContinueRemaining = 0;
-        }
-
+        // The auto-repeat counter is owned by the "Auto repeat msg" toggle handler
+        // and FinalizeAssistantTurn now - a plain Send no longer starts a burst.
         string text = _inputField != null ? _inputField.text : "";
         // Never send outer whitespace - stray newlines have leaked into the field via
         // the Enter-key race (see LateUpdate) and showed up as blank lines in the bubble.
@@ -1936,8 +2008,14 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (attachedCount > 0)
             _attachmentZone?.ClearAttachments();
 
-        _inputField.text = "";
-        _inputUndo?.ResetHistory();
+        // While "Auto repeat msg" is running, keep the text in the box so the next
+        // repeat can re-send it (and so mid-run edits are picked up). A normal send
+        // (box unchecked) clears as before.
+        if (_autoContinueToggle == null || !_autoContinueToggle.isOn)
+        {
+            _inputField.text = "";
+            _inputUndo?.ResetHistory();
+        }
         FocusInputDeferred();
 
         SendChatTurn(text);
@@ -1946,7 +2024,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private void OnStopClicked()
     {
         if (!_isStreaming) return;
+        // Stop fully ends auto-repeat: uncheck the box (its handler also zeroes the
+        // counter) so it doesn't quietly resume on the next reply.
         _autoContinueRemaining = 0;
+        if (_autoContinueToggle != null) _autoContinueToggle.isOn = false;
         TryCancelActiveRequests();
         // Aborting the web request means OnLLMCompletedCallback never fires, so the
         // partial reply that already streamed in would otherwise never get committed
@@ -1995,6 +2076,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private void OnClearClicked()
     {
         _autoContinueRemaining = 0;
+        if (_autoContinueToggle != null) _autoContinueToggle.isOn = false;
         // Discard any in-flight compact-summary; if its response landed after this
         // reset it would ReplaceInteractions() the old history right back in.
         _compactSummaryCancel?.Invoke();
@@ -2638,10 +2720,14 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 int? compatTopK = activeSettings.overrideTopK ? (int?)activeSettings.topK : null;
                 float? compatMinP = activeSettings.overrideMinP ? (float?)activeSettings.minP : null;
                 float? compatRepPenalty = activeSettings.overrideRepeatPenalty ? (float?)activeSettings.repeatPenalty : null;
+                float? compatPresencePenalty = activeSettings.overridePresencePenalty ? (float?)activeSettings.presencePenalty : null;
+                float? compatFrequencyPenalty = activeSettings.overrideFrequencyPenalty ? (float?)activeSettings.frequencyPenalty : null;
+                int? compatRepeatLastN = activeSettings.overrideRepeatLastN ? (int?)activeSettings.repeatLastN : null;
                 string compatReasoningEffortParam = isDeepSeek ? LLMReasoningEffortUtil.ToConfigValue(compatReasoningEffort) : null;
                 string json = _openAIMgr.BuildChatCompleteJSON(normalizedLines, compatMaxTokens, compatTemperature, model, true,
                     enableThinking: compatEnableThinking,
                     topP: compatTopP, topK: compatTopK, minP: compatMinP, repetitionPenalty: compatRepPenalty,
+                    frequencyPenalty: compatFrequencyPenalty, presencePenalty: compatPresencePenalty, repeatLastN: compatRepeatLastN,
                     customReasoningEffort: compatReasoningEffortParam);
                 _openAIMgr.SpawnChatCompleteRequest(json, OnLLMCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
                 break;
@@ -3108,20 +3194,25 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _streamingAssistantRT = null;
         ReleaseActiveLLM();
 
-        // Auto-continue: if this turn finished cleanly and there are auto-fires
-        // left in the burst, decrement and schedule the next "(continue)" Send.
-        // Aborts (Stop / errors) drain the counter so the burst doesn't resume
-        // on its own.
+        // Auto-repeat: if this turn finished cleanly and "Auto repeat msg" is still
+        // checked with repeats left, schedule the next Send (the count is consumed
+        // at fire time in FireAutoContinueNextFrame, not here). When the last repeat
+        // has fired, uncheck the box so the burst ends visibly. Aborts (Stop /
+        // errors) drain the counter so it doesn't resume on its own.
         bool willAutoContinue = false;
+        bool repeatOn = _autoContinueToggle != null && _autoContinueToggle.isOn;
         if (aborted)
         {
             _autoContinueRemaining = 0;
         }
-        else if (_autoContinueRemaining > 0
-                 && _autoContinueToggle != null && _autoContinueToggle.isOn)
+        else if (repeatOn && _autoContinueRemaining > 0)
         {
-            _autoContinueRemaining--;
             willAutoContinue = true;
+        }
+        else if (repeatOn)
+        {
+            // Burst complete - auto-uncheck (its handler zeroes the counter).
+            _autoContinueToggle.isOn = false;
         }
 
         // Keep the turn's final token/speed numbers on screen instead of snapping
@@ -3131,7 +3222,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (aborted)
             doneStatus = string.IsNullOrEmpty(stats) ? "Stopped" : $"Stopped   {stats}";
         else if (willAutoContinue)
-            doneStatus = $"Auto-continue ({_autoContinueRemaining + 1} left)";
+            doneStatus = $"Auto-repeat ({_autoContinueRemaining} left)";
         else
             doneStatus = string.IsNullOrEmpty(stats) ? "Idle" : $"Done   {stats}";
         SetBusyUI(false, doneStatus);
@@ -3162,6 +3253,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // toggled Auto off, cleared, or kicked off a manual send themselves).
         if (_autoContinueToggle == null || !_autoContinueToggle.isOn) yield break;
         if (_isStreaming) yield break;
+        if (_autoContinueRemaining <= 0) yield break;
+        // Consume one repeat as we fire it, so N counts total sends regardless of
+        // whether this fire came from checking the box or a finishing reply.
+        _autoContinueRemaining--;
+        // Reflect the live countdown in the N field.
+        SetAutoRepeatCountField(_autoContinueRemaining);
         _autoContinueFiring = true;
         try
         {
