@@ -171,7 +171,16 @@ public class LLMProviderSettings
     
     public bool overrideRepeatPenalty = false;
     public float repeatPenalty = 1.0f; // Penalize repeat sequences (1.0 = disabled, >1.0 = penalize, default: 1.0)
-    
+
+    public bool overridePresencePenalty = false;
+    public float presencePenalty = 0.0f; // Penalize tokens already present (0.0 = disabled, 0-2; DavidAU instruct: 1.5)
+
+    public bool overrideFrequencyPenalty = false;
+    public float frequencyPenalty = 0.0f; // Penalize tokens by frequency (0.0 = disabled, 0-1)
+
+    public bool overrideRepeatLastN = false;
+    public int repeatLastN = 64; // Range of recent tokens the rep/freq/presence penalties look back over (default: 64)
+
     // llama.cpp-specific: router mode info (not persisted, runtime only)
     [NonSerialized]
     public bool isRouterMode = false; // True if server has multiple models available
@@ -225,7 +234,13 @@ public class LLMProviderSettings
             overrideMinP = this.overrideMinP,
             minP = this.minP,
             overrideRepeatPenalty = this.overrideRepeatPenalty,
-            repeatPenalty = this.repeatPenalty
+            repeatPenalty = this.repeatPenalty,
+            overridePresencePenalty = this.overridePresencePenalty,
+            presencePenalty = this.presencePenalty,
+            overrideFrequencyPenalty = this.overrideFrequencyPenalty,
+            frequencyPenalty = this.frequencyPenalty,
+            overrideRepeatLastN = this.overrideRepeatLastN,
+            repeatLastN = this.repeatLastN
         };
 
         foreach (var parm in this.extraParams)

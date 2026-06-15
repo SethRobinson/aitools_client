@@ -301,7 +301,7 @@ public class OpenAITextCompletionManager : MonoBehaviour
     //   When non-null they are emitted in the request body. Only included by the Chat Completions branch
     //   (OpenAI Responses API does not accept these extras and would reject the request).
     public string BuildChatCompleteJSON(Queue<GTPChatLine> lines, int max_tokens = 100, float temperature = 1.3f, string model = "gpt-3.5-turbo", bool stream = false, bool useResponsesAPI = false, bool isReasoningModel = false, bool includeTemperature = true, string reasoningEffort = null, bool? enableThinking = null,
-        float? topP = null, int? topK = null, float? minP = null, float? repetitionPenalty = null, float? frequencyPenalty = null, float? presencePenalty = null, string customReasoningEffort = null)
+        float? topP = null, int? topK = null, float? minP = null, float? repetitionPenalty = null, float? frequencyPenalty = null, float? presencePenalty = null, int? repeatLastN = null, string customReasoningEffort = null)
     {
         string bStreamText = stream ? "true" : "false";
 
@@ -464,6 +464,8 @@ public class OpenAITextCompletionManager : MonoBehaviour
                 samplingSb.Append("\"frequency_penalty\": ").Append(frequencyPenalty.Value.ToString(inv)).Append(",\n             ");
             if (presencePenalty.HasValue)
                 samplingSb.Append("\"presence_penalty\": ").Append(presencePenalty.Value.ToString(inv)).Append(",\n             ");
+            if (repeatLastN.HasValue)
+                samplingSb.Append("\"repeat_last_n\": ").Append(repeatLastN.Value).Append(",\n             ");
             string samplingPart = samplingSb.ToString();
 
             string json =

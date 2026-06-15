@@ -28,7 +28,8 @@ public static class LLMSamplingCompat
     private static readonly string[] KnownSamplerKeys =
     {
         "min_p", "top_k", "top_p", "logit_bias",
-        "repetition_penalty", "frequency_penalty", "presence_penalty", "temperature"
+        "repetition_penalty", "repeat_penalty", "repeat_last_n",
+        "frequency_penalty", "presence_penalty", "temperature"
     };
 
     // Phrases that mark an error body as "this parameter is not allowed here"

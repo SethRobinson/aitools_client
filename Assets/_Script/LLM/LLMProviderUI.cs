@@ -48,7 +48,13 @@ public class LLMProviderUI
     private TMP_InputField _minPInput;
     private Toggle _repeatPenaltyToggle;
     private TMP_InputField _repeatPenaltyInput;
-    
+    private Toggle _presencePenaltyToggle;
+    private TMP_InputField _presencePenaltyInput;
+    private Toggle _frequencyPenaltyToggle;
+    private TMP_InputField _frequencyPenaltyInput;
+    private Toggle _repeatLastNToggle;
+    private TMP_InputField _repeatLastNInput;
+
     // Cached sampling parameter values
     private bool _overrideTemperature = false;
     private float _temperature = 0.8f;
@@ -60,7 +66,13 @@ public class LLMProviderUI
     private float _minP = 0.1f;
     private bool _overrideRepeatPenalty = false;
     private float _repeatPenalty = 1.0f;
-    
+    private bool _overridePresencePenalty = false;
+    private float _presencePenalty = 0.0f;
+    private bool _overrideFrequencyPenalty = false;
+    private float _frequencyPenalty = 0.0f;
+    private bool _overrideRepeatLastN = false;
+    private int _repeatLastN = 64;
+
     // Callback for when model selection changes (for Ollama to fetch model info)
     public event Action<string> OnModelChanged;
 
@@ -155,6 +167,12 @@ public class LLMProviderUI
             _minP = settings.minP;
             _overrideRepeatPenalty = settings.overrideRepeatPenalty;
             _repeatPenalty = settings.repeatPenalty;
+            _overridePresencePenalty = settings.overridePresencePenalty;
+            _presencePenalty = settings.presencePenalty;
+            _overrideFrequencyPenalty = settings.overrideFrequencyPenalty;
+            _frequencyPenalty = settings.frequencyPenalty;
+            _overrideRepeatLastN = settings.overrideRepeatLastN;
+            _repeatLastN = settings.repeatLastN;
             CreateSamplingParametersSection(sectionRoot.transform, settings);
         }
 
@@ -183,6 +201,12 @@ public class LLMProviderUI
             _minP = settings.minP;
             _overrideRepeatPenalty = settings.overrideRepeatPenalty;
             _repeatPenalty = settings.repeatPenalty;
+            _overridePresencePenalty = settings.overridePresencePenalty;
+            _presencePenalty = settings.presencePenalty;
+            _overrideFrequencyPenalty = settings.overrideFrequencyPenalty;
+            _frequencyPenalty = settings.frequencyPenalty;
+            _overrideRepeatLastN = settings.overrideRepeatLastN;
+            _repeatLastN = settings.repeatLastN;
             CreateSamplingParametersSection(sectionRoot.transform, settings);
         }
 
@@ -435,6 +459,12 @@ public class LLMProviderUI
             _minP = settings.minP;
             _overrideRepeatPenalty = settings.overrideRepeatPenalty;
             _repeatPenalty = settings.repeatPenalty;
+            _overridePresencePenalty = settings.overridePresencePenalty;
+            _presencePenalty = settings.presencePenalty;
+            _overrideFrequencyPenalty = settings.overrideFrequencyPenalty;
+            _frequencyPenalty = settings.frequencyPenalty;
+            _overrideRepeatLastN = settings.overrideRepeatLastN;
+            _repeatLastN = settings.repeatLastN;
             UpdateSamplingParametersUI();
         }
         
@@ -462,6 +492,12 @@ public class LLMProviderUI
             _minP = settings.minP;
             _overrideRepeatPenalty = settings.overrideRepeatPenalty;
             _repeatPenalty = settings.repeatPenalty;
+            _overridePresencePenalty = settings.overridePresencePenalty;
+            _presencePenalty = settings.presencePenalty;
+            _overrideFrequencyPenalty = settings.overrideFrequencyPenalty;
+            _frequencyPenalty = settings.frequencyPenalty;
+            _overrideRepeatLastN = settings.overrideRepeatLastN;
+            _repeatLastN = settings.repeatLastN;
             UpdateSamplingParametersUI();
         }
 
@@ -512,6 +548,12 @@ public class LLMProviderUI
             settings.minP = _minP;
             settings.overrideRepeatPenalty = _overrideRepeatPenalty;
             settings.repeatPenalty = _repeatPenalty;
+            settings.overridePresencePenalty = _overridePresencePenalty;
+            settings.presencePenalty = _presencePenalty;
+            settings.overrideFrequencyPenalty = _overrideFrequencyPenalty;
+            settings.frequencyPenalty = _frequencyPenalty;
+            settings.overrideRepeatLastN = _overrideRepeatLastN;
+            settings.repeatLastN = _repeatLastN;
         }
         
         // OpenAI / OpenAI Compatible thinking mode
@@ -535,6 +577,12 @@ public class LLMProviderUI
             settings.minP = _minP;
             settings.overrideRepeatPenalty = _overrideRepeatPenalty;
             settings.repeatPenalty = _repeatPenalty;
+            settings.overridePresencePenalty = _overridePresencePenalty;
+            settings.presencePenalty = _presencePenalty;
+            settings.overrideFrequencyPenalty = _overrideFrequencyPenalty;
+            settings.frequencyPenalty = _frequencyPenalty;
+            settings.overrideRepeatLastN = _overrideRepeatLastN;
+            settings.repeatLastN = _repeatLastN;
         }
 
         // Gemini-specific
@@ -1266,7 +1314,8 @@ public class LLMProviderUI
             settings.temperature.ToString("F2"),
             "Controls randomness (0.0-2.0, default: 0.8)",
             OnTemperatureToggleChanged,
-            OnTemperatureInputChanged
+            OnTemperatureInputChanged,
+            tooltip: "Controls randomness. Higher (e.g. 1.0+) = more creative and varied; lower (e.g. 0.3) = more focused and deterministic. Range 0.0-2.0, default 0.8. When unchecked, the server's own default is used."
         );
         
         // Top-P row
@@ -1277,7 +1326,8 @@ public class LLMProviderUI
             settings.topP.ToString("F2"),
             "Nucleus sampling (0.0-1.0, default: 0.9)",
             OnTopPToggleChanged,
-            OnTopPInputChanged
+            OnTopPInputChanged,
+            tooltip: "Nucleus sampling: only consider the most likely tokens whose probabilities add up to P. Lower = safer/more predictable word choices. Range 0.0-1.0, default 0.9."
         );
         
         // Top-K row
@@ -1288,7 +1338,8 @@ public class LLMProviderUI
             settings.topK.ToString(),
             "Top-K sampling (0=disabled, default: 40)",
             OnTopKToggleChanged,
-            OnTopKInputChanged
+            OnTopKInputChanged,
+            tooltip: "Only consider the K most likely tokens at each step. Lower = more focused, higher = more variety. 0 = disabled. Default 40."
         );
         
         // Min-P row
@@ -1299,32 +1350,71 @@ public class LLMProviderUI
             settings.minP.ToString("F2"),
             "Min probability threshold (0.0-1.0, default: 0.1)",
             OnMinPToggleChanged,
-            OnMinPInputChanged
+            OnMinPInputChanged,
+            tooltip: "Drops any token whose probability is below this fraction of the top token's probability. Higher = stricter (fewer unlikely tokens). Range 0.0-1.0, default 0.1."
         );
         
         // Repeat Penalty row
         (_repeatPenaltyToggle, _repeatPenaltyInput) = CreateSamplingParameterRow(
-            parent, 
-            "Repeat Penalty", 
-            settings.overrideRepeatPenalty, 
+            parent,
+            "Repeat Penalty",
+            settings.overrideRepeatPenalty,
             settings.repeatPenalty.ToString("F2"),
             "Penalize repeats (1.0=disabled, >1.0=penalize)",
             OnRepeatPenaltyToggleChanged,
-            OnRepeatPenaltyInputChanged
+            OnRepeatPenaltyInputChanged,
+            tooltip: "Penalizes tokens that repeat within the Repeat-Last-N window. 1.0 = off; 1.05-1.15 is typical. Too high can hurt coherence. Note: some models (e.g. DavidAU NEO-CODE) recommend leaving this at 1.0 and using Presence Penalty instead."
+        );
+
+        // Presence Penalty row
+        (_presencePenaltyToggle, _presencePenaltyInput) = CreateSamplingParameterRow(
+            parent,
+            "Presence Penalty",
+            settings.overridePresencePenalty,
+            settings.presencePenalty.ToString("F2"),
+            "Penalize repetition (0.0=disabled, 0-2)",
+            OnPresencePenaltyToggleChanged,
+            OnPresencePenaltyInputChanged,
+            tooltip: "Penalizes any token that has already appeared (flat penalty, regardless of count), pushing the model toward new words and topics. 0 = off, up to 2. The main anti-repetition lever for many models; DavidAU's instruct preset uses 1.5."
+        );
+
+        // Frequency Penalty row
+        (_frequencyPenaltyToggle, _frequencyPenaltyInput) = CreateSamplingParameterRow(
+            parent,
+            "Frequency Penalty",
+            settings.overrideFrequencyPenalty,
+            settings.frequencyPenalty.ToString("F2"),
+            "Penalize by frequency (0.0=disabled, 0-1)",
+            OnFrequencyPenaltyToggleChanged,
+            OnFrequencyPenaltyInputChanged,
+            tooltip: "Penalizes tokens in proportion to how often they've already appeared - the more a word is reused, the stronger the push away from it. 0 = off, up to ~1. Good for trimming verbatim word/phrase repetition."
+        );
+
+        // Repeat-Last-N row (rep/freq/presence penalty range)
+        (_repeatLastNToggle, _repeatLastNInput) = CreateSamplingParameterRow(
+            parent,
+            "Repeat-Last-N",
+            settings.overrideRepeatLastN,
+            settings.repeatLastN.ToString(),
+            "Penalty look-back range in tokens (default: 64)",
+            OnRepeatLastNToggleChanged,
+            OnRepeatLastNInputChanged,
+            tooltip: "How many of the most recent tokens the Repeat / Presence / Frequency penalties look back over. Smaller = tighter local de-duplication (good for class 3/4 models); larger can cause looping. -1 = whole context, 0 = disabled. Default 64."
         );
     }
 
     private (Toggle toggle, TMP_InputField input) CreateSamplingParameterRow(
-        Transform parent, 
-        string paramName, 
-        bool isEnabled, 
-        string value, 
+        Transform parent,
+        string paramName,
+        bool isEnabled,
+        string value,
         string description,
         UnityEngine.Events.UnityAction<bool> onToggleChanged,
-        UnityEngine.Events.UnityAction<string> onInputChanged)
+        UnityEngine.Events.UnityAction<string> onInputChanged,
+        string tooltip = null)
     {
         var row = CreateRowContainer(parent, paramName);
-        
+
         // Container for all elements
         var container = new GameObject("Container");
         container.transform.SetParent(row.transform, false);
@@ -1333,7 +1423,20 @@ public class LLMProviderUI
         containerRt.anchorMax = Vector2.one;
         containerRt.offsetMin = Vector2.zero;
         containerRt.offsetMax = Vector2.zero;
-        
+
+        // Invisible full-row background so the whole row can receive hover events
+        // for the tooltip. The toggle/input are children rendered on top, so they
+        // still get their own clicks; this only catches the empty/label/desc areas.
+        var rowHitImg = container.AddComponent<Image>();
+        rowHitImg.color = new Color(0f, 0f, 0f, 0f);
+        rowHitImg.raycastTarget = true;
+        string tipText = string.IsNullOrEmpty(tooltip) ? description : tooltip;
+        if (!string.IsNullOrEmpty(tipText))
+        {
+            var tip = container.AddComponent<RTToolTip>();
+            tip._text = tipText;
+        }
+
         // Toggle (checkbox)
         var toggleGo = new GameObject("Toggle");
         toggleGo.transform.SetParent(container.transform, false);
@@ -1383,15 +1486,16 @@ public class LLMProviderUI
         nameRt.anchorMin = new Vector2(0, 0);
         nameRt.anchorMax = new Vector2(0, 1);
         nameRt.pivot = new Vector2(0, 0.5f);
-        nameRt.sizeDelta = new Vector2(100, 0);
+        nameRt.sizeDelta = new Vector2(128, 0);
         nameRt.anchoredPosition = new Vector2(28, 0);
-        
+
         var nameTmp = nameObj.AddComponent<TextMeshProUGUI>();
         nameTmp.font = _font;
         nameTmp.fontSize = 12;
         nameTmp.color = LabelColor;
         nameTmp.alignment = TextAlignmentOptions.MidlineLeft;
         nameTmp.text = paramName;
+        nameTmp.raycastTarget = false; // let the row's hit image catch the hover
         
         // Input field
         var inputGo = TMP_DefaultControls.CreateInputField(_tmpResources);
@@ -1407,7 +1511,7 @@ public class LLMProviderUI
         inputRt.anchorMax = new Vector2(0, 0.5f);
         inputRt.pivot = new Vector2(0, 0.5f);
         inputRt.sizeDelta = new Vector2(60, 28);
-        inputRt.anchoredPosition = new Vector2(130, 0);
+        inputRt.anchoredPosition = new Vector2(162, 0);
         
         var input = inputGo.GetComponent<TMP_InputField>();
         if (input != null)
@@ -1429,15 +1533,16 @@ public class LLMProviderUI
         var descRt = descObj.AddComponent<RectTransform>();
         descRt.anchorMin = new Vector2(0, 0);
         descRt.anchorMax = new Vector2(1, 1);
-        descRt.offsetMin = new Vector2(198, 0);
+        descRt.offsetMin = new Vector2(230, 0);
         descRt.offsetMax = new Vector2(0, 0);
-        
+
         var descTmp = descObj.AddComponent<TextMeshProUGUI>();
         descTmp.font = _font;
         descTmp.fontSize = 10;
         descTmp.color = new Color(0.45f, 0.45f, 0.5f, 1f);
         descTmp.alignment = TextAlignmentOptions.MidlineLeft;
         descTmp.text = description;
+        descTmp.raycastTarget = false; // let the row's hit image catch the hover
         
         // Set initial enabled state for input
         UpdateInputFieldEnabled(input, isEnabled);
@@ -1505,6 +1610,30 @@ public class LLMProviderUI
         }
         if (_repeatPenaltyInput != null)
             _repeatPenaltyInput.text = _repeatPenalty.ToString("F2");
+
+        if (_presencePenaltyToggle != null)
+        {
+            _presencePenaltyToggle.isOn = _overridePresencePenalty;
+            UpdateInputFieldEnabled(_presencePenaltyInput, _overridePresencePenalty);
+        }
+        if (_presencePenaltyInput != null)
+            _presencePenaltyInput.text = _presencePenalty.ToString("F2");
+
+        if (_frequencyPenaltyToggle != null)
+        {
+            _frequencyPenaltyToggle.isOn = _overrideFrequencyPenalty;
+            UpdateInputFieldEnabled(_frequencyPenaltyInput, _overrideFrequencyPenalty);
+        }
+        if (_frequencyPenaltyInput != null)
+            _frequencyPenaltyInput.text = _frequencyPenalty.ToString("F2");
+
+        if (_repeatLastNToggle != null)
+        {
+            _repeatLastNToggle.isOn = _overrideRepeatLastN;
+            UpdateInputFieldEnabled(_repeatLastNInput, _overrideRepeatLastN);
+        }
+        if (_repeatLastNInput != null)
+            _repeatLastNInput.text = _repeatLastN.ToString();
     }
     
     // Toggle callbacks
@@ -1595,6 +1724,59 @@ public class LLMProviderUI
             _repeatPenalty = Mathf.Max(0f, result);
             if (_repeatPenaltyInput != null)
                 _repeatPenaltyInput.text = _repeatPenalty.ToString("F2");
+        }
+    }
+
+    private void OnPresencePenaltyToggleChanged(bool value)
+    {
+        _overridePresencePenalty = value;
+        UpdateInputFieldEnabled(_presencePenaltyInput, value);
+        _onSettingsChanged?.Invoke();
+    }
+
+    private void OnPresencePenaltyInputChanged(string value)
+    {
+        if (float.TryParse(value, out float result))
+        {
+            // Presence penalty: 0.0 (disabled) up to ~2.0; the main anti-repetition lever for some models
+            _presencePenalty = Mathf.Clamp(result, 0f, 2f);
+            if (_presencePenaltyInput != null)
+                _presencePenaltyInput.text = _presencePenalty.ToString("F2");
+        }
+    }
+
+    private void OnFrequencyPenaltyToggleChanged(bool value)
+    {
+        _overrideFrequencyPenalty = value;
+        UpdateInputFieldEnabled(_frequencyPenaltyInput, value);
+        _onSettingsChanged?.Invoke();
+    }
+
+    private void OnFrequencyPenaltyInputChanged(string value)
+    {
+        if (float.TryParse(value, out float result))
+        {
+            _frequencyPenalty = Mathf.Clamp(result, 0f, 2f);
+            if (_frequencyPenaltyInput != null)
+                _frequencyPenaltyInput.text = _frequencyPenalty.ToString("F2");
+        }
+    }
+
+    private void OnRepeatLastNToggleChanged(bool value)
+    {
+        _overrideRepeatLastN = value;
+        UpdateInputFieldEnabled(_repeatLastNInput, value);
+        _onSettingsChanged?.Invoke();
+    }
+
+    private void OnRepeatLastNInputChanged(string value)
+    {
+        if (int.TryParse(value, out int result))
+        {
+            // -1 = whole context, 0 = disabled; clamp to sane lower bound
+            _repeatLastN = Mathf.Max(-1, result);
+            if (_repeatLastNInput != null)
+                _repeatLastNInput.text = _repeatLastN.ToString();
         }
     }
 

@@ -556,6 +556,18 @@ public class LLMSettingsManager : MonoBehaviour
             {
                 result.Add(new LLMParm { _key = "repeat_penalty", _value = settings.repeatPenalty.ToString(System.Globalization.CultureInfo.InvariantCulture) });
             }
+            if (settings.overridePresencePenalty)
+            {
+                result.Add(new LLMParm { _key = "presence_penalty", _value = settings.presencePenalty.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+            }
+            if (settings.overrideFrequencyPenalty)
+            {
+                result.Add(new LLMParm { _key = "frequency_penalty", _value = settings.frequencyPenalty.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+            }
+            if (settings.overrideRepeatLastN)
+            {
+                result.Add(new LLMParm { _key = "repeat_last_n", _value = settings.repeatLastN.ToString() });
+            }
         }
 
         // Add all extra parameters (null check for deserialization safety)
@@ -1052,6 +1064,18 @@ public class LLMSettingsManager : MonoBehaviour
             if (settings.overrideRepeatPenalty)
             {
                 result.Add(new LLMParm { _key = "repeat_penalty", _value = settings.repeatPenalty.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+            }
+            if (settings.overridePresencePenalty)
+            {
+                result.Add(new LLMParm { _key = "presence_penalty", _value = settings.presencePenalty.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+            }
+            if (settings.overrideFrequencyPenalty)
+            {
+                result.Add(new LLMParm { _key = "frequency_penalty", _value = settings.frequencyPenalty.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+            }
+            if (settings.overrideRepeatLastN)
+            {
+                result.Add(new LLMParm { _key = "repeat_last_n", _value = settings.repeatLastN.ToString() });
             }
         }
         
