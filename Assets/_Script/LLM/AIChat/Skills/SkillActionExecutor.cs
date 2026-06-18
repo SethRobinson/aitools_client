@@ -31,6 +31,15 @@ namespace AITools.AIChat.Skills
         private int _lastLocalOpOutputChatImageIndex = -1;
         private PicMain _lastLocalOpOutputPic;
         private readonly HashSet<SkillAction> _reloadAttemptedActions = new HashSet<SkillAction>();
+
+        // Session-only "/applystyle" directive: when non-null, every generate-class
+        // action (image/movie, fresh or chained) gets its prompt rewritten by a small
+        // LLM job before the render is spawned. Set/cleared from the chat panel; NOT
+        // persisted and NOT reset per turn (it's a sticky session preference). The
+        // companion set marks actions whose prompt has already been restyled this turn
+        // so the deferred re-run doesn't restyle a second time.
+        private string _styleDirective;
+        private readonly HashSet<SkillAction> _styleAppliedActions = new HashSet<SkillAction>();
         private const float ChatImageReloadPollSeconds = 0.2f;
         // Anchor GPU renders routinely exceed the old fixed 12s deadline. We now
         // wait as long as the referenced chat-image Pic is still generating, with
@@ -87,6 +96,17 @@ namespace AITools.AIChat.Skills
         {
             _skills = skills;
             _host = host;
+        }
+
+        /// <summary>
+        /// Install (or clear, when null/blank) the session "/applystyle" restyle
+        /// directive. While set, every image/movie render the chat AI produces has its
+        /// prompt rewritten by a small LLM job per this directive just before it is sent
+        /// to the GPU. Not persisted; survives across turns until explicitly cleared.
+        /// </summary>
+        public void SetStyleDirective(string directive)
+        {
+            _styleDirective = string.IsNullOrWhiteSpace(directive) ? null : directive.Trim();
         }
 
         /// <summary>
@@ -170,6 +190,9 @@ namespace AITools.AIChat.Skills
         {
             _actionQueue.Clear();
             _reloadAttemptedActions.Clear();
+            // The directive itself is sticky across turns; only the per-turn
+            // "already restyled this action" markers are cleared.
+            _styleAppliedActions.Clear();
             _pumpState = PumpState.Idle;
             _draining = false;
             _lastActionDeferred = false;
@@ -328,6 +351,22 @@ namespace AITools.AIChat.Skills
                     $"Skill '{action.SkillId}' was emitted without a prompt attribute (or it was empty). " +
                     "Generate-class skills must carry a non-empty prompt - the chat does NOT inherit prompt text " +
                     "from the main GUI. Re-emit with the prompt filled in. Template:\n  " + template);
+                return;
+            }
+
+            // ---------- /applystyle restyle pass ----------
+            // If the user installed a session restyle directive, rewrite THIS render's
+            // prompt through a small LLM job before anything spawns. Done here at the top
+            // of the single generate funnel so it covers image AND movie, fresh AND
+            // chained, with one interception. The rewrite is async: TryApplyStyleDirective
+            // parks the pump (sets _lastActionDeferred) and re-runs this same action with
+            // the restyled prompt on completion; _styleAppliedActions stops the re-run from
+            // restyling again. Returns false (and we fall through to render unstyled) when
+            // there's no small LLM available or no coroutine runner to dispatch on.
+            if (!string.IsNullOrEmpty(_styleDirective)
+                && !_styleAppliedActions.Contains(action)
+                && TryApplyStyleDirective(action))
+            {
                 return;
             }
 
@@ -1379,6 +1418,131 @@ namespace AITools.AIChat.Skills
             DispatchOneShot(runner, inst, lines, onDone, callerLabel);
         }
 
+        // ---------- /applystyle restyle ----------
+
+        /// <summary>
+        /// Kick off a small LLM job that rewrites <paramref name="action"/>'s prompt per
+        /// the active <c>/applystyle</c> directive, then re-runs the action with the
+        /// restyled prompt. Returns true when the job was dispatched and the pump has been
+        /// parked (the caller must <c>return</c>); false when no restyle could be started
+        /// (no small LLM / no runner / no instances) and the caller should render unstyled.
+        /// Marks the action in <see cref="_styleAppliedActions"/> in every path so the
+        /// deferred re-run never restyles a second time.
+        /// </summary>
+        private bool TryApplyStyleDirective(SkillAction action)
+        {
+            var runner = _host?.CoroutineRunner;
+            if (runner == null) return false; // can't dispatch async - render the original prompt
+
+            var instanceMgr = LLMInstanceManager.Get();
+            if (instanceMgr == null || instanceMgr.GetInstanceCount() == 0)
+            {
+                _styleAppliedActions.Add(action);
+                _host?.AddLocalInfoBubble("(/applystyle is set but no LLM instances are configured - rendering the original prompt.)");
+                return false;
+            }
+
+            int replicaIndex = 0;
+            int targetId = instanceMgr.GetFreeLLM(isSmallJob: true, isVisionJob: false, out replicaIndex);
+            if (targetId < 0)
+                targetId = instanceMgr.GetLeastBusyLLM(isSmallJob: true, isVisionJob: false, out replicaIndex);
+            if (targetId < 0)
+            {
+                _styleAppliedActions.Add(action);
+                _host?.AddLocalInfoBubble("(/applystyle is set but no small-job LLM is available - rendering the original prompt.)");
+                return false;
+            }
+
+            var inst = instanceMgr.GetInstance(targetId);
+            if (inst == null || inst.settings == null)
+            {
+                _styleAppliedActions.Add(action);
+                _host?.AddLocalInfoBubble("(/applystyle: picked LLM instance has no settings - rendering the original prompt.)");
+                return false;
+            }
+
+            // Only dispatch to providers DispatchOneShot actually handles asynchronously.
+            // Its default branch invokes onDone SYNCHRONOUSLY with an error string, which
+            // would re-enter the pump mid-drain (double-dequeue) and bake the error text
+            // into the render prompt. All six current providers are supported, so this
+            // guard only trips if a new provider is added without DispatchOneShot support.
+            if (!IsDispatchOneShotSupported(inst.providerType))
+            {
+                _styleAppliedActions.Add(action);
+                _host?.AddLocalInfoBubble($"(/applystyle: provider {inst.providerType} can't run the restyle job - rendering the original prompt.)");
+                return false;
+            }
+
+            // Mark BEFORE dispatch so the re-run after the rewrite skips this path even if
+            // the callback runs synchronously on some provider.
+            _styleAppliedActions.Add(action);
+            instanceMgr.SetLLMBusy(targetId, replicaIndex, true);
+
+            string originalPrompt = action.Prompt ?? "";
+            string directive = _styleDirective;
+
+            var lines = new Queue<GTPChatLine>();
+            lines.Enqueue(new GTPChatLine("system",
+                "You rewrite image/video generation prompts. Apply the user's STYLE DIRECTIVE to the PROMPT and output ONLY the rewritten prompt - no preamble, no quotes, no commentary, no markdown. Keep the original subject and important details intact; change only what the directive asks for."));
+            lines.Enqueue(new GTPChatLine("user",
+                "STYLE DIRECTIVE: " + directive + "\n\nPROMPT:\n" + originalPrompt));
+
+            int capturedTargetId = targetId;
+            int capturedReplicaIndex = replicaIndex;
+            int capturedEpoch = _turnEpoch;
+            const string callerLabel = "ApplyStyle";
+
+            // Signal the pump that this action parked itself on the dispatch below.
+            _lastActionDeferred = true;
+
+            Action<RTDB, JSONObject, string> onDone = (db, json, text) =>
+            {
+                instanceMgr.SetLLMBusy(capturedTargetId, capturedReplicaIndex, false);
+
+                // A new turn began while the rewrite was in flight: ResetForNewTurn
+                // already cleared the pump/queue, so re-running would spawn a stale
+                // render into the new turn. Drop it.
+                if (_turnEpoch != capturedEpoch)
+                    return;
+
+                string restyled = (text ?? "").Trim();
+                if (string.IsNullOrEmpty(restyled) && json != null)
+                {
+                    try { restyled = (OpenAITextCompletionManager.ExtractTextFromResponseJSON(json) ?? "").Trim(); }
+                    catch { /* leave empty -> fall back to the original prompt below */ }
+                }
+
+                if (!string.IsNullOrEmpty(restyled))
+                {
+                    action.Args["prompt"] = restyled;
+                    string preview = restyled.Length > 160 ? restyled.Substring(0, 157) + "..." : restyled;
+                    _host?.AddLocalInfoBubble("(/applystyle restyled the render prompt -> \"" + preview + "\")");
+                }
+                else
+                {
+                    _host?.AddLocalInfoBubble("(/applystyle: the small LLM returned nothing - rendering the original prompt.)");
+                }
+
+                // Re-run the action end to end now that its prompt is finalized. If THIS
+                // run parks itself again (e.g. a chat_image reload defer), that coroutine
+                // owns resuming the pump - so only resume here when it did not.
+                _lastActionDeferred = false;
+                try
+                {
+                    Execute(action);
+                }
+                finally
+                {
+                    if (!_lastActionDeferred)
+                        ResumePumpAfterDeferredComplete(action);
+                }
+            };
+
+            _host?.AddLocalInfoBubble($"(/applystyle: restyling the render prompt via small LLM #{capturedTargetId}...)");
+            DispatchOneShot(runner, inst, lines, onDone, callerLabel);
+            return true;
+        }
+
         /// <summary>
         /// Fire-and-forget chat completion for delegated one-shot calls (used by both
         /// <see cref="ExecuteSummarizeWithSmallLlm"/> and AIChatPanel's image-caption job).
@@ -1389,6 +1553,28 @@ namespace AITools.AIChat.Skills
         /// serializers, so this path covers the vision-caption sidecar as well as plain
         /// text summarization.
         /// </summary>
+        /// <summary>
+        /// True for the providers <see cref="DispatchOneShot"/> serves via a real async
+        /// web request (so its onDone fires later, off the call stack). The unsupported
+        /// providers only reach DispatchOneShot's default branch, which calls onDone
+        /// synchronously - unsafe to use from inside the pump's drain loop.
+        /// </summary>
+        public static bool IsDispatchOneShotSupported(LLMProvider provider)
+        {
+            switch (provider)
+            {
+                case LLMProvider.Ollama:
+                case LLMProvider.LlamaCpp:
+                case LLMProvider.OpenAICompatible:
+                case LLMProvider.OpenAI:
+                case LLMProvider.Anthropic:
+                case LLMProvider.Gemini:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
         public static void DispatchOneShot(
             MonoBehaviour runner,
             LLMInstanceInfo inst,

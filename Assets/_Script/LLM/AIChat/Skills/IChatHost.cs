@@ -35,6 +35,16 @@ namespace AITools.AIChat.Skills
         void AddInfoBubble(string text);
 
         /// <summary>
+        /// Append a system / info bubble that is shown to the USER ONLY and is NEVER
+        /// forwarded to the chat model (not as history, not via the info-recap tail).
+        /// Use for local-only notices whose content must not influence the model - e.g.
+        /// the "/applystyle" restyle feedback, which echoes the rewritten render prompt
+        /// that the original chat AI must not see. (Plain <see cref="AddInfoBubble"/>
+        /// rides the info-recap and DOES reach the model on the next turn.)
+        /// </summary>
+        void AddLocalInfoBubble(string text);
+
+        /// <summary>
         /// Append a system / info bubble AND queue the same text for the LLM, delivered
         /// inside the user's NEXT outgoing message (info-recap section). Deliberately
         /// NOT a system-role interaction: those get folded into the front system

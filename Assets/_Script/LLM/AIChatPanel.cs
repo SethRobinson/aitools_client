@@ -1900,6 +1900,21 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private void OnSendClicked()
     {
         if (_isStreaming) return;
+
+        // Slash commands (e.g. "/applystyle ...") are caught and handled LOCALLY -
+        // they are never forwarded to the chat AI. Unknown slash text falls through
+        // to the normal send path so a message that merely starts with "/" still works.
+        {
+            string rawInput = _inputField != null ? _inputField.text : "";
+            if (TryHandleSlashCommand(rawInput.Trim()))
+            {
+                if (_inputField != null) _inputField.text = "";
+                _inputUndo?.ResetHistory();
+                FocusInputDeferred();
+                return;
+            }
+        }
+
         // A compact-summary will ReplaceInteractions() when it lands; letting a new
         // turn start mid-flight means that replace silently throws the turn away.
         if (_compactSummaryInFlight)
@@ -2026,6 +2041,60 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         FocusInputDeferred();
 
         SendChatTurn(text);
+    }
+
+    /// <summary>
+    /// Intercept local "/command ..." lines typed into the chat box. Returns true if
+    /// the line was a RECOGNIZED slash command and has been handled locally (the caller
+    /// then clears the box and does NOT send anything to the chat AI). Returns false for
+    /// plain text and for unrecognized slash words, which fall through to the normal
+    /// send path - so a real message that merely begins with "/" is still deliverable.
+    /// </summary>
+    private bool TryHandleSlashCommand(string text)
+    {
+        if (string.IsNullOrEmpty(text) || text[0] != '/') return false;
+
+        int sp = text.IndexOf(' ');
+        string cmd = (sp < 0 ? text : text.Substring(0, sp)).ToLowerInvariant();
+        string arg = sp < 0 ? "" : text.Substring(sp + 1).Trim();
+
+        switch (cmd)
+        {
+            case "/applystyle":
+                HandleApplyStyleCommand(arg);
+                return true;
+            default:
+                return false; // not a known command - let it go to the chat AI
+        }
+    }
+
+    /// <summary>
+    /// "/applystyle &lt;directive&gt;" installs a session-only restyle directive: every
+    /// image/movie render the chat AI subsequently produces has its prompt rewritten by a
+    /// small LLM job per the directive, right before it is sent to the GPU. Bare
+    /// "/applystyle" (no text) clears it. Not persisted - lives until cleared or app exit.
+    /// </summary>
+    private void HandleApplyStyleCommand(string directive)
+    {
+        directive = directive == null ? "" : directive.Trim();
+        if (_actionExecutor == null)
+        {
+            AddSystemMessage("Can't set a style directive yet - the chat skill executor isn't initialized.", includeInLLMRecap: false);
+            return;
+        }
+
+        if (directive.Length == 0)
+        {
+            _actionExecutor.SetStyleDirective(null);
+            AddSystemMessage("Style directive cleared - renders use their original prompts again.", includeInLLMRecap: false);
+            return;
+        }
+
+        _actionExecutor.SetStyleDirective(directive);
+        AddSystemMessage(
+            "Style directive set. Each image/movie render's prompt will be rewritten by a small LLM job before it's sent:\n  \"" + directive + "\"\n" +
+            "(Send /applystyle with no text to clear it.)",
+            includeInLLMRecap: false);
     }
 
     private void OnStopClicked()
@@ -4441,6 +4510,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     }
 
     void IChatHost.AddInfoBubble(string text) => AddSystemMessage(text);
+
+    // Local-only bubble: shown to the user, never queued into the info-recap, so its
+    // text is never sent to the chat model. Used for /applystyle restyle feedback,
+    // whose rewritten prompt the original AI must not see.
+    void IChatHost.AddLocalInfoBubble(string text) => AddSystemMessage(text, includeInLLMRecap: false);
 
     void IChatHost.AddSystemInjectionAndBubble(string text)
     {
