@@ -4031,10 +4031,18 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     /// </summary>
     private IEnumerator WaitForPicAndCaption(PicMain pic)
     {
-        const float timeoutSeconds = 240f;
+        const float noProgressBudget = 240f;
         const float pollInterval = 1.5f;
         const int stableTicksRequired = 2; // ~3s of stability before captioning
-        float deadline = Time.realtimeSinceStartup + timeoutSeconds;
+
+        // The deadline is a *no-progress* budget, not a flat wall-clock cap. A batch of
+        // generated images funnels its captions through limited vision-LLM capacity one
+        // slot at a time, so a later pic can legitimately wait minutes in line before a
+        // slot frees - that's backpressure, not a hang, and must not count toward "give
+        // up". We push the deadline forward whenever something useful is happening (still
+        // rendering, texture changing, a caption in flight, or waiting on a busy vision
+        // slot); only a genuine ~240s stall with NO progress ends the coroutine.
+        float deadline = Time.realtimeSinceStartup + noProgressBudget;
 
         Texture lastSeenTex = null;
         Texture captionedTex = null;
@@ -4045,9 +4053,14 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         {
             if (pic == null || pic.gameObject == null) yield break;
 
+            bool progressed = false;
+
             Texture curTex;
             if (!pic.TryGetCurrentTexture(out curTex) || curTex == null)
             {
+                // No texture yet - the render is still queued/running, which is progress.
+                if (pic.IsBusyBasic())
+                    deadline = Time.realtimeSinceStartup + noProgressBudget;
                 yield return new WaitForSeconds(pollInterval);
                 continue;
             }
@@ -4056,11 +4069,17 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             {
                 lastSeenTex = curTex;
                 stableTicks = 0;
+                progressed = true; // texture still settling / a new workflow step landed
             }
             else if (stableTicks < int.MaxValue)
             {
                 stableTicks++;
             }
+
+            // A caption already in flight, or a later workflow step still rendering, both
+            // count as progress so the no-progress deadline can't fire mid-work.
+            if (inFlight || pic.IsBusyBasic())
+                progressed = true;
 
             // EncodeToPNG only when there is a NEW stable texture worth captioning.
             // Doing this every poll regardless was the source of a periodic app-wide
@@ -4079,9 +4098,29 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             if (curTex != captionedTex && !inFlight && stableTicks >= stableTicksRequired
                 && !pic.IsBusy())
             {
-                if (pic.TryGetImageAsPng(out byte[] png) && png != null && png.Length > 0)
+                // Capacity gate: don't outrun the vision model. Firing a whole batch's
+                // captions at once over-subscribed the single slow local vision LLM, so
+                // the per-caption 60s watchdog (started at real dispatch in
+                // TryCaptionBytes) expired on the ones still queued and their good replies
+                // were discarded - only the first few survived. Mirrors the "Waiting for
+                // LLM slot..." gate PicMain.UpdateJobs() uses for call_llm.
+                //
+                // Only throttle when a vision route EXISTS but is momentarily full. If no
+                // vision-capable instance is active at all, fall through and dispatch so
+                // TryCaptionBytes still emits its one-time no-vision warning and resolves
+                // to "caption unavailable" (prior behaviour) instead of polling forever.
+                var instanceMgr = LLMInstanceManager.Get();
+                bool visionBusy = instanceMgr != null
+                    && !instanceMgr.IsAnyLLMFree(isSmallJob: false, isVisionJob: true)
+                    && instanceMgr.GetLeastBusyLLM(isSmallJob: false, isVisionJob: true) >= 0;
+                if (visionBusy)
+                {
+                    progressed = true; // queued behind a busy vision slot - retry next tick
+                }
+                else if (pic.TryGetImageAsPng(out byte[] png) && png != null && png.Length > 0)
                 {
                     inFlight = true;
+                    progressed = true;
                     Texture submittedTex = curTex;
                     TryCaptionPic(pic, png, () =>
                     {
@@ -4091,9 +4130,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 }
             }
 
+            if (progressed)
+                deadline = Time.realtimeSinceStartup + noProgressBudget;
+
             // Done: the current texture has been captioned and no further workflow
             // step is expected to swap it. Exiting here is what stops the polling
-            // from running for the full 240s timeout after a successful gen.
+            // from running for the full timeout after a successful gen.
             if (!inFlight && captionedTex == curTex && !pic.IsBusyBasic())
                 yield break;
 

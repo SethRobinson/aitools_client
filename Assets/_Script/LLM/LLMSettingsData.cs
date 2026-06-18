@@ -819,6 +819,10 @@ public class LLMInstancesConfig
         var clone = new LLMInstancesConfig
         {
             defaultInstanceID = this.defaultInstanceID,
+            // Must carry the schema version, or saving an edited clone (the settings panel
+            // works on a clone) would reset it to 0 and re-trigger the one-time job-mode
+            // migration on next load - clobbering the user's manual vision settings.
+            schemaVersion = this.schemaVersion,
             instances = new List<LLMInstanceInfo>()
         };
         

@@ -69,3 +69,4 @@ llm_response.json
 .claude/settings.json
 llm_aichat_log.json
 CLAUDE.md
+llm_last_error.json
