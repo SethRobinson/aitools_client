@@ -534,11 +534,12 @@ public class LLMInstanceInfo
     /// </summary>
     public string GetDisplayString()
     {
-        string status = isActive ? "Active" : "Inactive";
+        // Active/inactive is shown by the row's checkbox (and graying), so it's no
+        // longer repeated in the text here.
         string model = !string.IsNullOrEmpty(settings?.selectedModel) ? settings.selectedModel : providerType.ToString();
         string concurrent = maxConcurrentTasks <= 0 ? ", DISABLED" : (maxConcurrentTasks > 1 ? $", Max:{maxConcurrentTasks}" : "");
         string replicas = (useReplicas && replicaCount > 1) ? $", x{replicaCount}" : "";
-        return $"{name} ({model}, {status}, {GetJobModeDisplayString()}{concurrent}{replicas})";
+        return $"{name} ({model}, {GetJobModeDisplayString()}{concurrent}{replicas})";
     }
 }
 

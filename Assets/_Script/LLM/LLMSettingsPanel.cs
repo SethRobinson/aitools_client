@@ -785,6 +785,7 @@ public class LLMSettingsPanel : MonoBehaviour
         _instanceListUI.Build(content.transform, _workingInstancesConfig);
         _instanceListUI.OnInstanceSelected += OnInstanceSelected;
         _instanceListUI.OnInstancesChanged += OnInstancesChanged;
+        _instanceListUI.OnInstanceActiveChanged += OnInstanceActiveChangedFromList;
         
         // Display Name row (for selected instance)
         CreateDisplayNameRow(content.transform);
@@ -1345,6 +1346,21 @@ public class LLMSettingsPanel : MonoBehaviour
             instance.isActive = value;
             _instanceListUI?.UpdateItemDisplay(instance);
         }
+    }
+
+    // Active checkbox toggled directly on a list row - mirror it into the working
+    // config and keep the lower "Enabled" toggle in sync if that row is selected.
+    private void OnInstanceActiveChangedFromList(int instanceID, bool isActive)
+    {
+        var instance = _workingInstancesConfig?.GetInstance(instanceID);
+        if (instance != null)
+        {
+            instance.isActive = isActive;
+            // Refresh the row text (status word) without re-firing the toggle.
+            _instanceListUI?.UpdateItemDisplay(instance);
+        }
+        if (instanceID == _selectedInstanceID && _enabledToggle != null)
+            _enabledToggle.SetIsOnWithoutNotify(isActive);
     }
     
     private void CreateReplicaRow(Transform parent)

@@ -28,6 +28,8 @@ public class LLMInstanceListUI
     // Callbacks
     public event Action<int> OnInstanceSelected;
     public event Action OnInstancesChanged;
+    // Fired when a row's active checkbox is toggled (instanceID, isActive).
+    public event Action<int, bool> OnInstanceActiveChanged;
     
     private readonly TMP_FontAsset _font;
     private readonly Action<GameObject> _styleApplier;
@@ -37,7 +39,10 @@ public class LLMInstanceListUI
     private static readonly Color ListBg = new Color(0.90f, 0.90f, 0.92f, 1f);
     private static readonly Color ItemBg = new Color(1f, 1f, 1f, 1f);
     private static readonly Color ItemSelectedBg = new Color(0.7f, 0.85f, 1f, 1f);
+    private static readonly Color ItemInactiveBg = new Color(0.86f, 0.86f, 0.88f, 1f);
     private static readonly Color TextDark = new Color(0.19607843f, 0.19607843f, 0.19607843f, 1f);
+    private static readonly Color TextMuted = new Color(0.55f, 0.55f, 0.57f, 1f);
+    private static readonly Color CheckColor = new Color(0.2f, 0.5f, 0.2f, 1f);
     private static readonly Color HeaderColor = new Color(0f, 0.45f, 0.70f, 1f);
     
     private const float LIST_HEIGHT = 120f;
@@ -382,34 +387,102 @@ public class LLMInstanceListUI
         
         var btn = itemObj.AddComponent<Button>();
         btn.targetGraphic = img;
-        
+
         int capturedID = instance.instanceID;
         btn.onClick.AddListener(() => OnItemClicked(capturedID));
-        
-        // Text
+
+        // Active/inactive checkbox on the left so it's visible at a glance.
+        var toggleGo = new GameObject("ActiveToggle");
+        toggleGo.transform.SetParent(itemObj.transform, false);
+        var toggleRt = toggleGo.AddComponent<RectTransform>();
+        toggleRt.anchorMin = new Vector2(0, 0.5f);
+        toggleRt.anchorMax = new Vector2(0, 0.5f);
+        toggleRt.pivot = new Vector2(0, 0.5f);
+        toggleRt.sizeDelta = new Vector2(18, 18);
+        toggleRt.anchoredPosition = new Vector2(6, 0);
+
+        var bgGo = new GameObject("Background");
+        bgGo.transform.SetParent(toggleGo.transform, false);
+        var bgRt = bgGo.AddComponent<RectTransform>();
+        bgRt.anchorMin = Vector2.zero;
+        bgRt.anchorMax = Vector2.one;
+        bgRt.offsetMin = Vector2.zero;
+        bgRt.offsetMax = Vector2.zero;
+        var bgImg = bgGo.AddComponent<Image>();
+        bgImg.color = Color.white;
+
+        var checkGo = new GameObject("Checkmark");
+        checkGo.transform.SetParent(bgGo.transform, false);
+        var checkRt = checkGo.AddComponent<RectTransform>();
+        checkRt.anchorMin = Vector2.zero;
+        checkRt.anchorMax = Vector2.one;
+        checkRt.offsetMin = Vector2.zero;
+        checkRt.offsetMax = Vector2.zero;
+        var checkTmp = checkGo.AddComponent<TextMeshProUGUI>();
+        checkTmp.font = _font;
+        checkTmp.fontSize = 14f;
+        checkTmp.color = CheckColor;
+        checkTmp.alignment = TextAlignmentOptions.Center;
+        checkTmp.text = "✓";
+
+        var toggle = toggleGo.AddComponent<Toggle>();
+        toggle.targetGraphic = bgImg;
+        toggle.graphic = checkTmp;
+        toggle.isOn = instance.isActive;
+        toggle.onValueChanged.AddListener(isOn => OnRowActiveToggled(capturedID, isOn));
+
+        // Text (shifted right to make room for the checkbox)
         var textObj = new GameObject("Text");
         textObj.transform.SetParent(itemObj.transform, false);
-        
+
         var textRt = textObj.AddComponent<RectTransform>();
         textRt.anchorMin = Vector2.zero;
         textRt.anchorMax = Vector2.one;
-        textRt.offsetMin = new Vector2(8, 0);
+        textRt.offsetMin = new Vector2(30, 0);
         textRt.offsetMax = new Vector2(-8, 0);
-        
+
         var tmp = textObj.AddComponent<TextMeshProUGUI>();
         tmp.font = _font;
         tmp.text = instance.GetDisplayString();
         tmp.fontSize = 12f;
         tmp.color = TextDark;
         tmp.alignment = TextAlignmentOptions.MidlineLeft;
-        
-        return new InstanceListItem
+
+        var listItem = new InstanceListItem
         {
             gameObject = itemObj,
             instanceID = instance.instanceID,
             image = img,
-            text = tmp
+            text = tmp,
+            activeToggle = toggle
         };
+        ApplyActiveVisual(listItem, instance.isActive);
+        return listItem;
+    }
+
+    private void OnRowActiveToggled(int instanceID, bool isActive)
+    {
+        // Update this row's visuals immediately.
+        foreach (var item in _listItems)
+        {
+            if (item.instanceID == instanceID)
+            {
+                ApplyActiveVisual(item, isActive);
+                break;
+            }
+        }
+        OnInstanceActiveChanged?.Invoke(instanceID, isActive);
+    }
+
+    /// <summary>
+    /// Gray out a row when its instance is inactive.
+    /// </summary>
+    private void ApplyActiveVisual(InstanceListItem item, bool isActive)
+    {
+        if (item.text != null)
+            item.text.color = isActive ? TextDark : TextMuted;
+        if (item.image != null && item.instanceID != _selectedInstanceID)
+            item.image.color = isActive ? ItemBg : ItemInactiveBg;
     }
     
     private void OnItemClicked(int instanceID)
@@ -425,7 +498,10 @@ public class LLMInstanceListUI
         {
             if (item.image != null)
             {
-                item.image.color = (item.instanceID == _selectedInstanceID) ? ItemSelectedBg : ItemBg;
+                if (item.instanceID == _selectedInstanceID)
+                    item.image.color = ItemSelectedBg;
+                else
+                    item.image.color = (item.activeToggle != null && !item.activeToggle.isOn) ? ItemInactiveBg : ItemBg;
             }
         }
     }
@@ -454,9 +530,13 @@ public class LLMInstanceListUI
     {
         foreach (var item in _listItems)
         {
-            if (item.instanceID == instance.instanceID && item.text != null)
+            if (item.instanceID == instance.instanceID)
             {
-                item.text.text = instance.GetDisplayString();
+                if (item.text != null)
+                    item.text.text = instance.GetDisplayString();
+                if (item.activeToggle != null)
+                    item.activeToggle.SetIsOnWithoutNotify(instance.isActive);
+                ApplyActiveVisual(item, instance.isActive);
                 break;
             }
         }
@@ -468,6 +548,7 @@ public class LLMInstanceListUI
         public int instanceID;
         public Image image;
         public TextMeshProUGUI text;
+        public Toggle activeToggle;
     }
 }
 
