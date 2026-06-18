@@ -226,6 +226,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // the caption as failed.
     private const float CAPTION_TIMEOUT_SECONDS = 60f;
 
+    // Throttle for the "no vision-capable LLM" warning bubble. Both caption callers
+    // (attachment drop, generated-pic mirror) funnel through TryCaptionBytes, and a
+    // multi-image drop or a generation batch would otherwise stack identical bubbles.
+    // Time-based so it self-resets without needing reset hooks on clear/new-chat.
+    private const float NO_VISION_WARN_THROTTLE_SECONDS = 30f;
+    private float _lastNoVisionWarnTime = -999f;
+
     // Watchdog timeout for the one-shot "compact to summary" LLM request. Longer
     // than the caption timeout because it digests the whole conversation.
     private const float COMPACT_TIMEOUT_SECONDS = 180f;
@@ -3433,7 +3440,15 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         int targetId = instanceMgr.GetFreeLLM(isSmallJob: false, isVisionJob: true, out int replicaIndex);
         if (targetId < 0)
             targetId = instanceMgr.GetLeastBusyLLM(isSmallJob: false, isVisionJob: true, out replicaIndex);
-        if (targetId < 0) { job.completed = true; safeResult(default); return job; }
+        if (targetId < 0)
+        {
+            // Instances exist (checked above) but none is active AND configured to accept
+            // vision jobs. GetLeastBusyLLM returns even at-capacity instances, so a -1 here
+            // means a config problem (no vision route), not a transient "all busy" - worth
+            // telling the user instead of silently handing back an empty caption.
+            WarnNoVisionLLM();
+            job.completed = true; safeResult(default); return job;
+        }
 
         var inst = instanceMgr.GetInstance(targetId);
         if (inst == null || inst.settings == null) { job.completed = true; safeResult(default); return job; }
@@ -3496,6 +3511,31 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // the LLM slot after CAPTION_TIMEOUT_SECONDS so the user isn't stuck.
         job.watchdog = StartCoroutine(CaptionWatchdog(job, instanceMgr, safeResult));
         return job;
+    }
+
+    /// <summary>
+    /// Surface the otherwise-silent case where an image needs captioning but no
+    /// active LLM instance is configured to accept vision jobs. Both caption paths
+    /// (attachment drop and generated-pic mirror) hit this through TryCaptionBytes
+    /// and previously just returned an empty caption, so images went undescribed
+    /// with no hint that the fix is a job-mode setting. Always notes it to the
+    /// editor log (one entry per uncaptioned image, for diagnostics); the visible
+    /// chat bubble is throttled so a multi-image drop / generation batch doesn't
+    /// stack duplicates.
+    /// </summary>
+    private void WarnNoVisionLLM()
+    {
+        AIChatLog.Note("vision", "No active LLM accepts vision jobs; image left uncaptioned.");
+
+        float now = Time.unscaledTime;
+        if (now - _lastNoVisionWarnTime < NO_VISION_WARN_THROTTLE_SECONDS) return;
+        _lastNoVisionWarnTime = now;
+
+        AddSystemMessage(
+            "Warning: no active LLM is set to accept vision (image) jobs, so attached or " +
+            "generated images can't be described. In LLM Settings, set a vision-capable " +
+            "instance's job mode to \"Vision Jobs Only\" or \"Any\".",
+            includeInLLMRecap: false);
     }
 
     private IEnumerator CaptionWatchdog(CaptionJob job, LLMInstanceManager instanceMgr, Action<CaptionResult> safeResult)
