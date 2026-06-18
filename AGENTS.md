@@ -1,6 +1,18 @@
 # AGENTS.md
 
-This file provides guidance to Codex when working in this repository.
+This file provides guidance to LLMs when working in this repository. Read it in full at the START of every task, before reading, searching, editing, or answering — it is the authoritative source of truth for this repo.
+
+## Keeping this file current (self-maintenance)
+
+**This file must stay accurate. Whenever a change you make invalidates something documented here, update AGENTS.md in the SAME task — do not leave it stale.** Treat it as part of the deliverable, not a follow-up.
+
+Update this file when a change touches any of:
+- Build/run commands, build scripts, or what they copy/produce (the "Essential Commands" section).
+- App version, Unity version, main scene, or other "Current local facts".
+- Architecture: renamed/added/removed core scripts, renderers (`RTRendererType`), LLM providers (`LLMProvider`), job-script directives/placeholders, AI Chat flow, or experiment folders.
+- Hard rules, directory layout, or CLI capabilities/limits.
+
+When the user asks to commit, or when you finish a task, do a quick self-check: "did anything I changed make a statement in AGENTS.md wrong?" If yes, fix it here (and keep `CLAUDE.md` consistent). If you are unsure whether a fact is still true, verify against the code rather than copying the old claim forward. Keep edits concise and factual — this file is read at the start of every task, so brevity matters.
 
 ## Project Overview
 
@@ -18,6 +30,7 @@ Current local facts:
 - Do not read or edit files starting with `test_`, `Test_`, or `TEST_` unless the user explicitly names them or asks to work with test files.
 - Treat ignored config and debug files as local/private unless the user explicitly asks for them. This includes `config.txt`, `config_llm.txt`, `config_preferences.txt`, `log.txt`, generated `*_json_*` files, `comfyui_workflow_to_send_api.json`, and cached ComfyUI API files.
 - Do not revert unrelated work. This repo may already contain user edits in many files.
+- Keep this file current: if a change you make invalidates anything documented here, update AGENTS.md in the same task (see "Keeping this file current").
 
 ## Essential Commands
 
