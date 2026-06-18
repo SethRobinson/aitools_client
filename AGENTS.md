@@ -109,6 +109,7 @@ ComfyUI servers must be reachable over HTTP and should be started with `--listen
 ### LLM Systems
 
 - `Assets/_Script/LLM/LLMSettingsData.cs`, `LLMSettingsManager.cs`, and `LLMInstanceManager.cs` manage `config_llm.txt`, active providers, multiple LLM instances, replicas, model lists, context limits, and sampling/reasoning settings.
+- Per-instance job routing is two orthogonal axes: `jobMode` (text-job size only: `Any`/`BigJobsOnly`/`SmallJobsOnly`) plus `supportsVision` (can accept image jobs) and `visionOnly` (reserve for vision — no text). Vision jobs route to `visionOnly` instances first, then any `supportsVision` instance. `config_llm.txt` carries a `schemaVersion`; pre-decoupling configs (where vision was encoded in `jobMode` via the legacy `VisionJobsOnly`/`NonVisionOnly` values) are migrated once on load by `LLMInstanceManager.MigrateJobModes()`. The AI Chat caption sidecar warns in-chat when an image needs vision but no active instance has `supportsVision`.
 - `LLMProvider` currently supports `OpenAI`, `Anthropic`, `LlamaCpp`, `Ollama`, `Gemini`, and `OpenAICompatible`.
 - `model_data.json` supplies shipped cloud model lists and default endpoints.
 - `Assets/RT/AI/` contains provider/runtime managers: OpenAI text, Anthropic text, Gemini text, generic OpenAI-compatible/TextGen WebUI, ComfyUI file upload, speech-to-text, TTS, streaming download handlers, and main-thread dispatch.

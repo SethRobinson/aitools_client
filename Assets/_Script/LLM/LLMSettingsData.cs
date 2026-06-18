@@ -253,15 +253,24 @@ public class LLMProviderSettings
 }
 
 /// <summary>
-/// Defines which types of jobs an LLM instance will accept.
+/// TEXT-job size routing for an LLM instance. Vision capability is now an orthogonal
+/// flag (<see cref="LLMInstanceInfo.supportsVision"/> / <see cref="LLMInstanceInfo.visionOnly"/>)
+/// rather than a job mode - the old enum conflated "can it do images" with "what work do
+/// I route here". Only Any/BigJobsOnly/SmallJobsOnly are used going forward.
+///
+/// VisionJobsOnly/NonVisionOnly are retained ONLY so pre-decoupling integer values still
+/// deserialize for the one-time migration in LLMInstanceManager.MigrateJobModes(); they
+/// are never set anew. Do not renumber - JsonUtility persists these as ints.
 /// </summary>
 public enum LLMJobMode
 {
-    Any = 0,           // Accept any job (default), including vision
-    BigJobsOnly = 1,   // Only AI Guide, Adventure mode (big text jobs)
-    SmallJobsOnly = 2, // Only autopic LLM actions (small text jobs)
-    VisionJobsOnly = 3, // Only jobs with images attached
-    NonVisionOnly = 4  // Big or small jobs, but NOT vision jobs
+    Any = 0,            // Accept any text job (default)
+    BigJobsOnly = 1,    // Only big text jobs (AI Guide / Adventure / chat turns)
+    SmallJobsOnly = 2,  // Only small text jobs (autopic / caption-delegation one-shots)
+
+    // --- legacy, pre-vision-decoupling; migrated away on load, never assigned now ---
+    VisionJobsOnly = 3, // legacy "image jobs only"  -> supportsVision + visionOnly
+    NonVisionOnly = 4   // legacy "no image jobs"     -> supportsVision = false
 }
 
 /// <summary>
@@ -276,7 +285,18 @@ public class LLMInstanceInfo
     public LLMProvider providerType;            // OpenAI, Anthropic, LlamaCpp, Ollama
     public LLMProviderSettings settings;        // endpoint, apiKey, model, extraParams
     public bool isActive = true;                // Whether this instance is enabled
-    public LLMJobMode jobMode = LLMJobMode.Any; // Which job types this instance accepts
+    public LLMJobMode jobMode = LLMJobMode.Any; // TEXT-job size routing: Any / BigJobsOnly / SmallJobsOnly
+
+    // Vision capability + routing, decoupled from jobMode (which is now text-only):
+    //  - supportsVision: can this model accept image jobs at all (captions, vision chat)?
+    //                    Capability gate - an instance with this off never gets image work.
+    //  - visionOnly:     reserve this instance for vision; don't route text jobs here (a
+    //                    dedicated vision sidecar). Only meaningful when supportsVision is true.
+    // Defaults reproduce the old jobMode==Any behavior (accepts everything). Existing configs
+    // get both derived from their legacy jobMode by LLMInstanceManager.MigrateJobModes().
+    public bool supportsVision = true;
+    public bool visionOnly = false;
+
     public int maxConcurrentTasks = 1;          // Maximum concurrent tasks this instance can handle (per replica)
     
     // Replica/port-increment fan-out: when enabled, this single entry represents N
@@ -302,6 +322,8 @@ public class LLMInstanceInfo
             settings = new LLMProviderSettings(),
             isActive = true,
             jobMode = LLMJobMode.Any,
+            supportsVision = true,
+            visionOnly = false,
             maxConcurrentTasks = 1
         };
         
@@ -367,19 +389,22 @@ public class LLMInstanceInfo
     public bool CanAcceptJobType(bool isSmallJob, bool isVisionJob)
     {
         if (!isActive) return false;
-        
+
+        // Vision capability is the sole gate for image jobs - size routing only ever
+        // applied to text. A non-vision instance never gets image work; a vision-capable
+        // one accepts it regardless of big/small.
+        if (isVisionJob) return supportsVision;
+
+        // Text job: a vision-reserved instance refuses text so the sidecar stays free.
+        if (visionOnly) return false;
+
         switch (jobMode)
         {
-            case LLMJobMode.Any:
-                return true;
-            case LLMJobMode.SmallJobsOnly:
-                return isSmallJob && !isVisionJob;
             case LLMJobMode.BigJobsOnly:
-                return !isSmallJob && !isVisionJob;
-            case LLMJobMode.VisionJobsOnly:
-                return isVisionJob;
-            case LLMJobMode.NonVisionOnly:
-                return !isVisionJob;
+                return !isSmallJob;
+            case LLMJobMode.SmallJobsOnly:
+                return isSmallJob;
+            case LLMJobMode.Any:
             default:
                 return true;
         }
@@ -474,6 +499,8 @@ public class LLMInstanceInfo
             settings = this.settings?.Clone() ?? new LLMProviderSettings(),
             isActive = this.isActive,
             jobMode = this.jobMode,
+            supportsVision = this.supportsVision,
+            visionOnly = this.visionOnly,
             maxConcurrentTasks = this.maxConcurrentTasks,
             useReplicas = this.useReplicas,
             replicaCount = this.replicaCount,
@@ -487,15 +514,19 @@ public class LLMInstanceInfo
     /// </summary>
     public string GetJobModeDisplayString()
     {
+        // Dedicated vision sidecar - text routing is irrelevant when it takes no text.
+        if (visionOnly && supportsVision) return "Vision only";
+
+        string textPart;
         switch (jobMode)
         {
-            case LLMJobMode.Any: return "Any";
-            case LLMJobMode.BigJobsOnly: return "Big Jobs";
-            case LLMJobMode.SmallJobsOnly: return "Small Jobs";
-            case LLMJobMode.VisionJobsOnly: return "Vision Jobs";
-            case LLMJobMode.NonVisionOnly: return "Non-Vision";
-            default: return "Any";
+            case LLMJobMode.BigJobsOnly: textPart = "Big"; break;
+            case LLMJobMode.SmallJobsOnly: textPart = "Small"; break;
+            default: textPart = "Any"; break;
         }
+
+        // Append capability so the list/snapshot shows whether images route here.
+        return supportsVision ? textPart + "+Vision" : textPart;
     }
     
     /// <summary>
@@ -659,7 +690,14 @@ public class LLMInstancesConfig
 {
     public List<LLMInstanceInfo> instances = new List<LLMInstanceInfo>();
     public int defaultInstanceID = 0;
-    
+
+    // Bumped when the persisted shape changes so one-time migrations run exactly once.
+    //   0 / absent = pre-vision-decoupling (jobMode still encodes vision capability).
+    // LLMInstanceManager.MigrateJobModes() upgrades such configs on load: it derives
+    // supportsVision/visionOnly from the legacy jobMode, then re-saves at CURRENT.
+    public const int CURRENT_SCHEMA_VERSION = 1;
+    public int schemaVersion = 0;
+
     // Legacy settings for migration (will be null after migration)
     public LLMSettings legacySettings = null;
     
@@ -671,7 +709,8 @@ public class LLMInstancesConfig
         return new LLMInstancesConfig
         {
             instances = new List<LLMInstanceInfo>(),
-            defaultInstanceID = 0
+            defaultInstanceID = 0,
+            schemaVersion = CURRENT_SCHEMA_VERSION   // fresh config is already in the new shape
         };
     }
     
@@ -691,7 +730,9 @@ public class LLMInstancesConfig
             providerType = legacy.activeProvider,
             settings = legacy.GetActiveProviderSettings()?.Clone() ?? new LLMProviderSettings(),
             isActive = true,
-            jobMode = LLMJobMode.Any
+            jobMode = LLMJobMode.Any,
+            supportsVision = true,
+            visionOnly = false
         };
         
         // Set name based on provider
@@ -719,7 +760,8 @@ public class LLMInstancesConfig
         
         config.instances.Add(instance);
         config.defaultInstanceID = 0;
-        
+        config.schemaVersion = CURRENT_SCHEMA_VERSION;  // built fresh with the new fields set
+
         return config;
     }
     

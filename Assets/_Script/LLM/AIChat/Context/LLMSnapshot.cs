@@ -15,7 +15,7 @@ namespace AITools.AIChat.Context
         public string Provider;
         public string Model;
         public bool IsActive;
-        public string JobMode;          // Any / SmallJobsOnly / BigJobsOnly / VisionJobsOnly / NonVisionOnly
+        public string JobMode;          // text size + vision capability, e.g. "Any", "Small", "Any+Vision", "Vision only"
         public int ActiveTasks;
         public int Capacity;            // maxConcurrentTasks * effective replica count
         public bool IsCallingChat;      // true for the instance currently running this chat
@@ -26,8 +26,8 @@ namespace AITools.AIChat.Context
         /// <summary>
         /// Build a one-line-per-instance block embedded in the system prompt:
         ///   OTHER LLMS (use llm="N" to delegate small jobs):
-        ///   - 0: "OpenAI" gpt-4o (OpenAI), role=Any, in-flight 0/3
-        ///   - 1: "Local Qwen Small" qwen2.5:7b (Ollama), role=SmallJobsOnly, in-flight 1/2  &lt;-- you
+        ///   - 0: "OpenAI" gpt-4o (OpenAI), role=Any+Vision, in-flight 0/3
+        ///   - 1: "Local Qwen Small" qwen2.5:7b (Ollama), role=Small, in-flight 1/2  &lt;-- you
         /// </summary>
         public static string BuildBlock(int callingInstanceId)
         {
@@ -70,7 +70,7 @@ namespace AITools.AIChat.Context
                     Provider = inst.providerType.ToString(),
                     Model = inst.settings != null ? inst.settings.selectedModel : "",
                     IsActive = inst.isActive,
-                    JobMode = inst.jobMode.ToString(),
+                    JobMode = inst.GetJobModeDisplayString(),
                     ActiveTasks = inst.GetTotalActiveTasks(),
                     Capacity = capacity,
                     IsCallingChat = (inst.instanceID == callingInstanceId)

@@ -3533,8 +3533,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         AddSystemMessage(
             "Warning: no active LLM is set to accept vision (image) jobs, so attached or " +
-            "generated images can't be described. In LLM Settings, set a vision-capable " +
-            "instance's job mode to \"Vision Jobs Only\" or \"Any\".",
+            "generated images can't be described. In LLM Settings, turn on \"Supports vision\" " +
+            "for an active vision-capable instance.",
             includeInLLMRecap: false);
     }
 

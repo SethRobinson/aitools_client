@@ -13,9 +13,10 @@ that a smaller, faster LLM could handle adequately - typically:
 - Reformatting / cleaning up a list.
 - Translating a short paragraph.
 
-The host will dispatch the request to a smaller LLM instance (one whose
-role is `Small`, `Any`, or `NonVisionOnly`) and inject the result back into
-the conversation as a system message you can read on your next turn.
+The host will dispatch the request to a smaller LLM instance (one that
+accepts small text jobs - e.g. role `Small` or `Any`, with or without a
+`+Vision` suffix) and inject the result back into the conversation as a
+system message you can read on your next turn.
 
 ## Invocation
 

@@ -89,14 +89,17 @@ public class LLMInstanceManager : MonoBehaviour
             }
             
             RTConsole.Log($"LLMInstanceManager: Loaded {_config.instances.Count} instance(s)");
-            
+
+            // One-time migration: pre-decoupling configs encode vision capability inside
+            // jobMode. Derive supportsVision/visionOnly BEFORE anything reads routing.
+            bool changed = MigrateJobModes();
+
             // Merge any newly-shipped cloud models from model_data.json into existing instances
             // so users see new models (gpt-5.5, claude-opus-4-7, gemini-3.1-pro, etc.) without
             // having to recreate their configurations.
-            if (RefreshCloudModelsFromModelData())
-            {
-                SaveConfig();
-            }
+            if (RefreshCloudModelsFromModelData()) changed = true;
+
+            if (changed) SaveConfig();
         }
         catch (Exception e)
         {
@@ -184,7 +187,48 @@ public class LLMInstanceManager : MonoBehaviour
         }
         return true;
     }
-    
+
+    /// <summary>
+    /// One-time migration of pre-vision-decoupling configs. Older files encoded vision
+    /// capability inside <see cref="LLMJobMode"/> (VisionJobsOnly / NonVisionOnly and the
+    /// implicit "no vision" of Big/Small). This derives the orthogonal supportsVision /
+    /// visionOnly flags from the legacy jobMode and normalizes jobMode to a pure text-size
+    /// value, preserving each instance's effective routing exactly. Gated by schemaVersion
+    /// so it runs at most once; returns true if anything changed (caller re-saves).
+    /// </summary>
+    private bool MigrateJobModes()
+    {
+        if (_config == null || _config.instances == null) return false;
+        if (_config.schemaVersion >= LLMInstancesConfig.CURRENT_SCHEMA_VERSION) return false;
+
+        foreach (var inst in _config.instances)
+        {
+            if (inst == null) continue;
+            switch (inst.jobMode)
+            {
+                case LLMJobMode.Any:            // text(any) + vision
+                    inst.supportsVision = true;  inst.visionOnly = false; inst.jobMode = LLMJobMode.Any;
+                    break;
+                case LLMJobMode.BigJobsOnly:    // big text, no vision
+                    inst.supportsVision = false; inst.visionOnly = false; inst.jobMode = LLMJobMode.BigJobsOnly;
+                    break;
+                case LLMJobMode.SmallJobsOnly:  // small text, no vision
+                    inst.supportsVision = false; inst.visionOnly = false; inst.jobMode = LLMJobMode.SmallJobsOnly;
+                    break;
+                case LLMJobMode.VisionJobsOnly: // vision only, no text
+                    inst.supportsVision = true;  inst.visionOnly = true;  inst.jobMode = LLMJobMode.Any;
+                    break;
+                case LLMJobMode.NonVisionOnly:  // any-size text, no vision
+                    inst.supportsVision = false; inst.visionOnly = false; inst.jobMode = LLMJobMode.Any;
+                    break;
+            }
+        }
+
+        _config.schemaVersion = LLMInstancesConfig.CURRENT_SCHEMA_VERSION;
+        RTConsole.Log($"LLMInstanceManager: migrated {_config.instances.Count} instance(s) to vision-capability schema v{LLMInstancesConfig.CURRENT_SCHEMA_VERSION}");
+        return true;
+    }
+
     /// <summary>
     /// Save current configuration to file.
     /// </summary>
@@ -544,23 +588,25 @@ public class LLMInstanceManager : MonoBehaviour
     /// Chooses the (instance, replica) slot with the lowest utilization ratio (replicaActiveTasks[r] / maxConcurrentTasks).
     /// Only returns slots that have capacity available.
     /// Returns -1 with replicaIndex=0 if no slot has capacity.
-    /// For vision jobs: prefers VisionJobsOnly instances, falls back to Any.
+    /// For vision jobs: prefers instances reserved for vision (visionOnly), then falls
+    /// back to any vision-capable (supportsVision) instance.
     /// </summary>
     public int GetFreeLLM(bool isSmallJob, bool isVisionJob, out int replicaIndex)
     {
         replicaIndex = 0;
         if (_config == null) return -1;
-        
-        // For vision jobs, first try to find a VisionJobsOnly instance
+
+        // For vision jobs, prefer a dedicated vision instance (visionOnly) so a reserved
+        // sidecar takes the work before a general-purpose model; then fall back to any
+        // vision-capable instance.
         if (isVisionJob)
         {
-            int visionOnlyID = GetFreeLLMWithMode(isSmallJob, isVisionJob, LLMJobMode.VisionJobsOnly, out replicaIndex);
-            if (visionOnlyID >= 0) return visionOnlyID;
-            
-            // Fall back to Any mode
-            return GetFreeLLMWithMode(isSmallJob, isVisionJob, LLMJobMode.Any, out replicaIndex);
+            int reservedID = GetFreeLLMVision(isSmallJob, requireVisionOnly: true, out replicaIndex);
+            if (reservedID >= 0) return reservedID;
+
+            return GetFreeLLMVision(isSmallJob, requireVisionOnly: false, out replicaIndex);
         }
-        
+
         // For non-vision jobs, scan all replicas across all instances
         int bestID = -1;
         int bestReplica = 0;
@@ -594,24 +640,27 @@ public class LLMInstanceManager : MonoBehaviour
     }
     
     /// <summary>
-    /// Get a free LLM instance + replica with a specific job mode.
+    /// Free-slot scan for vision jobs. With requireVisionOnly=true only instances reserved
+    /// for vision (visionOnly) qualify - the preferred pass. With false, any vision-capable
+    /// instance qualifies (the fallback pass; CanAcceptJobType gates on supportsVision).
+    /// Capacity is checked per replica; returns -1 if no qualifying slot is free.
     /// </summary>
-    private int GetFreeLLMWithMode(bool isSmallJob, bool isVisionJob, LLMJobMode targetMode, out int replicaIndex)
+    private int GetFreeLLMVision(bool isSmallJob, bool requireVisionOnly, out int replicaIndex)
     {
         replicaIndex = 0;
         if (_config == null) return -1;
-        
+
         int bestID = -1;
         int bestReplica = 0;
         float bestRatio = float.MaxValue;
-        
+
         foreach (var instance in _config.instances)
         {
             if (!instance.isActive) continue;
-            if (instance.jobMode != targetMode) continue;
-            if (!instance.CanAcceptJobType(isSmallJob, isVisionJob)) continue;
+            if (requireVisionOnly && !instance.visionOnly) continue;
+            if (!instance.CanAcceptJobType(isSmallJob, isVisionJob: true)) continue;
             if (instance.maxConcurrentTasks <= 0) continue;
-            
+
             instance.EnsureReplicaActiveTasks();
             int repCount = instance.GetEffectiveReplicaCount();
             for (int r = 0; r < repCount; r++)
@@ -653,23 +702,24 @@ public class LLMInstanceManager : MonoBehaviour
     /// Get the LLM instance ID + replica index with the lowest utilization for the given job type.
     /// Unlike GetFreeLLM, this returns an instance even if at capacity (for queueing).
     /// Returns -1 with replicaIndex=0 if no matching instances exist at all.
-    /// For vision jobs: prefers VisionJobsOnly instances, falls back to Any.
+    /// For vision jobs: prefers instances reserved for vision (visionOnly), then falls
+    /// back to any vision-capable (supportsVision) instance.
     /// </summary>
     public int GetLeastBusyLLM(bool isSmallJob, bool isVisionJob, out int replicaIndex)
     {
         replicaIndex = 0;
         if (_config == null) return -1;
-        
-        // For vision jobs, first try to find a VisionJobsOnly instance
+
+        // For vision jobs, prefer a dedicated vision instance (visionOnly), then fall back
+        // to any vision-capable instance.
         if (isVisionJob)
         {
-            int visionOnlyID = GetLeastBusyLLMWithMode(isSmallJob, isVisionJob, LLMJobMode.VisionJobsOnly, out replicaIndex);
-            if (visionOnlyID >= 0) return visionOnlyID;
-            
-            // Fall back to Any mode
-            return GetLeastBusyLLMWithMode(isSmallJob, isVisionJob, LLMJobMode.Any, out replicaIndex);
+            int reservedID = GetLeastBusyLLMVision(isSmallJob, requireVisionOnly: true, out replicaIndex);
+            if (reservedID >= 0) return reservedID;
+
+            return GetLeastBusyLLMVision(isSmallJob, requireVisionOnly: false, out replicaIndex);
         }
-        
+
         int bestID = -1;
         int bestReplica = 0;
         float bestRatio = float.MaxValue;
@@ -702,23 +752,25 @@ public class LLMInstanceManager : MonoBehaviour
     }
     
     /// <summary>
-    /// Get the least busy LLM instance with a specific job mode.
+    /// Least-busy scan for vision jobs (returns an instance even at capacity, for queueing).
+    /// With requireVisionOnly=true only vision-reserved instances qualify - the preferred
+    /// pass; with false, any vision-capable instance qualifies (the fallback pass).
     /// </summary>
-    private int GetLeastBusyLLMWithMode(bool isSmallJob, bool isVisionJob, LLMJobMode targetMode, out int replicaIndex)
+    private int GetLeastBusyLLMVision(bool isSmallJob, bool requireVisionOnly, out int replicaIndex)
     {
         replicaIndex = 0;
         if (_config == null) return -1;
-        
+
         int bestID = -1;
         int bestReplica = 0;
         float bestRatio = float.MaxValue;
-        
+
         foreach (var instance in _config.instances)
         {
             if (!instance.isActive) continue;
-            if (instance.jobMode != targetMode) continue;
-            if (!instance.CanAcceptJobType(isSmallJob, isVisionJob)) continue;
-            
+            if (requireVisionOnly && !instance.visionOnly) continue;
+            if (!instance.CanAcceptJobType(isSmallJob, isVisionJob: true)) continue;
+
             instance.EnsureReplicaActiveTasks();
             int repCount = instance.GetEffectiveReplicaCount();
             int divisor = Mathf.Max(1, instance.maxConcurrentTasks);

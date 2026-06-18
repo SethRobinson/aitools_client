@@ -20,8 +20,12 @@ public class LLMSettingsPanel : MonoBehaviour
     private LLMInstancesConfig _workingInstancesConfig;
     private LLMInstanceListUI _instanceListUI;
     private int _selectedInstanceID = -1;
-    private TMP_Dropdown _jobModeDropdown;
+    private TMP_Dropdown _jobModeDropdown;        // text-job size: Any / Big / Small
     private GameObject _jobModeRow;
+    private Toggle _supportsVisionToggle;         // capability: can take image jobs
+    private GameObject _supportsVisionRow;
+    private Toggle _visionOnlyToggle;             // reserve: no text jobs here
+    private GameObject _visionOnlyRow;
     private TMP_InputField _maxConcurrentInput;
     private GameObject _maxConcurrentRow;
     private TMP_InputField _displayNameInput;
@@ -788,9 +792,12 @@ public class LLMSettingsPanel : MonoBehaviour
         // Enabled toggle (for selected instance)
         CreateEnabledRow(content.transform);
         
-        // Job Mode row (for selected instance)
+        // Vision capability + job-size routing (for selected instance):
+        //   [x] Supports vision  /  Text jobs: [Any|Big|Small]  /  [ ] Vision jobs only
+        CreateSupportsVisionRow(content.transform);
         CreateJobModeRow(content.transform);
-        
+        CreateVisionOnlyRow(content.transform);
+
         // Max Concurrent Tasks row (for selected instance)
         CreateMaxConcurrentRow(content.transform);
         
@@ -838,7 +845,9 @@ public class LLMSettingsPanel : MonoBehaviour
             HideAllProviderUIs();
             _displayNameRow?.SetActive(false);
             _enabledRow?.SetActive(false);
+            _supportsVisionRow?.SetActive(false);
             _jobModeRow?.SetActive(false);
+            _visionOnlyRow?.SetActive(false);
             _maxConcurrentRow?.SetActive(false);
             _replicaRow?.SetActive(false);
             if (_activeProviderDropdown?.transform.parent != null)
@@ -943,7 +952,7 @@ public class LLMSettingsPanel : MonoBehaviour
 
         var label = labelObj.AddComponent<TextMeshProUGUI>();
         label.font = _font;
-        label.text = "Job Mode:";
+        label.text = "Text jobs:";
         label.fontSize = 14;
         label.color = TextDark;
         label.alignment = TextAlignmentOptions.MidlineLeft;
@@ -961,13 +970,13 @@ public class LLMSettingsPanel : MonoBehaviour
         ddRt.offsetMax = new Vector2(-pad, -4f);
 
         _jobModeDropdown = ddGo.GetComponent<TMP_Dropdown>();
+        // Text-job size only - indices line up with LLMJobMode 0/1/2. Vision capability is
+        // the separate "Supports vision" checkbox above; reserve is "Vision jobs only" below.
         _jobModeDropdown.options = new List<TMP_Dropdown.OptionData>
         {
             new TMP_Dropdown.OptionData("Any"),
             new TMP_Dropdown.OptionData("Big Jobs Only"),
-            new TMP_Dropdown.OptionData("Small Jobs Only"),
-            new TMP_Dropdown.OptionData("Vision Jobs Only"),
-            new TMP_Dropdown.OptionData("Non-Vision Only")
+            new TMP_Dropdown.OptionData("Small Jobs Only")
         };
         _jobModeDropdown.onValueChanged.AddListener(OnJobModeChanged);
 
@@ -989,24 +998,177 @@ public class LLMSettingsPanel : MonoBehaviour
 
         var helpText = helpObj.AddComponent<TextMeshProUGUI>();
         helpText.font = _font;
-        helpText.text = "(Vision=image analysis)";
+        helpText.text = "(text size; vision is set above)";
         helpText.fontSize = 11;
         helpText.color = new Color(0.4f, 0.4f, 0.4f, 1f);
         helpText.alignment = TextAlignmentOptions.MidlineLeft;
     }
-    
+
     private void OnJobModeChanged(int index)
     {
         if (_selectedInstanceID < 0) return;
-        
+
         var instance = _workingInstancesConfig?.GetInstance(_selectedInstanceID);
         if (instance != null)
         {
+            // Dropdown indices 0/1/2 line up with LLMJobMode Any/BigJobsOnly/SmallJobsOnly.
             instance.jobMode = (LLMJobMode)index;
             _instanceListUI?.UpdateItemDisplay(instance);
         }
     }
-    
+
+    private void CreateSupportsVisionRow(Transform parent)
+    {
+        _supportsVisionRow = CreateCheckboxRow(parent, "SupportsVisionRow",
+            "Supports vision (images)",
+            "(model can analyze attached / generated images)",
+            OnSupportsVisionChanged, out _supportsVisionToggle);
+    }
+
+    private void CreateVisionOnlyRow(Transform parent)
+    {
+        _visionOnlyRow = CreateCheckboxRow(parent, "VisionOnlyRow",
+            "Vision jobs only (reserve)",
+            "(don't route text jobs here; needs Supports vision)",
+            OnVisionOnlyChanged, out _visionOnlyToggle);
+    }
+
+    private void OnSupportsVisionChanged(bool value)
+    {
+        if (_selectedInstanceID < 0) return;
+        var instance = _workingInstancesConfig?.GetInstance(_selectedInstanceID);
+        if (instance == null) return;
+
+        instance.supportsVision = value;
+        // "Vision jobs only" only makes sense for a vision-capable instance. Clear and
+        // disable it when vision is turned off so we never persist an accepts-nothing combo.
+        if (!value && instance.visionOnly)
+        {
+            instance.visionOnly = false;
+            _visionOnlyToggle?.SetIsOnWithoutNotify(false);
+        }
+        UpdateVisionOnlyInteractable(value);
+        _instanceListUI?.UpdateItemDisplay(instance);
+    }
+
+    private void OnVisionOnlyChanged(bool value)
+    {
+        if (_selectedInstanceID < 0) return;
+        var instance = _workingInstancesConfig?.GetInstance(_selectedInstanceID);
+        if (instance == null) return;
+
+        instance.visionOnly = value;
+        _instanceListUI?.UpdateItemDisplay(instance);
+    }
+
+    // Grey out "Vision jobs only" unless the instance is vision-capable (the reserve is
+    // meaningless without it). Unity tints the toggle background automatically.
+    private void UpdateVisionOnlyInteractable(bool supportsVision)
+    {
+        if (_visionOnlyToggle != null)
+            _visionOnlyToggle.interactable = supportsVision;
+    }
+
+    /// <summary>
+    /// Build a standard left-aligned checkbox row "[toggle] Label   (help)", matching the
+    /// inline toggle styling used by the Enabled / replica rows. Returns the row GameObject
+    /// (for show/hide) and hands back the Toggle via <paramref name="toggle"/>.
+    /// </summary>
+    private GameObject CreateCheckboxRow(Transform parent, string name, string labelText,
+                                         string helpText, UnityEngine.Events.UnityAction<bool> onChanged,
+                                         out Toggle toggle)
+    {
+        const float rowHeight = 30f;
+        const float pad = 12f;
+
+        var row = new GameObject(name);
+        row.transform.SetParent(parent, false);
+        var rowImg = row.AddComponent<Image>();
+        ApplyUISprite(rowImg);
+        rowImg.color = RowBg;
+        var rowLE = row.AddComponent<LayoutElement>();
+        rowLE.preferredHeight = rowHeight;
+
+        // Toggle (checkbox) at left
+        var toggleGo = new GameObject("Toggle");
+        toggleGo.transform.SetParent(row.transform, false);
+        var toggleRt = toggleGo.AddComponent<RectTransform>();
+        toggleRt.anchorMin = new Vector2(0, 0.5f);
+        toggleRt.anchorMax = new Vector2(0, 0.5f);
+        toggleRt.pivot = new Vector2(0, 0.5f);
+        toggleRt.sizeDelta = new Vector2(20, 20);
+        toggleRt.anchoredPosition = new Vector2(pad, 0);
+
+        var bgGo = new GameObject("Background");
+        bgGo.transform.SetParent(toggleGo.transform, false);
+        var bgRt = bgGo.AddComponent<RectTransform>();
+        bgRt.anchorMin = Vector2.zero;
+        bgRt.anchorMax = Vector2.one;
+        bgRt.offsetMin = Vector2.zero;
+        bgRt.offsetMax = Vector2.zero;
+        var bgImg = bgGo.AddComponent<Image>();
+        bgImg.color = InputFieldBg;
+        ApplyUISprite(bgImg);
+
+        var checkGo = new GameObject("Checkmark");
+        checkGo.transform.SetParent(bgGo.transform, false);
+        var checkRt = checkGo.AddComponent<RectTransform>();
+        checkRt.anchorMin = new Vector2(0.1f, 0.1f);
+        checkRt.anchorMax = new Vector2(0.9f, 0.9f);
+        checkRt.offsetMin = Vector2.zero;
+        checkRt.offsetMax = Vector2.zero;
+        var checkTmp = checkGo.AddComponent<TextMeshProUGUI>();
+        checkTmp.font = _font;
+        checkTmp.fontSize = 14;
+        checkTmp.color = new Color(0.2f, 0.5f, 0.2f, 1f);
+        checkTmp.alignment = TextAlignmentOptions.Center;
+        checkTmp.text = "✓";
+
+        toggle = toggleGo.AddComponent<Toggle>();
+        toggle.targetGraphic = bgImg;
+        toggle.graphic = checkTmp;
+        toggle.isOn = false;
+        if (onChanged != null) toggle.onValueChanged.AddListener(onChanged);
+
+        // Label after the toggle
+        const float labelX = pad + 20 + 8;
+        const float labelWidth = 210f;
+        var labelObj = new GameObject("Label");
+        labelObj.transform.SetParent(row.transform, false);
+        var labelRt = labelObj.AddComponent<RectTransform>();
+        labelRt.anchorMin = new Vector2(0, 0);
+        labelRt.anchorMax = new Vector2(0, 1);
+        labelRt.pivot = new Vector2(0, 0.5f);
+        labelRt.sizeDelta = new Vector2(labelWidth, 0);
+        labelRt.anchoredPosition = new Vector2(labelX, 0);
+        var label = labelObj.AddComponent<TextMeshProUGUI>();
+        label.font = _font;
+        label.text = labelText;
+        label.fontSize = 13;
+        label.color = TextDark;
+        label.alignment = TextAlignmentOptions.MidlineLeft;
+
+        // Help text fills the remainder of the row
+        if (!string.IsNullOrEmpty(helpText))
+        {
+            var helpObj = new GameObject("HelpText");
+            helpObj.transform.SetParent(row.transform, false);
+            var helpRt = helpObj.AddComponent<RectTransform>();
+            helpRt.anchorMin = new Vector2(0, 0);
+            helpRt.anchorMax = new Vector2(1, 1);
+            helpRt.offsetMin = new Vector2(labelX + labelWidth + 8, 0);
+            helpRt.offsetMax = new Vector2(-pad, 0);
+            var help = helpObj.AddComponent<TextMeshProUGUI>();
+            help.font = _font;
+            help.text = helpText;
+            help.fontSize = 11;
+            help.color = new Color(0.4f, 0.4f, 0.4f, 1f);
+            help.alignment = TextAlignmentOptions.MidlineLeft;
+        }
+
+        return row;
+    }
+
     private void CreateMaxConcurrentRow(Transform parent)
     {
         const float rowHeight = 36f;
@@ -1403,7 +1565,9 @@ public class LLMSettingsPanel : MonoBehaviour
             // No instance selected - hide provider UI
             _displayNameRow?.SetActive(false);
             _enabledRow?.SetActive(false);
+            _supportsVisionRow?.SetActive(false);
             _jobModeRow?.SetActive(false);
+            _visionOnlyRow?.SetActive(false);
             _maxConcurrentRow?.SetActive(false);
             _replicaRow?.SetActive(false);
             if (_activeProviderDropdown?.transform.parent != null)
@@ -1422,11 +1586,23 @@ public class LLMSettingsPanel : MonoBehaviour
         if (_enabledToggle != null)
             _enabledToggle.SetIsOnWithoutNotify(instance.isActive);
         
-        // Show job mode row
+        // Show vision capability + job-size rows
+        _supportsVisionRow?.SetActive(true);
+        if (_supportsVisionToggle != null)
+            _supportsVisionToggle.SetIsOnWithoutNotify(instance.supportsVision);
+
         _jobModeRow?.SetActive(true);
         if (_jobModeDropdown != null)
-            _jobModeDropdown.value = (int)instance.jobMode;
-        
+        {
+            int idx = (int)instance.jobMode;            // text-size only (0/1/2)
+            _jobModeDropdown.value = (idx >= 0 && idx <= 2) ? idx : 0;
+        }
+
+        _visionOnlyRow?.SetActive(true);
+        if (_visionOnlyToggle != null)
+            _visionOnlyToggle.SetIsOnWithoutNotify(instance.visionOnly);
+        UpdateVisionOnlyInteractable(instance.supportsVision);
+
         // Show max concurrent row
         _maxConcurrentRow?.SetActive(true);
         if (_maxConcurrentInput != null)
