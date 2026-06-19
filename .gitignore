@@ -66,6 +66,12 @@ compact_summary_sent.json
 llm_request_sent.json
 llm_request_sent_aichat.json
 llm_response.json
+llm_last_request_sent_big.json
+llm_last_request_sent_small.json
+llm_last_response_sent_big.json
+llm_last_response_sent_small.json
+llm_last_error_big.json
+llm_last_error_small.json
 .claude/settings.json
 llm_aichat_log.json
 CLAUDE.md

@@ -280,14 +280,15 @@ public class OpenAITextCompletionManager : MonoBehaviour
 
     //*  EXAMPLE END */
     public bool SpawnChatCompleteRequest(string jsonRequest, Action<RTDB, JSONObject, string> myCallback, RTDB db, string openAI_APIKey, string endpoint = "https://api.openai.com/v1/chat/completions",
-        Action<string> streamingUpdateChunkCallback = null, bool bStreaming = false, string sentJsonFilename = "text_completion_sent.json")
+        Action<string> streamingUpdateChunkCallback = null, bool bStreaming = false, string sentJsonFilename = "text_completion_sent.json",
+        LLMDebugLog.JobSize debugJobSize = LLMDebugLog.JobSize.Big)
     {
         if (bStreaming)
         {
-            StartCoroutine(GetRequestStreaming(jsonRequest, myCallback, db, openAI_APIKey, endpoint, streamingUpdateChunkCallback, sentJsonFilename));
+            StartCoroutine(GetRequestStreaming(jsonRequest, myCallback, db, openAI_APIKey, endpoint, streamingUpdateChunkCallback, sentJsonFilename, debugJobSize));
         } else
         {
-            StartCoroutine(GetRequest(jsonRequest, myCallback, db, openAI_APIKey, endpoint, sentJsonFilename));
+            StartCoroutine(GetRequest(jsonRequest, myCallback, db, openAI_APIKey, endpoint, sentJsonFilename, debugJobSize));
 
         }
         return true;
@@ -638,13 +639,14 @@ public class OpenAITextCompletionManager : MonoBehaviour
          
 //                 ""max_tokens"": {max_tokens,
 
-    IEnumerator GetRequest(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string openAI_APIKey, string endpoint, string sentJsonFilename, bool retriedSamplingStrip = false)
+    IEnumerator GetRequest(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string openAI_APIKey, string endpoint, string sentJsonFilename,
+        LLMDebugLog.JobSize debugJobSize, bool retriedSamplingStrip = false)
     {
         // Pre-strip samplers this endpoint already rejected this session (see streaming path).
         if (!retriedSamplingStrip)
             json = LLMSamplingCompat.ApplyKnownStrips(endpoint, json);
 
-        LLMDebugLog.LogRequest(json);
+        LLMDebugLog.LogRequest(json, debugJobSize);
         string url;
         url = endpoint;
         m_connectionActive = true;
@@ -699,7 +701,7 @@ public class OpenAITextCompletionManager : MonoBehaviour
                 string shown = LLMSamplingCompat.BestErrorMessage(body, transportError);
                 Debug.Log("LLM error response: " + shown);
 
-                LLMDebugLog.LogError(string.IsNullOrEmpty(body) ? (transportError ?? "(No response body)") : body);
+                LLMDebugLog.LogError(string.IsNullOrEmpty(body) ? (transportError ?? "(No response body)") : body, debugJobSize);
                 m_connectionActive = false;
 
                 db.Set("status", "failed");
@@ -708,7 +710,7 @@ public class OpenAITextCompletionManager : MonoBehaviour
             }
             else
             {
-                LLMDebugLog.LogResponse(body);
+                LLMDebugLog.LogResponse(body, debugJobSize);
                 yield return null; //wait a frame to lesson the jerkiness
 
                 Debug.Assert(rootNode.Tag == JSONNodeType.Object);
@@ -722,7 +724,7 @@ public class OpenAITextCompletionManager : MonoBehaviour
         if (retryJson != null)
         {
             Debug.Log("Retrying LLM request with server-rejected sampling params removed.");
-            yield return StartCoroutine(GetRequest(retryJson, myCallback, db, openAI_APIKey, endpoint, sentJsonFilename, retriedSamplingStrip: true));
+            yield return StartCoroutine(GetRequest(retryJson, myCallback, db, openAI_APIKey, endpoint, sentJsonFilename, debugJobSize, retriedSamplingStrip: true));
         }
     }
 
@@ -744,7 +746,7 @@ public class OpenAITextCompletionManager : MonoBehaviour
 
 
     IEnumerator GetRequestStreaming(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string openAI_APIKey, string endpoint,
-         Action<string> updateChunkCallback, string sentJsonFilename, bool retriedSamplingStrip = false)
+         Action<string> updateChunkCallback, string sentJsonFilename, LLMDebugLog.JobSize debugJobSize, bool retriedSamplingStrip = false)
     {
         // Pre-strip any sampling params this endpoint already rejected earlier this
         // session, so the request goes through on the first try. Skipped on the retry
@@ -752,7 +754,7 @@ public class OpenAITextCompletionManager : MonoBehaviour
         if (!retriedSamplingStrip)
             json = LLMSamplingCompat.ApplyKnownStrips(endpoint, json);
 
-        LLMDebugLog.LogRequest(json);
+        LLMDebugLog.LogRequest(json, debugJobSize);
         string url;
         url = endpoint;
         //Debug.Log("Sending request " + url );
@@ -825,7 +827,7 @@ public class OpenAITextCompletionManager : MonoBehaviour
                 string shown = LLMSamplingCompat.BestErrorMessage(body, transportError);
                 Debug.Log("LLM error response: " + shown);
 
-                LLMDebugLog.LogError(string.IsNullOrEmpty(body) ? (transportError ?? "(No response body)") : body);
+                LLMDebugLog.LogError(string.IsNullOrEmpty(body) ? (transportError ?? "(No response body)") : body, debugJobSize);
                 m_connectionActive = false;
 
                 db.Set("status", "failed");
@@ -834,7 +836,7 @@ public class OpenAITextCompletionManager : MonoBehaviour
             }
             else
             {
-                LLMDebugLog.LogResponse(_currentRequest.downloadHandler.text);
+                LLMDebugLog.LogResponse(_currentRequest.downloadHandler.text, debugJobSize);
                 m_connectionActive = false;
 
                 db.Set("status", "success");
@@ -846,7 +848,7 @@ public class OpenAITextCompletionManager : MonoBehaviour
         {
             Debug.Log("Retrying LLM request with server-rejected sampling params removed.");
             yield return StartCoroutine(GetRequestStreaming(retryJson, myCallback, db, openAI_APIKey, endpoint,
-                updateChunkCallback, sentJsonFilename, retriedSamplingStrip: true));
+                updateChunkCallback, sentJsonFilename, debugJobSize, retriedSamplingStrip: true));
         }
     }
 }

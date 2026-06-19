@@ -1614,7 +1614,7 @@ namespace AITools.AIChat.Skills
                     {
                         try { onDone(rtdb, jn, str); }
                         finally { UnityEngine.Object.Destroy(mgr); }
-                    }, db, serverAddress, suggestedEndpoint, null, false, apiKey, sentJsonFilename);
+                    }, db, serverAddress, suggestedEndpoint, null, false, apiKey, sentJsonFilename, debugJobSize: LLMDebugLog.JobSize.Small);
                     break;
                 }
                 case LLMProvider.LlamaCpp:
@@ -1628,7 +1628,7 @@ namespace AITools.AIChat.Skills
                     {
                         try { onDone(rtdb, jn, str); }
                         finally { UnityEngine.Object.Destroy(mgr); }
-                    }, db, serverAddress, suggestedEndpoint, null, false, apiKey, sentJsonFilename);
+                    }, db, serverAddress, suggestedEndpoint, null, false, apiKey, sentJsonFilename, debugJobSize: LLMDebugLog.JobSize.Small);
                     break;
                 }
                 case LLMProvider.OpenAICompatible:
@@ -1653,7 +1653,7 @@ namespace AITools.AIChat.Skills
                     {
                         try { onDone(rtdb, jn, str); }
                         finally { UnityEngine.Object.Destroy(mgr); }
-                    }, db, apiKey, endpoint, null, false, sentJsonFilename);
+                    }, db, apiKey, endpoint, null, false, sentJsonFilename, debugJobSize: LLMDebugLog.JobSize.Small);
                     break;
                 }
                 case LLMProvider.OpenAI:
@@ -1668,7 +1668,7 @@ namespace AITools.AIChat.Skills
                     {
                         try { onDone(rtdb, jn, str); }
                         finally { UnityEngine.Object.Destroy(mgr); }
-                    }, db, apiKey, profile.endpoint, null, false, sentJsonFilename);
+                    }, db, apiKey, profile.endpoint, null, false, sentJsonFilename, debugJobSize: LLMDebugLog.JobSize.Small);
                     break;
                 }
                 case LLMProvider.Anthropic:
@@ -1701,7 +1701,7 @@ namespace AITools.AIChat.Skills
                             onDone(rtdb, jn, extracted ?? "");
                         }
                         finally { UnityEngine.Object.Destroy(mgr); }
-                    }, db, anthropicKey, endpoint, null, false, sentJsonFilename);
+                    }, db, anthropicKey, endpoint, null, false, sentJsonFilename, debugJobSize: LLMDebugLog.JobSize.Small);
                     break;
                 }
                 case LLMProvider.Gemini:
@@ -1722,7 +1722,7 @@ namespace AITools.AIChat.Skills
                     {
                         try { onDone(rtdb, jn, str ?? ""); }
                         finally { UnityEngine.Object.Destroy(mgr); }
-                    }, db, apiKey, endpoint, null, false);
+                    }, db, apiKey, endpoint, null, false, debugJobSize: LLMDebugLog.JobSize.Small);
                     break;
                 }
                 default:

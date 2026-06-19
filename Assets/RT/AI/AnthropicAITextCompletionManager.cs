@@ -28,15 +28,16 @@ public class AnthropicAITextCompletionManager : MonoBehaviour
     }
 
     public bool SpawnChatCompletionRequest(string jsonRequest, Action<RTDB, JSONObject, string> myCallback, RTDB db, string anthropic_APIKey, string endpoint = "https://api.anthropic.com/v1/messages",
-        Action<string> streamingUpdateChunkCallback = null, bool bStreaming = false, string sentJsonFilename = "text_completion_sent.json")
+        Action<string> streamingUpdateChunkCallback = null, bool bStreaming = false, string sentJsonFilename = "text_completion_sent.json",
+        LLMDebugLog.JobSize debugJobSize = LLMDebugLog.JobSize.Big)
     {
         if (bStreaming)
         {
-            StartCoroutine(GetRequestStreaming(jsonRequest, myCallback, db, anthropic_APIKey, endpoint, streamingUpdateChunkCallback));
+            StartCoroutine(GetRequestStreaming(jsonRequest, myCallback, db, anthropic_APIKey, endpoint, streamingUpdateChunkCallback, debugJobSize));
         }
         else
         {
-            StartCoroutine(GetRequest(jsonRequest, myCallback, db, anthropic_APIKey, endpoint, sentJsonFilename));
+            StartCoroutine(GetRequest(jsonRequest, myCallback, db, anthropic_APIKey, endpoint, sentJsonFilename, debugJobSize));
         }
         return true;
     }
@@ -169,13 +170,14 @@ public class AnthropicAITextCompletionManager : MonoBehaviour
     }
 
 
-    IEnumerator GetRequest(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string anthropic_APIKey, string endpoint, string sentJsonFilename = "text_completion_sent.json")
+    IEnumerator GetRequest(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string anthropic_APIKey, string endpoint,
+        string sentJsonFilename = "text_completion_sent.json", LLMDebugLog.JobSize debugJobSize = LLMDebugLog.JobSize.Big)
     {
         m_connectionActive = true;
 
         // Persist the outbound body so callers can inspect what we actually sent
         // when the response is empty or malformed.
-        LLMDebugLog.LogRequest(json);
+        LLMDebugLog.LogRequest(json, debugJobSize);
 
         using (_currentRequest = UnityWebRequest.PostWwwForm(endpoint, "POST"))
         {
@@ -195,7 +197,7 @@ public class AnthropicAITextCompletionManager : MonoBehaviour
             {
                 string msg = _currentRequest.error;
                 Debug.Log(msg);
-                LLMDebugLog.LogError(_currentRequest.downloadHandler.text);
+                LLMDebugLog.LogError(_currentRequest.downloadHandler.text, debugJobSize);
                 m_connectionActive = false;
 
                 db.Set("status", "failed");
@@ -204,7 +206,7 @@ public class AnthropicAITextCompletionManager : MonoBehaviour
             }
             else
             {
-                LLMDebugLog.LogResponse(_currentRequest.downloadHandler.text);
+                LLMDebugLog.LogResponse(_currentRequest.downloadHandler.text, debugJobSize);
                 JSONNode rootNode = JSON.Parse(_currentRequest.downloadHandler.text);
                 yield return null;
 
@@ -235,7 +237,7 @@ public class AnthropicAITextCompletionManager : MonoBehaviour
     }
 
     IEnumerator GetRequestStreaming(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string anthropic_APIKey, string endpoint,
-         Action<string> updateChunkCallback)
+         Action<string> updateChunkCallback, LLMDebugLog.JobSize debugJobSize)
     {
 
        // json = "{\r\n  \"model\": \"claude-3-5-sonnet-20240620\",\r\n  \"messages\": [{\"role\": \"user\", \"content\": \"Hello\"}],\r\n  \"max_tokens\": 256,\r\n  \"stream\": true\r\n}";
@@ -243,7 +245,7 @@ public class AnthropicAITextCompletionManager : MonoBehaviour
 
         m_connectionActive = true;
 
-        LLMDebugLog.LogRequest(json);
+        LLMDebugLog.LogRequest(json, debugJobSize);
 
         using (_currentRequest = UnityWebRequest.PostWwwForm(endpoint, "POST"))
         {
@@ -275,7 +277,7 @@ public class AnthropicAITextCompletionManager : MonoBehaviour
                 Debug.Log("Response Code: " + _currentRequest.responseCode);
                 Debug.Log("Response Headers: " + _currentRequest.GetResponseHeaders());
                 Debug.Log("Response Body: " + rawBody);
-                LLMDebugLog.LogError(rawBody);
+                LLMDebugLog.LogError(rawBody, debugJobSize);
                 m_connectionActive = false;
 
                 db.Set("status", "failed");
@@ -285,7 +287,7 @@ public class AnthropicAITextCompletionManager : MonoBehaviour
             }
             else
             {
-                LLMDebugLog.LogResponse(_currentRequest.downloadHandler.text);
+                LLMDebugLog.LogResponse(_currentRequest.downloadHandler.text, debugJobSize);
                 m_connectionActive = false;
 
                 db.Set("status", "success");

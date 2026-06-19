@@ -27,15 +27,15 @@ public class GeminiTextCompletionManager : MonoBehaviour
     /// <param name="streamingUpdateChunkCallback">Callback for streaming chunks</param>
     /// <param name="bStreaming">Whether to use streaming</param>
     public bool SpawnChatCompleteRequest(string jsonRequest, Action<RTDB, JSONObject, string> myCallback, RTDB db, string gemini_APIKey, string endpoint,
-        Action<string> streamingUpdateChunkCallback = null, bool bStreaming = false)
+        Action<string> streamingUpdateChunkCallback = null, bool bStreaming = false, LLMDebugLog.JobSize debugJobSize = LLMDebugLog.JobSize.Big)
     {
         if (bStreaming)
         {
-            StartCoroutine(GetRequestStreaming(jsonRequest, myCallback, db, gemini_APIKey, endpoint, streamingUpdateChunkCallback));
+            StartCoroutine(GetRequestStreaming(jsonRequest, myCallback, db, gemini_APIKey, endpoint, streamingUpdateChunkCallback, debugJobSize));
         }
         else
         {
-            StartCoroutine(GetRequest(jsonRequest, myCallback, db, gemini_APIKey, endpoint));
+            StartCoroutine(GetRequest(jsonRequest, myCallback, db, gemini_APIKey, endpoint, debugJobSize));
         }
         return true;
     }
@@ -182,11 +182,12 @@ public class GeminiTextCompletionManager : MonoBehaviour
         return url;
     }
 
-    IEnumerator GetRequest(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string gemini_APIKey, string endpoint)
+    IEnumerator GetRequest(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string gemini_APIKey, string endpoint,
+        LLMDebugLog.JobSize debugJobSize)
     {
         m_connectionActive = true;
 
-        LLMDebugLog.LogRequest(json);
+        LLMDebugLog.LogRequest(json, debugJobSize);
 
         using (_currentRequest = UnityWebRequest.PostWwwForm(endpoint, "POST"))
         {
@@ -216,7 +217,7 @@ public class GeminiTextCompletionManager : MonoBehaviour
                 
                 Debug.Log("Gemini Response: " + responseBody);
 
-                LLMDebugLog.LogError(responseBody);
+                LLMDebugLog.LogError(responseBody, debugJobSize);
                 m_connectionActive = false;
 
                 db.Set("status", "failed");
@@ -225,7 +226,7 @@ public class GeminiTextCompletionManager : MonoBehaviour
             }
             else
             {
-                LLMDebugLog.LogResponse(_currentRequest.downloadHandler.text);
+                LLMDebugLog.LogResponse(_currentRequest.downloadHandler.text, debugJobSize);
 
                 JSONNode rootNode = JSON.Parse(_currentRequest.downloadHandler.text);
                 yield return null;
@@ -255,11 +256,11 @@ public class GeminiTextCompletionManager : MonoBehaviour
     }
 
     IEnumerator GetRequestStreaming(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string gemini_APIKey, string endpoint,
-        Action<string> updateChunkCallback)
+        Action<string> updateChunkCallback, LLMDebugLog.JobSize debugJobSize)
     {
         m_connectionActive = true;
 
-        LLMDebugLog.LogRequest(json);
+        LLMDebugLog.LogRequest(json, debugJobSize);
 
         using (_currentRequest = UnityWebRequest.PostWwwForm(endpoint, "POST"))
         {
@@ -296,7 +297,7 @@ public class GeminiTextCompletionManager : MonoBehaviour
                 
                 Debug.Log("Gemini Error Response: " + errorBody);
 
-                LLMDebugLog.LogError(errorBody);
+                LLMDebugLog.LogError(errorBody, debugJobSize);
                 m_connectionActive = false;
 
                 db.Set("status", "failed");
@@ -305,7 +306,7 @@ public class GeminiTextCompletionManager : MonoBehaviour
             }
             else
             {
-                LLMDebugLog.LogResponse(downloadHandler.GetContent());
+                LLMDebugLog.LogResponse(downloadHandler.GetContent(), debugJobSize);
                 m_connectionActive = false;
 
                 db.Set("status", "success");

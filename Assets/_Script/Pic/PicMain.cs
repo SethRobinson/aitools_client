@@ -3908,7 +3908,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                                 profile.useResponsesAPI, profile.isReasoningModel, profile.includeTemperature,
                                 profile.reasoningEffort, profile.enableThinking);
                             RTConsole.Log("Contacting OpenAI at " + profile.endpoint);
-                            _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, profile.endpoint, OnStreamingTextCallback, true);
+                            _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, profile.endpoint, OnStreamingTextCallback, true, debugJobSize: LLMDebugLog.JobSize.Small);
                             SetLLMActive(true, llmInstanceID, llmReplicaIndex);
                         }
                         break;
@@ -3926,7 +3926,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                             
                             RTConsole.Log("Contacting Anthropic at " + endpoint);
                             string json = _anthropicAITextCompletionManager.BuildChatCompleteJSON(lines, 4096, temperature, model, true);
-                            _anthropicAITextCompletionManager.SpawnChatCompletionRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
+                            _anthropicAITextCompletionManager.SpawnChatCompletionRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true, debugJobSize: LLMDebugLog.JobSize.Small);
                             SetLLMActive(true, llmInstanceID, llmReplicaIndex);
                         }
                         break;
@@ -3942,7 +3942,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                             var llmParms = llmInstance != null ? mgr.GetInstanceLLMParms(llmInstanceID) : mgr.GetLLMParms(LLMProvider.LlamaCpp);
                             string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, 4096, temperature, 
                                 Config.Get().GetGenericLLMMode(), true, llmParms, false, true);
-                            _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, serverAddress, suggestedEndpoint, OnStreamingTextCallback, true, apiKey);
+                            _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, serverAddress, suggestedEndpoint, OnStreamingTextCallback, true, apiKey, debugJobSize: LLMDebugLog.JobSize.Small);
                             SetLLMActive(true, llmInstanceID, llmReplicaIndex);
                         }
                         break;
@@ -3958,7 +3958,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                             var llmParms = llmInstance != null ? mgr.GetInstanceLLMParms(llmInstanceID) : mgr.GetLLMParms(LLMProvider.Ollama);
                             string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, 4096, temperature, 
                                 Config.Get().GetGenericLLMMode(), true, llmParms, true, false);
-                            _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, serverAddress, suggestedEndpoint, OnStreamingTextCallback, true, apiKey);
+                            _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, serverAddress, suggestedEndpoint, OnStreamingTextCallback, true, apiKey, debugJobSize: LLMDebugLog.JobSize.Small);
                             SetLLMActive(true, llmInstanceID, llmReplicaIndex);
                         }
                         break;
@@ -4001,7 +4001,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                             }
 
                             string json = _geminiTextCompletionManager.BuildChatCompleteJSON(lines, 4096, temperature, model, true, enableThinking);
-                            _geminiTextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
+                            _geminiTextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true, debugJobSize: LLMDebugLog.JobSize.Small);
                             SetLLMActive(true, llmInstanceID, llmReplicaIndex);
                         }
                         break;
@@ -4042,7 +4042,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                                 enableThinking: compatEnableThinking,
                                 topP: compatTopP,
                                 customReasoningEffort: compatReasoningEffortParam);
-                            _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
+                            _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true, debugJobSize: LLMDebugLog.JobSize.Small);
                             SetLLMActive(true, llmInstanceID, llmReplicaIndex);
                         }
                         break;

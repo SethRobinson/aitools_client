@@ -6,18 +6,20 @@ using System.Threading.Tasks;
 /// Unified, provider-agnostic debug logging for every LLM text-completion
 /// manager (Gemini / Anthropic / OpenAI / TexGenWebUI).
 ///
-/// Every provider writes the SAME files, last-writer-wins, so
-/// "look at llm_response.json" works no matter which backend served the
-/// request:
+/// Every provider writes the SAME file set, split by big vs small jobs, so
+/// "look at the last big LLM response" works no matter which backend served the
+/// request and small sidecars do not clobber AI Chat / Adventure traffic:
 ///
-///   llm_request_sent.json - the exact JSON body we POSTed
-///   llm_response.json     - raw HTTP response body on success
-///   llm_last_error.json   - raw HTTP response body on failure
+///   llm_last_request_sent_big.json   - exact JSON body POSTed for a big job
+///   llm_last_request_sent_small.json - exact JSON body POSTed for a small job
+///   llm_last_response_sent_big.json  - raw HTTP response body for a big job
+///   llm_last_response_sent_small.json - raw HTTP response body for a small job
+///   llm_last_error_big.json          - raw HTTP error body for a big job
+///   llm_last_error_small.json        - raw HTTP error body for a small job
 ///
-/// These are last-writer-wins single-shot files: the big conversational AI Chat
-/// turn and the small vision-caption / summarization "sidecar" requests the same
-/// managers serve all clobber each other here. For a full, un-clobbered picture
-/// of an AI Chat exchange (request + reply + the emitted tool calls), the main
+/// Each file is still last-writer-wins within its size class. For a full,
+/// un-clobbered picture of an AI Chat exchange (request + reply + the emitted
+/// tool calls), the main
 /// send and each sidecar wrap their dispatch in <see cref="PurposeScope"/>, which
 /// forwards every request body to the editor-only <see cref="AIChatLog"/>
 /// (llm_aichat_log.json) tagged with its purpose. Responses are logged there
@@ -41,9 +43,35 @@ using System.Threading.Tasks;
 /// </summary>
 public static class LLMDebugLog
 {
-    public const string RequestFile = "llm_request_sent.json";
-    public const string ResponseFile = "llm_response.json";
-    public const string ErrorFile = "llm_last_error.json";
+    public enum JobSize
+    {
+        Big,
+        Small
+    }
+
+    public const string BigRequestFile = "llm_last_request_sent_big.json";
+    public const string SmallRequestFile = "llm_last_request_sent_small.json";
+    public const string BigResponseFile = "llm_last_response_sent_big.json";
+    public const string SmallResponseFile = "llm_last_response_sent_small.json";
+    public const string BigErrorFile = "llm_last_error_big.json";
+    public const string SmallErrorFile = "llm_last_error_small.json";
+
+    public const string LegacyRequestFile = "llm_request_sent.json";
+    public const string LegacyResponseFile = "llm_response.json";
+    public const string LegacyErrorFile = "llm_last_error.json";
+
+    public static readonly string[] FilesToDelete =
+    {
+        BigRequestFile,
+        SmallRequestFile,
+        BigResponseFile,
+        SmallResponseFile,
+        BigErrorFile,
+        SmallErrorFile,
+        LegacyRequestFile,
+        LegacyResponseFile,
+        LegacyErrorFile
+    };
 
     // When non-null, LogRequest also forwards the body to AIChatLog under this
     // purpose label (e.g. "chat", "ImageCaption"). Set for the duration of an AI
@@ -51,14 +79,14 @@ public static class LLMDebugLog
     private static string s_purpose = null;
 
     /// <summary>The exact request body about to be POSTed to the provider.</summary>
-    public static void LogRequest(string json)
+    public static void LogRequest(string json, JobSize jobSize = JobSize.Big)
     {
         // Forward to the editor-only AI Chat log when we're inside an AI Chat
         // dispatch. Relies on every manager calling LogRequest synchronously
         // before its first yield, while the PurposeScope below is still active.
         if (!string.IsNullOrEmpty(s_purpose))
             AIChatLog.Request(s_purpose, json);
-        WriteAsync(RequestFile, json);
+        WriteAsync(RequestFileFor(jobSize), json);
     }
 
     /// <summary>
@@ -91,10 +119,14 @@ public static class LLMDebugLog
     }
 
     /// <summary>The raw HTTP response body of a successful completion.</summary>
-    public static void LogResponse(string body) { WriteAsync(ResponseFile, body); }
+    public static void LogResponse(string body, JobSize jobSize = JobSize.Big) { WriteAsync(ResponseFileFor(jobSize), body); }
 
     /// <summary>The raw HTTP response body of a failed request.</summary>
-    public static void LogError(string body) { WriteAsync(ErrorFile, body); }
+    public static void LogError(string body, JobSize jobSize = JobSize.Big) { WriteAsync(ErrorFileFor(jobSize), body); }
+
+    private static string RequestFileFor(JobSize jobSize) => jobSize == JobSize.Small ? SmallRequestFile : BigRequestFile;
+    private static string ResponseFileFor(JobSize jobSize) => jobSize == JobSize.Small ? SmallResponseFile : BigResponseFile;
+    private static string ErrorFileFor(JobSize jobSize) => jobSize == JobSize.Small ? SmallErrorFile : BigErrorFile;
 
     private static void WriteAsync(string file, string contents)
     {

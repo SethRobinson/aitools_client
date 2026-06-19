@@ -76,16 +76,16 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
     //*  EXAMPLE END */
     public bool SpawnChatCompleteRequest(string jsonRequest, Action<RTDB, JSONObject, string> myCallback, RTDB db, string serverAddress,
         string apiCommandURL, Action<string> streamingUpdateChunkCallback = null, bool bStreaming = false, string apiKey = "none",
-        string sentJsonFilename = "text_completion_sent.json")
+        string sentJsonFilename = "text_completion_sent.json", LLMDebugLog.JobSize debugJobSize = LLMDebugLog.JobSize.Big)
     {
         if (bStreaming)
         {
-            StartCoroutine(GetRequestStreaming(jsonRequest, myCallback, db, serverAddress, apiCommandURL, streamingUpdateChunkCallback, apiKey, sentJsonFilename));
+            StartCoroutine(GetRequestStreaming(jsonRequest, myCallback, db, serverAddress, apiCommandURL, streamingUpdateChunkCallback, apiKey, sentJsonFilename, debugJobSize));
 
         }
         else
         {
-            StartCoroutine(GetRequest(jsonRequest, myCallback, db, serverAddress, apiCommandURL, sentJsonFilename));
+            StartCoroutine(GetRequest(jsonRequest, myCallback, db, serverAddress, apiCommandURL, sentJsonFilename, debugJobSize));
         }
         return true;
     }
@@ -599,10 +599,11 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
             Debug.Log("Request aborted.");
         }
     }
-    IEnumerator GetRequest(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string serverAddress, string apiCommandURL, string sentJsonFilename)
+    IEnumerator GetRequest(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string serverAddress, string apiCommandURL,
+        string sentJsonFilename, LLMDebugLog.JobSize debugJobSize)
     {
 
-        LLMDebugLog.LogRequest(json);
+        LLMDebugLog.LogRequest(json, debugJobSize);
         string url;
         //        url = serverAddress + "/v1/chat/completions";
         url = serverAddress + apiCommandURL;
@@ -628,7 +629,7 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
                 string msg = _currentRequest.error;
                 Debug.Log(msg);
                 //Debug.Log(_currentRequest.downloadHandler.text);
-                LLMDebugLog.LogError(_currentRequest.downloadHandler.text);
+                LLMDebugLog.LogError(_currentRequest.downloadHandler.text, debugJobSize);
                 db.Set("status", "failed");
                 db.Set("msg", msg);
                 m_connectionActive = false;
@@ -637,7 +638,7 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
             else
             {
 
-                LLMDebugLog.LogResponse(_currentRequest.downloadHandler.text);
+                LLMDebugLog.LogResponse(_currentRequest.downloadHandler.text, debugJobSize);
 
                 JSONNode rootNode = JSON.Parse(_currentRequest.downloadHandler.text);
                 yield return null; //wait a frame to lesson the jerkiness
@@ -651,9 +652,10 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
     }
 
     IEnumerator GetRequestStreaming(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string serverAddress, string apiCommandURL,
-     Action<string> updateChunkCallback, string APIkey = "none", string sentJsonFilename = "text_completion_sent.json")
+     Action<string> updateChunkCallback, string APIkey = "none", string sentJsonFilename = "text_completion_sent.json",
+     LLMDebugLog.JobSize debugJobSize = LLMDebugLog.JobSize.Big)
     {
-        LLMDebugLog.LogRequest(json);
+        LLMDebugLog.LogRequest(json, debugJobSize);
 
         string url = serverAddress + apiCommandURL;
         m_connectionActive = true;
@@ -705,7 +707,7 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
                 Debug.Log($"Response Code: {_currentRequest.responseCode}");
                 Debug.Log($"Response Body: {errorResponse}");
 
-                LLMDebugLog.LogError(errorResponse);
+                LLMDebugLog.LogError(errorResponse, debugJobSize);
 
                 m_connectionActive = false;
                 db.Set("status", "failed");
@@ -714,7 +716,7 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
             }
             else
             {
-                LLMDebugLog.LogResponse(downloadHandler.GetContentAsString());
+                LLMDebugLog.LogResponse(downloadHandler.GetContentAsString(), debugJobSize);
 
                 m_connectionActive = false;
                 db.Set("status", "success");

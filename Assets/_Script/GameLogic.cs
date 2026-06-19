@@ -2030,12 +2030,11 @@ public string GetPrompt() { return m_prompt; }
         RTUtil.DeleteFileIfItExists("last_error_returned.json");
         RTUtil.DeleteFileIfItExists("json_error.json");
 
-        //Current unified LLM debug files (see LLMDebugLog)
-        RTUtil.DeleteFileIfItExists(LLMDebugLog.RequestFile);
+        //Current split LLM debug files, plus legacy unified names (see LLMDebugLog)
+        foreach (string debugFile in LLMDebugLog.FilesToDelete)
+            RTUtil.DeleteFileIfItExists(debugFile);
         RTUtil.DeleteFileIfItExists("llm_request_sent_aichat.json"); // retired -> AIChatLog; clean up stale copies
         RTUtil.DeleteFileIfItExists(AIChatLog.LogFile);
-        RTUtil.DeleteFileIfItExists(LLMDebugLog.ResponseFile);
-        RTUtil.DeleteFileIfItExists(LLMDebugLog.ErrorFile);
 
 
 
