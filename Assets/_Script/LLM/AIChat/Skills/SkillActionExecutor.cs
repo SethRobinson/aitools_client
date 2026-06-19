@@ -16,9 +16,9 @@ namespace AITools.AIChat.Skills
     /// <item>Image / movie skills reuse the unmodified <c>PicMain.RunPresetByName</c>
     /// + <c>UpdateJobs()</c> pipeline. We just spawn a Pic, optionally seed its main
     /// image from a chat attachment, then hand it off. No new render path.</item>
-    /// <item>read_skill is fully in-process: looks up the skill by id and injects its
-    /// full markdown body back into the chat as a system-role message so the LLM sees
-    /// it on its next turn.</item>
+    /// <item>read_skill is fully in-process: looks up the skill by id, injects its
+    /// full markdown body into the next prompt, and asks the host for one synthetic
+    /// continue turn so the LLM can immediately use it.</item>
     /// <item>summarize_with_small_llm fires a one-shot chat-completion against a small
     /// LLM instance picked by <see cref="LLMInstanceManager"/>. When the result lands,
     /// it's surfaced as both a chat bubble and a system-role injection.</item>
@@ -504,6 +504,7 @@ namespace AITools.AIChat.Skills
                     // most recent chat image. Fall back to it instead of erroring; this
                     // is the single most common LLM omission with smaller models, and
                     // failing strictly here breaks the user's flow for no real benefit.
+                    action.Args["chat_image"] = implicitIdx.ToString();
                     if (!TryResolveChatImageBytesOrDefer(action, action.SkillId, "implicit chat_image", implicitIdx, out attachmentBytes, out bool deferred))
                     {
                         if (deferred) return;
@@ -1323,14 +1324,11 @@ namespace AITools.AIChat.Skills
             // in the main prompt.
             body = SkillManager.ApplyPresetPrefix(body);
 
-            // Inject the body INTO THE LLM's context (so it sees it on its next turn)
-            // but DON'T splash the entire markdown body into the chat as a bubble. That
-            // pattern was loud, and the LLM can't act on the body within the current
-            // stream anyway (mid-stream skill output doesn't reach the model). Show a
-            // small info indicator so the user knows the load happened, plus a system
-            // injection telling the LLM that the body it just received is reference
-            // material - it should USE that knowledge on the very next user turn,
-            // not call read_skill again or wait for confirmation.
+            // Inject the body INTO THE LLM's next prompt but DON'T splash the entire
+            // markdown body into the chat as a bubble. That pattern was loud, and
+            // mid-stream skill output cannot reach the model that requested it. Ask
+            // the host for one synthetic continue turn so the very next assistant
+            // turn can use the reference material without the user clicking Send.
             _host?.AddSystemInjectionSilent(
                 "Reference material for skill '" + skill.Id + "' (the full body of " +
                 "aichat/skills/" + skill.Id + ".md). Use this knowledge directly on " +
@@ -1338,9 +1336,8 @@ namespace AITools.AIChat.Skills
                 "and do NOT ask the user 'should I proceed' - just act on what they " +
                 "already requested using the patterns documented below.\n\n" + body);
             _host?.AddInfoBubble(
-                "(loaded skill '" + skill.Id + "' - the LLM will use it on its next reply. " +
-                "read_skill cannot influence the CURRENT reply because mid-stream injections " +
-                "don't reach the model.)");
+                "(loaded skill '" + skill.Id + "' - continuing automatically so the LLM can use it.)");
+            _host?.RequestAutoResumeAfterSkillLoad(skill.Id);
         }
 
         // ---------- summarize_with_small_llm ----------
@@ -1531,7 +1528,7 @@ namespace AITools.AIChat.Skills
 
         private void DispatchInspectImageRequest(SkillAction action, byte[] png, string prompt, string sourceLabel)
         {
-            _host?.EnqueueInspectImage(png, prompt, sourceLabel, action?.LlmInstanceId);
+            _host?.EnqueueInspectImage(png, prompt, sourceLabel, action?.LlmInstanceId, action != null && action.Resume);
         }
 
         // ---------- /applystyle restyle ----------
@@ -3380,6 +3377,8 @@ namespace AITools.AIChat.Skills
             if (chatImageCount > 0)
             {
                 int implicitIdx = _host?.GetLatestChatImageIndex() ?? 0;
+                if (implicitIdx > 0)
+                    action.Args["chat_image"] = implicitIdx.ToString();
                 if (implicitIdx > 0
                     && TryResolveChatImageBytesOrDefer(action, skillId, "implicit chat_image", implicitIdx, out byte[] bytes, out deferred))
                 {

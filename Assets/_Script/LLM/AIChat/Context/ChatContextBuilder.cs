@@ -107,7 +107,9 @@ namespace AITools.AIChat.Context
                 sb.AppendLine("  CHAT IMAGES provenance list for prior generated/edit history.");
             }
             sb.AppendLine("- Built-in: <aitools_action skill=\"read_skill\" id=\"<skill_id>\"/> loads");
-            sb.AppendLine("  a skill's full body for the NEXT assistant turn if the Template above isn't enough.");
+            sb.AppendLine("  a skill's full body, then the host automatically gives you one");
+            sb.AppendLine("  synthetic continue turn so you can use it. If you call read_skill,");
+            sb.AppendLine("  do not ask the user to press Send/Continue and do not call it again.");
 
             // 4. User's post-prompt overrides go LAST so they have the strongest "recency"
             // effect on the model. Lets the user dynamically tweak behavior via

@@ -97,6 +97,15 @@ For a 2x2 comic page:
   panels. A title that touches or overlaps panel art is a layout failure.
 - Give each panel frame its own `obj` element with a bbox. Its desc should name
   the panel number, scene beat, border, and interior art.
+- Treat each panel frame desc as self-contained. Ideogram may not carry
+  pronouns, relationship labels, or character identity from one panel/rect to
+  another. If a recurring person appears in multiple panels, restate that
+  person's identity inside EVERY panel desc: gender/sex, age category, skin
+  tone, hair color/style, visible clothing, pose/position, and one role cue.
+- Do NOT rely on `they`, `both`, `the couple`, `same two people`, `the woman
+  from panel 1`, `their faces`, or `lying in bed` unless the same sentence also
+  re-identifies each person explicitly. This prevents Ideogram from replacing
+  established characters with generic or same-sex defaults in later panels.
 - Give each speech balloon its own `obj` element with a bbox, then a matching
   `text` element with the same or slightly inset bbox.
 - Do NOT bbox every character, shelf, table, or prop inside panels. Describe
@@ -104,6 +113,12 @@ For a 2x2 comic page:
   of the entire page.
 - The element order should be: page/paper background if needed, panel frames
   back-to-front, title text, then balloon objects and balloon text.
+
+BAD panel desc:
+`Panel 3 frame with thick black border: close-up of both their faces, big cartoon smiles, stars around their heads.`
+
+GOOD panel desc:
+`Panel 3 frame with thick black border: close-up of an adult woman with medium-brown skin, shoulder-length dark curly hair, and a red pajama top beside an adult man with light skin, short blond hair, and a blue pajama shirt; both faces are side by side with big cartoon smiles and stars around their heads.`
 
 Minimal element pattern for a square 2x2 page with title:
 
@@ -182,6 +197,10 @@ attributes of the single subject's desc.
 Identity first, then major attributes briefly, then one distinguishing detail.
 Each desc is a standalone catalog entry - open with the subject's identity,
 not a referring phrase like "the X".
+
+For recurring people in multi-element layouts, every desc that includes them
+must independently re-anchor who they are. Repeat the person's identity cues in
+that desc instead of relying on earlier elements, panel numbers, or pronouns.
 
 GOOD: `Woman walking on the platform, medium size. Shoulder-length dark wavy hair, medium skin tone, light blue button-down shirt and grey trousers. Small bag slung over the right shoulder.`
 

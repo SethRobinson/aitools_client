@@ -271,7 +271,7 @@ namespace AITools.AIChat.Skills
                 return "SKILLS: (none loaded)\n";
 
             var sb = new StringBuilder();
-            sb.AppendLine("SKILLS (copy the Template line exactly, change the prompt etc; call read_skill for more detail):");
+            sb.AppendLine("SKILLS (copy the Template line exactly, change the prompt etc; call read_skill for more detail; read_skill auto-continues after loading):");
             foreach (var s in _skills)
             {
                 sb.Append("- ").Append(s.Id).Append(": ").AppendLine(s.Summary);

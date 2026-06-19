@@ -244,6 +244,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // the caption as failed.
     private const float CAPTION_TIMEOUT_SECONDS = 60f;
     private const float INSPECT_IMAGE_TIMEOUT_SECONDS = 300f;
+    private const string InspectImageSystemPrompt =
+        "You are a vision inspection helper inside an image generation app. " +
+        "Answer only from the pixels in the attached image; do not trust the requested prompt or prior chat over visible evidence. " +
+        "When the user prompt asks to check, verify, QA, find problems, compare to a request, or inspect layout/text, start with PASS or FAIL, then list defects first. " +
+        "For comics, posters, covers, grids, storyboards, and captioned images, mark FAIL for title/text touching or overlapping unrelated artwork, unreadable or clipped text, duplicated text, bad gutters, blank/black panels, missing panels, or obvious wrong subject matter. " +
+        "Name the affected region such as top-left, title band, upper-right panel, or bottom gutter. Be concise and specific.";
 
     // Throttle for the "no vision-capable LLM" warning bubble. Both caption callers
     // (attachment drop, generated-pic mirror) funnel through TryCaptionBytes, and a
@@ -297,6 +303,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         public string prompt;
         public string sourceLabel;
         public int? llmInstanceId;
+        public bool resumeOnResult;
+        public int resumeTurnEpoch;
     }
 
     private class InspectImageJob
@@ -309,6 +317,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         public int replicaIndex;
         public float startTime;
         public Coroutine watchdog;
+        public bool resumeOnResult;
+        public int resumeTurnEpoch;
     }
 
     // Outstanding caption jobs keyed by attachment id. Populated when an attachment
@@ -325,6 +335,14 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private float _inspectImageNextDispatch = 0f;
     private float _inspectImageStatusNextRefresh = 0f;
     private int _inspectImageSpinnerStep = 0;
+    private int _chatTurnEpoch = 0;
+    private bool _inspectAutoResumePending = false;
+    private bool _inspectAutoResumeScheduled = false;
+    private int _inspectAutoResumeTurnEpoch = -1;
+    private bool _skillLoadAutoResumePending = false;
+    private bool _skillLoadAutoResumeScheduled = false;
+    private int _skillLoadAutoResumeTurnEpoch = -1;
+    private readonly List<string> _skillLoadAutoResumeIds = new List<string>();
 
     // Conversation
     private GPTPromptManager _promptManager;
@@ -1474,11 +1492,16 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         return CountPendingAttachmentCaptions() > 0 || CountPendingInspectImageJobs() > 0;
     }
 
-    private void EnqueueInspectImage(byte[] png, string prompt, string sourceLabel, int? llmInstanceId)
+    private void EnqueueInspectImage(byte[] png, string prompt, string sourceLabel, int? llmInstanceId, bool resumeOnResult)
     {
+        int resumeTurnEpoch = _chatTurnEpoch;
+        if (resumeOnResult)
+            RegisterInspectAutoResumeRequest(resumeTurnEpoch);
+
         if (png == null || png.Length == 0)
         {
             AddSystemMessage("inspect_image could not read image bytes.");
+            TryScheduleInspectAutoResume();
             return;
         }
 
@@ -1490,7 +1513,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 ? "QA inspect this image. Start with PASS or FAIL. Check visible layout/text defects, mismatches, artifacts, and unreadable text."
                 : prompt.Trim(),
             sourceLabel = string.IsNullOrWhiteSpace(sourceLabel) ? "the image" : sourceLabel.Trim(),
-            llmInstanceId = llmInstanceId
+            llmInstanceId = llmInstanceId,
+            resumeOnResult = resumeOnResult,
+            resumeTurnEpoch = resumeTurnEpoch
         });
 
         RecomputeSendInteractable();
@@ -1527,6 +1552,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         }
 
         RecomputeSendInteractable();
+        TryScheduleInspectAutoResume();
     }
 
     private bool TrySelectInspectImageLLM(
@@ -1628,21 +1654,16 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             sourceLabel = req.sourceLabel,
             targetId = targetId,
             replicaIndex = replicaIndex,
-            startTime = Time.unscaledTime
+            startTime = Time.unscaledTime,
+            resumeOnResult = req.resumeOnResult,
+            resumeTurnEpoch = req.resumeTurnEpoch
         };
         _inspectImageJob = job;
 
-        AddSystemMessage(
-            $"Inspecting {req.sourceLabel} with LLM #{targetId} ({inst.providerType} {inst.settings.selectedModel})...",
-            includeInLLMRecap: false);
+        AddSystemMessage(BuildInspectImagePromptDetails(req, inst, targetId), includeInLLMRecap: false);
 
         var lines = new Queue<GTPChatLine>();
-        lines.Enqueue(new GTPChatLine("system",
-            "You are a vision inspection helper inside an image generation app. " +
-            "Answer only from the pixels in the attached image; do not trust the requested prompt or prior chat over visible evidence. " +
-            "When the user prompt asks to check, verify, QA, find problems, compare to a request, or inspect layout/text, start with PASS or FAIL, then list defects first. " +
-            "For comics, posters, covers, grids, storyboards, and captioned images, mark FAIL for title/text touching or overlapping unrelated artwork, unreadable or clipped text, duplicated text, bad gutters, blank/black panels, missing panels, or obvious wrong subject matter. " +
-            "Name the affected region such as top-left, title band, upper-right panel, or bottom gutter. Be concise and specific."));
+        lines.Enqueue(new GTPChatLine("system", InspectImageSystemPrompt));
         var userLine = new GTPChatLine("user", req.prompt);
         userLine.AddImage(Convert.ToBase64String(req.png), -1);
         lines.Enqueue(userLine);
@@ -1701,14 +1722,18 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         RecomputeSendInteractable();
         ProcessInspectImageQueue();
         UpdateInspectImageStatus(force: true);
+        TryScheduleInspectAutoResume();
+        TryScheduleSkillLoadAutoResume();
 
         if (_autoContinueToggle != null && _autoContinueToggle.isOn
+            && !_inspectAutoResumePending && !_skillLoadAutoResumePending
             && !_isStreaming && _autoContinueRemaining > 0 && !HasPendingSidecarWork())
             StartCoroutine(FireAutoContinueNextFrame());
     }
 
     private void CancelAllInspectImageJobs(bool showBubble)
     {
+        CancelInspectAutoResume();
         _inspectImageQueue.Clear();
 
         if (_inspectImageJob != null)
@@ -1725,6 +1750,172 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         UpdateInspectImageStatus(force: true);
     }
 
+    private bool HasInspectAutoResumePendingForCurrentTurn()
+    {
+        return _inspectAutoResumePending && _inspectAutoResumeTurnEpoch == _chatTurnEpoch;
+    }
+
+    private bool HasSkillLoadAutoResumePendingForCurrentTurn()
+    {
+        return _skillLoadAutoResumePending && _skillLoadAutoResumeTurnEpoch == _chatTurnEpoch;
+    }
+
+    private static string BuildInspectImagePromptDetails(InspectImageRequest req, LLMInstanceInfo inst, int targetId)
+    {
+        string source = req != null && !string.IsNullOrWhiteSpace(req.sourceLabel) ? req.sourceLabel : "the image";
+        string provider = inst != null ? inst.providerType.ToString() : "unknown provider";
+        string model = inst != null && inst.settings != null && !string.IsNullOrWhiteSpace(inst.settings.selectedModel)
+            ? inst.settings.selectedModel
+            : "unknown model";
+        string prompt = req != null && !string.IsNullOrWhiteSpace(req.prompt) ? req.prompt : "(empty prompt)";
+
+        var sb = new StringBuilder();
+        sb.Append("Inspecting ").Append(source).Append(" with LLM #").Append(targetId)
+            .Append(" (").Append(provider).Append(' ').Append(model).AppendLine(")...");
+        sb.AppendLine();
+        sb.AppendLine("Prompt sent to vision LLM:");
+        sb.AppendLine("System:");
+        sb.AppendLine(InspectImageSystemPrompt);
+        sb.AppendLine();
+        sb.AppendLine("User:");
+        sb.AppendLine("Source: " + source);
+        sb.AppendLine("[image bytes attached; base64 elided]");
+        sb.AppendLine(prompt);
+        if (req != null && req.resumeOnResult)
+        {
+            sb.AppendLine();
+            sb.AppendLine("[auto-resume requested after inspection result]");
+        }
+        return sb.ToString().TrimEnd();
+    }
+
+    private void RegisterInspectAutoResumeRequest(int turnEpoch)
+    {
+        _inspectAutoResumePending = true;
+        _inspectAutoResumeScheduled = false;
+        _inspectAutoResumeTurnEpoch = turnEpoch;
+    }
+
+    private void CancelInspectAutoResume()
+    {
+        _inspectAutoResumePending = false;
+        _inspectAutoResumeScheduled = false;
+        _inspectAutoResumeTurnEpoch = -1;
+    }
+
+    private void TryScheduleInspectAutoResume()
+    {
+        if (!_inspectAutoResumePending || _inspectAutoResumeScheduled)
+            return;
+        if (_inspectAutoResumeTurnEpoch != _chatTurnEpoch)
+        {
+            CancelInspectAutoResume();
+            return;
+        }
+        if (_isStreaming || _compactSummaryInFlight || HasPendingSidecarWork())
+            return;
+
+        _inspectAutoResumeScheduled = true;
+        StartCoroutine(FireInspectAutoResumeNextFrame(_inspectAutoResumeTurnEpoch));
+    }
+
+    private IEnumerator FireInspectAutoResumeNextFrame(int turnEpoch)
+    {
+        yield return null;
+
+        if (!_inspectAutoResumePending || !_inspectAutoResumeScheduled)
+            yield break;
+        if (_inspectAutoResumeTurnEpoch != turnEpoch || _chatTurnEpoch != turnEpoch)
+            yield break;
+        if (_isStreaming || _compactSummaryInFlight || HasPendingSidecarWork())
+        {
+            _inspectAutoResumeScheduled = false;
+            TryScheduleInspectAutoResume();
+            yield break;
+        }
+
+        CancelInspectAutoResume();
+        SendSyntheticContinue();
+    }
+
+    private void RegisterSkillLoadAutoResumeRequest(int turnEpoch, string skillId)
+    {
+        if (_skillLoadAutoResumeTurnEpoch != turnEpoch)
+            _skillLoadAutoResumeIds.Clear();
+
+        _skillLoadAutoResumePending = true;
+        _skillLoadAutoResumeScheduled = false;
+        _skillLoadAutoResumeTurnEpoch = turnEpoch;
+
+        if (!string.IsNullOrWhiteSpace(skillId))
+        {
+            bool exists = false;
+            for (int i = 0; i < _skillLoadAutoResumeIds.Count; i++)
+            {
+                if (string.Equals(_skillLoadAutoResumeIds[i], skillId, StringComparison.OrdinalIgnoreCase))
+                {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists)
+                _skillLoadAutoResumeIds.Add(skillId.Trim());
+        }
+    }
+
+    private void CancelSkillLoadAutoResume()
+    {
+        _skillLoadAutoResumePending = false;
+        _skillLoadAutoResumeScheduled = false;
+        _skillLoadAutoResumeTurnEpoch = -1;
+        _skillLoadAutoResumeIds.Clear();
+    }
+
+    private void TryScheduleSkillLoadAutoResume()
+    {
+        if (!_skillLoadAutoResumePending || _skillLoadAutoResumeScheduled)
+            return;
+        if (_skillLoadAutoResumeTurnEpoch != _chatTurnEpoch)
+        {
+            CancelSkillLoadAutoResume();
+            return;
+        }
+        // Inspection results carry new information that the continued turn should see.
+        // If both mechanisms are pending, let the inspection auto-resume own the single
+        // synthetic continue; SendChatTurn will cancel this stale skill-load request.
+        if (HasInspectAutoResumePendingForCurrentTurn())
+            return;
+        if (_isStreaming || _compactSummaryInFlight || HasPendingSidecarWork())
+            return;
+
+        _skillLoadAutoResumeScheduled = true;
+        StartCoroutine(FireSkillLoadAutoResumeNextFrame(_skillLoadAutoResumeTurnEpoch));
+    }
+
+    private IEnumerator FireSkillLoadAutoResumeNextFrame(int turnEpoch)
+    {
+        yield return null;
+
+        if (!_skillLoadAutoResumePending || !_skillLoadAutoResumeScheduled)
+            yield break;
+        if (_skillLoadAutoResumeTurnEpoch != turnEpoch || _chatTurnEpoch != turnEpoch)
+            yield break;
+        if (HasInspectAutoResumePendingForCurrentTurn())
+        {
+            _skillLoadAutoResumeScheduled = false;
+            yield break;
+        }
+        if (_isStreaming || _compactSummaryInFlight || HasPendingSidecarWork())
+        {
+            _skillLoadAutoResumeScheduled = false;
+            TryScheduleSkillLoadAutoResume();
+            yield break;
+        }
+
+        CancelSkillLoadAutoResume();
+        SendSyntheticContinue();
+    }
+
     /// <summary>
     /// Recompute Send button interactability from both the streaming flag AND
     /// the count of in-flight attachment captions. Call this whenever either
@@ -1736,7 +1927,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         bool sidecarPending = HasPendingSidecarWork();
         _sendButton.interactable = !_isStreaming && !sidecarPending;
         if (_stopButton != null)
-            _stopButton.interactable = _isStreaming || CountPendingInspectImageJobs() > 0;
+            _stopButton.interactable = _isStreaming || CountPendingInspectImageJobs() > 0 || HasSkillLoadAutoResumePendingForCurrentTurn();
     }
 
     private void UpdateAttachmentCaptionStatus(bool force = false)
@@ -2394,6 +2585,40 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         }
     }
 
+    private void ResetPerTurnExecutionState()
+    {
+        // Reset the per-turn chain target so a chain="true" action in this reply can
+        // never accidentally stack onto a Pic spawned in some earlier turn. Both the
+        // most-recent ref AND the LIFO stack need clearing.
+        _lastSpawnedPicThisTurn = null;
+        _unchainedPicsThisTurn.Clear();
+        _chainTargetStale = false;
+        // Reset the serial action scheduler in lockstep, and bump its turn
+        // epoch so any deferred coroutine still alive from a prior turn bails
+        // instead of spawning a stale page into this new turn.
+        _actionExecutor?.ResetForNewTurn();
+    }
+
+    private void SendSyntheticContinue()
+    {
+        if (_promptManager == null)
+            return;
+
+        const string visibleText = "(continue)";
+        ResetPerTurnExecutionState();
+        _lastTurnAttachments.Clear();
+
+        string llmPayloadText = BuildLLMPayloadWithInfoRecap(visibleText);
+        _promptManager.AddInteraction("user", llmPayloadText);
+        var userInteraction = _promptManager.GetLastInteraction();
+        AddUserMessage(visibleText, userInteraction);
+
+        // Do not touch _inputField or _attachmentZone here. The user may have typed
+        // a draft or staged attachments while the inspection sidecar was running.
+        FocusInputDeferred();
+        SendChatTurn(visibleText);
+    }
+
     private void OnSendClicked()
     {
         if (_isStreaming) return;
@@ -2461,16 +2686,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (string.IsNullOrWhiteSpace(text))
             text = attachedCount > 0 ? "(no caption)" : "(continue)";
 
-        // Reset the per-turn chain target so a chain="true" action in this reply can
-        // never accidentally stack onto a Pic spawned in some earlier turn. Both the
-        // most-recent ref AND the LIFO stack need clearing.
-        _lastSpawnedPicThisTurn = null;
-        _unchainedPicsThisTurn.Clear();
-        _chainTargetStale = false;
-        // Reset the serial action scheduler in lockstep, and bump its turn
-        // epoch so any deferred coroutine still alive from a prior turn bails
-        // instead of spawning a stale page into this new turn.
-        _actionExecutor?.ResetForNewTurn();
+        ResetPerTurnExecutionState();
 
         // Build the visible attachment metadata block + (optionally) stage base64
         // images on the prompt manager. The block is appended to the user message
@@ -2614,18 +2830,20 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private void OnStopClicked()
     {
         bool inspectPending = CountPendingInspectImageJobs() > 0;
-        if (!_isStreaming && !inspectPending) return;
+        bool skillResumePending = HasSkillLoadAutoResumePendingForCurrentTurn();
+        if (!_isStreaming && !inspectPending && !skillResumePending) return;
         // Stop fully ends auto-repeat: uncheck the box (its handler also zeroes the
         // counter) so it doesn't quietly resume on the next reply.
         _autoContinueRemaining = 0;
         if (_autoContinueToggle != null) _autoContinueToggle.isOn = false;
+        CancelSkillLoadAutoResume();
 
         if (inspectPending)
             CancelAllInspectImageJobs(showBubble: true);
 
         if (!_isStreaming)
         {
-            SetBusyUI(false, "Stopped inspection");
+            SetBusyUI(false, inspectPending ? "Stopped inspection" : "Stopped");
             return;
         }
 
@@ -2680,6 +2898,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (_autoContinueToggle != null) _autoContinueToggle.isOn = false;
         CancelAllAttachmentCaptions();
         CancelAllInspectImageJobs(showBubble: false);
+        CancelSkillLoadAutoResume();
         // Discard any in-flight compact-summary; if its response landed after this
         // reset it would ReplaceInteractions() the old history right back in.
         _compactSummaryCancel?.Invoke();
@@ -3101,6 +3320,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     private void SendChatTurn(string latestUserMessage = null)
     {
+        CancelInspectAutoResume();
+        CancelSkillLoadAutoResume();
+        _chatTurnEpoch++;
+
         var settingsMgr = LLMSettingsManager.Get();
         if (settingsMgr == null)
         {
@@ -3885,15 +4108,23 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // errors) drain the counter so it doesn't resume on its own.
         bool willAutoContinue = false;
         bool repeatOn = _autoContinueToggle != null && _autoContinueToggle.isOn;
+        bool inspectResumePendingForTurn = !aborted
+            && _inspectAutoResumePending
+            && _inspectAutoResumeTurnEpoch == _chatTurnEpoch;
+        bool skillLoadResumePendingForTurn = !aborted
+            && _skillLoadAutoResumePending
+            && _skillLoadAutoResumeTurnEpoch == _chatTurnEpoch;
+        bool explicitResumePendingForTurn = inspectResumePendingForTurn || skillLoadResumePendingForTurn;
         if (aborted)
         {
             _autoContinueRemaining = 0;
+            CancelSkillLoadAutoResume();
         }
-        else if (repeatOn && _autoContinueRemaining > 0 && !HasPendingSidecarWork())
+        else if (repeatOn && !explicitResumePendingForTurn && _autoContinueRemaining > 0 && !HasPendingSidecarWork())
         {
             willAutoContinue = true;
         }
-        else if (repeatOn)
+        else if (repeatOn && !explicitResumePendingForTurn)
         {
             // Burst complete - auto-uncheck (its handler zeroes the counter).
             _autoContinueToggle.isOn = false;
@@ -3907,6 +4138,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             doneStatus = string.IsNullOrEmpty(stats) ? "Stopped" : $"Stopped   {stats}";
         else if (willAutoContinue)
             doneStatus = $"Auto-repeat ({_autoContinueRemaining} left)";
+        else if (inspectResumePendingForTurn)
+            doneStatus = HasPendingSidecarWork() ? "Waiting for inspection" : "Continuing after inspection";
+        else if (skillLoadResumePendingForTurn)
+            doneStatus = "Continuing after skill load";
         else
             doneStatus = string.IsNullOrEmpty(stats) ? "Idle" : $"Done   {stats}";
         SetBusyUI(false, doneStatus);
@@ -3919,6 +4154,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         }
         else
         {
+            TryScheduleInspectAutoResume();
+            TryScheduleSkillLoadAutoResume();
             // Re-focus the chat input so the user can immediately type their next message
             // (unless they're in the middle of editing some other input - e.g. a bubble).
             FocusInputDeferred();
@@ -3980,7 +4217,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // OnSendClicked still prevents double-send.
         if (_inputField != null) _inputField.interactable = true;
         if (_clearButton != null) _clearButton.interactable = true;
-        if (_stopButton != null) _stopButton.interactable = busy || CountPendingInspectImageJobs() > 0;
+        if (_stopButton != null) _stopButton.interactable = busy || CountPendingInspectImageJobs() > 0 || HasSkillLoadAutoResumePendingForCurrentTurn();
         if (_statusText != null) _statusText.text = status;
     }
 
@@ -5428,9 +5665,15 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             _infoMessages.Add(new InfoMessage(text));
     }
 
-    void IChatHost.EnqueueInspectImage(byte[] png, string prompt, string sourceLabel, int? llmInstanceId)
+    void IChatHost.RequestAutoResumeAfterSkillLoad(string skillId)
     {
-        EnqueueInspectImage(png, prompt, sourceLabel, llmInstanceId);
+        RegisterSkillLoadAutoResumeRequest(_chatTurnEpoch, skillId);
+        TryScheduleSkillLoadAutoResume();
+    }
+
+    void IChatHost.EnqueueInspectImage(byte[] png, string prompt, string sourceLabel, int? llmInstanceId, bool resumeOnResult)
+    {
+        EnqueueInspectImage(png, prompt, sourceLabel, llmInstanceId, resumeOnResult);
     }
 
     void IChatHost.AppendImageBubbleForPic(SkillAction action, PicMain spawnedPic)

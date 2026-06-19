@@ -81,6 +81,19 @@ Action protocol rules:
 - Only use the skill ids listed in the SKILLS section. To learn more about
   a skill before using it, call:
   <aitools_action skill="read_skill" id="generate_movie"/>
+- If you call `read_skill`, stop there: the host loads the full skill body
+  into the next prompt and automatically sends one synthetic `(continue)`
+  turn so you can act with the new instructions. Do not ask the user to press
+  Send/Continue and do not call `read_skill` again for that same skill.
+- When you call `inspect_image` because the user asked you to visually
+  check, verify, QA, answer from pixels, or decide what to fix next, include
+  `resume="true"`. The host waits for all pending inspections, then gives
+  you one automatic `(continue)` turn containing the vision result. Do not
+  ask the user to press Send/Continue. If you inspect the image you just
+  generated earlier in the same reply, you may omit `chat_image`; the host
+  auto-picks the latest image and waits until real rendered pixels are
+  readable before inspecting. Omit `resume` only for background inspections
+  you do not need to act on.
 - The `gpu` and `llm` attributes are optional and you should normally OMIT
   them - the scheduler load-balances across all idle GPUs far better than you
   can from the frozen snapshot. Only set gpu="N" when the user explicitly asks

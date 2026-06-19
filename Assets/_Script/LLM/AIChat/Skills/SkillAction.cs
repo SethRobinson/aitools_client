@@ -201,6 +201,21 @@ namespace AITools.AIChat.Skills
             }
         }
 
+        /// <summary>
+        /// Optional "resume=true" flag for async sidecar skills. When present on
+        /// inspect_image, the host automatically gives the main chat model one
+        /// follow-up turn after the inspection result is available.
+        /// </summary>
+        public bool Resume
+        {
+            get
+            {
+                if (!Args.TryGetValue("resume", out var v) || string.IsNullOrEmpty(v)) return false;
+                v = v.Trim().ToLowerInvariant();
+                return v == "true" || v == "1" || v == "yes";
+            }
+        }
+
         public string GetArg(string key)
         {
             if (string.IsNullOrEmpty(key)) return null;

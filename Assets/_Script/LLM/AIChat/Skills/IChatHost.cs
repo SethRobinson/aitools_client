@@ -64,12 +64,20 @@ namespace AITools.AIChat.Skills
         void AddSystemInjectionSilent(string text);
 
         /// <summary>
+        /// Request one synthetic continue turn after a read_skill action loads
+        /// reference material into the next prompt. The host scopes the resume to
+        /// the current assistant turn and cancels it on Stop/Clear/new send.
+        /// </summary>
+        void RequestAutoResumeAfterSkillLoad(string skillId);
+
+        /// <summary>
         /// Queue a real vision inspection of image bytes for an existing chat image,
         /// attachment, or chained image. The host owns progress UI, Send gating,
         /// timeout, capacity routing, cancellation, and injecting the result into
-        /// the next LLM turn.
+        /// the next LLM turn. When <paramref name="resumeOnResult"/> is true, the
+        /// host sends one synthetic continue turn after pending inspections finish.
         /// </summary>
-        void EnqueueInspectImage(byte[] png, string prompt, string sourceLabel, int? llmInstanceId);
+        void EnqueueInspectImage(byte[] png, string prompt, string sourceLabel, int? llmInstanceId, bool resumeOnResult);
 
         /// <summary>
         /// Append a chat-side image bubble with a live mirror of the supplied PicMain
