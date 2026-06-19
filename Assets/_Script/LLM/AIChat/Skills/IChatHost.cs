@@ -64,6 +64,14 @@ namespace AITools.AIChat.Skills
         void AddSystemInjectionSilent(string text);
 
         /// <summary>
+        /// Queue a real vision inspection of image bytes for an existing chat image,
+        /// attachment, or chained image. The host owns progress UI, Send gating,
+        /// timeout, capacity routing, cancellation, and injecting the result into
+        /// the next LLM turn.
+        /// </summary>
+        void EnqueueInspectImage(byte[] png, string prompt, string sourceLabel, int? llmInstanceId);
+
+        /// <summary>
         /// Append a chat-side image bubble with a live mirror of the supplied PicMain
         /// (which has been spawned and queued via the standard ImageGenerator pipeline).
         /// The bubble is positioned in stream order with the rest of the chat content.

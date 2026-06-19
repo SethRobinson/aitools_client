@@ -241,6 +241,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // get the slot back. After this timeout we decrement the busy count and treat
     // the caption as failed.
     private const float CAPTION_TIMEOUT_SECONDS = 60f;
+    private const float INSPECT_IMAGE_TIMEOUT_SECONDS = 300f;
 
     // Throttle for the "no vision-capable LLM" warning bubble. Both caption callers
     // (attachment drop, generated-pic mirror) funnel through TryCaptionBytes, and a
@@ -287,6 +288,27 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         public byte[] png;
     }
 
+    private class InspectImageRequest
+    {
+        public int id;
+        public byte[] png;
+        public string prompt;
+        public string sourceLabel;
+        public int? llmInstanceId;
+    }
+
+    private class InspectImageJob
+    {
+        public int requestId;
+        public string sourceLabel;
+        public bool completed;
+        public bool cancelled;
+        public int targetId = -1;
+        public int replicaIndex;
+        public float startTime;
+        public Coroutine watchdog;
+    }
+
     // Outstanding caption jobs keyed by attachment id. Populated when an attachment
     // arrives, drained either by completion or by the user clicking the X.
     private readonly Dictionary<int, CaptionJob> _captionJobs = new Dictionary<int, CaptionJob>();
@@ -295,6 +317,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private float _attachmentCaptionNextDispatch = 0f;
     private float _attachmentCaptionStatusNextRefresh = 0f;
     private int _attachmentCaptionSpinnerStep = 0;
+    private readonly List<InspectImageRequest> _inspectImageQueue = new List<InspectImageRequest>();
+    private InspectImageJob _inspectImageJob;
+    private int _nextInspectImageRequestId = 1;
+    private float _inspectImageNextDispatch = 0f;
+    private float _inspectImageStatusNextRefresh = 0f;
+    private int _inspectImageSpinnerStep = 0;
 
     // Conversation
     private GPTPromptManager _promptManager;
@@ -451,6 +479,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private void OnDestroy()
     {
         CancelAllAttachmentCaptions();
+        CancelAllInspectImageJobs(showBubble: false);
         // The ChatImageAttachmentZone component on _panelRoot auto-deregisters and frees
         // its textures in its own OnDestroy.
         _instance = null;
@@ -1431,6 +1460,264 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         RecomputeSendInteractable();
     }
 
+    private int CountPendingInspectImageJobs()
+    {
+        int n = _inspectImageQueue.Count;
+        if (_inspectImageJob != null && !_inspectImageJob.completed) n++;
+        return n;
+    }
+
+    private bool HasPendingSidecarWork()
+    {
+        return CountPendingAttachmentCaptions() > 0 || CountPendingInspectImageJobs() > 0;
+    }
+
+    private void EnqueueInspectImage(byte[] png, string prompt, string sourceLabel, int? llmInstanceId)
+    {
+        if (png == null || png.Length == 0)
+        {
+            AddSystemMessage("inspect_image could not read image bytes.");
+            return;
+        }
+
+        _inspectImageQueue.Add(new InspectImageRequest
+        {
+            id = _nextInspectImageRequestId++,
+            png = png,
+            prompt = string.IsNullOrWhiteSpace(prompt) ? "Describe this image factually and note visible problems." : prompt.Trim(),
+            sourceLabel = string.IsNullOrWhiteSpace(sourceLabel) ? "the image" : sourceLabel.Trim(),
+            llmInstanceId = llmInstanceId
+        });
+
+        RecomputeSendInteractable();
+        ProcessInspectImageQueue();
+        UpdateInspectImageStatus(force: true);
+    }
+
+    private void ProcessInspectImageQueue()
+    {
+        if (_inspectImageJob != null && !_inspectImageJob.completed)
+            return;
+
+        while (_inspectImageQueue.Count > 0)
+        {
+            var req = _inspectImageQueue[0];
+            if (req == null || req.png == null || req.png.Length == 0)
+            {
+                _inspectImageQueue.RemoveAt(0);
+                AddSystemMessage("inspect_image could not read image bytes.");
+                continue;
+            }
+
+            if (!TrySelectInspectImageLLM(req, out var instanceMgr, out var inst, out int targetId, out int replicaIndex, out bool waitingForCapacity))
+            {
+                if (waitingForCapacity)
+                    break;
+                _inspectImageQueue.RemoveAt(0);
+                continue;
+            }
+
+            _inspectImageQueue.RemoveAt(0);
+            DispatchInspectImageJob(req, instanceMgr, inst, targetId, replicaIndex);
+            break;
+        }
+
+        RecomputeSendInteractable();
+    }
+
+    private bool TrySelectInspectImageLLM(
+        InspectImageRequest req,
+        out LLMInstanceManager instanceMgr,
+        out LLMInstanceInfo inst,
+        out int targetId,
+        out int replicaIndex,
+        out bool waitingForCapacity)
+    {
+        instanceMgr = LLMInstanceManager.Get();
+        inst = null;
+        targetId = -1;
+        replicaIndex = 0;
+        waitingForCapacity = false;
+
+        if (instanceMgr == null || instanceMgr.GetInstanceCount() == 0)
+        {
+            AddSystemMessage("inspect_image: no LLM instances are configured.");
+            return false;
+        }
+
+        if (req != null && req.llmInstanceId.HasValue)
+        {
+            var hinted = instanceMgr.GetInstance(req.llmInstanceId.Value);
+            if (hinted != null && hinted.CanAcceptJobType(false, isVisionJob: true))
+            {
+                if (!SkillActionExecutor.IsDispatchOneShotSupported(hinted.providerType))
+                {
+                    AddSystemMessage($"inspect_image: provider {hinted.providerType} is not supported by one-shot vision dispatch.");
+                    return false;
+                }
+                if (TryFindFreeReplica(hinted, out replicaIndex))
+                {
+                    inst = hinted;
+                    targetId = hinted.instanceID;
+                    return true;
+                }
+                waitingForCapacity = true;
+                return false;
+            }
+        }
+
+        targetId = instanceMgr.GetFreeLLM(isSmallJob: false, isVisionJob: true, out replicaIndex);
+        if (targetId < 0)
+        {
+            if (instanceMgr.GetLeastBusyLLM(isSmallJob: false, isVisionJob: true) >= 0)
+            {
+                waitingForCapacity = true;
+                return false;
+            }
+
+            AddSystemMessage(
+                "inspect_image: no active vision-capable LLM is available. In LLM Settings, enable Supports vision on a vision model.");
+            return false;
+        }
+
+        inst = instanceMgr.GetInstance(targetId);
+        if (inst == null || inst.settings == null)
+        {
+            AddSystemMessage("inspect_image: picked LLM instance has no settings.");
+            return false;
+        }
+        if (!SkillActionExecutor.IsDispatchOneShotSupported(inst.providerType))
+        {
+            AddSystemMessage($"inspect_image: provider {inst.providerType} is not supported by one-shot vision dispatch.");
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool TryFindFreeReplica(LLMInstanceInfo inst, out int replicaIndex)
+    {
+        replicaIndex = 0;
+        if (inst == null || inst.maxConcurrentTasks <= 0) return false;
+        inst.EnsureReplicaActiveTasks();
+        int repCount = inst.GetEffectiveReplicaCount();
+        for (int i = 0; i < repCount; i++)
+        {
+            if (inst.replicaActiveTasks[i] < inst.maxConcurrentTasks)
+            {
+                replicaIndex = i;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void DispatchInspectImageJob(InspectImageRequest req, LLMInstanceManager instanceMgr, LLMInstanceInfo inst, int targetId, int replicaIndex)
+    {
+        if (req == null || instanceMgr == null || inst == null || inst.settings == null)
+            return;
+
+        instanceMgr.SetLLMBusy(targetId, replicaIndex, true);
+        var job = new InspectImageJob
+        {
+            requestId = req.id,
+            sourceLabel = req.sourceLabel,
+            targetId = targetId,
+            replicaIndex = replicaIndex,
+            startTime = Time.unscaledTime
+        };
+        _inspectImageJob = job;
+
+        AddSystemMessage(
+            $"Inspecting {req.sourceLabel} with LLM #{targetId} ({inst.providerType} {inst.settings.selectedModel})...",
+            includeInLLMRecap: false);
+
+        var lines = new Queue<GTPChatLine>();
+        lines.Enqueue(new GTPChatLine("system",
+            "You are a vision inspection helper inside an image generation app. " +
+            "Answer only from the pixels in the attached image. Be factual, concise, and specific."));
+        var userLine = new GTPChatLine("user", req.prompt);
+        userLine.AddImage(Convert.ToBase64String(req.png), -1);
+        lines.Enqueue(userLine);
+
+        job.watchdog = StartCoroutine(InspectImageWatchdog(job, instanceMgr));
+
+        SkillActionExecutor.DispatchOneShot(this, inst, lines, (db, json, text) =>
+        {
+            if (job.completed) return;
+
+            string clean = (text ?? "").Trim();
+            if (string.IsNullOrEmpty(clean) && json != null)
+            {
+                try { clean = OpenAITextCompletionManager.ExtractTextFromResponseJSON(json); } catch { /* no-op */ }
+            }
+
+            string message = string.IsNullOrEmpty(clean)
+                ? $"inspect_image: LLM #{targetId} returned no content for {req.sourceLabel}."
+                : $"Vision inspection result for {req.sourceLabel}:\n{clean}";
+            CompleteInspectImageJob(job, instanceMgr, message, includeInLLMRecap: true);
+        }, "InspectImage", "inspect_image_sent.json");
+
+        RecomputeSendInteractable();
+        UpdateInspectImageStatus(force: true);
+    }
+
+    private IEnumerator InspectImageWatchdog(InspectImageJob job, LLMInstanceManager instanceMgr)
+    {
+        yield return new WaitForSeconds(INSPECT_IMAGE_TIMEOUT_SECONDS);
+        if (job == null || job.completed) yield break;
+        job.watchdog = null;
+        CompleteInspectImageJob(
+            job,
+            instanceMgr,
+            $"inspect_image timed out after {INSPECT_IMAGE_TIMEOUT_SECONDS:0}s while inspecting {job.sourceLabel}.",
+            includeInLLMRecap: true);
+    }
+
+    private void CompleteInspectImageJob(InspectImageJob job, LLMInstanceManager instanceMgr, string message, bool includeInLLMRecap)
+    {
+        if (job == null || job.completed) return;
+        job.completed = true;
+        if (job.watchdog != null)
+        {
+            try { StopCoroutine(job.watchdog); } catch { }
+            job.watchdog = null;
+        }
+        if (job.targetId >= 0 && instanceMgr != null)
+            instanceMgr.SetLLMBusy(job.targetId, job.replicaIndex, false);
+        if (_inspectImageJob == job)
+            _inspectImageJob = null;
+
+        if (!string.IsNullOrWhiteSpace(message))
+            AddSystemMessage(message, includeInLLMRecap);
+
+        RecomputeSendInteractable();
+        ProcessInspectImageQueue();
+        UpdateInspectImageStatus(force: true);
+
+        if (_autoContinueToggle != null && _autoContinueToggle.isOn
+            && !_isStreaming && _autoContinueRemaining > 0 && !HasPendingSidecarWork())
+            StartCoroutine(FireAutoContinueNextFrame());
+    }
+
+    private void CancelAllInspectImageJobs(bool showBubble)
+    {
+        _inspectImageQueue.Clear();
+
+        if (_inspectImageJob != null)
+        {
+            var job = _inspectImageJob;
+            job.cancelled = true;
+            CompleteInspectImageJob(job, LLMInstanceManager.Get(), null, includeInLLMRecap: false);
+        }
+
+        _inspectImageStatusNextRefresh = 0f;
+        if (showBubble)
+            AddSystemMessage("Stopped image inspection.", includeInLLMRecap: false);
+        RecomputeSendInteractable();
+        UpdateInspectImageStatus(force: true);
+    }
+
     /// <summary>
     /// Recompute Send button interactability from both the streaming flag AND
     /// the count of in-flight attachment captions. Call this whenever either
@@ -1439,13 +1726,15 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private void RecomputeSendInteractable()
     {
         if (_sendButton == null) return;
-        bool captionsPending = CountPendingAttachmentCaptions() > 0;
-        _sendButton.interactable = !_isStreaming && !captionsPending;
+        bool sidecarPending = HasPendingSidecarWork();
+        _sendButton.interactable = !_isStreaming && !sidecarPending;
+        if (_stopButton != null)
+            _stopButton.interactable = _isStreaming || CountPendingInspectImageJobs() > 0;
     }
 
     private void UpdateAttachmentCaptionStatus(bool force = false)
     {
-        if (_statusText == null || _isStreaming || _compactSummaryInFlight)
+        if (_statusText == null || _isStreaming || _compactSummaryInFlight || CountPendingInspectImageJobs() > 0)
             return;
 
         int pending = CountPendingAttachmentCaptions();
@@ -1472,6 +1761,49 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             _attachmentCaptionStatusNextRefresh = 0f;
             _statusText.text = _attachmentZone != null && _attachmentZone.HasAttachments ? "Images ready" : "Idle";
         }
+    }
+
+    private void UpdateInspectImageStatus(bool force = false)
+    {
+        if (_statusText == null || _isStreaming || _compactSummaryInFlight)
+            return;
+
+        int pending = CountPendingInspectImageJobs();
+        if (pending > 0)
+        {
+            if (!force && Time.unscaledTime < _inspectImageStatusNextRefresh)
+                return;
+
+            _inspectImageStatusNextRefresh = Time.unscaledTime + STREAM_STATUS_INTERVAL;
+            _inspectImageSpinnerStep = (_inspectImageSpinnerStep + 1) % StreamSpinnerFrames.Length;
+            string label = _inspectImageJob != null
+                ? _inspectImageJob.sourceLabel
+                : (_inspectImageQueue.Count > 0 ? _inspectImageQueue[0].sourceLabel : "image");
+            label = CompactInspectSourceLabel(label);
+
+            if (_inspectImageJob != null)
+            {
+                float elapsed = Time.unscaledTime - _inspectImageJob.startTime;
+                _statusText.text = $"{StreamSpinnerFrames[_inspectImageSpinnerStep]} Inspecting {label}   {elapsed:F0}s";
+            }
+            else
+            {
+                _statusText.text = $"{StreamSpinnerFrames[_inspectImageSpinnerStep]} Inspect queued {pending}";
+            }
+            return;
+        }
+
+        if (_inspectImageStatusNextRefresh > 0f)
+        {
+            _inspectImageStatusNextRefresh = 0f;
+            _statusText.text = "Inspection done";
+        }
+    }
+
+    private static string CompactInspectSourceLabel(string label)
+    {
+        label = string.IsNullOrWhiteSpace(label) ? "image" : label.Trim();
+        return label.Length <= 24 ? label : label.Substring(0, 21) + "...";
     }
 
     /// <summary>
@@ -2018,10 +2350,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         }
 
         // Only auto-start now if a send is actually possible. If a reply is mid-flight
-        // (or a summary/captions are pending), the loop starts from FinalizeAssistantTurn
-        // / the next send opportunity instead.
-        bool captionsPending = CountPendingAttachmentCaptions() > 0;
-        if (!_isStreaming && !_compactSummaryInFlight && !captionsPending)
+        // (or a summary/sidecar job is pending), the loop starts from the next send
+        // opportunity instead.
+        if (!_isStreaming && !_compactSummaryInFlight && !HasPendingSidecarWork())
             StartCoroutine(FireAutoContinueNextFrame());
     }
 
@@ -2092,6 +2423,18 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 $"Captioning attached images ({Mathf.Max(0, totalAttachments - pendingCaptions)}/{totalAttachments} ready)... waiting before send.",
                 includeInLLMRecap: false);
             UpdateAttachmentCaptionStatus(force: true);
+            return;
+        }
+        int pendingInspections = CountPendingInspectImageJobs();
+        if (pendingInspections > 0)
+        {
+            string label = _inspectImageJob != null
+                ? _inspectImageJob.sourceLabel
+                : (_inspectImageQueue.Count > 0 ? _inspectImageQueue[0].sourceLabel : "image");
+            AddSystemMessage(
+                $"Inspecting {label}... waiting for the vision result before send.",
+                includeInLLMRecap: false);
+            UpdateInspectImageStatus(force: true);
             return;
         }
 
@@ -2263,11 +2606,22 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     private void OnStopClicked()
     {
-        if (!_isStreaming) return;
+        bool inspectPending = CountPendingInspectImageJobs() > 0;
+        if (!_isStreaming && !inspectPending) return;
         // Stop fully ends auto-repeat: uncheck the box (its handler also zeroes the
         // counter) so it doesn't quietly resume on the next reply.
         _autoContinueRemaining = 0;
         if (_autoContinueToggle != null) _autoContinueToggle.isOn = false;
+
+        if (inspectPending)
+            CancelAllInspectImageJobs(showBubble: true);
+
+        if (!_isStreaming)
+        {
+            SetBusyUI(false, "Stopped inspection");
+            return;
+        }
+
         TryCancelActiveRequests();
         // Aborting the web request means OnLLMCompletedCallback never fires, so the
         // partial reply that already streamed in would otherwise never get committed
@@ -2318,6 +2672,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _autoContinueRemaining = 0;
         if (_autoContinueToggle != null) _autoContinueToggle.isOn = false;
         CancelAllAttachmentCaptions();
+        CancelAllInspectImageJobs(showBubble: false);
         // Discard any in-flight compact-summary; if its response landed after this
         // reset it would ReplaceInteractions() the old history right back in.
         _compactSummaryCancel?.Invoke();
@@ -3526,7 +3881,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         {
             _autoContinueRemaining = 0;
         }
-        else if (repeatOn && _autoContinueRemaining > 0)
+        else if (repeatOn && _autoContinueRemaining > 0 && !HasPendingSidecarWork())
         {
             willAutoContinue = true;
         }
@@ -3574,6 +3929,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // toggled Auto off, cleared, or kicked off a manual send themselves).
         if (_autoContinueToggle == null || !_autoContinueToggle.isOn) yield break;
         if (_isStreaming) yield break;
+        if (HasPendingSidecarWork()) yield break;
         if (_autoContinueRemaining <= 0) yield break;
         // Consume one repeat as we fire it, so N counts total sends regardless of
         // whether this fire came from checking the box or a finishing reply.
@@ -3608,7 +3964,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private void SetBusyUI(bool busy, string status)
     {
         // _isStreaming is updated alongside this call (see SendChatTurn / FinalizeAssistantTurn);
-        // RecomputeSendInteractable also factors in any pending attachment caption jobs.
+        // RecomputeSendInteractable also factors in any pending sidecar jobs.
         RecomputeSendInteractable();
         // Keep the input field interactable while the LLM is streaming so the user (a)
         // doesn't lose focus / their composed-but-not-sent text and (b) can compose the
@@ -3616,7 +3972,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // OnSendClicked still prevents double-send.
         if (_inputField != null) _inputField.interactable = true;
         if (_clearButton != null) _clearButton.interactable = true;
-        if (_stopButton != null) _stopButton.interactable = busy;
+        if (_stopButton != null) _stopButton.interactable = busy || CountPendingInspectImageJobs() > 0;
         if (_statusText != null) _statusText.text = status;
     }
 
@@ -5020,6 +5376,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             _infoMessages.Add(new InfoMessage(text));
     }
 
+    void IChatHost.EnqueueInspectImage(byte[] png, string prompt, string sourceLabel, int? llmInstanceId)
+    {
+        EnqueueInspectImage(png, prompt, sourceLabel, llmInstanceId);
+    }
+
     void IChatHost.AppendImageBubbleForPic(SkillAction action, PicMain spawnedPic)
     {
         AppendImageBubble(action, spawnedPic);
@@ -5408,11 +5769,19 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             _attachmentCaptionNextDispatch = Time.unscaledTime + 0.5f;
             ProcessAttachmentCaptionQueue();
         }
+        if (_inspectImageQueue.Count > 0 && Time.unscaledTime >= _inspectImageNextDispatch)
+        {
+            _inspectImageNextDispatch = Time.unscaledTime + 0.5f;
+            ProcessInspectImageQueue();
+        }
 
         // Attachment captioning can run before the user sends, so give it the same
         // "still working" treatment as chat streaming and compact-summary requests.
         if (!_isStreaming && !_compactSummaryInFlight)
+        {
+            UpdateInspectImageStatus();
             UpdateAttachmentCaptionStatus();
+        }
 
         // Periodic header status pill refresh (cheap; reads counters from Config/LLM mgr).
         if (Time.unscaledTime >= _statusPillNextRefresh)
