@@ -265,7 +265,7 @@ namespace AITools.AIChat.Skills
             // the AI Chat log shows exactly what the model emitted - including the
             // full generate_image prompt (where poster/book text sometimes gets
             // baked in instead of being laid out with draw_text).
-            AIChatLog.Action(action.SkillId, action.Args);
+            AIChatLog.Action(action.SkillId, action.GetArgsForToolLog());
 
             switch (action.SkillId.ToLowerInvariant())
             {
@@ -1627,8 +1627,8 @@ namespace AITools.AIChat.Skills
 
                 if (!string.IsNullOrEmpty(restyled))
                 {
-                    if (!action.Args.ContainsKey(SkillAction.PreApplyStylePromptArg))
-                        action.Args[SkillAction.PreApplyStylePromptArg] = originalPrompt;
+                    if (string.IsNullOrEmpty(action.PromptForLogsOverride))
+                        action.PromptForLogsOverride = originalPrompt;
                     action.Args["prompt"] = restyled;
                     string preview = restyled.Length > 160 ? restyled.Substring(0, 157) + "..." : restyled;
                     _host?.AddLocalInfoBubble("(/applystyle restyled the render prompt -> \"" + preview + "\")");

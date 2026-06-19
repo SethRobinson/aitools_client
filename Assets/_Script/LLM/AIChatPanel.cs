@@ -5340,13 +5340,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (!string.IsNullOrEmpty(source))
             sb.Append(" source=").Append(source);
 
-        string preApplyStylePrompt = action.PreApplyStylePrompt;
-        string prompt = action.Prompt;
-        if (!string.IsNullOrEmpty(preApplyStylePrompt)
-            && !string.Equals(preApplyStylePrompt, prompt ?? "", StringComparison.Ordinal))
-        {
-            sb.Append(" pre_applystyle_prompt=\"").Append(CompactPromptText(preApplyStylePrompt, 120)).Append('"');
-        }
+        string prompt = action.PromptForLogs;
         if (!string.IsNullOrEmpty(prompt))
             sb.Append(" prompt=\"").Append(CompactPromptText(prompt, 120)).Append('"');
         else

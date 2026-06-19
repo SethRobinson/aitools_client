@@ -12,8 +12,6 @@ namespace AITools.AIChat.Skills
     /// </summary>
     public class SkillAction
     {
-        public const string PreApplyStylePromptArg = "pre_applystyle_prompt";
-
         public string SkillId;
 
         /// <summary>
@@ -23,10 +21,31 @@ namespace AITools.AIChat.Skills
         /// </summary>
         public readonly Dictionary<string, string> Args = new Dictionary<string, string>();
 
+        /// <summary>
+        /// Optional prompt text to show in tool logs/provenance when local code rewrites
+        /// <see cref="Prompt"/> before execution. Kept out of <see cref="Args"/> so it
+        /// never becomes a synthetic action attribute.
+        /// </summary>
+        public string PromptForLogsOverride;
+
         public string Preset => GetArg("preset");
         public string Prompt => GetArg("prompt");
-        public string PreApplyStylePrompt => GetArg(PreApplyStylePromptArg);
+        public string PromptForLogs => string.IsNullOrEmpty(PromptForLogsOverride) ? Prompt : PromptForLogsOverride;
         public string NegativePrompt => GetArg("negative_prompt");
+
+        public IReadOnlyDictionary<string, string> GetArgsForToolLog()
+        {
+            const string hiddenPreApplyStyleArg = "pre_applystyle_prompt";
+            bool hasHiddenArg = Args.ContainsKey(hiddenPreApplyStyleArg);
+            if (string.IsNullOrEmpty(PromptForLogsOverride) && !hasHiddenArg)
+                return Args;
+
+            var sanitized = new Dictionary<string, string>(Args);
+            sanitized.Remove(hiddenPreApplyStyleArg);
+            if (!string.IsNullOrEmpty(PromptForLogsOverride))
+                sanitized["prompt"] = PromptForLogsOverride;
+            return sanitized;
+        }
 
         /// <summary>1-based attachment index from the LLM, or null if unspecified.</summary>
         public int? AttachmentIndex
