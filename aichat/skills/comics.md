@@ -17,6 +17,14 @@ panel strips, and 2x2 comic pages.
   = one bubble).
 - Speech bubbles are `draw_shape` (rounded rect background) + `draw_text`
   (dialog) chained on top, both at the SAME rect coordinates.
+- When fixing/replacing a speech bubble on a composed image from a previous
+  turn, check CHAT IMAGES for `clean_base=available`; if present, use
+  `clean_base="true"` on the replacement `draw_shape chat_image="N"` step,
+  then chain `draw_text`. Do not draw on top of a bubble that already has
+  text baked in.
+- Do not put `bg_color` on `draw_text` after drawing a rounded speech bubble;
+  the text background can square off the rounded corners. Let `draw_shape`
+  provide the bubble fill.
 - Multi-panel layouts generate the panel art first, then create a
   `new_canvas` immediately before final assembly. Every `paste_image`,
   `draw_shape`, and `draw_text` in that assembly uses `chain="true"` so
@@ -142,6 +150,9 @@ appropriate quadrant coordinates.
 
 - Speech bubbles always pair `draw_shape` (background rect) with a
   chained `draw_text` (dialog) at the SAME rect coordinates.
+- If replacing a previous speech bubble/text overlay, use `clean_base="true"`
+  on the first replacement shape/text action when the image advertises
+  `clean_base=available`; otherwise old text remains baked underneath.
 - For multi-panel layouts, generate source panels first, then create the
   canvas immediately before final assembly. Use `paste_image chain="true"`
   with `source_chat_image` for each panel, then keep chaining bubble/text

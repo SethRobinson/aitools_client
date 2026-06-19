@@ -16,6 +16,7 @@ namespace AITools.AIChat.Context
         public string Dimensions;
         public string Caption;
         public string Provenance;
+        public bool HasCleanBase;
     }
 
     /// <summary>
@@ -163,6 +164,7 @@ namespace AITools.AIChat.Context
                   .Append(" current slot").Append(chatImageSlotCount == 1 ? "" : "s")
                   .Append("; next new bubble will be #").Append(chatImageSlotCount + 1)
                   .AppendLine(". Use existing numbers only; for same-reply follow-ups use chain=\"true\" or anchors, not guessed future numbers):");
+                sb.AppendLine("If a composed image has clean_base=available and you need to redo/change text, labels, borders, or speech bubbles, use chat_image=\"N\" clean_base=\"true\" on the FIRST replacement draw_shape/draw_text/add_border step so you do not draw over baked-in old overlays.");
                 for (int i = 0; i < chatImageSlotCount; i++)
                 {
                     ChatImageState state = (chatImages != null && i < chatImages.Count) ? chatImages[i] : null;
@@ -180,6 +182,8 @@ namespace AITools.AIChat.Context
                             sb.Append(", anchor=\"").Append(state.AnchorName).Append('"');
                         if (!string.IsNullOrEmpty(state.Dimensions))
                             sb.Append(", ").Append(state.Dimensions);
+                        if (state.HasCleanBase)
+                            sb.Append(", clean_base=available");
                         if (!string.IsNullOrEmpty(state.Provenance))
                             sb.Append(", ").Append(state.Provenance);
                         if (state.IncludeCaption && !string.IsNullOrEmpty(state.Caption))

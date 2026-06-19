@@ -1,6 +1,6 @@
 ---
 id: draw_text
-summary: Render text into a rect on an image (titles, captions, labels, dialog). Composes with add_border / new_canvas / paste_image to build posters, books, comic panels, magazine covers. Coordinates are top-left, in pixels OR percent of the canvas (e.g. y="80%"). Use chat_image="N" / attachment="N" / chain="true" to pick the canvas. For a legibility band behind the text on a busy/photographic background, use the attribute name `bg_color` (e.g. `bg_color="#000000AA"`) - the attribute is NOT called background_color / backgroundColor / bgcolor. When labeling SEVERAL existing chat images in a single new reply, give EACH draw_text its own `chat_image="N"` - do NOT use `chain="true"` on the first one (chain only works within the same reply, anchored to a Pic spawned earlier in THAT reply).
+summary: Render text into a rect on an image (titles, captions, labels, dialog). Composes with add_border / new_canvas / paste_image to build posters, books, comic panels, magazine covers. Coordinates are top-left, in pixels OR percent of the canvas (e.g. y="80%"). Use chat_image="N" / attachment="N" / chain="true" to pick the canvas. For a legibility band behind the text on a busy/photographic background, use the attribute name `bg_color` (e.g. `bg_color="#000000AA"`) - the attribute is NOT called background_color / backgroundColor / bgcolor. When redoing overlays on a composed image, use clean_base="true" with chat_image="N" if CHAT IMAGES says clean_base=available. When labeling SEVERAL existing chat images in a single new reply, give EACH draw_text its own `chat_image="N"` - do NOT use `chain="true"` on the first one (chain only works within the same reply, anchored to a Pic spawned earlier in THAT reply).
 inputs: attachment
 triggers: name them, name each, label, label them, label each, caption, captions, add text, add a caption, add a label, add labels, watermark, title each, write a name on, write text on, put text on, put a label on, give each a name, give them names, named labels
 template: <aitools_action skill="draw_text" chat_image="N" text="HELLO" x="0" y="80%" width="100%" height="20%" font_size="120" color="#FFFFFF" bg_color="#000000AA" bold="true" align="center" valign="middle"/>
@@ -32,6 +32,11 @@ canvas height for font_size, canvas width for outline_width).
 
 - `chat_image="N"` / `attachment="N"` / `chain="true"` - the canvas
   (REQUIRED, exactly one). Mirrors image_to_image's source semantics.
+- `clean_base="true"` - optional with `chat_image="N"` only. Uses the
+  preserved pre-overlay pixels for that composed image, so a redo of
+  speech-bubble text, labels, or captions does not draw over baked-in old
+  text. Use it on the FIRST replacement local op, then `chain="true"` for
+  the follow-up shape/text steps.
 - `text="..."` - the text to render. REQUIRED, non-empty.
 - `x`, `y`, `width`, `height` - the rect to render into, top-left origin,
   pixels or percent. Defaults: full canvas.
@@ -54,7 +59,12 @@ canvas height for font_size, canvas width for outline_width).
 - `color="#RRGGBB"` or `"#RRGGBBAA"` or named (e.g. `"white"`). Default white.
 - `bg_color` - optional fill color drawn behind the text rect (use a
   semi-transparent black like `"#00000080"` to add a legibility band
-  behind text on a busy image). Omit for no background.
+  behind text on a busy image). Omit for no background. For speech bubbles,
+  normally omit `bg_color` because the rounded `draw_shape` already supplies
+  the background; a square bg fill can cover the rounded corners.
+- `bg_corner_radius` / `corner_radius` - optional rounded-corner radius for
+  the `bg_color` fill. Only needed when using `bg_color` directly instead
+  of a separate `draw_shape` bubble.
 - `outline_color` + `outline_width` - draw a halo of `outline_color`
   around the text at `outline_width` pixels in each of 8 directions
   before the main fill. Strongest readability on busy/photographic
@@ -101,6 +111,13 @@ same-reply):
 <aitools_action skill="draw_text" chain="true" text="In an alternate 1985..." x="0" y="88%" width="100%" height="10%" font_size="180" color="#FFFFFF" bg_color="#00000099" align="center" valign="middle"/>
 ```
 
+Redo text on a composed image without stacking over old baked-in text:
+
+```
+<aitools_action skill="draw_shape" chat_image="3" clean_base="true" shape="rect" x="55%" y="5%" width="40%" height="20%" fill_color="#FFFFFFEE" outline_color="#000000" outline_width="4" corner_radius="32"/>
+<aitools_action skill="draw_text" chain="true" text="NEW LINE" x="55%" y="5%" width="40%" height="20%" font_size="48" color="#000000" bold="true" align="center" valign="middle"/>
+```
+
 Page-number in the bottom-right corner of a book page:
 
 ```
@@ -119,3 +136,6 @@ Page-number in the bottom-right corner of a book page:
   or just references the same `chat_image="N"` if you want each text
   pass to land in its own bubble - usually you want chain="true" so
   there's just ONE final result bubble).
+- For speech bubbles, prefer `draw_shape` rounded rect followed by
+  `draw_text chain="true"` with NO `bg_color`; otherwise the text background
+  may cover the rounded bubble.

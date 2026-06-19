@@ -172,6 +172,11 @@ Composition rules to follow without exception:
   first generate, first new_canvas, or first existing-image layout op
   (e.g. `add_border chat_image="N"`). The result is one bubble per
   deliverable, not one per intermediate.
+- If you need to redo/change text, labels, borders, or speech bubbles on
+  a composed image that already has baked-in overlays, and CHAT IMAGES says
+  `clean_base=available`, start the replacement with `chat_image="N"
+  clean_base="true"` on the first draw_shape/draw_text/add_border step,
+  then chain the rest. Otherwise you will draw over old text.
 - For multi-panel layouts/comics/storyboards built from separate generated
   panels, generate the source panels first, then create the `new_canvas`
   immediately before final assembly, then use `chain="true"` on every

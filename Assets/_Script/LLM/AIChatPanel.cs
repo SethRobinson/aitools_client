@@ -106,6 +106,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         public string kind;
         public string anchorName;
         public string dimensions;
+        public byte[] cleanBasePngBytes;
+        public string cleanBaseDimensions;
         public readonly List<string> provenanceSteps = new List<string>();
     }
     private readonly List<ChatImageRecord> _chatImageRecords = new List<ChatImageRecord>();
@@ -3539,7 +3541,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 AnchorName = record != null ? record.anchorName : null,
                 Dimensions = dimensions,
                 Caption = caption,
-                Provenance = record != null ? BuildRecordProvenance(record) : ""
+                Provenance = record != null ? BuildRecordProvenance(record) : "",
+                HasCleanBase = record != null && record.cleanBasePngBytes != null && record.cleanBasePngBytes.Length > 0
             });
         }
 
@@ -4581,7 +4584,43 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         string step = isUserAttachment ? "user attachment" : BuildActionProvenanceStep(action);
         if (!string.IsNullOrEmpty(step))
             record.provenanceSteps.Add(step);
+        SeedCleanBaseFromSource(record, action);
         _chatImageRecords.Add(record);
+    }
+
+    private void SeedCleanBaseFromSource(ChatImageRecord record, SkillAction action)
+    {
+        if (record == null || action == null || !IsLocalCompositionSkill(action.SkillId))
+            return;
+
+        int? srcIndex = action.ChatImageIndex;
+        if (!srcIndex.HasValue || srcIndex.Value <= 0)
+            return;
+
+        var srcRecord = GetChatImageRecord(srcIndex.Value);
+        if (srcRecord == null || srcRecord.cleanBasePngBytes == null || srcRecord.cleanBasePngBytes.Length == 0)
+            return;
+
+        // Propagate the root clean base through follow-up composed images. If a model
+        // mistakenly keeps targeting the most recent flawed composite, clean_base=true
+        // can still rebuild from the original pre-overlay pixels.
+        record.cleanBasePngBytes = srcRecord.cleanBasePngBytes;
+        record.cleanBaseDimensions = srcRecord.cleanBaseDimensions;
+    }
+
+    private static bool IsLocalCompositionSkill(string skillId)
+    {
+        switch (skillId ?? "")
+        {
+            case BuiltInSkillIds.AddBorder:
+            case BuiltInSkillIds.DrawText:
+            case BuiltInSkillIds.DrawShape:
+            case BuiltInSkillIds.PasteImage:
+            case BuiltInSkillIds.CropResize:
+                return true;
+            default:
+                return false;
+        }
     }
 
     private void RecordChainedProvenance(PicMain pic, SkillAction action)
@@ -4683,6 +4722,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (action.Chain) parts.Add("chain");
         AddSourcePart(parts, action, "chat_image", "chat");
         AddSourcePart(parts, action, "attachment", "attach");
+        if (IsTruthyArg(action.GetArg("clean_base"))) parts.Add("clean_base");
         for (int i = 2; i <= 5; i++)
         {
             AddSourcePart(parts, action, "chat_image" + i, "chat" + i);
@@ -4698,6 +4738,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         string value = action.GetArg(key);
         if (!string.IsNullOrWhiteSpace(value))
             parts.Add(label + "=" + value.Trim());
+    }
+
+    private static bool IsTruthyArg(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        value = value.Trim().ToLowerInvariant();
+        return value == "true" || value == "1" || value == "yes" || value == "on";
     }
 
     private static string ShortPresetName(string preset)
@@ -5398,6 +5445,35 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         return pic.TryGetImageAsPng(out byte[] png) ? png : null;
     }
 
+    byte[] IChatHost.GetChatImageCleanBasePngBytes(int oneBasedIndex)
+    {
+        var record = GetChatImageRecord(oneBasedIndex);
+        return record != null ? record.cleanBasePngBytes : null;
+    }
+
+    bool IChatHost.CaptureCleanBaseIfMissing(PicMain pic)
+    {
+        var record = FindChatImageRecord(pic);
+        if (record == null)
+            return false;
+        if (record.cleanBasePngBytes != null && record.cleanBasePngBytes.Length > 0)
+            return true;
+
+        if (!TryEncodeCurrentPicTexture(pic, out byte[] png, out string dimensions))
+            return false;
+
+        record.cleanBasePngBytes = png;
+        record.cleanBaseDimensions = dimensions;
+        return true;
+    }
+
+    private ChatImageRecord GetChatImageRecord(int oneBasedIndex)
+    {
+        int idx0 = oneBasedIndex - 1;
+        if (_chatImageRecords == null || idx0 < 0 || idx0 >= _chatImageRecords.Count) return null;
+        return _chatImageRecords[idx0];
+    }
+
     int IChatHost.GetChatImageCount()
     {
         if (_chatImagePics == null) return 0;
@@ -5451,6 +5527,57 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         var pic = _chatImagePics[idx0];
         if (pic == null || pic.gameObject == null) return null;
         return pic;
+    }
+
+    private static bool TryEncodeCurrentPicTexture(PicMain pic, out byte[] pngBytes, out string dimensions)
+    {
+        pngBytes = null;
+        dimensions = null;
+        if (pic == null || !pic.TryGetCurrentTexture(out Texture tex) || tex == null)
+            return false;
+
+        if (tex is Texture2D tex2d)
+        {
+            try
+            {
+                pngBytes = tex2d.EncodeToPNG();
+                dimensions = tex2d.width + "x" + tex2d.height;
+                return pngBytes != null && pngBytes.Length > 0;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("AIChatPanel: clean-base Texture2D EncodeToPNG failed: " + ex.Message);
+                return false;
+            }
+        }
+
+        if (tex is RenderTexture rt)
+        {
+            var prev = RenderTexture.active;
+            Texture2D snap = null;
+            try
+            {
+                RenderTexture.active = rt;
+                snap = new Texture2D(rt.width, rt.height, TextureFormat.RGBA32, false);
+                snap.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0);
+                snap.Apply();
+                pngBytes = snap.EncodeToPNG();
+                dimensions = rt.width + "x" + rt.height;
+                return pngBytes != null && pngBytes.Length > 0;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("AIChatPanel: clean-base RenderTexture EncodeToPNG failed: " + ex.Message);
+                return false;
+            }
+            finally
+            {
+                RenderTexture.active = prev;
+                if (snap != null) Destroy(snap);
+            }
+        }
+
+        return false;
     }
 
     int IChatHost.ResolveAnchorToIndex(string anchorName)

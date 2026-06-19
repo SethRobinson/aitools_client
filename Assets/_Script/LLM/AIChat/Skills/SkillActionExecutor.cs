@@ -2092,6 +2092,7 @@ namespace AITools.AIChat.Skills
 
             Color color = ParseColor(action.GetArg("color"), Color.white);
             Color? bgColor = ParseColorOpt(action.GetArg("bg_color"));
+            int bgCornerRadius = ParsePixelOrPercent(action.GetArg("bg_corner_radius") ?? action.GetArg("corner_radius"), srcW) ?? 0;
             Color? outlineColor = ParseColorOpt(action.GetArg("outline_color"));
             int outlineWidth = ParsePixelOrPercent(action.GetArg("outline_width"), srcH) ?? 0;
 
@@ -2130,7 +2131,7 @@ namespace AITools.AIChat.Skills
             // Optional background fill behind the text rect (drawn first so text sits on top).
             if (bgColor.HasValue)
             {
-                dst.DrawFilledRect(x, y, w, h, bgColor.Value, 0);
+                dst.DrawFilledRect(x, y, w, h, bgColor.Value, bgCornerRadius);
                 yield return null;
             }
 
@@ -2905,8 +2906,8 @@ namespace AITools.AIChat.Skills
             int w = ParsePixelOrPercent(action.GetArg("width"), srcW) ?? 0;
             int h = ParsePixelOrPercent(action.GetArg("height"), srcH) ?? 0;
             Color? fill = ParseColorOpt(action.GetArg("fill_color"));
-            Color? outline = ParseColorOpt(action.GetArg("outline_color"));
-            int outlineWidth = ParsePixelOrPercent(action.GetArg("outline_width"), srcW) ?? 1;
+            Color? outline = ParseColorOpt(action.GetArg("outline_color") ?? action.GetArg("stroke_color"));
+            int outlineWidth = ParsePixelOrPercent(action.GetArg("outline_width") ?? action.GetArg("stroke_width"), srcW) ?? 1;
             int cornerRadius = ParsePixelOrPercent(action.GetArg("corner_radius"), srcW) ?? 0;
 
             if (!fill.HasValue && !outline.HasValue)
@@ -3177,8 +3178,22 @@ namespace AITools.AIChat.Skills
 
             if (chatN > 0)
             {
-                if (PromoteCanvasReferenceToChainIfNeeded(action, skillId, chatN))
+                bool useCleanBase = WantsCleanBase(action);
+                if (!useCleanBase && PromoteCanvasReferenceToChainIfNeeded(action, skillId, chatN))
                     return null;
+
+                if (useCleanBase)
+                {
+                    byte[] cleanBase = _host?.GetChatImageCleanBasePngBytes(chatN);
+                    if (cleanBase != null && cleanBase.Length > 0)
+                        return cleanBase;
+
+                    _host?.AddSystemInjectionAndBubble(
+                        $"Skill '{skillId}' asked for clean_base=\"true\" on chat_image=\"{chatN}\", but no clean pre-overlay base is available for that image. " +
+                        "Use the current image without clean_base, pick an earlier source image that has clean_base=available, or regenerate the base art.");
+                    errored = true;
+                    return null;
+                }
 
                 if (!TryResolveChatImageBytesOrDefer(action, skillId, "chat_image", chatN, out byte[] bytes, out deferred))
                 {
@@ -3283,6 +3298,7 @@ namespace AITools.AIChat.Skills
         private void RunOrChainLocalOp(SkillAction action, string skillId, byte[] canvasBytes, Func<PicMain, IEnumerator> op)
         {
             if (op == null) return;
+            Func<PicMain, IEnumerator> opToRun = WrapLocalOpWithCleanBaseCapture(skillId, op);
 
             if (action.Chain)
             {
@@ -3314,7 +3330,7 @@ namespace AITools.AIChat.Skills
                 }
                 try
                 {
-                    prevPic.AppendLocalOp(op);
+                    prevPic.AppendLocalOp(opToRun);
                     _host?.RecordChatImageProvenance(prevPic, action);
                 }
                 catch (Exception ex)
@@ -3377,7 +3393,7 @@ namespace AITools.AIChat.Skills
             // with context instead of dropping the whole turn.
             try
             {
-                picMain.RunLocalOpImmediate(op);
+                picMain.RunLocalOpImmediate(opToRun);
             }
             catch (Exception ex)
             {
@@ -3385,6 +3401,29 @@ namespace AITools.AIChat.Skills
                 _host?.AddSystemInjectionAndBubble(
                     $"Skill '{skillId}': failed to start the local op ({ex.GetType().Name}: {ex.Message}). " +
                     "See Unity console for the full stack trace.");
+            }
+        }
+
+        private Func<PicMain, IEnumerator> WrapLocalOpWithCleanBaseCapture(string skillId, Func<PicMain, IEnumerator> op)
+        {
+            return pic =>
+            {
+                if (ShouldCaptureCleanBaseBeforeLocalOp(skillId))
+                    _host?.CaptureCleanBaseIfMissing(pic);
+                return op(pic);
+            };
+        }
+
+        private static bool ShouldCaptureCleanBaseBeforeLocalOp(string skillId)
+        {
+            switch (skillId ?? "")
+            {
+                case BuiltInSkillIds.AddBorder:
+                case BuiltInSkillIds.DrawText:
+                case BuiltInSkillIds.DrawShape:
+                    return true;
+                default:
+                    return false;
             }
         }
 
@@ -3434,6 +3473,12 @@ namespace AITools.AIChat.Skills
             if (s == "true" || s == "1" || s == "yes" || s == "on") return true;
             if (s == "false" || s == "0" || s == "no" || s == "off") return false;
             return fallback;
+        }
+
+        private static bool WantsCleanBase(SkillAction action)
+        {
+            if (action == null) return false;
+            return ParseBool(action.GetArg("clean_base"), false);
         }
 
         private static float ParseAlign(string s, float fallback, bool isVertical)

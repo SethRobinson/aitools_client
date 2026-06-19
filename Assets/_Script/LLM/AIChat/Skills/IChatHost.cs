@@ -95,6 +95,21 @@ namespace AITools.AIChat.Skills
         byte[] GetChatImagePngBytes(int oneBasedIndex);
 
         /// <summary>
+        /// Read the preserved pre-overlay PNG for the Nth chat-image bubble, if one
+        /// exists. Annotation-style local composition ops capture this before the
+        /// first destructive raster overlay so later retries can rebuild text/bubbles
+        /// from a clean base instead of drawing on top of baked-in old labels.
+        /// </summary>
+        byte[] GetChatImageCleanBasePngBytes(int oneBasedIndex);
+
+        /// <summary>
+        /// Capture the current pixels for a Pic before an annotation-style local
+        /// overlay mutates them. No-op when a clean base was already captured or
+        /// propagated from an earlier source image.
+        /// </summary>
+        bool CaptureCleanBaseIfMissing(PicMain pic);
+
+        /// <summary>
         /// Number of numbered chat-image slots tracked by this chat session.
         /// The number maps to the visible "Image #N" / "Movie #N" labels; a slot may
         /// still need to be reloaded before its pixels can be read.
