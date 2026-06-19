@@ -78,6 +78,39 @@ The chained / multi-step mechanics (`chain="true"`, follow-up image_to_movie,
 etc.) work exactly as with any other generate_image. The negative prompt is
 unused by this preset.
 
+### Comic pages with ideo
+
+When the user asks for a comic / comic page / comic strip **using ideo** or
+**using only ideo**, make the finished comic page in ONE Ideogram render.
+Do not generate four loose panel images and assemble them with `new_canvas` /
+`paste_image` unless the user specifically asked to combine existing chat
+images. Ideogram can handle the panel grid, title, speech balloons, and printed
+dialog in the JSON caption.
+
+For a 2x2 comic page:
+- Use `aspect_ratio:"1:1"` and width/height `1024` unless the user explicitly
+  names another format.
+- Make the medium a colorful comic-book illustration or the user's requested
+  comic style.
+- Reserve a real title band. Put the title bbox in the top 6-9% of the page
+  and start upper panel art below it, with at least 2% gutter between title and
+  panels. A title that touches or overlaps panel art is a layout failure.
+- Give each panel frame its own `obj` element with a bbox. Its desc should name
+  the panel number, scene beat, border, and interior art.
+- Give each speech balloon its own `obj` element with a bbox, then a matching
+  `text` element with the same or slightly inset bbox.
+- Do NOT bbox every character, shelf, table, or prop inside panels. Describe
+  them inside the panel frame desc unless a character is the single focal hero
+  of the entire page.
+- The element order should be: page/paper background if needed, panel frames
+  back-to-front, title text, then balloon objects and balloon text.
+
+Minimal element pattern for a square 2x2 page with title:
+
+```json
+{"aspect_ratio":"1:1","high_level_description":"A finished four-panel comic page with a centered title, four bordered panels, and readable speech balloons about a woman who cannot stop farting everywhere.","compositional_deconstruction":{"background":"Clean off-white comic page with black gutters, a reserved title band across the top, and four equal panel areas below.","elements":[{"type":"obj","bbox":[100,40,485,485],"desc":"Panel 1 frame with black border, supermarket aisle scene, woman by a cart releasing a green comic gas cloud, surprised shoppers, dynamic action lettering inside the art."},{"type":"obj","bbox":[100,515,485,960],"desc":"Panel 2 frame with black border, restaurant date scene, embarrassed woman at a table, date reacting politely, green gas curling under the table."},{"type":"obj","bbox":[515,40,960,485],"desc":"Panel 3 frame with black border, yoga class scene, woman in downward dog while classmates react to a large green gas puff."},{"type":"obj","bbox":[515,515,960,960],"desc":"Panel 4 frame with black border, elevator scene, woman smiling awkwardly while passengers recoil from green gas at floor level."},{"type":"text","bbox":[20,80,78,920],"text":"THE UNSTOPPABLE FART MACHINE","desc":"Centered uppercase comic title, black display lettering, fits fully inside the top title band with clear padding above the upper panels."},{"type":"obj","bbox":[300,60,395,255],"desc":"White rounded speech balloon in panel 1 with black outline, positioned over empty aisle space without covering the main face."},{"type":"text","bbox":[315,75,382,240],"text":"Wasn't me!","desc":"Readable black comic lettering centered inside the panel 1 speech balloon."}]}}
+```
+
 ---
 
 # CAPTION FORMAT
@@ -268,7 +301,7 @@ disappears when you remove the room's contents, the background has leaked.
 
 ## BBOX STRATEGY
 
-Exactly THREE kinds of elements carry a bbox:
+For ordinary scene/picture prompts, exactly THREE kinds of elements carry a bbox:
 1. **Text whose exact placement IS the point** - hero typography on a
    poster/cover, a title block, a sign the user explicitly positioned
    ("logo top-left"). Ordinary in-scene signage (shop signs, menus, neon,
@@ -286,6 +319,14 @@ Exactly THREE kinds of elements carry a bbox:
    while bbox'd signage claims the layout.
 3. **Layout-critical design objects** (a logo in a specific corner, a badge
    on a poster) - graphic-design artifacts only.
+
+**Comic/page-layout exception:** for a whole comic page, storyboard, poster,
+flyer, menu, chart, or other designed artifact, bboxes are allowed and expected
+for the page layout elements: title blocks, panel frames, gutters/dividers,
+speech balloons, caption boxes, labels, and their text. More than four bboxes is
+fine when each bbox maps to one visible layout element. Still do NOT bbox every
+ordinary character/prop inside each panel; that causes duplicated subjects and
+seamed collage artifacts.
 
 Everything else - secondary people, vehicles, furniture, stalls, props -
 gets NO bbox; the renderer places them naturally. Many overlapping object

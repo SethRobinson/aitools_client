@@ -32,6 +32,15 @@ namespace AITools.AIChat.Skills
         private int _lastLocalOpInputChatImageIndex = -1;
         private PicMain _lastLocalOpOutputPic;
         private readonly HashSet<SkillAction> _reloadAttemptedActions = new HashSet<SkillAction>();
+        private readonly Dictionary<PicMain, List<CompositionRectRecord>> _compositionRectsByPic = new Dictionary<PicMain, List<CompositionRectRecord>>();
+        private readonly HashSet<string> _layoutAuditWarnings = new HashSet<string>();
+
+        private sealed class CompositionRectRecord
+        {
+            public string Kind;
+            public RectInt Rect;
+            public string Label;
+        }
 
         // Session-only "/applystyle" directive: when non-null, every generate-class
         // action (image/movie, fresh or chained) gets its prompt rewritten by a small
@@ -201,6 +210,8 @@ namespace AITools.AIChat.Skills
             _lastLocalOpOutputChatImageIndex = -1;
             _lastLocalOpInputChatImageIndex = -1;
             _lastLocalOpOutputPic = null;
+            _compositionRectsByPic.Clear();
+            _layoutAuditWarnings.Clear();
             _turnEpoch++;
         }
 
@@ -1472,9 +1483,10 @@ namespace AITools.AIChat.Skills
             if (string.IsNullOrWhiteSpace(prompt))
             {
                 prompt =
-                    "Describe this image factually. If it appears to be a generated or composed result, " +
-                    "call out obvious problems such as blank panels, black rectangles, missing text, unreadable text, " +
-                    "bad layout, or content that does not match the requested subject. Be concise and specific.";
+                    "QA inspect this image. Start with PASS or FAIL. Answer only from visible pixels. " +
+                    "Mark FAIL for blank panels, black rectangles, missing text, unreadable text, duplicated text, " +
+                    "title/text touching or overlapping unrelated artwork, bad gutters, clipped content, " +
+                    "or content that does not match the requested subject. Name affected regions.";
             }
 
             DispatchInspectImageRequest(action, png, prompt.Trim(), sourceLabel);
@@ -2085,6 +2097,9 @@ namespace AITools.AIChat.Skills
             int w = ParsePixelOrPercent(action.GetArg("width"), srcW) ?? srcW;
             int h = ParsePixelOrPercent(action.GetArg("height"), srcH) ?? srcH;
             int fontSize = ParsePixelOrPercent(action.GetArg("font_size"), srcH) ?? Mathf.Max(16, srcH / 16);
+            RectInt textRect = new RectInt(x, y, w, h);
+            AuditLikelyTitleAgainstPastedPanels(pic, text, textRect, srcW, srcH);
+            RecordCompositionRect(pic, "draw_text", textRect, CompactLayoutAuditText(text, 80));
             // Optional auto-size lower bound. When omitted, TMP uses its built-in
             // default (18). Set higher to guarantee body text stays readable even
             // when long; TMP will OVERFLOW the rect rather than shrink below this.
@@ -2742,6 +2757,10 @@ namespace AITools.AIChat.Skills
             float hAlign = ParseAlign(action.GetArg("align"), 0.5f, isVertical: false);
             float vAlign = ParseAlign(action.GetArg("valign"), 0.5f, isVertical: true);
 
+            RectInt pasteRect = new RectInt(x, y, w, h);
+            string sourceLabel = DescribePasteSource(action);
+            RecordCompositionRect(pic, "paste_image", pasteRect, sourceLabel);
+            AuditPastedPanelAgainstExistingTitles(pic, pasteRect, sourceLabel, srcW, srcH);
             dst.BlitImageFitted(src, x, y, w, h, mode, opacity, hAlign, vAlign);
             dst.Apply();
             UnityEngine.Object.Destroy(src);
@@ -2804,6 +2823,7 @@ namespace AITools.AIChat.Skills
             _lastLocalOpOutputChatImageIndex = _host?.GetLatestChatImageIndex() ?? -1;
             _lastLocalOpInputChatImageIndex = -1;
             _lastLocalOpOutputPic = picMain;
+            _compositionRectsByPic[picMain] = new List<CompositionRectRecord>();
         }
 
         private void ExecuteCropResize(SkillAction action)
@@ -2941,6 +2961,140 @@ namespace AITools.AIChat.Skills
         }
 
         // ---------- Composition helpers ----------
+
+        private void RecordCompositionRect(PicMain pic, string kind, RectInt rect, string label)
+        {
+            if (pic == null || rect.width <= 0 || rect.height <= 0)
+                return;
+
+            if (!_compositionRectsByPic.TryGetValue(pic, out var records) || records == null)
+            {
+                records = new List<CompositionRectRecord>();
+                _compositionRectsByPic[pic] = records;
+            }
+
+            records.Add(new CompositionRectRecord
+            {
+                Kind = kind ?? "",
+                Rect = rect,
+                Label = label ?? ""
+            });
+        }
+
+        private void AuditLikelyTitleAgainstPastedPanels(PicMain pic, string text, RectInt textRect, int canvasW, int canvasH)
+        {
+            if (pic == null || canvasW <= 0 || canvasH <= 0 || textRect.width <= 0 || textRect.height <= 0)
+                return;
+            if (string.IsNullOrWhiteSpace(text))
+                return;
+
+            if (!IsLikelyTopTitleRect(textRect, canvasW, canvasH))
+                return;
+
+            if (!_compositionRectsByPic.TryGetValue(pic, out var records) || records == null || records.Count == 0)
+                return;
+
+            int minGutter = Mathf.Max(8, Mathf.RoundToInt(canvasH * 0.02f));
+            foreach (var record in records)
+            {
+                if (record == null || record.Kind != "paste_image")
+                    continue;
+                RectInt panel = record.Rect;
+                bool horizontalOverlap = textRect.x < panel.xMax && textRect.xMax > panel.x;
+                if (!horizontalOverlap)
+                    continue;
+
+                bool overlapsPanel = textRect.y < panel.yMax && textRect.yMax > panel.y;
+                bool tooCloseAbovePanel = textRect.yMax <= panel.y && textRect.yMax + minGutter > panel.y;
+                if (!overlapsPanel && !tooCloseAbovePanel)
+                    continue;
+
+                string key = $"{System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(pic)}:{textRect.x},{textRect.y},{textRect.width},{textRect.height}";
+                if (!_layoutAuditWarnings.Add(key))
+                    return;
+
+                string issue = overlapsPanel ? "overlaps" : "is too close to";
+                string panelLabel = string.IsNullOrEmpty(record.Label) ? "a pasted panel" : $"a pasted panel ({record.Label})";
+                _host?.AddSystemInjectionAndBubble(
+                    $"Layout warning: probable title text \"{CompactLayoutAuditText(text.Trim(), 80)}\" at rect ({textRect.x},{textRect.y}) {textRect.width}x{textRect.height} {issue} {panelLabel} rect ({panel.x},{panel.y}) {panel.width}x{panel.height}. " +
+                    "For a comic/page title fix, rebuild with a reserved title band and at least 2% vertical gutter, or use clean_base=\"true\" before redrawing the title.");
+                return;
+            }
+        }
+
+        private void AuditPastedPanelAgainstExistingTitles(PicMain pic, RectInt panelRect, string sourceLabel, int canvasW, int canvasH)
+        {
+            if (pic == null || canvasW <= 0 || canvasH <= 0 || panelRect.width <= 0 || panelRect.height <= 0)
+                return;
+            if (!_compositionRectsByPic.TryGetValue(pic, out var records) || records == null || records.Count == 0)
+                return;
+
+            int minGutter = Mathf.Max(8, Mathf.RoundToInt(canvasH * 0.02f));
+            foreach (var record in records)
+            {
+                if (record == null || record.Kind != "draw_text")
+                    continue;
+                RectInt title = record.Rect;
+                if (!IsLikelyTopTitleRect(title, canvasW, canvasH))
+                    continue;
+
+                bool horizontalOverlap = title.x < panelRect.xMax && title.xMax > panelRect.x;
+                if (!horizontalOverlap)
+                    continue;
+
+                bool overlapsTitle = title.y < panelRect.yMax && title.yMax > panelRect.y;
+                bool tooCloseBelowTitle = title.yMax <= panelRect.y && title.yMax + minGutter > panelRect.y;
+                if (!overlapsTitle && !tooCloseBelowTitle)
+                    continue;
+
+                string key = $"{System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(pic)}:{title.x},{title.y},{title.width},{title.height}:paste:{panelRect.x},{panelRect.y},{panelRect.width},{panelRect.height}";
+                if (!_layoutAuditWarnings.Add(key))
+                    return;
+
+                string issue = overlapsTitle ? "overlaps" : "is too close below";
+                string panelLabel = string.IsNullOrEmpty(sourceLabel) ? "a pasted panel" : $"a pasted panel ({sourceLabel})";
+                _host?.AddSystemInjectionAndBubble(
+                    $"Layout warning: {panelLabel} rect ({panelRect.x},{panelRect.y}) {panelRect.width}x{panelRect.height} {issue} probable title text \"{record.Label}\" at rect ({title.x},{title.y}) {title.width}x{title.height}. " +
+                    "For a comic/page title fix, rebuild with a reserved title band and at least 2% vertical gutter, or use clean_base=\"true\" before redrawing the title.");
+                return;
+            }
+        }
+
+        private static bool IsLikelyTopTitleRect(RectInt rect, int canvasW, int canvasH)
+        {
+            // A probable page title is near the top and spans most of the canvas.
+            // This avoids warning for normal speech bubbles inside upper comic panels.
+            return canvasW > 0
+                && canvasH > 0
+                && rect.width > 0
+                && rect.height > 0
+                && rect.y <= Mathf.RoundToInt(canvasH * 0.15f)
+                && rect.width >= Mathf.RoundToInt(canvasW * 0.75f)
+                && rect.height <= Mathf.RoundToInt(canvasH * 0.20f);
+        }
+
+        private static string CompactLayoutAuditText(string text, int maxChars)
+        {
+            if (string.IsNullOrEmpty(text))
+                return "";
+            string compact = text.Replace('\r', ' ').Replace('\n', ' ').Trim();
+            if (compact.Length <= maxChars)
+                return compact;
+            return compact.Substring(0, Mathf.Max(0, maxChars - 3)) + "...";
+        }
+
+        private static string DescribePasteSource(SkillAction action)
+        {
+            if (action == null)
+                return "";
+            string srcChat = action.GetArg("source_chat_image");
+            if (!string.IsNullOrWhiteSpace(srcChat))
+                return "source_chat_image=" + srcChat.Trim();
+            string srcAttach = action.GetArg("source_attachment");
+            if (!string.IsNullOrWhiteSpace(srcAttach))
+                return "source_attachment=" + srcAttach.Trim();
+            return "";
+        }
 
         private bool PromoteCanvasReferenceToChainIfNeeded(SkillAction action, string skillId, int chatN)
         {

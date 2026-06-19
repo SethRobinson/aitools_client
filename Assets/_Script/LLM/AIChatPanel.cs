@@ -1486,7 +1486,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         {
             id = _nextInspectImageRequestId++,
             png = png,
-            prompt = string.IsNullOrWhiteSpace(prompt) ? "Describe this image factually and note visible problems." : prompt.Trim(),
+            prompt = string.IsNullOrWhiteSpace(prompt)
+                ? "QA inspect this image. Start with PASS or FAIL. Check visible layout/text defects, mismatches, artifacts, and unreadable text."
+                : prompt.Trim(),
             sourceLabel = string.IsNullOrWhiteSpace(sourceLabel) ? "the image" : sourceLabel.Trim(),
             llmInstanceId = llmInstanceId
         });
@@ -1637,7 +1639,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         var lines = new Queue<GTPChatLine>();
         lines.Enqueue(new GTPChatLine("system",
             "You are a vision inspection helper inside an image generation app. " +
-            "Answer only from the pixels in the attached image. Be factual, concise, and specific."));
+            "Answer only from the pixels in the attached image; do not trust the requested prompt or prior chat over visible evidence. " +
+            "When the user prompt asks to check, verify, QA, find problems, compare to a request, or inspect layout/text, start with PASS or FAIL, then list defects first. " +
+            "For comics, posters, covers, grids, storyboards, and captioned images, mark FAIL for title/text touching or overlapping unrelated artwork, unreadable or clipped text, duplicated text, bad gutters, blank/black panels, missing panels, or obvious wrong subject matter. " +
+            "Name the affected region such as top-left, title band, upper-right panel, or bottom gutter. Be concise and specific."));
         var userLine = new GTPChatLine("user", req.prompt);
         userLine.AddImage(Convert.ToBase64String(req.png), -1);
         lines.Enqueue(userLine);
