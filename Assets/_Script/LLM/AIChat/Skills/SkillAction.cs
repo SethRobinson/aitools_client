@@ -12,6 +12,8 @@ namespace AITools.AIChat.Skills
     /// </summary>
     public class SkillAction
     {
+        public const string PreApplyStylePromptArg = "pre_applystyle_prompt";
+
         public string SkillId;
 
         /// <summary>
@@ -23,6 +25,7 @@ namespace AITools.AIChat.Skills
 
         public string Preset => GetArg("preset");
         public string Prompt => GetArg("prompt");
+        public string PreApplyStylePrompt => GetArg(PreApplyStylePromptArg);
         public string NegativePrompt => GetArg("negative_prompt");
 
         /// <summary>1-based attachment index from the LLM, or null if unspecified.</summary>

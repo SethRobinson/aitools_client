@@ -1515,6 +1515,8 @@ namespace AITools.AIChat.Skills
 
                 if (!string.IsNullOrEmpty(restyled))
                 {
+                    if (!action.Args.ContainsKey(SkillAction.PreApplyStylePromptArg))
+                        action.Args[SkillAction.PreApplyStylePromptArg] = originalPrompt;
                     action.Args["prompt"] = restyled;
                     string preview = restyled.Length > 160 ? restyled.Substring(0, 157) + "..." : restyled;
                     _host?.AddLocalInfoBubble("(/applystyle restyled the render prompt -> \"" + preview + "\")");
