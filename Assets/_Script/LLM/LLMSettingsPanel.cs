@@ -430,6 +430,8 @@ public class LLMSettingsPanel : MonoBehaviour
                 dd.itemText.color = TextDark;
             }
         }
+
+        _instanceListUI?.RefreshVisuals();
     }
 
     private System.Collections.IEnumerator RestyleNextFrame()

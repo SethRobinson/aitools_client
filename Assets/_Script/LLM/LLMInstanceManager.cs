@@ -413,6 +413,39 @@ public class LLMInstanceManager : MonoBehaviour
         }
         return false;
     }
+
+    /// <summary>
+    /// Move an instance up or down in the configured priority order.
+    /// The routing scans this list in order, so earlier equal-utilization matches win.
+    /// </summary>
+    public bool MoveInstance(int id, int direction)
+    {
+        if (_config == null || _config.instances == null) return false;
+        if (direction == 0) return false;
+
+        int fromIndex = -1;
+        for (int i = 0; i < _config.instances.Count; i++)
+        {
+            if (_config.instances[i].instanceID == id)
+            {
+                fromIndex = i;
+                break;
+            }
+        }
+
+        if (fromIndex < 0) return false;
+
+        int toIndex = Mathf.Clamp(fromIndex + direction, 0, _config.instances.Count - 1);
+        if (toIndex == fromIndex) return false;
+
+        var instance = _config.instances[fromIndex];
+        _config.instances.RemoveAt(fromIndex);
+        _config.instances.Insert(toIndex, instance);
+
+        SaveConfig();
+        NotifyInstancesChanged();
+        return true;
+    }
     
     /// <summary>
     /// Update an instance's settings.

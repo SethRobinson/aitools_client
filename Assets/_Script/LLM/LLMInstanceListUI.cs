@@ -20,6 +20,8 @@ public class LLMInstanceListUI
     // Buttons
     private Button _addButton;
     private Button _duplicateButton;
+    private Button _moveUpButton;
+    private Button _moveDownButton;
     private Button _removeButton;
     
     // Selected instance
@@ -79,7 +81,7 @@ public class LLMInstanceListUI
         // List container
         CreateListContainer(sectionRoot.transform);
         
-        // Button row (Add/Remove)
+        // Button row (Add/Duplicate/Move/Remove)
         CreateButtonRow(sectionRoot.transform);
         
         // Populate with initial data
@@ -230,6 +232,10 @@ public class LLMInstanceListUI
         
         // Duplicate button (copies selected instance)
         _duplicateButton = CreateButton(rowObj.transform, "+ Duplicate", 90f, OnDuplicateClicked);
+
+        // Move buttons (changes routing priority when utilization ties)
+        _moveUpButton = CreateButton(rowObj.transform, "\u2191", 34f, OnMoveUpClicked);
+        _moveDownButton = CreateButton(rowObj.transform, "\u2193", 34f, OnMoveDownClicked);
         
         // Remove button
         _removeButton = CreateButton(rowObj.transform, "- Remove", 80f, OnRemoveClicked);
@@ -283,9 +289,9 @@ public class LLMInstanceListUI
             // Default to llama.cpp - user can change the provider type in the settings below
             int newID = manager.AddInstance(LLMProvider.LlamaCpp);
             _selectedInstanceID = newID;
+            OnInstancesChanged?.Invoke();
             RefreshList(manager.GetConfigClone());
             OnInstanceSelected?.Invoke(newID);
-            OnInstancesChanged?.Invoke();
         }
     }
     
@@ -311,9 +317,9 @@ public class LLMInstanceListUI
             
             // Select the new instance
             _selectedInstanceID = clonedInstance.instanceID;
+            OnInstancesChanged?.Invoke();
             RefreshList(manager.GetConfigClone());
             OnInstanceSelected?.Invoke(clonedInstance.instanceID);
-            OnInstancesChanged?.Invoke();
         }
     }
     
@@ -334,9 +340,34 @@ public class LLMInstanceListUI
                 _selectedInstanceID = instances[0].instanceID;
             }
             
+            OnInstancesChanged?.Invoke();
             RefreshList(manager.GetConfigClone());
             OnInstanceSelected?.Invoke(_selectedInstanceID);
+        }
+    }
+
+    private void OnMoveUpClicked()
+    {
+        MoveSelectedInstance(-1);
+    }
+
+    private void OnMoveDownClicked()
+    {
+        MoveSelectedInstance(1);
+    }
+
+    private void MoveSelectedInstance(int direction)
+    {
+        if (_selectedInstanceID < 0) return;
+
+        var manager = LLMInstanceManager.Get();
+        if (manager == null) return;
+
+        if (manager.MoveInstance(_selectedInstanceID, direction))
+        {
             OnInstancesChanged?.Invoke();
+            RefreshList(manager.GetConfigClone());
+            OnInstanceSelected?.Invoke(_selectedInstanceID);
         }
     }
     
@@ -353,7 +384,12 @@ public class LLMInstanceListUI
         }
         _listItems.Clear();
         
-        if (config == null || config.instances == null) return;
+        if (config == null || config.instances == null)
+        {
+            _selectedInstanceID = -1;
+            UpdateButtonStates();
+            return;
+        }
         
         // Create new items
         foreach (var inst in config.instances)
@@ -363,15 +399,18 @@ public class LLMInstanceListUI
         }
         
         // Update selection visuals
-        UpdateSelectionVisuals();
+        if (_selectedInstanceID >= 0 && GetSelectedListIndex() < 0)
+            _selectedInstanceID = -1;
         
         // If no selection but we have items, select the first one
         if (_selectedInstanceID < 0 && config.instances.Count > 0)
         {
             _selectedInstanceID = config.instances[0].instanceID;
-            UpdateSelectionVisuals();
             OnInstanceSelected?.Invoke(_selectedInstanceID);
         }
+
+        UpdateSelectionVisuals();
+        UpdateButtonStates();
     }
     
     private InstanceListItem CreateListItem(LLMInstanceInfo instance)
@@ -489,6 +528,7 @@ public class LLMInstanceListUI
     {
         _selectedInstanceID = instanceID;
         UpdateSelectionVisuals();
+        UpdateButtonStates();
         OnInstanceSelected?.Invoke(instanceID);
     }
     
@@ -496,6 +536,9 @@ public class LLMInstanceListUI
     {
         foreach (var item in _listItems)
         {
+            if (item.text != null)
+                item.text.color = (item.activeToggle == null || item.activeToggle.isOn) ? TextDark : TextMuted;
+
             if (item.image != null)
             {
                 if (item.instanceID == _selectedInstanceID)
@@ -521,6 +564,16 @@ public class LLMInstanceListUI
     {
         _selectedInstanceID = id;
         UpdateSelectionVisuals();
+        UpdateButtonStates();
+    }
+
+    /// <summary>
+    /// Reapply row colors after broad panel styling has reset TMP text colors.
+    /// </summary>
+    public void RefreshVisuals()
+    {
+        UpdateSelectionVisuals();
+        UpdateButtonStates();
     }
     
     /// <summary>
@@ -540,6 +593,31 @@ public class LLMInstanceListUI
                 break;
             }
         }
+    }
+
+    private int GetSelectedListIndex()
+    {
+        for (int i = 0; i < _listItems.Count; i++)
+        {
+            if (_listItems[i].instanceID == _selectedInstanceID)
+                return i;
+        }
+        return -1;
+    }
+
+    private void UpdateButtonStates()
+    {
+        int selectedIndex = GetSelectedListIndex();
+        bool hasSelection = selectedIndex >= 0;
+
+        if (_duplicateButton != null)
+            _duplicateButton.interactable = hasSelection;
+        if (_removeButton != null)
+            _removeButton.interactable = hasSelection;
+        if (_moveUpButton != null)
+            _moveUpButton.interactable = hasSelection && selectedIndex > 0;
+        if (_moveDownButton != null)
+            _moveDownButton.interactable = hasSelection && selectedIndex < _listItems.Count - 1;
     }
     
     private class InstanceListItem
