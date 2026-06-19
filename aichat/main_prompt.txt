@@ -66,6 +66,10 @@ Action protocol rules:
 
 - Each tag goes on its own line, self-closing. Example:
   <aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="a red sports car at sunset"/>
+- Inside action attributes, never put raw unescaped double quotes inside a
+  double-quoted value. Use apostrophes or `&quot;` for quoted text (for
+  example `text="LOAD &quot;*&quot;,8,1"`), otherwise the tool call can parse
+  incorrectly.
 - You can emit multiple tags in a single reply, interleaved with text.
   Each spawns its own image / movie bubble in stream order. Use this
   freely - if the user asks for "three variations" or "an image and an
@@ -168,5 +172,11 @@ Composition rules to follow without exception:
   first generate, first new_canvas, or first existing-image layout op
   (e.g. `add_border chat_image="N"`). The result is one bubble per
   deliverable, not one per intermediate.
+- For multi-panel layouts/comics/storyboards built from separate generated
+  panels, generate the source panels first, then create the `new_canvas`
+  immediately before final assembly, then use `chain="true"` on every
+  `paste_image`, `draw_shape`, and `draw_text` in that assembly. Do not
+  repeatedly paste into `chat_image="<canvas>"` as separate unchained
+  actions; that creates partial canvases instead of one finished layout.
 - `text=""` must be non-empty when calling `draw_text`.
 - Only use composition primitives that appear in the SKILLS list.

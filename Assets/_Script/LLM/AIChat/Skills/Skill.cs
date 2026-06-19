@@ -84,6 +84,7 @@ namespace AITools.AIChat.Skills
         public const string ReadSkill = "read_skill";
         public const string SummarizeWithSmallLlm = "summarize_with_small_llm";
         public const string DescribeImage = "describe_image";
+        public const string InspectImage = "inspect_image";
 
         // Composition primitives - C#-side image ops the LLM can chain to build
         // posters, books, storyboards, comic panels, magazine covers, etc. None
@@ -100,7 +101,7 @@ namespace AITools.AIChat.Skills
         public static readonly HashSet<string> All = new HashSet<string>
         {
             GenerateImage, GenerateMovie, ImageToImage, ImageToMovie,
-            ReadSkill, SummarizeWithSmallLlm, DescribeImage,
+            ReadSkill, SummarizeWithSmallLlm, DescribeImage, InspectImage,
             DrawText, AddBorder, PasteImage, NewCanvas, CropResize, DrawShape
         };
     }

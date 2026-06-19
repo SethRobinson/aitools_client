@@ -29,6 +29,7 @@ namespace AITools.AIChat.Skills
         private readonly SkillManager _skills;
         private readonly IChatHost _host;
         private int _lastLocalOpOutputChatImageIndex = -1;
+        private int _lastLocalOpInputChatImageIndex = -1;
         private PicMain _lastLocalOpOutputPic;
         private readonly HashSet<SkillAction> _reloadAttemptedActions = new HashSet<SkillAction>();
 
@@ -198,6 +199,7 @@ namespace AITools.AIChat.Skills
             _lastActionDeferred = false;
             _blockingAction = null;
             _lastLocalOpOutputChatImageIndex = -1;
+            _lastLocalOpInputChatImageIndex = -1;
             _lastLocalOpOutputPic = null;
             _turnEpoch++;
         }
@@ -225,6 +227,7 @@ namespace AITools.AIChat.Skills
             if (_host?.GetLastSpawnedPicForTurn() == null)
             {
                 _lastLocalOpOutputChatImageIndex = -1;
+                _lastLocalOpInputChatImageIndex = -1;
                 _lastLocalOpOutputPic = null;
             }
 
@@ -276,6 +279,9 @@ namespace AITools.AIChat.Skills
                 case BuiltInSkillIds.DescribeImage:
                     // No-op skill - documents that the LLM should describe images itself.
                     _host?.AddInfoBubble("(describe_image is a documentation-only skill - I'll answer in chat directly.)");
+                    break;
+                case BuiltInSkillIds.InspectImage:
+                    ExecuteInspectImage(action);
                     break;
 
                 // ----- Composition primitives (C#-side image ops, no GPU). -----
@@ -333,6 +339,7 @@ namespace AITools.AIChat.Skills
         private void ExecuteGenerate(SkillAction action, bool useAttachment)
         {
             _lastLocalOpOutputChatImageIndex = -1;
+            _lastLocalOpInputChatImageIndex = -1;
             _lastLocalOpOutputPic = null;
 
             // Generate-class skills with an empty prompt produce a workflow that runs
@@ -1419,6 +1426,199 @@ namespace AITools.AIChat.Skills
             DispatchOneShot(runner, inst, lines, onDone, callerLabel);
         }
 
+        /// <summary>
+        /// Ask a vision-capable LLM to inspect/caption an existing image. This is the
+        /// explicit counterpart to the optional auto-caption sidecar: generated images
+        /// normally use provenance only, but the assistant can call this when the user
+        /// asks it to check the actual pixels.
+        /// </summary>
+        private void ExecuteInspectImage(SkillAction action)
+        {
+            byte[] png = null;
+            string sourceLabel = "";
+
+            if (action.Chain)
+            {
+                if (!TryReadChainedInspectImage(out png, out sourceLabel))
+                    return;
+            }
+            else
+            {
+                byte[] canvasBytes = ResolveCanvasBytes(action, "inspect_image", out bool errored, out bool deferred, allowMissing: false);
+                if (errored || deferred) return;
+                if (action.Chain)
+                {
+                    // ResolveCanvasBytes can promote a repeated same-turn canvas
+                    // reference to chain="true" as a composition rescue. Honor that
+                    // promotion here instead of treating the null canvas bytes as a
+                    // failed read.
+                    if (!TryReadChainedInspectImage(out png, out sourceLabel))
+                        return;
+                }
+                else
+                {
+                    png = canvasBytes;
+                    sourceLabel = DescribeInspectSource(action);
+                }
+            }
+
+            if (png == null || png.Length == 0)
+            {
+                _host?.AddSystemInjectionAndBubble("inspect_image could not read image bytes.");
+                return;
+            }
+
+            string prompt = action.Prompt;
+            if (string.IsNullOrWhiteSpace(prompt))
+            {
+                prompt =
+                    "Describe this image factually. If it appears to be a generated or composed result, " +
+                    "call out obvious problems such as blank panels, black rectangles, missing text, unreadable text, " +
+                    "bad layout, or content that does not match the requested subject. Be concise and specific.";
+            }
+
+            DispatchInspectImageRequest(action, png, prompt.Trim(), sourceLabel);
+        }
+
+        private bool TryReadChainedInspectImage(out byte[] png, out string sourceLabel)
+        {
+            png = null;
+            sourceLabel = "the chained image";
+
+            PicMain pic = _host?.PeekChainTarget();
+            if (pic == null)
+            {
+                _host?.AddSystemInjectionAndBubble(
+                    "inspect_image was called with chain=\"true\" but no Pic was spawned earlier in this turn. " +
+                    "Use chat_image=\"N\" for an existing image, or inspect after creating a same-reply image.");
+                return false;
+            }
+            if (pic.IsBusy())
+            {
+                _host?.AddSystemInjectionAndBubble(
+                    "inspect_image cannot read the chained image yet because it is still rendering. " +
+                    "Use chat_image=\"N\" on the next turn after the image is done.");
+                return false;
+            }
+            if (!pic.TryGetImageAsPng(out png))
+            {
+                _host?.AddSystemInjectionAndBubble("inspect_image could not read PNG bytes from the chained image.");
+                return false;
+            }
+            return true;
+        }
+
+        private string DescribeInspectSource(SkillAction action)
+        {
+            if (action == null) return "the image";
+            if (action.ChatImageIndex.HasValue) return $"chat_image=\"{action.ChatImageIndex.Value}\"";
+            if (action.AttachmentIndex.HasValue) return $"attachment=\"{action.AttachmentIndex.Value}\"";
+            int latest = _host?.GetLatestChatImageIndex() ?? 0;
+            return latest > 0 ? $"latest chat_image=\"{latest}\"" : "the image";
+        }
+
+        private void DispatchInspectImageRequest(SkillAction action, byte[] png, string prompt, string sourceLabel)
+        {
+            var instanceMgr = LLMInstanceManager.Get();
+            if (instanceMgr == null || instanceMgr.GetInstanceCount() == 0)
+            {
+                _host?.AddSystemInjectionAndBubble("inspect_image: no LLM instances are configured.");
+                return;
+            }
+
+            int targetId = -1;
+            int replicaIndex = 0;
+            if (action != null && action.LlmInstanceId.HasValue)
+            {
+                var hinted = instanceMgr.GetInstance(action.LlmInstanceId.Value);
+                if (hinted != null && hinted.CanAcceptJob(false, isVisionJob: true) && hinted.HasCapacity())
+                    targetId = hinted.instanceID;
+            }
+            if (targetId < 0)
+                targetId = instanceMgr.GetFreeLLM(isSmallJob: false, isVisionJob: true, out replicaIndex);
+            if (targetId < 0)
+                targetId = instanceMgr.GetLeastBusyLLM(isSmallJob: false, isVisionJob: true, out replicaIndex);
+            if (targetId < 0)
+            {
+                _host?.AddSystemInjectionAndBubble(
+                    "inspect_image: no active vision-capable LLM is available. In LLM Settings, enable Supports vision on a vision model.");
+                return;
+            }
+
+            var inst = instanceMgr.GetInstance(targetId);
+            if (inst == null || inst.settings == null)
+            {
+                _host?.AddSystemInjectionAndBubble("inspect_image: picked LLM instance has no settings.");
+                return;
+            }
+            if (!IsDispatchOneShotSupported(inst.providerType))
+            {
+                _host?.AddSystemInjectionAndBubble($"inspect_image: provider {inst.providerType} is not supported by one-shot vision dispatch.");
+                return;
+            }
+
+            var runner = _host?.CoroutineRunner;
+            if (runner == null)
+            {
+                _host?.AddSystemInjectionAndBubble("inspect_image: no coroutine runner is available.");
+                return;
+            }
+
+            instanceMgr.SetLLMBusy(targetId, replicaIndex, true);
+            _host?.AddInfoBubble($"Inspecting {sourceLabel} with LLM #{targetId} ({inst.providerType} {inst.settings.selectedModel})...");
+
+            var lines = new Queue<GTPChatLine>();
+            lines.Enqueue(new GTPChatLine("system",
+                "You are a vision inspection helper inside an image generation app. " +
+                "Answer only from the pixels in the attached image. Be factual, concise, and specific."));
+            var userLine = new GTPChatLine("user", prompt);
+            userLine.AddImage(Convert.ToBase64String(png), -1);
+            lines.Enqueue(userLine);
+
+            int capturedTargetId = targetId;
+            int capturedReplicaIndex = replicaIndex;
+            bool completed = false;
+            Coroutine watchdog = runner.StartCoroutine(OneShotTimeout(90f, () =>
+            {
+                if (completed) return;
+                completed = true;
+                instanceMgr.SetLLMBusy(capturedTargetId, capturedReplicaIndex, false);
+                _host?.AddSystemInjectionAndBubble($"inspect_image timed out while inspecting {sourceLabel}.");
+            }));
+
+            Action<RTDB, JSONObject, string> onDone = (db, json, text) =>
+            {
+                if (completed) return;
+                completed = true;
+                if (watchdog != null)
+                {
+                    try { runner.StopCoroutine(watchdog); } catch { }
+                }
+                instanceMgr.SetLLMBusy(capturedTargetId, capturedReplicaIndex, false);
+
+                string clean = (text ?? "").Trim();
+                if (string.IsNullOrEmpty(clean) && json != null)
+                {
+                    try { clean = OpenAITextCompletionManager.ExtractTextFromResponseJSON(json); } catch { /* no-op */ }
+                }
+                if (string.IsNullOrEmpty(clean))
+                {
+                    _host?.AddSystemInjectionAndBubble($"inspect_image: LLM #{capturedTargetId} returned no content for {sourceLabel}.");
+                    return;
+                }
+
+                _host?.AddSystemInjectionAndBubble($"Vision inspection result for {sourceLabel}:\n{clean}");
+            };
+
+            DispatchOneShot(runner, inst, lines, onDone, "InspectImage", "inspect_image_sent.json");
+        }
+
+        private IEnumerator OneShotTimeout(float seconds, Action onTimeout)
+        {
+            yield return new WaitForSeconds(seconds);
+            onTimeout?.Invoke();
+        }
+
         // ---------- /applystyle restyle ----------
 
         /// <summary>
@@ -1864,6 +2064,17 @@ namespace AITools.AIChat.Skills
                 case "scale":
                 case "cropresize":
                     return BuiltInSkillIds.CropResize;
+
+                // inspect / caption / examine -> inspect_image
+                case "inspect":
+                case "inspectimage":
+                case "check_image":
+                case "checkimage":
+                case "examine_image":
+                case "examineimage":
+                case "caption_image":
+                case "captionimage":
+                    return BuiltInSkillIds.InspectImage;
 
                 // generate / gen / image -> generate_image
                 case "generate":
@@ -2687,6 +2898,7 @@ namespace AITools.AIChat.Skills
             _host?.AppendImageBubbleForPic(action, picMain);
             _host?.SetLastSpawnedPicForTurn(picMain);
             _lastLocalOpOutputChatImageIndex = _host?.GetLatestChatImageIndex() ?? -1;
+            _lastLocalOpInputChatImageIndex = -1;
             _lastLocalOpOutputPic = picMain;
         }
 
@@ -2840,13 +3052,26 @@ namespace AITools.AIChat.Skills
                 && _lastLocalOpOutputPic != null
                 && currentTurnPic == _lastLocalOpOutputPic;
 
-            if (!referencesLatestLocalOutput)
+            // The layout/comic recipes historically told the model to keep using
+            // chat_image="<canvas>" for every paste/text pass. Local ops actually
+            // produce a new working Pic unless chained, so repeated references to the
+            // original canvas rebuild from the blank source and leave black/empty
+            // panels. Treat a repeated same-turn canvas reference as chain="true" so
+            // the operation stacks onto the latest local output.
+            bool repeatsPreviousLocalInput = _lastLocalOpInputChatImageIndex > 0
+                && chatN == _lastLocalOpInputChatImageIndex
+                && _lastLocalOpOutputPic != null
+                && currentTurnPic == _lastLocalOpOutputPic;
+
+            if (!referencesLatestLocalOutput && !repeatsPreviousLocalInput)
                 return false;
 
             action.Args.Remove("chat_image");
             action.Args["chain"] = "true";
-            _host?.AddInfoBubble(
-                $"(treated {skillId} chat_image=\"{chatN}\" as chain=\"true\" - it references the Pic just spawned earlier in this reply)");
+            string reason = referencesLatestLocalOutput
+                ? "it references the Pic just spawned earlier in this reply"
+                : "it repeats the canvas from the previous local composition step";
+            _host?.AddInfoBubble($"(treated {skillId} chat_image=\"{chatN}\" as chain=\"true\" - {reason})");
             return true;
         }
 
@@ -2904,11 +3129,11 @@ namespace AITools.AIChat.Skills
         }
 
         /// <summary>
-        /// True when every chat image this action references (primary
-        /// chat_image plus chat_image2..5 for N-input presets) has readable
-        /// bytes. <paramref name="anyBusy"/> reports whether any referenced Pic
-        /// is still generating, so the wait can persist for slow GPUs instead
-        /// of timing out on a fixed wall clock.
+        /// True when every chat image this action references has readable bytes.
+        /// This includes primary chat_image, chat_image2..5 for N-input presets,
+        /// and paste_image's source_chat_image. <paramref name="anyBusy"/> reports
+        /// whether any referenced Pic is still generating, so the wait can persist
+        /// for slow GPUs instead of timing out on a fixed wall clock.
         /// </summary>
         private bool AllReferencedChatImagesReady(SkillAction action, out bool anyBusy)
         {
@@ -2921,21 +3146,31 @@ namespace AITools.AIChat.Skills
                 int idx = slot == 1
                     ? (action.ChatImageIndex ?? -1)
                     : (action.GetExtraChatImageIndex(slot) ?? -1);
-                if (idx <= 0) continue;
+                if (idx > 0)
+                    allReady &= IsReferencedChatImageReady(idx, ref anyBusy);
+            }
 
-                byte[] bytes = _host?.GetChatImagePngBytes(idx);
-                bool generating = _host?.IsChatImagePicGenerating(idx) ?? false;
-                // "Ready" requires BOTH readable bytes AND a finished render: a still-
-                // generating Pic only has its black placeholder texture, so treat it as
-                // not-ready (and keep waiting via anyBusy) even though bytes != null.
-                if (bytes == null || bytes.Length == 0 || generating)
-                {
-                    allReady = false;
-                    if (generating)
-                        anyBusy = true;
-                }
+            string srcChat = action.GetArg("source_chat_image");
+            if (!string.IsNullOrEmpty(srcChat) && int.TryParse(srcChat, out int sourceIdx) && sourceIdx > 0)
+            {
+                allReady &= IsReferencedChatImageReady(sourceIdx, ref anyBusy);
             }
             return allReady;
+        }
+
+        private bool IsReferencedChatImageReady(int idx, ref bool anyBusy)
+        {
+            byte[] bytes = _host?.GetChatImagePngBytes(idx);
+            bool generating = _host?.IsChatImagePicGenerating(idx) ?? false;
+            // "Ready" requires BOTH readable bytes AND a finished render: a still-
+            // generating Pic only has its black placeholder texture, so treat it as
+            // not-ready (and keep waiting via anyBusy) even though bytes != null.
+            if (bytes != null && bytes.Length > 0 && !generating)
+                return true;
+
+            if (generating)
+                anyBusy = true;
+            return false;
         }
 
         private IEnumerator ExecuteAfterChatImageReady(SkillAction action, string skillId, string argName, int chatN)
@@ -3231,6 +3466,7 @@ namespace AITools.AIChat.Skills
             _host?.AppendImageBubbleForPic(action, picMain);
             _host?.SetLastSpawnedPicForTurn(picMain);
             _lastLocalOpOutputChatImageIndex = _host?.GetLatestChatImageIndex() ?? -1;
+            _lastLocalOpInputChatImageIndex = action.ChatImageIndex ?? -1;
             _lastLocalOpOutputPic = picMain;
 
             // Wrap the coroutine launch so any synchronous exception thrown before

@@ -63,12 +63,12 @@ namespace AITools.AIChat.Skills
             @"([A-Za-z_][A-Za-z0-9_-]*)\s*=\s*'((?:[^'\\]|\\.)*)'",
             RegexOptions.Compiled);
 
-        // Permissive recovery for prompt="..." values that contain UNESCAPED inner
+        // Permissive recovery for free-text values that contain UNESCAPED inner
         // double quotes. LLMs frequently fail to escape dialog quotes (e.g. they
         // write prompt="She shouts "hi" loudly" instead of prompt="She shouts \"hi\"
         // loudly"), which under strict JSON-style attribute parsing truncates the
-        // prompt at the first inner quote - and that's exactly where the dialog
-        // audio cue lives for LTX video, so the resulting clip is silent.
+        // value at the first inner quote. The same mistake happens in draw_text
+        // captions such as text="LOAD "*",8,1".
         //
         // This regex finds the closing quote by anchoring it to either ANOTHER
         // attribute (name=) or the tag's closing /> via lookahead. Regex backtracking
@@ -77,6 +77,12 @@ namespace AITools.AIChat.Skills
         // quotes that confuse the lookahead). Singleline so . matches newlines.
         private static readonly Regex PermissivePromptRx = new Regex(
             @"\bprompt\s*=\s*""(.+?)""(?=\s*(?:[A-Za-z_][A-Za-z0-9_-]*\s*=|/\s*>|$))",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        private static readonly Regex PermissiveTextRx = new Regex(
+            @"\btext\s*=\s*""(.+?)""(?=\s*(?:[A-Za-z_][A-Za-z0-9_-]*\s*=|/\s*>|$))",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        private static readonly Regex PermissiveNegativePromptRx = new Regex(
+            @"\bnegative_prompt\s*=\s*""(.+?)""(?=\s*(?:[A-Za-z_][A-Za-z0-9_-]*\s*=|/\s*>|$))",
             RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
 
         public void Reset()
@@ -159,27 +165,37 @@ namespace AITools.AIChat.Skills
                 action.Args[k] = v;
             }
 
-            // Recovery pass for unescaped inner quotes in prompt= specifically. The
-            // strict parsers above happily truncate prompt at the first stray ", so we
+            // Recovery pass for unescaped inner quotes in free-text attributes. The
+            // strict parsers above happily truncate at the first stray ", so we
             // re-extract with a lookahead-anchored regex and prefer whichever result
             // captured MORE characters. This is a no-op when the LLM escaped properly
             // (both regexes capture the same span); it's a rescue when it didn't.
-            var permissive = PermissivePromptRx.Match(attrBlob);
-            if (permissive.Success)
-            {
-                string permissiveValue = DecodeBackslashEscapes(DecodeXmlEntities(permissive.Groups[1].Value));
-                if (!action.Args.TryGetValue("prompt", out string strictValue)
-                    || string.IsNullOrEmpty(strictValue)
-                    || permissiveValue.Length > strictValue.Length)
-                {
-                    action.Args["prompt"] = permissiveValue;
-                }
-            }
+            ApplyPermissiveAttribute(action, attrBlob, "prompt", PermissivePromptRx);
+            ApplyPermissiveAttribute(action, attrBlob, "text", PermissiveTextRx);
+            ApplyPermissiveAttribute(action, attrBlob, "negative_prompt", PermissiveNegativePromptRx);
 
             action.Args.TryGetValue("skill", out string skillId);
             if (string.IsNullOrEmpty(skillId)) return null;
             action.SkillId = skillId;
             return action;
+        }
+
+        private static void ApplyPermissiveAttribute(SkillAction action, string attrBlob, string key, Regex rx)
+        {
+            if (action == null || string.IsNullOrEmpty(attrBlob) || string.IsNullOrEmpty(key) || rx == null)
+                return;
+
+            var permissive = rx.Match(attrBlob);
+            if (!permissive.Success)
+                return;
+
+            string permissiveValue = DecodeBackslashEscapes(DecodeXmlEntities(permissive.Groups[1].Value));
+            if (!action.Args.TryGetValue(key, out string strictValue)
+                || string.IsNullOrEmpty(strictValue)
+                || permissiveValue.Length > strictValue.Length)
+            {
+                action.Args[key] = permissiveValue;
+            }
         }
 
         private static string DecodeXmlEntities(string s)
@@ -426,6 +442,7 @@ namespace AITools.AIChat.Skills
                 case BuiltInSkillIds.NewCanvas:
                 case BuiltInSkillIds.CropResize:
                 case BuiltInSkillIds.DrawShape:
+                case BuiltInSkillIds.InspectImage:
                     return RemovedMediaActionMarker;
                 default:
                     return $"\n[skill: {skill}]\n";
