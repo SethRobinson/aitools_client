@@ -61,6 +61,21 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private float _statusPillNextRefresh;
     private const float STATUS_PILL_REFRESH_INTERVAL = 1.5f;
 
+    // AI Chat-only main model override. Default (-1) preserves normal Big/Small/Vision
+    // routing; selecting an instance forces only the main chat turn to that instance.
+    private TMP_Dropdown _mainLLMDropdown;
+    private TextMeshProUGUI _mainLLMLabelText;
+    private TextMeshProUGUI _mainLLMCaptionText;
+    private TextMeshProUGUI _mainLLMArrowText;
+    private readonly List<int> _mainLLMDropdownInstanceIds = new List<int>();
+    private LLMInstanceManager _subscribedInstanceManager;
+    private bool _waitingForForcedMainLLM = false;
+    private Coroutine _forcedMainLLMWaitCoroutine;
+    private int _waitingForcedMainLLMId = -1;
+    private string _waitingForcedMainLLMName = "";
+    private const int MAIN_LLM_DEFAULT_ID = -1;
+    private const int QUEUED_MAIN_LLM_OVERRIDE_UNSET = int.MinValue;
+
     // Per-turn attachments: a defensive copy of the user's pasted images at OnSendClicked
     // time, so a SkillActionExecutor invoked mid-stream can still resolve attachment="N"
     // even after ChatImageAttachmentZone has cleared its own thumbnail strip.
@@ -206,6 +221,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // by summarizing everything older into one message). Shared by both modes.
     private const string PREFS_COMPACT_KEEP_N = "aichat_compact_keep_n";
     private const int DEFAULT_COMPACT_KEEP_N = 5;
+    private const string PREFS_MAIN_LLM_INSTANCE_ID = "aichat_main_llm_instance_id";
 
     // Footer
     private TMP_InputField _inputField;
@@ -455,6 +471,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             // Reload aichat config in case the user edited a skill or main_prompt.txt
             // outside the app between toggles. Cheap.
             _instance._skillManager?.Reload();
+            _instance.SubscribeToLLMInstanceChanges();
+            _instance.RefreshMainLLMDropdownOptions();
             _instance.UpdateStatusPill();
             _instance.ClampPanelToScreen();
             _instance.FocusInputDeferred();
@@ -498,8 +516,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     private void OnDestroy()
     {
+        CancelForcedMainLLMWait(showBubble: false);
         CancelAllAttachmentCaptions();
         CancelAllInspectImageJobs(showBubble: false);
+        UnsubscribeFromLLMInstanceChanges();
         // The ChatImageAttachmentZone component on _panelRoot auto-deregisters and frees
         // its textures in its own OnDestroy.
         _instance = null;
@@ -552,6 +572,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         CreateChatArea();
         CreateFooter();
         CreateResizeGrip();
+        SubscribeToLLMInstanceChanges();
+        RefreshMainLLMDropdownOptions();
 
         // Skills system. Loads aichat/main_prompt.txt and aichat/skills/*.md, wires up
         // the parser->executor pipeline. Parser fires per parsed tag; executor reaches
@@ -1029,6 +1051,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _statusText.alignment = TextAlignmentOptions.MidlineRight;
         _statusText.text = "Idle";
 
+        CreateMainLLMOverrideControls(footer.transform);
+
         // Buttons stacked on the right.
         // Row 1: Send (full 186 wide). Row 2: [Copy 58][Stop 58][Clear 58], 6px gaps -> 186 wide total.
         _sendButton = CreateFooterButton(footer.transform, "Send", new Vector2(-8, -32), new Vector2(186, 30), OnSendClicked);
@@ -1114,6 +1138,104 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _attachmentZone.OnCaptionCancelled += OnCaptionCancelled;
 
         CreateFooterDragBar(footer.transform);
+    }
+
+    private void CreateMainLLMOverrideControls(Transform parent)
+    {
+        var labelObj = new GameObject("MainLLMLabel");
+        labelObj.transform.SetParent(parent, false);
+        var labelRt = labelObj.AddComponent<RectTransform>();
+        labelRt.anchorMin = new Vector2(0, 1);
+        labelRt.anchorMax = new Vector2(0, 1);
+        labelRt.pivot = new Vector2(0, 1);
+        labelRt.anchoredPosition = new Vector2(8, -6);
+        labelRt.sizeDelta = new Vector2(66, 22);
+
+        _mainLLMLabelText = labelObj.AddComponent<TextMeshProUGUI>();
+        _mainLLMLabelText.text = "Main LLM:";
+        _mainLLMLabelText.font = _font;
+        _mainLLMLabelText.fontSize = 12;
+        _mainLLMLabelText.color = new Color(0.2f, 0.2f, 0.2f, 1f);
+        _mainLLMLabelText.alignment = TextAlignmentOptions.MidlineLeft;
+        _mainLLMLabelText.raycastTarget = false;
+
+        var ddGo = TMP_DefaultControls.CreateDropdown(new TMP_DefaultControls.Resources());
+        ddGo.name = "MainLLMDropdown";
+        ddGo.transform.SetParent(parent, false);
+        var ddRt = ddGo.GetComponent<RectTransform>();
+        ddRt.anchorMin = new Vector2(0, 1);
+        ddRt.anchorMax = new Vector2(0, 1);
+        ddRt.pivot = new Vector2(0, 1);
+        ddRt.anchoredPosition = new Vector2(76, -6);
+        ddRt.sizeDelta = new Vector2(190, 22);
+
+        var ddImg = ddGo.GetComponent<Image>();
+        if (ddImg != null)
+        {
+            ddImg.sprite = null;
+            ddImg.type = Image.Type.Simple;
+            ddImg.color = Color.white;
+        }
+
+        _mainLLMDropdown = ddGo.GetComponent<TMP_Dropdown>();
+        if (_mainLLMDropdown != null)
+        {
+            _mainLLMDropdown.onValueChanged.AddListener(OnMainLLMDropdownChanged);
+            if (_mainLLMDropdown.captionText != null)
+            {
+                _mainLLMDropdown.captionText.font = _font;
+                _mainLLMDropdown.captionText.fontSize = 12;
+                // Unity/TMP sometimes generates a caption child that is visually blank
+                // in this runtime-created dropdown. We draw our own caption overlay below.
+                _mainLLMDropdown.captionText.color = new Color(0f, 0f, 0f, 0f);
+                _mainLLMDropdown.captionText.overflowMode = TextOverflowModes.Ellipsis;
+            }
+            if (_mainLLMDropdown.itemText != null)
+            {
+                _mainLLMDropdown.itemText.font = _font;
+                _mainLLMDropdown.itemText.fontSize = 12;
+                _mainLLMDropdown.itemText.color = TextDark;
+                _mainLLMDropdown.itemText.overflowMode = TextOverflowModes.Ellipsis;
+            }
+        }
+
+        var captionObj = new GameObject("VisibleCaption");
+        captionObj.transform.SetParent(ddGo.transform, false);
+        var captionRt = captionObj.AddComponent<RectTransform>();
+        captionRt.anchorMin = Vector2.zero;
+        captionRt.anchorMax = Vector2.one;
+        captionRt.offsetMin = new Vector2(8, 0);
+        captionRt.offsetMax = new Vector2(-24, 0);
+        _mainLLMCaptionText = captionObj.AddComponent<TextMeshProUGUI>();
+        _mainLLMCaptionText.text = "Default";
+        _mainLLMCaptionText.font = _font;
+        _mainLLMCaptionText.fontSize = 12;
+        _mainLLMCaptionText.color = TextDark;
+        _mainLLMCaptionText.alignment = TextAlignmentOptions.MidlineLeft;
+        _mainLLMCaptionText.overflowMode = TextOverflowModes.Ellipsis;
+        _mainLLMCaptionText.raycastTarget = false;
+
+        var arrowObj = new GameObject("VisibleArrow");
+        arrowObj.transform.SetParent(ddGo.transform, false);
+        var arrowRt = arrowObj.AddComponent<RectTransform>();
+        arrowRt.anchorMin = new Vector2(1, 0);
+        arrowRt.anchorMax = new Vector2(1, 1);
+        arrowRt.pivot = new Vector2(1, 0.5f);
+        arrowRt.anchoredPosition = new Vector2(-4, 0);
+        arrowRt.sizeDelta = new Vector2(18, 0);
+        _mainLLMArrowText = arrowObj.AddComponent<TextMeshProUGUI>();
+        _mainLLMArrowText.text = "v";
+        _mainLLMArrowText.font = _font;
+        _mainLLMArrowText.fontSize = 12;
+        _mainLLMArrowText.fontStyle = FontStyles.Bold;
+        _mainLLMArrowText.color = TextDark;
+        _mainLLMArrowText.alignment = TextAlignmentOptions.Center;
+        _mainLLMArrowText.raycastTarget = false;
+
+        var tt = ddGo.AddComponent<RTToolTip>();
+        tt._text =
+            "Default uses normal Big/Small/Vision routing.\n" +
+            "Selecting an LLM forces main chat replies to that instance.";
     }
 
     private void CreateFooterDragBar(Transform footerTransform)
@@ -1727,7 +1849,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         if (_autoContinueToggle != null && _autoContinueToggle.isOn
             && !_inspectAutoResumePending && !_skillLoadAutoResumePending
-            && !_isStreaming && _autoContinueRemaining > 0 && !HasPendingSidecarWork())
+            && !_isStreaming && !_waitingForForcedMainLLM && _autoContinueRemaining > 0 && !HasPendingSidecarWork())
             StartCoroutine(FireAutoContinueNextFrame());
     }
 
@@ -1812,7 +1934,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             CancelInspectAutoResume();
             return;
         }
-        if (_isStreaming || _compactSummaryInFlight || HasPendingSidecarWork())
+        if (_isStreaming || _waitingForForcedMainLLM || _compactSummaryInFlight || HasPendingSidecarWork())
             return;
 
         _inspectAutoResumeScheduled = true;
@@ -1827,7 +1949,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             yield break;
         if (_inspectAutoResumeTurnEpoch != turnEpoch || _chatTurnEpoch != turnEpoch)
             yield break;
-        if (_isStreaming || _compactSummaryInFlight || HasPendingSidecarWork())
+        if (_isStreaming || _waitingForForcedMainLLM || _compactSummaryInFlight || HasPendingSidecarWork())
         {
             _inspectAutoResumeScheduled = false;
             TryScheduleInspectAutoResume();
@@ -1885,7 +2007,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // synthetic continue; SendChatTurn will cancel this stale skill-load request.
         if (HasInspectAutoResumePendingForCurrentTurn())
             return;
-        if (_isStreaming || _compactSummaryInFlight || HasPendingSidecarWork())
+        if (_isStreaming || _waitingForForcedMainLLM || _compactSummaryInFlight || HasPendingSidecarWork())
             return;
 
         _skillLoadAutoResumeScheduled = true;
@@ -1905,7 +2027,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             _skillLoadAutoResumeScheduled = false;
             yield break;
         }
-        if (_isStreaming || _compactSummaryInFlight || HasPendingSidecarWork())
+        if (_isStreaming || _waitingForForcedMainLLM || _compactSummaryInFlight || HasPendingSidecarWork())
         {
             _skillLoadAutoResumeScheduled = false;
             TryScheduleSkillLoadAutoResume();
@@ -1925,14 +2047,14 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     {
         if (_sendButton == null) return;
         bool sidecarPending = HasPendingSidecarWork();
-        _sendButton.interactable = !_isStreaming && !sidecarPending;
+        _sendButton.interactable = !_isStreaming && !_waitingForForcedMainLLM && !sidecarPending;
         if (_stopButton != null)
-            _stopButton.interactable = _isStreaming || CountPendingInspectImageJobs() > 0 || HasSkillLoadAutoResumePendingForCurrentTurn();
+            _stopButton.interactable = _isStreaming || _waitingForForcedMainLLM || CountPendingInspectImageJobs() > 0 || HasSkillLoadAutoResumePendingForCurrentTurn();
     }
 
     private void UpdateAttachmentCaptionStatus(bool force = false)
     {
-        if (_statusText == null || _isStreaming || _compactSummaryInFlight || CountPendingInspectImageJobs() > 0)
+        if (_statusText == null || _isStreaming || _waitingForForcedMainLLM || _compactSummaryInFlight || CountPendingInspectImageJobs() > 0)
             return;
 
         int pending = CountPendingAttachmentCaptions();
@@ -1963,7 +2085,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     private void UpdateInspectImageStatus(bool force = false)
     {
-        if (_statusText == null || _isStreaming || _compactSummaryInFlight)
+        if (_statusText == null || _isStreaming || _waitingForForcedMainLLM || _compactSummaryInFlight)
             return;
 
         int pending = CountPendingInspectImageJobs();
@@ -2550,7 +2672,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // Only auto-start now if a send is actually possible. If a reply is mid-flight
         // (or a summary/sidecar job is pending), the loop starts from the next send
         // opportunity instead.
-        if (!_isStreaming && !_compactSummaryInFlight && !HasPendingSidecarWork())
+        if (!_isStreaming && !_waitingForForcedMainLLM && !_compactSummaryInFlight && !HasPendingSidecarWork())
             StartCoroutine(FireAutoContinueNextFrame());
     }
 
@@ -2583,6 +2705,35 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             _autoContinueRemaining = value;
             if (value <= 0) _autoContinueToggle.isOn = false;
         }
+    }
+
+    private bool ValidateForcedMainLLMForSend(bool currentTurnAddsRawImages)
+    {
+        int overrideID = GetMainLLMOverrideInstanceID();
+        if (overrideID == MAIN_LLM_DEFAULT_ID)
+            return true;
+
+        var manager = LLMInstanceManager.Get();
+        var inst = manager != null ? manager.GetInstance(overrideID) : null;
+        if (!IsSelectableMainLLMInstance(inst))
+        {
+            SetMainLLMOverrideInstanceID(MAIN_LLM_DEFAULT_ID);
+            RefreshMainLLMDropdownOptions();
+            AddSystemMessage("Main LLM override was reset to Default because the selected LLM is no longer active.", includeInLLMRecap: false);
+            return true;
+        }
+
+        bool chatAlreadyHasRawImages = _promptManager != null && _promptManager.HasAnyImages();
+        if ((chatAlreadyHasRawImages || currentTurnAddsRawImages) && !inst.supportsVision)
+        {
+            AddSystemMessage(
+                $"Main LLM override is set to {BuildMainLLMOptionText(inst)}, but this chat contains raw image data and that LLM is not marked Supports vision. " +
+                "Select Default, choose a vision-capable main LLM, or clear the chat before using this override.",
+                includeInLLMRecap: false);
+            return false;
+        }
+
+        return true;
     }
 
     private void ResetPerTurnExecutionState()
@@ -2621,7 +2772,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     private void OnSendClicked()
     {
-        if (_isStreaming) return;
+        if (_isStreaming || _waitingForForcedMainLLM) return;
 
         // Slash commands (e.g. "/applystyle ...") are caught and handled LOCALLY -
         // they are never forwarded to the chat AI. Unknown slash text falls through
@@ -2683,6 +2834,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             ? _attachmentZone.GetAttachmentInfo()
             : (IReadOnlyList<ChatImageAttachmentZone.AttachmentInfo>)System.Array.Empty<ChatImageAttachmentZone.AttachmentInfo>();
         int attachedCount = attachmentInfos.Count;
+        bool currentTurnAddsRawImages = attachedCount > 0 && GetIncludeImageData();
+        if (!ValidateForcedMainLLMForSend(currentTurnAddsRawImages))
+            return;
+
         if (string.IsNullOrWhiteSpace(text))
             text = attachedCount > 0 ? "(no caption)" : "(continue)";
 
@@ -2827,11 +2982,91 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             includeInLLMRecap: false);
     }
 
+    private void StartWaitingForForcedMainLLM(LLMInstanceInfo inst, string latestUserMessage)
+    {
+        if (inst == null) return;
+
+        CancelForcedMainLLMWait(showBubble: false);
+        _waitingForForcedMainLLM = true;
+        _waitingForcedMainLLMId = inst.instanceID;
+        _waitingForcedMainLLMName = BuildMainLLMOptionText(inst);
+        SetBusyUI(true, $"Waiting for {_waitingForcedMainLLMName}...");
+        _forcedMainLLMWaitCoroutine = StartCoroutine(WaitForForcedMainLLMCoroutine(inst.instanceID, latestUserMessage, _chatTurnEpoch));
+    }
+
+    private IEnumerator WaitForForcedMainLLMCoroutine(int instanceID, string latestUserMessage, int turnEpoch)
+    {
+        while (_waitingForForcedMainLLM && _chatTurnEpoch == turnEpoch)
+        {
+            var manager = LLMInstanceManager.Get();
+            var inst = manager != null ? manager.GetInstance(instanceID) : null;
+            if (!IsSelectableMainLLMInstance(inst))
+            {
+                SetMainLLMOverrideInstanceID(MAIN_LLM_DEFAULT_ID);
+                RefreshMainLLMDropdownOptions();
+                AddSystemMessage("Main LLM override was reset to Default because the selected LLM is no longer active.", includeInLLMRecap: false);
+                break;
+            }
+
+            if (_promptManager != null && _promptManager.HasAnyImages() && !inst.supportsVision)
+            {
+                AddSystemMessage(
+                    $"Main LLM override is set to {BuildMainLLMOptionText(inst)}, but this chat contains raw image data and that LLM is not marked Supports vision.",
+                    includeInLLMRecap: false);
+                break;
+            }
+
+            if (TryFindFreeReplica(inst, out _))
+            {
+                _waitingForForcedMainLLM = false;
+                _forcedMainLLMWaitCoroutine = null;
+                _waitingForcedMainLLMId = -1;
+                _waitingForcedMainLLMName = "";
+                SetBusyUI(false, "Starting LLM...");
+                SendChatTurn(latestUserMessage, instanceID);
+                yield break;
+            }
+
+            _waitingForcedMainLLMName = BuildMainLLMOptionText(inst);
+            if (_statusText != null)
+                _statusText.text = $"Waiting for {_waitingForcedMainLLMName}...";
+            yield return new WaitForSecondsRealtime(0.5f);
+        }
+
+        _waitingForForcedMainLLM = false;
+        _forcedMainLLMWaitCoroutine = null;
+        _waitingForcedMainLLMId = -1;
+        _waitingForcedMainLLMName = "";
+        if (!_isStreaming)
+            SetBusyUI(false, "Idle");
+    }
+
+    private void CancelForcedMainLLMWait(bool showBubble)
+    {
+        bool wasWaiting = _waitingForForcedMainLLM || _forcedMainLLMWaitCoroutine != null;
+        if (_forcedMainLLMWaitCoroutine != null)
+        {
+            try { StopCoroutine(_forcedMainLLMWaitCoroutine); } catch { }
+            _forcedMainLLMWaitCoroutine = null;
+        }
+
+        _waitingForForcedMainLLM = false;
+        _waitingForcedMainLLMId = -1;
+        _waitingForcedMainLLMName = "";
+
+        if (!wasWaiting) return;
+        if (showBubble)
+            AddSystemMessage("Stopped waiting for the forced main LLM.", includeInLLMRecap: false);
+        if (!_isStreaming)
+            SetBusyUI(false, showBubble ? "Stopped waiting" : "Idle");
+    }
+
     private void OnStopClicked()
     {
         bool inspectPending = CountPendingInspectImageJobs() > 0;
         bool skillResumePending = HasSkillLoadAutoResumePendingForCurrentTurn();
-        if (!_isStreaming && !inspectPending && !skillResumePending) return;
+        bool forcedWaitPending = _waitingForForcedMainLLM;
+        if (!_isStreaming && !inspectPending && !skillResumePending && !forcedWaitPending) return;
         // Stop fully ends auto-repeat: uncheck the box (its handler also zeroes the
         // counter) so it doesn't quietly resume on the next reply.
         _autoContinueRemaining = 0;
@@ -2841,9 +3076,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (inspectPending)
             CancelAllInspectImageJobs(showBubble: true);
 
+        if (forcedWaitPending)
+            CancelForcedMainLLMWait(showBubble: true);
+
         if (!_isStreaming)
         {
-            SetBusyUI(false, inspectPending ? "Stopped inspection" : "Stopped");
+            SetBusyUI(false, inspectPending ? "Stopped inspection" : (forcedWaitPending ? "Stopped waiting" : "Stopped"));
             return;
         }
 
@@ -2898,6 +3136,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (_autoContinueToggle != null) _autoContinueToggle.isOn = false;
         CancelAllAttachmentCaptions();
         CancelAllInspectImageJobs(showBubble: false);
+        CancelForcedMainLLMWait(showBubble: false);
         CancelSkillLoadAutoResume();
         // Discard any in-flight compact-summary; if its response landed after this
         // reset it would ReplaceInteractions() the old history right back in.
@@ -3318,11 +3557,15 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     // ---------- LLM provider routing (mirrors PicMain.call_llm) ----------
 
-    private void SendChatTurn(string latestUserMessage = null)
+    private void SendChatTurn(string latestUserMessage = null, int queuedForcedMainLLMId = QUEUED_MAIN_LLM_OVERRIDE_UNSET)
     {
-        CancelInspectAutoResume();
-        CancelSkillLoadAutoResume();
-        _chatTurnEpoch++;
+        bool isQueuedForcedDispatch = queuedForcedMainLLMId != QUEUED_MAIN_LLM_OVERRIDE_UNSET;
+        if (!isQueuedForcedDispatch)
+        {
+            CancelInspectAutoResume();
+            CancelSkillLoadAutoResume();
+            _chatTurnEpoch++;
+        }
 
         var settingsMgr = LLMSettingsManager.Get();
         if (settingsMgr == null)
@@ -3334,20 +3577,53 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         var instanceMgr = LLMInstanceManager.Get();
         int llmReplicaIndex = 0;
         bool isVisionJob = _promptManager != null && _promptManager.HasAnyImages();
-        // The main chat turn is a BIG job - it carries the full system prompt plus
-        // the whole conversation - so BigJobsOnly instances accept it and
-        // SmallJobsOnly instances (meant for caption/delegation one-shots) don't
-        // steal it. This also keeps the chat on one instance when the user splits
-        // roles via job modes, which is what lets that server's prompt cache work.
-        int llmInstanceID = instanceMgr?.GetFreeLLM(isSmallJob: false, isVisionJob: isVisionJob, out llmReplicaIndex) ?? -1;
+        int requestedMainLLMOverrideID = isQueuedForcedDispatch ? queuedForcedMainLLMId : GetMainLLMOverrideInstanceID();
+        int llmInstanceID = -1;
+
+        if (requestedMainLLMOverrideID != MAIN_LLM_DEFAULT_ID && instanceMgr != null)
+        {
+            var forcedInstance = instanceMgr.GetInstance(requestedMainLLMOverrideID);
+            if (!IsSelectableMainLLMInstance(forcedInstance))
+            {
+                SetMainLLMOverrideInstanceID(MAIN_LLM_DEFAULT_ID);
+                RefreshMainLLMDropdownOptions();
+                AddSystemMessage("Main LLM override was reset to Default because the selected LLM is no longer active.", includeInLLMRecap: false);
+            }
+            else if (isVisionJob && !forcedInstance.supportsVision)
+            {
+                AddSystemMessage(
+                    $"Main LLM override is set to {BuildMainLLMOptionText(forcedInstance)}, but this chat contains raw image data and that LLM is not marked Supports vision.",
+                    includeInLLMRecap: false);
+                return;
+            }
+            else if (TryFindFreeReplica(forcedInstance, out llmReplicaIndex))
+            {
+                llmInstanceID = forcedInstance.instanceID;
+            }
+            else
+            {
+                StartWaitingForForcedMainLLM(forcedInstance, latestUserMessage);
+                return;
+            }
+        }
+
+        if (llmInstanceID < 0)
+        {
+            // The main chat turn is a BIG job - it carries the full system prompt plus
+            // the whole conversation - so BigJobsOnly instances accept it and
+            // SmallJobsOnly instances (meant for caption/delegation one-shots) don't
+            // steal it. This also keeps the chat on one instance when the user splits
+            // roles via job modes, which is what lets that server's prompt cache work.
+            llmInstanceID = instanceMgr?.GetFreeLLM(isSmallJob: false, isVisionJob: isVisionJob, out llmReplicaIndex) ?? -1;
+
+            if (llmInstanceID < 0 && instanceMgr != null && instanceMgr.GetInstanceCount() > 0)
+            {
+                llmInstanceID = instanceMgr.GetLeastBusyLLM(isSmallJob: false, isVisionJob: isVisionJob, out llmReplicaIndex);
+            }
+        }
 
         // Reset the streaming-action parser for this turn (counters + buffer state).
         _actionParser?.Reset();
-
-        if (llmInstanceID < 0 && instanceMgr != null && instanceMgr.GetInstanceCount() > 0)
-        {
-            llmInstanceID = instanceMgr.GetLeastBusyLLM(isSmallJob: false, isVisionJob: isVisionJob, out llmReplicaIndex);
-        }
 
         LLMInstanceInfo llmInstance = llmInstanceID >= 0 ? instanceMgr?.GetInstance(llmInstanceID) : null;
 
@@ -3398,7 +3674,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _streamFirstTokenTime = 0f;
         _streamStatusNextRefresh = 0f;
         _streamSpinnerStep = 0;
-        SetBusyUI(true, $"{StreamSpinnerFrames[0]} Talking to LLM...");
+        string activeLLMName = llmInstance != null ? BuildMainLLMOptionText(llmInstance) : "LLM";
+        SetBusyUI(true, $"{StreamSpinnerFrames[0]} Talking to {activeLLMName}...");
 
         AddAssistantBubble("");
 
@@ -4174,6 +4451,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // toggled Auto off, cleared, or kicked off a manual send themselves).
         if (_autoContinueToggle == null || !_autoContinueToggle.isOn) yield break;
         if (_isStreaming) yield break;
+        if (_waitingForForcedMainLLM) yield break;
         if (HasPendingSidecarWork()) yield break;
         if (_autoContinueRemaining <= 0) yield break;
         // Consume one repeat as we fire it, so N counts total sends regardless of
@@ -4208,7 +4486,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     private void SetBusyUI(bool busy, string status)
     {
-        // _isStreaming is updated alongside this call (see SendChatTurn / FinalizeAssistantTurn);
+        // _isStreaming / _waitingForForcedMainLLM are updated alongside this call
+        // (see SendChatTurn / StartWaitingForForcedMainLLM / FinalizeAssistantTurn);
         // RecomputeSendInteractable also factors in any pending sidecar jobs.
         RecomputeSendInteractable();
         // Keep the input field interactable while the LLM is streaming so the user (a)
@@ -4217,7 +4496,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // OnSendClicked still prevents double-send.
         if (_inputField != null) _inputField.interactable = true;
         if (_clearButton != null) _clearButton.interactable = true;
-        if (_stopButton != null) _stopButton.interactable = busy || CountPendingInspectImageJobs() > 0 || HasSkillLoadAutoResumePendingForCurrentTurn();
+        if (_stopButton != null) _stopButton.interactable = busy || _waitingForForcedMainLLM || CountPendingInspectImageJobs() > 0 || HasSkillLoadAutoResumePendingForCurrentTurn();
         if (_statusText != null) _statusText.text = status;
     }
 
@@ -4291,6 +4570,129 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         int llmActive = im != null ? im.GetTotalActiveTaskCount() : 0;
         int llmCapacity = im != null ? im.GetTotalLLMCapacity() : 0;
         _statusPillText.text = $"GPUs {gpuBusy}/{gpuTotal} · LLMs {llmActive}/{llmCapacity}";
+    }
+
+    private void SubscribeToLLMInstanceChanges()
+    {
+        var manager = LLMInstanceManager.Get();
+        if (_subscribedInstanceManager == manager)
+            return;
+
+        UnsubscribeFromLLMInstanceChanges();
+        _subscribedInstanceManager = manager;
+        if (_subscribedInstanceManager != null)
+            _subscribedInstanceManager.InstancesChanged += OnMainLLMInstancesChanged;
+        RefreshMainLLMDropdownOptions();
+    }
+
+    private void UnsubscribeFromLLMInstanceChanges()
+    {
+        if (_subscribedInstanceManager != null)
+            _subscribedInstanceManager.InstancesChanged -= OnMainLLMInstancesChanged;
+        _subscribedInstanceManager = null;
+    }
+
+    private void OnMainLLMInstancesChanged()
+    {
+        RefreshMainLLMDropdownOptions();
+        UpdateStatusPill();
+    }
+
+    private void RefreshMainLLMDropdownOptions()
+    {
+        if (_mainLLMDropdown == null) return;
+
+        _mainLLMDropdownInstanceIds.Clear();
+        var options = new List<TMP_Dropdown.OptionData>();
+        options.Add(new TMP_Dropdown.OptionData("Default"));
+        _mainLLMDropdownInstanceIds.Add(MAIN_LLM_DEFAULT_ID);
+
+        int savedId = GetMainLLMOverrideInstanceID();
+        int selectedIndex = 0;
+        var manager = LLMInstanceManager.Get();
+        if (manager != null)
+        {
+            var instances = manager.GetAllInstances();
+            for (int i = 0; i < instances.Count; i++)
+            {
+                var inst = instances[i];
+                if (!IsSelectableMainLLMInstance(inst))
+                    continue;
+
+                _mainLLMDropdownInstanceIds.Add(inst.instanceID);
+                options.Add(new TMP_Dropdown.OptionData(BuildMainLLMOptionText(inst)));
+                if (inst.instanceID == savedId)
+                    selectedIndex = _mainLLMDropdownInstanceIds.Count - 1;
+            }
+        }
+
+        if (savedId != MAIN_LLM_DEFAULT_ID && selectedIndex == 0)
+            SetMainLLMOverrideInstanceID(MAIN_LLM_DEFAULT_ID);
+
+        _mainLLMDropdown.ClearOptions();
+        _mainLLMDropdown.AddOptions(options);
+        _mainLLMDropdown.SetValueWithoutNotify(selectedIndex);
+        _mainLLMDropdown.RefreshShownValue();
+        UpdateMainLLMCaptionOverlay(selectedIndex);
+    }
+
+    private void OnMainLLMDropdownChanged(int index)
+    {
+        if (index < 0 || index >= _mainLLMDropdownInstanceIds.Count)
+            return;
+        SetMainLLMOverrideInstanceID(_mainLLMDropdownInstanceIds[index]);
+        UpdateMainLLMCaptionOverlay(index);
+    }
+
+    private void UpdateMainLLMCaptionOverlay(int index)
+    {
+        if (_mainLLMCaptionText == null || _mainLLMDropdown == null)
+            return;
+
+        string text = "Default";
+        if (index >= 0 && index < _mainLLMDropdown.options.Count && _mainLLMDropdown.options[index] != null)
+            text = _mainLLMDropdown.options[index].text;
+        _mainLLMCaptionText.text = string.IsNullOrEmpty(text) ? "Default" : text;
+    }
+
+    private static bool IsSelectableMainLLMInstance(LLMInstanceInfo inst)
+    {
+        return inst != null && inst.isActive && inst.maxConcurrentTasks > 0 && inst.settings != null;
+    }
+
+    private static string BuildMainLLMOptionText(LLMInstanceInfo inst)
+    {
+        if (inst == null) return "Unknown";
+
+        string name = string.IsNullOrWhiteSpace(inst.name) ? inst.providerType.ToString() : inst.name.Trim();
+        string model = inst.settings != null ? (inst.settings.selectedModel ?? "").Trim() : "";
+        if (string.IsNullOrEmpty(model))
+            model = inst.providerType.ToString();
+
+        string text = string.Equals(name, model, StringComparison.OrdinalIgnoreCase)
+            ? name
+            : $"{name} ({ShortenMainLLMText(model, 30)})";
+        return ShortenMainLLMText(text, 48);
+    }
+
+    private static string ShortenMainLLMText(string text, int maxChars)
+    {
+        if (string.IsNullOrEmpty(text) || text.Length <= maxChars)
+            return text ?? "";
+        if (maxChars <= 3)
+            return text.Substring(0, maxChars);
+        return text.Substring(0, maxChars - 3) + "...";
+    }
+
+    private static int GetMainLLMOverrideInstanceID()
+    {
+        return PlayerPrefs.GetInt(PREFS_MAIN_LLM_INSTANCE_ID, MAIN_LLM_DEFAULT_ID);
+    }
+
+    private static void SetMainLLMOverrideInstanceID(int instanceID)
+    {
+        PlayerPrefs.SetInt(PREFS_MAIN_LLM_INSTANCE_ID, instanceID);
+        PlayerPrefs.Save();
     }
 
     /// <summary>
@@ -6152,7 +6554,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         // Attachment captioning can run before the user sends, so give it the same
         // "still working" treatment as chat streaming and compact-summary requests.
-        if (!_isStreaming && !_compactSummaryInFlight)
+        if (!_isStreaming && !_waitingForForcedMainLLM && !_compactSummaryInFlight)
         {
             UpdateInspectImageStatus();
             UpdateAttachmentCaptionStatus();
@@ -6162,6 +6564,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (Time.unscaledTime >= _statusPillNextRefresh)
         {
             _statusPillNextRefresh = Time.unscaledTime + STATUS_PILL_REFRESH_INTERVAL;
+            SubscribeToLLMInstanceChanges();
             RefreshHeaderTitle();
             UpdateStatusPill();
         }

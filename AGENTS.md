@@ -117,6 +117,7 @@ ComfyUI servers must be reachable over HTTP and should be started with `--listen
 ### AI Chat
 
 - `Assets/_Script/LLM/AIChatPanel.cs` builds the programmatic chat UI and routes chat requests through the same LLM instance/provider stack.
+- AI Chat has a footer `Main LLM` dropdown. `Default` preserves normal big-job routing; selecting an active instance forces only the main chat turn to that instance, ignoring `jobMode`/`visionOnly` text gates and waiting for that instance if it is busy. Sidecar jobs such as attachment captions, `inspect_image`, compact summaries, `/applystyle` prompt rewrites, and skill delegation keep their own routing. If raw image data is in chat history, the forced main instance still must have `supportsVision`.
 - `Assets/_Script/LLM/AIChat/Context/ChatContextBuilder.cs` builds the stable system prompt from `aichat/main_prompt.txt`, skill summaries, and action protocol instructions; the volatile per-turn state block adds GPU state plus compact chat-image provenance/captions.
 - `Assets/_Script/LLM/AIChat/Skills/SkillManager.cs` loads `aichat/skills/*.md` plus prompt files in `aichat/`.
 - `SkillActionParser` and `SkillActionExecutor` parse and execute `<aitools_action .../>` tags. Image/movie skills reuse `PicMain.RunPresetByName()` and the existing preset/job pipeline.
