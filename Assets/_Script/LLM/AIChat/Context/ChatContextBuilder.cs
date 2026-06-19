@@ -27,11 +27,12 @@ namespace AITools.AIChat.Context
     /// prefix caching) can skip re-prefilling it AND the conversation history that
     /// follows it. It only changes when the user edits the prompt/skill files.
     /// Order:
-    ///   1. main_prompt.txt body (user-editable persona + house rules)
-    ///   2. Skill summaries (one line per skill; full bodies are injected separately
+    ///   1. pre_prompt.txt body (optional top-of-system-prompt framing)
+    ///   2. main_prompt.txt body (user-editable persona + house rules)
+    ///   3. Skill summaries (one line per skill; full bodies are injected separately
     ///      by AIChatPanel when an autoload trigger appears)
-    ///   3. Action protocol footer (re-iterates the XML invocation rules)
-    ///   4. post_prompt.txt body (user's "last word" overrides)
+    ///   4. Action protocol footer (re-iterates the XML invocation rules)
+    ///   5. post_prompt.txt body (user's "last word" overrides)
     ///
     /// BuildCurrentStateBlock() - everything that CHANGES between turns (GPU
     /// busy/idle state, the numbered chat-image list with compact provenance and
@@ -66,7 +67,15 @@ namespace AITools.AIChat.Context
         {
             var sb = new StringBuilder();
 
-            // 1. Main prompt body (user-editable).
+            // 1. Pre-prompt body. It intentionally comes before the normal main prompt.
+            string pre = _skills?.PrePrompt ?? "";
+            if (!string.IsNullOrEmpty(pre))
+            {
+                sb.AppendLine(pre.TrimEnd());
+                sb.AppendLine();
+            }
+
+            // 2. Main prompt body (user-editable).
             string main = _skills?.MainPrompt ?? "";
             if (!string.IsNullOrEmpty(main))
             {
@@ -74,14 +83,14 @@ namespace AITools.AIChat.Context
                 sb.AppendLine();
             }
 
-            // 2. Skill summaries.
+            // 3. Skill summaries.
             if (_skills != null)
             {
                 sb.Append(_skills.BuildSkillSummariesBlock());
                 sb.AppendLine();
             }
 
-            // 3. Action protocol footer. Kept short on purpose - the per-skill Template
+            // 4. Action protocol footer. Kept short on purpose - the per-skill Template
             // lines above already show the EXACT call syntax with required attributes.
             sb.AppendLine("ACTION PROTOCOL:");
             sb.AppendLine("- To call a skill, copy its Template line above EXACTLY, then change");
@@ -111,7 +120,7 @@ namespace AITools.AIChat.Context
             sb.AppendLine("  synthetic continue turn so you can use it. If you call read_skill,");
             sb.AppendLine("  do not ask the user to press Send/Continue and do not call it again.");
 
-            // 4. User's post-prompt overrides go LAST so they have the strongest "recency"
+            // 5. User's post-prompt overrides go LAST so they have the strongest "recency"
             // effect on the model. Lets the user dynamically tweak behavior via
             // aichat/post_prompt.txt (or aichat/test_post_prompt.txt) without editing any
             // code or skill file. No banner or filename is emitted - the model sees only
@@ -127,8 +136,8 @@ namespace AITools.AIChat.Context
 
             // Final pass: substitute every {{Preset Name.txt}} sentinel with
             // <prefix>Preset Name.txt (prefix from PlayerPrefs, empty by default).
-            // Done at the end so it covers main_prompt body, per-skill Templates,
-            // and the action protocol footer in one shot.
+            // Done at the end so it covers prompt bodies, per-skill Templates, and
+            // the action protocol footer in one shot.
             return SkillManager.ApplyPresetPrefix(sb.ToString());
         }
 

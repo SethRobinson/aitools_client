@@ -32,7 +32,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     // ---- Skills system: system prompt + LLM-callable actions ----
     // Created in CreateUI(); torn down with the panel. SkillManager loads aichat/skills/*.md
-    // and aichat/main_prompt.txt; ChatContextBuilder builds the STABLE system prompt
+    // and aichat prompt files; ChatContextBuilder builds the STABLE system prompt
     // (cache-friendly - it only changes when prompt/skill files change) plus the
     // volatile CURRENT STATE block (GPU busy/idle, chat-image captions) that gets
     // appended to each outgoing user message at send time; SkillActionParser extracts
@@ -468,7 +468,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         {
             _instance.SetVisible(true);
             _instance.RefreshHeaderTitle();
-            // Reload aichat config in case the user edited a skill or main_prompt.txt
+            // Reload aichat config in case the user edited a skill or prompt file.
             // outside the app between toggles. Cheap.
             _instance._skillManager?.Reload();
             _instance.SubscribeToLLMInstanceChanges();
@@ -575,7 +575,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         SubscribeToLLMInstanceChanges();
         RefreshMainLLMDropdownOptions();
 
-        // Skills system. Loads aichat/main_prompt.txt and aichat/skills/*.md, wires up
+        // Skills system. Loads aichat prompt files and aichat/skills/*.md, wires up
         // the parser->executor pipeline. Parser fires per parsed tag; executor reaches
         // back into the panel via the IChatHost interface to spawn pics, inject system
         // messages, etc.
@@ -4535,7 +4535,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     {
         AIChatSettingsPanel.Show(_skillManager, () =>
         {
-            // Reload from disk so any user edits to main_prompt.txt or skill files take
+            // Reload from disk so any user edits to prompt or skill files take
             // effect on the very next turn (rebuilt by ChatContextBuilder.Build()).
             _skillManager?.Reload();
             _promptManager?.RemoveInteractionsByInternalTag(AUTOLOAD_SKILL_CONTEXT_TAG);
@@ -5854,7 +5854,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     /// Global prefix prepended to every {{Preset Name.txt}} sentinel in the system
     /// prompt before it goes to the LLM. Empty string = use bare names. Lets the
     /// user swap in a parallel set of presets (e.g. "test_") without editing any
-    /// skill md or main_prompt - all wrapped names track in lockstep.
+    /// skill md or prompt files - all wrapped names track in lockstep.
     /// </summary>
     public static string GetPresetPrefix()
     {

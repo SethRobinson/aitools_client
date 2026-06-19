@@ -405,7 +405,7 @@ namespace AITools.AIChat.UI
                 kPrefixLabelW,
                 kPrefixInputW,
                 new Vector2(x, kSettingsRowY),
-                "Optional string prepended to every {{preset_name}} marker found in skills/main_prompt at chat-build time. Lets you switch families of presets (e.g. 'test_' vs production). Empty = use bare names.",
+                "Optional string prepended to every {{preset_name}} marker found in skills and prompt files at chat-build time. Lets you switch families of presets and test_ prompt overrides. Empty = use bare names.",
                 out _presetPrefixField);
             _presetPrefixField.contentType = TMP_InputField.ContentType.Standard;
             _presetPrefixField.characterLimit = 32;

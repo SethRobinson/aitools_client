@@ -28,6 +28,20 @@ namespace AITools.AIChat.Skills
         public string SkillsDirectory { get; private set; }
 
         /// <summary>
+        /// Absolute path to the aichat/pre_prompt.txt file (prepended at the START of
+        /// the system prompt before main_prompt.txt). Lets the user add top-priority
+        /// framing without editing the main prompt or any skill file.
+        /// </summary>
+        public string PrePromptPath { get; private set; }
+
+        /// <summary>
+        /// Absolute path to the aichat/test_pre_prompt.txt override. While the preset
+        /// prefix is "test_" and this file exists it COMPLETELY REPLACES
+        /// <see cref="PrePromptPath"/>'s contents. Falls back to pre_prompt.txt otherwise.
+        /// </summary>
+        public string TestPrePromptPath { get; private set; }
+
+        /// <summary>
         /// Absolute path to the aichat/main_prompt.txt file.
         /// </summary>
         public string MainPromptPath { get; private set; }
@@ -83,6 +97,18 @@ namespace AITools.AIChat.Skills
         public string TestCaptionPromptPath { get; private set; }
 
         /// <summary>
+        /// Cached body of either aichat/test_pre_prompt.txt (if the preset prefix is
+        /// "test_" and it exists) or aichat/pre_prompt.txt. Empty when neither file exists.
+        /// </summary>
+        public string PrePrompt { get; private set; } = "";
+
+        /// <summary>
+        /// True if the test override (aichat/test_pre_prompt.txt) was actually used
+        /// for the most recent <see cref="Reload"/>.
+        /// </summary>
+        public bool PrePromptIsTestOverride { get; private set; }
+
+        /// <summary>
         /// Cached body of either aichat/test_main_prompt.txt (if the preset prefix is
         /// "test_" and that file exists) or aichat/main_prompt.txt (refreshed each
         /// <see cref="Reload"/> call).
@@ -128,6 +154,8 @@ namespace AITools.AIChat.Skills
         {
             string root = GetAIChatRoot();
             SkillsDirectory = Path.Combine(root, "skills");
+            PrePromptPath = Path.Combine(root, "pre_prompt.txt");
+            TestPrePromptPath = Path.Combine(root, "test_pre_prompt.txt");
             MainPromptPath = Path.Combine(root, "main_prompt.txt");
             TestMainPromptPath = Path.Combine(root, "test_main_prompt.txt");
             PostPromptPath = Path.Combine(root, "post_prompt.txt");
@@ -148,14 +176,16 @@ namespace AITools.AIChat.Skills
         public bool HasSkill(string id) => GetById(id) != null;
 
         /// <summary>
-        /// (Re)load main_prompt.txt and every <c>*.md</c> under aichat/skills/. Logs (but
-        /// does not throw) on individual file errors so one bad skill doesn't kill the
-        /// rest. Safe to call repeatedly.
+        /// (Re)load prompt files and every <c>*.md</c> under aichat/skills/. Logs (but
+        /// does not throw) on individual file errors so one bad prompt/skill doesn't
+        /// kill the rest. Safe to call repeatedly.
         /// </summary>
         public void Reload()
         {
             _skills.Clear();
             _byId.Clear();
+            PrePrompt = "";
+            PrePromptIsTestOverride = false;
             MainPrompt = "";
             MainPromptIsTestOverride = false;
             PostPrompt = "";
@@ -164,6 +194,25 @@ namespace AITools.AIChat.Skills
             CaptionPromptIsTestOverride = false;
 
             EnsureDirectoryExists();
+
+            // Pre-prompt. Same test_ override behavior as post_prompt, but inserted at
+            // the very top of the stable system prompt before main_prompt.txt.
+            try
+            {
+                if (IsTestPresetPrefixActive() && File.Exists(TestPrePromptPath))
+                {
+                    PrePrompt = File.ReadAllText(TestPrePromptPath);
+                    PrePromptIsTestOverride = true;
+                }
+                else if (File.Exists(PrePromptPath))
+                {
+                    PrePrompt = File.ReadAllText(PrePromptPath);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("SkillManager: failed to read pre_prompt: " + ex.Message);
+            }
 
             // Main prompt. While the preset prefix is "test_" we prefer test_main_prompt.txt
             // so the whole "test_" family (presets + system prompt) swaps in as a unit.
@@ -362,9 +411,7 @@ namespace AITools.AIChat.Skills
 
         /// <summary>
         /// True when the global preset prefix is exactly "test_" (case-insensitive) - the
-        /// marker that swaps in the parallel "test_" family of presets. When set, the main
-        /// system prompt is read from / written to <see cref="TestMainPromptPath"/> instead
-        /// of <see cref="MainPromptPath"/>.
+        /// marker that swaps in the parallel "test_" family of presets and prompt files.
         /// </summary>
         public static bool IsTestPresetPrefixActive()
         {
@@ -383,8 +430,11 @@ namespace AITools.AIChat.Skills
         {
             string prefix = PlayerPrefs.GetString(PresetPrefixPrefsKey, "");
             if (string.IsNullOrEmpty(prefix))
-                return "Preset prefix: none - using the default prompt files (main_prompt.txt, etc.).";
+                return "Preset prefix: none - using the default prompt files (pre_prompt.txt, main_prompt.txt, etc.).";
 
+            string preFile = PrePromptIsTestOverride
+                ? Path.GetFileName(TestPrePromptPath)
+                : (string.IsNullOrEmpty(PrePrompt) ? "(none)" : Path.GetFileName(PrePromptPath));
             string mainFile = MainPromptIsTestOverride
                 ? Path.GetFileName(TestMainPromptPath)
                 : (File.Exists(MainPromptPath) ? Path.GetFileName(MainPromptPath) : "(none)");
@@ -398,7 +448,7 @@ namespace AITools.AIChat.Skills
             // No angle-bracket placeholder here - the bubble renders through TMP rich
             // text, which would swallow a literal <name> as an unknown tag.
             return $"Preset prefix '{prefix}' active - preset names are prefixed with '{prefix}'. " +
-                   $"Prompt files in use: system={mainFile}, post={postFile}, caption={captionFile}.";
+                   $"Prompt files in use: pre={preFile}, system={mainFile}, post={postFile}, caption={captionFile}.";
         }
 
         // <c>{{Preset Name.txt}}</c> sentinel - inner text excludes braces. Compiled
