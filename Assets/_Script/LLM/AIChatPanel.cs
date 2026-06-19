@@ -281,9 +281,20 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         public Coroutine watchdog;
     }
 
+    private class AttachmentCaptionRequest
+    {
+        public int id;
+        public byte[] png;
+    }
+
     // Outstanding caption jobs keyed by attachment id. Populated when an attachment
     // arrives, drained either by completion or by the user clicking the X.
     private readonly Dictionary<int, CaptionJob> _captionJobs = new Dictionary<int, CaptionJob>();
+    private readonly List<AttachmentCaptionRequest> _attachmentCaptionQueue = new List<AttachmentCaptionRequest>();
+    private float _attachmentCaptionStartTime = 0f;
+    private float _attachmentCaptionNextDispatch = 0f;
+    private float _attachmentCaptionStatusNextRefresh = 0f;
+    private int _attachmentCaptionSpinnerStep = 0;
 
     // Conversation
     private GPTPromptManager _promptManager;
@@ -439,6 +450,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     private void OnDestroy()
     {
+        CancelAllAttachmentCaptions();
         // The ChatImageAttachmentZone component on _panelRoot auto-deregisters and frees
         // its textures in its own OnDestroy.
         _instance = null;
@@ -1279,18 +1291,21 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private void OnAttachmentAdded(ChatImageAttachmentZone.AttachmentInfo info)
     {
         if (_attachmentZone == null) return;
-        int id = info.id;
-        // Reflect the new in-flight caption count on the Send button immediately.
-        RecomputeSendInteractable();
-        var job = TryCaptionBytes(info.bytes, result =>
+        _attachmentCaptionQueue.Add(new AttachmentCaptionRequest
         {
-            _captionJobs.Remove(id);
-            // SetCaption is keyed by id, so it's safe even if earlier attachments
-            // were removed and the visible index has shifted in the meantime.
-            if (_attachmentZone != null)
-                _attachmentZone.SetCaption(id, result.shortCaption, result.longCaption);
+            id = info.id,
+            png = info.bytes
         });
-        if (job != null) _captionJobs[id] = job;
+        if (_attachmentCaptionStartTime <= 0f)
+        {
+            _attachmentCaptionStartTime = Time.unscaledTime;
+            _attachmentCaptionStatusNextRefresh = 0f;
+            _attachmentCaptionSpinnerStep = 0;
+        }
+
+        RecomputeSendInteractable();
+        ProcessAttachmentCaptionQueue();
+        UpdateAttachmentCaptionStatus(force: true);
     }
 
     /// <summary>
@@ -1303,9 +1318,22 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     /// </summary>
     private void OnCaptionCancelled(int attachmentId)
     {
-        if (!_captionJobs.TryGetValue(attachmentId, out var job)) return;
-        _captionJobs.Remove(attachmentId);
-        if (job.completed) return;  // race: onDone or watchdog already finished it
+        RemoveQueuedAttachmentCaption(attachmentId);
+
+        if (_captionJobs.TryGetValue(attachmentId, out var job))
+        {
+            _captionJobs.Remove(attachmentId);
+            CancelCaptionJob(job);
+        }
+
+        RecomputeSendInteractable();
+        ProcessAttachmentCaptionQueue();
+        UpdateAttachmentCaptionStatus(force: true);
+    }
+
+    private void CancelCaptionJob(CaptionJob job)
+    {
+        if (job == null || job.completed) return;  // race: onDone or watchdog already finished it
         job.cancelled = true;
         job.completed = true;
         if (job.watchdog != null)
@@ -1320,6 +1348,89 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         }
     }
 
+    private void CancelAllAttachmentCaptions()
+    {
+        _attachmentCaptionQueue.Clear();
+
+        if (_captionJobs.Count > 0)
+        {
+            var jobs = new List<CaptionJob>(_captionJobs.Values);
+            _captionJobs.Clear();
+            foreach (var job in jobs)
+                CancelCaptionJob(job);
+        }
+
+        _attachmentCaptionStartTime = 0f;
+        _attachmentCaptionNextDispatch = 0f;
+        _attachmentCaptionStatusNextRefresh = 0f;
+        RecomputeSendInteractable();
+    }
+
+    private void RemoveQueuedAttachmentCaption(int attachmentId)
+    {
+        for (int i = _attachmentCaptionQueue.Count - 1; i >= 0; i--)
+        {
+            if (_attachmentCaptionQueue[i] != null && _attachmentCaptionQueue[i].id == attachmentId)
+                _attachmentCaptionQueue.RemoveAt(i);
+        }
+    }
+
+    private int CountPendingAttachmentCaptions()
+    {
+        return _attachmentZone != null ? _attachmentZone.CountInFlightCaptions() : 0;
+    }
+
+    private void ProcessAttachmentCaptionQueue()
+    {
+        if (_attachmentZone == null || _attachmentCaptionQueue.Count == 0)
+            return;
+
+        var instanceMgr = LLMInstanceManager.Get();
+        while (_attachmentCaptionQueue.Count > 0)
+        {
+            var req = _attachmentCaptionQueue[0];
+            if (req == null || !_attachmentZone.HasAttachment(req.id))
+            {
+                _attachmentCaptionQueue.RemoveAt(0);
+                continue;
+            }
+
+            if (instanceMgr != null && instanceMgr.GetInstanceCount() > 0)
+            {
+                int freeId = instanceMgr.GetFreeLLM(isSmallJob: false, isVisionJob: true, out _);
+                if (freeId < 0 && instanceMgr.GetLeastBusyLLM(isSmallJob: false, isVisionJob: true) >= 0)
+                    break; // A vision route exists; wait for capacity instead of over-subscribing.
+            }
+
+            _attachmentCaptionQueue.RemoveAt(0);
+            int id = req.id;
+            var job = TryCaptionBytes(req.png, result =>
+            {
+                _captionJobs.Remove(id);
+                if (_attachmentZone != null)
+                    _attachmentZone.SetCaption(id, result.shortCaption, result.longCaption);
+                RecomputeSendInteractable();
+                ProcessAttachmentCaptionQueue();
+                UpdateAttachmentCaptionStatus(force: true);
+            }, requireFreeSlot: true);
+
+            if (job == null)
+            {
+                // Capacity disappeared between the preflight check and dispatch.
+                _attachmentCaptionQueue.Insert(0, req);
+                break;
+            }
+
+            if (!job.completed)
+            {
+                _captionJobs[id] = job;
+                _attachmentZone.SetCaptionState(id, ChatImageAttachmentZone.CaptionState.Captioning);
+            }
+        }
+
+        RecomputeSendInteractable();
+    }
+
     /// <summary>
     /// Recompute Send button interactability from both the streaming flag AND
     /// the count of in-flight attachment captions. Call this whenever either
@@ -1328,8 +1439,39 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private void RecomputeSendInteractable()
     {
         if (_sendButton == null) return;
-        bool captionsPending = _attachmentZone != null && _attachmentZone.CountInFlightCaptions() > 0;
+        bool captionsPending = CountPendingAttachmentCaptions() > 0;
         _sendButton.interactable = !_isStreaming && !captionsPending;
+    }
+
+    private void UpdateAttachmentCaptionStatus(bool force = false)
+    {
+        if (_statusText == null || _isStreaming || _compactSummaryInFlight)
+            return;
+
+        int pending = CountPendingAttachmentCaptions();
+        if (pending > 0)
+        {
+            if (_attachmentCaptionStartTime <= 0f)
+                _attachmentCaptionStartTime = Time.unscaledTime;
+            if (!force && Time.unscaledTime < _attachmentCaptionStatusNextRefresh)
+                return;
+
+            _attachmentCaptionStatusNextRefresh = Time.unscaledTime + STREAM_STATUS_INTERVAL;
+            _attachmentCaptionSpinnerStep = (_attachmentCaptionSpinnerStep + 1) % StreamSpinnerFrames.Length;
+
+            int total = Mathf.Max(pending, _attachmentZone != null ? _attachmentZone.Count : pending);
+            int done = Mathf.Max(0, total - pending);
+            float elapsed = Time.unscaledTime - _attachmentCaptionStartTime;
+            _statusText.text = $"{StreamSpinnerFrames[_attachmentCaptionSpinnerStep]} Captioning {done}/{total}   {elapsed:F0}s";
+            return;
+        }
+
+        if (_attachmentCaptionStartTime > 0f)
+        {
+            _attachmentCaptionStartTime = 0f;
+            _attachmentCaptionStatusNextRefresh = 0f;
+            _statusText.text = _attachmentZone != null && _attachmentZone.HasAttachments ? "Images ready" : "Idle";
+        }
     }
 
     /// <summary>
@@ -1343,6 +1485,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         float extraFooterHeight = hasAttachments ? ATTACHMENT_STRIP_HEIGHT : 0f;
         // Caption may have just arrived (or an attachment was removed); refresh Send.
         RecomputeSendInteractable();
+        UpdateAttachmentCaptionStatus(force: true);
 
         // 1) Grow / shrink the footer itself so the input field still has its original
         //    height after the strip reserves space at its top.
@@ -1877,7 +2020,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // Only auto-start now if a send is actually possible. If a reply is mid-flight
         // (or a summary/captions are pending), the loop starts from FinalizeAssistantTurn
         // / the next send opportunity instead.
-        bool captionsPending = _attachmentZone != null && _attachmentZone.CountInFlightCaptions() > 0;
+        bool captionsPending = CountPendingAttachmentCaptions() > 0;
         if (!_isStreaming && !_compactSummaryInFlight && !captionsPending)
             StartCoroutine(FireAutoContinueNextFrame());
     }
@@ -1941,9 +2084,14 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // Guard the Enter-key path: the Send button is greyed via
         // RecomputeSendInteractable while attachment captions are pending, but
         // Enter bypasses the button. Show a hint and bail.
-        if (_attachmentZone != null && _attachmentZone.CountInFlightCaptions() > 0)
+        int pendingCaptions = CountPendingAttachmentCaptions();
+        if (pendingCaptions > 0)
         {
-            AddSystemMessage("Captioning attached image(s)... waiting for description before send.", includeInLLMRecap: false);
+            int totalAttachments = _attachmentZone != null ? _attachmentZone.Count : pendingCaptions;
+            AddSystemMessage(
+                $"Captioning attached images ({Mathf.Max(0, totalAttachments - pendingCaptions)}/{totalAttachments} ready)... waiting before send.",
+                includeInLLMRecap: false);
+            UpdateAttachmentCaptionStatus(force: true);
             return;
         }
 
@@ -2169,6 +2317,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     {
         _autoContinueRemaining = 0;
         if (_autoContinueToggle != null) _autoContinueToggle.isOn = false;
+        CancelAllAttachmentCaptions();
         // Discard any in-flight compact-summary; if its response landed after this
         // reset it would ReplaceInteractions() the old history right back in.
         _compactSummaryCancel?.Invoke();
@@ -3583,9 +3732,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     /// labelled format we parse in <see cref="ParseCaptionResponse"/>.
     /// Result fires via <paramref name="onResult"/>; the callback always
     /// runs (even on failure / no vision LLM) so callers can use it to
-    /// clear in-flight gates.
+    /// clear in-flight gates. When <paramref name="requireFreeSlot"/> is true,
+    /// returns null instead of dispatching to an at-capacity vision route; callers
+    /// should keep their item queued and retry later.
     /// </summary>
-    private CaptionJob TryCaptionBytes(byte[] png, Action<CaptionResult> onResult)
+    private CaptionJob TryCaptionBytes(byte[] png, Action<CaptionResult> onResult, bool requireFreeSlot = false)
     {
         var job = new CaptionJob();
         Action<CaptionResult> safeResult = (r) =>
@@ -3600,11 +3751,19 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (png == null || png.Length == 0) { job.completed = true; safeResult(default); return job; }
 
         var instanceMgr = LLMInstanceManager.Get();
-        if (instanceMgr == null || instanceMgr.GetInstanceCount() == 0) { job.completed = true; safeResult(default); return job; }
+        if (instanceMgr == null || instanceMgr.GetInstanceCount() == 0)
+        {
+            WarnNoVisionLLM();
+            job.completed = true; safeResult(default); return job;
+        }
 
         int targetId = instanceMgr.GetFreeLLM(isSmallJob: false, isVisionJob: true, out int replicaIndex);
         if (targetId < 0)
+        {
+            if (requireFreeSlot && instanceMgr.GetLeastBusyLLM(isSmallJob: false, isVisionJob: true) >= 0)
+                return null;
             targetId = instanceMgr.GetLeastBusyLLM(isSmallJob: false, isVisionJob: true, out replicaIndex);
+        }
         if (targetId < 0)
         {
             // Instances exist (checked above) but none is active AND configured to accept
@@ -5243,6 +5402,17 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             float elapsed = Time.unscaledTime - _compactSummaryStartTime;
             _statusText.text = $"{StreamSpinnerFrames[_compactSpinnerStep]} Summarizing {_compactSummaryMsgCount} msgs   {elapsed:F0}s";
         }
+
+        if (_attachmentCaptionQueue.Count > 0 && Time.unscaledTime >= _attachmentCaptionNextDispatch)
+        {
+            _attachmentCaptionNextDispatch = Time.unscaledTime + 0.5f;
+            ProcessAttachmentCaptionQueue();
+        }
+
+        // Attachment captioning can run before the user sends, so give it the same
+        // "still working" treatment as chat streaming and compact-summary requests.
+        if (!_isStreaming && !_compactSummaryInFlight)
+            UpdateAttachmentCaptionStatus();
 
         // Periodic header status pill refresh (cheap; reads counters from Config/LLM mgr).
         if (Time.unscaledTime >= _statusPillNextRefresh)

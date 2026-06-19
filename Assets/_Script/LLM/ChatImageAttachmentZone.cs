@@ -22,6 +22,14 @@ using UnityEngine.UI;
 /// </summary>
 public class ChatImageAttachmentZone : MonoBehaviour
 {
+    public enum CaptionState
+    {
+        Queued,
+        Captioning,
+        Ready,
+        NoCaption
+    }
+
     // Monotonic id source: stable across remove/add so a host can correlate an
     // async caption result back to the right attachment even after the user has
     // X'd earlier ones and the visible index has shifted.
@@ -39,7 +47,7 @@ public class ChatImageAttachmentZone : MonoBehaviour
         // Either or both may be null if no vision LLM was available.
         public string captionShort;
         public string captionLong;
-        public bool captionInFlight;
+        public CaptionState captionState;
     }
 
     /// <summary>
@@ -56,6 +64,7 @@ public class ChatImageAttachmentZone : MonoBehaviour
         public int height;
         public string captionShort;     // null/empty if no caption is available
         public string captionLong;      // null/empty if no caption is available
+        public CaptionState captionState;
     }
 
     public event Action OnAttachmentsChanged;
@@ -148,8 +157,27 @@ public class ChatImageAttachmentZone : MonoBehaviour
     {
         int n = 0;
         foreach (var att in _attachments)
-            if (att != null && att.captionInFlight) n++;
+            if (IsCaptionPending(att)) n++;
         return n;
+    }
+
+    private static bool IsCaptionPending(ChatAttachment att)
+    {
+        return att != null && (att.captionState == CaptionState.Queued || att.captionState == CaptionState.Captioning);
+    }
+
+    public bool HasAttachment(int id)
+    {
+        return FindById(id) != null;
+    }
+
+    public void SetCaptionState(int id, CaptionState state)
+    {
+        var att = FindById(id);
+        if (att == null) return;
+        if (att.captionState == state) return;
+        att.captionState = state;
+        Refresh();
     }
 
     /// <summary>
@@ -167,8 +195,10 @@ public class ChatImageAttachmentZone : MonoBehaviour
         if (att == null) return;
         att.captionShort = string.IsNullOrEmpty(captionShort) ? null : captionShort;
         att.captionLong  = string.IsNullOrEmpty(captionLong)  ? null : captionLong;
-        att.captionInFlight = false;
-        OnAttachmentsChanged?.Invoke();
+        att.captionState = (string.IsNullOrEmpty(att.captionShort) && string.IsNullOrEmpty(att.captionLong))
+            ? CaptionState.NoCaption
+            : CaptionState.Ready;
+        Refresh();
     }
 
     public void ClearAttachments()
@@ -299,9 +329,9 @@ public class ChatImageAttachmentZone : MonoBehaviour
             return;
         }
 
-        // captionInFlight starts true: the host wires OnAttachmentAdded to a
-        // caption job and calls SetCaption when it returns (or returns null
-        // when no vision LLM is available). Send is gated until this clears.
+        // captionState starts queued: the host wires OnAttachmentAdded to a caption
+        // queue and calls SetCaption when it returns (or returns null when no vision
+        // LLM is available). Send is gated until this clears.
         var newAttachment = new ChatAttachment
         {
             id = _nextAttachmentId++,
@@ -311,7 +341,7 @@ public class ChatImageAttachmentZone : MonoBehaviour
             height = tex.height,
             captionShort = null,
             captionLong = null,
-            captionInFlight = true,
+            captionState = CaptionState.Queued,
         };
         _attachments.Add(newAttachment);
         Refresh();
@@ -324,6 +354,7 @@ public class ChatImageAttachmentZone : MonoBehaviour
             height = newAttachment.height,
             captionShort = null,
             captionLong = null,
+            captionState = newAttachment.captionState,
         });
     }
 
@@ -331,7 +362,7 @@ public class ChatImageAttachmentZone : MonoBehaviour
     {
         if (idx < 0 || idx >= _attachments.Count) return;
         var att = _attachments[idx];
-        bool wasInFlight = att != null && att.captionInFlight;
+        bool wasInFlight = IsCaptionPending(att);
         int capturedId = att != null ? att.id : -1;
         if (att != null && att.thumb != null)
             UnityEngine.Object.Destroy(att.thumb);
@@ -405,9 +436,11 @@ public class ChatImageAttachmentZone : MonoBehaviour
         raw.raycastTarget = false;
         // Dim the thumbnail while a caption is being generated, so it's obvious
         // why Send is greyed out. Reset to full opacity once the caption arrives.
-        raw.color = att.captionInFlight
+        raw.color = IsCaptionPending(att)
             ? new Color(1f, 1f, 1f, 0.55f)
             : Color.white;
+
+        CreateCaptionBadge(item.transform, att, sz);
 
         var x = new GameObject("Remove");
         x.transform.SetParent(item.transform, false);
@@ -438,6 +471,67 @@ public class ChatImageAttachmentZone : MonoBehaviour
         xTxt.color = Color.white;
         xTxt.alignment = TextAlignmentOptions.Center;
         xTxt.raycastTarget = false;
+    }
+
+    private void CreateCaptionBadge(Transform parent, ChatAttachment att, float itemSize)
+    {
+        if (att == null) return;
+
+        var badge = new GameObject("CaptionBadge");
+        badge.transform.SetParent(parent, false);
+        var rt = badge.AddComponent<RectTransform>();
+        rt.anchorMin = new Vector2(0, 0);
+        rt.anchorMax = new Vector2(1, 0);
+        rt.pivot = new Vector2(0.5f, 0);
+        rt.sizeDelta = new Vector2(-4, 17);
+        rt.anchoredPosition = new Vector2(0, 2);
+
+        var img = badge.AddComponent<Image>();
+        img.color = GetCaptionBadgeColor(att.captionState);
+        img.raycastTarget = false;
+
+        var txtGo = new GameObject("Text");
+        txtGo.transform.SetParent(badge.transform, false);
+        var txtRt = txtGo.AddComponent<RectTransform>();
+        txtRt.anchorMin = Vector2.zero;
+        txtRt.anchorMax = Vector2.one;
+        txtRt.offsetMin = Vector2.zero;
+        txtRt.offsetMax = Vector2.zero;
+
+        var txt = txtGo.AddComponent<TextMeshProUGUI>();
+        txt.text = GetCaptionBadgeText(att.captionState);
+        if (_font != null) txt.font = _font;
+        txt.fontSize = itemSize < 58f ? 8f : 9f;
+        txt.fontStyle = FontStyles.Bold;
+        txt.color = Color.white;
+        txt.alignment = TextAlignmentOptions.Center;
+        txt.textWrappingMode = TextWrappingModes.NoWrap;
+        txt.overflowMode = TextOverflowModes.Ellipsis;
+        txt.raycastTarget = false;
+    }
+
+    private static string GetCaptionBadgeText(CaptionState state)
+    {
+        switch (state)
+        {
+            case CaptionState.Queued: return "Queued";
+            case CaptionState.Captioning: return "Captioning";
+            case CaptionState.Ready: return "Ready";
+            case CaptionState.NoCaption: return "No caption";
+            default: return "";
+        }
+    }
+
+    private static Color GetCaptionBadgeColor(CaptionState state)
+    {
+        switch (state)
+        {
+            case CaptionState.Queued: return new Color(0.35f, 0.35f, 0.42f, 0.92f);
+            case CaptionState.Captioning: return new Color(0.12f, 0.34f, 0.64f, 0.94f);
+            case CaptionState.Ready: return new Color(0.16f, 0.48f, 0.24f, 0.92f);
+            case CaptionState.NoCaption: return new Color(0.58f, 0.25f, 0.18f, 0.94f);
+            default: return new Color(0.25f, 0.25f, 0.25f, 0.9f);
+        }
     }
 
     // Pixel-space padding around the drop target's projected rect. Generous enough
