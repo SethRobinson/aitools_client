@@ -98,6 +98,18 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // the world Pic - we just return null on read in that case.
     private readonly List<PicMain> _chatImagePics = new List<PicMain>();
 
+    private class ChatImageRecord
+    {
+        public PicMain pic;
+        public bool isUserAttachment;
+        public bool isMovie;
+        public string kind;
+        public string anchorName;
+        public string dimensions;
+        public readonly List<string> provenanceSteps = new List<string>();
+    }
+    private readonly List<ChatImageRecord> _chatImageRecords = new List<ChatImageRecord>();
+
     // Character-anchor registry: maps a character NAME ("Bob") to the PicMain that is
     // currently its canonical anchor. Stores the Pic REFERENCE, not a slot number,
     // because chat_image numbers shift downward whenever TrimMediaToKeepLastN pops old
@@ -170,6 +182,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // separate one-shot vision call) plus dimensions ride along with the
     // user message, and the raw bytes never enter chat history.
     private const string PREFS_INCLUDE_IMAGE_DATA = "aichat_include_image_data";
+    // Prompt slimming switches. Defaults are lean: don't re-send old tool XML and
+    // don't spend sidecar vision calls captioning images the chat model generated.
+    private const string PREFS_KEEP_OLD_TOOL_CALLS_IN_PROMPT = "aichat_keep_old_tool_calls_in_prompt";
+    private const string PREFS_AUTO_CAPTION_GENERATED_IMAGES = "aichat_auto_caption_generated_images";
     // Cap on the largest edge (in pixels) of dragged/pasted images. Anything
     // bigger gets bilinear-downscaled at attach time so that captioning,
     // image_to_image source bytes, and chat-history embedding all run against
@@ -2168,6 +2184,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _attachmentZone?.ClearAttachments();
         _lastTurnAttachments?.Clear();
         _chatImagePics?.Clear();
+        _chatImageRecords?.Clear();
         _anchors?.Clear();
         _captionLabels?.Clear();
         _infoMessages.Clear();
@@ -2634,7 +2651,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // defeat server-side prompt caching for the entire conversation.
         if (_contextBuilder != null && _promptManager != null)
         {
-            _promptManager.SetBaseSystemPrompt(_contextBuilder.Build());
+            _promptManager.SetBaseSystemPrompt(_contextBuilder.Build(GetKeepOldToolCallsInPrompt()));
             InjectTriggeredSkillContextIfNeeded(latestUserMessage);
         }
 
@@ -2655,8 +2672,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // Strip TMP markup from any prior assistant bubbles before sending (safety - the
         // GPTPromptManager only ever stores raw text we put in, but be defensive).
         lines = OpenAITextCompletionManager.RemoveTMPTags(lines);
+        if (!GetKeepOldToolCallsInPrompt())
+            StripOldToolCallsFromOutgoingLines(lines);
 
-        // Tack the volatile CURRENT STATE block (GPU busy/idle, chat-image captions)
+        // Tack the volatile CURRENT STATE block (GPU busy/idle, chat-image provenance/captions)
         // onto the outgoing copy of the latest user message - the request tail, where
         // churn is cheap. Ephemeral by design: stored history never contains it, so
         // next turn's request still prefix-matches everything the server cached.
@@ -2939,18 +2958,95 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             if (line != null && line._role == "user") lastUser = line;
         if (lastUser == null) return;
 
-        int chatImageSlots = ((IChatHost)this).GetChatImageCount();
-        // Snapshot captions in chat-image order so the CHAT IMAGES block can
-        // print "- Image #N: <caption>" entries for the LLM.
-        var captions = new List<string>(chatImageSlots);
-        for (int i = 1; i <= chatImageSlots; i++)
-            captions.Add(((IChatHost)this).GetChatImageCaption(i));
-
+        var chatImages = BuildChatImageStatesForPrompt();
+        int chatImageSlots = chatImages.Count;
         string anchorsLine = BuildAnchorsStateLine();
-        string state = _contextBuilder.BuildCurrentStateBlock(chatImageSlots, captions, anchorsLine);
+        string state = _contextBuilder.BuildCurrentStateBlock(chatImageSlots, chatImages, anchorsLine);
         if (string.IsNullOrEmpty(state)) return;
 
         lastUser._content = (lastUser._content ?? "") + "\n\n" + state;
+    }
+
+    private static readonly Regex AIToolsPairedActionRx = new Regex(
+        @"<aitools_action\b[^>]*>(?:[\s\S]*?)</aitools_action\s*>",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex AIToolsSelfClosingActionRx = new Regex(
+        @"<aitools_action\b[^>]*?/?\s*>",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+    private static void StripOldToolCallsFromOutgoingLines(Queue<GTPChatLine> lines)
+    {
+        if (lines == null) return;
+        foreach (var line in lines)
+        {
+            if (line == null || line._role != "assistant") continue;
+            line._content = StripActionTagsForPrompt(line._content);
+        }
+    }
+
+    private static string StripActionTagsForPrompt(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+        text = ReverseTmpDisplayEscapes(text);
+        bool hadAction = text.IndexOf("<aitools_action", StringComparison.OrdinalIgnoreCase) >= 0;
+        if (!hadAction) return text.Trim();
+
+        text = AIToolsPairedActionRx.Replace(text, "");
+        text = AIToolsSelfClosingActionRx.Replace(text, "");
+        text = Regex.Replace(text, @"[ \t]+\r?\n", "\n");
+        text = Regex.Replace(text, @"(\r?\n){3,}", "\n\n").Trim();
+        return string.IsNullOrEmpty(text)
+            ? "(assistant used app tools; see CHAT IMAGES for resulting media/provenance.)"
+            : text;
+    }
+
+    private List<ChatImageState> BuildChatImageStatesForPrompt()
+    {
+        int count = _chatImagePics != null ? _chatImagePics.Count : 0;
+        var states = new List<ChatImageState>(count);
+        bool includeGeneratedCaptions = GetAutoCaptionGeneratedImages();
+
+        for (int i = 0; i < count; i++)
+        {
+            PicMain pic = _chatImagePics[i];
+            ChatImageRecord record = (_chatImageRecords != null && i < _chatImageRecords.Count)
+                ? _chatImageRecords[i]
+                : null;
+            bool reusable = pic != null && pic.gameObject != null;
+            bool userAttachment = record != null && record.isUserAttachment;
+            string caption = (userAttachment || includeGeneratedCaptions)
+                ? ((IChatHost)this).GetChatImageCaption(i + 1)
+                : "";
+
+            string dimensions = record != null ? record.dimensions : "";
+            if (string.IsNullOrEmpty(dimensions) && reusable && pic.TryGetCurrentTexture(out var tex) && tex != null)
+                dimensions = tex.width + "x" + tex.height;
+
+            states.Add(new ChatImageState
+            {
+                Index = i + 1,
+                IsUserAttachment = userAttachment,
+                IsMovie = record != null && record.isMovie,
+                IsReusable = reusable,
+                IncludeCaption = !string.IsNullOrEmpty(caption),
+                Kind = record != null && !string.IsNullOrEmpty(record.kind)
+                    ? record.kind
+                    : (userAttachment ? "user attachment" : "generated image"),
+                AnchorName = record != null ? record.anchorName : null,
+                Dimensions = dimensions,
+                Caption = caption,
+                Provenance = record != null ? BuildRecordProvenance(record) : ""
+            });
+        }
+
+        return states;
+    }
+
+    private static string BuildRecordProvenance(ChatImageRecord record)
+    {
+        if (record == null || record.provenanceSteps == null || record.provenanceSteps.Count == 0)
+            return "";
+        return "provenance: " + string.Join(" -> ", record.provenanceSteps);
     }
 
     private static bool HasUserMessage(Queue<GTPChatLine> lines)
@@ -3885,7 +3981,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         int idx0 = _chatImagePics.IndexOf(pic);
         string header = idx0 >= 0 ? $"Image #{idx0 + 1}" : "Image";
         if (string.IsNullOrEmpty(caption))
-            caption = "(captioning...)";
+        {
+            var record = FindChatImageRecord(pic);
+            caption = record != null && !record.isUserAttachment && !GetAutoCaptionGeneratedImages()
+                ? "(generated image; captioning off)"
+                : "(captioning...)";
+        }
         _captionTooltipText.text = $"<b>{header}</b>\n{caption}";
 
         _captionTooltipRoot.transform.SetAsLastSibling(); // render on top
@@ -3945,8 +4046,154 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             if (go == null) continue;
             var pic = go.GetComponent<PicMain>();
             if (pic == null) continue;
-            AppendUserAttachmentBubble(pic, info.captionShort, info.captionLong);
+            string dims = info.width > 0 && info.height > 0 ? $"{info.width}x{info.height}" : null;
+            AppendUserAttachmentBubble(pic, info.captionShort, info.captionLong, dims);
         }
+    }
+
+    private void RegisterChatImageRecord(PicMain pic, SkillAction action, bool isUserAttachment, bool isMovie, string dimensions)
+    {
+        var record = new ChatImageRecord
+        {
+            pic = pic,
+            isUserAttachment = isUserAttachment,
+            isMovie = isMovie,
+            kind = ResolveChatImageKind(action, isUserAttachment, isMovie),
+            anchorName = action?.AnchorName,
+            dimensions = dimensions
+        };
+
+        string step = isUserAttachment ? "user attachment" : BuildActionProvenanceStep(action);
+        if (!string.IsNullOrEmpty(step))
+            record.provenanceSteps.Add(step);
+        _chatImageRecords.Add(record);
+    }
+
+    private void RecordChainedProvenance(PicMain pic, SkillAction action)
+    {
+        if (pic == null || action == null) return;
+        var record = FindChatImageRecord(pic);
+        if (record == null) return;
+
+        string skillId = action.SkillId ?? "";
+        if (skillId == BuiltInSkillIds.GenerateMovie || skillId == BuiltInSkillIds.ImageToMovie)
+        {
+            record.isMovie = true;
+            record.kind = "movie";
+        }
+        else if (!record.isUserAttachment && record.kind == "generated image")
+        {
+            record.kind = "edited image";
+        }
+        if (!string.IsNullOrEmpty(action.AnchorName))
+            record.anchorName = action.AnchorName;
+
+        string step = BuildActionProvenanceStep(action);
+        if (!string.IsNullOrEmpty(step))
+            record.provenanceSteps.Add(step);
+    }
+
+    private ChatImageRecord FindChatImageRecord(PicMain pic)
+    {
+        if (pic == null || _chatImageRecords == null) return null;
+        for (int i = _chatImageRecords.Count - 1; i >= 0; i--)
+        {
+            var record = _chatImageRecords[i];
+            if (record != null && record.pic == pic)
+                return record;
+        }
+        return null;
+    }
+
+    private static string ResolveChatImageKind(SkillAction action, bool isUserAttachment, bool isMovie)
+    {
+        if (isUserAttachment) return "user attachment";
+        if (isMovie) return "movie";
+        string skillId = action?.SkillId ?? "";
+        switch (skillId)
+        {
+            case BuiltInSkillIds.ImageToImage:
+                return "edited image";
+            case BuiltInSkillIds.NewCanvas:
+                return "canvas";
+            case BuiltInSkillIds.AddBorder:
+            case BuiltInSkillIds.DrawText:
+            case BuiltInSkillIds.DrawShape:
+            case BuiltInSkillIds.PasteImage:
+            case BuiltInSkillIds.CropResize:
+                return "composed image";
+            default:
+                return "generated image";
+        }
+    }
+
+    private static string BuildActionProvenanceStep(SkillAction action)
+    {
+        if (action == null) return "";
+        var sb = new StringBuilder();
+        string skillId = action.SkillId ?? "";
+        sb.Append(string.IsNullOrEmpty(skillId) ? "action" : skillId);
+
+        string preset = ShortPresetName(action.Preset);
+        if (!string.IsNullOrEmpty(preset))
+            sb.Append(" preset=").Append(preset);
+
+        string source = BuildActionSourceSummary(action);
+        if (!string.IsNullOrEmpty(source))
+            sb.Append(" source=").Append(source);
+
+        string prompt = action.Prompt;
+        if (!string.IsNullOrEmpty(prompt))
+            sb.Append(" prompt=\"").Append(CompactPromptText(prompt, 120)).Append('"');
+        else
+        {
+            string text = action.GetArg("text");
+            if (!string.IsNullOrEmpty(text))
+                sb.Append(" text=\"").Append(CompactPromptText(text, 80)).Append('"');
+        }
+
+        return sb.ToString();
+    }
+
+    private static string BuildActionSourceSummary(SkillAction action)
+    {
+        if (action == null) return "";
+        var parts = new List<string>();
+        if (action.Chain) parts.Add("chain");
+        AddSourcePart(parts, action, "chat_image", "chat");
+        AddSourcePart(parts, action, "attachment", "attach");
+        for (int i = 2; i <= 5; i++)
+        {
+            AddSourcePart(parts, action, "chat_image" + i, "chat" + i);
+            AddSourcePart(parts, action, "attachment" + i, "attach" + i);
+        }
+        AddSourcePart(parts, action, "source_chat_image", "src_chat");
+        AddSourcePart(parts, action, "source_attachment", "src_attach");
+        return parts.Count == 0 ? "" : string.Join("+", parts);
+    }
+
+    private static void AddSourcePart(List<string> parts, SkillAction action, string key, string label)
+    {
+        string value = action.GetArg(key);
+        if (!string.IsNullOrWhiteSpace(value))
+            parts.Add(label + "=" + value.Trim());
+    }
+
+    private static string ShortPresetName(string preset)
+    {
+        if (string.IsNullOrWhiteSpace(preset)) return "";
+        string name = System.IO.Path.GetFileNameWithoutExtension(preset.Trim());
+        return string.IsNullOrEmpty(name) ? preset.Trim() : name;
+    }
+
+    private static string CompactPromptText(string text, int maxChars)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return "";
+        string oneLine = Regex.Replace(text, @"\s+", " ").Trim();
+        oneLine = oneLine.Replace("\"", "'");
+        if (maxChars > 0 && oneLine.Length > maxChars)
+            oneLine = oneLine.Substring(0, Math.Max(0, maxChars - 3)).TrimEnd() + "...";
+        return oneLine;
     }
 
     /// <summary>
@@ -3964,10 +4211,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _chatImagePics.Add(spawnedPic);
         int chatImageNumber = _chatImagePics.Count;
 
-        // If the action named a character anchor (anchor="Bob"), bind/re-bind that name
-        // to this freshly-spawned Pic. Re-binding is intentional: it's how a character's
-        // look gets updated (generate a new image of Bob, re-tag anchor="Bob", and later
-        // chat_image="Bob" references now resolve to the new image).
+        // If the action named an anchor (anchor="Bob" or anchor="layout_canvas"),
+        // bind/re-bind that name to this freshly-spawned Pic. Re-binding is
+        // intentional: it's how a character's look or a named layout part gets
+        // updated, and later chat_image="Name" references resolve to the new image.
         if (!string.IsNullOrEmpty(action?.AnchorName))
         {
             _anchors[action.AnchorName] = spawnedPic;
@@ -3976,6 +4223,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         string skillId = action != null ? (action.SkillId ?? "") : "";
         bool isMovie = skillId == BuiltInSkillIds.GenerateMovie || skillId == BuiltInSkillIds.ImageToMovie;
+        RegisterChatImageRecord(spawnedPic, action, isUserAttachment: false, isMovie: isMovie, dimensions: null);
         // Keep the bubble label compact so the caption (appended async below) has
         // room: just "#N". The Image/Movie kind and skillId are visually obvious
         // from the bubble itself and still tracked for the LLM in ChatContextBuilder.
@@ -3997,11 +4245,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         {
             string kindLabel = isMovie ? "Movie" : "Image";
             _infoMessages.Add(new InfoMessage(
-                $"({kindLabel} just spawned is {kindLabel} #{chatImageNumber} in CHAT IMAGES. " +
-                $"Reference it via chat_image=\"{chatImageNumber}\" - in THIS same reply (the host waits " +
-                "for it to finish rendering) or on any later turn - or by its anchor name if one was set. " +
-                "Don't guess slot numbers for bubbles you generated earlier in this same reply; " +
-                "the actual number is the one stated here.)"));
+                $"({kindLabel} just spawned as #{chatImageNumber} in CHAT IMAGES. " +
+                $"Reference it on later turns via chat_image=\"{chatImageNumber}\" " +
+                "or by its anchor name if one was set. Same-reply follow-ups should use chain=\"true\" " +
+                "or anchors, not guessed future numbers.)"));
         }
 
         // Generated images don't have texture data yet (workflow hasn't run). The
@@ -4009,7 +4256,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // are unreliable signals here - they're reset between steps, multiple
         // subsystems chain to them, and a plain single-image gen doesn't always fire
         // the script callback. Just poll until TryGetImageAsPng returns bytes.
-        if (!isMovie && spawnedPic != null)
+        if (!isMovie && spawnedPic != null && GetAutoCaptionGeneratedImages())
             StartCoroutine(WaitForPicAndCaption(spawnedPic));
     }
 
@@ -4150,11 +4397,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     /// reuse, visible in the media column, and live-mirrored from a real PicMain
     /// (which the user can also see / edit in the world gallery).
     /// </summary>
-    private void AppendUserAttachmentBubble(PicMain pic, string preCaptionShort = null, string preCaptionLong = null)
+    private void AppendUserAttachmentBubble(PicMain pic, string preCaptionShort = null, string preCaptionLong = null, string dimensions = null)
     {
         if (pic == null || _mediaContent == null) return;
         _chatImagePics.Add(pic);
         int chatImageNumber = _chatImagePics.Count;
+        RegisterChatImageRecord(pic, null, isUserAttachment: true, isMovie: false, dimensions: dimensions);
         string label = $"#{chatImageNumber} (you)";
         AppendImageBubbleInternal(pic, label, isMovie: false);
 
@@ -4430,6 +4678,28 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         PlayerPrefs.Save();
     }
 
+    public static bool GetKeepOldToolCallsInPrompt()
+    {
+        return PlayerPrefs.GetInt(PREFS_KEEP_OLD_TOOL_CALLS_IN_PROMPT, 0) != 0;
+    }
+
+    public static void SetKeepOldToolCallsInPrompt(bool v)
+    {
+        PlayerPrefs.SetInt(PREFS_KEEP_OLD_TOOL_CALLS_IN_PROMPT, v ? 1 : 0);
+        PlayerPrefs.Save();
+    }
+
+    public static bool GetAutoCaptionGeneratedImages()
+    {
+        return PlayerPrefs.GetInt(PREFS_AUTO_CAPTION_GENERATED_IMAGES, 0) != 0;
+    }
+
+    public static void SetAutoCaptionGeneratedImages(bool v)
+    {
+        PlayerPrefs.SetInt(PREFS_AUTO_CAPTION_GENERATED_IMAGES, v ? 1 : 0);
+        PlayerPrefs.Save();
+    }
+
     /// <summary>
     /// Largest edge (in pixels) any dragged/pasted attachment is allowed to
     /// have. The attachment zone reads this at attach time and bilinear-scales
@@ -4516,6 +4786,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 if (poppedPic != null) _captionLabels.Remove(poppedPic);
             }
             _chatImagePics.RemoveRange(0, popN);
+            if (_chatImageRecords != null && _chatImageRecords.Count > 0)
+            {
+                int recordPopN = Mathf.Min(popN, _chatImageRecords.Count);
+                _chatImageRecords.RemoveRange(0, recordPopN);
+            }
 
             // Drop any character anchors whose Pic just fell out of the numbered list,
             // so the ANCHORS line never advertises a name that can no longer resolve.
@@ -4585,6 +4860,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         AppendImageBubble(action, spawnedPic);
     }
 
+    void IChatHost.RecordChatImageProvenance(PicMain pic, SkillAction action)
+    {
+        RecordChainedProvenance(pic, action);
+    }
+
     byte[] IChatHost.GetChatImagePngBytes(int oneBasedIndex)
     {
         var pic = GetChatImagePic(oneBasedIndex);
@@ -4629,6 +4909,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     {
         var pic = GetChatImagePic(oneBasedIndex);
         if (pic == null) return "(world Pic was deleted; not reusable)";
+        // Use the SHORT caption for the volatile CURRENT STATE block: it is re-prefilled
+        // every turn (it rides at the tail, past the cached prefix), so the verbose
+        // paragraph form would re-cost ~hundreds of tokens per image each turn for no
+        // gain - the full caption already lives in cached history where each image was
+        // introduced. Fall back to the long form only if no short caption exists.
+        if (!string.IsNullOrEmpty(pic.CaptionShort)) return pic.CaptionShort;
         return pic.Caption ?? "";
     }
 
@@ -4661,7 +4947,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     }
 
     /// <summary>
-    /// Build the "ANCHORS: Bob=#3, Elara=#5" line for the volatile CURRENT STATE block,
+    /// Build the "ANCHORS: Bob=#3, layout_canvas=#5" line for the volatile CURRENT STATE block,
     /// listing only anchors whose Pic still has a live slot (resolving each name through
     /// the same path the executor uses, which also prunes dead entries). Returns "" when
     /// no live anchors exist, so the state block simply omits the line.
@@ -4680,7 +4966,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 parts.Add($"{name}=#{idx}");
         }
         if (parts.Count == 0) return "";
-        return "ANCHORS (recurring characters - reference by NAME via chat_image=\"<name>\"): "
+        return "ANCHORS (named reusable images - reference by NAME via chat_image=\"<name>\" or source_chat_image=\"<name>\"): "
                + string.Join(", ", parts);
     }
 

@@ -856,6 +856,7 @@ namespace AITools.AIChat.Skills
             try
             {
                 prevPic.AppendPresetJobs(resolved, action.Prompt, negFromPreset);
+                _host?.RecordChatImageProvenance(prevPic, action);
             }
             catch (Exception ex)
             {
@@ -1763,14 +1764,14 @@ namespace AITools.AIChat.Skills
             foreach (var s in _skills.GetSkills()) yield return s.Id;
         }
 
-        // chat_image slot attributes that may carry a character-anchor NAME instead of
-        // a number. Resolved to live slot numbers in NormalizeAnchorRefs so the rest of
-        // the executor (which int-parses these) needs no changes.
+        // chat_image/source_chat_image slot attributes that may carry an anchor NAME
+        // instead of a number. Resolved to live slot numbers in NormalizeAnchorRefs so
+        // the rest of the executor (which int-parses these) needs no changes.
         private static readonly string[] AnchorRefArgKeys =
-            { "chat_image", "chat_image2", "chat_image3", "chat_image4", "chat_image5" };
+            { "chat_image", "chat_image2", "chat_image3", "chat_image4", "chat_image5", "source_chat_image" };
 
         /// <summary>
-        /// Rewrite any chat_image* attribute whose value is a character-anchor NAME
+        /// Rewrite any chat_image* / source_chat_image attribute whose value is an anchor NAME
         /// (e.g. <c>chat_image="Bob"</c>) into its current numeric slot using the host's
         /// anchor registry. Numeric values are left untouched. A name that resolves to no
         /// live slot is dropped (with a help bubble) so the downstream integer parse
@@ -3174,6 +3175,7 @@ namespace AITools.AIChat.Skills
                 try
                 {
                     prevPic.AppendLocalOp(op);
+                    _host?.RecordChatImageProvenance(prevPic, action);
                 }
                 catch (Exception ex)
                 {

@@ -19,6 +19,10 @@ Recipes for combining multiple images into a single composed bubble:
   `source_attachment` pointing to the image being placed. The CANVAS
   slot stays the same canvas across all paste calls.
 - Captions go on top via `draw_text` referencing the canvas.
+- For images created earlier in the SAME reply, prefer named anchors over
+  predicted numbers: put `anchor="panel_1"` / `anchor="layout_canvas"` on the
+  creating action, then use `source_chat_image="panel_1"` or
+  `chat_image="layout_canvas"`.
 
 ---
 
@@ -34,24 +38,23 @@ Steps:
 4. `draw_text` x4 - caption strip per panel.
 
 ```
-<aitools_action skill="new_canvas" width="2048" height="1152" color="#1a1a1a"/>
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<scene 1 - establishing shot>"/>
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<scene 2 - action begins>"/>
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<scene 3 - climax>"/>
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<scene 4 - resolution>"/>
-<aitools_action skill="paste_image" chat_image="<canvas_idx>" source_chat_image="<panel1_idx>" x="2%" y="3%" width="47%" height="44%" mode="fill"/>
-<aitools_action skill="paste_image" chat_image="<canvas_idx>" source_chat_image="<panel2_idx>" x="51%" y="3%" width="47%" height="44%" mode="fill"/>
-<aitools_action skill="paste_image" chat_image="<canvas_idx>" source_chat_image="<panel3_idx>" x="2%" y="50%" width="47%" height="44%" mode="fill"/>
-<aitools_action skill="paste_image" chat_image="<canvas_idx>" source_chat_image="<panel4_idx>" x="51%" y="50%" width="47%" height="44%" mode="fill"/>
-<aitools_action skill="draw_text" chat_image="<canvas_idx>" text="1. The setup" x="2%" y="93%" width="47%" height="6%" font_size="32" color="#FFFFFF" align="left" valign="middle"/>
-<aitools_action skill="draw_text" chat_image="<canvas_idx>" text="2. Trouble begins" x="51%" y="93%" width="47%" height="6%" font_size="32" color="#FFFFFF" align="left" valign="middle"/>
-<aitools_action skill="draw_text" chat_image="<canvas_idx>" text="3. Climax" x="2%" y="48%" width="47%" height="3%" font_size="32" color="#FFFFFF" align="left" valign="middle"/>
-<aitools_action skill="draw_text" chat_image="<canvas_idx>" text="4. Resolution" x="51%" y="48%" width="47%" height="3%" font_size="32" color="#FFFFFF" align="left" valign="middle"/>
+<aitools_action skill="new_canvas" width="2048" height="1152" color="#1a1a1a" anchor="storyboard_canvas"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<scene 1 - establishing shot>" anchor="panel_1"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<scene 2 - action begins>" anchor="panel_2"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<scene 3 - climax>" anchor="panel_3"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<scene 4 - resolution>" anchor="panel_4"/>
+<aitools_action skill="paste_image" chat_image="storyboard_canvas" source_chat_image="panel_1" x="2%" y="3%" width="47%" height="44%" mode="fill"/>
+<aitools_action skill="paste_image" chat_image="storyboard_canvas" source_chat_image="panel_2" x="51%" y="3%" width="47%" height="44%" mode="fill"/>
+<aitools_action skill="paste_image" chat_image="storyboard_canvas" source_chat_image="panel_3" x="2%" y="50%" width="47%" height="44%" mode="fill"/>
+<aitools_action skill="paste_image" chat_image="storyboard_canvas" source_chat_image="panel_4" x="51%" y="50%" width="47%" height="44%" mode="fill"/>
+<aitools_action skill="draw_text" chat_image="storyboard_canvas" text="1. The setup" x="2%" y="93%" width="47%" height="6%" font_size="32" color="#FFFFFF" align="left" valign="middle"/>
+<aitools_action skill="draw_text" chat_image="storyboard_canvas" text="2. Trouble begins" x="51%" y="93%" width="47%" height="6%" font_size="32" color="#FFFFFF" align="left" valign="middle"/>
+<aitools_action skill="draw_text" chat_image="storyboard_canvas" text="3. Climax" x="2%" y="48%" width="47%" height="3%" font_size="32" color="#FFFFFF" align="left" valign="middle"/>
+<aitools_action skill="draw_text" chat_image="storyboard_canvas" text="4. Resolution" x="51%" y="48%" width="47%" height="3%" font_size="32" color="#FFFFFF" align="left" valign="middle"/>
 ```
 
-`<canvas_idx>` is the canvas (first new bubble in this reply);
-`<panelN_idx>` are the four panels (#K+2..#K+5 if CHAT IMAGES showed K
-before this reply).
+The anchor names are resolved by the host to the actual current chat_image
+numbers, so do not calculate #K+N future ids yourself.
 
 If you want only the final storyboard visible (not the four loose
 panels too), chain everything onto the canvas instead - but then the
@@ -82,13 +85,13 @@ the user is referring to (CHAT IMAGES tells you the count).
 User says: "make a filmstrip", "show 3 stages side by side".
 
 ```
-<aitools_action skill="new_canvas" width="3000" height="1000" color="#000000"/>
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<panel A>"/>
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<panel B>"/>
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<panel C>"/>
-<aitools_action skill="paste_image" chat_image="<canvas_idx>" source_chat_image="<panelA_idx>" x="1%" y="5%" width="32%" height="90%" mode="fill"/>
-<aitools_action skill="paste_image" chat_image="<canvas_idx>" source_chat_image="<panelB_idx>" x="34%" y="5%" width="32%" height="90%" mode="fill"/>
-<aitools_action skill="paste_image" chat_image="<canvas_idx>" source_chat_image="<panelC_idx>" x="67%" y="5%" width="32%" height="90%" mode="fill"/>
+<aitools_action skill="new_canvas" width="3000" height="1000" color="#000000" anchor="filmstrip_canvas"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<panel A>" anchor="film_a"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<panel B>" anchor="film_b"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<panel C>" anchor="film_c"/>
+<aitools_action skill="paste_image" chat_image="filmstrip_canvas" source_chat_image="film_a" x="1%" y="5%" width="32%" height="90%" mode="fill"/>
+<aitools_action skill="paste_image" chat_image="filmstrip_canvas" source_chat_image="film_b" x="34%" y="5%" width="32%" height="90%" mode="fill"/>
+<aitools_action skill="paste_image" chat_image="filmstrip_canvas" source_chat_image="film_c" x="67%" y="5%" width="32%" height="90%" mode="fill"/>
 ```
 
 ## Rules
@@ -98,6 +101,8 @@ User says: "make a filmstrip", "show 3 stages side by side".
   subsequent paste reuses the same canvas slot.
 - Cells use `source_chat_image` / `source_attachment` (a SEPARATE slot
   from the canvas slot) to specify the image being pasted.
+- When a canvas or cell image is created in this same reply, name it with
+  `anchor="..."` and use that name. Do not compute future numeric ids.
 - For recurring-character panels, generate the first scene, then
   `image_to_image chat_image="<panel1_idx>"` for the others before
   pasting.

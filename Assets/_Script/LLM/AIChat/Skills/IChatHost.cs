@@ -71,6 +71,12 @@ namespace AITools.AIChat.Skills
         void AppendImageBubbleForPic(SkillAction action, PicMain spawnedPic);
 
         /// <summary>
+        /// Record a follow-up action that modifies an existing chat Pic without spawning
+        /// a new bubble, e.g. chain="true" image_to_movie or local composition.
+        /// </summary>
+        void RecordChatImageProvenance(PicMain pic, SkillAction action);
+
+        /// <summary>
         /// Read the current PNG bytes of the Nth chat-image bubble (1-based, in spawn
         /// order over the lifetime of THIS chat session). Returns null if N is out of
         /// range OR the underlying world Pic has been destroyed OR the Pic has no
@@ -171,10 +177,10 @@ namespace AITools.AIChat.Skills
         bool IsChatImagePicGenerating(int oneBasedIndex);
 
         /// <summary>
-        /// Resolve a named character anchor (declared earlier via <c>anchor="Name"</c>)
+        /// Resolve a named image anchor (declared earlier via <c>anchor="Name"</c>)
         /// to its CURRENT 1-based chat-image slot, or 0 if the name is unknown or its
         /// underlying Pic has been trimmed/destroyed. Lets the executor accept
-        /// <c>chat_image="Bob"</c> and rewrite it to the live number, which is robust
+        /// <c>chat_image="Bob"</c> / <c>source_chat_image="panel_a"</c> and rewrite it to the live number, which is robust
         /// against the renumbering that happens when the media list is trimmed. Names
         /// are matched case-insensitively.
         /// </summary>

@@ -4,6 +4,20 @@ using AITools.AIChat.Skills;
 
 namespace AITools.AIChat.Context
 {
+    public class ChatImageState
+    {
+        public int Index;
+        public bool IsUserAttachment;
+        public bool IsMovie;
+        public bool IsReusable = true;
+        public bool IncludeCaption;
+        public string Kind;
+        public string AnchorName;
+        public string Dimensions;
+        public string Caption;
+        public string Provenance;
+    }
+
     /// <summary>
     /// Assembles the two pieces of per-turn context for the chat LLM:
     ///
@@ -19,7 +33,8 @@ namespace AITools.AIChat.Context
     ///   4. post_prompt.txt body (user's "last word" overrides)
     ///
     /// BuildCurrentStateBlock() - everything that CHANGES between turns (GPU
-    /// busy/idle state, the numbered chat-image list with its async captions).
+    /// busy/idle state, the numbered chat-image list with compact provenance and
+    /// optional captions).
     /// AIChatPanel appends it to the OUTGOING copy of the latest user message at
     /// send time - never to stored history - so state churn only re-prefills the
     /// tail of the request instead of invalidating the cached prefix at the top.
@@ -46,7 +61,7 @@ namespace AITools.AIChat.Context
         /// <see cref="BuildCurrentStateBlock"/>, because a change this early in the
         /// request invalidates the server's prompt cache for the whole conversation.
         /// </summary>
-        public string Build()
+        public string Build(bool keepOldToolCallsInPrompt = true)
         {
             var sb = new StringBuilder();
 
@@ -79,9 +94,17 @@ namespace AITools.AIChat.Context
             sb.AppendLine("  (matches the \"Image #N\" / \"Movie #N\" labels). attachment=\"N\"");
             sb.AppendLine("  references the Nth image the user pasted THIS turn.");
             sb.AppendLine("- Each action goes on its own line, self-closing, never inside a code fence.");
-            sb.AppendLine("- Previous assistant messages may contain old executed <aitools_action .../>");
-            sb.AppendLine("  commands. Treat them as examples/history; don't repeat an old action unless");
-            sb.AppendLine("  the user asks for another result like it.");
+            if (keepOldToolCallsInPrompt)
+            {
+                sb.AppendLine("- Previous assistant messages may contain old executed <aitools_action .../>");
+                sb.AppendLine("  commands. Treat them as examples/history; don't repeat an old action unless");
+                sb.AppendLine("  the user asks for another result like it.");
+            }
+            else
+            {
+                sb.AppendLine("- Old executed action XML is hidden from your prompt by default. Use the");
+                sb.AppendLine("  CHAT IMAGES provenance list for prior generated/edit history.");
+            }
             sb.AppendLine("- Built-in: <aitools_action skill=\"read_skill\" id=\"<skill_id>\"/> loads");
             sb.AppendLine("  a skill's full body for the NEXT assistant turn if the Template above isn't enough.");
 
@@ -108,15 +131,14 @@ namespace AITools.AIChat.Context
 
         /// <summary>
         /// Builds the volatile CURRENT STATE block: the GPU roster (with live
-        /// busy/idle status) and the numbered chat-image list (captions fill in
-        /// asynchronously). <paramref name="chatImageSlotCount"/> is the number of
+        /// busy/idle status) and the numbered chat-image list. <paramref name="chatImageSlotCount"/> is the number of
         /// numbered chat image slots available via chat_image="N" (1-based, matching
         /// the visible Image #N / Movie #N labels); pass 0 if none. AIChatPanel
         /// appends this to the outgoing user message each turn - ephemerally, so a
         /// GPU flipping busy or a caption arriving never rewrites earlier request
         /// content the server already cached.
         /// </summary>
-        public string BuildCurrentStateBlock(int chatImageSlotCount = 0, IReadOnlyList<string> chatImageCaptions = null, string anchorsLine = null)
+        public string BuildCurrentStateBlock(int chatImageSlotCount = 0, IReadOnlyList<ChatImageState> chatImages = null, string anchorsLine = null)
         {
             var sb = new StringBuilder();
             sb.AppendLine("[CURRENT STATE - attached automatically to the newest message; the user did not type this. Earlier messages had their copies removed to save space.]");
@@ -131,20 +153,39 @@ namespace AITools.AIChat.Context
             if (!string.IsNullOrEmpty(anchorsLine))
                 sb.AppendLine(anchorsLine);
 
-            // Reachable chat images (for chat_image="N" reuse). When captions are
-            // available we list each image with its short auto-generated description so
-            // the LLM can resolve descriptive references ("the one with grandma") to
-            // the right chat_image="N" without relying solely on visual recall.
+            // Reachable chat images (for chat_image="N" reuse). Generated images are
+            // represented by compact provenance instead of repeated visual captions by
+            // default; user attachments still carry their one-shot caption because the
+            // app did not create them from a prompt.
             if (chatImageSlotCount > 0)
             {
-                sb.AppendLine("CHAT IMAGES (numbered slots reusable as input via chat_image=\"N\"):");
+                sb.Append("CHAT IMAGES (").Append(chatImageSlotCount)
+                  .Append(" current slot").Append(chatImageSlotCount == 1 ? "" : "s")
+                  .Append("; next new bubble will be #").Append(chatImageSlotCount + 1)
+                  .AppendLine(". Use existing numbers only; for same-reply follow-ups use chain=\"true\" or anchors, not guessed future numbers):");
                 for (int i = 0; i < chatImageSlotCount; i++)
                 {
-                    string caption = (chatImageCaptions != null && i < chatImageCaptions.Count)
-                        ? (chatImageCaptions[i] ?? "")
-                        : "";
-                    if (string.IsNullOrEmpty(caption)) caption = "(captioning...)";
-                    sb.Append("- Image #").Append(i + 1).Append(": ").AppendLine(caption);
+                    ChatImageState state = (chatImages != null && i < chatImages.Count) ? chatImages[i] : null;
+                    int index = state != null && state.Index > 0 ? state.Index : i + 1;
+                    string kind = state != null && !string.IsNullOrEmpty(state.Kind)
+                        ? state.Kind
+                        : (state != null && state.IsMovie ? "movie" : "image");
+
+                    sb.Append("- #").Append(index).Append(": ").Append(kind);
+                    if (state != null)
+                    {
+                        if (!state.IsReusable)
+                            sb.Append(", not reusable");
+                        if (!string.IsNullOrEmpty(state.AnchorName))
+                            sb.Append(", anchor=\"").Append(state.AnchorName).Append('"');
+                        if (!string.IsNullOrEmpty(state.Dimensions))
+                            sb.Append(", ").Append(state.Dimensions);
+                        if (!string.IsNullOrEmpty(state.Provenance))
+                            sb.Append(", ").Append(state.Provenance);
+                        if (state.IncludeCaption && !string.IsNullOrEmpty(state.Caption))
+                            sb.Append(", caption: ").Append(state.Caption);
+                    }
+                    sb.AppendLine();
                 }
             }
             else
