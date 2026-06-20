@@ -143,14 +143,14 @@ namespace AITools.AIChat.Context
 
         /// <summary>
         /// Builds the volatile CURRENT STATE block: the GPU roster (with live
-        /// busy/idle status) and the numbered chat-image list. <paramref name="chatImageSlotCount"/> is the number of
-        /// numbered chat image slots available via chat_image="N" (1-based, matching
-        /// the visible Image #N / Movie #N labels); pass 0 if none. AIChatPanel
-        /// appends this to the outgoing user message each turn - ephemerally, so a
-        /// GPU flipping busy or a caption arriving never rewrites earlier request
-        /// content the server already cached.
+        /// busy/idle status) and a bounded recent-window numbered chat-image list.
+        /// <paramref name="chatImageSlotCount"/> is the total number of numbered
+        /// slots available via chat_image="N"; <paramref name="chatImages"/> is
+        /// the subset to actually list in the prompt. AIChatPanel appends this
+        /// to the outgoing user message each turn - ephemerally, so volatile
+        /// state never rewrites earlier request content the server already cached.
         /// </summary>
-        public string BuildCurrentStateBlock(int chatImageSlotCount = 0, IReadOnlyList<ChatImageState> chatImages = null, string anchorsLine = null)
+        public string BuildCurrentStateBlock(int chatImageSlotCount = 0, IReadOnlyList<ChatImageState> chatImages = null, string anchorsLine = null, int imageContextLimit = 40)
         {
             var sb = new StringBuilder();
             sb.AppendLine("[CURRENT STATE - attached automatically to the newest message; the user did not type this. Earlier messages had their copies removed to save space.]");
@@ -171,12 +171,46 @@ namespace AITools.AIChat.Context
             // app did not create them from a prompt.
             if (chatImageSlotCount > 0)
             {
+                int listedCount = chatImages != null ? chatImages.Count : 0;
+                int firstListedIndex = listedCount > 0 && chatImages[0] != null && chatImages[0].Index > 0
+                    ? chatImages[0].Index
+                    : (listedCount > 0 ? chatImageSlotCount - listedCount + 1 : 0);
+                int lastListedIndex = listedCount > 0 && chatImages[listedCount - 1] != null && chatImages[listedCount - 1].Index > 0
+                    ? chatImages[listedCount - 1].Index
+                    : chatImageSlotCount;
+
                 sb.Append("CHAT IMAGES (").Append(chatImageSlotCount)
                   .Append(" current slot").Append(chatImageSlotCount == 1 ? "" : "s")
-                  .Append("; next new bubble will be #").Append(chatImageSlotCount + 1)
-                  .AppendLine(". Use existing numbers only; for same-reply follow-ups use chain=\"true\" or anchors, not guessed future numbers):");
+                  .Append("; ");
+                if (listedCount <= 0)
+                {
+                    sb.Append("showing none because image context limit is ").Append(imageContextLimit)
+                      .Append("; next new bubble will be #").Append(chatImageSlotCount + 1)
+                      .AppendLine(". Use existing numbers only; for same-reply follow-ups use chain=\"true\" or anchors, not guessed future numbers):");
+                    sb.Append("All existing chat images #1-#").Append(chatImageSlotCount)
+                      .AppendLine(" omitted from prompt; use named anchors or ask the user if an omitted old image is needed.");
+                }
+                else if (listedCount < chatImageSlotCount)
+                {
+                    sb.Append("showing #").Append(firstListedIndex).Append("-#").Append(lastListedIndex)
+                      .Append(" only, latest ").Append(listedCount)
+                      .Append(" by image context limit ").Append(imageContextLimit)
+                      .Append("; next new bubble will be #").Append(chatImageSlotCount + 1)
+                      .AppendLine(". Use existing numbers only; for same-reply follow-ups use chain=\"true\" or anchors, not guessed future numbers):");
+                    if (firstListedIndex > 1)
+                    {
+                        sb.Append("Older chat images #1-#").Append(firstListedIndex - 1)
+                          .AppendLine(" omitted from prompt; use named anchors or ask the user if an omitted old image is needed.");
+                    }
+                }
+                else
+                {
+                    sb.Append("showing all; next new bubble will be #").Append(chatImageSlotCount + 1)
+                      .AppendLine(". Use existing numbers only; for same-reply follow-ups use chain=\"true\" or anchors, not guessed future numbers):");
+                }
+
                 sb.AppendLine("If a composed image has clean_base=available and you need to redo/change text, labels, borders, or speech bubbles, use chat_image=\"N\" clean_base=\"true\" on the FIRST replacement draw_shape/draw_text/add_border step so you do not draw over baked-in old overlays.");
-                for (int i = 0; i < chatImageSlotCount; i++)
+                for (int i = 0; i < listedCount; i++)
                 {
                     ChatImageState state = (chatImages != null && i < chatImages.Count) ? chatImages[i] : null;
                     int index = state != null && state.Index > 0 ? state.Index : i + 1;

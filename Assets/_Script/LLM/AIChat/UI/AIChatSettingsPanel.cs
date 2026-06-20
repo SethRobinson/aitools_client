@@ -45,6 +45,7 @@ namespace AITools.AIChat.UI
         private TMP_InputField _keepLastNField;
         private TMP_InputField _presetPrefixField;
         private TMP_InputField _compactKeepNField;
+        private TMP_InputField _imageContextLimitField;
         private Toggle _keepOldToolCallsToggle;
         private Toggle _autoCaptionGeneratedImagesToggle;
 
@@ -483,6 +484,29 @@ namespace AITools.AIChat.UI
             sumBtn.GetComponent<RectTransform>().anchorMax = new Vector2(0, 0);
             sumBtn.GetComponent<RectTransform>().pivot = new Vector2(0, 0);
 
+            const float kImageContextLabelW = 130f;
+            const float kImageContextInputW = 46f;
+            BuildSettingPair(
+                footer.transform,
+                "ImageContextLimitPair",
+                "Image context limit:",
+                kImageContextLabelW,
+                kImageContextInputW,
+                new Vector2(compactBtnX + 252f, kCompactRowY),
+                "Maximum number of newest chat images described in the outgoing CHAT IMAGES prompt block. Set 0 to hide per-image records. This does not delete media or prevent tools from using existing chat_image slots.",
+                out _imageContextLimitField);
+            _imageContextLimitField.contentType = TMP_InputField.ContentType.IntegerNumber;
+            _imageContextLimitField.characterLimit = 3;
+            _imageContextLimitField.textComponent.alignment = TextAlignmentOptions.Center;
+            if (_imageContextLimitField.placeholder is TextMeshProUGUI icp)
+            {
+                icp.text = "40";
+                icp.color = new Color(0, 0, 0, 0.4f);
+                icp.font = _font;
+                icp.fontSize = BaseFontSize;
+                icp.alignment = TextAlignmentOptions.Center;
+            }
+
             const float kSlimRowY = 118f;
             _keepOldToolCallsToggle = MakeSettingToggle(
                 footer.transform,
@@ -719,6 +743,8 @@ namespace AITools.AIChat.UI
                 _maxEdgeField.text = AIChatPanel.GetAttachmentMaxEdge().ToString();
             if (_compactKeepNField != null)
                 _compactKeepNField.text = AIChatPanel.GetCompactKeepN().ToString();
+            if (_imageContextLimitField != null)
+                _imageContextLimitField.text = AIChatPanel.GetImageContextLimit().ToString();
             if (_keepOldToolCallsToggle != null)
                 _keepOldToolCallsToggle.isOn = AIChatPanel.GetKeepOldToolCallsInPrompt();
             if (_autoCaptionGeneratedImagesToggle != null)
@@ -823,6 +849,9 @@ namespace AITools.AIChat.UI
             // Truncate and Summarize buttons).
             if (_compactKeepNField != null && int.TryParse(_compactKeepNField.text, out int compactN))
                 AIChatPanel.SetCompactKeepN(compactN);
+
+            if (_imageContextLimitField != null && int.TryParse(_imageContextLimitField.text, out int imageContextLimit))
+                AIChatPanel.SetImageContextLimit(imageContextLimit);
 
             if (_keepOldToolCallsToggle != null)
                 AIChatPanel.SetKeepOldToolCallsInPrompt(_keepOldToolCallsToggle.isOn);

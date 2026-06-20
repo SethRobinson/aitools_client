@@ -188,6 +188,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private const float MIN_MEDIA_WIDTH = 140f;
     private const float MIN_CHAT_WIDTH = 240f;
     private const float MEDIA_HEADER_HEIGHT = 26f;
+    private const float MIN_SCROLLBAR_HANDLE_PIXELS = 32f;
     private const string PREFS_KEEP_LAST_N_MEDIA = "aichat_keep_last_n_media";
     private const int DEFAULT_KEEP_LAST_N_MEDIA = 10;
     // Mirror of SkillManager.PresetPrefixPrefsKey - kept here for the static
@@ -221,6 +222,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // by summarizing everything older into one message). Shared by both modes.
     private const string PREFS_COMPACT_KEEP_N = "aichat_compact_keep_n";
     private const int DEFAULT_COMPACT_KEEP_N = 5;
+    // Prompt-side cap for the volatile CHAT IMAGES list. Media stays available
+    // locally; this only bounds the repeated per-turn text sent to the LLM.
+    private const string PREFS_IMAGE_CONTEXT_LIMIT = "aichat_image_context_limit";
+    private const int DEFAULT_IMAGE_CONTEXT_LIMIT = 40;
+    private const int MAX_IMAGE_CONTEXT_LIMIT = 200;
     private const string PREFS_MAIN_LLM_INSTANCE_ID = "aichat_main_llm_instance_id";
 
     // Footer
@@ -959,6 +965,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         scrollbar.handleRect = handleRt;
         scrollbar.targetGraphic = handleImg;
+        var minHandle = sbGo.AddComponent<MinScrollbarHandleSize>();
+        minHandle.SetTarget(scrollbar, handleRt, MIN_SCROLLBAR_HANDLE_PIXELS);
         scroll.verticalScrollbar = scrollbar;
 
         scrollOut = scroll;
@@ -3692,6 +3700,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // next turn's request still prefix-matches everything the server cached.
         AppendCurrentStateToOutgoingLines(lines);
 
+        // Send raw attached image bytes only on the turn where the user attached them.
+        // BuildPromptChat/RemoveTMPTags returned cloned GTPChatLine objects above, so
+        // the current request still carries the image_url payloads; clearing the live
+        // prompt history here prevents every future turn from resending old base64.
+        _promptManager?.ClearImagesFromInteractions();
+
         // Total prompt size feeds the status line's prefill estimate (chars/4 ~ tokens).
         _streamPromptApproxChars = 0;
         foreach (var promptLine in lines)
@@ -3969,10 +3983,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             if (line != null && line._role == "user") lastUser = line;
         if (lastUser == null) return;
 
-        var chatImages = BuildChatImageStatesForPrompt();
-        int chatImageSlots = chatImages.Count;
+        int chatImageSlots = _chatImagePics != null ? _chatImagePics.Count : 0;
+        int imageContextLimit = GetImageContextLimit();
+        var chatImages = BuildChatImageStatesForPrompt(imageContextLimit);
         string anchorsLine = BuildAnchorsStateLine();
-        string state = _contextBuilder.BuildCurrentStateBlock(chatImageSlots, chatImages, anchorsLine);
+        string state = _contextBuilder.BuildCurrentStateBlock(chatImageSlots, chatImages, anchorsLine, imageContextLimit);
         if (string.IsNullOrEmpty(state)) return;
 
         lastUser._content = (lastUser._content ?? "") + "\n\n" + state;
@@ -4011,13 +4026,15 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             : text;
     }
 
-    private List<ChatImageState> BuildChatImageStatesForPrompt()
+    private List<ChatImageState> BuildChatImageStatesForPrompt(int imageContextLimit)
     {
         int count = _chatImagePics != null ? _chatImagePics.Count : 0;
-        var states = new List<ChatImageState>(count);
+        int listedCount = imageContextLimit <= 0 ? 0 : Mathf.Min(count, imageContextLimit);
+        int start = Mathf.Max(0, count - listedCount);
+        var states = new List<ChatImageState>(listedCount);
         bool includeGeneratedCaptions = GetAutoCaptionGeneratedImages();
 
-        for (int i = 0; i < count; i++)
+        for (int i = start; i < count; i++)
         {
             PicMain pic = _chatImagePics[i];
             ChatImageRecord record = (_chatImageRecords != null && i < _chatImageRecords.Count)
@@ -5817,6 +5834,23 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         PlayerPrefs.Save();
     }
 
+    /// <summary>
+    /// How many of the newest chat images are described in the volatile CHAT IMAGES
+    /// prompt block. This does not delete media or affect chat_image resolution.
+    /// 0 hides all per-image records; older images remain available locally.
+    /// </summary>
+    public static int GetImageContextLimit()
+    {
+        int n = PlayerPrefs.GetInt(PREFS_IMAGE_CONTEXT_LIMIT, DEFAULT_IMAGE_CONTEXT_LIMIT);
+        return Mathf.Clamp(n, 0, MAX_IMAGE_CONTEXT_LIMIT);
+    }
+
+    public static void SetImageContextLimit(int n)
+    {
+        PlayerPrefs.SetInt(PREFS_IMAGE_CONTEXT_LIMIT, Mathf.Clamp(n, 0, MAX_IMAGE_CONTEXT_LIMIT));
+        PlayerPrefs.Save();
+    }
+
     /// <summary>True when a chat panel instance is alive to compact.</summary>
     public static bool IsChatActive => _instance != null;
 
@@ -7081,6 +7115,77 @@ public class ChatScrollRectCtrlAware : ScrollRect
         if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
             return;
         base.OnScroll(data);
+    }
+}
+
+/// <summary>
+/// Keeps a Scrollbar thumb visible in very long AI Chat/media lists. Unity's
+/// Scrollbar drives the handle anchors from content ratio, so this clamps the
+/// visual anchor span after Scrollbar updates instead of changing scroll state.
+/// </summary>
+public class MinScrollbarHandleSize : MonoBehaviour
+{
+    private Scrollbar _scrollbar;
+    private RectTransform _handleRect;
+    private float _minPixels = 32f;
+
+    public void SetTarget(Scrollbar scrollbar, RectTransform handleRect, float minPixels)
+    {
+        _scrollbar = scrollbar;
+        _handleRect = handleRect;
+        _minPixels = Mathf.Max(1f, minPixels);
+        Apply();
+    }
+
+    private void OnEnable()
+    {
+        Canvas.willRenderCanvases += Apply;
+    }
+
+    private void OnDisable()
+    {
+        Canvas.willRenderCanvases -= Apply;
+    }
+
+    private void LateUpdate()
+    {
+        Apply();
+    }
+
+    private void Apply()
+    {
+        if (_scrollbar == null || _handleRect == null)
+            return;
+
+        RectTransform track = _handleRect.parent as RectTransform;
+        if (track == null)
+            return;
+
+        int axis = (_scrollbar.direction == Scrollbar.Direction.LeftToRight
+            || _scrollbar.direction == Scrollbar.Direction.RightToLeft) ? 0 : 1;
+        float trackSize = axis == 0 ? track.rect.width : track.rect.height;
+        if (trackSize <= 0f)
+            return;
+
+        Vector2 anchorMin = _handleRect.anchorMin;
+        Vector2 anchorMax = _handleRect.anchorMax;
+        float span = anchorMax[axis] - anchorMin[axis];
+        float offsetSpan = _handleRect.offsetMax[axis] - _handleRect.offsetMin[axis];
+        float minSpan = Mathf.Clamp01((_minPixels - offsetSpan) / trackSize);
+        if (span >= minSpan)
+            return;
+
+        float value = Mathf.Clamp01(_scrollbar.value);
+        bool reverse = _scrollbar.direction == Scrollbar.Direction.RightToLeft
+            || _scrollbar.direction == Scrollbar.Direction.TopToBottom;
+        float start = value * (1f - minSpan);
+        if (reverse)
+            start = 1f - minSpan - start;
+
+        anchorMin[axis] = start;
+        anchorMax[axis] = start + minSpan;
+        _handleRect.anchorMin = anchorMin;
+        _handleRect.anchorMax = anchorMax;
     }
 }
 

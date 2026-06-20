@@ -108,6 +108,26 @@ public class GPTPromptManager : MonoBehaviour
         return false;
     }
 
+    /// <summary>
+    /// Remove attached base64 image payloads from stored interactions after an
+    /// outgoing request has cloned them. Text metadata remains in history, and
+    /// callers that need pixels later can use their own local image store.
+    /// </summary>
+    public int ClearImagesFromInteractions()
+    {
+        int cleared = 0;
+        foreach (var interaction in _interactions)
+        {
+            if (interaction == null || interaction._images == null || interaction._images.Count == 0)
+                continue;
+
+            cleared += interaction._images.Count;
+            interaction._images.Clear();
+            interaction._imageChatIndices?.Clear();
+        }
+        return cleared;
+    }
+
     public void CloneFrom(GPTPromptManager other)
     {
         _baseSystemPrompt = other._baseSystemPrompt;

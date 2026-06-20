@@ -42,6 +42,9 @@ CHEAT SHEET (read this first, the long version is below):
   bubble already in the chat (see CHAT IMAGES below). chat_image="Name" = a
   character anchor (resolved to its current bubble). chain="true" = output of a
   generate-class action you emitted earlier in this same reply.
+- CHAT IMAGES may be a bounded recent window, not every image ever made in this
+  chat. Prefer listed recent numbers and ANCHORS names; if the user wants an
+  omitted older image and no anchor name is available, ask which image to use.
 - Do NOT predict future numeric chat_image ids in a reply. If a later action in
   the same reply must refer to a newly-created bubble that is not the chain
   target, give the creating action anchor="Name" and refer to chat_image="Name"

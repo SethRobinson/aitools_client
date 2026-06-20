@@ -211,14 +211,33 @@ public class OpenAITextCompletionManager : MonoBehaviour
                 {
                     if (result[result.Count - 1]._images == null)
                         result[result.Count - 1]._images = new List<string>();
+                    if (result[result.Count - 1]._imageChatIndices == null)
+                        result[result.Count - 1]._imageChatIndices = new List<int>();
                     result[result.Count - 1]._images.AddRange(line._images);
+                    for (int i = 0; i < line._images.Count; i++)
+                    {
+                        int idx = (line._imageChatIndices != null && i < line._imageChatIndices.Count)
+                            ? line._imageChatIndices[i]
+                            : -1;
+                        result[result.Count - 1]._imageChatIndices.Add(idx);
+                    }
                 }
             }
             else
             {
                 var merged = new GTPChatLine(line._role, line._content);
                 if (line._images != null && line._images.Count > 0)
+                {
                     merged._images = new List<string>(line._images);
+                    merged._imageChatIndices = new List<int>();
+                    for (int i = 0; i < line._images.Count; i++)
+                    {
+                        int idx = (line._imageChatIndices != null && i < line._imageChatIndices.Count)
+                            ? line._imageChatIndices[i]
+                            : -1;
+                        merged._imageChatIndices.Add(idx);
+                    }
+                }
                 result.Add(merged);
             }
         }
