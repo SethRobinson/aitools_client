@@ -122,9 +122,7 @@ public class StartupSplashPanel : MonoBehaviour
         version.rectTransform.offsetMin = new Vector2(0f, 0f);
         version.rectTransform.offsetMax = new Vector2(-78f, 0f);
 
-        var close = CreateButton(header, "Close", "X", new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
-            new Vector2(0.5f, 0.5f), new Vector2(-28f, 0f), new Vector2(36f, 34f), DestroySplash, false);
-        close.GetComponent<Image>().color = new Color(0.88f, 0.90f, 0.92f, 1f);
+        RTWindowChrome.CreateCloseButton(header, DestroySplash, anchoredPosition: new Vector2(-10f, 0f));
     }
 
     private void CreateBanner(RectTransform panel)

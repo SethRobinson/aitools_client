@@ -433,7 +433,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private const float FOOTER_HEIGHT = 168f;
     private const float FOOTER_DRAG_BAR_HEIGHT = 10f;
     private const float RESIZE_EDGE_THICKNESS = 10f;
-    private const float RESIZE_CORNER_SIZE = 16f;
+    private const float RESIZE_CORNER_SIZE = 24f;
+    private const float HEADER_RIGHT_RESIZE_EXCLUSION = 270f;
     private const int AI_CHAT_NO_EXPLICIT_OUTPUT_TOKEN_CAP = 0;
     private const int AI_CHAT_GEMINI_MAX_OUTPUT_TOKENS = 65536;
     private const int AI_CHAT_LEGACY_MAX_OUTPUT_TOKENS = 8192;
@@ -461,7 +462,6 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private static readonly Color TextDark = new Color(0f, 0f, 0f, 1f);
     private static readonly Color TextTitle = new Color(0f, 0f, 0f, 1f);
     private static readonly Color TextPlaceholder = new Color(0.196f, 0.196f, 0.196f, 0.5f);
-    private static readonly Color ResizeGripColor = new Color(0.45f, 0.45f, 0.50f, 1f);
     // Visible tint for the four edge-resize bars (the outer 10px band). Lighter and
     // cooler than the move frame so the two zones read as distinct without shouting.
     private static readonly Color ResizeEdgeColor = new Color(0.40f, 0.60f, 0.78f, 0.55f);
@@ -716,35 +716,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         settingsTxt.alignment = TextAlignmentOptions.Center;
         settingsTxt.raycastTarget = false;
 
-        // Close button
-        var close = new GameObject("Close");
-        close.transform.SetParent(header.transform, false);
-        var closeRt = close.AddComponent<RectTransform>();
-        closeRt.anchorMin = new Vector2(1, 0.5f);
-        closeRt.anchorMax = new Vector2(1, 0.5f);
-        closeRt.pivot = new Vector2(1, 0.5f);
-        closeRt.sizeDelta = new Vector2(24, 24);
-        closeRt.anchoredPosition = new Vector2(-6, 0);
-
-        var closeImg = close.AddComponent<Image>();
-        closeImg.color = new Color(0.55f, 0.25f, 0.25f, 1f);
-        var closeBtn = close.AddComponent<Button>();
-        closeBtn.onClick.AddListener(Hide);
-
-        var xObj = new GameObject("X");
-        xObj.transform.SetParent(close.transform, false);
-        var xRt = xObj.AddComponent<RectTransform>();
-        xRt.anchorMin = Vector2.zero;
-        xRt.anchorMax = Vector2.one;
-        xRt.offsetMin = Vector2.zero;
-        xRt.offsetMax = Vector2.zero;
-
-        var xTxt = xObj.AddComponent<TextMeshProUGUI>();
-        xTxt.text = "X";
-        xTxt.font = _font;
-        xTxt.fontSize = 15;
-        xTxt.color = Color.white;
-        xTxt.alignment = TextAlignmentOptions.Center;
+        RTWindowChrome.CreateCloseButton(rt, Hide);
     }
 
     /// <summary>
@@ -2176,8 +2148,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     private void CreateResizeGrip()
     {
-        // Full-length edges (no corner inset). The corner regions are covered by invisible
-        // diagonal-resize caps below, plus the visible bottom-right ResizeGrip on top.
+        // Keep resize hit zones out of the header controls. The close/settings buttons
+        // must win raycasts over resize bars.
         CreateResizeEdgeHandle(
             "ResizeTop",
             new Vector2(0f, 1f),
@@ -2185,7 +2157,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             new Vector2(0.5f, 1f),
             new Vector2(0f, RESIZE_EDGE_THICKNESS),
             Vector2.zero,
-            new Vector2(0f, 1f));
+            new Vector2(0f, 1f),
+            new Vector2(0f, -RESIZE_EDGE_THICKNESS),
+            new Vector2(-HEADER_RIGHT_RESIZE_EXCLUSION, 0f));
         CreateResizeEdgeHandle(
             "ResizeBottom",
             new Vector2(0f, 0f),
@@ -2209,15 +2183,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             new Vector2(1f, 0.5f),
             new Vector2(RESIZE_EDGE_THICKNESS, 0f),
             Vector2.zero,
-            new Vector2(1f, 0f));
+            new Vector2(1f, 0f),
+            new Vector2(-RESIZE_EDGE_THICKNESS, 0f),
+            new Vector2(0f, -HEADER_HEIGHT));
 
-        // Invisible diagonal-resize caps for the three corners that don't have a styled
-        // grip widget. They sit on top of the now-full-length edges, so the blue border
-        // reads as continuous while the corner pixels still resize on both axes at once.
+        // Invisible diagonal-resize caps for corners that don't overlap header controls.
         CreateResizeCornerCap("ResizeCornerTopLeft",
             new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(-1f,  1f));
-        CreateResizeCornerCap("ResizeCornerTopRight",
-            new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2( 1f,  1f));
         CreateResizeCornerCap("ResizeCornerBottomLeft",
             new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(-1f, -1f));
 
@@ -2230,30 +2202,22 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         rt.sizeDelta = new Vector2(RESIZE_CORNER_SIZE, RESIZE_CORNER_SIZE);
         rt.anchoredPosition = Vector2.zero;
 
-        var img = grip.AddComponent<Image>();
-        img.color = ResizeGripColor;
-
-        // Tiny diagonal hint (just a label, easier than custom geometry)
-        var hint = new GameObject("Hint");
-        hint.transform.SetParent(grip.transform, false);
-        var hintRt = hint.AddComponent<RectTransform>();
-        hintRt.anchorMin = Vector2.zero;
-        hintRt.anchorMax = Vector2.one;
-        hintRt.offsetMin = Vector2.zero;
-        hintRt.offsetMax = Vector2.zero;
-        var hintTxt = hint.AddComponent<TextMeshProUGUI>();
-        hintTxt.font = _font;
-        hintTxt.text = "\u25E2"; // lower-right triangle
-        hintTxt.fontSize = 14;
-        hintTxt.color = Color.white;
-        hintTxt.alignment = TextAlignmentOptions.Center;
-        hintTxt.raycastTarget = false;
+        RTWindowChrome.ConfigureResizeGrip(rt);
 
         var resize = grip.AddComponent<PanelResizeHandle>();
         resize.SetTarget(_mainPanel, new Vector2(MIN_WIDTH, MIN_HEIGHT), new Vector2(1f, -1f), OnPanelResized);
     }
 
-    private void CreateResizeEdgeHandle(string name, Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot, Vector2 sizeDelta, Vector2 anchoredPosition, Vector2 resizeDirection)
+    private void CreateResizeEdgeHandle(
+        string name,
+        Vector2 anchorMin,
+        Vector2 anchorMax,
+        Vector2 pivot,
+        Vector2 sizeDelta,
+        Vector2 anchoredPosition,
+        Vector2 resizeDirection,
+        Vector2? offsetMin = null,
+        Vector2? offsetMax = null)
     {
         var edge = new GameObject(name);
         edge.transform.SetParent(_mainPanel, false);
@@ -2263,6 +2227,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         rt.pivot = pivot;
         rt.sizeDelta = sizeDelta;
         rt.anchoredPosition = anchoredPosition;
+        if (offsetMin.HasValue)
+            rt.offsetMin = offsetMin.Value;
+        if (offsetMax.HasValue)
+            rt.offsetMax = offsetMax.Value;
 
         var img = edge.AddComponent<Image>();
         img.color = ResizeEdgeColor;
@@ -2272,7 +2240,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     }
 
     /// <summary>
-    /// Invisible 16x16 cap parked at a panel corner. Acts as a diagonal-resize hot zone -
+    /// Invisible cap parked at a panel corner. Acts as a diagonal-resize hot zone -
     /// pointer events go to this cap (highest sibling at the corner), so the cursor swap
     /// and the resize direction read as diagonal. The continuous blue look comes from the
     /// full-length edge handles rendered underneath, not from this cap.

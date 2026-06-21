@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.Events;
 using UnityEngine.UI;
 
 /// <summary>
@@ -591,35 +592,7 @@ public class LLMSettingsPanel : MonoBehaviour
         title.color = TextTitle;
         title.alignment = TextAlignmentOptions.MidlineLeft;
 
-        // Close button
-        var close = new GameObject("Close");
-        close.transform.SetParent(header.transform, false);
-        var closeRt = close.AddComponent<RectTransform>();
-        closeRt.anchorMin = new Vector2(1, 0.5f);
-        closeRt.anchorMax = new Vector2(1, 0.5f);
-        closeRt.pivot = new Vector2(1, 0.5f);
-        closeRt.sizeDelta = new Vector2(24, 24);
-        closeRt.anchoredPosition = new Vector2(-6, 0);
-
-        var closeImg = close.AddComponent<Image>();
-        closeImg.color = new Color(0.55f, 0.25f, 0.25f, 1f);
-        var closeBtn = close.AddComponent<Button>();
-        closeBtn.onClick.AddListener(Hide);
-
-        var xObj = new GameObject("X");
-        xObj.transform.SetParent(close.transform, false);
-        var xRt = xObj.AddComponent<RectTransform>();
-        xRt.anchorMin = Vector2.zero;
-        xRt.anchorMax = Vector2.one;
-        xRt.offsetMin = Vector2.zero;
-        xRt.offsetMax = Vector2.zero;
-
-        var xTxt = xObj.AddComponent<TextMeshProUGUI>();
-        xTxt.text = "X";
-        xTxt.font = _font;
-        xTxt.fontSize = 15;
-        xTxt.color = Color.white;
-        xTxt.alignment = TextAlignmentOptions.Center;
+        RTWindowChrome.CreateCloseButton(rt, Hide);
     }
 
     private RectTransform CreateContentRoot()
@@ -2361,6 +2334,161 @@ public class LLMSettingsPanel : MonoBehaviour
     {
         if (Input.GetKeyDown(KeyCode.Escape))
             Hide();
+    }
+}
+
+public static class RTWindowChrome
+{
+    public const float CloseButtonSize = 24f;
+
+    private static readonly Color CloseNormal = new Color(0.55f, 0.25f, 0.25f, 1f);
+    private static readonly Color CloseHighlighted = new Color(0.66f, 0.29f, 0.29f, 1f);
+    private static readonly Color ClosePressed = new Color(0.38f, 0.16f, 0.16f, 1f);
+    private static readonly Color CloseDisabled = new Color(0.45f, 0.24f, 0.24f, 0.45f);
+    private static readonly Color CloseIcon = Color.white;
+
+    private static readonly Color ResizeGripHitArea = new Color(1f, 1f, 1f, 0.001f);
+    private static readonly Color ResizeGripLine = new Color(0.34f, 0.37f, 0.40f, 0.95f);
+
+    public static Button CreateCloseButton(
+        RectTransform header,
+        UnityAction onClick,
+        string name = "Close",
+        Vector2? anchoredPosition = null,
+        Vector2? size = null)
+    {
+        RectTransform rt = GetOrCreateChild(header, name);
+        rt.anchorMin = new Vector2(1f, 0.5f);
+        rt.anchorMax = new Vector2(1f, 0.5f);
+        rt.pivot = new Vector2(1f, 0.5f);
+        rt.anchoredPosition = anchoredPosition ?? new Vector2(-6f, 0f);
+        Vector2 buttonSize = size ?? new Vector2(CloseButtonSize, CloseButtonSize);
+        rt.sizeDelta = buttonSize;
+        rt.localRotation = Quaternion.identity;
+        rt.localScale = Vector3.one;
+        rt.SetAsLastSibling();
+
+        Image image = GetOrAdd<Image>(rt.gameObject);
+        image.raycastTarget = true;
+        image.color = CloseNormal;
+
+        Button button = GetOrAdd<Button>(rt.gameObject);
+        button.targetGraphic = image;
+        button.transition = Selectable.Transition.ColorTint;
+        button.colors = CreateCloseColorBlock();
+        button.onClick.RemoveAllListeners();
+        if (onClick != null)
+            button.onClick.AddListener(onClick);
+
+        DisableLegacyText(rt, "Text");
+        DisableLegacyText(rt, "X");
+        ConfigureCloseIcon(rt, buttonSize);
+        return button;
+    }
+
+    public static void ConfigureResizeGrip(RectTransform grip)
+    {
+        ConfigureResizeGrip(grip, ResizeGripHitArea, ResizeGripLine);
+    }
+
+    public static void ConfigureResizeGrip(RectTransform grip, Color backgroundColor, Color lineColor)
+    {
+        if (grip == null)
+            return;
+
+        Image image = GetOrAdd<Image>(grip.gameObject);
+        image.color = backgroundColor;
+        image.raycastTarget = true;
+
+        DisableLegacyText(grip, "Hint");
+        Vector2 size = grip.sizeDelta;
+        float visualSize = Mathf.Min(Mathf.Abs(size.x), Mathf.Abs(size.y), 24f);
+        float scale = Mathf.Clamp(visualSize / 24f, 0.65f, 1.1f);
+        float thickness = Mathf.Max(1.5f, 1.8f * scale);
+        ConfigureGripLine(grip, "GripLineSmall", 7f * scale, thickness, lineColor);
+        ConfigureGripLine(grip, "GripLineMedium", 12f * scale, thickness, lineColor);
+        ConfigureGripLine(grip, "GripLineLarge", 17f * scale, thickness, lineColor);
+    }
+
+    private static ColorBlock CreateCloseColorBlock()
+    {
+        ColorBlock colors = ColorBlock.defaultColorBlock;
+        colors.normalColor = CloseNormal;
+        colors.highlightedColor = CloseHighlighted;
+        colors.pressedColor = ClosePressed;
+        colors.selectedColor = CloseHighlighted;
+        colors.disabledColor = CloseDisabled;
+        colors.colorMultiplier = 1f;
+        colors.fadeDuration = 0.08f;
+        return colors;
+    }
+
+    private static void ConfigureCloseIcon(RectTransform parent, Vector2 buttonSize)
+    {
+        float scale = Mathf.Max(0.75f, Mathf.Min(buttonSize.x, buttonSize.y) / CloseButtonSize);
+        ConfigureIconLine(parent, "CloseIconA", new Vector2(12f * scale, 2.2f * scale), 45f, CloseIcon);
+        ConfigureIconLine(parent, "CloseIconB", new Vector2(12f * scale, 2.2f * scale), -45f, CloseIcon);
+    }
+
+    private static void ConfigureIconLine(RectTransform parent, string name, Vector2 size, float rotationZ, Color color)
+    {
+        RectTransform line = GetOrCreateChild(parent, name);
+        line.anchorMin = new Vector2(0.5f, 0.5f);
+        line.anchorMax = new Vector2(0.5f, 0.5f);
+        line.pivot = new Vector2(0.5f, 0.5f);
+        line.anchoredPosition = Vector2.zero;
+        line.sizeDelta = size;
+        line.localRotation = Quaternion.Euler(0f, 0f, rotationZ);
+        line.localScale = Vector3.one;
+
+        Image image = GetOrAdd<Image>(line.gameObject);
+        image.color = color;
+        image.raycastTarget = false;
+        line.gameObject.SetActive(true);
+    }
+
+    private static void ConfigureGripLine(RectTransform parent, string name, float edgeRun, float thickness, Color color)
+    {
+        RectTransform line = GetOrCreateChild(parent, name);
+        line.anchorMin = new Vector2(1f, 0f);
+        line.anchorMax = new Vector2(1f, 0f);
+        line.pivot = new Vector2(0.5f, 0.5f);
+        line.anchoredPosition = new Vector2(-edgeRun * 0.5f, edgeRun * 0.5f);
+        line.sizeDelta = new Vector2(edgeRun * 1.41421356f, thickness);
+        line.localRotation = Quaternion.Euler(0f, 0f, 45f);
+        line.localScale = Vector3.one;
+
+        Image image = GetOrAdd<Image>(line.gameObject);
+        image.color = color;
+        image.raycastTarget = false;
+        line.gameObject.SetActive(true);
+    }
+
+    private static RectTransform GetOrCreateChild(RectTransform parent, string name)
+    {
+        Transform child = parent != null ? parent.Find(name) : null;
+        if (child != null)
+            return child as RectTransform;
+
+        GameObject go = new GameObject(name);
+        if (parent != null)
+            go.transform.SetParent(parent, false);
+        return go.AddComponent<RectTransform>();
+    }
+
+    private static T GetOrAdd<T>(GameObject go) where T : Component
+    {
+        T component = go.GetComponent<T>();
+        if (component == null)
+            component = go.AddComponent<T>();
+        return component;
+    }
+
+    private static void DisableLegacyText(RectTransform parent, string childName)
+    {
+        Transform child = parent != null ? parent.Find(childName) : null;
+        if (child != null)
+            child.gameObject.SetActive(false);
     }
 }
 

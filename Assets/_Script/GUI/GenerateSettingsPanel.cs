@@ -320,36 +320,7 @@ public class GenerateSettingsPanel : MonoBehaviour
         title.color = TextTitle;
         title.alignment = TextAlignmentOptions.MidlineLeft;
 
-        // Close button
-        var close = new GameObject("Close");
-        close.transform.SetParent(header.transform, false);
-        var closeRt = close.AddComponent<RectTransform>();
-        closeRt.anchorMin = new Vector2(1, 0.5f);
-        closeRt.anchorMax = new Vector2(1, 0.5f);
-        closeRt.pivot = new Vector2(1, 0.5f);
-        closeRt.sizeDelta = new Vector2(28, 28);
-        closeRt.anchoredPosition = new Vector2(-6, 0);
-
-        var closeImg = close.AddComponent<Image>();
-        closeImg.color = new Color(0.55f, 0.25f, 0.25f, 1f);
-        var closeBtn = close.AddComponent<Button>();
-        closeBtn.onClick.AddListener(Hide);
-
-        var xObj = new GameObject("X");
-        xObj.transform.SetParent(close.transform, false);
-        var xRt = xObj.AddComponent<RectTransform>();
-        xRt.anchorMin = Vector2.zero;
-        xRt.anchorMax = Vector2.one;
-        xRt.offsetMin = Vector2.zero;
-        xRt.offsetMax = Vector2.zero;
-
-        var xTxt = xObj.AddComponent<TextMeshProUGUI>();
-        xTxt.text = "X";
-        xTxt.font = _font;
-        xTxt.fontSize = 16;
-        xTxt.fontStyle = FontStyles.Bold;
-        xTxt.color = Color.white;
-        xTxt.alignment = TextAlignmentOptions.Center;
+        RTWindowChrome.CreateCloseButton(rt, Hide);
     }
 
     private RectTransform CreateContentRoot()

@@ -55,6 +55,8 @@ public class RTNotepad : MonoBehaviour
     private const float HeaderHeight = 42f;
     private const float FooterHeight = 58f;
     private const float WindowMargin = 14f;
+    private const float ResizeGripSize = 24f;
+    private const float ResizeGripButtonReserve = ResizeGripSize + 22f;
     private const int WindowSortingOrder = 100;
 
     public TMP_InputField m_textInput;
@@ -286,41 +288,7 @@ public class RTNotepad : MonoBehaviour
         titleText.alignment = TextAlignmentOptions.MidlineLeft;
         titleText.raycastTarget = false;
 
-        RectTransform closeRt = GetOrCreateChild(header, "CloseButton");
-        closeRt.anchorMin = new Vector2(1f, 0.5f);
-        closeRt.anchorMax = new Vector2(1f, 0.5f);
-        closeRt.pivot = new Vector2(1f, 0.5f);
-        closeRt.anchoredPosition = new Vector2(-10f, 0f);
-        closeRt.sizeDelta = new Vector2(30f, 28f);
-
-        Image closeImage = closeRt.GetComponent<Image>();
-        if (closeImage == null)
-            closeImage = closeRt.gameObject.AddComponent<Image>();
-        closeImage.color = new Color(0.84f, 0.87f, 0.90f, 1f);
-
-        Button closeButton = closeRt.GetComponent<Button>();
-        if (closeButton == null)
-            closeButton = closeRt.gameObject.AddComponent<Button>();
-        closeButton.targetGraphic = closeImage;
-        closeButton.onClick.RemoveAllListeners();
-        closeButton.onClick.AddListener(OnClickedCancel);
-
-        RectTransform closeLabelRt = GetOrCreateChild(closeRt, "Text");
-        closeLabelRt.anchorMin = Vector2.zero;
-        closeLabelRt.anchorMax = Vector2.one;
-        closeLabelRt.offsetMin = Vector2.zero;
-        closeLabelRt.offsetMax = Vector2.zero;
-
-        TextMeshProUGUI closeLabel = closeLabelRt.GetComponent<TextMeshProUGUI>();
-        if (closeLabel == null)
-            closeLabel = closeLabelRt.gameObject.AddComponent<TextMeshProUGUI>();
-        closeLabel.font = FindFont();
-        closeLabel.text = "X";
-        closeLabel.fontSize = 14f;
-        closeLabel.fontStyle = FontStyles.Bold;
-        closeLabel.color = new Color(0.08f, 0.09f, 0.10f, 1f);
-        closeLabel.alignment = TextAlignmentOptions.Center;
-        closeLabel.raycastTarget = false;
+        RTWindowChrome.CreateCloseButton(header, OnClickedCancel, name: "CloseButton");
     }
 
     private RectTransform CreateOrUpdateFooter(RectTransform panel)
@@ -406,7 +374,7 @@ public class RTNotepad : MonoBehaviour
         if (footer == null)
             return;
 
-        float x = -14f;
+        float x = -ResizeGripButtonReserve;
         LayoutButton(m_cancelButton, ref x, 86f);
         LayoutButton(m_saveButton, ref x, 118f);
         LayoutButton(m_applyButton, ref x, 100f);
@@ -473,14 +441,10 @@ public class RTNotepad : MonoBehaviour
         grip.anchorMax = new Vector2(1f, 0f);
         grip.pivot = new Vector2(1f, 0f);
         grip.anchoredPosition = Vector2.zero;
-        grip.sizeDelta = new Vector2(24f, 24f);
+        grip.sizeDelta = new Vector2(ResizeGripSize, ResizeGripSize);
         grip.SetAsLastSibling();
 
-        Image gripImage = grip.GetComponent<Image>();
-        if (gripImage == null)
-            gripImage = grip.gameObject.AddComponent<Image>();
-        gripImage.color = new Color(0.45f, 0.49f, 0.53f, 0.50f);
-        gripImage.raycastTarget = true;
+        RTWindowChrome.ConfigureResizeGrip(grip);
 
         RTNotepadResizeGrip resize = grip.GetComponent<RTNotepadResizeGrip>();
         if (resize == null)

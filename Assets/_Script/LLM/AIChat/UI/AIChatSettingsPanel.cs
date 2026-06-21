@@ -158,31 +158,7 @@ namespace AITools.AIChat.UI
             titleTmp.color = TextDark;
             titleTmp.alignment = TextAlignmentOptions.MidlineLeft;
 
-            var close = new GameObject("Close");
-            close.transform.SetParent(header.transform, false);
-            var closeRt = close.AddComponent<RectTransform>();
-            closeRt.anchorMin = new Vector2(1, 0.5f);
-            closeRt.anchorMax = new Vector2(1, 0.5f);
-            closeRt.pivot = new Vector2(1, 0.5f);
-            closeRt.sizeDelta = new Vector2(24, 24);
-            closeRt.anchoredPosition = new Vector2(-6, 0);
-            close.AddComponent<Image>().color = new Color(0.55f, 0.25f, 0.25f, 1f);
-            var closeBtn = close.AddComponent<Button>();
-            closeBtn.onClick.AddListener(SaveAndClose);
-
-            var x = new GameObject("X");
-            x.transform.SetParent(close.transform, false);
-            var xRt = x.AddComponent<RectTransform>();
-            xRt.anchorMin = Vector2.zero;
-            xRt.anchorMax = Vector2.one;
-            xRt.offsetMin = Vector2.zero;
-            xRt.offsetMax = Vector2.zero;
-            var xTmp = x.AddComponent<TextMeshProUGUI>();
-            xTmp.text = "X";
-            xTmp.font = _font;
-            xTmp.fontSize = 14;
-            xTmp.color = Color.white;
-            xTmp.alignment = TextAlignmentOptions.Center;
+            RTWindowChrome.CreateCloseButton(rt, SaveAndClose);
         }
 
         private void CreateBody()
