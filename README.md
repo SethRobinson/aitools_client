@@ -7,7 +7,7 @@ License:  BSD style attribution, see LICENSE.md
 </p>
 
 
-## Download the latest: V3.0 (May 16th, 2026) [AI Tools Client (Windows, 62 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip)
+## Download the latest: V3.01 (Jun 21st, 2026) [AI Tools Client (Windows, 62 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip)
 
 Need an old version? The last pre-V2 version (that still supports Auto1111) can be downloaded [here](https://www.rtsoft.com/files/SethsAIToolsWindowsV095.zip).
 
@@ -28,6 +28,9 @@ If this is all weird and strange, this is probably not the place for you to star
 - Privacy respected - does not phone home or collect any statistics, purely local usage. (it does check a single file on github.com to check for newer versions, but that's it)
 
 ## Recent changes
+
+### V3.01 (Jun 21st, 2026)
+* Lot of tweaks and bug fixes and polish, things are kind of all about the "AI Chat" feature as it can sort of do everything
 
 ### V3.0 (May 16th, 2026)
 

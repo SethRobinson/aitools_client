@@ -218,7 +218,7 @@ public class Config : MonoBehaviour
     }
     public string GetGenericLLMMode() { return _genericLLMMode; }
   
-    float m_version = 3.0f;
+    float m_version = 3.01f;
     string m_imageEditorPathAndExe = "none set";
     public string GetVersionString() { return m_version.ToString("0.00"); }
     public float GetVersion() { return m_version; }

@@ -20,7 +20,7 @@ Seth's AI Tools is a Unity 6 Windows application that provides a native front-en
 
 Current local facts:
 - Unity editor version: `6000.4.6f1` (`ProjectSettings/ProjectVersion.txt`)
-- App version in code/version metadata: `2.52`
+- App version in code/version metadata: `3.01`
 - Main scene: `Assets/Main.unity`
 - Primary platform: Windows desktop; a limited Python CLI (Windows + Linux) also exists under `cli/`
 
