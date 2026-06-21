@@ -21,6 +21,11 @@ namespace AITools.AIChat.Skills
     {
         private readonly List<Skill> _skills = new List<Skill>();
         private readonly Dictionary<string, Skill> _byId = new Dictionary<string, Skill>(StringComparer.OrdinalIgnoreCase);
+        private readonly List<string> _lastReloadAddedSkillIds = new List<string>();
+        private readonly List<string> _lastReloadRemovedSkillIds = new List<string>();
+        private bool _hasCompletedReload;
+
+        public event Action<IReadOnlyList<string>, IReadOnlyList<string>> OnSkillListChanged;
 
         /// <summary>
         /// Absolute path to the aichat/skills/ folder this manager loads from.
@@ -166,6 +171,11 @@ namespace AITools.AIChat.Skills
 
         public IReadOnlyList<Skill> GetSkills() => _skills;
 
+        public IReadOnlyList<string> LastReloadAddedSkillIds => _lastReloadAddedSkillIds;
+        public IReadOnlyList<string> LastReloadRemovedSkillIds => _lastReloadRemovedSkillIds;
+        public bool LastReloadHadSkillListChange =>
+            _lastReloadAddedSkillIds.Count > 0 || _lastReloadRemovedSkillIds.Count > 0;
+
         public Skill GetById(string id)
         {
             if (string.IsNullOrEmpty(id)) return null;
@@ -182,6 +192,11 @@ namespace AITools.AIChat.Skills
         /// </summary>
         public void Reload()
         {
+            var previousSkillIds = new HashSet<string>(_byId.Keys, StringComparer.OrdinalIgnoreCase);
+            bool shouldReportSkillListChanges = _hasCompletedReload;
+            _lastReloadAddedSkillIds.Clear();
+            _lastReloadRemovedSkillIds.Clear();
+
             _skills.Clear();
             _byId.Clear();
             PrePrompt = "";
@@ -306,6 +321,11 @@ namespace AITools.AIChat.Skills
             {
                 Debug.LogWarning("SkillManager: failed to enumerate skills: " + ex.Message);
             }
+
+            RecordSkillListChanges(previousSkillIds);
+            _hasCompletedReload = true;
+            if (shouldReportSkillListChanges && LastReloadHadSkillListChange)
+                OnSkillListChanged?.Invoke(_lastReloadAddedSkillIds.AsReadOnly(), _lastReloadRemovedSkillIds.AsReadOnly());
         }
 
         /// <summary>
@@ -471,6 +491,26 @@ namespace AITools.AIChat.Skills
         }
 
         // ---------- Internals ----------
+
+        private void RecordSkillListChanges(HashSet<string> previousSkillIds)
+        {
+            var currentSkillIds = new HashSet<string>(_byId.Keys, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var id in currentSkillIds)
+            {
+                if (!previousSkillIds.Contains(id))
+                    _lastReloadAddedSkillIds.Add(id);
+            }
+
+            foreach (var id in previousSkillIds)
+            {
+                if (!currentSkillIds.Contains(id))
+                    _lastReloadRemovedSkillIds.Add(id);
+            }
+
+            _lastReloadAddedSkillIds.Sort(StringComparer.OrdinalIgnoreCase);
+            _lastReloadRemovedSkillIds.Sort(StringComparer.OrdinalIgnoreCase);
+        }
 
         /// <summary>
         /// Locates the aichat/ folder relative to the running app. Editor and standalone

@@ -45,16 +45,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private readonly HashSet<string> _stickyAutoloadSkillIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     private const string AUTOLOAD_SKILL_CONTEXT_TAG = "aichat_autoload_skill_context";
 
-    // Auto-loaded skill bodies are large (150-500 lines each) and used to pile up
-    // forever - every skill whose trigger ever fired stayed pinned for the rest of the
-    // session, easily dragging 800+ lines of overlapping instructions into a small
-    // model's context. We now keep only the most-recently-triggered few. _autoloadLru
-    // is oldest-first; re-triggering a skill moves it to the end. PinnedAutoloadSkillId
-    // (the roleplay spine) is never evicted because mid-story turns still need it even
-    // when the user's latest line is just "now make it night".
-    private readonly List<string> _autoloadLru = new List<string>();
-    private const int MaxAutoloadSkillBodies = 3;
-    private const string PinnedAutoloadSkillId = "scenario_storytelling";
+    // Auto-loaded skill bodies are large, but once a trigger loads one in a chat we
+    // keep it live for that chat. Removing bodies mid-chat is confusing to the user
+    // and can make the LLM lose detailed instructions it already started following.
+    private readonly List<string> _autoloadSkillIds = new List<string>();
 
     // Header status pill - GPU busy count + LLM count, refreshed periodically.
     private TextMeshProUGUI _statusPillText;
@@ -538,6 +532,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         CancelAllAttachmentCaptions();
         CancelAllInspectImageJobs(showBubble: false);
         UnsubscribeFromLLMInstanceChanges();
+        if (_skillManager != null)
+            _skillManager.OnSkillListChanged -= OnSkillListChanged;
         // The ChatImageAttachmentZone component on _panelRoot auto-deregisters and frees
         // its textures in its own OnDestroy.
         _instance = null;
@@ -598,6 +594,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // back into the panel via the IChatHost interface to spawn pics, inject system
         // messages, etc.
         _skillManager = new SkillManager();
+        _skillManager.OnSkillListChanged += OnSkillListChanged;
         _skillManager.Reload();
         _contextBuilder = new ChatContextBuilder(_skillManager);
         _actionParser = new SkillActionParser();
@@ -2537,6 +2534,41 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         AddSystemMessage(_skillManager.BuildActivePromptStatus(), includeInLLMRecap: false);
     }
 
+    private void OnSkillListChanged(IReadOnlyList<string> addedIds, IReadOnlyList<string> removedIds)
+    {
+        int addedCount = addedIds != null ? addedIds.Count : 0;
+        int removedCount = removedIds != null ? removedIds.Count : 0;
+        if (addedCount == 0 && removedCount == 0)
+            return;
+
+        var sb = new StringBuilder();
+        sb.Append("AI Chat skill files changed:");
+        if (addedCount > 0)
+        {
+            sb.Append(" added ");
+            AppendQuotedSkillIdList(sb, addedIds);
+        }
+        if (removedCount > 0)
+        {
+            if (addedCount > 0)
+                sb.Append(";");
+            sb.Append(" removed ");
+            AppendQuotedSkillIdList(sb, removedIds);
+        }
+        sb.Append(".");
+        AddSystemMessage(sb.ToString(), includeInLLMRecap: false);
+    }
+
+    private static void AppendQuotedSkillIdList(StringBuilder sb, IReadOnlyList<string> ids)
+    {
+        for (int i = 0; i < ids.Count; i++)
+        {
+            if (i > 0)
+                sb.Append(", ");
+            sb.Append("'").Append(ids[i]).Append("'");
+        }
+    }
+
     /// <summary>
     /// Wrap the user's just-typed message with a quiet "for the future" recap of any
     /// Info bubbles that have appeared since the last send (typically skill warnings
@@ -3197,7 +3229,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         _promptManager.Reset();
         _stickyAutoloadSkillIds.Clear();
-        _autoloadLru.Clear();
+        _autoloadSkillIds.Clear();
         _attachmentZone?.ClearAttachments();
         _lastTurnAttachments?.Clear();
         _chatImagePics?.Clear();
@@ -3746,7 +3778,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _compactSummaryCancel?.Invoke();
         _lastTurnAttachments?.Clear();
         _stickyAutoloadSkillIds.Clear();
-        _autoloadLru.Clear();
+        _autoloadSkillIds.Clear();
         _infoMessages.Clear();
         _actionParser?.Reset();
         ResetPerTurnExecutionState();
@@ -4373,20 +4405,21 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (matched == null || matched.Count == 0)
             return;
 
-        // Bump every triggered skill to most-recent in the LRU (newest at the tail).
+        // Add each newly triggered autoload skill once. Already-live skill bodies stay
+        // in place so the context block remains stable for prompt caching.
         bool anyNew = false;
         foreach (var skill in matched)
         {
             if (skill == null || string.IsNullOrEmpty(skill.Id))
                 continue;
-            if (!_autoloadLru.Contains(skill.Id))
-                anyNew = true;
-            _autoloadLru.Remove(skill.Id);
-            _autoloadLru.Add(skill.Id);
+            if (_autoloadSkillIds.Contains(skill.Id))
+                continue;
+            anyNew = true;
+            _autoloadSkillIds.Add(skill.Id);
         }
 
-        // Nothing new triggered: the live set is unchanged (we only refreshed recency
-        // for future eviction), so leave the cached context block alone.
+        // Nothing new triggered: the live set is unchanged, so leave the cached
+        // context block alone.
         if (!anyNew)
             return;
 
@@ -4394,24 +4427,30 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     }
 
     /// <summary>
-    /// Recompute which auto-loaded skill bodies are live - the most-recently-triggered
-    /// <see cref="MaxAutoloadSkillBodies"/>, always retaining <see cref="PinnedAutoloadSkillId"/>
-    /// - and rewrite the single tagged context block to match. Bulk remove + re-add
-    /// mirrors the long-standing per-turn refresh; the STABLE base system prompt is
-    /// untouched, so only this block (now at the tail) re-prefills while the rest of the
-    /// cached conversation prefix survives. Also drives the per-turn reload path so the
-    /// cap and ordering stay consistent across both callers.
+    /// Recompute which auto-loaded skill bodies are live and rewrite the single tagged
+    /// context block to match. Bulk remove + re-add mirrors the long-standing per-turn
+    /// refresh; the STABLE base system prompt is untouched, so only this block (at the
+    /// tail) changes while the rest of the cached conversation prefix survives. Also
+    /// drives the per-turn reload path so deleted/renamed skill files are dropped.
     /// </summary>
     private void RebuildAutoloadSkillContext()
     {
         if (_skillManager == null || _promptManager == null)
             return;
 
+        var previousLiveIds = new HashSet<string>(_stickyAutoloadSkillIds, StringComparer.OrdinalIgnoreCase);
+
         // Drop ids whose skill file disappeared (e.g. user deleted/renamed it and the
-        // config was reloaded) so the LRU doesn't leak dead entries.
-        _autoloadLru.RemoveAll(id => _skillManager.GetById(id) == null);
+        // config was reloaded) so the live reference list doesn't leak dead entries.
+        _autoloadSkillIds.RemoveAll(id => _skillManager.GetById(id) == null);
 
         var keep = ComputeKeptAutoloadSkills();
+        var currentLiveIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var s in keep)
+        {
+            if (s != null && !string.IsNullOrEmpty(s.Id))
+                currentLiveIds.Add(s.Id);
+        }
 
         _promptManager.RemoveInteractionsByInternalTag(AUTOLOAD_SKILL_CONTEXT_TAG);
         _stickyAutoloadSkillIds.Clear();
@@ -4419,49 +4458,68 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             _stickyAutoloadSkillIds.Add(s.Id);
 
         if (keep.Count == 0)
+        {
+            AddAutoloadSkillContextNotice(previousLiveIds, currentLiveIds);
             return;
+        }
 
         string block = _skillManager.BuildSkillReferenceMaterialBlock(keep);
         if (!string.IsNullOrWhiteSpace(block))
             _promptManager.AddInteraction("system", block, AUTOLOAD_SKILL_CONTEXT_TAG);
 
+        AddAutoloadSkillContextNotice(previousLiveIds, currentLiveIds);
         Debug.Log("AIChatPanel: auto-loaded skill context now: " + string.Join(", ", keep.ConvertAll(s => s.Id)));
     }
 
+    private void AddAutoloadSkillContextNotice(HashSet<string> previousLiveIds, HashSet<string> currentLiveIds)
+    {
+        var loaded = new List<string>();
+        var removed = new List<string>();
+
+        foreach (string id in currentLiveIds)
+        {
+            if (!previousLiveIds.Contains(id))
+                loaded.Add(id);
+        }
+
+        foreach (string id in previousLiveIds)
+        {
+            if (!currentLiveIds.Contains(id))
+                removed.Add(id);
+        }
+
+        if (loaded.Count == 0 && removed.Count == 0)
+            return;
+
+        loaded.Sort(StringComparer.OrdinalIgnoreCase);
+        removed.Sort(StringComparer.OrdinalIgnoreCase);
+
+        var sb = new StringBuilder();
+        sb.Append("AI Chat skill references changed:");
+        if (loaded.Count > 0)
+        {
+            sb.Append(" loaded ");
+            AppendQuotedSkillIdList(sb, loaded);
+        }
+        if (removed.Count > 0)
+        {
+            if (loaded.Count > 0)
+                sb.Append(";");
+            sb.Append(" removed ");
+            AppendQuotedSkillIdList(sb, removed);
+        }
+        sb.Append(".");
+        AddSystemMessage(sb.ToString(), includeInLLMRecap: false);
+    }
+
     /// <summary>
-    /// Resolve the LRU id list to at most <see cref="MaxAutoloadSkillBodies"/> live Skill
-    /// objects, always keeping <see cref="PinnedAutoloadSkillId"/> when loaded (mid-story
-    /// turns still need the roleplay spine even when only a composition skill triggered
-    /// this turn). The oldest non-pinned recents are dropped first. Returned oldest-first
+    /// Resolve loaded autoload ids to live Skill objects. Returned in first-load order
     /// for a stable block ordering.
     /// </summary>
     private List<Skill> ComputeKeptAutoloadSkills()
     {
-        var keptIds = new List<string>();
-        int budget = MaxAutoloadSkillBodies;
-
-        bool pinnedLoaded = _autoloadLru.Contains(PinnedAutoloadSkillId);
-        if (pinnedLoaded)
-        {
-            keptIds.Add(PinnedAutoloadSkillId);
-            budget--;
-        }
-
-        // Fill the remaining budget from most-recent (tail) backwards, skipping pinned.
-        for (int i = _autoloadLru.Count - 1; i >= 0 && budget > 0; i--)
-        {
-            string id = _autoloadLru[i];
-            if (id == PinnedAutoloadSkillId) continue;
-            if (keptIds.Contains(id)) continue;
-            keptIds.Add(id);
-            budget--;
-        }
-
-        // Emit oldest-first (pinned tends to be the oldest anyway) for stable text.
-        keptIds.Reverse();
-
         var skills = new List<Skill>();
-        foreach (string id in keptIds)
+        foreach (string id in _autoloadSkillIds)
         {
             var s = _skillManager?.GetById(id);
             if (s != null) skills.Add(s);
@@ -5042,15 +5100,15 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (_skillManager == null)
             return;
 
-        bool hadAutoload = _autoloadLru.Count > 0;
+        bool hadAutoload = _autoloadSkillIds.Count > 0;
         _skillManager.Reload();
 
         if (!hadAutoload)
             return;
 
-        // Re-emit the (possibly user-edited) bodies for the still-loaded set, honoring
-        // the cap and dropping any skill whose file vanished. Driving this through the
-        // shared helper keeps the reload path and the trigger path on one code path.
+        // Re-emit the (possibly user-edited) bodies for the still-loaded set, dropping
+        // any skill whose file vanished. Driving this through the shared helper keeps
+        // the reload path and the trigger path on one code path.
         RebuildAutoloadSkillContext();
     }
 
@@ -5061,9 +5119,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             // Reload from disk so any user edits to prompt or skill files take
             // effect on the very next turn (rebuilt by ChatContextBuilder.Build()).
             _skillManager?.Reload();
-            _promptManager?.RemoveInteractionsByInternalTag(AUTOLOAD_SKILL_CONTEXT_TAG);
-            _stickyAutoloadSkillIds.Clear();
-            _autoloadLru.Clear();
+            if (_autoloadSkillIds.Count > 0)
+                RebuildAutoloadSkillContext();
             int n = _skillManager?.GetSkills().Count ?? 0;
             AddSystemMessage($"Reloaded aichat config: {n} skill{(n == 1 ? "" : "s")}.", includeInLLMRecap: false);
             AddPromptConfigNotice();
