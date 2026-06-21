@@ -136,6 +136,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // changed clothes" update path). Cleared with the chat; dead entries pruned on trim.
     private readonly Dictionary<string, PicMain> _anchors = new Dictionary<string, PicMain>(StringComparer.OrdinalIgnoreCase);
 
+    // For right-click rewind: each live prompt-history line records how many AI Chat
+    // media bubbles existed immediately after that line became part of the conversation.
+    // Rewind can then keep the clicked line and trim only later text/media context.
+    private readonly Dictionary<GTPChatLine, int> _interactionMediaCheckpoints = new Dictionary<GTPChatLine, int>();
+    private GameObject _bubbleContextMenuRoot;
+    private GameObject _rewindConfirmRoot;
+
     // Most-recent Pic spawned by a non-chained skill action in the current user turn.
     // Reset on each OnSendClicked() so chain="true" can never reach back into a prior
     // turn's Pic. Chained actions read this to find their stack target; they do NOT
@@ -513,6 +520,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     /// </summary>
     private void SetVisible(bool visible)
     {
+        if (!visible)
+        {
+            HideBubbleContextMenu();
+            HideRewindConfirmation();
+        }
         _isVisible = visible;
         if (_mainPanel != null)
             _mainPanel.gameObject.SetActive(visible);
@@ -2388,6 +2400,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         var bubbleScrollForwarder = inputGo.AddComponent<ChatScrollForwarder>();
         bubbleScrollForwarder.target = _chatScroll;
 
+        var contextHandler = inputGo.AddComponent<AIChatBubbleContextClickHandler>();
+        contextHandler.Setup(this, input, linkedInteraction);
+
         // Body only - the role label is its own TMP_Text above this field.
         input.text = ConvertMarkdownToTMP(rawMessageText);
 
@@ -2411,6 +2426,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (input == null || interaction == null) return;
         input.readOnly = false;
         HookEditingTo(input, interaction);
+        var contextHandler = input.GetComponent<AIChatBubbleContextClickHandler>();
+        if (contextHandler != null)
+            contextHandler.Setup(this, input, interaction);
     }
 
     /// <summary>
@@ -2435,6 +2453,52 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             string clean = OpenAITextCompletionManager.RemoveTMPTagsFromString(raw);
             interaction._content = clean;
         });
+    }
+
+    private int GetCurrentChatImageCount()
+    {
+        return _chatImagePics != null ? _chatImagePics.Count : 0;
+    }
+
+    private void MarkInteractionMediaCheckpoint(GTPChatLine interaction)
+    {
+        if (interaction == null) return;
+        _interactionMediaCheckpoints[interaction] = GetCurrentChatImageCount();
+    }
+
+    private void MarkLatestAssistantMediaCheckpoint()
+    {
+        var last = _promptManager != null ? _promptManager.GetLastInteraction() : null;
+        if (last != null && last._role == "assistant")
+            MarkInteractionMediaCheckpoint(last);
+    }
+
+    private int GetInteractionMediaCheckpoint(GTPChatLine interaction)
+    {
+        if (interaction != null && _interactionMediaCheckpoints.TryGetValue(interaction, out int count))
+            return Mathf.Clamp(count, 0, GetCurrentChatImageCount());
+
+        return GetCurrentChatImageCount();
+    }
+
+    private void PruneMediaCheckpointsTo(IReadOnlyCollection<GTPChatLine> keptLines)
+    {
+        if (_interactionMediaCheckpoints.Count == 0) return;
+        if (keptLines == null || keptLines.Count == 0)
+        {
+            _interactionMediaCheckpoints.Clear();
+            return;
+        }
+
+        var keep = new HashSet<GTPChatLine>(keptLines);
+        var remove = new List<GTPChatLine>();
+        foreach (var kv in _interactionMediaCheckpoints)
+        {
+            if (!keep.Contains(kv.Key))
+                remove.Add(kv.Key);
+        }
+        for (int i = 0; i < remove.Count; i++)
+            _interactionMediaCheckpoints.Remove(remove[i]);
     }
 
     /// <summary>
@@ -2770,6 +2834,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         string llmPayloadText = BuildLLMPayloadWithInfoRecap(visibleText);
         _promptManager.AddInteraction("user", llmPayloadText);
         var userInteraction = _promptManager.GetLastInteraction();
+        MarkInteractionMediaCheckpoint(userInteraction);
         AddUserMessage(visibleText, userInteraction);
 
         // Do not touch _inputField or _attachmentZone here. The user may have typed
@@ -2917,6 +2982,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // history sent to the LLM on subsequent turns).
         _promptManager.AddInteraction("user", llmPayloadText);
         var userInteraction = _promptManager.GetLastInteraction();
+        MarkInteractionMediaCheckpoint(userInteraction);
         AddUserMessage(text, userInteraction);
 
         // Drop the staged thumbnails now that they've been baked into the conversation.
@@ -3135,11 +3201,15 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         AIChatLog.Response("chat", historyText);
         _promptManager.AddInteraction("assistant", historyText);
-        EnableBubbleEditing(completedField, _promptManager.GetLastInteraction());
+        var assistantInteraction = _promptManager.GetLastInteraction();
+        MarkInteractionMediaCheckpoint(assistantInteraction);
+        EnableBubbleEditing(completedField, assistantInteraction);
     }
 
     private void OnClearClicked()
     {
+        HideBubbleContextMenu();
+        HideRewindConfirmation();
         _autoContinueRemaining = 0;
         if (_autoContinueToggle != null) _autoContinueToggle.isOn = false;
         CancelAllAttachmentCaptions();
@@ -3164,6 +3234,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _chatImageRecords?.Clear();
         _anchors?.Clear();
         _captionLabels?.Clear();
+        _interactionMediaCheckpoints.Clear();
         _infoMessages.Clear();
         _actionParser?.Reset();
         _actionExecutor?.ResetForNewTurn();
@@ -3300,6 +3371,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         var keptTail = all.GetRange(from, all.Count - from);
         _promptManager.ReplaceInteractions(keptTail);
+        PruneMediaCheckpointsTo(keptTail);
         RebuildChatBubblesFromHistory();
         AddSystemMessage($"Compacted: removed {from} older message(s), kept the last {keepExchanges} exchange(s). All images are intact.", includeInLLMRecap: false);
     }
@@ -3454,6 +3526,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             var rebuilt = new List<GTPChatLine>(keptTail.Count + 1) { summaryLine };
             rebuilt.AddRange(keptTail);
             _promptManager.ReplaceInteractions(rebuilt);
+            MarkInteractionMediaCheckpoint(summaryLine);
+            PruneMediaCheckpointsTo(rebuilt);
             RebuildChatBubblesFromHistory();
             AddSystemMessage($"Compacted {older.Count} older message(s) into a summary. Kept the last {keepExchanges} exchange(s); all images are intact.", includeInLLMRecap: false);
             // release() above reset the status to Idle; leave the result on screen
@@ -3500,6 +3574,466 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         GUIUtility.systemCopyBuffer = transcript;
         RTQuickMessageManager.Get().ShowMessage($"Copied chat ({transcript.Length} chars) to clipboard");
+    }
+
+    private void OnBubbleRightClicked(TMP_InputField field, GTPChatLine linkedInteraction, Vector2 screenPosition, Camera eventCamera)
+    {
+        if (!_isVisible || _mainPanel == null || field == null) return;
+
+        HideBubbleContextMenu();
+        HideRewindConfirmation();
+
+        _bubbleContextMenuRoot = CreatePanelOverlay("AIChatBubbleContextMenu", new Color(0f, 0f, 0f, 0f), HideBubbleContextMenu);
+        var menu = new GameObject("Menu");
+        menu.transform.SetParent(_bubbleContextMenuRoot.transform, false);
+        var menuRT = menu.AddComponent<RectTransform>();
+        menuRT.anchorMin = new Vector2(0.5f, 0.5f);
+        menuRT.anchorMax = new Vector2(0.5f, 0.5f);
+        menuRT.pivot = new Vector2(0f, 1f);
+        menuRT.sizeDelta = new Vector2(190f, 92f);
+
+        var img = menu.AddComponent<Image>();
+        img.color = new Color(0.12f, 0.12f, 0.14f, 0.98f);
+        var outline = menu.AddComponent<Outline>();
+        outline.effectColor = new Color(0f, 0f, 0f, 0.65f);
+        outline.effectDistance = new Vector2(1f, -1f);
+
+        var vlg = menu.AddComponent<VerticalLayoutGroup>();
+        vlg.padding = new RectOffset(6, 6, 6, 6);
+        vlg.spacing = 4;
+        vlg.childControlWidth = true;
+        vlg.childControlHeight = true;
+        vlg.childForceExpandWidth = true;
+        vlg.childForceExpandHeight = false;
+
+        CreatePopupButton(menu.transform, "Select this box", true, () =>
+        {
+            HideBubbleContextMenu();
+            SelectAllInField(field);
+        });
+        CreatePopupButton(menu.transform, "Copy all to clipboard", true, () =>
+        {
+            HideBubbleContextMenu();
+            CopyVisibleChatTranscriptToClipboard();
+        });
+
+        bool canRewind = IsRewindTarget(linkedInteraction) && CanRewindNow(out _)
+            && FindInteractionIndex(_promptManager?.GetInteractionsList(), linkedInteraction) >= 0;
+        CreatePopupButton(menu.transform, "Rewind to this spot", canRewind, () =>
+        {
+            HideBubbleContextMenu();
+            ShowRewindConfirmation(linkedInteraction);
+        });
+
+        PositionPopup(menuRT, _bubbleContextMenuRoot.GetComponent<RectTransform>(), screenPosition, eventCamera);
+    }
+
+    private bool IsRewindTarget(GTPChatLine line)
+    {
+        return line != null && (line._role == "user" || line._role == "assistant");
+    }
+
+    private bool CanRewindNow(out string reason)
+    {
+        if (_promptManager == null)
+        {
+            reason = "Chat history is not ready";
+            return false;
+        }
+        if (_isStreaming)
+        {
+            reason = "Wait for the current reply to finish before rewinding";
+            return false;
+        }
+        if (_waitingForForcedMainLLM)
+        {
+            reason = "Wait for the selected LLM to become available before rewinding";
+            return false;
+        }
+        if (_compactSummaryInFlight)
+        {
+            reason = "Wait for the compact-summary request to finish before rewinding";
+            return false;
+        }
+        if (HasPendingSidecarWork())
+        {
+            reason = "Wait for pending caption/inspection jobs before rewinding";
+            return false;
+        }
+
+        reason = "";
+        return true;
+    }
+
+    private static int FindInteractionIndex(List<GTPChatLine> all, GTPChatLine target)
+    {
+        if (all == null || target == null) return -1;
+        for (int i = 0; i < all.Count; i++)
+        {
+            if (ReferenceEquals(all[i], target))
+                return i;
+        }
+        return -1;
+    }
+
+    private int CountVisibleInteractionsAfter(List<GTPChatLine> all, int targetIndex)
+    {
+        if (all == null || targetIndex < 0) return 0;
+        int count = 0;
+        for (int i = targetIndex + 1; i < all.Count; i++)
+        {
+            var line = all[i];
+            if (line != null && (line._role == "user" || line._role == "assistant"))
+                count++;
+        }
+        return count;
+    }
+
+    private void ShowRewindConfirmation(GTPChatLine target)
+    {
+        HideRewindConfirmation();
+
+        if (!IsRewindTarget(target))
+            return;
+        if (!CanRewindNow(out string reason))
+        {
+            RTQuickMessageManager.Get().ShowMessage(reason);
+            return;
+        }
+
+        var all = _promptManager.GetInteractionsList();
+        int targetIndex = FindInteractionIndex(all, target);
+        if (targetIndex < 0)
+        {
+            RTQuickMessageManager.Get().ShowMessage("That chat message is no longer in history");
+            return;
+        }
+
+        int removedMessages = CountVisibleInteractionsAfter(all, targetIndex);
+        int keepMedia = GetInteractionMediaCheckpoint(target);
+        int removedMedia = Mathf.Max(0, GetCurrentChatImageCount() - keepMedia);
+
+        _rewindConfirmRoot = CreatePanelOverlay("AIChatRewindConfirm", new Color(0f, 0f, 0f, 0.32f), HideRewindConfirmation);
+
+        var panel = new GameObject("Dialog");
+        panel.transform.SetParent(_rewindConfirmRoot.transform, false);
+        var panelRT = panel.AddComponent<RectTransform>();
+        panelRT.anchorMin = new Vector2(0.5f, 0.5f);
+        panelRT.anchorMax = new Vector2(0.5f, 0.5f);
+        panelRT.pivot = new Vector2(0.5f, 0.5f);
+        panelRT.anchoredPosition = Vector2.zero;
+        panelRT.sizeDelta = new Vector2(430f, 190f);
+
+        var bg = panel.AddComponent<Image>();
+        bg.color = new Color(0.12f, 0.12f, 0.14f, 0.98f);
+        var outline = panel.AddComponent<Outline>();
+        outline.effectColor = new Color(0.35f, 0.55f, 0.95f, 1f);
+        outline.effectDistance = new Vector2(2f, -2f);
+
+        CreateDialogText(panel.transform, "Title", "Rewind chat?", 20f, FontStyles.Bold,
+            new Rect(18f, -16f, -36f, 30f), new Color(0.45f, 0.68f, 1f, 1f), TextAlignmentOptions.Center);
+
+        string body =
+            $"This will keep the selected bubble and remove {removedMessages} later chat message{(removedMessages == 1 ? "" : "s")} " +
+            $"and {removedMedia} later media item{(removedMedia == 1 ? "" : "s")} from AI Chat.\n\n" +
+            "World images stay in the workspace.";
+        CreateDialogText(panel.transform, "Body", body, 14f, FontStyles.Normal,
+            new Rect(22f, -52f, -44f, 82f), new Color(0.9f, 0.9f, 0.92f, 1f), TextAlignmentOptions.TopLeft);
+
+        CreateDialogButton(panel.transform, "Rewind", new Vector2(-62f, 18f), new Vector2(110f, 32f),
+            new Color(0.62f, 0.18f, 0.18f, 1f), () =>
+            {
+                HideRewindConfirmation();
+                RewindToInteraction(target);
+            });
+        CreateDialogButton(panel.transform, "Cancel", new Vector2(62f, 18f), new Vector2(110f, 32f),
+            new Color(0.26f, 0.36f, 0.48f, 1f), HideRewindConfirmation);
+    }
+
+    private void RewindToInteraction(GTPChatLine target)
+    {
+        if (!IsRewindTarget(target)) return;
+        if (!CanRewindNow(out string reason))
+        {
+            RTQuickMessageManager.Get().ShowMessage(reason);
+            return;
+        }
+
+        var all = _promptManager.GetInteractionsList();
+        int targetIndex = FindInteractionIndex(all, target);
+        if (targetIndex < 0)
+        {
+            RTQuickMessageManager.Get().ShowMessage("That chat message is no longer in history");
+            return;
+        }
+
+        int removedMessages = CountVisibleInteractionsAfter(all, targetIndex);
+        int removedMedia = RemoveMediaAfterCheckpoint(GetInteractionMediaCheckpoint(target));
+
+        _autoContinueRemaining = 0;
+        if (_autoContinueToggle != null) _autoContinueToggle.isOn = false;
+        CancelSkillLoadAutoResume();
+        _compactSummaryCancel?.Invoke();
+        _lastTurnAttachments?.Clear();
+        _stickyAutoloadSkillIds.Clear();
+        _autoloadLru.Clear();
+        _infoMessages.Clear();
+        _actionParser?.Reset();
+        ResetPerTurnExecutionState();
+
+        var kept = all.GetRange(0, targetIndex + 1);
+        _promptManager.ReplaceInteractions(kept);
+        _promptManager.RemoveInteractionsByInternalTag(AUTOLOAD_SKILL_CONTEXT_TAG);
+        var finalKept = _promptManager.GetInteractionsList();
+        PruneMediaCheckpointsTo(finalKept);
+
+        RebuildChatBubblesFromHistory();
+        AddSystemMessage($"Rewound: removed {removedMessages} later message{(removedMessages == 1 ? "" : "s")} and {removedMedia} later media item{(removedMedia == 1 ? "" : "s")}.", includeInLLMRecap: false);
+        FocusInputDeferred();
+    }
+
+    private int RemoveMediaAfterCheckpoint(int keepCount)
+    {
+        int current = GetCurrentChatImageCount();
+        keepCount = Mathf.Clamp(keepCount, 0, current);
+        int removeCount = current - keepCount;
+        if (removeCount <= 0) return 0;
+
+        if (_mediaContent != null)
+        {
+            for (int i = _mediaContent.childCount - 1; i >= keepCount; i--)
+            {
+                var child = _mediaContent.GetChild(i);
+                child.SetParent(null, false);
+                Destroy(child.gameObject);
+            }
+        }
+
+        for (int i = keepCount; i < current; i++)
+        {
+            var pic = _chatImagePics[i];
+            if (pic != null)
+                _captionLabels.Remove(pic);
+        }
+        _chatImagePics.RemoveRange(keepCount, removeCount);
+        if (_chatImageRecords.Count > keepCount)
+            _chatImageRecords.RemoveRange(keepCount, Mathf.Min(removeCount, _chatImageRecords.Count - keepCount));
+
+        PruneAnchorsToLiveChatImages();
+        UpdateMediaHeader();
+        return removeCount;
+    }
+
+    private void PruneAnchorsToLiveChatImages()
+    {
+        if (_anchors == null || _anchors.Count == 0) return;
+
+        var deadNames = new List<string>();
+        foreach (var kv in _anchors)
+        {
+            var pic = kv.Value;
+            if (pic == null || pic.gameObject == null || _chatImagePics == null || !_chatImagePics.Contains(pic))
+                deadNames.Add(kv.Key);
+        }
+        foreach (string name in deadNames)
+            _anchors.Remove(name);
+    }
+
+    private GameObject CreatePanelOverlay(string name, Color color, UnityEngine.Events.UnityAction onClick)
+    {
+        var root = new GameObject(name);
+        root.transform.SetParent(_mainPanel, false);
+        root.transform.SetAsLastSibling();
+        var rt = root.AddComponent<RectTransform>();
+        rt.anchorMin = Vector2.zero;
+        rt.anchorMax = Vector2.one;
+        rt.offsetMin = Vector2.zero;
+        rt.offsetMax = Vector2.zero;
+        var img = root.AddComponent<Image>();
+        img.color = color;
+        img.raycastTarget = true;
+        if (onClick != null)
+        {
+            var button = root.AddComponent<Button>();
+            button.targetGraphic = img;
+            button.onClick.AddListener(onClick);
+        }
+        return root;
+    }
+
+    private void CreatePopupButton(Transform parent, string text, bool enabled, Action onClick)
+    {
+        var go = new GameObject(text.Replace(" ", "") + "Button");
+        go.transform.SetParent(parent, false);
+        var le = go.AddComponent<LayoutElement>();
+        le.minHeight = 24f;
+        le.preferredHeight = 24f;
+        var img = go.AddComponent<Image>();
+        img.color = enabled ? new Color(0.24f, 0.30f, 0.38f, 1f) : new Color(0.20f, 0.20f, 0.22f, 1f);
+        var button = go.AddComponent<Button>();
+        button.targetGraphic = img;
+        button.interactable = enabled;
+        if (enabled && onClick != null)
+            button.onClick.AddListener(() => onClick());
+
+        var labelGo = new GameObject("Text");
+        labelGo.transform.SetParent(go.transform, false);
+        var labelRT = labelGo.AddComponent<RectTransform>();
+        labelRT.anchorMin = Vector2.zero;
+        labelRT.anchorMax = Vector2.one;
+        labelRT.offsetMin = new Vector2(8f, 0f);
+        labelRT.offsetMax = new Vector2(-8f, 0f);
+        var label = labelGo.AddComponent<TextMeshProUGUI>();
+        label.text = text;
+        label.font = _font;
+        label.fontSize = 13f;
+        label.color = enabled ? Color.white : new Color(0.58f, 0.58f, 0.62f, 1f);
+        label.alignment = TextAlignmentOptions.MidlineLeft;
+        label.raycastTarget = false;
+    }
+
+    private void PositionPopup(RectTransform popup, RectTransform root, Vector2 screenPosition, Camera eventCamera)
+    {
+        if (popup == null || root == null) return;
+        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(root, screenPosition, eventCamera, out Vector2 local))
+            local = Vector2.zero;
+
+        Rect r = root.rect;
+        Vector2 size = popup.sizeDelta;
+        local.x = Mathf.Clamp(local.x, r.xMin + 4f, r.xMax - size.x - 4f);
+        local.y = Mathf.Clamp(local.y, r.yMin + size.y + 4f, r.yMax - 4f);
+        popup.anchoredPosition = local;
+    }
+
+    private void CreateDialogText(Transform parent, string name, string text, float fontSize, FontStyles style, Rect offsets, Color color, TextAlignmentOptions alignment)
+    {
+        var go = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        var rt = go.AddComponent<RectTransform>();
+        rt.anchorMin = new Vector2(0f, 1f);
+        rt.anchorMax = new Vector2(1f, 1f);
+        rt.pivot = new Vector2(0.5f, 1f);
+        rt.offsetMin = new Vector2(offsets.x, offsets.y - offsets.height);
+        rt.offsetMax = new Vector2(offsets.width, offsets.y);
+        var tmp = go.AddComponent<TextMeshProUGUI>();
+        tmp.text = text;
+        tmp.font = _font;
+        tmp.fontSize = fontSize;
+        tmp.fontStyle = style;
+        tmp.color = color;
+        tmp.alignment = alignment;
+        tmp.textWrappingMode = TextWrappingModes.Normal;
+        tmp.raycastTarget = false;
+    }
+
+    private void CreateDialogButton(Transform parent, string text, Vector2 centerBottom, Vector2 size, Color color, Action onClick)
+    {
+        var go = new GameObject(text + "Button");
+        go.transform.SetParent(parent, false);
+        var rt = go.AddComponent<RectTransform>();
+        rt.anchorMin = new Vector2(0.5f, 0f);
+        rt.anchorMax = new Vector2(0.5f, 0f);
+        rt.pivot = new Vector2(0.5f, 0f);
+        rt.anchoredPosition = centerBottom;
+        rt.sizeDelta = size;
+        var img = go.AddComponent<Image>();
+        img.color = color;
+        var button = go.AddComponent<Button>();
+        button.targetGraphic = img;
+        if (onClick != null)
+            button.onClick.AddListener(() => onClick());
+
+        var labelGo = new GameObject("Text");
+        labelGo.transform.SetParent(go.transform, false);
+        var labelRT = labelGo.AddComponent<RectTransform>();
+        labelRT.anchorMin = Vector2.zero;
+        labelRT.anchorMax = Vector2.one;
+        labelRT.offsetMin = Vector2.zero;
+        labelRT.offsetMax = Vector2.zero;
+        var label = labelGo.AddComponent<TextMeshProUGUI>();
+        label.text = text;
+        label.font = _font;
+        label.fontSize = 15f;
+        label.fontStyle = FontStyles.Bold;
+        label.color = Color.white;
+        label.alignment = TextAlignmentOptions.Center;
+        label.raycastTarget = false;
+    }
+
+    private void SelectAllInField(TMP_InputField field)
+    {
+        if (field == null) return;
+        var es = EventSystem.current;
+        if (es != null)
+            es.SetSelectedGameObject(field.gameObject);
+        field.ActivateInputField();
+        field.Select();
+        int len = (field.text ?? "").Length;
+        field.selectionAnchorPosition = 0;
+        field.selectionFocusPosition = len;
+        field.caretPosition = len;
+        field.stringPosition = len;
+    }
+
+    private string BuildVisibleChatTranscript()
+    {
+        var sb = new StringBuilder();
+        if (_chatContent == null) return "";
+
+        for (int i = 0; i < _chatContent.childCount; i++)
+        {
+            var bubble = _chatContent.GetChild(i);
+            if (bubble == null) continue;
+            var input = bubble.GetComponentInChildren<TMP_InputField>(true);
+            if (input == null) continue;
+
+            string role = "";
+            var labelTransform = bubble.Find("Label");
+            if (labelTransform != null)
+            {
+                var label = labelTransform.GetComponent<TextMeshProUGUI>();
+                if (label != null)
+                    role = label.text ?? "";
+            }
+
+            string text = ReverseTmpDisplayEscapes(input.text ?? "");
+            text = OpenAITextCompletionManager.RemoveTMPTagsFromString(text).Trim();
+            if (string.IsNullOrEmpty(text)) continue;
+
+            if (!string.IsNullOrWhiteSpace(role))
+                sb.Append(role.Trim()).Append(": ");
+            sb.AppendLine(text);
+            sb.AppendLine();
+        }
+
+        return sb.ToString().TrimEnd();
+    }
+
+    private void CopyVisibleChatTranscriptToClipboard()
+    {
+        string transcript = BuildVisibleChatTranscript();
+        if (string.IsNullOrWhiteSpace(transcript))
+        {
+            RTQuickMessageManager.Get().ShowMessage("Chat is empty - nothing to copy");
+            return;
+        }
+
+        GUIUtility.systemCopyBuffer = transcript;
+        RTQuickMessageManager.Get().ShowMessage("All text put on clipboard");
+    }
+
+    private void HideBubbleContextMenu()
+    {
+        if (_bubbleContextMenuRoot != null)
+            Destroy(_bubbleContextMenuRoot);
+        _bubbleContextMenuRoot = null;
+    }
+
+    private void HideRewindConfirmation()
+    {
+        if (_rewindConfirmRoot != null)
+            Destroy(_rewindConfirmRoot);
+        _rewindConfirmRoot = null;
     }
 
     private void TryCancelActiveRequests()
@@ -4261,11 +4795,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             completedField.text = ConvertMarkdownToTMP(visibleText);
 
         _promptManager.AddInteraction("assistant", historyText);
+        var assistantInteraction = _promptManager.GetLastInteraction();
+        MarkInteractionMediaCheckpoint(assistantInteraction);
 
         // Now that we have an interaction to link the bubble to, switch the assistant
         // bubble from readOnly to editable so the user can hand-tweak the assistant's
         // reply for testing follow-up turns.
-        EnableBubbleEditing(completedField, _promptManager.GetLastInteraction());
+        EnableBubbleEditing(completedField, assistantInteraction);
 
         FinalizeAssistantTurn(aborted: false, shouldAutoScroll);
     }
@@ -5452,6 +5988,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // from the bubble itself and still tracked for the LLM in ChatContextBuilder.
         string label = $"#{chatImageNumber}";
         AppendImageBubbleInternal(spawnedPic, label, isMovie);
+        MarkLatestAssistantMediaCheckpoint();
 
         // Tell the LLM what number this bubble got, so when the user follows up with
         // "tell me about them" or "put them in a scene", the model references the
@@ -6034,18 +6571,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
             // Drop any character anchors whose Pic just fell out of the numbered list,
             // so the ANCHORS line never advertises a name that can no longer resolve.
-            if (_anchors.Count > 0)
-            {
-                var deadNames = new List<string>();
-                foreach (var kv in _anchors)
-                {
-                    var pic = kv.Value;
-                    if (pic == null || pic.gameObject == null || !_chatImagePics.Contains(pic))
-                        deadNames.Add(kv.Key);
-                }
-                foreach (string name in deadNames)
-                    _anchors.Remove(name);
-            }
+            PruneAnchorsToLiveChatImages();
         }
     }
 
@@ -6501,7 +7027,17 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (_isVisible)
         {
             if (Input.GetKeyDown(KeyCode.Escape) && !_isStreaming)
-                Hide();
+            {
+                if (_bubbleContextMenuRoot != null || _rewindConfirmRoot != null)
+                {
+                    HideBubbleContextMenu();
+                    HideRewindConfirmation();
+                }
+                else
+                {
+                    Hide();
+                }
+            }
 
             // Ctrl+MouseWheel anywhere over the chat panel adjusts chat font size.
             // The chat ScrollRect (ChatScrollRectCtrlAware) already swallows its own
@@ -6660,6 +7196,27 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         field.stringPosition = selStart + 1;
         field.selectionAnchorPosition = selStart + 1;
         field.selectionFocusPosition = selStart + 1;
+    }
+
+    private class AIChatBubbleContextClickHandler : MonoBehaviour, IPointerClickHandler
+    {
+        private AIChatPanel _panel;
+        private TMP_InputField _field;
+        private GTPChatLine _interaction;
+
+        public void Setup(AIChatPanel panel, TMP_InputField field, GTPChatLine interaction)
+        {
+            _panel = panel;
+            _field = field;
+            _interaction = interaction;
+        }
+
+        public void OnPointerClick(PointerEventData eventData)
+        {
+            if (eventData == null || eventData.button != PointerEventData.InputButton.Right)
+                return;
+            _panel?.OnBubbleRightClicked(_field, _interaction, eventData.position, eventData.pressEventCamera);
+        }
     }
 }
 
