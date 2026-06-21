@@ -2083,6 +2083,15 @@ public string GetPrompt() { return m_prompt; }
         AIChatPanel.Toggle();
     }
 
+    /// <summary>
+    /// Called when the About button is clicked. Reopens the startup/about splash without
+    /// creating a duplicate if it is already visible.
+    /// </summary>
+    public void OnAboutButtonClicked()
+    {
+        StartupSplashPanel.Show();
+    }
+
     private void BindActiveLLMLabelUpdates()
     {
         if (m_llmSelectionDropdown != null)
