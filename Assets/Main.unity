@@ -12750,6 +12750,7 @@ MonoBehaviour:
   m_tempPic1: {fileID: 374176604}
   m_tempPic2: {fileID: 1567767280}
   m_tempPic3: {fileID: 1777597988}
+  m_showStartupSplashInEditor: 1
 --- !u!4 &311706011
 Transform:
   m_ObjectHideFlags: 0
@@ -85741,7 +85742,6 @@ SceneRoots:
   - {fileID: 177297978}
   - {fileID: 1558055381}
   - {fileID: 688998775}
-  - {fileID: 5728149499747740908}
   - {fileID: 790297590}
   - {fileID: 758942807}
   - {fileID: 1592991367}
