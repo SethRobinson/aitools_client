@@ -130,6 +130,7 @@ public class GameLogic : MonoBehaviour
     // We'll retry briefly so the Tools panel label reflects the real active LLM.
     private int _activeLLMLabelInitTries = 0;
     private const int ACTIVE_LLM_LABEL_MAX_INIT_TRIES = 30; // ~7.5 seconds at 0.25s interval
+    [SerializeField] private bool m_showStartupSplashInEditor = false;
   
     public enum eGameMode
     {
@@ -1461,7 +1462,14 @@ public string GetPrompt() { return m_prompt; }
 
     public void OnConfigButton()
     {
-        m_activeConfigNotepad = RTNotepad.OpenFile(Config.Get().GetConfigText(), m_notepadTemplatePrefab);
+        if (m_activeConfigNotepad != null)
+        {
+            m_activeConfigNotepad.BringToFront();
+            m_activeConfigNotepad.FocusTextInput();
+            return;
+        }
+
+        m_activeConfigNotepad = RTNotepad.OpenFile(Config.Get().GetConfigText(), m_notepadTemplatePrefab, "Configuration - config.txt");
         m_activeConfigNotepad.m_onClickedSavedCallback += OnConfigSaved;
         m_activeConfigNotepad.m_onClickedCancelCallback += OnConfigCanceled;
         m_activeConfigNotepad.m_onClickedOpenExternalCallback += OnConfigOpenExternal;
@@ -1755,9 +1763,9 @@ public string GetPrompt() { return m_prompt; }
         }
 
 
-#if !RT_RELEASE
-        RTUtil.KillObjectByName("RTIntroSplash");
+        StartupSplashPanel.ShowIfNeeded(m_showStartupSplashInEditor);
 
+#if !RT_RELEASE
         //let's directly start an experiment.  I schedule it to allow 1 frame to pass, if I don't the camera
         //isn't initted yet
         //RTMessageManager.Get().Schedule(0, PizzaLogic.Get().OnStartPizza);
