@@ -827,7 +827,7 @@ public class GameLogic : MonoBehaviour
     }
     public void SetJobList(string joblist)
     {
-        m_jobListInputField.text = joblist;
+        SetInputTextAndResetUndo(m_jobListInputField, joblist);
 
         //move the horizontal slider to the top
         m_jobListInputField.verticalScrollbar.value = 0;
@@ -846,10 +846,9 @@ public class GameLogic : MonoBehaviour
         //see which workflow is active
         string selected = m_comfyUIAPIWorkflowsDropdown.options[m_comfyUIAPIWorkflowsDropdown.value].text;
         RTConsole.Log("Chose " + selected);
-        m_jobListInputField.text = "";
-        string temp = m_jobListInputField.text;
+        string temp = "";
         AddJobToJobList(selected, ref temp);
-        m_jobListInputField.text = temp;
+        SetInputTextAndResetUndo(m_jobListInputField, temp);
     }
     public void OnWorkFlowAdd()
     {
@@ -858,7 +857,7 @@ public class GameLogic : MonoBehaviour
         RTConsole.Log("Add Chose " + selected);
         string temp = m_jobListInputField.text;
         AddJobToJobList(selected, ref temp);
-        m_jobListInputField.text = temp;
+        SetInputTextAndResetUndo(m_jobListInputField, temp);
     }
 
 
@@ -915,22 +914,30 @@ public class GameLogic : MonoBehaviour
     }
     public void SetPrompt(string p)
     {
-        m_inputField.text = p;
+        SetInputTextAndResetUndo(m_inputField, p);
     }
 
     public void SetComfyPrependPrompt(string p)
     {
-        m_comfyPrependPromptInputField.text = p;
+        SetInputTextAndResetUndo(m_comfyPrependPromptInputField, p);
     }
 
     public void SetComfyAppendPrompt(string p)
     {
-        m_comfyAppendPromptInputField.text = p;
+        SetInputTextAndResetUndo(m_comfyAppendPromptInputField, p);
     }
 
     public void SetNegativePrompt(string p)
     {
-        m_negativeInputField.text = p;
+        SetInputTextAndResetUndo(m_negativeInputField, p);
+    }
+
+    private static void SetInputTextAndResetUndo(TMP_InputField input, string text)
+    {
+        if (input == null) return;
+
+        input.text = text ?? "";
+        TMPInputFieldUndo.ResetHistory(input);
     }
 
     public List<String> GetControlNetPreprocessorArray() { return m_controlNetPreprocessorArray; }
@@ -1395,7 +1402,7 @@ public string GetPrompt() { return m_prompt; }
     public void SetSeed(int seed)
     {
         m_seed = seed;
-        m_seedInputField.text = seed.ToString();
+        SetInputTextAndResetUndo(m_seedInputField, seed.ToString());
     }
 
     public void SetFixFaces(bool bFixFaces)
@@ -1415,7 +1422,7 @@ public string GetPrompt() { return m_prompt; }
     public void SetSteps(int steps)
     {
         m_steps = steps;
-        m_stepsInputField.text = steps.ToString();
+        SetInputTextAndResetUndo(m_stepsInputField, steps.ToString());
     }
 
     public void OnSeedChanged(string seed)

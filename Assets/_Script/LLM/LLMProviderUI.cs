@@ -261,6 +261,7 @@ public class LLMProviderUI
         if (input != null)
         {
             input.text = value ?? string.Empty;
+            TMPInputFieldUndo.ResetHistory(input);
             input.contentType = password ? TMP_InputField.ContentType.Password : TMP_InputField.ContentType.Standard;
             if (input.textComponent != null)
             {
@@ -411,9 +412,15 @@ public class LLMProviderUI
     public void UpdateFromSettings(LLMProviderSettings settings)
     {
         if (apiKeyInput != null)
+        {
             apiKeyInput.text = settings.apiKey;
+            TMPInputFieldUndo.ResetHistory(apiKeyInput);
+        }
         if (endpointInput != null)
+        {
             endpointInput.text = settings.endpoint;
+            TMPInputFieldUndo.ResetHistory(endpointInput);
+        }
         if (modelDropdown != null)
             UpdateModelDropdown(settings.availableModels, settings.selectedModel);
         
@@ -1517,6 +1524,7 @@ public class LLMProviderUI
         if (input != null)
         {
             input.text = value;
+            TMPInputFieldUndo.ResetHistory(input);
             input.contentType = TMP_InputField.ContentType.DecimalNumber;
             input.onEndEdit.AddListener(onInputChanged);
             if (input.textComponent != null)

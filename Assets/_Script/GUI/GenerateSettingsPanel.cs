@@ -1028,6 +1028,9 @@ public class GenerateSettingsPanel : MonoBehaviour
             var prefs = UserPreferences.Get();
             _writeDebugJsonToggle.isOn = prefs == null ? true : prefs.WriteDebugJsonFiles;
         }
+
+        if (_panelRoot != null)
+            TMPInputFieldUndo.ResetHistoryInChildren(_panelRoot);
     }
 
     private void RefreshAutoPicDropdown()
@@ -1077,6 +1080,10 @@ public class GenerateSettingsPanel : MonoBehaviour
         }
         
         _maxPicsInput.ForceLabelUpdate();
+        TMPInputFieldUndo.Ensure(_maxPicsInput);
+
+        if (_adventureQuoteColorInput != null)
+            TMPInputFieldUndo.Ensure(_adventureQuoteColorInput);
     }
 
     // Callbacks

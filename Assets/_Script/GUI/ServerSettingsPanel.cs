@@ -144,7 +144,10 @@ public class ServerSettingsPanel : MonoBehaviour
     public void SetJobList(string joblist)
     {
         if (_jobListInputField != null)
+        {
             _jobListInputField.text = joblist;
+            TMPInputFieldUndo.ResetHistory(_jobListInputField);
+        }
     }
 
     public void AddJobToJobList(string job, ref string jobList)
@@ -386,6 +389,7 @@ public class ServerSettingsPanel : MonoBehaviour
         input.caretColor = TextDark;
         input.caretWidth = 2;
         input.selectionColor = new Color(0.25f, 0.5f, 1f, 0.40f);
+        TMPInputFieldUndo.Ensure(input);
 
         if (input.placeholder is TextMeshProUGUI ph)
         {
@@ -982,11 +986,17 @@ public class ServerSettingsPanel : MonoBehaviour
 
         // Set job list
         if (_jobListInputField != null)
+        {
             _jobListInputField.text = serverInfo._jobListOverride;
+            TMPInputFieldUndo.ResetHistory(_jobListInputField);
+        }
 
         // Set render count
         if (_renderCountInputField != null)
+        {
             _renderCountInputField.text = serverInfo._adventureRenderCount.ToString();
+            TMPInputFieldUndo.ResetHistory(_renderCountInputField);
+        }
 
         // Set ignored by extra generators
         if (_ignoredByExtraToggle != null)
@@ -998,9 +1008,14 @@ public class ServerSettingsPanel : MonoBehaviour
 
         // Set GPU name filter
         if (_gpuNameFilterInputField != null)
+        {
             _gpuNameFilterInputField.text = serverInfo._gpuNameMatchFilter ?? "";
+            TMPInputFieldUndo.ResetHistory(_gpuNameFilterInputField);
+        }
 
         UpdateCheckboxInteractability();
+        if (_panelRoot != null)
+            TMPInputFieldUndo.ResetHistoryInChildren(_panelRoot);
     }
 
     private void UpdatePresetButtonLabel()
@@ -1041,11 +1056,13 @@ public class ServerSettingsPanel : MonoBehaviour
         if (string.IsNullOrEmpty(_presetSelection))
         {
             _jobListInputField.text = "";
+            TMPInputFieldUndo.ResetHistory(_jobListInputField);
             return;
         }
 
         var preset = PresetManager.Get().LoadPreset(_presetSelection, PresetManager.Get().GetActivePreset());
         _jobListInputField.text = preset.JobList;
+        TMPInputFieldUndo.ResetHistory(_jobListInputField);
     }
 
     private void OpenAutoPicPicker()

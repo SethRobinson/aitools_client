@@ -685,6 +685,7 @@ namespace AITools.AIChat.UI
             input.textComponent = textTmp;
             input.placeholder = placeholderTmp;
             input.text = "";
+            TMPInputFieldUndo.ResetHistory(input);
             return inputGo;
         }
 
@@ -749,6 +750,8 @@ namespace AITools.AIChat.UI
                 _keepOldToolCallsToggle.isOn = AIChatPanel.GetKeepOldToolCallsInPrompt();
             if (_autoCaptionGeneratedImagesToggle != null)
                 _autoCaptionGeneratedImagesToggle.isOn = AIChatPanel.GetAutoCaptionGeneratedImages();
+            if (_mainPanel != null)
+                TMPInputFieldUndo.ResetHistoryInChildren(_mainPanel);
             RebuildSkillRows();
         }
 

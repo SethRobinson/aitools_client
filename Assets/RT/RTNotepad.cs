@@ -75,6 +75,7 @@ public class RTNotepad : MonoBehaviour
         RTNotepad goScript = go.GetComponent<RTNotepad>();
         goScript.ConfigureWindow(title);
         goScript.m_textInput.text = defaultText;
+        TMPInputFieldUndo.ResetHistory(goScript.m_textInput);
         return goScript;
     }
 
@@ -148,6 +149,7 @@ public class RTNotepad : MonoBehaviour
     public void SetText(string text)
     {
         m_textInput.text = text;
+        TMPInputFieldUndo.ResetHistory(m_textInput);
     }
 
     public void SetOpenExternalButtonVisible(bool bNew)
@@ -361,6 +363,7 @@ public class RTNotepad : MonoBehaviour
         m_textInput.scrollSensitivity = 20f;
         m_textInput.textViewport.offsetMin = new Vector2(10f, 6f);
         m_textInput.textViewport.offsetMax = new Vector2(-10f, -6f);
+        TMPInputFieldUndo.Ensure(m_textInput);
 
         if (m_textInput.textComponent != null)
         {

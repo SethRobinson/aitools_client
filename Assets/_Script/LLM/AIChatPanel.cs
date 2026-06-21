@@ -1046,7 +1046,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         ApplyFatCaret(_inputField);
         var caretFixer = _inputField.gameObject.AddComponent<AIChatCaretFixer>();
         caretFixer.Set(_inputField);
-        _inputUndo = _inputField.gameObject.AddComponent<TMPInputFieldUndo>();
+        _inputUndo = TMPInputFieldUndo.Ensure(_inputField);
 
         // Note: Enter / Shift+Enter handling is in LateUpdate() below. Using onValidateInput
         // is unreliable because Input.GetKey(Shift) can return false from inside that
@@ -2405,6 +2405,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         // Body only - the role label is its own TMP_Text above this field.
         input.text = ConvertMarkdownToTMP(rawMessageText);
+        TMPInputFieldUndo.ResetHistory(input);
 
         if (linkedInteraction != null)
             HookEditingTo(input, linkedInteraction);
@@ -2425,6 +2426,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     {
         if (input == null || interaction == null) return;
         input.readOnly = false;
+        TMPInputFieldUndo.ResetHistory(input);
         HookEditingTo(input, interaction);
         var contextHandler = input.GetComponent<AIChatBubbleContextClickHandler>();
         if (contextHandler != null)

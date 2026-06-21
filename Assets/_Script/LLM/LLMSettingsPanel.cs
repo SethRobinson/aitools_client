@@ -185,6 +185,7 @@ public class LLMSettingsPanel : MonoBehaviour
             fixer = input.gameObject.AddComponent<LLMInputFieldVisualFixer>();
 
         fixer.Set(input, _font);
+        TMPInputFieldUndo.Ensure(input);
     }
 
     /// <summary>
@@ -1597,7 +1598,10 @@ public class LLMSettingsPanel : MonoBehaviour
         // Show display name row
         _displayNameRow?.SetActive(true);
         if (_displayNameInput != null)
+        {
             _displayNameInput.text = instance.name ?? "";
+            TMPInputFieldUndo.ResetHistory(_displayNameInput);
+        }
         
         // Show enabled toggle
         _enabledRow?.SetActive(true);
@@ -1624,7 +1628,10 @@ public class LLMSettingsPanel : MonoBehaviour
         // Show max concurrent row
         _maxConcurrentRow?.SetActive(true);
         if (_maxConcurrentInput != null)
+        {
             _maxConcurrentInput.text = instance.maxConcurrentTasks.ToString();
+            TMPInputFieldUndo.ResetHistory(_maxConcurrentInput);
+        }
         
         // Show replica row only for local providers
         bool showReplica = IsLocalProvider(instance.providerType);
@@ -1634,7 +1641,10 @@ public class LLMSettingsPanel : MonoBehaviour
             if (_useReplicasToggle != null)
                 _useReplicasToggle.SetIsOnWithoutNotify(instance.useReplicas);
             if (_replicaCountInput != null)
+            {
                 _replicaCountInput.text = Mathf.Max(1, instance.replicaCount).ToString();
+                TMPInputFieldUndo.ResetHistory(_replicaCountInput);
+            }
             UpdateReplicaHelpText(instance);
             UpdateReplicaCountInteractable(instance.useReplicas);
         }
@@ -1654,6 +1664,8 @@ public class LLMSettingsPanel : MonoBehaviour
         
         // Show only the relevant provider UI
         UpdateVisibleProviderForInstance(instance.providerType);
+        if (_mainPanel != null)
+            TMPInputFieldUndo.ResetHistoryInChildren(_mainPanel);
         
         // Auto-refresh models if the instance has no available models
         if (instance.settings.availableModels == null || instance.settings.availableModels.Count == 0)
@@ -2302,6 +2314,8 @@ public class LLMSettingsPanel : MonoBehaviour
                 _replicaRow?.SetActive(false);
                 if (_activeProviderDropdown?.transform.parent != null)
                     _activeProviderDropdown.transform.parent.gameObject.SetActive(false);
+                if (_mainPanel != null)
+                    TMPInputFieldUndo.ResetHistoryInChildren(_mainPanel);
                 return; // Don't continue with provider UI updates
             }
             else if (_selectedInstanceID < 0)
@@ -2338,6 +2352,9 @@ public class LLMSettingsPanel : MonoBehaviour
         {
             FetchOllamaModelInfo();
         }
+
+        if (_mainPanel != null)
+            TMPInputFieldUndo.ResetHistoryInChildren(_mainPanel);
     }
 
     private void Update()
