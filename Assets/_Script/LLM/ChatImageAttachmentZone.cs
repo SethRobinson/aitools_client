@@ -415,6 +415,8 @@ public class ChatImageAttachmentZone : MonoBehaviour
 
         var item = new GameObject("Attachment_" + idx);
         item.transform.SetParent(_stripContainer, false);
+        var itemRt = item.AddComponent<RectTransform>();
+        itemRt.sizeDelta = new Vector2(sz, sz);
         var le = item.AddComponent<LayoutElement>();
         le.preferredWidth = sz;
         le.preferredHeight = sz;
@@ -427,10 +429,21 @@ public class ChatImageAttachmentZone : MonoBehaviour
         var thumbGo = new GameObject("Thumb");
         thumbGo.transform.SetParent(item.transform, false);
         var thumbRt = thumbGo.AddComponent<RectTransform>();
-        thumbRt.anchorMin = Vector2.zero;
-        thumbRt.anchorMax = Vector2.one;
-        thumbRt.offsetMin = new Vector2(2, 2);
-        thumbRt.offsetMax = new Vector2(-2, -2);
+        thumbRt.anchorMin = new Vector2(0.5f, 1f);
+        thumbRt.anchorMax = new Vector2(0.5f, 1f);
+        thumbRt.pivot = new Vector2(0.5f, 1f);
+        float imageMaxW = Mathf.Max(8f, sz - 4f);
+        float imageMaxH = Mathf.Max(8f, sz - 22f);
+        float aspectRatio = att.height > 0 ? (float)att.width / att.height : 1f;
+        float fitW = imageMaxW;
+        float fitH = imageMaxW / Mathf.Max(0.001f, aspectRatio);
+        if (fitH > imageMaxH)
+        {
+            fitH = imageMaxH;
+            fitW = imageMaxH * aspectRatio;
+        }
+        thumbRt.sizeDelta = new Vector2(fitW, fitH);
+        thumbRt.anchoredPosition = new Vector2(0f, -2f);
         var raw = thumbGo.AddComponent<RawImage>();
         raw.texture = att.thumb;
         raw.raycastTarget = false;
@@ -483,7 +496,7 @@ public class ChatImageAttachmentZone : MonoBehaviour
         rt.anchorMin = new Vector2(0, 0);
         rt.anchorMax = new Vector2(1, 0);
         rt.pivot = new Vector2(0.5f, 0);
-        rt.sizeDelta = new Vector2(-4, 17);
+        rt.sizeDelta = new Vector2(-4, 14);
         rt.anchoredPosition = new Vector2(0, 2);
 
         var img = badge.AddComponent<Image>();
@@ -501,7 +514,7 @@ public class ChatImageAttachmentZone : MonoBehaviour
         var txt = txtGo.AddComponent<TextMeshProUGUI>();
         txt.text = GetCaptionBadgeText(att.captionState);
         if (_font != null) txt.font = _font;
-        txt.fontSize = itemSize < 58f ? 8f : 9f;
+        txt.fontSize = itemSize < 58f ? 7f : 8f;
         txt.fontStyle = FontStyles.Bold;
         txt.color = Color.white;
         txt.alignment = TextAlignmentOptions.Center;
@@ -575,6 +588,7 @@ public class ChatImageAttachmentZone : MonoBehaviour
     private bool TryClaimDrop(List<string> files, POINT screenPos)
     {
         if (_dropTargetRect == null || !gameObject.activeInHierarchy) return false;
+        if (!_dropTargetRect.gameObject.activeInHierarchy) return false;
 
         // Win32 POINT is top-left origin; Unity screen coords are bottom-left origin.
         Vector2 unityScreenPos = new Vector2(screenPos.x, Screen.height - screenPos.y);

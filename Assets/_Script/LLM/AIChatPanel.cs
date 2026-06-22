@@ -259,6 +259,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private RectTransform _attachmentsStrip;
     private RectTransform _footerRT;
     private const float ATTACHMENT_STRIP_HEIGHT = 70f;
+    private const float FOOTER_RIGHT_RESERVED_WIDTH = 200f;
+    private const float MAIN_LLM_FOOTER_RESERVED_WIDTH = 274f;
 
     // Watchdog timeout for vision-LLM caption requests. Local Ollama / llama.cpp
     // models occasionally hang on a particular input or after long uptime; without
@@ -980,7 +982,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         inputRt.anchorMin = new Vector2(0, 0);
         inputRt.anchorMax = new Vector2(1, 1);
         inputRt.offsetMin = new Vector2(8, 8);
-        inputRt.offsetMax = new Vector2(-200, -32); // leave space for buttons (right) and status text (top)
+        inputRt.offsetMax = new Vector2(-FOOTER_RIGHT_RESERVED_WIDTH, -32); // leave space for buttons (right) and status text (top)
         _inputFieldRT = inputRt;
 
         var inputImg = inputGo.GetComponent<Image>();
@@ -1427,12 +1429,15 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         var strip = new GameObject("AttachmentsStrip");
         strip.transform.SetParent(footerTransform, false);
         var rt = strip.AddComponent<RectTransform>();
-        // Pin to top of footer, full-width, height grows with content (set in Refresh).
+        // Pin to the top center of the footer, between the Main LLM controls and
+        // the right-side status/buttons. Height grows with content (set in Refresh).
         rt.anchorMin = new Vector2(0, 1);
         rt.anchorMax = new Vector2(1, 1);
         rt.pivot = new Vector2(0.5f, 1);
-        rt.sizeDelta = new Vector2(-200, 0); // leave space on right for status/buttons
-        rt.anchoredPosition = new Vector2(-100, 0); // shift left so the right side stays clear
+        rt.offsetMin = new Vector2(MAIN_LLM_FOOTER_RESERVED_WIDTH, 0f);
+        rt.offsetMax = new Vector2(-FOOTER_RIGHT_RESERVED_WIDTH, 0f);
+
+        strip.AddComponent<RectMask2D>();
 
         var hlg = strip.AddComponent<HorizontalLayoutGroup>();
         hlg.padding = new RectOffset(8, 8, 4, 4);
