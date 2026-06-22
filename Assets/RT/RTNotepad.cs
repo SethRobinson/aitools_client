@@ -328,6 +328,7 @@ public class RTNotepad : MonoBehaviour
             inputImage.color = Color.white;
 
         m_textInput.lineType = TMP_InputField.LineType.MultiLineNewline;
+        m_textInput.richText = false;
         m_textInput.scrollSensitivity = 20f;
         m_textInput.textViewport.offsetMin = new Vector2(10f, 6f);
         m_textInput.textViewport.offsetMax = new Vector2(-10f, -6f);
@@ -339,6 +340,8 @@ public class RTNotepad : MonoBehaviour
             m_textInput.textComponent.fontSize = 14f;
             m_textInput.textComponent.color = new Color(0.08f, 0.09f, 0.10f, 1f);
             m_textInput.textComponent.textWrappingMode = TextWrappingModes.NoWrap;
+            m_textInput.textComponent.richText = false;
+            m_textInput.textComponent.parseCtrlCharacters = false;
         }
 
         if (m_textInput.placeholder is TextMeshProUGUI placeholder)
