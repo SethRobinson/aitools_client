@@ -71,6 +71,16 @@ namespace AITools.AIChat.Skills
         void RequestAutoResumeAfterSkillLoad(string skillId);
 
         /// <summary>
+        /// Request one synthetic continue turn because the MODEL decided it needs to
+        /// keep working (the <c>continue</c> control action). Uses the same scoped
+        /// auto-resume path as <see cref="RequestAutoResumeAfterSkillLoad"/> /
+        /// inspect_image resume, with a runaway cap on consecutive self-requested
+        /// continues so a stuck model can't loop forever. The host scopes the resume
+        /// to the current assistant turn and cancels it on Stop/Clear/new send.
+        /// </summary>
+        void RequestContinueTurn();
+
+        /// <summary>
         /// Queue a real vision inspection of image bytes for an existing chat image,
         /// attachment, or chained image. The host owns progress UI, Send gating,
         /// timeout, capacity routing, cancellation, and injecting the result into

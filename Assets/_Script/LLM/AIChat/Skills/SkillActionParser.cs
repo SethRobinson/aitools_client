@@ -443,6 +443,7 @@ namespace AITools.AIChat.Skills
                 case BuiltInSkillIds.CropResize:
                 case BuiltInSkillIds.DrawShape:
                 case BuiltInSkillIds.InspectImage:
+                case BuiltInSkillIds.Continue:
                     return RemovedMediaActionMarker;
                 default:
                     return $"\n[skill: {skill}]\n";

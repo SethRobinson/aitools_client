@@ -86,6 +86,14 @@ namespace AITools.AIChat.Skills
         public const string DescribeImage = "describe_image";
         public const string InspectImage = "inspect_image";
 
+        // Control action with no image/GPU side effect: the model emits this when it
+        // decides it needs another turn to keep working (e.g. it announced an edit it
+        // will run but wants the spawned image to settle first, or it has more steps
+        // to do). The host registers a synthetic (continue) turn through the same
+        // auto-resume path used by read_skill / inspect_image resume="true", with a
+        // runaway cap on consecutive self-requested continues.
+        public const string Continue = "continue";
+
         // Composition primitives - C#-side image ops the LLM can chain to build
         // posters, books, storyboards, comic panels, magazine covers, etc. None
         // of these touch ComfyUI; they all run as coroutines on the spawned
@@ -101,7 +109,7 @@ namespace AITools.AIChat.Skills
         public static readonly HashSet<string> All = new HashSet<string>
         {
             GenerateImage, GenerateMovie, ImageToImage, ImageToMovie,
-            ReadSkill, SummarizeWithSmallLlm, DescribeImage, InspectImage,
+            ReadSkill, SummarizeWithSmallLlm, DescribeImage, InspectImage, Continue,
             DrawText, AddBorder, PasteImage, NewCanvas, CropResize, DrawShape
         };
     }

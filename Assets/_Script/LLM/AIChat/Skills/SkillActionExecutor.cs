@@ -303,6 +303,13 @@ namespace AITools.AIChat.Skills
                     ExecuteInspectImage(action);
                     break;
 
+                case BuiltInSkillIds.Continue:
+                    // Control action: the model is telling us it isn't done and wants
+                    // another turn. No Pic, no GPU - just register a synthetic continue
+                    // through the host's auto-resume path (capped against runaways).
+                    _host?.RequestContinueTurn();
+                    break;
+
                 // ----- Composition primitives (C#-side image ops, no GPU). -----
                 // Wrapped in a per-skill try so a buggy or malformed composition tag
                 // surfaces a useful error in the chat (and a full stack to the Unity

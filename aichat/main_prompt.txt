@@ -114,6 +114,15 @@ Action protocol rules:
   auto-picks the latest image and waits until real rendered pixels are
   readable before inspecting. Omit `resume` only for background inspections
   you do not need to act on.
+- YOU decide when you need another turn. If you are not finished - you still
+  intend to act but didn't emit the action this turn, you finished one step of a
+  multi-step plan, or you want to verify/comment after an image you just spawned -
+  end your reply with `<aitools_action skill="continue"/>` and the host gives you
+  one automatic `(continue)` turn. NEVER finish a turn having only described what
+  you are about to do: either emit that action tag NOW, or request a continue.
+  Do NOT add `continue` after `read_skill` or `inspect_image resume="true"` -
+  those already auto-continue. The host caps consecutive self-continues, so it
+  won't loop forever.
 - The `gpu` and `llm` attributes are optional and you should normally OMIT
   them - the scheduler load-balances across all idle GPUs far better than you
   can from the frozen snapshot. Only set gpu="N" when the user explicitly asks

@@ -372,6 +372,15 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private bool _skillLoadAutoResumeScheduled = false;
     private int _skillLoadAutoResumeTurnEpoch = -1;
     private readonly List<string> _skillLoadAutoResumeIds = new List<string>();
+    // Model-requested continue (the `continue` control action). Same scoped-resume
+    // pattern as the inspect/skill-load pair above, but driven entirely by the model
+    // deciding it needs another turn. Guarded by a consecutive-self-continue counter
+    // so a stuck model can't loop forever; the counter resets on a real user send.
+    private bool _genericContinuePending = false;
+    private bool _genericContinueScheduled = false;
+    private int _genericContinueTurnEpoch = -1;
+    private int _consecutiveSelfContinues = 0;
+    private const int MaxConsecutiveSelfContinues = 6;
 
     // Conversation
     private GPTPromptManager _promptManager;
@@ -1953,6 +1962,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         return _skillLoadAutoResumePending && _skillLoadAutoResumeTurnEpoch == _chatTurnEpoch;
     }
 
+    private bool HasGenericContinuePendingForCurrentTurn()
+    {
+        return _genericContinuePending && _genericContinueTurnEpoch == _chatTurnEpoch;
+    }
+
     private static string BuildInspectImagePromptDetails(InspectImageRequest req, LLMInstanceInfo inst, int targetId)
     {
         string source = req != null && !string.IsNullOrWhiteSpace(req.sourceLabel) ? req.sourceLabel : "the image";
@@ -2111,6 +2125,81 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         SendSyntheticContinue();
     }
 
+    // ----- Model-requested continue (the `continue` control action) -----
+
+    private void RegisterGenericContinueRequest(int turnEpoch)
+    {
+        // Runaway guard: a model that emits `continue` every turn would loop forever.
+        // Cap consecutive self-requested continues; the counter resets on a real user
+        // send (see SendChatTurn). Once capped, ignore the request and tell the user.
+        if (_consecutiveSelfContinues >= MaxConsecutiveSelfContinues)
+        {
+            CancelGenericContinue();
+            AddSystemMessage(
+                $"(Reached the limit of {MaxConsecutiveSelfContinues} automatic continues in a row - " +
+                "stopping so it doesn't loop. Type a message to keep going.)",
+                includeInLLMRecap: false);
+            return;
+        }
+
+        _genericContinuePending = true;
+        _genericContinueScheduled = false;
+        _genericContinueTurnEpoch = turnEpoch;
+    }
+
+    private void CancelGenericContinue()
+    {
+        _genericContinuePending = false;
+        _genericContinueScheduled = false;
+        _genericContinueTurnEpoch = -1;
+    }
+
+    private void TryScheduleGenericContinue()
+    {
+        if (!_genericContinuePending || _genericContinueScheduled)
+            return;
+        if (_genericContinueTurnEpoch != _chatTurnEpoch)
+        {
+            CancelGenericContinue();
+            return;
+        }
+        // Inspection / skill-load results carry information the continued turn should
+        // see; if either is pending, let it own the single synthetic continue and drop
+        // this one (SendChatTurn will have bumped the epoch anyway).
+        if (HasInspectAutoResumePendingForCurrentTurn() || HasSkillLoadAutoResumePendingForCurrentTurn())
+            return;
+        if (_isStreaming || _waitingForForcedMainLLM || _compactSummaryInFlight || HasPendingSidecarWork())
+            return;
+
+        _genericContinueScheduled = true;
+        StartCoroutine(FireGenericContinueNextFrame(_genericContinueTurnEpoch));
+    }
+
+    private IEnumerator FireGenericContinueNextFrame(int turnEpoch)
+    {
+        yield return null;
+
+        if (!_genericContinuePending || !_genericContinueScheduled)
+            yield break;
+        if (_genericContinueTurnEpoch != turnEpoch || _chatTurnEpoch != turnEpoch)
+            yield break;
+        if (HasInspectAutoResumePendingForCurrentTurn() || HasSkillLoadAutoResumePendingForCurrentTurn())
+        {
+            _genericContinueScheduled = false;
+            yield break;
+        }
+        if (_isStreaming || _waitingForForcedMainLLM || _compactSummaryInFlight || HasPendingSidecarWork())
+        {
+            _genericContinueScheduled = false;
+            TryScheduleGenericContinue();
+            yield break;
+        }
+
+        CancelGenericContinue();
+        _consecutiveSelfContinues++;
+        SendSyntheticContinue();
+    }
+
     /// <summary>
     /// Recompute Send button interactability from both the streaming flag AND
     /// the count of in-flight attachment captions. Call this whenever either
@@ -2122,7 +2211,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         bool sidecarPending = HasPendingSidecarWork();
         _sendButton.interactable = !_isStreaming && !_waitingForForcedMainLLM && !sidecarPending;
         if (_stopButton != null)
-            _stopButton.interactable = _isStreaming || _waitingForForcedMainLLM || CountPendingInspectImageJobs() > 0 || HasSkillLoadAutoResumePendingForCurrentTurn();
+            _stopButton.interactable = _isStreaming || _waitingForForcedMainLLM || CountPendingInspectImageJobs() > 0 || HasSkillLoadAutoResumePendingForCurrentTurn() || HasGenericContinuePendingForCurrentTurn();
     }
 
     private void UpdateAttachmentCaptionStatus(bool force = false)
@@ -2980,6 +3069,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             return;
         }
 
+        // A user-driven send (typed message OR an auto-repeat fire) means the human is
+        // back in control, so reset the model's runaway self-continue counter. Synthetic
+        // `continue` turns go through SendSyntheticContinue, not here, so they never reset it.
+        _consecutiveSelfContinues = 0;
+
         // The auto-repeat counter is owned by the "Auto repeat msg" toggle handler
         // and FinalizeAssistantTurn now - a plain Send no longer starts a burst.
         string text = _inputField != null ? _inputField.text : "";
@@ -3225,13 +3319,16 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     {
         bool inspectPending = CountPendingInspectImageJobs() > 0;
         bool skillResumePending = HasSkillLoadAutoResumePendingForCurrentTurn();
+        bool genericContinuePending = HasGenericContinuePendingForCurrentTurn();
         bool forcedWaitPending = _waitingForForcedMainLLM;
-        if (!_isStreaming && !inspectPending && !skillResumePending && !forcedWaitPending) return;
+        if (!_isStreaming && !inspectPending && !skillResumePending && !genericContinuePending && !forcedWaitPending) return;
         // Stop fully ends auto-repeat: uncheck the box (its handler also zeroes the
         // counter) so it doesn't quietly resume on the next reply.
         _autoContinueRemaining = 0;
         if (_autoContinueToggle != null) _autoContinueToggle.isOn = false;
         CancelSkillLoadAutoResume();
+        CancelGenericContinue();
+        _consecutiveSelfContinues = 0;
 
         if (inspectPending)
             CancelAllInspectImageJobs(showBubble: true);
@@ -3302,6 +3399,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         CancelAllInspectImageJobs(showBubble: false);
         CancelForcedMainLLMWait(showBubble: false);
         CancelSkillLoadAutoResume();
+        CancelGenericContinue();
+        _consecutiveSelfContinues = 0;
         // Discard any in-flight compact-summary; if its response landed after this
         // reset it would ReplaceInteractions() the old history right back in.
         _compactSummaryCancel?.Invoke();
@@ -3859,6 +3958,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _autoContinueRemaining = 0;
         if (_autoContinueToggle != null) _autoContinueToggle.isOn = false;
         CancelSkillLoadAutoResume();
+        CancelGenericContinue();
+        _consecutiveSelfContinues = 0;
         _compactSummaryCancel?.Invoke();
         _lastTurnAttachments?.Clear();
         _stickyAutoloadSkillIds.Clear();
@@ -4192,6 +4293,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         {
             CancelInspectAutoResume();
             CancelSkillLoadAutoResume();
+            CancelGenericContinue();
             _chatTurnEpoch++;
         }
 
@@ -5056,11 +5158,16 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         bool skillLoadResumePendingForTurn = !aborted
             && _skillLoadAutoResumePending
             && _skillLoadAutoResumeTurnEpoch == _chatTurnEpoch;
-        bool explicitResumePendingForTurn = inspectResumePendingForTurn || skillLoadResumePendingForTurn;
+        bool genericContinuePendingForTurn = !aborted
+            && _genericContinuePending
+            && _genericContinueTurnEpoch == _chatTurnEpoch;
+        bool explicitResumePendingForTurn = inspectResumePendingForTurn || skillLoadResumePendingForTurn
+            || genericContinuePendingForTurn;
         if (aborted)
         {
             _autoContinueRemaining = 0;
             CancelSkillLoadAutoResume();
+            CancelGenericContinue();
         }
         else if (repeatOn && !explicitResumePendingForTurn && _autoContinueRemaining > 0 && !HasPendingSidecarWork())
         {
@@ -5084,6 +5191,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             doneStatus = HasPendingSidecarWork() ? "Waiting for inspection" : "Continuing after inspection";
         else if (skillLoadResumePendingForTurn)
             doneStatus = "Continuing after skill load";
+        else if (genericContinuePendingForTurn)
+            doneStatus = "Continuing...";
         else
             doneStatus = string.IsNullOrEmpty(stats) ? "Idle" : $"Done   {stats}";
         SetBusyUI(false, doneStatus);
@@ -5098,6 +5207,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         {
             TryScheduleInspectAutoResume();
             TryScheduleSkillLoadAutoResume();
+            TryScheduleGenericContinue();
             // Re-focus the chat input so the user can immediately type their next message
             // (unless they're in the middle of editing some other input - e.g. a bubble).
             FocusInputDeferred();
@@ -5161,7 +5271,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // OnSendClicked still prevents double-send.
         if (_inputField != null) _inputField.interactable = true;
         if (_clearButton != null) _clearButton.interactable = true;
-        if (_stopButton != null) _stopButton.interactable = busy || _waitingForForcedMainLLM || CountPendingInspectImageJobs() > 0 || HasSkillLoadAutoResumePendingForCurrentTurn();
+        if (_stopButton != null) _stopButton.interactable = busy || _waitingForForcedMainLLM || CountPendingInspectImageJobs() > 0 || HasSkillLoadAutoResumePendingForCurrentTurn() || HasGenericContinuePendingForCurrentTurn();
         if (_statusText != null) _statusText.text = status;
     }
 
@@ -6898,6 +7008,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     {
         RegisterSkillLoadAutoResumeRequest(_chatTurnEpoch, skillId);
         TryScheduleSkillLoadAutoResume();
+    }
+
+    void IChatHost.RequestContinueTurn()
+    {
+        RegisterGenericContinueRequest(_chatTurnEpoch);
+        TryScheduleGenericContinue();
     }
 
     void IChatHost.EnqueueInspectImage(byte[] png, string prompt, string sourceLabel, int? llmInstanceId, bool resumeOnResult)
