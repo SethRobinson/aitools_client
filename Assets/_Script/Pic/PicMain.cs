@@ -1674,6 +1674,59 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         SaveFile("", "/" + Config._saveDirName, null,"",true);
     }
 
+    //Encodes the current image to a temp PNG and shells out to utils\RTClip.exe in "set"
+    //mode, which places it on the Windows clipboard (standard bitmap + alpha-preserving
+    //PNG format).  Lets the user paste a generated pic into AI Chat or any other app.
+    //Mirrors the read path in LoadImageFromClipboard / ChatImageAttachmentZone.
+    public void CopyImageToClipboard()
+    {
+        try
+        {
+            if (IsMovie())
+            {
+                RTQuickMessageManager.Get().ShowMessage("Can't copy a movie to the clipboard");
+                return;
+            }
+
+            if (m_pic == null || m_pic.sprite == null || m_pic.sprite.texture == null)
+            {
+                RTQuickMessageManager.Get().ShowMessage("No image to copy");
+                return;
+            }
+
+            string root = Application.dataPath.Replace('/', '\\');
+            root = root.Substring(0, root.LastIndexOf('\\'));
+            string exe = root + "\\utils\\RTClip.exe";
+            string tempPngFile = root + "\\winclip_copy_image.png";
+
+            if (!File.Exists(exe))
+            {
+                RTQuickMessageManager.Get().ShowMessage("RTClip.exe not found");
+                return;
+            }
+
+            File.WriteAllBytes(tempPngFile, m_pic.sprite.texture.EncodeToPNG());
+
+            var processInfo = new System.Diagnostics.ProcessStartInfo(exe, "set \"" + tempPngFile + "\"");
+            processInfo.CreateNoWindow = true;
+            processInfo.UseShellExecute = false;
+
+            var process = System.Diagnostics.Process.Start(processInfo);
+            process.WaitForExit();
+            process.Close();
+
+            //RTClip flushes the clipboard before exit, so the temp file is no longer needed.
+            RTUtil.DeleteFileIfItExists(tempPngFile);
+
+            RTQuickMessageManager.Get().ShowMessage("Copied image to clipboard");
+        }
+        catch (Exception e)
+        {
+            RTConsole.Log("Copy to clipboard failed: " + e.Message);
+            RTQuickMessageManager.Get().ShowMessage("Copy to clipboard failed");
+        }
+    }
+
     public void SaveFileNoReturn()
     {
         RTQuickMessageManager.Get().ShowMessage("Saving image...");

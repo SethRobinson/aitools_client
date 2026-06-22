@@ -39,6 +39,7 @@ rd /s /q build\win\ComfyUI\Unused
 
 call %RT_PROJECTS%\Signing\sign.bat "build/win/%APP_NAME%.exe" "Seth's AI Tools" "rtsoft.com"
 call %RT_PROJECTS%\Signing\sign.bat "build/win/utils/RTClip.exe" "RTClip" "rtsoft.com"
+call %RT_PROJECTS%\Signing\sign.bat "build/win/utils/RTClip.dll" "RTClip" "rtsoft.com"
 
 del build\win\utils\RTClip.zip
 rmdir /S /Q "build\win\Seth's AI Tools_BurstDebugInformation_DoNotShip"

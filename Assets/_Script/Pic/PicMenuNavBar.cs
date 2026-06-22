@@ -37,6 +37,7 @@ public class PicMenuNavBar : MonoBehaviour
         _navBar.AddOption("Toggle smoothing", _picMain.OnToggleSmoothing, "Toggles bilinear filtering, aka smoothing<br>(Doesn't actually change the image at all)");
         _navBar.AddOption("Cleanup pixel art", _picMain.CleanupPixelArt, "Resamples image to 128x128 then scales it back up<br>(results in more pixelly output)");
         _navBar.AddOption("Save as PNG", _picMain.SaveFilePNG, "Saved as a PNG (no mask included).  The little S on the bar will save as bmp with the mask intact.)");
+        _navBar.AddOption("Copy to Windows clipboard", _picMain.CopyImageToClipboard, "Copies this image to the Windows clipboard (alpha preserved) so you can paste it elsewhere, e.g. into AI Chat.");
         //_navBar.AddOption("Render w/ AIT/A1111", _picMain.OnRenderWithAITOrA1111, "Works if you have a AI Tools or A1111 server");
         _navBar.AddOption("Render w/ ComfyUI", _picMain.OnRenderWithComfyUI, "Works if you have a ComfyUI server defined in your config");
         _navBar.AddOption("Copy to Temp Pic 1", _picMain.OnSetTemp1Button, "Set image to temp pic 1, useful to hold for more complicated scripting");
