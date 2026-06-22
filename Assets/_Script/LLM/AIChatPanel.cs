@@ -1791,9 +1791,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 try { clean = OpenAITextCompletionManager.ExtractTextFromResponseJSON(json); } catch { /* no-op */ }
             }
 
-            string message = string.IsNullOrEmpty(clean)
-                ? $"inspect_image: LLM #{targetId} returned no content for {req.sourceLabel}."
-                : $"Vision inspection result for {req.sourceLabel}:\n{clean}";
+            string failureDetail = GetSidecarFailureDetail(db);
+            string message = !string.IsNullOrEmpty(clean)
+                ? $"Vision inspection result for {req.sourceLabel}:\n{clean}"
+                : (!string.IsNullOrEmpty(failureDetail)
+                    ? $"inspect_image: LLM #{targetId} failed for {req.sourceLabel}: {failureDetail}"
+                    : $"inspect_image: LLM #{targetId} returned no content for {req.sourceLabel}.");
             CompleteInspectImageJob(job, instanceMgr, message, includeInLLMRecap: true);
         }, "InspectImage", "inspect_image_sent.json");
 
@@ -5407,6 +5410,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 {
                     try { raw = OpenAITextCompletionManager.ExtractTextFromResponseJSON(json); } catch { /* no-op */ }
                 }
+                string failureDetail = GetSidecarFailureDetail(db);
+                if (string.IsNullOrEmpty(raw) && !string.IsNullOrEmpty(failureDetail))
+                {
+                    AddSystemMessage(
+                        $"Image caption failed on LLM #{capturedTargetId}: {failureDetail}",
+                        includeInLLMRecap: true);
+                }
                 result = ParseCaptionResponse(raw);
             }
             finally { safeResult(result); }
@@ -5443,6 +5453,27 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             "generated images can't be described. In LLM Settings, turn on \"Supports vision\" " +
             "for an active vision-capable instance.",
             includeInLLMRecap: false);
+    }
+
+    private static string GetSidecarFailureDetail(RTDB db)
+    {
+        if (db == null) return "";
+
+        string status = "";
+        try { status = db.GetStringWithDefault("status", ""); } catch { }
+        if (!string.Equals(status, "failed", StringComparison.OrdinalIgnoreCase))
+            return "";
+
+        string msg = "";
+        try { msg = db.GetStringWithDefault("msg", ""); } catch { }
+        msg = Regex.Replace(msg ?? "", @"\s+", " ").Trim();
+        if (string.IsNullOrEmpty(msg))
+            return "request failed";
+
+        const int maxLen = 500;
+        if (msg.Length > maxLen)
+            msg = msg.Substring(0, maxLen - 3).TrimEnd() + "...";
+        return msg;
     }
 
     private IEnumerator CaptionWatchdog(CaptionJob job, LLMInstanceManager instanceMgr, Action<CaptionResult> safeResult)
@@ -5864,7 +5895,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             record.kind = "edited image";
         }
         if (!string.IsNullOrEmpty(action.AnchorName))
+        {
             record.anchorName = action.AnchorName;
+            _anchors[action.AnchorName] = pic;
+        }
 
         string step = BuildActionProvenanceStep(action);
         if (!string.IsNullOrEmpty(step))

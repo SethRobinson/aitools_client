@@ -14,6 +14,16 @@ if their wording is "create / make / generate an image of them" - that
 is **image_to_image** with the N-Input Klein preset, not this skill.
 generate_image cannot reproduce a specific past face from text.
 
+If the user asks for a brand-new subject WITH an attached logo, mark,
+watermark, decal, or sticker, `generate_image` is only stage 1: create the
+clean base subject first. For a literal flat sticker/decal/watermark, follow
+with `paste_image` using the actual uploaded art as the final step. For
+"fit it onto the chest/back/body/object", tattoo, engraving, embroidery,
+painted scales, branded hide, inlaid metal, or any request that says it should
+look physically part of the subject, follow with a placement guide paste and a
+2-input Klein integration pass as described in `image_to_image`. Do not try to
+draw a specific attached logo from text alone.
+
 ## Available presets
 
 Pick the preset whose strengths best match the user's request. If unsure,

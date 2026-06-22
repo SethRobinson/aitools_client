@@ -259,7 +259,8 @@ namespace AITools.AIChat.Skills
             // attributes as integers). Idempotent, so the deferred re-execution path is
             // safe. Done here in the dispatcher so every skill that reads chat_image*
             // benefits, not just image_to_image.
-            NormalizeAnchorRefs(action);
+            if (!NormalizeAnchorRefs(action))
+                return;
 
             // Editor-only: record the raw tool call (skill id + every attribute) so
             // the AI Chat log shows exactly what the model emitted - including the
@@ -1888,14 +1889,15 @@ namespace AITools.AIChat.Skills
         /// Rewrite any chat_image* / source_chat_image attribute whose value is an anchor NAME
         /// (e.g. <c>chat_image="Bob"</c>) into its current numeric slot using the host's
         /// anchor registry. Numeric values are left untouched. A name that resolves to no
-        /// live slot is dropped (with a help bubble) so the downstream integer parse
-        /// doesn't silently treat it as "missing" and the LLM learns to use a valid
-        /// anchor or number. Safe to call more than once on the same action (numbers
-        /// pass straight through), which the deferred re-execution path relies on.
+        /// live slot aborts the action with a help bubble so the downstream integer
+        /// parse doesn't silently treat it as "missing" and then fail with a less
+        /// useful "missing source/input" error. Safe to call more than once on the
+        /// same action (numbers pass straight through), which the deferred
+        /// re-execution path relies on.
         /// </summary>
-        private void NormalizeAnchorRefs(SkillAction action)
+        private bool NormalizeAnchorRefs(SkillAction action)
         {
-            if (action == null || _host == null) return;
+            if (action == null || _host == null) return true;
 
             foreach (string key in AnchorRefArgKeys)
             {
@@ -1913,13 +1915,15 @@ namespace AITools.AIChat.Skills
                 }
                 else
                 {
-                    action.Args.Remove(key);
                     _host.AddSystemInjectionAndBubble(
                         $"{key}=\"{val}\" did not match any known character anchor. Known anchors are " +
                         "listed in the ANCHORS line of CURRENT STATE - reference one of those by name, " +
                         "or use a numeric chat_image=\"N\".");
+                    return false;
                 }
             }
+
+            return true;
         }
 
         /// <summary>

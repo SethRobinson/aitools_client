@@ -292,9 +292,10 @@ public class LLMInstanceInfo
     //                    Capability gate - an instance with this off never gets image work.
     //  - visionOnly:     reserve this instance for vision; don't route text jobs here (a
     //                    dedicated vision sidecar). Only meaningful when supportsVision is true.
-    // Defaults reproduce the old jobMode==Any behavior (accepts everything). Existing configs
-    // get both derived from their legacy jobMode by LLMInstanceManager.MigrateJobModes().
-    public bool supportsVision = true;
+    // Local/OpenAI-compatible text servers often accept chat requests but reject images
+    // unless a real vision model/mmproj is loaded, so default to no vision unless the
+    // provider-specific factory below opts in.
+    public bool supportsVision = false;
     public bool visionOnly = false;
 
     public int maxConcurrentTasks = 1;          // Maximum concurrent tasks this instance can handle (per replica)
@@ -322,7 +323,7 @@ public class LLMInstanceInfo
             settings = new LLMProviderSettings(),
             isActive = true,
             jobMode = LLMJobMode.Any,
-            supportsVision = true,
+            supportsVision = DefaultSupportsVisionForProvider(provider),
             visionOnly = false,
             maxConcurrentTasks = 1
         };
@@ -370,6 +371,22 @@ public class LLMInstanceInfo
         }
         
         return instance;
+    }
+
+    public static bool DefaultSupportsVisionForProvider(LLMProvider provider)
+    {
+        switch (provider)
+        {
+            case LLMProvider.OpenAI:
+            case LLMProvider.Anthropic:
+            case LLMProvider.Gemini:
+                return true;
+            case LLMProvider.LlamaCpp:
+            case LLMProvider.Ollama:
+            case LLMProvider.OpenAICompatible:
+            default:
+                return false;
+        }
     }
     
     /// <summary>
@@ -732,7 +749,7 @@ public class LLMInstancesConfig
             settings = legacy.GetActiveProviderSettings()?.Clone() ?? new LLMProviderSettings(),
             isActive = true,
             jobMode = LLMJobMode.Any,
-            supportsVision = true,
+            supportsVision = LLMInstanceInfo.DefaultSupportsVisionForProvider(legacy.activeProvider),
             visionOnly = false
         };
         

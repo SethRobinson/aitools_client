@@ -18,8 +18,15 @@ panel strips, and 2x2 comic pages.
 - If the user explicitly says "using ideo", "using ideogram", or "using only
   ideo", follow the `ideo` skill's comic-page recipe instead of assembling
   separate source panels with `new_canvas` / `paste_image`. Ideogram should
-  render the finished page, including title, panel frames, speech balloons,
-  and dialog text, in one `generate_image` action.
+  render each finished requested page, including title, panel frames, speech
+  balloons, and dialog text, as one `generate_image` action per page. Use the
+  ideo skill's fixed `[y1,x1,y2,x2]` title/panel bboxes, speaker-side speech
+  boxes, and explicit tail endpoint coordinates. Repeat the intended speaker,
+  panel, and tail endpoint near the speaker's face/mouth in both the
+  speech-balloon desc and matching text desc, and explicitly say nearby
+  non-speakers have no bubble/tail. For Ideogram speech, use wide horizontal
+  balloon/text bboxes and no manual `\n` line breaks; tall oval bubbles make
+  English text stack vertically.
 - Speech bubbles are `draw_shape` (rounded rect background) + `draw_text`
   (dialog) chained on top, both at the SAME rect coordinates.
 - When fixing/replacing a speech bubble on a composed image from a previous
@@ -46,8 +53,9 @@ panel strips, and 2x2 comic pages.
   the same canvas becomes the finished comic instead of separate partial
   canvases.
 - For recurring characters across panels, use `image_to_image` with
-  `chat_image="<panelA_idx>"` for panels B+ instead of fresh
-  `generate_image` calls.
+  `chat_image="<character anchor or panel A anchor>"` for panels B+ instead of
+  fresh `generate_image` calls, but still set `anchor="<new panel anchor>"` on
+  every panel-producing action that will be pasted later.
 - For panels created earlier in the SAME reply, name the canvas/panels with
   `anchor="..."` and use those names in `chat_image` / `source_chat_image`.
   Do not predict #K+N future chat_image numbers.
@@ -82,7 +90,9 @@ Steps:
 1. `generate_image` x2 - the two panel scenes (separate source bubbles).
    For character continuity, generate panel A first, then make panel B
    via `image_to_image chat_image="comic_panel_a"` when the subject must
-   stay identical.
+   stay identical. EVERY panel source action must set its own panel anchor:
+   `anchor="comic_panel_a"`, `anchor="comic_panel_b"`, etc. This applies to
+   `image_to_image` panel actions too.
 2. `new_canvas` - wide canvas, created immediately before assembly.
 3. `paste_image chain="true"` x2 - each panel into half of the canvas.
 4. `draw_shape` + `draw_text` per panel - speech bubbles, all chained.
@@ -112,7 +122,11 @@ User says: "3-panel comic strip about my cat", "comic strip of X".
 Steps:
 1. `generate_image` x3 - the three panel scenes (separate bubbles). For
    character continuity, generate panel A first, then make panels B/C
-   via `image_to_image chat_image="<panelA_idx>"`.
+   via `image_to_image chat_image="CharacterAnchor"` or
+   `image_to_image chat_image="comic_panel_a"`, but still set
+   `anchor="comic_panel_b"` and `anchor="comic_panel_c"` on those edited panel
+   actions. If an action creates a panel that will be pasted later, it must
+   carry the matching panel anchor.
 2. `new_canvas` - wide canvas (e.g. 3000x1100) with a paper or dark
    background, created immediately before final assembly.
 3. `paste_image chain="true"` x3 - each panel into a third of the canvas.
@@ -136,6 +150,19 @@ Steps:
 
 The anchor names are resolved by the host to the actual current chat_image
 numbers. Do not calculate future numeric ids.
+
+If panel B/C are image edits rather than fresh text-to-image renders, the
+pattern is:
+
+```
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<panel A - establishing>" anchor="comic_panel_a"/>
+<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit.txt}}" prompt="<panel B edit, keeping the recurring subject consistent>" chat_image="OldMan" anchor="comic_panel_b"/>
+<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit.txt}}" prompt="<panel C edit, keeping the recurring subject consistent>" chat_image="OldMan" anchor="comic_panel_c"/>
+```
+
+Never paste `source_chat_image="comic_panel_b"` or
+`source_chat_image="comic_panel_c"` unless those anchors were actually created
+earlier in the same reply or already exist in the ANCHORS line.
 
 ---
 
@@ -224,5 +251,5 @@ draw a second title over the flawed composite.
 - Use anchor names for any same-reply generated panel/canvas, especially when
   pasting several new panels into a layout.
 - For recurring characters across panels, use `image_to_image
-  chat_image="<panelA_idx>"` for panels B+ instead of fresh
-  `generate_image` calls.
+  chat_image="<character anchor or panel A anchor>" anchor="<new panel anchor>"`
+  for panels B+ instead of fresh `generate_image` calls.

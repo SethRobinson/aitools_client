@@ -87,14 +87,24 @@ Do not generate four loose panel images and assemble them with `new_canvas` /
 images. Ideogram can handle the panel grid, title, speech balloons, and printed
 dialog in the JSON caption.
 
+If the user asks for multiple pages, emit one separate Ideogram
+`generate_image` action per requested page. Do not compress "2 pages" into one
+page or one spread unless the user explicitly asks for a single spread image.
+Each page's JSON should carry its own title/page label, panel frames, speech
+balloons, and dialog.
+
 For a 2x2 comic page:
 - Use `aspect_ratio:"1:1"` and width/height `1024` unless the user explicitly
   names another format.
 - Make the medium a colorful comic-book illustration or the user's requested
   comic style.
-- Reserve a real title band. Put the title bbox in the top 6-9% of the page
-  and start upper panel art below it, with at least 2% gutter between title and
-  panels. A title that touches or overlaps panel art is a layout failure.
+- Reserve a real title band. For a 1024x1024 page, use a top title text bbox
+  like `[20,40,90,984]` and start upper panel art at `y>=120`. A title that
+  touches or overlaps panel art is a layout failure.
+- Use this stable four-panel grid for titled square pages unless the user asks
+  for a different layout: panel 1 `[120,60,482,482]`, panel 2
+  `[120,542,482,964]`, panel 3 `[542,60,934,482]`, panel 4
+  `[542,542,934,964]`. Keep speech bubbles inside their own panel bbox.
 - Give each panel frame its own `obj` element with a bbox. Its desc should name
   the panel number, scene beat, border, and interior art.
 - Treat each panel frame desc as self-contained. Ideogram may not carry
@@ -108,6 +118,40 @@ For a 2x2 comic page:
   established characters with generic or same-sex defaults in later panels.
 - Give each speech balloon its own `obj` element with a bbox, then a matching
   `text` element with the same or slightly inset bbox.
+- Speech text must be horizontal left-to-right. For English comic dialog,
+  NEVER use manual `\n` line breaks in the `text` field; give Ideogram one
+  short phrase and a wide horizontal text bbox. On a 1024x1024 four-panel
+  page, make every speech/text bbox at least 260 coordinate units wide and
+  no more than about 90 tall. Use wide rounded rectangles/capsules, not tall
+  oval balloons. If the line will not fit, shorten the dialog instead of
+  stacking words vertically.
+- Speaker ownership is part of the rect contract. Before emitting balloon
+  elements, choose the speaker's face/mouth target in page coordinates and
+  include it in the panel frame desc. Example: "young neighbor boy on the
+  right, face/mouth around x=850,y=760; elderly man on the left, face around
+  x=690,y=750." Coordinates in prose use `x=` and `y=` names even though bbox
+  arrays are ordered `[y1,x1,y2,x2]`.
+- In BOTH the speech balloon `obj.desc` and matching `text.desc`, name the exact
+  speaker and panel, state that the bbox sits on/above the speaker's side, and
+  give the tail endpoint near the speaker's face/mouth, e.g. "Panel 4 boy
+  speech balloon; bbox sits over the boy on the right; tail endpoint touches
+  the young boy's mouth near x=850,y=760; the elderly man has no speech bubble
+  and no tail points to him." Do not rely on the text content alone to imply
+  who is speaking.
+- Bubble side, tail direction, and endpoint must agree. If the speaker is on
+  the right, the bubble should be on the right side of that panel and its tail
+  should point down/right/down-right as needed to the speaker's mouth. If the
+  speaker is on the left, put the bubble on the left side. Never place a
+  speaker's balloon closer to another character than to the speaker. Never say
+  `tail points up-left` when the target speaker is below/right of the bubble.
+- For the stable 1024 square grid, use speaker-side horizontal speech regions.
+  Upper-left panel left speaker: `[135,80,225,360]`; upper-left panel right
+  speaker: `[135,190,225,470]`; upper-right panel left speaker:
+  `[135,560,225,840]`; upper-right panel right speaker: `[135,680,225,950]`;
+  lower-left panel left speaker: `[560,80,650,360]`; lower-left panel right
+  speaker: `[560,190,650,470]`; lower-right panel left speaker:
+  `[560,560,650,840]`; lower-right panel right speaker: `[560,680,650,950]`.
+  Put the matching text inset by roughly 20 coordinate units on each side.
 - Do NOT bbox every character, shelf, table, or prop inside panels. Describe
   them inside the panel frame desc unless a character is the single focal hero
   of the entire page.
@@ -123,7 +167,28 @@ GOOD panel desc:
 Minimal element pattern for a square 2x2 page with title:
 
 ```json
-{"aspect_ratio":"1:1","high_level_description":"A finished four-panel comic page with a centered title, four bordered panels, and readable speech balloons about a woman who cannot stop farting everywhere.","compositional_deconstruction":{"background":"Clean off-white comic page with black gutters, a reserved title band across the top, and four equal panel areas below.","elements":[{"type":"obj","bbox":[100,40,485,485],"desc":"Panel 1 frame with black border, supermarket aisle scene, woman by a cart releasing a green comic gas cloud, surprised shoppers, dynamic action lettering inside the art."},{"type":"obj","bbox":[100,515,485,960],"desc":"Panel 2 frame with black border, restaurant date scene, embarrassed woman at a table, date reacting politely, green gas curling under the table."},{"type":"obj","bbox":[515,40,960,485],"desc":"Panel 3 frame with black border, yoga class scene, woman in downward dog while classmates react to a large green gas puff."},{"type":"obj","bbox":[515,515,960,960],"desc":"Panel 4 frame with black border, elevator scene, woman smiling awkwardly while passengers recoil from green gas at floor level."},{"type":"text","bbox":[20,80,78,920],"text":"THE UNSTOPPABLE FART MACHINE","desc":"Centered uppercase comic title, black display lettering, fits fully inside the top title band with clear padding above the upper panels."},{"type":"obj","bbox":[300,60,395,255],"desc":"White rounded speech balloon in panel 1 with black outline, positioned over empty aisle space without covering the main face."},{"type":"text","bbox":[315,75,382,240],"text":"Wasn't me!","desc":"Readable black comic lettering centered inside the panel 1 speech balloon."}]}}
+{
+  "aspect_ratio": "1:1",
+  "high_level_description": "A finished four-panel comic page with a centered title, four bordered panels, and readable horizontal speech balloons about a tiny dragon eating a knight.",
+  "compositional_deconstruction": {
+    "background": "Clean off-white comic page with black gutters, a reserved title band across the top, and four equal panel areas below.",
+    "elements": [
+      {"type":"text","bbox":[20,40,90,984],"text":"THE HUNGRY LITTLE DRAGON","desc":"Centered uppercase comic title in the top title band, black display lettering, fits fully inside the band with clear padding above the upper panels."},
+      {"type":"obj","bbox":[120,60,482,482],"desc":"Panel 1 frame with thick black border: armored knight on the left speaks confidently, helmet mouth around x=175,y=290; tiny green baby dragon on the right, face around x=365,y=330; empty upper-left sky for the knight balloon."},
+      {"type":"obj","bbox":[120,542,482,964],"desc":"Panel 2 frame with thick black border: armored knight on the left leans down and speaks, helmet mouth around x=650,y=300; tiny green baby dragon at lower right, face around x=850,y=340; both faces separated."},
+      {"type":"obj","bbox":[542,60,934,482],"desc":"Panel 3 frame with thick black border: tiny green baby dragon on the right opens its mouth wide and speaks while swallowing the armored knight from the left; dragon mouth around x=385,y=740; knight has no speaking mouth."},
+      {"type":"obj","bbox":[542,542,934,964],"desc":"Panel 4 frame with thick black border: tiny green baby dragon alone at lower right with a huge round belly, dropped sword, small burp flame; dragon mouth around x=810,y=740; dragon is the only speaker."},
+      {"type":"obj","bbox":[135,80,225,360],"desc":"Panel 1 knight speech balloon, wide horizontal rounded rectangle on the knight's left side; tail endpoint touches the armored knight's helmet mouth near x=175,y=290; the dragon has no speech bubble and no tail points to it."},
+      {"type":"text","bbox":[150,100,205,340],"text":"This will be easy.","desc":"Panel 1 knight speech text, horizontal left-to-right comic lettering; belongs to the armored knight; same balloon tail endpoint near x=175,y=290, not the dragon."},
+      {"type":"obj","bbox":[135,560,225,840],"desc":"Panel 2 knight speech balloon, wide horizontal rounded rectangle on the knight's left side of panel 2; tail endpoint touches the armored knight's helmet mouth near x=650,y=300; the dragon has no speech bubble."},
+      {"type":"text","bbox":[150,580,205,820],"text":"It is so small!","desc":"Panel 2 knight speech text, horizontal left-to-right comic lettering; belongs to the armored knight; same balloon tail endpoint near x=650,y=300, not the dragon."},
+      {"type":"obj","bbox":[560,190,650,470],"desc":"Panel 3 dragon speech balloon, wide horizontal rounded rectangle on the dragon's right side; tail endpoint touches the baby dragon's open mouth near x=385,y=740; the knight has no speech bubble and no tail points to him."},
+      {"type":"text","bbox":[575,210,630,450],"text":"NOM NOM NOM","desc":"Panel 3 dragon speech text, horizontal left-to-right comic lettering; belongs to the baby dragon; same balloon tail endpoint near x=385,y=740, not the knight."},
+      {"type":"obj","bbox":[560,680,650,950],"desc":"Panel 4 dragon speech balloon, wide horizontal rounded rectangle above the dragon on the right; tail endpoint touches the full-bellied baby dragon's mouth near x=810,y=740; no knight is speaking."},
+      {"type":"text","bbox":[575,700,630,930],"text":"Pardon me.","desc":"Panel 4 dragon speech text, horizontal left-to-right comic lettering; belongs to the baby dragon; same balloon tail endpoint near x=810,y=740."}
+    ]
+  }
+}
 ```
 
 ---
@@ -164,7 +229,7 @@ BAD (over-specifies): `A male soccer player captured mid-kick on a bright green 
 Each element is one of:
 ```
 {"type":"obj","bbox":[y1,x1,y2,x2],"desc":"..."}
-{"type":"text","bbox":[y1,x1,y2,x2],"text":"LINE ONE\nLINE TWO","desc":"..."}
+{"type":"text","bbox":[y1,x1,y2,x2],"text":"TEXT HERE","desc":"..."}
 ```
 `bbox` is optional per-element (see BBOX STRATEGY).
 

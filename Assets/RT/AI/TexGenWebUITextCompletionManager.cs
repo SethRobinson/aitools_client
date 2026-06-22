@@ -627,11 +627,12 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
             if (_currentRequest.result != UnityWebRequest.Result.Success)
             {
                 string msg = _currentRequest.error;
+                string body = _currentRequest.downloadHandler != null ? _currentRequest.downloadHandler.text : "";
                 Debug.Log(msg);
                 //Debug.Log(_currentRequest.downloadHandler.text);
-                LLMDebugLog.LogError(_currentRequest.downloadHandler.text, debugJobSize);
+                LLMDebugLog.LogError(body, debugJobSize);
                 db.Set("status", "failed");
-                db.Set("msg", msg);
+                db.Set("msg", string.IsNullOrWhiteSpace(body) ? msg : $"{msg}\nResponse: {body}");
                 m_connectionActive = false;
                 myCallback.Invoke(db, null, "");
             }

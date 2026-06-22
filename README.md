@@ -1,85 +1,34 @@
-# Seth's AI Tools: A Unity based front-end for ComfyUI and Ollama (and others) that does things like generate photos and movies, Twine games, quizzes, posters and more.
+# Seth's AI Tools: A Unity based front-end that uses ComfyUI and LLMs to do story and image/movie stuff
 
 License:  BSD style attribution, see LICENSE.md
 
-<p float="left">
-<a href="Media/aitools_v2_aiguide.png"><img align="top" src="Media/aitools_v2_aiguide.png"></a>
-</p>
+# Download
 
-
-## Download the latest: V3.01 (Jun 21st, 2026) [AI Tools Client (Windows, 62 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip)
-
-Need an old version? The last pre-V2 version (that still supports Auto1111) can be downloaded [here](https://www.rtsoft.com/files/SethsAIToolsWindowsV095.zip).
-
-NOTE: This software is hard to use because it kind of assumes you already know a lot of about ComfyUI and how to use local LLMs like llama.cpp or vllm. 
-
-If this is all weird and strange, this is probably not the place for you to start. 
+Download the latest: V3.01 (Jun 21st, 2026) [AI Tools Client (Windows, 62 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) (codesigned by me)
 
 ## Features
 
 - It's not a web app, it's a native locally run Windows .exe (Unity with C#)
-- AI Chat mode is kind of nano-banana at home, can just "ask" it to make images, posters, intelligently use anchor images, this is probably the coolest feature
-- Drag and drop images in as well as paste images from the windows clipboard
+- AI Chat mode is kind of like chatgpt/nanobanana, can just "ask" it to make images, posters, intelligently use anchor images, etc
 - Built-in image processing like cropping and resizing, mask painting
 - Pan/zoom with thousands of images on the screen
-- Built to utilize many ComfyUI servers and or LLMS at once
+- Built to utilize many ComfyUI servers and LLMs at once
 - AI Guide feature harnesses the power of AI to create motivational posters, illustrated stories 
 - Adventure mode allows playing a realtime illustrated adventure (kind of like AI Dungeon) or generate quizes and choose your own adventures that can be exported to self contained playable HTML versions
+- I've been using this as a personal AI testbed and tool/toy for OVER THREE years, weird experimental things are added and removed kind of randomly
 - Privacy respected - does not phone home or collect any statistics, purely local usage. (it does check a single file on github.com to check for newer versions, but that's it)
 
 ## Recent changes
 
 ### V3.01 (Jun 21st, 2026)
-* Lot of tweaks and bug fixes and polish, things are kind of all about the "AI Chat" feature as it can sort of do everything
 
-### V3.0 (May 16th, 2026)
-
-* New "AI Chat" feature - use natural language to do anything, even complex things like attaching/generating images and telling it to use those as visual anchors for stories, posters, movies, etc.  I recommend Qwen 3.6 27B, works great with it.
-* Support for the latest LLMs, local and cloud.  Comes with 17 "skills" so the LLM can use most of this apps abilities directly
-* Tons of tweaks and bug fixes
-* Updates to Klein 2 9B edit, Z-Image, and LTX 2.3 workflows, those are the main ones that AI Chat needs to work
-
-### V2.52 (Mar 16th, 2026)
-
-* Added support for Qwen 3.5 thinking/non-thinking modes (OpenAI compatible LLM option)
-* Job script improvements: custom variables with `%var%` syntax, `@invert_alpha` command, `#` for comments, cleaner variable assignment
-* Added "GPU locked toggle" and per-GPU settings in server configuration for more flexible AutoPic rendering
-* Image description now uses vision LLMs directly (e.g. Qwen 3.5) instead of florence/ComfyUI interrogation
-* Improved LLM streaming display on pics
-* Updated presets to use newer script features
-* Bugfixes: temperature override not working, misc stability fixes
-
-### V2.51 (Jan 30th, 2026)
-
-* Adventure mode has basic markup display support, quote coloring (can be disabled in options)
-* Input tweaked, the ENTER key just stopped working app-wide on my version, this fixed it
-* Unity version updated
-* LLM repetition value can be controlled
-
-### V2.50 (Jan 13th, 2026)
-* Added vision LLM support - use `@llm_add_image` to send images to vision-capable LLMs
-* New script commands: `@upload`, `@parse_llm_prompts`, `@stopjob` for more flexible preset workflows
-* Added drag multi select, can delete or move things as a group
-* Job script got a lot of upgrades, it can do things like look at an image via a VLLM, decide the best way to edit it, generate a prompt for that via LLM, and do the edit to end up with a kind of "we have nano banana at home" experience.  Also supports generating multiple text prompts for a single thing, useful for certain ComfyUI workflows that have multiple stages that need them
-* Fixed bugs with Adventure mode's "Compact" button, also its "Stop after X" option
-* The whole autopic system is more powerful and can use llms and comyui workflows with its jobscript in a standalone way, previously it had to be pared with a Preset. Individual GPU/servers conected can override the AutoPic to do their own thing if needed now
-* Various stability, tweaks, and bug fixes
-
-
-### V2.12 (Dec 18th, 2025)
-* A Christmas miracle, I actually updated this!  I figured enough changed that people might want to try it, although I'm still kind of not planning to seriously support this as it's just too niche and hard to make easy to use
-* We can now only work with *normal ComfyUI workflows*, hallelujah! No more "API" version exporting!
-* Adventure mode now has story and interactive story "AutoPic" modes, it's a newer technique that works better, instead of generating image data with the story, it separately automatically generates image descriptions based on the story. (controlled with AutoPic.txt)
-* Erased a lot of presets and added some new ones, the main ones I use these days are Z-Image and Wan
-* CrazyCam is replaced by "SpookyCam", a photobooth thing I made, check the preset for it for more info.  Normal crazycam is too broken to use right now
-* LLM support overhauled, it now has a fully GUI based config and improved support for llama.cpp and Ollama
-* While local AI is the main target, ChatGPT 5.2, GPT Image 1.5, Claude 4.5, etc. are also supported (requires API keys to use)
-
+* Tons of work done on the AI Chat feature as that's kind of all you need now
+* New splash/startup screen
+* Lot of tweaks and bug fixes, Ideogram 4 support added (AI Chat can directly write its json image description format for pretty good results)
 
 ## Known issues
 
-- CrazyCam disabled
-- A lot of the mask/editing stuff I haven't used in a while, not sure if it still works
+- CrazyCam broken/disabled
 - Things tend to get broken if I haven't used that particular feature in a while.  It's probably the app, not you
 
 # Screenshots
@@ -88,9 +37,8 @@ If this is all weird and strange, this is probably not the place for you to star
 <a href="Media/ait_dungeon_twine_export.png"><img src="Media/ait_dungeon_twine_export.png" width="300"></a>
 <a href="Media/ait_twine_stored_html2.png"><img src="Media/ait_twine_stored_html2.png" width="300"></a>
 <a href="Media/ait_quiz_kyoto.png"><img src="Media/ait_quiz_kyoto.png" width="300"></a>
-<a href="Media/ai_tools_birdy_to_bird.jpg"><img src="Media/ai_tools_birdy_to_bird.jpg" width="300"></a>
 
-# Media (mostly outdated videos of the app) #
+# Media (mostly old outdated videos of the app of features that don't even exist anymore, but hey) #
 
 <a href="https://www.youtube.com/watch?v=2TB4f8ojKYo"><img align="top" src="Media/apple_youtube_thumbnail.png" width=300></a>
 <a href="https://www.youtube.com/watch?v=3PmZ_9QfrE0"><img align="top" src="Media/remove_bg_youtube.png" width=300></a>
@@ -99,7 +47,7 @@ If this is all weird and strange, this is probably not the place for you to star
 <a href="https://www.youtube.com/watch?v=YQMWflU1v-U"><img align="top" src="Media/aiguide_youtube.png" width=300></a>
 # Setup #
 
-Your ComfyUI server needs to be started using the --listen parm, so the API can be accessed.  
+Your ComfyUI server needs to be started using the --listen parm, so the API can be accessed.
 
 After running it, a config.txt will be made. There is a config edit button inside the app, it's kind of self-documented, just go through it and update as necessary.
 
@@ -127,237 +75,25 @@ You'll probably see a bunch of red nodes and errors - no problem!  Make sure you
 
 Adjust it until it works (change paths or models or whatever you need, you could even start with a totally different workflow you found somewhere else), and make sure the prompt is set to <AITOOLS_PROMPT>.  (<AITOOLS_NEGATIVE_PROMPT> can be used if your workflow has a place for that too)  Then do Workflow->Export if you wanted to save your own. (note: we no longer use "API" versions at all, thank god, just normal workflows and dynamically convert them as needed)
 
-So you don't have to create custom workflows for every checkpoint/filesize etc, you can use AITools' "@replace" to change any part of a workflow before it's sent to ComfyUI's API, but after it's been converted to an "API" version of the workflow.  You'll see it used in various presets.
+So you don't have to create custom workflows for every checkpoint/filesize etc, you can use AITools' "@replace" to change any part of a workflow before it's sent to ComfyUI's API. You'll see it used in various presets.
 
 Check discussions for some more info [here](https://github.com/SethRobinson/aitools_client/discussions/18)
 
-# List of keywords that can be used in ComfyUI workflows so AITools can modify things
+# The coolest feature
 
-| Keyword | Description |
-|---------|-------------|
-| `<AITOOLS_PROMPT>` | Main prompt used to generate whatever (image or movie). Same as `<AITOOLS_PROMPT_1>` |
-| `<AITOOLS_PROMPT_1>` - `<AITOOLS_PROMPT_8>` | Extended prompts for multi-segment generation (e.g., different prompts for each 5 seconds of a 20 second movie). `AITOOLS_PROMPT_1` falls back to `AITOOLS_PROMPT` if empty |
-| `<AITOOLS_NEGATIVE_PROMPT>` | Some image generators use this, but a lot ignore it |
-| `<AITOOLS_AUDIO_PROMPT>` | Audio prompt for audio things |
-| `<AITOOLS_AUDIO_NEGATIVE_PROMPT>` | What you DON'T want to hear (e.g., to exclude music from audio) |
-| `<AITOOLS_SEGMENTATION_PROMPT>` | For SAM3 segmentation - like "head" and the head gets selected |
-| `<AITOOLS_INPUT_1>` - `<AITOOLS_INPUT_4>` | For images. Use Load Image (Path) (a V.H.S. node) anywhere a normal image is needed. Supports up to 4 image inputs via `@upload` command |
+AI Chat is a feature is kind of "but we have chatgpt image stuff at home" that allows an LLM to basically do everything - try things like "Make a funny motivational poster about the commodore 64", or attach three images of people and say "dress these three people like the 3 stooges".  It will automatically use zimage, Klein based image to image, LTX, etc as needed to perform whatever actions you want.  
 
-# List of Job Script commands
+It can intelligently create and use 'anchor images' as needed to provide consistency across multiple images, for example if you ask it to "make a comic book about my dog and cat" it can create an anchor image of the dog and cat and reuse that across panels to keep them looking the same. 
 
-Job scripts are used in presets to chain workflows and manipulate variables. Each line can contain a workflow name followed by commands separated by `@`.  It's kind of rough, but you can call LLMs with text, get something, run workflows, tweak the image and use it on other workflows, etc.
+It has an automatic "skills" system (it loads them as needed by itself) so it knows how to do things like create illustrated storybooks, comic books, etc.
 
-## Basic Syntax
-
-```
-workflow_name.json @command|parm1|parm2| @command2|parm1|
-```
-
-Example: `img_to_img.json @copy|prompt|segmentation_prompt| @resize_if_larger|x|1024|y|1024|aspect_correct|1|`
-
-## Commands
-
-| Command | Parameters | Description |
-|---------|------------|-------------|
-| `@copy` | `source\|dest\|` | Copy text/image between variables |
-| `@add` | `source\|dest\|` | Append text to a variable |
-| `@set` | `%var_name%\|value\|` | Set a named text variable (use `%global_varname%` for global scope) |
-| `@setimage` | `%var_name%\|source\|` | Set a named image variable from an image slot |
-| `@clear` | `%var_name%\|` | Clear a named variable (both text and image) |
-| `@resize_if_larger` | `x\|width\|y\|height\|aspect_correct\|0 or 1\|` | Resize image only if larger than specified |
-| `@resize` | `x\|width\|y\|height\|aspect_correct\|0 or 1\|` | Force resize to specified dimensions |
-| `@upload` | `source\|inputN\|` | Upload image to ComfyUI input slot (source: image/temp1-temp3, dest: input1-4) |
-| `@replace` | `find\|replace\|` | Raw JSON string replacement in the workflow before sending to ComfyUI |
-| `@fill_mask_if_blank` | (none) | Fills the alpha mask if empty |
-| `@invert_alpha` | `slot\|` (optional) | Invert the alpha channel of an image (slot: image/temp1-temp3, defaults to current image) |
-| `@no_undo` | (none) | Disables undo for this operation |
-| `@stopjob` | (none) | Stop adding more jobs after this script completes |
-| `@lock_gpu` | (none) | Lock the current GPU/server exclusively for the entire preset workflow |
-| `@llm_prompt_reset` | (none) | Reset LLM conversation history |
-| `@llm_prompt_set_base_prompt` | `text\|` or multi-line | Set base system prompt for LLM |
-| `@llm_prompt_add_from_user` | `text\|` or multi-line | Add user message to LLM conversation |
-| `@llm_prompt_add_from_assistant` | `text\|` or multi-line | Add assistant message to LLM conversation |
-| `@llm_prompt_pop_first` | (none) | Remove first interaction from history |
-| `@llm_prompt_add_to_last_interaction` | `text\|` or multi-line | Append text to last message |
-| `@llm_add_image` | `source\|` | Add image to next LLM message for vision models (source: image/temp1-temp3) |
-| `@parse_llm_prompts` | (none) | Parse SET_PROMPT1 through SET_PROMPT8 from llm_reply into prompt variables |
-| `@Comment` | `text\|` | Human-readable comment (ignored by parser) |
-
-### Multi-line Block Syntax
-
-The LLM prompt commands above support multi-line text using block syntax. Instead of putting text on the same line with pipes, put the command alone and the content on following lines, ending with `@end`:
-
-```
-command @llm_prompt_add_from_user
-Format your response as:
-SET_PROMPT1: [first 5 seconds description]
-SET_PROMPT2: [seconds 5-10 description]
-SET_PROMPT3: [seconds 10-15 description]
-SET_PROMPT4: [seconds 15-20 description]
-@end
-```
-
-Single-line syntax still works: `command @llm_prompt_add_from_user|short text|`
-
-## Variable Names (for @copy/@add)
-
-| Variable | Description |
-|----------|-------------|
-| `prompt` | Current job's main prompt |
-| `global_prompt` | Global prompt field in UI |
-| `prepend_prompt` | Text prepended to prompts |
-| `append_prompt` | Text appended to prompts |
-| `negative_prompt` | Negative prompt for generation |
-| `audio_prompt` | Audio generation prompt |
-| `audio_negative_prompt` | Audio negative prompt |
-| `segmentation_prompt` | Prompt for SAM segmentation |
-| `llm_prompt` | Prompt sent to LLM |
-| `llm_reply` | Response received from LLM |
-| `requirements` | Requirements string |
-| `image`, `image1` | Current image (synonyms - for copying to/from temp slots) |
-| `temp1`, `temp2`, `temp3` | Temporary image storage slots |
-| `temp_text1` - `temp_text4` | General-purpose text storage buffers for job scripts |
-
-## Named Variables (Custom Variables)
-
-You can create and use custom named variables using the `%variable_name%` syntax. These are useful for storing intermediate values during complex job scripts.
-
-### Syntax
-- Reference a variable: `%my_variable%`
-- Set a variable: `@set|%my_variable%|value|` or `%my_variable%=value`
-- Set an image variable: `@setimage|%my_image%|temp1|`
-- Clear a variable: `@clear|%my_variable%|`
-
-### Clean Variable Assignment Syntax
-
-In addition to the command-based syntax, you can set variables using a cleaner assignment syntax. **All values must be quoted.**
-
-**Simple assignment:**
-```
-%width%="512"
-%model_name%="flux_dev"
-```
-
-**Values with spaces or special characters:**
-```
-%scene%="A beautiful sunset over the ocean"
-%message%="Hello, world!"
-```
-
-**Escaped quotes (use `\"` inside quoted strings):**
-```
-%dialogue%="She said \"Hello\" to him"
-```
-
-**Multi-line assignment with @start/@end:**
-```
-%system_prompt%=@start
-You are a helpful assistant.
-Please respond in a friendly manner.
-
-Quotes "like this" work naturally in multi-line blocks.
-You can also reference other variables: %width% x %height%
-@end
-```
-
-**Variable interpolation (reference other variables in values):**
-```
-%width%="512"
-%height%="768"
-%size_info%="Image size: %width% x %height%"
-```
-
-**Setting built-in text variables:**
-
-You can use the same syntax to set built-in variables like `prompt`, `negative_prompt`, `llm_prompt`, etc.:
-```
-%prompt%="A beautiful landscape"
-%negative_prompt%="blurry, low quality"
-%temp_text1%="intermediate value"
-%llm_reply%="Custom response text"
-```
-
-Built-in text variables: `prompt`, `global_prompt`, `audio_prompt`, `negative_prompt`, `audio_negative_prompt`, `segmentation_prompt`, `llm_prompt`, `llm_reply`, `requirements`, `prepend_prompt`, `append_prompt`, `temp_text1`-`temp_text4`, `prompt_1`-`prompt_8`
-
-**Image variable assignment (use `@image:` prefix):**
-```
-%my_image%=@image:temp1
-%stored_result%=@image:image
-%backup%=@image:temp2
-```
-
-Valid image sources: `image`, `image1`, `temp1`, `temp2`, `temp3`, or a `%image_variable%` reference.
-
-If a variable is referenced but doesn't exist, a warning is logged to the console but the script continues running (the `%var%` text remains unchanged).
-
-### Variable Scopes
-
-**Local variables** (default): Scoped to the current PicMain instance (the image being processed). These are cleared when the job completes.
-
-**Global variables**: Prefix with `global_` to store in the global manager. These persist across jobs and can be shared between different images/presets.
-
-```
-%global_my_counter%=5
-%local_temp%="hello"
-```
-
-Or using command syntax:
-```
-command @set|%global_my_counter%|5|
-command @set|%local_temp%|hello|
-```
-
-### Using Variables in Parameters
-
-Both custom and built-in variables are automatically expanded in command parameters using `%varname%` syntax:
-```
-%scene_desc%="A beautiful sunset"
-command @llm_prompt_add_from_user|Describe this scene: %scene_desc%|
-```
-
-**Reading built-in variables inline:**
-
-You can read built-in variables like `%prompt%`, `%llm_reply%`, `%temp_text1%`, etc. in any text context:
-```
-%message%="The current prompt is: %prompt%"
-%summary%="LLM said: %llm_reply%"
-command @llm_prompt_add_from_user|The current prompt is: %prompt%, please enhance it|
-```
-
-Variables can also be used in `@replace` parameters for dynamic workflow modification:
-```
-workflow.json @replace|<MODEL_NAME>|%global_selected_model%|
-```
-
-## Special Line Prefixes
-
-| Prefix | Description |
-|--------|-------------|
-| `command` | Execute commands without running a workflow (just runs the `@` commands on that line) |
-| `call_llm` | Call the LLM with the current prompt, response stored in `llm_reply` |
-
-Note: Workflow filenames like `img_to_img_*.json` or `video_to_video_*.json` are just naming conventions. To upload images for img2img workflows, use the `@upload` command explicitly.
-
-## AutoPic Presets
-
-AutoPic presets (e.g., `AutoPic.txt`, `AutoPicLTX20s.txt`) are special preset job scripts used by Adventure mode to automatically generate image prompts from story text using an LLM. They're stored in the `Presets/` folder and can be selected in the settings. Files starting with `AutoPic` are automatically detected and show in a drop down in the General Settings dialog.  If @stopjob is used in one, it won't automatically try to run the main job script after it's done. (useful so the AutoPic can handle running the comfy workflow it specifically needs)
-
-## Comments and Disabling Commands
-
-Add `#` at the start of a line to comment it out (preferred)
-Add `-` at the start of a line to comment it out (also works)
-Add `-` at the beginning of a command to skip that individual command
-```
-#workflow.json (commented out)
--workflow.json (also commented out)
-workflow.json -@disabled_command|parm| @enabled_command|parm|
-```
+An LLM as smart as Qwen 3.6 27B or better recommended, in addition to at least one ComfyUI server setup.
 
 # Building from source
 
 You only need to download [the zip](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) and run the .exe to use this, However, the source might be useful to generate a build for other platforms, fork or steal pieces to use for yourself.  Go ahead!
 
-- Requires Unity 6000.3.1f+
+- Requires Unity 6.4+
 - Open the scene "Main" and click play to run
 - Assets/GUI/GOTHIC.TFF and Assets/GUI/times.ttf are not included and might break the build because I was having trouble and switched some settings around that might require them now (dynamic vs static TMPro font settings...)
 

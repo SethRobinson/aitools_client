@@ -189,7 +189,7 @@ namespace AITools.AIChat.Skills
         /// <summary>
         /// Optional character-anchor name (<c>anchor="Bob"</c>). When a generate_image /
         /// image_to_image action carries it, the host registers (or re-points) that name to
-        /// the freshly-spawned Pic, so later turns can reference the character by name via
+        /// the spawned or chained Pic, so later turns can reference the character by name via
         /// <c>chat_image="Bob"</c> instead of a numeric slot that shifts when the media
         /// list trims. Re-using an existing name on a new image is the "update the look"
         /// path. Null/empty when the action does not declare an anchor.

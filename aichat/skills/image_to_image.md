@@ -148,6 +148,54 @@ Extra slots (for N-Input presets) go in `chat_image2`..`chat_image5` or
 `attachment2`..`attachment5` (each may be a number or an anchor name).
 `chat_image{N}` wins over `attachment{N}`.
 
+## New subject + logo/reference on its surface
+
+When the user asks for a NEW subject with an attached logo, emblem, mark,
+watermark, decal, sticker, or other graphic reference on it, first decide
+whether they want a flat graphic placed on top or a mark physically integrated
+into the subject.
+
+For literal "sticker", "decal", "watermark", "paste this logo", UI marks, or
+requests where exact source pixels/colors/alpha matter most, use the
+exact-fidelity paste flow:
+
+1. `generate_image` creates the clean subject and tags it with an anchor.
+2. `paste_image` places the actual uploaded/pasted mark onto the generated
+   subject using alpha compositing. Pick a conservative rect on the visible
+   surface, preserve aspect with `mode="fit"`, and use `opacity="1"` unless
+   the user asked for translucency.
+
+For "fit the logo onto the chest/back/body/object", "make it part of the
+surface", tattoo, engraving, embroidery, scales, hide, armor, fabric, metal,
+or any wording that rejects a pasted look, use the integration flow:
+
+1. `generate_image` creates the clean subject and tags it with the final
+   subject anchor name.
+2. `paste_image` places the real logo in the intended area as a visible
+   placement guide only. Use `chain="true"` if it immediately follows the base
+   render; otherwise use `chat_image="BaseAnchor"` as the canvas.
+3. `image_to_image` with `{{Image To Image Klein Edit 2 Input.txt}}` uses the
+   guide composite as input 1 (`chain="true"` when adjacent) and the original
+   logo as input 2 (`attachment2="N"` / `chat_image2="N"`). The prompt must
+   say image 1 is only the placement guide and image 2 is the logo source.
+   Ask for the mark to be painted/inlaid/embossed/tattooed/formed into the
+   material, following curvature, lighting, shadows, and texture; preserve the
+   logo's geometry and colors as much as possible; do not make it glowing,
+   white, or a generic letter unless the source is. Anchor this final Klein
+   result with the same subject anchor name, then use that final anchor for
+   later edits, dangerous variants, and videos.
+
+Never use the logo/reference as the primary `chat_image`; that edits the logo
+itself into the requested scene instead of applying it to the subject.
+
+Integrated same-reply example:
+
+```
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full visual prompt for a realistic baby dragon, no logo yet>" anchor="Dragon"/>
+<aitools_action skill="paste_image" chain="true" source_attachment="1" x="43%" y="45%" width="14%" height="14%" mode="fit" opacity="1"/>
+<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 2 Input.txt}}" prompt="Image 1 is a realistic baby dragon with a temporary logo placement guide on its chest. Integrate image 2's logo geometry and colors into the dragon's chest scales as a natural inlaid scale pattern following the body curvature and forest lighting, not a flat pasted overlay. Preserve the dragon pose and make the logo readable; do not make it glowing or white unless the source logo is glowing or white." chain="true" attachment2="1" anchor="Dragon"/>
+```
+
 ## Presets - pick by INPUT COUNT
 
 - `{{Image To Image Klein Edit.txt}}` - 1 input. DEFAULT.
