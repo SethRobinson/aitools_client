@@ -38,6 +38,11 @@ Use `chat_image="N"` for an existing generated or composed image. Use
 The prompt must be self-contained: the vision sidecar sees the image and
 your `prompt=`, not the whole chat history.
 
+When inspecting transparency/cutouts, ask explicitly whether the checkerboard
+regions are on the intended side of the subject/background. The host sends PNGs
+with alpha as a checkerboard-composited inspection copy, with a note explaining
+that checkerboard means transparent pixels.
+
 Add `resume="true"` when the user expects you to answer or take the next
 step after the vision result. The host will wait for all pending inspections
 and then give you one automatic `(continue)` turn with the result, so do not

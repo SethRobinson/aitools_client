@@ -1,6 +1,9 @@
 COMMAND_START|joblist
-#Auto-mask subject using BiRefNet (creates alpha mask on subject)
+#Auto-mask subject using BiRefNet (keeps subject opaque, makes background transparent)
 %max_size%="1024"
 
-img_to_img_automask_sub_biref.json @upload|image1|input1| @resize_if_larger|x|%max_size%|y|%max_size%|aspect_correct|1| @invert_alpha|
+img_to_img_automask_sub_biref.json @upload|image1|input1| @resize_if_larger|x|%max_size%|y|%max_size%|aspect_correct|1|
+
+#The workflow's alpha comes back background-opaque; flip final alpha after generation
+command @invert_alpha|
 COMMAND_END

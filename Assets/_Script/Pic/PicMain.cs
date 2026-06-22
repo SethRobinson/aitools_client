@@ -1477,6 +1477,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
     public void OnImageReplaced()
     {
+        InvalidateCachedPng();
         MovePicUpIfNeeded();
         m_picMaskScript.ResizeMaskIfNeeded();
         m_targetRectScript.UpdatePoints();
@@ -2485,6 +2486,12 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     // chat_image="N" multiple times across follow-up edits.
     private byte[] _cachedPng;
     private Texture _cachedPngSourceTex;
+
+    private void InvalidateCachedPng()
+    {
+        _cachedPng = null;
+        _cachedPngSourceTex = null;
+    }
 
     public bool TryGetImageAsPng(out byte[] pngBytes)
     {
@@ -4362,6 +4369,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                             {
                                 tex.InvertAlpha();
                                 tex.Apply();
+                                targetPic.InvalidateCachedPng();
                                 RTConsole.Log($"invert_alpha: Inverted alpha channel for {(string.IsNullOrEmpty(slotParam) ? "image" : slotParam)}");
                             }
                         }

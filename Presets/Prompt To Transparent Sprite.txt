@@ -8,7 +8,7 @@ text_to_img_zimage.json @replace|"width": 1024|"width": %pixel_size%| @replace|"
 #Make the background transparent
 img_to_img_automask_sub_biref.json @upload|image1|input1|
 
-#Invert alpha (mask comes out inverted)
+#The workflow's alpha comes back background-opaque; flip final alpha after generation
 command @invert_alpha|
 COMMAND_END
 COMMAND_START|default_prompt

@@ -270,9 +270,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private const string InspectImageSystemPrompt =
         "You are a vision inspection helper inside an image generation app. " +
         "Answer only from the pixels in the attached image; do not trust the requested prompt or prior chat over visible evidence. " +
+        "If the user message says transparency was visualized as a gray checkerboard, treat checkerboard pixels as transparent alpha, not real image content. " +
         "When the user prompt asks to check, verify, QA, find problems, compare to a request, or inspect layout/text, start with PASS or FAIL, then list defects first. " +
         "For comics, posters, covers, grids, storyboards, and captioned images, mark FAIL for title/text touching or overlapping unrelated artwork, unreadable or clipped text, duplicated text, bad gutters, blank/black panels, missing panels, or obvious wrong subject matter. " +
         "Name the affected region such as top-left, title band, upper-right panel, or bottom gutter. Be concise and specific.";
+    private const string InspectAlphaVisualizationNote =
+        "Transparency note: The attached PNG had an alpha channel. For this vision inspection only, it has been composited over a gray checkerboard. Checkerboard pixels mean transparent alpha; blended pixels mean partial alpha. Judge visible/hidden regions from this checkerboard composite and ignore hidden RGB data in fully transparent pixels.";
 
     // Throttle for the "no vision-capable LLM" warning bubble. Both caption callers
     // (attachment drop, generated-pic mirror) funnel through TryCaptionBytes, and a
@@ -325,6 +328,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         public byte[] png;
         public string prompt;
         public string sourceLabel;
+        public bool alphaVisualized;
         public int? llmInstanceId;
         public bool resumeOnResult;
         public int resumeTurnEpoch;
@@ -1616,14 +1620,20 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             return;
         }
 
+        png = PrepareInspectImagePngForVision(png, out bool alphaVisualized);
+        string promptToSend = string.IsNullOrWhiteSpace(prompt)
+            ? "QA inspect this image. Start with PASS or FAIL. Check visible layout/text defects, mismatches, artifacts, and unreadable text."
+            : prompt.Trim();
+        if (alphaVisualized)
+            promptToSend = InspectAlphaVisualizationNote + "\n\n" + promptToSend;
+
         _inspectImageQueue.Add(new InspectImageRequest
         {
             id = _nextInspectImageRequestId++,
             png = png,
-            prompt = string.IsNullOrWhiteSpace(prompt)
-                ? "QA inspect this image. Start with PASS or FAIL. Check visible layout/text defects, mismatches, artifacts, and unreadable text."
-                : prompt.Trim(),
+            prompt = promptToSend,
             sourceLabel = string.IsNullOrWhiteSpace(sourceLabel) ? "the image" : sourceLabel.Trim(),
+            alphaVisualized = alphaVisualized,
             llmInstanceId = llmInstanceId,
             resumeOnResult = resumeOnResult,
             resumeTurnEpoch = resumeTurnEpoch
@@ -1632,6 +1642,70 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         RecomputeSendInteractable();
         ProcessInspectImageQueue();
         UpdateInspectImageStatus(force: true);
+    }
+
+    private static byte[] PrepareInspectImagePngForVision(byte[] png, out bool alphaVisualized)
+    {
+        alphaVisualized = false;
+        if (png == null || png.Length == 0)
+            return png;
+
+        Texture2D src = null;
+        Texture2D visual = null;
+        try
+        {
+            src = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            if (!src.LoadImage(png, false) || !src.HasAlphaData())
+                return png;
+
+            int w = src.width;
+            int h = src.height;
+            if (w <= 0 || h <= 0)
+                return png;
+
+            visual = new Texture2D(w, h, TextureFormat.RGBA32, false);
+            Color[] srcPixels = src.GetPixels();
+            Color[] dstPixels = new Color[srcPixels.Length];
+            int checkSize = Mathf.Clamp(Mathf.Max(w, h) / 32, 8, 32);
+            Color light = new Color(0.78f, 0.78f, 0.78f, 1f);
+            Color dark = new Color(0.48f, 0.48f, 0.48f, 1f);
+
+            for (int y = 0; y < h; y++)
+            {
+                for (int x = 0; x < w; x++)
+                {
+                    int i = y * w + x;
+                    Color fg = srcPixels[i];
+                    float a = Mathf.Clamp01(fg.a);
+                    Color bg = (((x / checkSize) + (y / checkSize)) & 1) == 0 ? light : dark;
+                    dstPixels[i] = new Color(
+                        fg.r * a + bg.r * (1f - a),
+                        fg.g * a + bg.g * (1f - a),
+                        fg.b * a + bg.b * (1f - a),
+                        1f);
+                }
+            }
+
+            visual.SetPixels(dstPixels);
+            visual.Apply();
+            byte[] visualPng = visual.EncodeToPNG();
+            if (visualPng != null && visualPng.Length > 0)
+            {
+                alphaVisualized = true;
+                return visualPng;
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("AIChatPanel.PrepareInspectImagePngForVision: " + ex.Message);
+        }
+        finally
+        {
+            if (src != null) UnityEngine.Object.Destroy(src);
+            if (visual != null) UnityEngine.Object.Destroy(visual);
+        }
+
+        return png;
     }
 
     private void ProcessInspectImageQueue()
@@ -1893,7 +1967,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         sb.AppendLine();
         sb.AppendLine("User:");
         sb.AppendLine("Source: " + source);
-        sb.AppendLine("[image bytes attached; base64 elided]");
+        sb.AppendLine(req != null && req.alphaVisualized
+            ? "[image bytes attached; alpha visualized over checkerboard; base64 elided]"
+            : "[image bytes attached; base64 elided]");
         sb.AppendLine(prompt);
         if (req != null && req.resumeOnResult)
         {
