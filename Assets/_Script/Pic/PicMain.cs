@@ -4370,6 +4370,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                                 tex.InvertAlpha();
                                 tex.Apply();
                                 targetPic.InvalidateCachedPng();
+                                targetPic.SetStatusMessage("");
                                 RTConsole.Log($"invert_alpha: Inverted alpha channel for {(string.IsNullOrEmpty(slotParam) ? "image" : slotParam)}");
                             }
                         }
@@ -4495,7 +4496,8 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                     {
                         // All jobs truly complete - invoke callback
                         SetNeedsToUpdateInfoPanelFlag();
-                        SetStatusMessage("LLM reply received");
+                        // Command-only lines should not leave a stale overlay from an earlier LLM/render status.
+                        SetStatusMessage("");
                         
                         if (m_onFinishedScriptCallback != null)
                         {
