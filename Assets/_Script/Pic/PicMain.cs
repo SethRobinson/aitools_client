@@ -634,6 +634,15 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         return m_picMovie.IsMovie();
     }
 
+    /// <summary>The currently displayed image texture, or null if none. Used by the
+    /// automation harness to report chat-image dimensions and to save pixels.</summary>
+    public Texture2D GetCurrentTexture()
+    {
+        if (m_pic != null && m_pic.sprite != null)
+            return m_pic.sprite.texture;
+        return null;
+    }
+
     public void SetVisible(bool bNew)
     {
         RTUtil.FindInChildrenIncludingInactive(gameObject, "Canvas").SetActive(bNew);

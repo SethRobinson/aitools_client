@@ -175,6 +175,13 @@ namespace AITools.AIChat.Skills
         }
 
         /// <summary>
+        /// True when the action pump has fully drained: nothing running, nothing queued,
+        /// and nothing parked on a deferred coroutine. The automation harness uses this to
+        /// know the post-text-turn action phase (image gen, local composition, etc.) is done.
+        /// </summary>
+        public bool IsIdle => _pumpState == PumpState.Idle && _actionQueue.Count == 0;
+
+        /// <summary>
         /// Called by the deferred-action coroutine once its resource is ready
         /// (or it gave up). Drops the finished action from the head and resumes
         /// the pump so queued followers run - now correctly onto the page Pic

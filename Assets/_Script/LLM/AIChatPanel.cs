@@ -6533,6 +6533,137 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     /// <summary>True when a chat panel instance is alive to compact.</summary>
     public static bool IsChatActive => _instance != null;
 
+    // ----- Automation harness hooks (AutomationDriver / AutomationController) -----
+    // These let the loopback control server drive a chat turn and poll for completion.
+    // All called on the Unity main thread.
+
+    /// <summary>
+    /// True when the chat is fully settled and safe to issue the next automated step:
+    /// no LLM streaming, no forced-main wait, no compact summary, no pending attachment
+    /// captions or vision inspections, no queued auto-resume, the skill-action pump has
+    /// drained, and no chat-generated Pic is still rendering on a GPU.
+    /// </summary>
+    public bool AutomationIsFullyIdle()
+    {
+        if (_isStreaming || _waitingForForcedMainLLM || _compactSummaryInFlight) return false;
+        if (HasPendingSidecarWork()) return false;
+        if (HasInspectAutoResumePendingForCurrentTurn()) return false;
+        if (HasSkillLoadAutoResumePendingForCurrentTurn()) return false;
+        if (_actionExecutor != null && !_actionExecutor.IsIdle) return false;
+        if (_chatImagePics != null)
+        {
+            for (int i = 0; i < _chatImagePics.Count; i++)
+            {
+                var pic = _chatImagePics[i];
+                if (pic != null && pic.IsBusy()) return false;
+            }
+        }
+        return true;
+    }
+
+    /// <summary>Inject a message into the input field and run the normal send path.</summary>
+    public void AutomationSendMessage(string text)
+    {
+        if (_inputField != null)
+            _inputField.text = text ?? "";
+        OnSendClicked();
+    }
+
+    /// <summary>Static accessor: report idle for the live panel. False if no panel exists.</summary>
+    public static bool AutomationGetIdle(out bool idle)
+    {
+        idle = false;
+        if (_instance == null) return false;
+        idle = _instance.AutomationIsFullyIdle();
+        return true;
+    }
+
+    /// <summary>Static accessor: send a chat message via the live panel. False if none.</summary>
+    public static bool AutomationSend(string text)
+    {
+        if (_instance == null) return false;
+        _instance.AutomationSendMessage(text);
+        return true;
+    }
+
+    /// <summary>JSON array describing each chat image: 1-based index, dimensions, busy.</summary>
+    public string AutomationGetChatImagesJson()
+    {
+        var sb = new StringBuilder();
+        sb.Append("[");
+        if (_chatImagePics != null)
+        {
+            for (int i = 0; i < _chatImagePics.Count; i++)
+            {
+                var pic = _chatImagePics[i];
+                int w = 0, h = 0;
+                bool busy = false;
+                if (pic != null)
+                {
+                    busy = pic.IsBusy();
+                    var tex = pic.GetCurrentTexture();
+                    if (tex != null) { w = tex.width; h = tex.height; }
+                }
+                if (i > 0) sb.Append(",");
+                sb.Append("{\"index\":").Append(i + 1)
+                  .Append(",\"w\":").Append(w)
+                  .Append(",\"h\":").Append(h)
+                  .Append(",\"busy\":").Append(busy ? "true" : "false")
+                  .Append(",\"exists\":").Append(pic != null ? "true" : "false")
+                  .Append("}");
+            }
+        }
+        sb.Append("]");
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Save a chat image to <paramref name="path"/> as PNG. <paramref name="index"/> is
+    /// 1-based; index &lt;= 0 means the latest (newest) chat image.
+    /// </summary>
+    public bool AutomationSaveChatImage(int index, string path, out string error)
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(path)) { error = "no path given"; return false; }
+        if (_chatImagePics == null || _chatImagePics.Count == 0) { error = "no chat images"; return false; }
+
+        int idx = index <= 0 ? _chatImagePics.Count - 1 : index - 1;
+        if (idx < 0 || idx >= _chatImagePics.Count)
+        {
+            error = $"index {index} out of range (1..{_chatImagePics.Count})";
+            return false;
+        }
+
+        var pic = _chatImagePics[idx];
+        if (pic == null) { error = "chat image pic was destroyed"; return false; }
+        if (pic.IsBusy()) { error = "chat image is still rendering"; return false; }
+
+        try
+        {
+            pic.SaveFile(path, "", null, "", true, false);
+        }
+        catch (System.Exception e)
+        {
+            error = e.Message;
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>Static accessor: chat images JSON. "[]" if no panel.</summary>
+    public static string AutomationChatImagesJson()
+    {
+        return _instance != null ? _instance.AutomationGetChatImagesJson() : "[]";
+    }
+
+    /// <summary>Static accessor: save a chat image. False (with error) if no panel.</summary>
+    public static bool AutomationSave(int index, string path, out string error)
+    {
+        error = "no chat panel";
+        if (_instance == null) return false;
+        return _instance.AutomationSaveChatImage(index, path, out error);
+    }
+
     /// <summary>
     /// Settings-panel entry point: drop everything except the last
     /// <paramref name="keepExchanges"/> exchanges. No LLM call; images are NOT
