@@ -818,6 +818,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             _splitterRT.anchoredPosition = new Vector2(_splitX, 0);
         if (_chatPanelRT != null)
             _chatPanelRT.offsetMin = new Vector2(_splitX + SPLITTER_WIDTH, _chatPanelRT.offsetMin.y);
+
+        // Narrowing/widening the chat side reflows bubble text; re-fit cached heights.
+        RequestBubbleRelayout();
     }
 
     /// <summary>
@@ -2439,6 +2442,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     {
         ClampPanelToScreen();
         ApplySplit(_splitX);
+        RequestBubbleRelayout();
     }
 
     private void ClampPanelToScreen()
@@ -2681,6 +2685,77 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         var bubbleRT = inputLE.transform.parent as RectTransform;
         if (bubbleRT != null) LayoutRebuilder.ForceRebuildLayoutImmediate(bubbleRT);
         if (_chatContent != null) LayoutRebuilder.ForceRebuildLayoutImmediate(_chatContent);
+    }
+
+    // Debounce state for the on-resize bubble re-fit (see RequestBubbleRelayout).
+    private bool _bubbleRelayoutPending;
+    private float _lastBubbleLayoutWidth = -1f;
+
+    /// <summary>
+    /// Each bubble's <see cref="LayoutElement.preferredHeight"/> is computed once from
+    /// the wrap width at the moment it was appended / edited / font-resized. When the
+    /// panel (or splitter) is resized, the text reflows to the new width but those
+    /// cached heights go stale - widening leaves a too-tall bubble with empty space
+    /// below the text. Call this whenever the chat wrap width changes to re-fit every
+    /// bubble. Debounced: a single coroutine handles a live resize drag (where the
+    /// width changes every frame) and re-fits each ~2 frames until the width settles.
+    /// </summary>
+    private void RequestBubbleRelayout()
+    {
+        if (_chatContent == null || _bubbleRelayoutPending) return;
+        if (Mathf.Abs(_chatContent.rect.width - _lastBubbleLayoutWidth) < 1f) return;
+        StartCoroutine(RelayoutAllBubblesDeferred());
+    }
+
+    private IEnumerator RelayoutAllBubblesDeferred()
+    {
+        _bubbleRelayoutPending = true;
+        float lastWidth = float.NaN;
+        // Keep re-fitting until the wrap width stops changing for one pass, so a live
+        // edge/splitter drag reflows smoothly and ends settled on the final width.
+        while (_chatContent != null)
+        {
+            // Two frames lets the VLG re-stretch each bubble's input field to the new
+            // width before we measure the wrapped text height.
+            yield return null;
+            yield return null;
+            if (_chatContent == null) break;
+
+            float w = _chatContent.rect.width;
+            if (!float.IsNaN(lastWidth) && Mathf.Abs(w - lastWidth) < 0.5f) break;
+            lastWidth = w;
+            RelayoutAllBubblesNow();
+        }
+
+        _lastBubbleLayoutWidth = lastWidth;
+        _bubbleRelayoutPending = false;
+    }
+
+    /// <summary>
+    /// Recompute every bubble's preferred height from its current (already laid-out)
+    /// input-field width, then do a single layout rebuild. Same math as
+    /// <see cref="ResizeBubbleDeferred"/> but batched - one rebuild for all bubbles
+    /// instead of one per bubble (which would be O(n^2) during a resize drag).
+    /// </summary>
+    private void RelayoutAllBubblesNow()
+    {
+        if (_chatContent == null) return;
+
+        foreach (var input in _chatContent.GetComponentsInChildren<TMP_InputField>(true))
+        {
+            if (input == null || input.textComponent == null) continue;
+            var le = input.GetComponent<LayoutElement>();
+            if (le == null) continue;
+
+            var inputRT = input.GetComponent<RectTransform>();
+            float wrapWidth = inputRT != null ? inputRT.rect.width : 0f;
+            if (wrapWidth < 32f) continue; // not laid out yet; skip this pass
+
+            Vector2 size = input.textComponent.GetPreferredValues(input.text, wrapWidth, 0f);
+            le.preferredHeight = Mathf.Max(18f, size.y + 4f); // +4 for descender slack
+        }
+
+        LayoutRebuilder.ForceRebuildLayoutImmediate(_chatContent);
     }
 
     private void AddSystemMessage(string text, bool includeInLLMRecap = true)
