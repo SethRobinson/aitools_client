@@ -938,9 +938,22 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         scroll.viewport = vpRt;
         scroll.content = contentRT;
 
-        // Scrollbar - matches the dark style of the original chat scrollbar.
+        scroll.verticalScrollbar = BuildVerticalScrollbar(hostGo);
+
+        scrollOut = scroll;
+        contentOut = contentRT;
+    }
+
+    /// <summary>
+    /// Build a dark-styled vertical scrollbar pinned to the right edge of
+    /// <paramref name="host"/> (14px wide, full height) with a minimum handle size, and
+    /// return it. Caller wires it to a ScrollRect or a TMP_InputField. Matches the
+    /// original chat scrollbar style so the chat view and the entry box look identical.
+    /// </summary>
+    private Scrollbar BuildVerticalScrollbar(GameObject host)
+    {
         var sbGo = new GameObject("Scrollbar");
-        sbGo.transform.SetParent(hostGo.transform, false);
+        sbGo.transform.SetParent(host.transform, false);
         var sbRt = sbGo.AddComponent<RectTransform>();
         sbRt.anchorMin = new Vector2(1, 0);
         sbRt.anchorMax = new Vector2(1, 1);
@@ -966,10 +979,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         scrollbar.targetGraphic = handleImg;
         var minHandle = sbGo.AddComponent<MinScrollbarHandleSize>();
         minHandle.SetTarget(scrollbar, handleRt, MIN_SCROLLBAR_HANDLE_PIXELS);
-        scroll.verticalScrollbar = scrollbar;
-
-        scrollOut = scroll;
-        contentOut = contentRT;
+        return scrollbar;
     }
 
     private void CreateFooter()
@@ -1034,6 +1044,18 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         var caretFixer = _inputField.gameObject.AddComponent<AIChatCaretFixer>();
         caretFixer.Set(_inputField);
         _inputUndo = TMPInputFieldUndo.Ensure(_inputField);
+
+        // Vertical scrollbar on the entry box so large pastes / long messages can be
+        // scrolled instead of running off the bottom. TMP_InputField drives the
+        // scrollbar's value+size from the visible text area; MinScrollbarHandleSize
+        // (inside BuildVerticalScrollbar) keeps the handle from shrinking too small.
+        _inputField.verticalScrollbar = BuildVerticalScrollbar(inputGo);
+        // Pull the text viewport in from the right so text doesn't run under the bar.
+        if (_inputField.textViewport != null)
+        {
+            var tv = _inputField.textViewport;
+            tv.offsetMax = new Vector2(tv.offsetMax.x - 16f, tv.offsetMax.y);
+        }
 
         // Note: Enter / Shift+Enter handling is in LateUpdate() below. Using onValidateInput
         // is unreliable because Input.GetKey(Shift) can return false from inside that
