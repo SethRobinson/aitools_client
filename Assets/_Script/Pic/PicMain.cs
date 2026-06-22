@@ -174,8 +174,14 @@ public class PicMain : MonoBehaviour
     // job starts empty. This is how the "?" info panel learns which images were
     // actually sent for an N-input image-to-image job (e.g. img_to_img_klein_edit_4_input).
     byte[][] m_pendingInputImagePngs = new byte[5][];
-    private bool m_editFileHasChanged;
+    private volatile bool m_editFileHasChanged; //set on the FileSystemWatcher thread, read on the main thread
     private FileSystemWatcher m_editFileWatcher;
+    //When a change is detected we don't read immediately (the editor may still be writing/holding
+    //the file); we wait until its size is readable and has stopped changing, retrying to a deadline.
+    private bool m_editReloadArmed;
+    private float m_editReloadAt;
+    private float m_editReloadDeadline;
+    private long m_editLastReadableSize = -1;
     public PicMask m_picMaskScript;
     public PicTargetRect m_targetRectScript;
     public PicTextToImage m_picTextToImageScript;
@@ -947,7 +953,34 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     */
 
 
-    public void LoadImageByFilename(string filename, bool bResize = false, bool bRenderAlphaHiddenAreasToo = false)
+    //Reads a file even if another process (e.g. the external editor) still holds it open for
+    //writing.  File.ReadAllBytes uses FileShare.Read, which throws a sharing violation in that
+    //case; FileShare.ReadWrite tolerates it.
+    static byte[] ReadAllBytesShared(string path)
+    {
+        using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+        {
+            byte[] buf = new byte[fs.Length];
+            int read = 0;
+            while (read < buf.Length)
+            {
+                int n = fs.Read(buf, read, buf.Length - read);
+                if (n <= 0) break;
+                read += n;
+            }
+            return buf;
+        }
+    }
+
+    //File size if it can be opened for a shared read, else -1.  Used to wait until the external
+    //editor has finished writing (size stops changing) before we reload it.
+    static long GetReadableFileSize(string path)
+    {
+        try { using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite)) return fs.Length; }
+        catch { return -1; }
+    }
+
+    public void LoadImageByFilename(string filename, bool bResize = false, bool bRenderAlphaHiddenAreasToo = false, bool bInvertLoadedMask = false)
     {
         try
         {
@@ -965,7 +998,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             }
 
             Debug.Log("Loading "+filename+" from disk");
-            var buffer = File.ReadAllBytes(filename);
+            var buffer = ReadAllBytesShared(filename); //shared read: the external editor may still have the file open
             Texture2D texture = null;
             
          
@@ -974,7 +1007,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 //RTQuickMessageManager.Get().ShowMessage("Detected bmp");
 
                 BMPLoader bmp = new BMPLoader();
-                BMPImage im = bmp.LoadBMP(filename);
+                BMPImage im = bmp.LoadBMP(buffer); //use the shared-read bytes, not a second File.OpenRead (which can hit a lock)
                 texture = im.ToTexture2D();
 
                 if (im.HasAlphaChannel())
@@ -1012,6 +1045,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 if (bAlphaWasUsed)
                 {
                     //valid alpha found
+                    if (bInvertLoadedMask) alphaTex.InvertAlpha(); //undo the export-time flip from the external editor (Photoshop/Patchy)
                     alphaTex.Apply();
                     m_picMaskScript.SetMaskFromTexture(alphaTex);
 
@@ -1049,6 +1083,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         catch (Exception e)
         {
             Debug.LogError("Failed to load image from "+filename+".  Does the file even exist?");
+            RTConsole.Log("Failed to load " + System.IO.Path.GetFileName(filename) + ": " + e.Message); //surface to the in-game console too
             System.Console.WriteLine(e.StackTrace);
         }
 
@@ -1396,7 +1431,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         }
 
        
-        SaveFile(m_editFilename); //if m_editFilename is blank, it will create a random one
+        SaveFile(m_editFilename, "", null, "", false, true, bInvertMaskAlpha: true); //export the mask with subject=white for the external editor (Photoshop/Patchy); reload inverts it back. If m_editFilename is blank, it will create a random one
       
         RunProcess(Config.Get().GetImageEditorPathAndExe(), false, m_editFilename);
 
@@ -1417,7 +1452,10 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
     private void OnChanged(object source, FileSystemEventArgs e)
     {
-        RTConsole.Log("File we're editing has changed");
+        //This runs on a FileSystemWatcher thread-pool thread, so it must NOT touch Unity API.
+        //RTConsole.Log -> Add() reaches gameObject.activeInHierarchy / StartCoroutine, which throw
+        //off the main thread; that throw used to happen BEFORE the assignment below, so the flag
+        //was never set and the reload never fired.  Just set the flag; Update() logs and reloads.
         m_editFileHasChanged = true;
     }
 
@@ -1512,7 +1550,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     }
 
     //save to a random filename if passed a blank filename
-    public string SaveFile(string fname="", string subdir = "", Texture2D texToSave = null, string fNamePostFix = "", bool bSaveAsPNG =false, bool bWriteOutTextFileToo = true) 
+    public string SaveFile(string fname="", string subdir = "", Texture2D texToSave = null, string fNamePostFix = "", bool bSaveAsPNG =false, bool bWriteOutTextFileToo = true, bool bInvertMaskAlpha = false)
     {
   
         string fileName = Config.Get().GetBaseFileDir(subdir) + "\\pic_" + System.Guid.NewGuid() + fNamePostFix ;
@@ -1550,7 +1588,9 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         {
             if (texToSave == null)
             {
-                pngBytes = m_pic.sprite.texture.EncodeToBMP(m_mask.sprite.texture);
+                //bInvertMaskAlpha flips the mask polarity to subject=white for external editors
+                //(Photoshop/Patchy); only the "E" edit export sets it.  See OnFileEdit / the reload.
+                pngBytes = m_pic.sprite.texture.EncodeToBMP(m_mask.sprite.texture, bInvertMaskAlpha);
 
             }
             else
@@ -4663,13 +4703,39 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     // Update is called once per frame
     void Update()
     {
-
         if (m_editFileHasChanged)
         {
+            //The watcher (background thread) flagged a change.  Logging happens HERE on the main
+            //thread (RTConsole touches Unity API).  Arm a debounced reload rather than reading
+            //immediately, since the editor may still be writing/holding the file.
             m_editFileHasChanged = false;
-
-            AddImageUndo();
-            LoadImageByFilename(m_editFilename, false, true);
+            m_editReloadArmed = true;
+            m_editReloadAt = Time.unscaledTime + 0.2f;        //let the editor settle
+            m_editReloadDeadline = Time.unscaledTime + 6f;    //stop retrying after this
+            m_editLastReadableSize = -1;
+            RTConsole.Log("File we're editing changed, reloading " + System.IO.Path.GetFileName(m_editFilename) + " ...");
+        }
+        if (m_editReloadArmed && Time.unscaledTime >= m_editReloadAt)
+        {
+            long size = GetReadableFileSize(m_editFilename);
+            if (size > 0 && size == m_editLastReadableSize)
+            {
+                //Readable and its size has stopped changing -> the write finished, safe to reload.
+                m_editReloadArmed = false;
+                AddImageUndo();
+                LoadImageByFilename(m_editFilename, false, true, bInvertLoadedMask: true); //invert the externally-edited mask back to internal polarity
+                RTConsole.Log("Reloaded edited file (" + size + " bytes).");
+            }
+            else if (Time.unscaledTime >= m_editReloadDeadline)
+            {
+                m_editReloadArmed = false;
+                RTConsole.Log("Gave up reloading edited file (still locked or empty?): " + System.IO.Path.GetFileName(m_editFilename));
+            }
+            else
+            {
+                m_editLastReadableSize = size;            //remember to detect a stable size next poll
+                m_editReloadAt = Time.unscaledTime + 0.15f;
+            }
         }
 
         //mask things faster when zoomed out by not rendering the GUI

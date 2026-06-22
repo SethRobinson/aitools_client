@@ -27,7 +27,7 @@
 * 2021.01.22 - Addes support for negative heights (top-down images) The actual
 *              flipping happens once at the Texture2D conversion.
 * 
-* Copyright (c) 2017 Markus Göbel (Bunny83)
+* Copyright (c) 2017 Markus Gï¿½bel (Bunny83)
 * 
 * Permission is hereby granted, free of charge, to any person obtaining a copy
 * of this software and associated documentation files (the "Software"), to
@@ -230,6 +230,12 @@ namespace B83.Image.BMP
 
             if (bmp.info.nBitsPerPixel > 8 && (bmp.info.compressionMethod == BMPComressionMode.BI_BITFIELDS || bmp.info.compressionMethod == BMPComressionMode.BI_ALPHABITFIELDS))
             {
+                // The bit-field masks live right after the 40-byte core BITMAPINFOHEADER (file offset
+                // 14+40).  For a plain 40-byte header they're separate DWORDs there; for a V4/V5 header
+                // (size 108/124, as Photoshop/Patchy write) they're fields INSIDE the header at the same
+                // offset.  The seek above used 14+size, which points past them at the pixel data for
+                // V4/V5 â€” reading garbage masks and corrupting the channel order.  Seek to the real spot.
+                aReader.BaseStream.Seek(14 + 40, SeekOrigin.Begin);
                 bmp.rMask = aReader.ReadUInt32();
                 bmp.gMask = aReader.ReadUInt32();
                 bmp.bMask = aReader.ReadUInt32();
@@ -623,7 +629,7 @@ namespace B83.Image.BMP
 public static class Tex2DExtensionBMP
 {
 
-    public static byte[] EncodeToBMP(this Texture2D tex, Texture2D takeAlphaFromThisImage = null)
+    public static byte[] EncodeToBMP(this Texture2D tex, Texture2D takeAlphaFromThisImage = null, bool invertAlpha = false)
     {
 
         UInt16 byteCount = 4; //assuming it has alpha.  Otherwise, change this to 3
@@ -679,7 +685,10 @@ public static class Tex2DExtensionBMP
                 
                 if (takeAlphaFromThisImage != null)
                 {
-                    c.a = ((Color32)takeAlphaFromThisImage.GetPixel(x, y)).a;
+                    //invertAlpha is used at the external-editor (Photoshop/Patchy) boundary so the
+                    //mask shows subject=white there; reads 255-a without mutating the source mask.
+                    byte ma = ((Color32)takeAlphaFromThisImage.GetPixel(x, y)).a;
+                    c.a = invertAlpha ? (byte)(255 - ma) : ma;
                 }
                 if (byteCount == 4)
                 {
