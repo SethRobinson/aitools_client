@@ -1165,7 +1165,46 @@ namespace AITools.AIChat.Skills
                     return name;
             }
 
-            return null;
+            string looseRequested = LoosePresetKey(requestedFile);
+            if (looseRequested.Length == 0)
+                return null;
+
+            string looseMatch = null;
+            foreach (var path in System.IO.Directory.GetFiles(presetsDir, "*.txt"))
+            {
+                string name = System.IO.Path.GetFileName(path);
+                if (!string.Equals(LoosePresetKey(name), looseRequested, StringComparison.Ordinal))
+                    continue;
+
+                // Only silently canonicalize punctuation/case variants when the
+                // normalized filename is unique. Ambiguous names still fall through
+                // to the conservative fuzzy resolver, which may ask the model/user
+                // to be more precise instead of guessing.
+                if (looseMatch != null)
+                    return null;
+
+                looseMatch = name;
+            }
+
+            return looseMatch;
+        }
+
+        private static string LoosePresetKey(string fileName)
+        {
+            if (string.IsNullOrEmpty(fileName))
+                return "";
+
+            string s = fileName.Trim();
+            if (s.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
+                s = s.Substring(0, s.Length - 4);
+
+            var sb = new System.Text.StringBuilder(s.Length);
+            foreach (char c in s)
+            {
+                if (char.IsLetterOrDigit(c))
+                    sb.Append(char.ToLowerInvariant(c));
+            }
+            return sb.ToString();
         }
 
         /// <summary>
