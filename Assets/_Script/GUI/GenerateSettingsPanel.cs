@@ -61,30 +61,17 @@ public class GenerateSettingsPanel : MonoBehaviour
 
     public static void Show()
     {
-        if (_instance != null)
-        {
-            _panelRoot.SetActive(true);
-            _instance.RefreshFromSettings();
-            return;
-        }
-
-        _panelRoot = new GameObject("GenerateSettingsPanel");
-        _instance = _panelRoot.AddComponent<GenerateSettingsPanel>();
-        _instance.CreateUI();
+        AppSettingsPanel.Show(AppSettingsTab.General);
     }
 
     public static void Hide()
     {
-        if (_panelRoot != null)
-            _panelRoot.SetActive(false);
+        AppSettingsPanel.Hide();
     }
 
     public static void Toggle()
     {
-        if (_panelRoot != null && _panelRoot.activeSelf)
-            Hide();
-        else
-            Show();
+        AppSettingsPanel.Toggle(AppSettingsTab.General);
     }
 
     // Legacy compatibility methods
@@ -113,11 +100,7 @@ public class GenerateSettingsPanel : MonoBehaviour
     /// </summary>
     public static void EnsureCreated()
     {
-        if (_instance == null)
-        {
-            Show();
-            Hide();
-        }
+        AppSettingsPanel.EnsureCreated();
     }
 
     /// <summary>
@@ -125,9 +108,7 @@ public class GenerateSettingsPanel : MonoBehaviour
     /// </summary>
     public static bool GetStripThinkTags()
     {
-        if (_instance != null && _instance._stripThinkTagsToggle != null)
-            return _instance._stripThinkTagsToggle.isOn;
-        return true; // Default to true
+        return AppSettingsPanel.GetStripThinkTags();
     }
 
     /// <summary>

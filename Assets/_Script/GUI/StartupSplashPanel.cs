@@ -165,7 +165,7 @@ public class StartupSplashPanel : MonoBehaviour
 
         string body =
             "<b><color=#0F899A>First setup</color></b>\n" +
-            "Add at least one ComfyUI server with Configuration. Add your LLMs in LLM Settings.\n\n" +
+            "Open Settings to add at least one ComfyUI server and configure your LLMs.\n\n" +
             "<b><color=#0F899A>Best first stop</color></b>\n" +
             "Open AI Chat and ask for images, edits, posters, comics, movies, or workflow help in plain language. It can drive most of the app for you.\n\n" +
             "<b><color=#0F899A>Direct controls</color></b>\n" +
@@ -196,13 +196,11 @@ public class StartupSplashPanel : MonoBehaviour
         footerImage.color = new Color(0.86f, 0.88f, 0.90f, 1f);
 
         float y = 0f;
-        CreateButton(footer, "Configuration", "Configuration", new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
-            new Vector2(0f, 0.5f), new Vector2(22f, y), new Vector2(126f, 36f), OpenConfiguration, false);
-        CreateButton(footer, "LLMSettings", "LLM Settings", new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
-            new Vector2(0f, 0.5f), new Vector2(154f, y), new Vector2(116f, 36f), OpenLLMSettings, false);
+        CreateButton(footer, "Settings", "Settings", new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
+            new Vector2(0f, 0.5f), new Vector2(22f, y), new Vector2(104f, 36f), OpenSettings, false);
         CreateButton(footer, "AIChat", "AI Chat", new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
-            new Vector2(0f, 0.5f), new Vector2(276f, y), new Vector2(92f, 36f), OpenAIChat, true);
-        CreateDontShowAgainToggle(footer, new Vector2(386f, y), new Vector2(132f, 36f));
+            new Vector2(0f, 0.5f), new Vector2(134f, y), new Vector2(92f, 36f), OpenAIChat, true);
+        CreateDontShowAgainToggle(footer, new Vector2(244f, y), new Vector2(132f, 36f));
         CreateButton(footer, "GitHub", "GitHub", new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
             new Vector2(1f, 0.5f), new Vector2(-150f, y), new Vector2(86f, 36f), OpenGithub, false);
         CreateButton(footer, "Continue", "Continue", new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
@@ -328,14 +326,19 @@ public class StartupSplashPanel : MonoBehaviour
         return "V" + version + " | Compiled " + RTBuildInfo.Timestamp;
     }
 
+    private void OpenSettings()
+    {
+        AppSettingsPanel.Show(AppSettingsTab.Configuration);
+    }
+
     private void OpenConfiguration()
     {
-        GameLogic.Get()?.OnConfigButton();
+        OpenSettings();
     }
 
     private void OpenLLMSettings()
     {
-        LLMSettingsPanel.Show();
+        AppSettingsPanel.Show(AppSettingsTab.LLM);
     }
 
     private void OpenAIChat()

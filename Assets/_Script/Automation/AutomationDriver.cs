@@ -76,6 +76,31 @@ public class AutomationDriver : MonoBehaviour
         AIChatPanel.Show();
     }
 
+    /// <summary>Open the unified Settings panel on the requested tab.</summary>
+    public void OpenSettings(string tabName)
+    {
+        AppSettingsTab tab = AppSettingsTab.General;
+        string key = (tabName ?? "").Trim().ToLowerInvariant();
+        if (key == "configuration" || key == "config" || key == "servers")
+            tab = AppSettingsTab.Configuration;
+        else if (key == "llm" || key == "llms")
+            tab = AppSettingsTab.LLM;
+
+        AppSettingsPanel.Show(tab);
+    }
+
+    /// <summary>Open the advanced LLM Settings panel.</summary>
+    public void OpenLLMSettings()
+    {
+        LLMSettingsPanel.Show();
+    }
+
+    /// <summary>Open one server's Overrides panel.</summary>
+    public void OpenServerSettings(int serverID)
+    {
+        ServerSettingsPanel.Show(Mathf.Max(0, serverID));
+    }
+
     /// <summary>Send a chat message through the live panel. False if no panel is open.</summary>
     public bool SendChat(string text)
     {

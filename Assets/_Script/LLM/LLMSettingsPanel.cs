@@ -53,6 +53,7 @@ public class LLMSettingsPanel : MonoBehaviour
     private const float HEADER_HEIGHT = 40f;
     private const float FOOTER_HEIGHT = 60f;
     private const float BaseFontSize = 14f;
+    private const int OverlaySortingOrder = 110;
 
     // Theme - pulled from existing UI prefabs / Main.unity:
     // - Panel backgrounds are white with slight alpha (uses built-in UI sprite 10907)
@@ -83,6 +84,7 @@ public class LLMSettingsPanel : MonoBehaviour
         if (_instance != null)
         {
             _panelRoot.SetActive(true);
+            _instance.BringToFront();
             _instance.RefreshFromSettings();
 
             // Re-apply styling and re-try sprite caching in case the panel was originally
@@ -97,6 +99,7 @@ public class LLMSettingsPanel : MonoBehaviour
         _panelRoot = new GameObject("LLMSettingsPanel");
         _instance = _panelRoot.AddComponent<LLMSettingsPanel>();
         _instance.CreateUI();
+        _instance.BringToFront();
     }
 
     public static void Hide()
@@ -117,6 +120,15 @@ public class LLMSettingsPanel : MonoBehaviour
     {
         _instance = null;
         _panelRoot = null;
+    }
+
+    private void BringToFront()
+    {
+        if (_panelRoot == null) return;
+        var canvas = _panelRoot.GetComponent<Canvas>();
+        if (canvas != null)
+            canvas.sortingOrder = OverlaySortingOrder;
+        _panelRoot.transform.SetAsLastSibling();
     }
 
     private TMP_FontAsset FindFont()
@@ -512,7 +524,7 @@ public class LLMSettingsPanel : MonoBehaviour
         // Canvas
         var canvas = _panelRoot.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.sortingOrder = 100;
+        canvas.sortingOrder = OverlaySortingOrder;
 
         var scaler = _panelRoot.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;

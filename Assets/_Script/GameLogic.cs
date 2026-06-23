@@ -1469,18 +1469,7 @@ public string GetPrompt() { return m_prompt; }
 
     public void OnConfigButton()
     {
-        if (m_activeConfigNotepad != null)
-        {
-            m_activeConfigNotepad.BringToFront();
-            m_activeConfigNotepad.FocusTextInput();
-            return;
-        }
-
-        m_activeConfigNotepad = RTNotepad.OpenFile(Config.Get().GetConfigText(), m_notepadTemplatePrefab, "Configuration - config.txt");
-        m_activeConfigNotepad.m_onClickedSavedCallback += OnConfigSaved;
-        m_activeConfigNotepad.m_onClickedCancelCallback += OnConfigCanceled;
-        m_activeConfigNotepad.m_onClickedOpenExternalCallback += OnConfigOpenExternal;
-        m_activeConfigNotepad.m_onClickedReloadCallback += OnConfigReload;
+        AppSettingsPanel.Show(AppSettingsTab.Configuration);
     }
 
     void OnConfigSaved(string text)
@@ -2072,7 +2061,7 @@ public string GetPrompt() { return m_prompt; }
     /// </summary>
     public void OnLLMSettingsButtonClicked()
     {
-        LLMSettingsPanel.Toggle();
+        AppSettingsPanel.Show(AppSettingsTab.LLM);
     }
 
     /// <summary>

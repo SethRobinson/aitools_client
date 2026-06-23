@@ -29,6 +29,9 @@ using UnityEngine;
 //   POST /play       -> enter play mode
 //   POST /stop       -> exit play mode
 //   POST /open_chat   -> open (create if needed) the AI Chat panel
+//   POST /settings    -> body: tab=<general|configuration|llm>; open Settings panel
+//   POST /llm_settings -> open the advanced LLM Settings panel
+//   POST /server_settings -> body: id=<serverID>; open that server's Overrides panel
 //   POST /chat        -> body = message text; open chat + send one turn
 //   GET  /chat_images -> JSON array: index/w/h/busy for each chat image
 //   POST /save        -> body: index=<n|latest>, path=<file>; save chat image PNG
@@ -212,6 +215,31 @@ public static class AutomationController
                     EnqueueMain(() => AutomationBridge.OpenChat());
                     WriteJson(stream, 200, "{\"ok\":true,\"accepted\":\"open_chat\"}");
                     break;
+
+                case "/settings":
+                {
+                    var kv = ParseKeyValues(body);
+                    string tab = kv.TryGetValue("tab", out var tabValue) ? tabValue : body;
+                    EnqueueMain(() => AutomationBridge.OpenSettings(tab));
+                    WriteJson(stream, 200, "{\"ok\":true,\"accepted\":\"settings\"}");
+                    break;
+                }
+
+                case "/llm_settings":
+                    EnqueueMain(() => AutomationBridge.OpenLLMSettings());
+                    WriteJson(stream, 200, "{\"ok\":true,\"accepted\":\"llm_settings\"}");
+                    break;
+
+                case "/server_settings":
+                {
+                    var kv = ParseKeyValues(body);
+                    int serverID = 0;
+                    if (kv.TryGetValue("id", out var idText))
+                        int.TryParse(idText, out serverID);
+                    EnqueueMain(() => AutomationBridge.OpenServerSettings(serverID));
+                    WriteJson(stream, 200, "{\"ok\":true,\"accepted\":\"server_settings\"}");
+                    break;
+                }
 
                 case "/chat":
                     // Body is the raw message text. Open the chat panel first so a fresh

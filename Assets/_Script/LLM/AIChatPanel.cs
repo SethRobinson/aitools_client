@@ -1097,10 +1097,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _inputUndo = TMPInputFieldUndo.Ensure(_inputField);
 
         // Vertical scrollbar on the entry box so large pastes / long messages can be
-        // scrolled instead of running off the bottom. TMP_InputField drives the
-        // scrollbar's value+size from the visible text area; MinScrollbarHandleSize
-        // (inside BuildVerticalScrollbar) keeps the handle from shrinking too small.
-        _inputField.verticalScrollbar = BuildVerticalScrollbar(inputGo);
+        // scrolled instead of running off the bottom. Attach it after this frame's UI
+        // construction finishes; otherwise TMP can update the scrollbar while a text
+        // graphic rebuild is already in progress when this panel is opened by a button.
+        var inputScrollbar = BuildVerticalScrollbar(inputGo);
+        inputScrollbar.gameObject.SetActive(false);
+        StartCoroutine(AttachInputScrollbarNextFrame(inputScrollbar));
         // Pull the text viewport in from the right so text doesn't run under the bar.
         if (_inputField.textViewport != null)
         {
@@ -1218,6 +1220,18 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _attachmentZone.OnCaptionCancelled += OnCaptionCancelled;
 
         CreateFooterDragBar(footer.transform);
+    }
+
+    private IEnumerator AttachInputScrollbarNextFrame(Scrollbar scrollbar)
+    {
+        yield return null;
+
+        if (_inputField == null || scrollbar == null)
+            yield break;
+
+        scrollbar.gameObject.SetActive(true);
+        _inputField.verticalScrollbar = scrollbar;
+        _inputField.ForceLabelUpdate();
     }
 
     private void CreateMainLLMOverrideControls(Transform parent)

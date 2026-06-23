@@ -9,6 +9,8 @@ using UnityEditor;
 using TMPro;
 using System;
 using System.Security.Policy;
+using System.Globalization;
+using System.Text;
 
 public enum LLM_Type
 {
@@ -87,6 +89,26 @@ public class GPUInfo
 
 }
 
+[Serializable]
+public class ComfyServerConfig
+{
+    public string Url = "";
+    public string DisplayName = "";
+    public string AuthToken = "";
+    public float VramGB = 0f;
+
+    public ComfyServerConfig Clone()
+    {
+        return new ComfyServerConfig
+        {
+            Url = Url,
+            DisplayName = DisplayName,
+            AuthToken = AuthToken,
+            VramGB = VramGB
+        };
+    }
+}
+
 
 public class Config : MonoBehaviour
 {  
@@ -98,6 +120,7 @@ public class Config : MonoBehaviour
     // optional bearer token. Populated while parsing config.txt, consulted by every ComfyUI request
     // (including server discovery, before any GPUInfo exists). Empty = no server uses auth.
     Dictionary<string, string> m_comfyAuthTokens = new Dictionary<string, string>();
+    Dictionary<int, float> m_configOrderVramGB = new Dictionary<int, float>();
     List<LLMParm> m_llmParms = new List<LLMParm>();
 
     static Config _this;
@@ -273,6 +296,182 @@ public class Config : MonoBehaviour
     }
 
     public string GetImageEditorPathAndExe() { return m_imageEditorPathAndExe; }
+
+    public void SetImageEditorPathAndExe(string pathAndExe, bool saveToFile = true)
+    {
+        m_imageEditorPathAndExe = CleanConfigField(pathAndExe);
+
+        if (saveToFile)
+        {
+            m_configText = BuildModernConfigText(GetModernComfyServerConfigs());
+            SaveConfigToFile();
+        }
+    }
+
+    public static string NormalizeComfyServerUrl(string url)
+    {
+        url = (url ?? "").Trim();
+        if (url.Length == 0) return "";
+
+        if (!url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+            !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            url = "http://" + url;
+        }
+
+        while (url.EndsWith("/") && !url.EndsWith("://"))
+            url = url.Substring(0, url.Length - 1);
+
+        return url;
+    }
+
+    public List<ComfyServerConfig> GetModernComfyServerConfigs()
+    {
+        var servers = new List<ComfyServerConfig>();
+        var vramByOrder = new Dictionary<int, float>();
+        string config = m_configText ?? "";
+        int serverOrder = 0;
+
+        using (var reader = new StringReader(config))
+        {
+            for (string line = reader.ReadLine(); line != null; line = reader.ReadLine())
+            {
+                string trimmed = line.Trim();
+                if (trimmed.Length == 0 || trimmed.StartsWith("#")) continue;
+
+                string[] words = trimmed.Split('|');
+                if (words.Length == 0) continue;
+
+                if (words[0] == "add_server" && words.Length >= 2)
+                {
+                    var server = new ComfyServerConfig
+                    {
+                        Url = NormalizeComfyServerUrl(words[1])
+                    };
+
+                    for (int wi = 2; wi < words.Length; wi++)
+                    {
+                        string field = words[wi] == null ? "" : words[wi].Trim();
+                        if (field.Length == 0) continue;
+
+                        if (field.StartsWith("token=", StringComparison.OrdinalIgnoreCase))
+                        {
+                            server.AuthToken = field.Substring("token=".Length).Trim();
+                        }
+                        else if (server.DisplayName.Length == 0)
+                        {
+                            server.DisplayName = field;
+                        }
+                    }
+
+                    servers.Add(server);
+                    serverOrder++;
+                }
+                else if (words[0] == "set_gpu_vram" && words.Length >= 3)
+                {
+                    if (int.TryParse(words[1], out int order) && TryParseConfigFloat(words[2], out float gb))
+                    {
+                        vramByOrder[order] = Mathf.Max(0f, gb);
+                    }
+                }
+            }
+        }
+
+        foreach (var kvp in vramByOrder)
+        {
+            if (kvp.Key >= 0 && kvp.Key < servers.Count)
+                servers[kvp.Key].VramGB = kvp.Value;
+        }
+
+        return servers;
+    }
+
+    public bool SaveModernComfyServerConfigs(List<ComfyServerConfig> servers, out string error)
+    {
+        error = "";
+        try
+        {
+            m_configText = BuildModernConfigText(servers);
+            ProcessConfigString(m_configText);
+            SaveConfigToFile();
+            return true;
+        }
+        catch (Exception e)
+        {
+            error = e.Message;
+            return false;
+        }
+    }
+
+    public string BuildModernConfigText(List<ComfyServerConfig> servers)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("# Seth's AI Tools config file");
+        sb.AppendLine("# Managed by the Settings > Configuration screen.");
+        sb.AppendLine();
+        sb.AppendLine("# ComfyUI servers. Start ComfyUI with --listen when connecting from another machine.");
+
+        if (servers != null)
+        {
+            for (int i = 0; i < servers.Count; i++)
+            {
+                ComfyServerConfig server = servers[i] ?? new ComfyServerConfig();
+                string url = NormalizeComfyServerUrl(server.Url);
+                if (string.IsNullOrEmpty(url)) continue;
+
+                string name = CleanConfigField(server.DisplayName);
+                string token = CleanConfigField(server.AuthToken);
+
+                sb.Append("add_server|").Append(url).Append("|");
+                if (!string.IsNullOrEmpty(name))
+                    sb.Append(name).Append("|");
+                if (!string.IsNullOrEmpty(token))
+                    sb.Append("token=").Append(token).Append("|");
+                sb.AppendLine();
+            }
+
+            for (int i = 0; i < servers.Count; i++)
+            {
+                ComfyServerConfig server = servers[i];
+                if (server != null && server.VramGB > 0f)
+                {
+                    sb.Append("set_gpu_vram|")
+                        .Append(i.ToString(CultureInfo.InvariantCulture))
+                        .Append("|")
+                        .Append(server.VramGB.ToString("0.##", CultureInfo.InvariantCulture))
+                        .AppendLine("|");
+                }
+            }
+        }
+
+        string editorPath = CleanConfigField(m_imageEditorPathAndExe);
+        if (!string.IsNullOrEmpty(editorPath) &&
+            !string.Equals(editorPath, "none set", StringComparison.OrdinalIgnoreCase))
+        {
+            sb.AppendLine();
+            sb.Append("set_image_editor|").Append(editorPath).AppendLine("|");
+        }
+
+        sb.AppendLine();
+        sb.Append("set_default_audio_prompt|").Append(CleanConfigField(_defaultAudioPrompt)).AppendLine("|");
+        sb.Append("set_default_audio_negative_prompt|").Append(CleanConfigField(_defaultAudioNegativePrompt)).AppendLine("|");
+
+        return sb.ToString();
+    }
+
+    private static string CleanConfigField(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return "";
+        return value.Replace("\r", " ").Replace("\n", " ").Replace("|", " ").Trim();
+    }
+
+    private static bool TryParseConfigFloat(string value, out float result)
+    {
+        if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out result))
+            return true;
+        return float.TryParse(value, NumberStyles.Float, CultureInfo.CurrentCulture, out result);
+    }
+
     private void Start()
     {
         RTAudioManager.Get().AddClipsToLibrary(m_audioClips);
@@ -652,6 +851,9 @@ set_default_audio_negative_prompt|music|
 
     public void AddGPU(GPUInfo g)
     {
+        if (g != null && m_configOrderVramGB.TryGetValue(g._configOrder, out float configuredVramGB))
+            g._vramGB = configuredVramGB;
+
         //servers are probed asynchronously, so they don't necessarily arrive in config.txt order.
         //Insert this one so the list stays sorted by _configOrder (its add_server line position).
         //Equal/unset orders keep arrival order, so non-add_server GPUs still land at the end.
@@ -963,6 +1165,7 @@ set_default_audio_negative_prompt|music|
         //reset old config. This will likely do bad things if you're using GPUs at the time of loading
         ClearGPU();
         m_comfyAuthTokens.Clear();
+        m_configOrderVramGB.Clear();
         CrazyCamLogic.Get().ClearSnapshotPresets();
 
         m_configText = newConfig;
@@ -1160,8 +1363,9 @@ set_default_audio_negative_prompt|music|
                     // Pure annotation - we never auto-detect VRAM since servers may be remote.
                     if (words.Length >= 3
                         && int.TryParse(words[1], out int gpuId)
-                        && float.TryParse(words[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float gb))
+                        && TryParseConfigFloat(words[2], out float gb))
                     {
+                        m_configOrderVramGB[gpuId] = Mathf.Max(0f, gb);
                         if (gpuId >= 0 && gpuId < m_gpuInfo.Count)
                         {
                             m_gpuInfo[gpuId]._vramGB = gb;
@@ -1184,7 +1388,7 @@ set_default_audio_negative_prompt|music|
                 {
                     _defaultAudioPrompt = words[1];
                 }
-                else if (words[0] == "set_default_negative_audio_prompt")
+                else if (words[0] == "set_default_negative_audio_prompt" || words[0] == "set_default_audio_negative_prompt")
                 {
                     _defaultAudioNegativePrompt = words[1];
                 }

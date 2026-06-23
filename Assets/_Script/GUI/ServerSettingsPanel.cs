@@ -45,6 +45,7 @@ public class ServerSettingsPanel : MonoBehaviour
     private const float PANEL_HEIGHT = 462f; // bumped +32 for the Limit-by-name row
     private const float HEADER_HEIGHT = 36f;
     private const float BASE_FONT_SIZE = 14f;
+    private const int OverlaySortingOrder = 110;
 
     // Theme colors (matching existing panels)
     private static readonly Color PanelBg = new Color(0.80f, 0.80f, 0.82f, 1f);
@@ -71,6 +72,7 @@ public class ServerSettingsPanel : MonoBehaviour
             if (existingPanel._panelRoot != null)
             {
                 existingPanel._panelRoot.SetActive(true);
+                existingPanel.BringToFront();
                 existingPanel.RefreshFromSettings();
                 return;
             }
@@ -87,6 +89,7 @@ public class ServerSettingsPanel : MonoBehaviour
         panel._panelRoot = panelRoot;
         panel._serverID = serverID;
         panel.CreateUI();
+        panel.BringToFront();
 
         _openPanels[serverID] = panel;
     }
@@ -177,6 +180,15 @@ public class ServerSettingsPanel : MonoBehaviour
         {
             Hide(_serverID);
         }
+    }
+
+    private void BringToFront()
+    {
+        if (_panelRoot == null) return;
+        var canvas = _panelRoot.GetComponent<Canvas>();
+        if (canvas != null)
+            canvas.sortingOrder = OverlaySortingOrder;
+        _panelRoot.transform.SetAsLastSibling();
     }
 
     #endregion
@@ -408,7 +420,7 @@ public class ServerSettingsPanel : MonoBehaviour
         // Canvas
         var canvas = _panelRoot.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.sortingOrder = 100;
+        canvas.sortingOrder = OverlaySortingOrder;
 
         var scaler = _panelRoot.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;

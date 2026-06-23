@@ -51,6 +51,30 @@ public static class AutomationBridge
         return true;
     }
 
+    /// <summary>Open the unified Settings panel on a requested tab. False if no driver yet.</summary>
+    public static bool OpenSettings(string tabName)
+    {
+        if (_driver == null) return false;
+        _driver.OpenSettings(tabName);
+        return true;
+    }
+
+    /// <summary>Open the advanced LLM Settings panel. False if no driver yet.</summary>
+    public static bool OpenLLMSettings()
+    {
+        if (_driver == null) return false;
+        _driver.OpenLLMSettings();
+        return true;
+    }
+
+    /// <summary>Open one server's Overrides panel. False if no driver yet.</summary>
+    public static bool OpenServerSettings(int serverID)
+    {
+        if (_driver == null) return false;
+        _driver.OpenServerSettings(serverID);
+        return true;
+    }
+
     /// <summary>Send a chat message. False if no driver or no chat panel is open.</summary>
     public static bool SendChat(string text)
     {

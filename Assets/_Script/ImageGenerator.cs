@@ -176,7 +176,7 @@ public class ImageGenerator : MonoBehaviour
     }
     public void OnClickedGenerateSettingsButton()
     {
-        GenerateSettingsPanel.Toggle();
+        AppSettingsPanel.Toggle(AppSettingsTab.General);
         Debug.Log("Clicked OnClickedGenerateSettingsButton");
     }
 
