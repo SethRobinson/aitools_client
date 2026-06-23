@@ -450,6 +450,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private const int AI_CHAT_ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS = 64000;
     private const int AI_CHAT_ANTHROPIC_OPUS_47_MAX_OUTPUT_TOKENS = 128000;
     private const float SCROLL_BOTTOM_PIXEL_EPSILON = 12f;
+    private const string ChatPrimaryFontResourcePath = "Fonts & Materials/LiberationSans SDF";
+    private const string ChatCjkFallbackFontName = "NotoSansCJKjp-VF SDF";
     private const float BaseFontSize = 14f;
     private const float BaseLabelFontSize = 12f;
 
@@ -557,8 +559,57 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     private TMP_FontAsset FindFont()
     {
-        var existing = FindAnyObjectByType<TextMeshProUGUI>();
-        return existing != null && existing.font != null ? existing.font : TMP_Settings.defaultFontAsset;
+        var primary = Resources.Load<TMP_FontAsset>(ChatPrimaryFontResourcePath);
+        if (primary == null)
+        {
+            var existing = FindAnyObjectByType<TextMeshProUGUI>();
+            primary = existing != null && existing.font != null ? existing.font : TMP_Settings.defaultFontAsset;
+        }
+
+        EnsureChatFontFallbacks(primary);
+        return primary != null ? primary : TMP_Settings.defaultFontAsset;
+    }
+
+    private static void EnsureChatFontFallbacks(TMP_FontAsset primary)
+    {
+        if (primary == null) return;
+
+        var cjk = FindCjkFallback(primary);
+        if (cjk == null) return;
+
+        if (primary.fallbackFontAssetTable == null)
+            primary.fallbackFontAssetTable = new List<TMP_FontAsset>();
+        if (!primary.fallbackFontAssetTable.Contains(cjk))
+            primary.fallbackFontAssetTable.Add(cjk);
+
+        if (TMP_Settings.fallbackFontAssets == null)
+            TMP_Settings.fallbackFontAssets = new List<TMP_FontAsset>();
+        if (!TMP_Settings.fallbackFontAssets.Contains(cjk))
+            TMP_Settings.fallbackFontAssets.Add(cjk);
+    }
+
+    private static TMP_FontAsset FindCjkFallback(TMP_FontAsset primary)
+    {
+        if (primary != null && primary.fallbackFontAssetTable != null)
+        {
+            foreach (var fallback in primary.fallbackFontAssetTable)
+            {
+                if (fallback != null && fallback.name == ChatCjkFallbackFontName)
+                    return fallback;
+            }
+        }
+
+        var guide = AIGuideManager.Get();
+        var guideFont = guide != null ? guide.GetFontByName(ChatCjkFallbackFontName) : null;
+        if (guideFont != null) return guideFont;
+
+        foreach (var loadedFont in Resources.FindObjectsOfTypeAll<TMP_FontAsset>())
+        {
+            if (loadedFont != null && loadedFont.name == ChatCjkFallbackFontName)
+                return loadedFont;
+        }
+
+        return null;
     }
 
     // ---------- UI Construction ----------
@@ -2963,16 +3014,18 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             // brackets in its context.
             text = text.Replace('<', '\uFF1C').Replace('>', '\uFF1E');
 
-            // Bold (must run before single * italic so ** isn't eaten by it)
-            text = Regex.Replace(text, @"\*\*(.+?)\*\*", "<b>$1</b>", RegexOptions.Singleline);
+            // Bold (must run before single * italic so ** isn't eaten by it). CJK
+            // fallback glyphs do not have a real bold face, so avoid synthetic TMP
+            // bold on Japanese/Chinese/Korean runs where it can fill in strokes.
+            text = Regex.Replace(text, @"\*\*(.+?)\*\*", m => ApplyReadableBold(m.Groups[1].Value), RegexOptions.Singleline);
             // Italic / single-asterisk emphasis -> bold (matches AdventureText behavior)
             text = Regex.Replace(text, @"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)", "<i>$1</i>", RegexOptions.Singleline);
             // `inline code` -> monospaced color
             text = Regex.Replace(text, @"`([^`]+)`", "<mark=#00000020><font=\"LiberationSans SDF\"><color=#7A1F1F>$1</color></font></mark>", RegexOptions.Singleline);
-            // Headings (#, ##, ###) at line start -> <size> + bold
-            text = Regex.Replace(text, @"(?m)^###\s+(.+)$", "<size=110%><b>$1</b></size>");
-            text = Regex.Replace(text, @"(?m)^##\s+(.+)$", "<size=120%><b>$1</b></size>");
-            text = Regex.Replace(text, @"(?m)^#\s+(.+)$", "<size=130%><b>$1</b></size>");
+            // Headings (#, ##, ###) at line start -> <size> + readable bold.
+            text = Regex.Replace(text, @"(?m)^###\s+(.+)$", m => "<size=110%>" + ApplyReadableBold(m.Groups[1].Value) + "</size>");
+            text = Regex.Replace(text, @"(?m)^##\s+(.+)$", m => "<size=120%>" + ApplyReadableBold(m.Groups[1].Value) + "</size>");
+            text = Regex.Replace(text, @"(?m)^#\s+(.+)$", m => "<size=130%>" + ApplyReadableBold(m.Groups[1].Value) + "</size>");
             // Simple bullet lists: lines starting with "- " or "* " -> bullet char
             text = Regex.Replace(text, @"(?m)^\s*[-*]\s+(.+)$", "  \u2022 $1");
         }
@@ -2981,6 +3034,60 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             // Malformed input - return raw text so we never crash the UI thread.
         }
         return text;
+    }
+
+    private static string ApplyReadableBold(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+        if (!ContainsCjk(text)) return "<b>" + text + "</b>";
+
+        var result = new StringBuilder(text.Length + 16);
+        var run = new StringBuilder();
+        bool runIsBold = false;
+        bool hasRun = false;
+
+        void FlushRun()
+        {
+            if (!hasRun) return;
+            if (runIsBold) result.Append("<b>");
+            result.Append(run);
+            if (runIsBold) result.Append("</b>");
+            run.Length = 0;
+            hasRun = false;
+        }
+
+        foreach (char ch in text)
+        {
+            bool boldThisChar = !IsCjkReadableGlyph(ch);
+            if (hasRun && boldThisChar != runIsBold)
+                FlushRun();
+
+            runIsBold = boldThisChar;
+            hasRun = true;
+            run.Append(ch);
+        }
+
+        FlushRun();
+        return result.ToString();
+    }
+
+    private static bool ContainsCjk(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return false;
+        foreach (char ch in text)
+        {
+            if (IsCjkReadableGlyph(ch))
+                return true;
+        }
+        return false;
+    }
+
+    private static bool IsCjkReadableGlyph(char ch)
+    {
+        return (ch >= '\u3000' && ch <= '\u30ff')  // CJK punctuation, hiragana, katakana
+            || (ch >= '\u3400' && ch <= '\u9fff')  // CJK ideographs
+            || (ch >= '\uf900' && ch <= '\ufaff')  // CJK compatibility ideographs
+            || (ch >= '\uff00' && ch <= '\uffef'); // Fullwidth forms
     }
 
     // ---------- Send / Stop / Clear ----------

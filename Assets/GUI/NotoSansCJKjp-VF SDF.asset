@@ -17,24 +17,24 @@ MonoBehaviour:
     m_FaceIndex: 0
     m_FamilyName: Noto Sans CJK JP
     m_StyleName: Thin
-    m_PointSize: 15
+    m_PointSize: 86
     m_Scale: 1
     m_UnitsPerEM: 1000
-    m_LineHeight: 21.720001
-    m_AscentLine: 17.400002
-    m_CapLine: 11
-    m_MeanLine: 8
+    m_LineHeight: 124.52801
+    m_AscentLine: 99.76001
+    m_CapLine: 63.066666
+    m_MeanLine: 45.86667
     m_Baseline: 0
-    m_DescentLine: -4.32
-    m_SuperscriptOffset: 17.400002
+    m_DescentLine: -24.768
+    m_SuperscriptOffset: 99.76001
     m_SuperscriptSize: 0.5
-    m_SubscriptOffset: -4.32
+    m_SubscriptOffset: -24.768
     m_SubscriptSize: 0.5
-    m_UnderlineOffset: -2.25
-    m_UnderlineThickness: 0.75
-    m_StrikethroughOffset: 3.2
-    m_StrikethroughThickness: 0.75
-    m_TabWidth: 3
+    m_UnderlineOffset: -12.9
+    m_UnderlineThickness: 4.3
+    m_StrikethroughOffset: 18.346666
+    m_StrikethroughThickness: 4.3
+    m_TabWidth: 17.2
   m_Material: {fileID: 1640474186688632856}
   m_SourceFontFileGUID: 1859962530b62964aa3e9ebf0aadfdda
   m_CreationSettings:
@@ -42,7 +42,7 @@ MonoBehaviour:
     sourceFontFileGUID: 1859962530b62964aa3e9ebf0aadfdda
     faceIndex: 0
     pointSizeSamplingMode: 0
-    pointSize: 15
+    pointSize: 86
     padding: 9
     paddingMode: 0
     packingMode: 0
@@ -110,8 +110,8 @@ MonoBehaviour:
   fontWeights: []
   normalStyle: 0.25
   normalSpacingOffset: 0
-  boldStyle: 0.75
-  boldSpacing: 7
+  boldStyle: 0.35
+  boldSpacing: 0
   italicStyle: 35
   tabSize: 10
   m_fontInfo:
@@ -235,7 +235,7 @@ Material:
     - _UnderlaySoftness: 0
     - _VertexOffsetX: 0
     - _VertexOffsetY: 0
-    - _WeightBold: 0.75
+    - _WeightBold: 0.35
     - _WeightNormal: 0.25
     m_Colors:
     - _ClipRect: {r: -32767, g: -32767, b: 32767, a: 32767}

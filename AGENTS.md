@@ -9,7 +9,7 @@ This file provides guidance to LLMs when working in this repository. Read it in 
 Update this file when a change touches any of:
 - Build/run commands, build scripts, or what they copy/produce (the "Essential Commands" section).
 - App version, Unity version, main scene, or other "Current local facts".
-- Architecture: renamed/added/removed core scripts, renderers (`RTRendererType`), LLM providers (`LLMProvider`), job-script directives/placeholders, AI Chat flow, or experiment folders.
+- Architecture: renamed/added/removed core scripts, renderers (`RTRendererType`), LLM providers (`LLMProvider`), job-script directives/placeholders, AI Chat flow, automation control endpoints, or experiment folders.
 - Hard rules, directory layout, or CLI capabilities/limits.
 
 When the user asks to commit, or when you finish a task, do a quick self-check: "did anything I changed make a statement in AGENTS.md wrong?" If yes, fix it here (and keep `CLAUDE.md` consistent). If you are unsure whether a fact is still true, verify against the code rather than copying the old claim forward. Keep edits concise and factual — this file is read at the start of every task, so brevity matters.
@@ -145,6 +145,10 @@ ComfyUI servers must be reachable over HTTP and should be started with `--listen
 ### Automation Control Server (editor testing harness)
 
 A loopback HTTP control server lets external tools (AI agents, scripts) drive the editor and AI Chat for automated end-to-end testing. It survives C# domain reloads and play stop/start, so an external loop can edit code, recompile, and re-test without anyone clicking Play.
+
+**Prefer this automation bridge for Unity/editor validation whenever it is enabled.** Before launching a separate Unity batch/editor process, check `GET /status`; if the bridge is ready, use `/rebuild`, `/play`, `/stop`, `/open_chat`, `/chat`, `/screenshot`, `/save`, and `/chat_images` to compile, drive the app, and capture evidence. For UI/AI Chat work, verify with screenshots from `/screenshot` whenever possible rather than relying only on code inspection. Do not start a second Unity editor/batchmode instance against this project while the editor lockfile/server is active unless the bridge is unavailable or the task specifically requires batchmode.
+
+If a change cannot be validated because the bridge lacks a needed command, add a narrow loopback-only automation endpoint or driver capability in the same task when practical, then document the new endpoint here. Keep new automation commands deterministic, local-only, and scoped to testing/inspection; avoid broad privileged operations.
 
 - `Assets/_Script/Automation/AutomationBridge.cs` (runtime): static seam shared by the editor server and the play-mode driver (runtime can't reference editor types, so shared state lives here).
 - `Assets/_Script/Automation/AutomationDriver.cs` (runtime MonoBehaviour): registers with the bridge; implements chat send, the "fully idle" query, save-chat-image, and screenshot capture. In standalone builds it self-spawns when `-enable_automation` is on the command line; in the editor the controller spawns it on entering play.
