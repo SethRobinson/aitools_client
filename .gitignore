@@ -76,3 +76,5 @@ llm_last_error_small.json
 llm_aichat_log.json
 CLAUDE.md
 llm_last_error.json
+elevenlabs_tts_json_sent.json
+elevenlabs_tts_json_received.mp3

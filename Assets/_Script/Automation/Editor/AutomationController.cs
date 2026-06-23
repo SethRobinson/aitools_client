@@ -29,7 +29,7 @@ using UnityEngine;
 //   POST /play       -> enter play mode
 //   POST /stop       -> exit play mode
 //   POST /open_chat   -> open (create if needed) the AI Chat panel
-//   POST /settings    -> body: tab=<general|configuration|llm>; open Settings panel
+//   POST /settings    -> body: tab=<general|configuration|audio|llm>; open Settings panel
 //   POST /llm_settings -> open the advanced LLM Settings panel
 //   POST /server_settings -> body: id=<serverID>; open that server's Overrides panel
 //   POST /chat        -> body = message text; open chat + send one turn

@@ -19,6 +19,12 @@ public enum LLM_Type
     Anthropic_API
 }
 
+public enum TextToSpeechProvider
+{
+    None = 0,
+    ElevenLabs = 1
+}
+
 public enum RTRendererType
 {
     ComfyUI = 0,
@@ -148,6 +154,7 @@ public class Config : MonoBehaviour
     string _anthropicAI_APIEndpoint;
     string _genericLLMMode;
 
+    TextToSpeechProvider _textToSpeechProvider;
     string _elevenLabs_APIKey ;
     string _elevenLabs_voiceID;
     int _jpgSaveQuality;
@@ -217,6 +224,7 @@ public class Config : MonoBehaviour
         return _openAI_APIModel; 
     }
     public string GetElevenLabs_APIKey() { return _elevenLabs_APIKey; }
+    public TextToSpeechProvider GetTextToSpeechProvider() { return _textToSpeechProvider; }
     public string GetDefaultAudioPrompt() { return _defaultAudioPrompt; }
     public string GetDefaultAudioNegativePrompt() { return _defaultAudioNegativePrompt; }
     public int GetCrazyCamRequestedWidth() { return _crazyCamRequestedWidth; }
@@ -266,8 +274,9 @@ public class Config : MonoBehaviour
     _openai_gpt4_endpoint = "https://api.openai.com/v1/chat/completions";
     _ollama_endpoint = "/v1/chat/completions";
 
+        _textToSpeechProvider = TextToSpeechProvider.None;
         _elevenLabs_APIKey = "";
-     _elevenLabs_voiceID = "";
+     _elevenLabs_voiceID = "21m00Tcm4TlvDq8ikWAM";
      _jpgSaveQuality = 80;
      _texgen_webui_APIKey = "none";
      _genericLLMMode = "chat-instruct";
@@ -300,6 +309,19 @@ public class Config : MonoBehaviour
     public void SetImageEditorPathAndExe(string pathAndExe, bool saveToFile = true)
     {
         m_imageEditorPathAndExe = CleanConfigField(pathAndExe);
+
+        if (saveToFile)
+        {
+            m_configText = BuildModernConfigText(GetModernComfyServerConfigs());
+            SaveConfigToFile();
+        }
+    }
+
+    public void SetTextToSpeechSettings(TextToSpeechProvider provider, string elevenLabsAPIKey, string elevenLabsVoiceID, bool saveToFile = true)
+    {
+        _textToSpeechProvider = provider;
+        _elevenLabs_APIKey = CleanConfigField(elevenLabsAPIKey);
+        _elevenLabs_voiceID = CleanConfigField(elevenLabsVoiceID);
 
         if (saveToFile)
         {
@@ -456,6 +478,13 @@ public class Config : MonoBehaviour
         sb.Append("set_default_audio_prompt|").Append(CleanConfigField(_defaultAudioPrompt)).AppendLine("|");
         sb.Append("set_default_audio_negative_prompt|").Append(CleanConfigField(_defaultAudioNegativePrompt)).AppendLine("|");
 
+        sb.AppendLine();
+        sb.Append("set_text_to_speech_provider|").Append(_textToSpeechProvider).AppendLine("|");
+        if (!string.IsNullOrEmpty(_elevenLabs_APIKey))
+            sb.Append("set_elevenlabs_api_key|").Append(CleanConfigField(_elevenLabs_APIKey)).AppendLine("|");
+        if (!string.IsNullOrEmpty(_elevenLabs_voiceID))
+            sb.Append("set_elevenlabs_voice_id|").Append(CleanConfigField(_elevenLabs_voiceID)).AppendLine("|");
+
         return sb.ToString();
     }
 
@@ -470,6 +499,17 @@ public class Config : MonoBehaviour
         if (float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out result))
             return true;
         return float.TryParse(value, NumberStyles.Float, CultureInfo.CurrentCulture, out result);
+    }
+
+    private static TextToSpeechProvider ParseTextToSpeechProvider(string value)
+    {
+        if (string.Equals(value, "ElevenLabs", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(value, "Eleven Labs", StringComparison.OrdinalIgnoreCase))
+        {
+            return TextToSpeechProvider.ElevenLabs;
+        }
+
+        return TextToSpeechProvider.None;
     }
 
     private void Start()
@@ -1391,6 +1431,19 @@ set_default_audio_negative_prompt|music|
                 else if (words[0] == "set_default_negative_audio_prompt" || words[0] == "set_default_audio_negative_prompt")
                 {
                     _defaultAudioNegativePrompt = words[1];
+                }
+                else if (words[0] == "set_text_to_speech_provider")
+                {
+                    _textToSpeechProvider = words.Length > 1 ? ParseTextToSpeechProvider(words[1]) : TextToSpeechProvider.None;
+                }
+                else if (words[0] == "set_elevenlabs_api_key" || words[0] == "set_eleven_labs_api_key")
+                {
+                    _elevenLabs_APIKey = words.Length > 1 ? words[1] : "";
+                }
+                else if (words[0] == "set_elevenlabs_voice_id" || words[0] == "set_eleven_labs_voice_id" ||
+                         words[0] == "set_elevenlabs_voice" || words[0] == "set_eleven_labs_voice")
+                {
+                    _elevenLabs_voiceID = words.Length > 1 ? words[1] : "";
                 }
                 else
                 {

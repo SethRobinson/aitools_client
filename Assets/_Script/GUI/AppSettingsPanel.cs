@@ -12,6 +12,7 @@ public enum AppSettingsTab
 {
     General,
     Configuration,
+    Audio,
     LLM
 }
 
@@ -30,8 +31,14 @@ public class AppSettingsPanel : MonoBehaviour
     private TextMeshProUGUI _footerStatusText;
     private TextMeshProUGUI _generalStatusText;
     private TextMeshProUGUI _configStatusText;
+    private TextMeshProUGUI _audioStatusText;
     private TextMeshProUGUI _llmSummaryText;
     private TMP_InputField _imageEditorInput;
+    private TMP_Dropdown _ttsProviderDropdown;
+    private TMP_Dropdown _elevenLabsVoiceDropdown;
+    private TMP_InputField _elevenLabsApiKeyInput;
+    private TMP_InputField _elevenLabsVoiceIdInput;
+    private TMP_InputField _ttsTestTextInput;
     private Toggle _stripThinkTagsToggle;
 
     private readonly Dictionary<AppSettingsTab, Button> _tabButtons = new Dictionary<AppSettingsTab, Button>();
@@ -39,6 +46,7 @@ public class AppSettingsPanel : MonoBehaviour
     private bool _configDirty = false;
     private bool _stripThinkTags = true;
     private AppSettingsTab _activeTab = AppSettingsTab.General;
+    private string _ttsTestText = "This is a test of the Text To Speech settings.";
 
     private const float PanelWidth = 900f;
     private const float PanelHeight = 790f;
@@ -181,6 +189,7 @@ public class AppSettingsPanel : MonoBehaviour
 
         CreateTabButton(strip, AppSettingsTab.General, "General Settings", 185f);
         CreateTabButton(strip, AppSettingsTab.Configuration, "Configuration", 165f);
+        CreateTabButton(strip, AppSettingsTab.Audio, "Audio", 110f);
         CreateTabButton(strip, AppSettingsTab.LLM, "LLM Settings", 165f);
     }
 
@@ -236,6 +245,8 @@ public class AppSettingsPanel : MonoBehaviour
             BuildGeneralTab(content);
         else if (tab == AppSettingsTab.Configuration)
             BuildConfigurationTab(content);
+        else if (tab == AppSettingsTab.Audio)
+            BuildAudioTab(content);
         else
             BuildLLMTab(content);
 
@@ -562,6 +573,176 @@ public class AppSettingsPanel : MonoBehaviour
         string status = GetLiveServerStatus(server.Url);
         var statusText = CreateText("LiveStatus", vramRow, status, 13f, TextMuted, TextAlignmentOptions.MidlineLeft);
         statusText.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
+    }
+
+    private void BuildAudioTab(RectTransform content)
+    {
+        Config cfg = Config.Get();
+
+        CreateSectionHeader(content, "Text To Speech");
+
+        var box = CreateVerticalBox(content, "TextToSpeechBox", 292f);
+
+        var providerRow = CreateRow(box, "TTSProviderRow", 36f);
+        CreateLabel(providerRow, "Provider", 150f);
+        int providerIndex = cfg != null && cfg.GetTextToSpeechProvider() == TextToSpeechProvider.ElevenLabs ? 1 : 0;
+        _ttsProviderDropdown = CreateDropdown(providerRow, "TTSProviderDropdown",
+            new List<string> { "None", "ElevenLabs" }, providerIndex, 220f);
+        _ttsProviderDropdown.onValueChanged.AddListener(_ =>
+        {
+            SaveAudioSettingsFromFields();
+            UpdateAudioControlInteractability();
+        });
+
+        var keyRow = CreateRow(box, "ElevenLabsKeyRow", 36f);
+        CreateLabel(keyRow, "ElevenLabs API key", 150f);
+        _elevenLabsApiKeyInput = CreateInput(keyRow, cfg != null ? cfg.GetElevenLabs_APIKey() : "", 560f);
+        _elevenLabsApiKeyInput.contentType = TMP_InputField.ContentType.Password;
+        _elevenLabsApiKeyInput.ForceLabelUpdate();
+        _elevenLabsApiKeyInput.onEndEdit.AddListener(_ => SaveAudioSettingsFromFields());
+
+        string currentVoiceID = cfg != null ? cfg.GetElevenLabs_voiceID() : ElevenLabsTextToSpeechManager.DefaultVoiceId;
+        if (string.IsNullOrWhiteSpace(currentVoiceID))
+            currentVoiceID = ElevenLabsTextToSpeechManager.DefaultVoiceId;
+
+        var voiceRow = CreateRow(box, "ElevenLabsVoiceRow", 36f);
+        CreateLabel(voiceRow, "Default voice", 150f);
+        var voiceOptions = BuildElevenLabsVoiceOptions();
+        _elevenLabsVoiceDropdown = CreateDropdown(voiceRow, "ElevenLabsVoiceDropdown",
+            voiceOptions, GetElevenLabsVoiceDropdownIndex(currentVoiceID), 230f);
+        _elevenLabsVoiceDropdown.onValueChanged.AddListener(index =>
+        {
+            if (index >= 0 && index < ElevenLabsTextToSpeechManager.DefaultVoicePresets.Length)
+                _elevenLabsVoiceIdInput?.SetTextWithoutNotify(ElevenLabsTextToSpeechManager.DefaultVoicePresets[index].Value);
+            SaveAudioSettingsFromFields();
+        });
+
+        var customVoiceRow = CreateRow(box, "ElevenLabsCustomVoiceRow", 36f);
+        CreateLabel(customVoiceRow, "Custom voice ID", 150f);
+        _elevenLabsVoiceIdInput = CreateInput(customVoiceRow, currentVoiceID, 560f);
+        _elevenLabsVoiceIdInput.contentType = TMP_InputField.ContentType.Standard;
+        _elevenLabsVoiceIdInput.onEndEdit.AddListener(_ =>
+        {
+            if (_elevenLabsVoiceDropdown != null)
+            {
+                _elevenLabsVoiceDropdown.SetValueWithoutNotify(GetElevenLabsVoiceDropdownIndex(_elevenLabsVoiceIdInput.text));
+                _elevenLabsVoiceDropdown.RefreshShownValue();
+            }
+            SaveAudioSettingsFromFields();
+        });
+
+        var testTextRow = CreateRow(box, "TTSTestTextRow", 36f);
+        CreateLabel(testTextRow, "Test phrase", 150f);
+        _ttsTestTextInput = CreateInput(testTextRow, _ttsTestText, 560f);
+        _ttsTestTextInput.onEndEdit.AddListener(value => _ttsTestText = value ?? "");
+
+        var actionRow = CreateRow(box, "TTSActionRow", 36f);
+        CreateLabel(actionRow, "", 150f);
+        CreateButton(actionRow, "TestTTS", "Test", 90f, OnTestTextToSpeech);
+
+        var statusRow = CreateRow(content, "AudioStatusRow", 70f);
+        _audioStatusText = CreateText("AudioStatus", statusRow, BuildAudioStatusText(), 13f, TextDark, TextAlignmentOptions.TopLeft);
+        _audioStatusText.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
+        _audioStatusText.rectTransform.anchorMin = Vector2.zero;
+        _audioStatusText.rectTransform.anchorMax = Vector2.one;
+        _audioStatusText.rectTransform.offsetMin = new Vector2(6, 4);
+        _audioStatusText.rectTransform.offsetMax = new Vector2(-6, -4);
+
+        UpdateAudioControlInteractability();
+    }
+
+    private List<string> BuildElevenLabsVoiceOptions()
+    {
+        var options = new List<string>();
+        foreach (var preset in ElevenLabsTextToSpeechManager.DefaultVoicePresets)
+            options.Add(preset.Key);
+        options.Add("Custom");
+        return options;
+    }
+
+    private int GetElevenLabsVoiceDropdownIndex(string voiceID)
+    {
+        voiceID = (voiceID ?? "").Trim();
+        for (int i = 0; i < ElevenLabsTextToSpeechManager.DefaultVoicePresets.Length; i++)
+        {
+            if (string.Equals(ElevenLabsTextToSpeechManager.DefaultVoicePresets[i].Value, voiceID, StringComparison.OrdinalIgnoreCase))
+                return i;
+        }
+        return ElevenLabsTextToSpeechManager.DefaultVoicePresets.Length;
+    }
+
+    private void SaveAudioSettingsFromFields()
+    {
+        Config cfg = Config.Get();
+        if (cfg == null)
+        {
+            SetAudioStatus("Config is not initialized.");
+            return;
+        }
+
+        TextToSpeechProvider provider = _ttsProviderDropdown != null && _ttsProviderDropdown.value == 1
+            ? TextToSpeechProvider.ElevenLabs
+            : TextToSpeechProvider.None;
+        string apiKey = _elevenLabsApiKeyInput != null ? _elevenLabsApiKeyInput.text : cfg.GetElevenLabs_APIKey();
+        string voiceID = _elevenLabsVoiceIdInput != null ? _elevenLabsVoiceIdInput.text : cfg.GetElevenLabs_voiceID();
+        if (string.IsNullOrWhiteSpace(voiceID))
+        {
+            voiceID = ElevenLabsTextToSpeechManager.DefaultVoiceId;
+            _elevenLabsVoiceIdInput?.SetTextWithoutNotify(voiceID);
+        }
+
+        cfg.SetTextToSpeechSettings(provider, apiKey, voiceID);
+        SetAudioStatus(BuildAudioStatusText());
+        SetFooterStatus("Saved Text To Speech settings to config.txt.");
+    }
+
+    private void UpdateAudioControlInteractability()
+    {
+        if (_elevenLabsApiKeyInput != null) _elevenLabsApiKeyInput.interactable = true;
+        if (_elevenLabsVoiceDropdown != null) _elevenLabsVoiceDropdown.interactable = true;
+        if (_elevenLabsVoiceIdInput != null) _elevenLabsVoiceIdInput.interactable = true;
+        if (_ttsTestTextInput != null) _ttsTestTextInput.interactable = true;
+    }
+
+    private string BuildAudioStatusText()
+    {
+        Config cfg = Config.Get();
+        if (cfg == null) return "Audio settings are not initialized.";
+
+        if (cfg.GetTextToSpeechProvider() == TextToSpeechProvider.None)
+            return "Text To Speech provider: None.";
+
+        string voiceID = cfg.GetElevenLabs_voiceID();
+        string voiceLabel = GetElevenLabsVoiceLabel(voiceID);
+        string keyStatus = string.IsNullOrWhiteSpace(cfg.GetElevenLabs_APIKey()) ? "API key missing" : "API key saved";
+        return "Text To Speech provider: ElevenLabs.\n" +
+            keyStatus + ". Voice: " + voiceLabel + ".";
+    }
+
+    private string GetElevenLabsVoiceLabel(string voiceID)
+    {
+        voiceID = (voiceID ?? "").Trim();
+        foreach (var preset in ElevenLabsTextToSpeechManager.DefaultVoicePresets)
+        {
+            if (string.Equals(preset.Value, voiceID, StringComparison.OrdinalIgnoreCase))
+                return preset.Key;
+        }
+        return string.IsNullOrEmpty(voiceID) ? "(none)" : "Custom";
+    }
+
+    private void SetAudioStatus(string text)
+    {
+        if (_audioStatusText != null)
+            _audioStatusText.text = text ?? "";
+        SetFooterStatus(text);
+    }
+
+    private void OnTestTextToSpeech()
+    {
+        SaveAudioSettingsFromFields();
+        _ttsTestText = _ttsTestTextInput != null ? _ttsTestTextInput.text : _ttsTestText;
+        if (!ElevenLabsTextToSpeechManager.SpeakConfigured(_ttsTestText, SetAudioStatus))
+            return;
     }
 
     private void BuildLLMTab(RectTransform content)
@@ -1072,6 +1253,66 @@ public class AppSettingsPanel : MonoBehaviour
         input.ForceLabelUpdate();
 
         return input;
+    }
+
+    private TMP_Dropdown CreateDropdown(Transform parent, string name, List<string> options, int selectedIndex, float width)
+    {
+        var ddGo = TMP_DefaultControls.CreateDropdown(new TMP_DefaultControls.Resources());
+        ddGo.name = name;
+        ddGo.transform.SetParent(parent, false);
+        var rt = ddGo.GetComponent<RectTransform>();
+        rt.sizeDelta = new Vector2(width, 30f);
+
+        var le = ddGo.AddComponent<LayoutElement>();
+        le.minWidth = width;
+        le.preferredWidth = width;
+        le.minHeight = 30f;
+        le.preferredHeight = 30f;
+
+        var img = ddGo.GetComponent<Image>();
+        if (img != null)
+        {
+            img.sprite = null;
+            img.type = Image.Type.Simple;
+            img.color = InputBg;
+        }
+
+        var dropdown = ddGo.GetComponent<TMP_Dropdown>();
+        dropdown.ClearOptions();
+        dropdown.AddOptions(options ?? new List<string>());
+        selectedIndex = Mathf.Clamp(selectedIndex, 0, Mathf.Max(0, dropdown.options.Count - 1));
+        dropdown.SetValueWithoutNotify(selectedIndex);
+        dropdown.RefreshShownValue();
+
+        if (dropdown.captionText != null)
+        {
+            dropdown.captionText.font = _font;
+            dropdown.captionText.fontSize = BaseFontSize;
+            dropdown.captionText.color = TextDark;
+            dropdown.captionText.overflowMode = TextOverflowModes.Ellipsis;
+            dropdown.captionText.alignment = TextAlignmentOptions.MidlineLeft;
+        }
+
+        if (dropdown.itemText != null)
+        {
+            dropdown.itemText.font = _font;
+            dropdown.itemText.fontSize = BaseFontSize;
+            dropdown.itemText.color = TextDark;
+            dropdown.itemText.overflowMode = TextOverflowModes.Ellipsis;
+        }
+
+        if (dropdown.template != null)
+            dropdown.template.sizeDelta = new Vector2(dropdown.template.sizeDelta.x, 210f);
+
+        var arrow = CreateText("Arrow", ddGo.transform, "v", 12f, TextMuted, TextAlignmentOptions.Center);
+        arrow.rectTransform.anchorMin = new Vector2(1f, 0f);
+        arrow.rectTransform.anchorMax = new Vector2(1f, 1f);
+        arrow.rectTransform.pivot = new Vector2(1f, 0.5f);
+        arrow.rectTransform.sizeDelta = new Vector2(24f, 0f);
+        arrow.rectTransform.anchoredPosition = Vector2.zero;
+        arrow.raycastTarget = false;
+
+        return dropdown;
     }
 
     private Button CreateButton(Transform parent, string name, string text, float width, UnityEngine.Events.UnityAction onClick)

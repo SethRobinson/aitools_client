@@ -83,6 +83,8 @@ public class AutomationDriver : MonoBehaviour
         string key = (tabName ?? "").Trim().ToLowerInvariant();
         if (key == "configuration" || key == "config" || key == "servers")
             tab = AppSettingsTab.Configuration;
+        else if (key == "audio" || key == "tts" || key == "speech")
+            tab = AppSettingsTab.Audio;
         else if (key == "llm" || key == "llms")
             tab = AppSettingsTab.LLM;
 

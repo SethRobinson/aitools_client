@@ -136,6 +136,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private readonly Dictionary<GTPChatLine, int> _interactionMediaCheckpoints = new Dictionary<GTPChatLine, int>();
     private GameObject _bubbleContextMenuRoot;
     private GameObject _rewindConfirmRoot;
+    private GameObject _speechSelectionOverlayRoot;
+    private TMP_InputField _cachedSpeakSelectionField;
+    private string _cachedSpeakSelectionFieldText;
+    private string _cachedSpeakSelectionText;
+    private int _cachedSpeakSelectionStart;
+    private int _cachedSpeakSelectionEnd;
 
     // Most-recent Pic spawned by a non-chained skill action in the current user turn.
     // Reset on each OnSendClicked() so chain="true" can never reach back into a prior
@@ -238,6 +244,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private Button _clearButton;
     private Button _stopButton;
     private Button _copyButton;
+    private TextMeshProUGUI _speechStatusText;
+    private Button _speechStopButton;
     private Toggle _includeImageDataToggle;
     private Toggle _autoContinueToggle;
     private TMP_InputField _autoContinueCountInput;
@@ -535,6 +543,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         {
             HideBubbleContextMenu();
             HideRewindConfirmation();
+            ClearSpeechSelectionOverlay();
+            ClearCachedSpeakSelection();
         }
         _isVisible = visible;
         if (_mainPanel != null)
@@ -549,6 +559,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         CancelAllAttachmentCaptions();
         CancelAllInspectImageJobs(showBubble: false);
         UnsubscribeFromLLMInstanceChanges();
+        ClearSpeechSelectionOverlay();
+        ClearCachedSpeakSelection();
         if (_skillManager != null)
             _skillManager.OnSkillListChanged -= OnSkillListChanged;
         // The ChatImageAttachmentZone component on _panelRoot auto-deregisters and frees
@@ -1074,6 +1086,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // handle it ourselves.)
         _inputField.lineType = TMP_InputField.LineType.MultiLineNewline;
         _inputField.contentType = TMP_InputField.ContentType.Standard;
+        _inputField.onFocusSelectAll = false;
         _inputField.textComponent.alignment = TextAlignmentOptions.TopLeft;
         _inputField.textComponent.color = TextDark;
         _inputField.textComponent.font = _font;
@@ -1095,6 +1108,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         var caretFixer = _inputField.gameObject.AddComponent<AIChatCaretFixer>();
         caretFixer.Set(_inputField);
         _inputUndo = TMPInputFieldUndo.Ensure(_inputField);
+
+        var inputContextHandler = inputGo.AddComponent<AIChatBubbleContextClickHandler>();
+        inputContextHandler.Setup(this, _inputField, null, isEntryInput: true);
 
         // Vertical scrollbar on the entry box so large pastes / long messages can be
         // scrolled instead of running off the bottom. Attach it after this frame's UI
@@ -1134,6 +1150,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _statusText.text = "Idle";
 
         CreateMainLLMOverrideControls(footer.transform);
+        CreateSpeechControls(footer.transform);
 
         // Buttons stacked on the right.
         // Row 1: Send (full 186 wide). Row 2: [Copy 58][Stop 58][Clear 58], 6px gaps -> 186 wide total.
@@ -1330,6 +1347,94 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         tt._text =
             "Default uses normal Big/Small/Vision routing.\n" +
             "Selecting an LLM forces main chat replies to that instance.";
+    }
+
+    private void CreateSpeechControls(Transform parent)
+    {
+        var labelObj = new GameObject("SpeechLabel");
+        labelObj.transform.SetParent(parent, false);
+        var labelRt = labelObj.AddComponent<RectTransform>();
+        labelRt.anchorMin = new Vector2(0, 1);
+        labelRt.anchorMax = new Vector2(0, 1);
+        labelRt.pivot = new Vector2(0, 1);
+        labelRt.anchoredPosition = new Vector2(280, -6);
+        labelRt.sizeDelta = new Vector2(48, 22);
+
+        var label = labelObj.AddComponent<TextMeshProUGUI>();
+        label.text = "Speech:";
+        label.font = _font;
+        label.fontSize = 12;
+        label.color = new Color(0.2f, 0.2f, 0.2f, 1f);
+        label.alignment = TextAlignmentOptions.MidlineLeft;
+        label.raycastTarget = false;
+
+        var statusObj = new GameObject("SpeechStatus");
+        statusObj.transform.SetParent(parent, false);
+        var statusRt = statusObj.AddComponent<RectTransform>();
+        statusRt.anchorMin = new Vector2(0, 1);
+        statusRt.anchorMax = new Vector2(0, 1);
+        statusRt.pivot = new Vector2(0, 1);
+        statusRt.anchoredPosition = new Vector2(330, -6);
+        statusRt.sizeDelta = new Vector2(150, 22);
+
+        _speechStatusText = statusObj.AddComponent<TextMeshProUGUI>();
+        _speechStatusText.text = "Idle";
+        _speechStatusText.font = _font;
+        _speechStatusText.fontSize = 12;
+        _speechStatusText.color = new Color(0.2f, 0.2f, 0.2f, 1f);
+        _speechStatusText.alignment = TextAlignmentOptions.MidlineLeft;
+        _speechStatusText.overflowMode = TextOverflowModes.Ellipsis;
+        _speechStatusText.raycastTarget = false;
+
+        _speechStopButton = CreateFooterLeftButton(parent, "Stop", new Vector2(486, -6), new Vector2(48, 22), OnSpeechStopClicked);
+        _speechStopButton.interactable = false;
+        _speechStopButton.gameObject.SetActive(false);
+    }
+
+    private Button CreateFooterLeftButton(Transform parent, string text, Vector2 anchoredPos, Vector2 size, UnityEngine.Events.UnityAction onClick)
+    {
+        var btn = new GameObject("Btn_" + text);
+        btn.transform.SetParent(parent, false);
+        var rt = btn.AddComponent<RectTransform>();
+        rt.anchorMin = new Vector2(0, 1);
+        rt.anchorMax = new Vector2(0, 1);
+        rt.pivot = new Vector2(0, 1);
+        rt.anchoredPosition = anchoredPos;
+        rt.sizeDelta = size;
+
+        var img = btn.AddComponent<Image>();
+        img.color = Color.white;
+        var button = btn.AddComponent<Button>();
+        button.targetGraphic = img;
+        button.onClick.AddListener(onClick);
+        button.colors = new ColorBlock
+        {
+            normalColor = Color.white,
+            highlightedColor = new Color(0.96f, 0.96f, 0.96f, 1f),
+            pressedColor = new Color(0.78f, 0.78f, 0.78f, 1f),
+            selectedColor = new Color(0.96f, 0.96f, 0.96f, 1f),
+            disabledColor = new Color(0.78f, 0.78f, 0.78f, 0.5f),
+            colorMultiplier = 1f,
+            fadeDuration = 0.1f
+        };
+
+        var txtObj = new GameObject("Text");
+        txtObj.transform.SetParent(btn.transform, false);
+        var txtRt = txtObj.AddComponent<RectTransform>();
+        txtRt.anchorMin = Vector2.zero;
+        txtRt.anchorMax = Vector2.one;
+        txtRt.offsetMin = Vector2.zero;
+        txtRt.offsetMax = Vector2.zero;
+
+        var tmp = txtObj.AddComponent<TextMeshProUGUI>();
+        tmp.font = _font;
+        tmp.text = text;
+        tmp.fontSize = 12;
+        tmp.fontStyle = FontStyles.Bold;
+        tmp.color = TextTitle;
+        tmp.alignment = TextAlignmentOptions.Center;
+        tmp.raycastTarget = false;
+        return button;
     }
 
     private void CreateFooterDragBar(Transform footerTransform)
@@ -2603,6 +2708,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         var input = inputGo.GetComponent<TMP_InputField>();
         input.lineType = TMP_InputField.LineType.MultiLineNewline;
+        input.onFocusSelectAll = false;
         input.readOnly = (linkedInteraction == null); // info bubbles + assistant bubble during streaming = readOnly
         input.interactable = true;
         input.textComponent.font = _font;
@@ -3611,6 +3717,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     {
         HideBubbleContextMenu();
         HideRewindConfirmation();
+        ClearSpeechSelectionOverlay();
+        ClearCachedSpeakSelection();
         _autoContinueRemaining = 0;
         if (_autoContinueToggle != null) _autoContinueToggle.isOn = false;
         CancelAllAttachmentCaptions();
@@ -3993,7 +4101,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         menuRT.anchorMin = new Vector2(0.5f, 0.5f);
         menuRT.anchorMax = new Vector2(0.5f, 0.5f);
         menuRT.pivot = new Vector2(0f, 1f);
-        menuRT.sizeDelta = new Vector2(190f, 92f);
+        menuRT.sizeDelta = new Vector2(190f, 120f);
 
         var img = menu.AddComponent<Image>();
         img.color = new Color(0.12f, 0.12f, 0.14f, 0.98f);
@@ -4009,10 +4117,17 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         vlg.childForceExpandWidth = true;
         vlg.childForceExpandHeight = false;
 
+        bool hasSpeechSelection = TryGetSpeakSelectionForMenu(field, out string selectedSpeechText, out int speechSelStart, out int speechSelEnd);
+
         CreatePopupButton(menu.transform, "Select this box", true, () =>
         {
             HideBubbleContextMenu();
             SelectAllInField(field);
+        });
+        CreatePopupButton(menu.transform, "Speak", hasSpeechSelection, () =>
+        {
+            HideBubbleContextMenu();
+            SpeakBubbleText(field, selectedSpeechText, speechSelStart, speechSelEnd);
         });
         CreatePopupButton(menu.transform, "Copy all to clipboard", true, () =>
         {
@@ -4026,6 +4141,52 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         {
             HideBubbleContextMenu();
             ShowRewindConfirmation(linkedInteraction);
+        });
+
+        PositionPopup(menuRT, _bubbleContextMenuRoot.GetComponent<RectTransform>(), screenPosition, eventCamera);
+    }
+
+    private void OnEntryInputRightClicked(TMP_InputField field, Vector2 screenPosition, Camera eventCamera)
+    {
+        if (!_isVisible || _mainPanel == null || field == null) return;
+
+        HideBubbleContextMenu();
+        HideRewindConfirmation();
+
+        _bubbleContextMenuRoot = CreatePanelOverlay("AIChatInputContextMenu", new Color(0f, 0f, 0f, 0f), HideBubbleContextMenu);
+        var menu = new GameObject("Menu");
+        menu.transform.SetParent(_bubbleContextMenuRoot.transform, false);
+        var menuRT = menu.AddComponent<RectTransform>();
+        menuRT.anchorMin = new Vector2(0.5f, 0.5f);
+        menuRT.anchorMax = new Vector2(0.5f, 0.5f);
+        menuRT.pivot = new Vector2(0f, 1f);
+        menuRT.sizeDelta = new Vector2(150f, 64f);
+
+        var img = menu.AddComponent<Image>();
+        img.color = new Color(0.12f, 0.12f, 0.14f, 0.98f);
+        var outline = menu.AddComponent<Outline>();
+        outline.effectColor = new Color(0f, 0f, 0f, 0.65f);
+        outline.effectDistance = new Vector2(1f, -1f);
+
+        var vlg = menu.AddComponent<VerticalLayoutGroup>();
+        vlg.padding = new RectOffset(6, 6, 6, 6);
+        vlg.spacing = 4;
+        vlg.childControlWidth = true;
+        vlg.childControlHeight = true;
+        vlg.childForceExpandWidth = true;
+        vlg.childForceExpandHeight = false;
+
+        bool hasSpeechSelection = TryGetSpeakSelectionForMenu(field, out string selectedSpeechText, out int speechSelStart, out int speechSelEnd);
+
+        CreatePopupButton(menu.transform, "Select all", true, () =>
+        {
+            HideBubbleContextMenu();
+            SelectAllInField(field);
+        });
+        CreatePopupButton(menu.transform, "Speak", hasSpeechSelection, () =>
+        {
+            HideBubbleContextMenu();
+            SpeakBubbleText(field, selectedSpeechText, speechSelStart, speechSelEnd);
         });
 
         PositionPopup(menuRT, _bubbleContextMenuRoot.GetComponent<RectTransform>(), screenPosition, eventCamera);
@@ -4368,16 +4529,18 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private void SelectAllInField(TMP_InputField field)
     {
         if (field == null) return;
+        ClearSpeechSelectionOverlay();
         var es = EventSystem.current;
         if (es != null)
             es.SetSelectedGameObject(field.gameObject);
         field.ActivateInputField();
         field.Select();
         int len = (field.text ?? "").Length;
-        field.selectionAnchorPosition = 0;
-        field.selectionFocusPosition = len;
-        field.caretPosition = len;
-        field.stringPosition = len;
+        field.selectionStringAnchorPosition = 0;
+        field.selectionStringFocusPosition = len;
+        field.ForceLabelUpdate();
+        if (TryBuildSpeakableSelection(field, 0, len, out string selectedText, out int selStart, out int selEnd))
+            CacheSpeakSelection(field, selectedText, selStart, selEnd);
     }
 
     private string BuildVisibleChatTranscript()
@@ -4425,6 +4588,321 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         GUIUtility.systemCopyBuffer = transcript;
         RTQuickMessageManager.Get().ShowMessage("All text put on clipboard");
+    }
+
+    private bool TryGetSpeakSelectionForMenu(TMP_InputField field, out string selectedText, out int selStart, out int selEnd)
+    {
+        if (TryGetLiveSpeakSelection(field, out selectedText, out selStart, out selEnd))
+        {
+            CacheSpeakSelection(field, selectedText, selStart, selEnd);
+            return true;
+        }
+
+        selectedText = "";
+        selStart = 0;
+        selEnd = 0;
+        if (field == null || _cachedSpeakSelectionField != field)
+            return false;
+
+        string currentText = field.text ?? "";
+        if (!string.Equals(_cachedSpeakSelectionFieldText, currentText, StringComparison.Ordinal))
+        {
+            ClearCachedSpeakSelection(field);
+            return false;
+        }
+
+        if (_cachedSpeakSelectionEnd <= _cachedSpeakSelectionStart
+            || _cachedSpeakSelectionStart < 0
+            || _cachedSpeakSelectionEnd > currentText.Length
+            || string.IsNullOrWhiteSpace(_cachedSpeakSelectionText))
+        {
+            ClearCachedSpeakSelection(field);
+            return false;
+        }
+
+        selectedText = _cachedSpeakSelectionText;
+        selStart = _cachedSpeakSelectionStart;
+        selEnd = _cachedSpeakSelectionEnd;
+        return true;
+    }
+
+    private void TrackBubbleSelection(TMP_InputField field)
+    {
+        if (TryGetLiveSpeakSelection(field, out string selectedText, out int selStart, out int selEnd))
+            CacheSpeakSelection(field, selectedText, selStart, selEnd);
+    }
+
+    private void CacheSpeakSelection(TMP_InputField field, string selectedText, int selStart, int selEnd)
+    {
+        if (field == null || string.IsNullOrWhiteSpace(selectedText))
+            return;
+
+        _cachedSpeakSelectionField = field;
+        _cachedSpeakSelectionFieldText = field.text ?? "";
+        _cachedSpeakSelectionText = selectedText;
+        _cachedSpeakSelectionStart = selStart;
+        _cachedSpeakSelectionEnd = selEnd;
+    }
+
+    private void ClearCachedSpeakSelection(TMP_InputField field = null)
+    {
+        if (field != null && _cachedSpeakSelectionField != field)
+            return;
+
+        _cachedSpeakSelectionField = null;
+        _cachedSpeakSelectionFieldText = null;
+        _cachedSpeakSelectionText = null;
+        _cachedSpeakSelectionStart = 0;
+        _cachedSpeakSelectionEnd = 0;
+    }
+
+    private bool TryGetLiveSpeakSelection(TMP_InputField field, out string selectedText, out int selStart, out int selEnd)
+    {
+        selectedText = "";
+        selStart = 0;
+        selEnd = 0;
+        if (field == null)
+            return false;
+
+        field.ForceLabelUpdate();
+
+        if (TryBuildSpeakableSelection(field, field.selectionStringAnchorPosition, field.selectionStringFocusPosition,
+                out selectedText, out selStart, out selEnd))
+            return true;
+
+        return TryBuildSpeakableSelection(field, field.selectionAnchorPosition, field.selectionFocusPosition,
+            out selectedText, out selStart, out selEnd);
+    }
+
+    private bool TryBuildSpeakableSelection(TMP_InputField field, int rawStart, int rawEnd, out string selectedText, out int selStart, out int selEnd)
+    {
+        selectedText = "";
+        selStart = 0;
+        selEnd = 0;
+        if (field == null)
+            return false;
+
+        string text = field.text ?? "";
+        selStart = Mathf.Min(rawStart, rawEnd);
+        selEnd = Mathf.Max(rawStart, rawEnd);
+        selStart = Mathf.Clamp(selStart, 0, text.Length);
+        selEnd = Mathf.Clamp(selEnd, 0, text.Length);
+        if (selEnd <= selStart)
+            return false;
+
+        string selected = ReverseTmpDisplayEscapes(text.Substring(selStart, selEnd - selStart));
+        selected = OpenAITextCompletionManager.RemoveTMPTagsFromString(selected).Trim();
+        if (string.IsNullOrWhiteSpace(selected))
+            return false;
+
+        selectedText = selected;
+        return true;
+    }
+
+    private void ShowSpeechSelectionOverlay(TMP_InputField field, int selectionStart, int selectionEnd)
+    {
+        ClearSpeechSelectionOverlay();
+
+        if (field == null || field.textComponent == null || !field.gameObject.activeInHierarchy)
+            return;
+
+        string text = field.text ?? "";
+        selectionStart = Mathf.Clamp(selectionStart, 0, text.Length);
+        selectionEnd = Mathf.Clamp(selectionEnd, 0, text.Length);
+        if (selectionEnd <= selectionStart)
+            return;
+
+        TMP_Text tmp = field.textComponent;
+        tmp.ForceMeshUpdate();
+        TMP_TextInfo info = tmp.textInfo;
+        if (info == null || info.characterCount <= 0)
+            return;
+
+        var lineBounds = new Dictionary<int, Vector4>();
+        for (int i = 0; i < info.characterCount; i++)
+        {
+            TMP_CharacterInfo ch = info.characterInfo[i];
+            int rawStart = ch.index;
+            int rawEnd = rawStart + Mathf.Max(1, ch.stringLength);
+            if (rawEnd <= selectionStart || rawStart >= selectionEnd)
+                continue;
+
+            if (rawStart >= 0 && rawStart < text.Length && (text[rawStart] == '\n' || text[rawStart] == '\r'))
+                continue;
+
+            int line = Mathf.Clamp(ch.lineNumber, 0, info.lineCount - 1);
+            float xMin;
+            float xMax;
+            float yMin;
+            float yMax;
+
+            if (ch.isVisible)
+            {
+                xMin = ch.bottomLeft.x;
+                xMax = ch.topRight.x;
+                yMin = ch.bottomLeft.y;
+                yMax = ch.topRight.y;
+            }
+            else
+            {
+                TMP_LineInfo lineInfo = info.lineInfo[line];
+                xMin = ch.origin;
+                xMax = ch.xAdvance;
+                yMin = lineInfo.descender;
+                yMax = lineInfo.ascender;
+            }
+
+            if (xMax <= xMin)
+                xMax = xMin + 2f;
+            if (yMax <= yMin)
+                yMax = yMin + tmp.fontSize;
+
+            if (lineBounds.TryGetValue(line, out Vector4 bounds))
+            {
+                bounds.x = Mathf.Min(bounds.x, xMin);
+                bounds.y = Mathf.Min(bounds.y, yMin);
+                bounds.z = Mathf.Max(bounds.z, xMax);
+                bounds.w = Mathf.Max(bounds.w, yMax);
+                lineBounds[line] = bounds;
+            }
+            else
+            {
+                lineBounds[line] = new Vector4(xMin, yMin, xMax, yMax);
+            }
+        }
+
+        if (lineBounds.Count == 0)
+            return;
+
+        var root = new GameObject("SpeechSelectionOverlay");
+        root.transform.SetParent(tmp.rectTransform, false);
+        root.transform.SetAsLastSibling();
+        var rootRT = root.AddComponent<RectTransform>();
+        rootRT.anchorMin = tmp.rectTransform.pivot;
+        rootRT.anchorMax = tmp.rectTransform.pivot;
+        rootRT.pivot = tmp.rectTransform.pivot;
+        rootRT.anchoredPosition = Vector2.zero;
+        rootRT.sizeDelta = tmp.rectTransform.rect.size;
+        _speechSelectionOverlayRoot = root;
+
+        foreach (Vector4 bounds in lineBounds.Values)
+        {
+            float padX = 1.5f;
+            float padY = 1f;
+            float xMin = bounds.x - padX;
+            float yMin = bounds.y - padY;
+            float xMax = bounds.z + padX;
+            float yMax = bounds.w + padY;
+
+            var lineGo = new GameObject("Highlight");
+            lineGo.transform.SetParent(root.transform, false);
+            var rt = lineGo.AddComponent<RectTransform>();
+            rt.anchorMin = rootRT.pivot;
+            rt.anchorMax = rootRT.pivot;
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = new Vector2((xMin + xMax) * 0.5f, (yMin + yMax) * 0.5f);
+            rt.sizeDelta = new Vector2(Mathf.Max(2f, xMax - xMin), Mathf.Max(2f, yMax - yMin));
+            var img = lineGo.AddComponent<Image>();
+            img.color = new Color(0.25f, 0.5f, 1f, 0.28f);
+            img.raycastTarget = false;
+        }
+    }
+
+    private void ClearSpeechSelectionOverlay()
+    {
+        if (_speechSelectionOverlayRoot != null)
+            Destroy(_speechSelectionOverlayRoot);
+        _speechSelectionOverlayRoot = null;
+    }
+
+    private void SpeakBubbleText(TMP_InputField field, string selectedText, int selectionStart, int selectionEnd)
+    {
+        selectedText = (selectedText ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(selectedText))
+        {
+            RTQuickMessageManager.Get().ShowMessage("Highlight text first, then choose Speak");
+            return;
+        }
+
+        if (!ElevenLabsTextToSpeechManager.CanSpeakConfigured(out string reason))
+        {
+            AddSystemMessage(reason, includeInLLMRecap: false);
+            return;
+        }
+
+        RestoreBubbleSelection(field, selectionStart, selectionEnd);
+        ShowSpeechSelectionOverlay(field, selectionStart, selectionEnd);
+        CacheSpeakSelection(field, selectedText, selectionStart, selectionEnd);
+        StartCoroutine(RestoreBubbleSelectionAfterMenuClick(field, selectionStart, selectionEnd));
+
+        ElevenLabsTextToSpeechManager.SpeakConfigured(selectedText, OnBubbleSpeakStatus);
+    }
+
+    private void RestoreBubbleSelection(TMP_InputField field, int selectionStart, int selectionEnd)
+    {
+        if (field == null || !field.gameObject.activeInHierarchy) return;
+        string text = field.text ?? "";
+        selectionStart = Mathf.Clamp(selectionStart, 0, text.Length);
+        selectionEnd = Mathf.Clamp(selectionEnd, 0, text.Length);
+        if (selectionEnd <= selectionStart) return;
+
+        var es = EventSystem.current;
+        if (es != null)
+            es.SetSelectedGameObject(field.gameObject);
+
+        field.ActivateInputField();
+        field.Select();
+        field.selectionStringAnchorPosition = selectionStart;
+        field.selectionStringFocusPosition = selectionEnd;
+        field.ForceLabelUpdate();
+    }
+
+    private IEnumerator RestoreBubbleSelectionAfterMenuClick(TMP_InputField field, int selectionStart, int selectionEnd)
+    {
+        yield return null;
+        RestoreBubbleSelection(field, selectionStart, selectionEnd);
+        ShowSpeechSelectionOverlay(field, selectionStart, selectionEnd);
+        yield return null;
+        RestoreBubbleSelection(field, selectionStart, selectionEnd);
+        ShowSpeechSelectionOverlay(field, selectionStart, selectionEnd);
+    }
+
+    private void OnBubbleSpeakStatus(string status)
+    {
+        if (string.IsNullOrWhiteSpace(status)) return;
+
+        if (status.StartsWith("Text To Speech failed", StringComparison.OrdinalIgnoreCase))
+        {
+            UpdateSpeechControls("Error");
+            ClearSpeechSelectionOverlay();
+            AddSystemMessage(status, includeInLLMRecap: false);
+        }
+        else if (status.StartsWith("Requesting", StringComparison.OrdinalIgnoreCase))
+        {
+            UpdateSpeechControls("Requesting...");
+            RTQuickMessageManager.Get().ShowMessage(status);
+        }
+        else if (status.StartsWith("Speaking", StringComparison.OrdinalIgnoreCase))
+        {
+            UpdateSpeechControls("Speaking");
+            RTQuickMessageManager.Get().ShowMessage(status);
+        }
+        else if (status.StartsWith("Speech finished", StringComparison.OrdinalIgnoreCase))
+        {
+            UpdateSpeechControls("Finished");
+            ClearSpeechSelectionOverlay();
+        }
+        else if (status.StartsWith("Speech stopped", StringComparison.OrdinalIgnoreCase))
+        {
+            UpdateSpeechControls("Stopped");
+            ClearSpeechSelectionOverlay();
+            RTQuickMessageManager.Get().ShowMessage(status);
+        }
+        else
+        {
+            UpdateSpeechControls(status);
+            RTQuickMessageManager.Get().ShowMessage(status);
+        }
     }
 
     private void HideBubbleContextMenu()
@@ -5491,6 +5969,38 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (_clearButton != null) _clearButton.interactable = true;
         if (_stopButton != null) _stopButton.interactable = busy || _waitingForForcedMainLLM || CountPendingInspectImageJobs() > 0 || HasSkillLoadAutoResumePendingForCurrentTurn() || HasGenericContinuePendingForCurrentTurn();
         if (_statusText != null) _statusText.text = status;
+    }
+
+    private void OnSpeechStopClicked()
+    {
+        ElevenLabsTextToSpeechManager.StopConfiguredSpeech("Speech stopped.");
+        ClearSpeechSelectionOverlay();
+        UpdateSpeechControls("Stopped");
+    }
+
+    private void UpdateSpeechControls(string status = null)
+    {
+        bool active = ElevenLabsTextToSpeechManager.IsConfiguredSpeechActive();
+        if (!active && status == null && _speechSelectionOverlayRoot != null)
+            ClearSpeechSelectionOverlay();
+
+        if (_speechStopButton != null)
+        {
+            _speechStopButton.gameObject.SetActive(active);
+            _speechStopButton.interactable = active;
+        }
+
+        if (_speechStatusText == null)
+            return;
+
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            _speechStatusText.text = status;
+            return;
+        }
+
+        if (!active && string.IsNullOrWhiteSpace(_speechStatusText.text))
+            _speechStatusText.text = "Idle";
     }
 
     // ---------- Skills system: action history, settings, image bubble ----------
@@ -7723,6 +8233,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             ProcessInspectImageQueue();
         }
 
+        UpdateSpeechControls();
+
         // Attachment captioning can run before the user sends, so give it the same
         // "still working" treatment as chat streaming and compact-summary requests.
         if (!_isStreaming && !_waitingForForcedMainLLM && !_compactSummaryInFlight)
@@ -7805,24 +8317,61 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         field.selectionFocusPosition = selStart + 1;
     }
 
-    private class AIChatBubbleContextClickHandler : MonoBehaviour, IPointerClickHandler
+    private class AIChatBubbleContextClickHandler : MonoBehaviour, IPointerClickHandler, IPointerDownHandler, IPointerUpHandler
     {
         private AIChatPanel _panel;
         private TMP_InputField _field;
         private GTPChatLine _interaction;
+        private bool _isEntryInput;
+        private bool _suppressCacheUntilLeftReleased;
 
-        public void Setup(AIChatPanel panel, TMP_InputField field, GTPChatLine interaction)
+        public void Setup(AIChatPanel panel, TMP_InputField field, GTPChatLine interaction, bool isEntryInput = false)
         {
             _panel = panel;
             _field = field;
             _interaction = interaction;
+            _isEntryInput = isEntryInput;
+        }
+
+        private void Update()
+        {
+            if (_suppressCacheUntilLeftReleased)
+            {
+                if (Input.GetMouseButton(0))
+                    return;
+                _suppressCacheUntilLeftReleased = false;
+            }
+
+            _panel?.TrackBubbleSelection(_field);
+        }
+
+        public void OnPointerDown(PointerEventData eventData)
+        {
+            if (eventData == null || eventData.button != PointerEventData.InputButton.Left)
+                return;
+
+            _panel?.ClearCachedSpeakSelection(_field);
+            _panel?.ClearSpeechSelectionOverlay();
+            _suppressCacheUntilLeftReleased = true;
+        }
+
+        public void OnPointerUp(PointerEventData eventData)
+        {
+            if (eventData == null || eventData.button != PointerEventData.InputButton.Left)
+                return;
+
+            _suppressCacheUntilLeftReleased = false;
+            _panel?.TrackBubbleSelection(_field);
         }
 
         public void OnPointerClick(PointerEventData eventData)
         {
             if (eventData == null || eventData.button != PointerEventData.InputButton.Right)
                 return;
-            _panel?.OnBubbleRightClicked(_field, _interaction, eventData.position, eventData.pressEventCamera);
+            if (_isEntryInput)
+                _panel?.OnEntryInputRightClicked(_field, eventData.position, eventData.pressEventCamera);
+            else
+                _panel?.OnBubbleRightClicked(_field, _interaction, eventData.position, eventData.pressEventCamera);
         }
     }
 }
