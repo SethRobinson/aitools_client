@@ -1,4 +1,5 @@
 """Probe ComfyUI servers via /queue and pick the lowest-loaded one."""
+import random
 import requests
 
 import auth
@@ -21,17 +22,27 @@ def probe_server(url):
 
 
 def pick_server(servers, verbose=False):
-    """Return (url, depth) of the reachable server with the lowest queue."""
-    best = None
+    """Return (url, depth) of a reachable server with the lowest queue.
+
+    Among servers tied for the lowest depth we choose RANDOMLY rather than
+    always taking the first reachable one. Otherwise, when many jobs launch
+    at the same instant (e.g. a build script nohup-firing 14 renders at
+    once), every client probes BEFORE any of them submits, sees all queues
+    equal, and deterministically piles onto the same server — serializing
+    the whole batch on one GPU while the other cards idle. Random
+    tie-breaking spreads a simultaneous burst ~evenly across the
+    equal-lowest servers; when one card is genuinely busier it still has a
+    higher depth and is correctly avoided.
+    """
+    reachable = []
     for url in servers:
         depth = probe_server(url)
         if verbose:
             status = "unreachable" if depth is None else f"queue {depth}"
             print(f"  {url}: {status}")
-        if depth is None:
-            continue
-        if best is None or depth < best[1]:
-            best = (url, depth)
-    if best is None:
+        if depth is not None:
+            reachable.append((url, depth))
+    if not reachable:
         die("no reachable ComfyUI servers", 2)
-    return best
+    low = min(depth for _, depth in reachable)
+    return random.choice([pair for pair in reachable if pair[1] == low])
