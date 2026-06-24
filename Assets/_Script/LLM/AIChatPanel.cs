@@ -235,6 +235,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private const int DEFAULT_IMAGE_CONTEXT_LIMIT = 40;
     private const int MAX_IMAGE_CONTEXT_LIMIT = 200;
     private const string PREFS_MAIN_LLM_INSTANCE_ID = "aichat_main_llm_instance_id";
+    private static string _userPostMessage = "";
 
     // Footer
     private TMP_InputField _inputField;
@@ -3044,6 +3045,19 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         return sb.ToString();
     }
 
+    private static string AppendUserPostMessageToText(string text)
+    {
+        string postMessage = GetUserPostMessage().Trim();
+        if (string.IsNullOrEmpty(postMessage))
+            return text ?? "";
+
+        string baseText = text ?? "";
+        if (string.IsNullOrWhiteSpace(baseText))
+            return postMessage;
+
+        return baseText.TrimEnd() + "\n\n" + postMessage;
+    }
+
     /// <summary>
     /// Append a "You:" bubble linked to a GTPChatLine so the user can edit what they
     /// said (e.g. to test how the AI responds to a hand-crafted history).
@@ -3326,11 +3340,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (_promptManager == null)
             return;
 
-        const string visibleText = "(continue)";
+        const string baseText = "(continue)";
+        string visibleText = AppendUserPostMessageToText(baseText);
         ResetPerTurnExecutionState();
         _lastTurnAttachments.Clear();
 
-        string llmPayloadText = BuildLLMPayloadWithInfoRecap(visibleText);
+        string llmPayloadText = BuildLLMPayloadWithInfoRecap(baseText);
+        llmPayloadText = AppendUserPostMessageToText(llmPayloadText);
         _promptManager.AddInteraction("user", llmPayloadText);
         var userInteraction = _promptManager.GetLastInteraction();
         MarkInteractionMediaCheckpoint(userInteraction);
@@ -3472,14 +3488,17 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             AddSystemMessage($"Attached {attachedCount} image{(attachedCount == 1 ? "" : "s")} to the next message ({mode}).", includeInLLMRecap: false);
         }
 
+        string visibleText = AppendUserPostMessageToText(text);
+
         // Quietly fold any unsent Info bubbles (skill warnings/errors that have piled
         // up since the last send) into the LLM payload as a "for the future, please
         // keep this in mind" recap, so the model can learn from its own mistakes
-        // without forcing the user to copy-paste them. The user-visible bubble below
-        // intentionally stays clean - it shows ONLY what the user actually typed -
-        // while the prompt-manager history gets the augmented text. Marking each
-        // recapped entry as already-sent prevents re-attaching it on subsequent turns.
+        // without forcing the user to copy-paste them. This recap stays hidden from
+        // the visible bubble; the session post-message reminder is intentionally
+        // visible and stored normally. Marking each recapped entry as already-sent
+        // prevents re-attaching it on subsequent turns.
         string llmPayloadText = BuildLLMPayloadWithInfoRecap(text);
+        llmPayloadText = AppendUserPostMessageToText(llmPayloadText);
 
         // Add the interaction first so we can link the bubble to it - that link is what
         // makes the bubble editable (and what makes user edits flow back into the prompt
@@ -3487,7 +3506,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _promptManager.AddInteraction("user", llmPayloadText);
         var userInteraction = _promptManager.GetLastInteraction();
         MarkInteractionMediaCheckpoint(userInteraction);
-        AddUserMessage(text, userInteraction);
+        AddUserMessage(visibleText, userInteraction);
 
         // Drop the staged thumbnails now that they've been baked into the conversation.
         if (attachedCount > 0)
@@ -3503,7 +3522,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         }
         FocusInputDeferred();
 
-        SendChatTurn(text);
+        SendChatTurn(visibleText);
     }
 
     /// <summary>
@@ -7366,6 +7385,21 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     {
         PlayerPrefs.SetInt(PREFS_IMAGE_CONTEXT_LIMIT, Mathf.Clamp(n, 0, MAX_IMAGE_CONTEXT_LIMIT));
         PlayerPrefs.Save();
+    }
+
+    /// <summary>
+    /// Session-only reminder appended to each main AI Chat user turn before the
+    /// bubble/history entry is created. Not stored in PlayerPrefs; survives Clear
+    /// because it is settings state, not conversation state.
+    /// </summary>
+    public static string GetUserPostMessage()
+    {
+        return _userPostMessage ?? "";
+    }
+
+    public static void SetUserPostMessage(string text)
+    {
+        _userPostMessage = text ?? "";
     }
 
     /// <summary>True when a chat panel instance is alive to compact.</summary>
