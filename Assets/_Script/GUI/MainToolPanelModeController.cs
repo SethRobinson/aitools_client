@@ -8,12 +8,11 @@ using UnityEngine.UI;
 /// </summary>
 public class MainToolPanelModeController : MonoBehaviour
 {
-    private const string PrefsKey = "aitools_main_tool_panel_manual_mode";
     private const string CompactControlsName = "CompactToolControls";
     private const string ManualControlsName = "ManualToolControls";
     private const string ManualButtonName = "ManualModeButton";
-    private const string ShowManualText = "Show Manual Controls";
-    private const string ShowSimpleText = "Show Simple Controls";
+    private const string ShowManualText = "Show Advanced";
+    private const string ShowSimpleText = "Hide Advanced";
     private const float CompactPanelPadding = 6f;
 
     private RectTransform _panel;
@@ -76,8 +75,7 @@ public class MainToolPanelModeController : MonoBehaviour
         BindManualButton();
 
         _initialized = true;
-        bool savedManualMode = PlayerPrefs.GetInt(PrefsKey, 0) != 0;
-        ApplyMode(savedManualMode, false);
+        ApplyMode(false);
     }
 
     public void ToggleManualMode()
@@ -87,20 +85,14 @@ public class MainToolPanelModeController : MonoBehaviour
 
     public void SetManualMode(bool enabled)
     {
-        ApplyMode(enabled, true);
+        ApplyMode(enabled);
     }
 
-    private void ApplyMode(bool manualMode, bool savePreference)
+    private void ApplyMode(bool manualMode)
     {
         if (!_initialized) return;
 
         _isManualMode = manualMode;
-
-        if (savePreference)
-        {
-            PlayerPrefs.SetInt(PrefsKey, manualMode ? 1 : 0);
-            PlayerPrefs.Save();
-        }
 
         _compactControls.gameObject.SetActive(true);
         _manualControls.gameObject.SetActive(manualMode);
