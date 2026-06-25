@@ -2765,7 +2765,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         AppendBubble(
             "AI Chat",
             new Color(0.22f, 0.22f, 0.28f, 1f),
-            "Assuming you've setup an LLM and at least one ComfyUI server, you can ask to generate images, videos, stories, comics, and learn Japanese with a patient teacher.  Use Ctrl+Mouse Wheel to adjust font size.",
+            "Assuming you've setup an LLM and at least one ComfyUI server, you can ask to generate images, videos, stories, comics, and learn Japanese with a patient teacher.  Use Ctrl+Mouse Wheel to adjust font size.\n\nFor examples and info, type **help**",
             new Color(0.92f, 0.94f, 0.98f, 1f));
     }
 
@@ -3448,6 +3448,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             ? _attachmentZone.GetAttachmentInfo()
             : (IReadOnlyList<ChatImageAttachmentZone.AttachmentInfo>)System.Array.Empty<ChatImageAttachmentZone.AttachmentInfo>();
         int attachedCount = attachmentInfos.Count;
+
         bool currentTurnAddsRawImages = attachedCount > 0 && GetIncludeImageData();
         if (!ValidateForcedMainLLMForSend(currentTurnAddsRawImages))
             return;
