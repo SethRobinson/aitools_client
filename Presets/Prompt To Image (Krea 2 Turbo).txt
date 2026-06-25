@@ -1,0 +1,12 @@
+COMMAND_START|joblist
+#Generate image using Krea 2 Turbo FP8 model
+%width%="1024"
+%height%="1024"
+%steps%="8"
+
+text_to_img_krea2_turbo.json @replace|"width": 1024|"width": %width%| @replace|"height": 1024|"height": %height%| @replace|"steps": 8|"steps": %steps%|
+COMMAND_END
+COMMAND_START|default_negative_prompt
+COMMAND_END
+COMMAND_START|default_pre_prompt
+COMMAND_END

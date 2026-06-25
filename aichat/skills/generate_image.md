@@ -30,6 +30,10 @@ Pick the preset whose strengths best match the user's request. If unsure,
 default to `{{Prompt To Image (Z-Image).txt}}` (high-quality general purpose).
 
 - `{{Prompt To Image (Z-Image).txt}}` - balanced quality/speed
+- `{{Prompt To Image (Krea 2 Turbo).txt}}` - fast aesthetic-focused image
+  generation and strong visual/art-direction variety. Use ONLY when the user
+  says "krea", "krea2", or "krea 2" - the `krea` skill auto-loads with
+  prompt and invocation rules; follow it.
 - `{{Prompt To Image (Ideogram 4).txt}}` - excels at rendered text, posters,
   and precise layout, BUT its prompt must be a structured JSON caption, never
   prose. Use ONLY when the user says "ideo"/"ideogram" - the `ideo` skill
