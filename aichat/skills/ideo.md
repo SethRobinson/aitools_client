@@ -1,17 +1,18 @@
 ---
 id: ideo
-summary: Ideogram 4 image generation - great at rendered text, posters, signage, precise layouts. Triggered by "ideo" / "ideogram". It is a RECIPE, not an executable action - never emit skill="ideo"; when triggered it auto-loads, then follow its Invocation section to emit a generate_image with the Ideogram 4 preset and a structured-JSON prompt.
+summary: Ideogram 4 image generation - great at rendered text, posters, signage, precise layouts, and the preferred default for new whole comic strips/pages. Triggered by "ideo" / "ideogram" / "ideograph". It is a RECIPE, not an executable action - never emit skill="ideo"; when triggered or routed from a recipe, emit generate_image with the Ideogram 4 preset and a structured-JSON prompt.
 inputs: none
 autoload: true
-triggers: ideo, ideogram, ideogram4, ideogram 4
+triggers: ideo, ideogram, ideogram4, ideogram 4, ideograph, ideograph 4
 template: <aitools_action skill="read_skill" id="ideo"/>
 ---
 # Ideogram 4 ("ideo") - structured JSON caption images
 
-When the user asks for an image "with ideo" / "using ideogram" (or similar),
-do NOT write a normal prose prompt. Instead, convert the user's idea into a
-structured JSON caption and emit it as the `prompt` of a normal
-`generate_image` action using the Ideogram 4 preset. Ideogram 4's text
+When the user asks for an image "with ideo" / "using ideogram" / "using
+ideograph" (or similar), or when an auto-loaded recipe such as `comics` routes
+the request to Ideogram, do NOT write a normal prose prompt. Instead, convert
+the user's idea into a structured JSON caption and emit it as the `prompt` of a
+normal `generate_image` action using the Ideogram 4 preset. Ideogram 4's text
 encoder consumes this JSON directly - it gives precise control over layout,
 typography, and per-element detail.
 
@@ -80,12 +81,15 @@ unused by this preset.
 
 ### Comic pages with ideo
 
-When the user asks for a comic / comic page / comic strip **using ideo** or
-**using only ideo**, make the finished comic page in ONE Ideogram render.
-Do not generate four loose panel images and assemble them with `new_canvas` /
-`paste_image` unless the user specifically asked to combine existing chat
-images. Ideogram can handle the panel grid, title, speech balloons, and printed
-dialog in the JSON caption.
+When the user asks for a new whole comic / comic page / comic strip, or the
+`comics` skill routes a comic request here, prefer making the finished comic
+page in ONE Ideogram render. This is the default for new finished comic
+deliverables. Do not generate four loose panel images and assemble them with
+`new_canvas` / `paste_image` unless the user specifically asked to combine
+existing chat images, needs exact anchor/reference workflows across separately
+edited panels, wants separate source panels, or is repairing local overlays.
+Ideogram can handle the panel grid, title, speech balloons, and printed dialog
+in the JSON caption.
 
 If the user asks for multiple pages, emit one separate Ideogram
 `generate_image` action per requested page. Do not compress "2 pages" into one

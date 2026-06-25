@@ -35,9 +35,11 @@ default to `{{Prompt To Image (Z-Image).txt}}` (high-quality general purpose).
   says "krea", "krea2", or "krea 2" - the `krea` skill auto-loads with
   prompt and invocation rules; follow it.
 - `{{Prompt To Image (Ideogram 4).txt}}` - excels at rendered text, posters,
-  and precise layout, BUT its prompt must be a structured JSON caption, never
-  prose. Use ONLY when the user says "ideo"/"ideogram" - the `ideo` skill
-  auto-loads with the required JSON format and invocation rules; follow it.
+  comic pages/strips, and precise layout, BUT its prompt must be a structured
+  JSON caption, never prose. Use when the user says "ideo"/"ideogram"/
+  "ideograph" OR when an auto-loaded recipe such as `comics` tells you to use
+  Ideogram for a whole new comic page/strip. Follow the loaded `ideo` or
+  `comics` JSON rules.
 
 
 ## Invocation

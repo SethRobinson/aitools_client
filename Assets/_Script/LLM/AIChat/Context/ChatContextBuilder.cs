@@ -147,13 +147,14 @@ namespace AITools.AIChat.Context
         /// <paramref name="chatImageSlotCount"/> is the total number of numbered
         /// slots available via chat_image="N"; <paramref name="chatImages"/> is
         /// the subset to actually list in the prompt. AIChatPanel appends this
-        /// to the outgoing user message each turn - ephemerally, so volatile
-        /// state never rewrites earlier request content the server already cached.
+        /// to the outgoing user message each turn on the prompt copy. Visible
+        /// history stays clean, while prior sent copies can remain byte-identical
+        /// for server prompt caches.
         /// </summary>
         public string BuildCurrentStateBlock(int chatImageSlotCount = 0, IReadOnlyList<ChatImageState> chatImages = null, string anchorsLine = null, int imageContextLimit = 40)
         {
             var sb = new StringBuilder();
-            sb.AppendLine("[CURRENT STATE - attached automatically to the newest message; the user did not type this. Earlier messages had their copies removed to save space.]");
+            sb.AppendLine("[CURRENT STATE - attached automatically to this user turn; the user did not type this. Use the newest CURRENT STATE block for live status; older copies are historical and may remain for prompt-cache reuse.]");
 
             sb.Append(GpuSnapshot.BuildBlock());
             sb.AppendLine();

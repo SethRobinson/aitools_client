@@ -82,6 +82,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // "New chat", "Conversation cleared") opt out via includeInLLMRecap=false at
     // the AddSystemMessage call site. Cleared with the rest of the chat in
     // OnClearClicked so a fresh conversation starts with no carry-over.
+    private const string InfoRecapMarker = "\n\n---\nAlso, for the future, please keep this in mind:";
+
     private class InfoMessage
     {
         public string m_text;
@@ -207,8 +209,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // separate one-shot vision call) plus dimensions ride along with the
     // user message, and the raw bytes never enter chat history.
     private const string PREFS_INCLUDE_IMAGE_DATA = "aichat_include_image_data";
-    // Prompt slimming switches. Defaults are lean: don't re-send old tool XML and
-    // don't spend sidecar vision calls captioning images the chat model generated.
+    // Prompt slimming switches. Keep old tool XML by default so follow-up turns can
+    // byte-match the previous assistant output and reuse llama.cpp's prompt cache.
+    // Generated-image auto-captioning still defaults off to avoid sidecar work.
     private const string PREFS_KEEP_OLD_TOOL_CALLS_IN_PROMPT = "aichat_keep_old_tool_calls_in_prompt";
     private const string PREFS_AUTO_CAPTION_GENERATED_IMAGES = "aichat_auto_caption_generated_images";
     private const string PREFS_SHOW_DEBUG_STUFF = "aichat_show_debug_stuff";
@@ -2823,7 +2826,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             // the real '<aitools_action' tags.
             string raw = ReverseTmpDisplayEscapes(text ?? "");
             string clean = OpenAITextCompletionManager.RemoveTMPTagsFromString(raw);
-            interaction._content = clean;
+            if (string.Equals(clean, interaction.GetDisplayContent(), StringComparison.Ordinal))
+                return;
+
+            interaction.SetEditedContent(clean);
         });
     }
 
@@ -3071,13 +3077,27 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         var sb = new StringBuilder();
         sb.Append(userTypedText ?? "");
-        sb.Append("\n\n---\nAlso, for the future, please keep this in mind:");
+        sb.Append(InfoRecapMarker);
         for (int i = 0; i < unsent.Count; i++)
         {
             sb.Append("\n- ").Append(unsent[i].m_text);
             unsent[i].m_alreadySentToLLM = true;
         }
         return sb.ToString();
+    }
+
+    private static string BuildDisplaySafeUserText(GTPChatLine line)
+    {
+        if (line == null) return "";
+        if (line._displayContent != null)
+            return line._displayContent;
+
+        // Fallback for turns created before display content was stored separately.
+        // New user lines keep the exact LLM payload in _content and the clean
+        // human-visible text in _displayContent.
+        string content = line._content ?? "";
+        int recapIndex = content.IndexOf(InfoRecapMarker, StringComparison.Ordinal);
+        return recapIndex >= 0 ? content.Substring(0, recapIndex) : content;
     }
 
     private static string AppendUserPostMessageToText(string text)
@@ -3384,6 +3404,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         llmPayloadText = AppendUserPostMessageToText(llmPayloadText);
         _promptManager.AddInteraction("user", llmPayloadText);
         var userInteraction = _promptManager.GetLastInteraction();
+        userInteraction?.RememberDisplayContent(visibleText);
         MarkInteractionMediaCheckpoint(userInteraction);
         AddUserMessage(visibleText, userInteraction);
 
@@ -3545,6 +3566,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // history sent to the LLM on subsequent turns).
         _promptManager.AddInteraction("user", llmPayloadText);
         var userInteraction = _promptManager.GetLastInteraction();
+        userInteraction?.RememberDisplayContent(visibleText);
         MarkInteractionMediaCheckpoint(userInteraction);
         AddUserMessage(visibleText, userInteraction);
 
@@ -4020,6 +4042,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         AIChatLog.Response("chat", historyText);
         _promptManager.AddInteraction("assistant", historyText);
         var assistantInteraction = _promptManager.GetLastInteraction();
+        assistantInteraction?.RememberDisplayContent(visibleText);
         MarkInteractionMediaCheckpoint(assistantInteraction);
         EnableBubbleEditing(completedField, assistantInteraction);
     }
@@ -4126,7 +4149,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // Tear down every chat bubble and recreate it from the (post-compact)
     // interaction history, relinking user/assistant bubbles to their live
     // GTPChatLine so inline editing still works.
-    private void RebuildChatBubblesFromHistory()
+    private void RebuildChatBubblesFromHistory(GTPChatLine forceVisibleInteraction = null)
     {
         if (_chatContent == null || _promptManager == null) return;
 
@@ -4139,10 +4162,14 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         foreach (var line in _promptManager.GetInteractionsList())
         {
-            if (line == null || string.IsNullOrEmpty(line._content)) continue;
+            if (line == null) continue;
+            bool forceVisible = ReferenceEquals(line, forceVisibleInteraction);
+            if (string.IsNullOrEmpty(line._content) && !forceVisible) continue;
             if (line._role == "user")
             {
-                AddUserMessage(line._content, line);
+                string display = BuildDisplaySafeUserText(line);
+                if (!string.IsNullOrWhiteSpace(display) || forceVisible)
+                    AddUserMessage(display, line);
             }
             else if (line._role == "assistant")
             {
@@ -4152,8 +4179,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 // (OnLLMCompletedCallback uses _actionParser.Flush() for the bubble
                 // but stores the raw text in history). Without this, a rebuild after
                 // Compact/edit leaks the raw markup into the chat.
-                string display = BuildDisplaySafeAssistantText(line._content);
-                if (!string.IsNullOrWhiteSpace(display))
+                string display = line._displayContent ?? BuildDisplaySafeAssistantText(line._content) ?? "";
+                if (!string.IsNullOrWhiteSpace(display) || forceVisible)
                     AppendBubble("Assistant", new Color(0.10f, 0.45f, 0.20f), display, AssistantBubbleBg, line);
             }
             else
@@ -4378,7 +4405,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // (Info / system bubbles aren't part of _interactions, so they don't get copied -
         // which is what we want; they're UI-only annotations like "New chat".)
         var sb = new StringBuilder();
-        var lines = _promptManager.BuildPromptChat();
+        var lines = _promptManager.BuildPromptChat(usePromptCache: false);
         foreach (var line in lines)
         {
             if (line == null || string.IsNullOrEmpty(line._content)) continue;
@@ -4666,7 +4693,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         var finalKept = _promptManager.GetInteractionsList();
         PruneMediaCheckpointsTo(finalKept);
 
-        RebuildChatBubblesFromHistory();
+        RebuildChatBubblesFromHistory(target);
         AddSystemMessage($"Rewound: removed {removedMessages} later message{(removedMessages == 1 ? "" : "s")} and {removedMedia} later media item{(removedMedia == 1 ? "" : "s")}.", includeInLLMRecap: false);
         FocusInputDeferred();
     }
@@ -5427,9 +5454,14 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         // Tack the volatile CURRENT STATE block (GPU busy/idle, chat-image provenance/captions)
         // onto the outgoing copy of the latest user message - the request tail, where
-        // churn is cheap. Ephemeral by design: stored history never contains it, so
-        // next turn's request still prefix-matches everything the server cached.
+        // churn is cheap.
         AppendCurrentStateToOutgoingLines(lines);
+
+        // Remember the exact text we are about to send for each cloned history line.
+        // On future turns BuildPromptChat reuses those bytes so the server can reuse
+        // its KV cache through prior user/assistant turns. If the user edits a bubble,
+        // the line's visible _content changes and this cached prompt text is ignored.
+        _promptManager?.RememberPromptContentFromClones(lines);
 
         // Send raw attached image bytes only on the turn where the user attached them.
         // BuildPromptChat/RemoveTMPTags returned cloned GTPChatLine objects above, so
@@ -5725,11 +5757,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     /// <summary>
     /// Append the volatile CURRENT STATE block (GPU busy/idle, chat-image list with
     /// captions) to the last user line of the outgoing request. Operates on the
-    /// clones BuildPromptChat/RemoveTMPTags returned - stored history is never
-    /// touched, which is what keeps the conversation's server-side prompt cache
-    /// valid while GPU state and captions churn between turns. If no user line
-    /// exists (shouldn't happen - sends always follow a user message) the block is
-    /// simply skipped; it's advisory context, not required for a valid request.
+    /// clones BuildPromptChat/RemoveTMPTags returned; the final sent clone text is
+    /// remembered separately as prompt-cache content after this method runs. Visible
+    /// stored history stays clean/editable, while future unedited turns can still
+    /// byte-match the exact previous request. If no user line exists (shouldn't
+    /// happen - sends always follow a user message) the block is simply skipped;
+    /// it's advisory context, not required for a valid request.
     /// </summary>
     private void AppendCurrentStateToOutgoingLines(Queue<GTPChatLine> lines)
     {
@@ -6019,6 +6052,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         _promptManager.AddInteraction("assistant", historyText);
         var assistantInteraction = _promptManager.GetLastInteraction();
+        assistantInteraction?.RememberDisplayContent(visibleText);
         MarkInteractionMediaCheckpoint(assistantInteraction);
 
         // Now that we have an interaction to link the bubble to, switch the assistant
@@ -7896,7 +7930,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     public static bool GetKeepOldToolCallsInPrompt()
     {
-        return PlayerPrefs.GetInt(PREFS_KEEP_OLD_TOOL_CALLS_IN_PROMPT, 0) != 0;
+        return PlayerPrefs.GetInt(PREFS_KEEP_OLD_TOOL_CALLS_IN_PROMPT, 1) != 0;
     }
 
     public static void SetKeepOldToolCallsInPrompt(bool v)

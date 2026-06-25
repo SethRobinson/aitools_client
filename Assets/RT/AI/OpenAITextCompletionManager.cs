@@ -24,9 +24,62 @@ public class GTPChatLine
         public GTPChatLine Clone()
         {
             var clone = new GTPChatLine(_role, _content, _internalTag);
+            clone._displayContent = _displayContent;
             clone._images = new List<string>(_images);
             clone._imageChatIndices = new List<int>(_imageChatIndices ?? new List<int>());
+            clone._promptCacheContent = _promptCacheContent;
+            clone._promptCacheSourceContent = _promptCacheSourceContent;
+            clone._promptCacheSourceLine = _promptCacheSourceLine;
             return clone;
+        }
+
+        public GTPChatLine CloneForPrompt()
+        {
+            var clone = Clone();
+            clone._content = GetContentForPrompt();
+            clone._promptCacheSourceLine = this;
+            return clone;
+        }
+
+        public string GetContentForPrompt()
+        {
+            if (!string.IsNullOrEmpty(_promptCacheContent)
+                && string.Equals(_promptCacheSourceContent, _content, StringComparison.Ordinal))
+            {
+                return _promptCacheContent;
+            }
+
+            return _content;
+        }
+
+        public void RememberPromptContent(string promptContent)
+        {
+            _promptCacheSourceContent = _content;
+            _promptCacheContent = promptContent ?? "";
+        }
+
+        public void ClearPromptCache()
+        {
+            _promptCacheContent = null;
+            _promptCacheSourceContent = null;
+            _promptCacheSourceLine = null;
+        }
+
+        public string GetDisplayContent()
+        {
+            return _displayContent ?? _content ?? "";
+        }
+
+        public void RememberDisplayContent(string displayContent)
+        {
+            _displayContent = displayContent ?? "";
+        }
+
+        public void SetEditedContent(string content)
+        {
+            _content = content ?? "";
+            _displayContent = _content;
+            ClearPromptCache();
         }
 
         /// <summary>
@@ -56,7 +109,11 @@ public class GTPChatLine
 
         public string _role; //must be set to user, assistant, or system
         public string _content;
+        public string _displayContent;
         public string _internalTag;
+        public string _promptCacheContent;
+        public string _promptCacheSourceContent;
+        [NonSerialized] public GTPChatLine _promptCacheSourceLine;
         public List<string> _images; // Base64-encoded images for vision LLM
         // Parallel to _images: the global chat_image="N" index of each image, or
         // -1 if not a numbered chat image. Used by serializers to inject explicit

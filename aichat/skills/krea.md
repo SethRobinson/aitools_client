@@ -49,4 +49,5 @@ illustration, and graphic image ideas.
 - Avoid negative prompts for this preset unless a future tested recipe proves
   they help.
 - For rendered text, signage, comic pages, or strict layouts where text
-  accuracy matters, prefer Ideogram when the user asked for `ideo`/`ideogram`.
+  accuracy matters, prefer Ideogram by default. Use Krea for those only when
+  the user explicitly asked for Krea despite that tradeoff.

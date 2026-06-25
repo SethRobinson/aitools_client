@@ -224,6 +224,10 @@ keywords), use it directly in this same reply and do NOT call
 Composition rules to follow without exception:
 - One full pattern per deliverable. Don't pile multiple posters into
   one chain.
+- For a new whole comic page/strip/manga page, prefer the `comics` skill's
+  Ideogram 4 single-render recipe. Use local composition primitives for
+  existing-image bubbles, combining existing chat images, exact anchor/source
+  panel workflows, or repairs to already-composed comic text/layout.
 - For posters/cards/covers, use `chain="true"` on every step after the
   first generate, first new_canvas, or first existing-image layout op
   (e.g. `add_border chat_image="N"`). The result is one bubble per

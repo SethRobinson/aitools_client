@@ -366,7 +366,23 @@ public class GPTPromptManager : MonoBehaviour
     }
 
 
-    public Queue<GTPChatLine> BuildPromptChat(int linesToIgnoreAtTheEnd = 0)
+    public int RememberPromptContentFromClones(IEnumerable<GTPChatLine> promptLines)
+    {
+        if (promptLines == null) return 0;
+        int recorded = 0;
+        foreach (var promptLine in promptLines)
+        {
+            var source = promptLine?._promptCacheSourceLine;
+            if (source == null)
+                continue;
+
+            source.RememberPromptContent(promptLine._content);
+            recorded++;
+        }
+        return recorded;
+    }
+
+    public Queue<GTPChatLine> BuildPromptChat(int linesToIgnoreAtTheEnd = 0, bool usePromptCache = true)
     {
         Queue<GTPChatLine> lines = new Queue<GTPChatLine>();
 
@@ -398,8 +414,11 @@ public class GPTPromptManager : MonoBehaviour
                 break;
             }
             count--;
-            // Use Clone() to preserve images attached to interactions
-            var cloned = interaction.Clone();
+            // Use a clone to preserve images attached to interactions. For main chat
+            // prompts, prefer the exact text last sent for this line so llama.cpp can
+            // reuse the previous KV prefix; user edits invalidate that cache because
+            // the source _content no longer matches.
+            var cloned = usePromptCache ? interaction.CloneForPrompt() : interaction.Clone();
             // Move any system messages that ended up in interactions into the front system block
             if (cloned._role == _nameToUseForSystem && lines.Count > 0)
             {

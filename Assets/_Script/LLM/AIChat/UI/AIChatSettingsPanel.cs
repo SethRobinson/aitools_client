@@ -492,7 +492,7 @@ namespace AITools.AIChat.UI
                 new Vector2(kSettingsLeftPad, kSlimRowY),
                 new Vector2(220, 24),
                 AIChatPanel.GetKeepOldToolCallsInPrompt(),
-                "When enabled, prior assistant <aitools_action .../> XML stays in future chat prompts. Off is leaner: old tool XML remains in logs/history but is stripped from the outgoing request.");
+                "When enabled, prior assistant <aitools_action .../> XML stays in future chat prompts so server prompt caches can match prior assistant output exactly. Off is leaner but intentionally breaks that cache reuse.");
 
             _autoCaptionGeneratedImagesToggle = MakeSettingToggle(
                 footer.transform,
