@@ -1117,6 +1117,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         var inputContextHandler = inputGo.AddComponent<AIChatBubbleContextClickHandler>();
         inputContextHandler.Setup(this, _inputField, null, isEntryInput: true);
 
+        // Prevent Ctrl+wheel font resizing from also scrolling the multiline entry box.
+        inputGo.AddComponent<ChatScrollForwarder>();
+
         // Vertical scrollbar on the entry box so large pastes / long messages can be
         // scrolled instead of running off the bottom. Attach it after this frame's UI
         // construction finishes; otherwise TMP can update the scrollbar while a text
@@ -2733,10 +2736,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         var bubbleCaretFixer = inputGo.AddComponent<AIChatCaretFixer>();
         bubbleCaretFixer.Set(input);
 
-        // Forward mouse-wheel events from the bubble's TMP_InputField up to the chat
-        // ScrollRect. Without this, TMP_InputField's own IScrollHandler swallows the
-        // event (because the field is multiline) and the conversation can't be scrolled
-        // while the cursor is hovering a bubble.
+        // Forward regular mouse-wheel events from the bubble's TMP_InputField up to
+        // the chat ScrollRect. The forwarder also suppresses the input field's own
+        // text scrolling while Ctrl is held for font resizing.
         var bubbleScrollForwarder = inputGo.AddComponent<ChatScrollForwarder>();
         bubbleScrollForwarder.target = _chatScroll;
 
@@ -8969,19 +8971,90 @@ public class MinScrollbarHandleSize : MonoBehaviour
 }
 
 /// <summary>
-/// Forwards mouse-wheel scroll events to a target ScrollRect. We attach this to each
-/// chat bubble's TMP_InputField GameObject because TMP_InputField itself implements
-/// IScrollHandler (for in-field scrolling), which otherwise swallows the wheel event
-/// before it can reach the parent ScrollRect. Both handlers fire on the same GameObject
-/// when the EventSystem dispatches IScrollHandler, so this safely runs alongside
-/// TMP_InputField.OnScroll without interfering with text editing.
+/// Forwards regular mouse-wheel scroll events to a target ScrollRect and suppresses
+/// TMP_InputField's own text scrolling during Ctrl+wheel font resizing. We attach this
+/// to multiline AI Chat TMP_InputFields because TMP_InputField itself implements
+/// IScrollHandler and Unity invokes every IScrollHandler on the hit GameObject.
 /// </summary>
 public class ChatScrollForwarder : MonoBehaviour, IScrollHandler
 {
     public ScrollRect target;
 
+    private TMP_InputField _input;
+    private RectTransform _textRect;
+    private Scrollbar _scrollbar;
+    private Vector2 _lastTextAnchoredPosition;
+    private float _lastScrollbarValue;
+    private bool _hasTextScrollState;
+    private bool _hasScrollbarState;
+
+    private void Awake()
+    {
+        CaptureScrollState();
+    }
+
+    private void OnEnable()
+    {
+        CaptureScrollState();
+    }
+
+    private void LateUpdate()
+    {
+        CaptureScrollState();
+    }
+
     public void OnScroll(PointerEventData data)
     {
+        if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
+        {
+            RestoreScrollState();
+            data.Use();
+            return;
+        }
+
         if (target != null) target.OnScroll(data);
+        CaptureScrollState();
+    }
+
+    private void CacheReferences()
+    {
+        if (_input == null)
+            _input = GetComponent<TMP_InputField>();
+
+        if (_input == null)
+            return;
+
+        if (_input.textComponent != null)
+            _textRect = _input.textComponent.rectTransform;
+        _scrollbar = _input.verticalScrollbar;
+    }
+
+    private void CaptureScrollState()
+    {
+        CacheReferences();
+
+        if (_textRect != null)
+        {
+            _lastTextAnchoredPosition = _textRect.anchoredPosition;
+            _hasTextScrollState = true;
+        }
+
+        if (_scrollbar != null)
+        {
+            _lastScrollbarValue = _scrollbar.value;
+            _hasScrollbarState = true;
+        }
+    }
+
+    private void RestoreScrollState()
+    {
+        CacheReferences();
+        if (!_hasTextScrollState && !_hasScrollbarState)
+            return;
+
+        if (_scrollbar != null && _hasScrollbarState)
+            _scrollbar.value = _lastScrollbarValue;
+        if (_textRect != null && _hasTextScrollState)
+            _textRect.anchoredPosition = _lastTextAnchoredPosition;
     }
 }
