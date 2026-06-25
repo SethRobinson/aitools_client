@@ -124,6 +124,7 @@ public class GameLogic : MonoBehaviour
     public GameObject m_tempPic1;
     public GameObject m_tempPic2;
     public GameObject m_tempPic3;
+    private MainToolPanelModeController _mainToolPanelModeController;
 
 
     // On startup, GameLogic may initialize before LLMSettingsManager exists/loads settings.
@@ -1799,7 +1800,9 @@ public string GetPrompt() { return m_prompt; }
         BindActiveLLMLabelUpdates();
         UpdateActiveLLMLabel();
 
-        MainToolPanelModeController.Install();
+        _mainToolPanelModeController = MainToolPanelModeController.Install();
+        if (_mainToolPanelModeController != null)
+            _mainToolPanelModeController.ManualModeChanged += OnMainToolPanelManualModeChanged;
 
         // If the LLM settings manager isn't ready yet, retry until it is (or we time out).
         if (LLMSettingsManager.Get() == null)
@@ -1814,6 +1817,30 @@ public string GetPrompt() { return m_prompt; }
         m_tempPic1.GetComponent<PicMain>().AddTextLabelToImage("TempPic1 (used with job scripts sometimes)");
         m_tempPic2.GetComponent<PicMain>().AddTextLabelToImage("TempPic2 (used with job scripts sometimes)");
         m_tempPic3.GetComponent<PicMain>().AddTextLabelToImage("TempPic3 (used with job scripts sometimes)");
+        UpdateTempPicVisibilityForToolMode();
+    }
+
+    private void OnMainToolPanelManualModeChanged(bool isManualMode)
+    {
+        SetTempPicsVisible(isManualMode);
+    }
+
+    private void UpdateTempPicVisibilityForToolMode()
+    {
+        SetTempPicsVisible(_mainToolPanelModeController == null || _mainToolPanelModeController.IsManualMode);
+    }
+
+    private void SetTempPicsVisible(bool visible)
+    {
+        SetTempPicVisible(m_tempPic1, visible);
+        SetTempPicVisible(m_tempPic2, visible);
+        SetTempPicVisible(m_tempPic3, visible);
+    }
+
+    private static void SetTempPicVisible(GameObject tempPic, bool visible)
+    {
+        if (tempPic != null && tempPic.activeSelf != visible)
+            tempPic.SetActive(visible);
     }
 
     private void TryUpdateActiveLLMLabelAfterLLMManagerInit()
@@ -2048,6 +2075,9 @@ public string GetPrompt() { return m_prompt; }
 
     private void OnDestroy()
     {
+        if (_mainToolPanelModeController != null)
+            _mainToolPanelModeController.ManualModeChanged -= OnMainToolPanelManualModeChanged;
+
         print("Game logic destroyed");
     }
 

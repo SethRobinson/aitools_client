@@ -24,6 +24,7 @@ public class MainToolPanelModeController : MonoBehaviour
     private bool _isManualMode;
 
     public bool IsManualMode => _isManualMode;
+    public event System.Action<bool> ManualModeChanged;
 
     public static MainToolPanelModeController Install()
     {
@@ -92,6 +93,7 @@ public class MainToolPanelModeController : MonoBehaviour
     {
         if (!_initialized) return;
 
+        bool modeChanged = _isManualMode != manualMode;
         _isManualMode = manualMode;
 
         _compactControls.gameObject.SetActive(true);
@@ -103,6 +105,8 @@ public class MainToolPanelModeController : MonoBehaviour
             FitPanelToCompactControls();
 
         UpdateManualButtonText();
+        if (modeChanged)
+            ManualModeChanged?.Invoke(_isManualMode);
     }
 
     private void BindManualButton()
