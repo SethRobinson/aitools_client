@@ -211,6 +211,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // don't spend sidecar vision calls captioning images the chat model generated.
     private const string PREFS_KEEP_OLD_TOOL_CALLS_IN_PROMPT = "aichat_keep_old_tool_calls_in_prompt";
     private const string PREFS_AUTO_CAPTION_GENERATED_IMAGES = "aichat_auto_caption_generated_images";
+    private const string PREFS_SHOW_DEBUG_STUFF = "aichat_show_debug_stuff";
     // Cap on the largest edge (in pixels) of dragged/pasted images. Anything
     // bigger gets bilinear-downscaled at attach time so that captioning,
     // image_to_image source bytes, and chat-history embedding all run against
@@ -467,7 +468,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // Ctrl+MouseWheel font resize. Multiplier scales BaseFontSize (and the smaller
     // role label font) so the user can read the chat at any size they like. Reset
     // each session because Show() lazy-creates a fresh panel.
-    private float _fontSizeMultiplier = 1.0f;
+    private const float DefaultFontMultiplier = 1.2f;
+    private float _fontSizeMultiplier = DefaultFontMultiplier;
     private const float MinFontMultiplier = 0.5f;
     private const float MaxFontMultiplier = 3.0f;
     private const float FontMultiplierStep = 0.1f;
@@ -664,6 +666,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         CreateHeader();
         CreateChatArea();
         CreateFooter();
+        ApplyChatFontSize();
         CreateResizeGrip();
         SubscribeToLLMInstanceChanges();
         RefreshMainLLMDropdownOptions();
@@ -682,6 +685,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         RefreshHeaderTitle();
         UpdateStatusPill();
+        AddWelcomeMessage();
         int loadedSkills = _skillManager.GetSkills().Count;
         AddSystemMessage($"New chat. {loadedSkills} skill{(loadedSkills == 1 ? "" : "s")} loaded from aichat/skills/. Conversation history is kept until you click Clear or close the app.", includeInLLMRecap: false);
         AddPromptConfigNotice();
@@ -2754,6 +2758,20 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         return input;
     }
 
+    private void AddWelcomeMessage()
+    {
+        AppendBubble(
+            "AI Chat",
+            new Color(0.22f, 0.22f, 0.28f, 1f),
+            "Assuming you've setup an LLM and at least one ComfyUI server, you can ask to generate images, videos, stories, comics, and learn Japanese with a patient teacher.  Use Ctrl+Mouse Wheel to adjust font size.",
+            new Color(0.92f, 0.94f, 0.98f, 1f));
+    }
+
+    private TMP_InputField AppendInfoBubble(string text)
+    {
+        return AppendBubble("Info", new Color(0.35f, 0.35f, 0.45f), text, new Color(0.92f, 0.92f, 0.95f, 1f));
+    }
+
     /// <summary>
     /// Make a bubble editable AFTER it has been created (used for assistant bubbles,
     /// which are created readOnly during streaming and switched to editable on completion).
@@ -2956,7 +2974,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     {
         // Info / system bubbles aren't part of the LLM conversation, so leave them readOnly
         // (linkedInteraction = null).
-        AppendBubble("Info", new Color(0.35f, 0.35f, 0.45f), text, new Color(0.92f, 0.92f, 0.95f, 1f));
+        if (GetShowDebugStuff())
+            AppendInfoBubble(text);
 
         // Queue this message for the "for the future, please keep this in mind"
         // recap that gets quietly appended to the user's NEXT outgoing message.
@@ -3782,6 +3801,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             }
         }
         UpdateMediaHeader();
+        AddWelcomeMessage();
         AddSystemMessage("Conversation cleared.", includeInLLMRecap: false);
         AddPromptConfigNotice();
     }
@@ -3868,7 +3888,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 // Internal system context. Skip bulky autoloaded skill blocks;
                 // surface the compact summary (and other plain notes) as Info.
                 if (line._internalTag == AUTOLOAD_SKILL_CONTEXT_TAG) continue;
-                AppendBubble("Info", new Color(0.35f, 0.35f, 0.45f), line._content, new Color(0.92f, 0.92f, 0.95f, 1f));
+                if (GetShowDebugStuff())
+                    AppendInfoBubble(line._content);
             }
         }
         StartCoroutine(ScrollToBottomDeferred());
@@ -7619,6 +7640,17 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     public static void SetAutoCaptionGeneratedImages(bool v)
     {
         PlayerPrefs.SetInt(PREFS_AUTO_CAPTION_GENERATED_IMAGES, v ? 1 : 0);
+        PlayerPrefs.Save();
+    }
+
+    public static bool GetShowDebugStuff()
+    {
+        return PlayerPrefs.GetInt(PREFS_SHOW_DEBUG_STUFF, 0) != 0;
+    }
+
+    public static void SetShowDebugStuff(bool v)
+    {
+        PlayerPrefs.SetInt(PREFS_SHOW_DEBUG_STUFF, v ? 1 : 0);
         PlayerPrefs.Save();
     }
 
