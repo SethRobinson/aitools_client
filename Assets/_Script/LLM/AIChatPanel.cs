@@ -259,6 +259,18 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // Latch marking that the current OnSendClicked call came from an auto-fire
     // rather than a manual Send / Enter press.
     private bool _autoContinueFiring = false;
+
+    // Session-only footer prompt history. This deliberately does not use PlayerPrefs:
+    // it behaves like shell history for the current app run only.
+    private const int PROMPT_HISTORY_MAX_ENTRIES = 100;
+    private readonly List<string> _promptHistory = new List<string>();
+    private int _promptHistoryIndex = -1; // -1 means the live draft, not a history row.
+    private string _promptHistoryDraft = "";
+    private bool _applyingPromptHistoryText = false;
+    private bool _promptHistoryCaretCacheValid = false;
+    private int _promptHistoryLastCaretLine = 0;
+    private int _promptHistoryLastLineCount = 1;
+    private bool _promptHistoryLastHadSelection = false;
     private TextMeshProUGUI _statusText;
 
     // Image attachments (drag-drop / clipboard paste) - all the heavy lifting (drop
@@ -1113,6 +1125,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         var caretFixer = _inputField.gameObject.AddComponent<AIChatCaretFixer>();
         caretFixer.Set(_inputField);
         _inputUndo = TMPInputFieldUndo.Ensure(_inputField);
+        _inputField.onValueChanged.AddListener(OnPromptInputValueChangedForHistory);
 
         var inputContextHandler = inputGo.AddComponent<AIChatBubbleContextClickHandler>();
         inputContextHandler.Setup(this, _inputField, null, isEntryInput: true);
@@ -3388,8 +3401,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // to the normal send path so a message that merely starts with "/" still works.
         {
             string rawInput = _inputField != null ? _inputField.text : "";
-            if (TryHandleSlashCommand(rawInput.Trim()))
+            string slashText = rawInput.Trim();
+            if (TryHandleSlashCommand(slashText))
             {
+                RecordPromptHistoryEntry(slashText);
                 if (_inputField != null) _inputField.text = "";
                 _inputUndo?.ResetHistory();
                 FocusInputDeferred();
@@ -3452,6 +3467,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         bool currentTurnAddsRawImages = attachedCount > 0 && GetIncludeImageData();
         if (!ValidateForcedMainLLMForSend(currentTurnAddsRawImages))
             return;
+
+        RecordPromptHistoryEntry(text);
 
         if (string.IsNullOrWhiteSpace(text))
             text = attachedCount > 0 ? "(no caption)" : "(continue)";
@@ -3545,6 +3562,258 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         FocusInputDeferred();
 
         SendChatTurn(visibleText);
+    }
+
+    private void OnPromptInputValueChangedForHistory(string _)
+    {
+        if (_applyingPromptHistoryText)
+            return;
+
+        ResetPromptHistoryNavigation();
+        _promptHistoryCaretCacheValid = false;
+    }
+
+    private void RecordPromptHistoryEntry(string text)
+    {
+        if (_autoContinueFiring)
+            return;
+
+        text = (text ?? "").Trim();
+        if (string.IsNullOrEmpty(text))
+            return;
+
+        if (_promptHistory.Count > 0
+            && string.Equals(_promptHistory[_promptHistory.Count - 1], text, StringComparison.Ordinal))
+        {
+            ResetPromptHistoryNavigation();
+            return;
+        }
+
+        _promptHistory.Add(text);
+        if (_promptHistory.Count > PROMPT_HISTORY_MAX_ENTRIES)
+            _promptHistory.RemoveRange(0, _promptHistory.Count - PROMPT_HISTORY_MAX_ENTRIES);
+
+        ResetPromptHistoryNavigation();
+    }
+
+    private void ResetPromptHistoryNavigation()
+    {
+        _promptHistoryIndex = -1;
+        _promptHistoryDraft = "";
+    }
+
+    private void HandlePromptHistoryArrowKeys()
+    {
+        bool up = Input.GetKeyDown(KeyCode.UpArrow);
+        bool down = Input.GetKeyDown(KeyCode.DownArrow);
+        if (!up && !down)
+            return;
+
+        if (HasPromptHistoryNavigationModifier())
+            return;
+
+        if (_inputField == null || !_inputField.isFocused)
+            return;
+
+        if (_promptHistoryLastHadSelection || InputFieldHasSelection(_inputField))
+            return;
+
+        int currentLine;
+        int currentLineCount;
+        if (!TryGetInputCaretLine(_inputField, out currentLine, out currentLineCount))
+            return;
+
+        int previousLine = _promptHistoryCaretCacheValid ? _promptHistoryLastCaretLine : currentLine;
+        int previousLineCount = _promptHistoryCaretCacheValid ? _promptHistoryLastLineCount : currentLineCount;
+
+        if (up)
+        {
+            if (previousLine <= 0)
+                TryNavigatePromptHistory(-1);
+        }
+        else if (down)
+        {
+            if (previousLine >= Mathf.Max(0, previousLineCount - 1))
+                TryNavigatePromptHistory(1);
+        }
+    }
+
+    private static bool HasPromptHistoryNavigationModifier()
+    {
+        return Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)
+            || Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)
+            || Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt);
+    }
+
+    private static bool InputFieldHasSelection(TMP_InputField field)
+    {
+        if (field == null)
+            return false;
+
+        return field.selectionAnchorPosition != field.selectionFocusPosition
+            || field.selectionStringAnchorPosition != field.selectionStringFocusPosition;
+    }
+
+    private bool TryNavigatePromptHistory(int direction)
+    {
+        if (_inputField == null || _promptHistory.Count == 0)
+            return false;
+
+        if (direction < 0)
+        {
+            if (_promptHistoryIndex < 0)
+            {
+                _promptHistoryDraft = _inputField.text ?? "";
+                _promptHistoryIndex = _promptHistory.Count - 1;
+            }
+            else if (_promptHistoryIndex > 0)
+            {
+                _promptHistoryIndex--;
+            }
+            else
+            {
+                return false;
+            }
+
+            ApplyPromptHistoryText(_promptHistory[_promptHistoryIndex]);
+            return true;
+        }
+
+        if (direction > 0)
+        {
+            if (_promptHistoryIndex < 0)
+                return false;
+
+            if (_promptHistoryIndex < _promptHistory.Count - 1)
+            {
+                _promptHistoryIndex++;
+                ApplyPromptHistoryText(_promptHistory[_promptHistoryIndex]);
+            }
+            else
+            {
+                string draft = _promptHistoryDraft;
+                ResetPromptHistoryNavigation();
+                ApplyPromptHistoryText(draft);
+            }
+            return true;
+        }
+
+        return false;
+    }
+
+    private void ApplyPromptHistoryText(string text)
+    {
+        if (_inputField == null)
+            return;
+
+        _applyingPromptHistoryText = true;
+        try
+        {
+            text = text ?? "";
+            _inputField.text = text;
+            MoveInputCaretToEnd(_inputField);
+            _inputField.ForceLabelUpdate();
+        }
+        finally
+        {
+            _applyingPromptHistoryText = false;
+        }
+
+        _inputUndo?.ResetHistory();
+        UpdatePromptHistoryCaretCache();
+    }
+
+    private static void MoveInputCaretToEnd(TMP_InputField field)
+    {
+        if (field == null)
+            return;
+
+        int end = (field.text ?? "").Length;
+        field.caretPosition = end;
+        field.stringPosition = end;
+        field.selectionAnchorPosition = end;
+        field.selectionFocusPosition = end;
+        field.selectionStringAnchorPosition = end;
+        field.selectionStringFocusPosition = end;
+    }
+
+    private void UpdatePromptHistoryCaretCache()
+    {
+        if (_inputField == null || !_inputField.isFocused)
+        {
+            _promptHistoryCaretCacheValid = false;
+            _promptHistoryLastHadSelection = false;
+            return;
+        }
+
+        int line;
+        int lineCount;
+        if (TryGetInputCaretLine(_inputField, out line, out lineCount))
+        {
+            _promptHistoryLastCaretLine = line;
+            _promptHistoryLastLineCount = Mathf.Max(1, lineCount);
+            _promptHistoryLastHadSelection = InputFieldHasSelection(_inputField);
+            _promptHistoryCaretCacheValid = true;
+        }
+        else
+        {
+            _promptHistoryCaretCacheValid = false;
+            _promptHistoryLastHadSelection = InputFieldHasSelection(_inputField);
+        }
+    }
+
+    private static bool TryGetInputCaretLine(TMP_InputField field, out int line, out int lineCount)
+    {
+        line = 0;
+        lineCount = 1;
+        if (field == null)
+            return false;
+
+        string text = field.text ?? "";
+        int caret = Mathf.Clamp(field.stringPosition, 0, text.Length);
+
+        field.ForceLabelUpdate();
+        TMP_Text tmp = field.textComponent;
+        if (tmp == null)
+            return false;
+
+        tmp.ForceMeshUpdate();
+        TMP_TextInfo info = tmp.textInfo;
+        lineCount = Mathf.Max(1, info != null ? info.lineCount : 1);
+        if (info == null || info.characterCount <= 0)
+            return true;
+
+        int previousLine = 0;
+        bool havePreviousLine = false;
+        for (int i = 0; i < info.characterCount; i++)
+        {
+            TMP_CharacterInfo ch = info.characterInfo[i];
+            int rawStart = ch.index;
+            int rawEnd = rawStart + Mathf.Max(1, ch.stringLength);
+            int charLine = Mathf.Clamp(ch.lineNumber, 0, lineCount - 1);
+
+            if (rawStart == caret)
+            {
+                line = charLine;
+                return true;
+            }
+
+            if (rawStart > caret)
+                break;
+
+            if (rawEnd <= caret || rawStart < caret)
+            {
+                previousLine = charLine;
+                havePreviousLine = true;
+            }
+        }
+
+        if (caret > 0 && caret <= text.Length && (text[caret - 1] == '\n' || text[caret - 1] == '\r'))
+            line = Mathf.Min(previousLine + 1, lineCount - 1);
+        else
+            line = havePreviousLine ? previousLine : 0;
+
+        return true;
     }
 
     /// <summary>
@@ -8332,33 +8601,39 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // has already processed the key. (Not handled via TMP's own MultiLineSubmit mode
         // or onValidateInput because both are unreliable about reading the Shift
         // modifier in Unity 6 / TMP 3.)
-        if (_isVisible && _inputField != null && _inputField.isFocused
-            && (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter)))
+        if (_isVisible && _inputField != null && _inputField.isFocused)
         {
-            bool shift = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
-            if (!shift)
+            HandlePromptHistoryArrowKeys();
+
+            if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
             {
-                // Plain Enter: lineType=MultiLineNewline inserted a '\n' AT THE CARET
-                // this frame - which is not necessarily the end of the text (the user
-                // may send right after jumping back to fix a typo). Remove that exact
-                // character, otherwise the message goes out with a newline embedded
-                // wherever the caret happened to sit.
-                string text = _inputField.text ?? "";
-                int caretIdx = Mathf.Clamp(_inputField.stringPosition, 0, text.Length);
-                if (caretIdx > 0 && text[caretIdx - 1] == '\n')
-                    _inputField.text = text.Remove(caretIdx - 1, 1);
-                else if (text.EndsWith("\n"))
-                    _inputField.text = text.Substring(0, text.Length - 1);
-                OnSendClicked();
-            }
-            else
-            {
-                // Shift+Enter: in Unity 6 / TMP 3, Shift+Enter does NOT insert a newline
-                // (TMP's character event for Shift+Enter doesn't carry '\n'). Insert it
-                // ourselves at the current caret position (replacing any selected range).
-                InsertCharAtCaret(_inputField, '\n');
+                bool shift = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+                if (!shift)
+                {
+                    // Plain Enter: lineType=MultiLineNewline inserted a '\n' AT THE CARET
+                    // this frame - which is not necessarily the end of the text (the user
+                    // may send right after jumping back to fix a typo). Remove that exact
+                    // character, otherwise the message goes out with a newline embedded
+                    // wherever the caret happened to sit.
+                    string text = _inputField.text ?? "";
+                    int caretIdx = Mathf.Clamp(_inputField.stringPosition, 0, text.Length);
+                    if (caretIdx > 0 && text[caretIdx - 1] == '\n')
+                        _inputField.text = text.Remove(caretIdx - 1, 1);
+                    else if (text.EndsWith("\n"))
+                        _inputField.text = text.Substring(0, text.Length - 1);
+                    OnSendClicked();
+                }
+                else
+                {
+                    // Shift+Enter: in Unity 6 / TMP 3, Shift+Enter does NOT insert a newline
+                    // (TMP's character event for Shift+Enter doesn't carry '\n'). Insert it
+                    // ourselves at the current caret position (replacing any selected range).
+                    InsertCharAtCaret(_inputField, '\n');
+                }
             }
         }
+
+        UpdatePromptHistoryCaretCache();
     }
 
     /// <summary>
