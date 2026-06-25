@@ -485,6 +485,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private const float MinFontMultiplier = 0.5f;
     private const float MaxFontMultiplier = 3.0f;
     private const float FontMultiplierStep = 0.1f;
+    private int _fontResizeScrollRestoreVersion;
 
     // Theme (matches LLMSettingsPanel's app-style colors).
     private static readonly Color PanelBg = new Color(0.80f, 0.80f, 0.82f, 1f);
@@ -656,6 +657,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         scaler.matchWidthOrHeight = 0.5f;
 
         _panelRoot.AddComponent<GraphicRaycaster>();
+        _panelRoot.AddComponent<AIChatCtrlWheelScrollSuppressor>();
 
         // Conversation + provider components (added to root so coroutines + lifecycle are tied to the panel).
         _promptManager = _panelRoot.AddComponent<GPTPromptManager>();
@@ -2750,8 +2752,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         bubbleCaretFixer.Set(input);
 
         // Forward regular mouse-wheel events from the bubble's TMP_InputField up to
-        // the chat ScrollRect. The forwarder also suppresses the input field's own
-        // text scrolling while Ctrl is held for font resizing.
+        // the chat ScrollRect. Ctrl+wheel is reserved for font resizing.
         var bubbleScrollForwarder = inputGo.AddComponent<ChatScrollForwarder>();
         bubbleScrollForwarder.target = _chatScroll;
 
@@ -8460,10 +8461,81 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private void AdjustChatFontSize(float wheelDelta)
     {
         if (Mathf.Abs(wheelDelta) < 0.001f) return;
+        var scrollState = CaptureFontResizeScrollState();
+        int restoreVersion = ++_fontResizeScrollRestoreVersion;
+
         _fontSizeMultiplier = Mathf.Clamp(
             _fontSizeMultiplier + wheelDelta * FontMultiplierStep,
             MinFontMultiplier, MaxFontMultiplier);
         ApplyChatFontSize();
+        StartCoroutine(RestoreFontResizeScrollStateDeferred(restoreVersion, scrollState));
+    }
+
+    private struct FontResizeScrollState
+    {
+        public bool hasChatScroll;
+        public float chatScroll;
+        public bool hasMediaScroll;
+        public float mediaScroll;
+        public bool hasInputScrollbar;
+        public float inputScrollbar;
+    }
+
+    private FontResizeScrollState CaptureFontResizeScrollState()
+    {
+        var state = new FontResizeScrollState();
+        if (_chatScroll != null)
+        {
+            state.hasChatScroll = true;
+            state.chatScroll = _chatScroll.verticalNormalizedPosition;
+        }
+
+        if (_mediaScroll != null)
+        {
+            state.hasMediaScroll = true;
+            state.mediaScroll = _mediaScroll.verticalNormalizedPosition;
+        }
+
+        if (_inputField != null && _inputField.verticalScrollbar != null)
+        {
+            state.hasInputScrollbar = true;
+            state.inputScrollbar = _inputField.verticalScrollbar.value;
+        }
+
+        return state;
+    }
+
+    private IEnumerator RestoreFontResizeScrollStateDeferred(int version, FontResizeScrollState state)
+    {
+        // Bubble heights settle through ResizeBubbleDeferred over two frames. Restore
+        // for a few frames so Ctrl+wheel changes font size without walking the scrollbars.
+        for (int i = 0; i < 4; i++)
+        {
+            yield return null;
+            if (version != _fontResizeScrollRestoreVersion)
+                yield break;
+
+            Canvas.ForceUpdateCanvases();
+            RestoreFontResizeScrollState(state);
+        }
+    }
+
+    private void RestoreFontResizeScrollState(FontResizeScrollState state)
+    {
+        if (state.hasChatScroll && _chatScroll != null)
+        {
+            _chatScroll.StopMovement();
+            _chatScroll.verticalNormalizedPosition = state.chatScroll;
+        }
+
+        if (state.hasMediaScroll && _mediaScroll != null)
+        {
+            _mediaScroll.StopMovement();
+            _mediaScroll.verticalNormalizedPosition = state.mediaScroll;
+        }
+
+        if (state.hasInputScrollbar && _inputField != null && _inputField.verticalScrollbar != null)
+            _inputField.verticalScrollbar.value = state.inputScrollbar;
     }
 
     private bool IsMouseOverChatPanel()
@@ -9170,8 +9242,87 @@ public class ChatScrollRectCtrlAware : ScrollRect
     public override void OnScroll(PointerEventData data)
     {
         if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
+        {
+            data.Use();
             return;
+        }
         base.OnScroll(data);
+    }
+}
+
+/// <summary>
+/// Runs before the EventSystem so Ctrl+wheel never reaches AI Chat ScrollRects or
+/// TMP_InputFields with a non-zero scroll sensitivity. AIChatPanel.Update then handles
+/// the same wheel delta as a font-size gesture.
+/// </summary>
+[DefaultExecutionOrder(-10000)]
+public class AIChatCtrlWheelScrollSuppressor : MonoBehaviour
+{
+    private readonly Dictionary<TMP_InputField, float> _inputSensitivities = new Dictionary<TMP_InputField, float>();
+    private readonly Dictionary<ScrollRect, float> _scrollSensitivities = new Dictionary<ScrollRect, float>();
+    private bool _suppressing;
+
+    private void Update()
+    {
+        if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
+            SuppressScrolling();
+        else
+            RestoreScrolling();
+    }
+
+    private void OnDisable()
+    {
+        RestoreScrolling();
+    }
+
+    private void OnDestroy()
+    {
+        RestoreScrolling();
+    }
+
+    private void SuppressScrolling()
+    {
+        _suppressing = true;
+
+        foreach (var input in GetComponentsInChildren<TMP_InputField>(true))
+        {
+            if (input == null)
+                continue;
+            if (!_inputSensitivities.ContainsKey(input))
+                _inputSensitivities[input] = input.scrollSensitivity;
+            input.scrollSensitivity = 0f;
+        }
+
+        foreach (var scroll in GetComponentsInChildren<ScrollRect>(true))
+        {
+            if (scroll == null)
+                continue;
+            if (!_scrollSensitivities.ContainsKey(scroll))
+                _scrollSensitivities[scroll] = scroll.scrollSensitivity;
+            scroll.scrollSensitivity = 0f;
+        }
+    }
+
+    private void RestoreScrolling()
+    {
+        if (!_suppressing)
+            return;
+
+        foreach (var pair in _inputSensitivities)
+        {
+            if (pair.Key != null)
+                pair.Key.scrollSensitivity = pair.Value;
+        }
+        _inputSensitivities.Clear();
+
+        foreach (var pair in _scrollSensitivities)
+        {
+            if (pair.Key != null)
+                pair.Key.scrollSensitivity = pair.Value;
+        }
+        _scrollSensitivities.Clear();
+
+        _suppressing = false;
     }
 }
 
@@ -9247,8 +9398,7 @@ public class MinScrollbarHandleSize : MonoBehaviour
 }
 
 /// <summary>
-/// Forwards regular mouse-wheel scroll events to a target ScrollRect and suppresses
-/// TMP_InputField's own text scrolling during Ctrl+wheel font resizing. We attach this
+/// Forwards regular mouse-wheel scroll events to a target ScrollRect. We attach this
 /// to multiline AI Chat TMP_InputFields because TMP_InputField itself implements
 /// IScrollHandler and Unity invokes every IScrollHandler on the hit GameObject.
 /// </summary>
@@ -9256,81 +9406,14 @@ public class ChatScrollForwarder : MonoBehaviour, IScrollHandler
 {
     public ScrollRect target;
 
-    private TMP_InputField _input;
-    private RectTransform _textRect;
-    private Scrollbar _scrollbar;
-    private Vector2 _lastTextAnchoredPosition;
-    private float _lastScrollbarValue;
-    private bool _hasTextScrollState;
-    private bool _hasScrollbarState;
-
-    private void Awake()
-    {
-        CaptureScrollState();
-    }
-
-    private void OnEnable()
-    {
-        CaptureScrollState();
-    }
-
-    private void LateUpdate()
-    {
-        CaptureScrollState();
-    }
-
     public void OnScroll(PointerEventData data)
     {
         if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
         {
-            RestoreScrollState();
             data.Use();
             return;
         }
 
         if (target != null) target.OnScroll(data);
-        CaptureScrollState();
-    }
-
-    private void CacheReferences()
-    {
-        if (_input == null)
-            _input = GetComponent<TMP_InputField>();
-
-        if (_input == null)
-            return;
-
-        if (_input.textComponent != null)
-            _textRect = _input.textComponent.rectTransform;
-        _scrollbar = _input.verticalScrollbar;
-    }
-
-    private void CaptureScrollState()
-    {
-        CacheReferences();
-
-        if (_textRect != null)
-        {
-            _lastTextAnchoredPosition = _textRect.anchoredPosition;
-            _hasTextScrollState = true;
-        }
-
-        if (_scrollbar != null)
-        {
-            _lastScrollbarValue = _scrollbar.value;
-            _hasScrollbarState = true;
-        }
-    }
-
-    private void RestoreScrollState()
-    {
-        CacheReferences();
-        if (!_hasTextScrollState && !_hasScrollbarState)
-            return;
-
-        if (_scrollbar != null && _hasScrollbarState)
-            _scrollbar.value = _lastScrollbarValue;
-        if (_textRect != null && _hasTextScrollState)
-            _textRect.anchoredPosition = _lastTextAnchoredPosition;
     }
 }
