@@ -119,6 +119,9 @@ public class ComfyServerConfig
 public class Config : MonoBehaviour
 {  
     public static bool _isTestMode = false; //could do anything, _testMode is checked by random functions
+    const float m_serverButtonRightMargin = 42f;
+    const float m_serverButtonTopOffset = -9f;
+    const float m_serverButtonRowSpacing = -20f;
   
     List<GPUInfo> m_gpuInfo = new List<GPUInfo>();
 
@@ -889,6 +892,56 @@ set_default_audio_negative_prompt|music|
         return topRightPos;
     }
 
+    GameObject FindToolsPanelObject()
+    {
+        GameObject toolsCanvas = RTUtil.FindIncludingInactive("ToolsCanvas");
+        if (toolsCanvas != null)
+        {
+            Transform panel = toolsCanvas.transform.Find("Panel");
+            if (panel != null) return panel.gameObject;
+        }
+
+        return RTUtil.FindIncludingInactive("Panel");
+    }
+
+    Transform GetServerButtonParent()
+    {
+        GameObject toolsCanvas = RTUtil.FindIncludingInactive("ToolsCanvas");
+        if (toolsCanvas != null) return toolsCanvas.transform;
+
+        GameObject panel = FindToolsPanelObject();
+        return panel != null ? panel.transform : transform;
+    }
+
+    void KillGeneratedServerDisplayObjects(string objectName)
+    {
+        Transform parent = GetServerButtonParent();
+        if (parent != null)
+        {
+            RTUtil.KillAllObjectsByName(parent.gameObject, objectName, true);
+            return;
+        }
+
+        GameObject panel = FindToolsPanelObject();
+        if (panel != null)
+            RTUtil.KillAllObjectsByName(panel, objectName, true);
+    }
+
+    void PositionServerDisplayButton(GameObject buttonObj, int rowIndex)
+    {
+        if (buttonObj == null) return;
+
+        RectTransform rectTransform = buttonObj.GetComponent<RectTransform>();
+        if (rectTransform == null) return;
+
+        rectTransform.anchorMin = new Vector2(1f, 1f);
+        rectTransform.anchorMax = new Vector2(1f, 1f);
+        rectTransform.pivot = new Vector2(1f, 0.5f);
+        rectTransform.anchoredPosition = new Vector2(
+            -m_serverButtonRightMargin,
+            m_serverButtonTopOffset + m_serverButtonRowSpacing * rowIndex);
+    }
+
     public void AddGPU(GPUInfo g)
     {
         if (g != null && m_configOrderVramGB.TryGetValue(g._configOrder, out float configuredVramGB))
@@ -915,33 +968,22 @@ set_default_audio_negative_prompt|music|
         }
 
         //we have at least one GPU now, kill the no servers button
-        RTUtil.KillAllObjectsByName(RTUtil.FindIncludingInactive("Panel").gameObject, "NoServersButtonPrefab", true);
+        KillGeneratedServerDisplayObjects("NoServersButtonPrefab");
 
         //oh hey, let's also add an onscreen button for it that will open up its webui
 
-        //first, get the menu panel object we'll parent to
-        var panel = RTUtil.FindIncludingInactive("Panel");
-        var buttonObj = Instantiate(m_serverButtonPrefab, panel.transform);
+        var serverButtonParent = GetServerButtonParent();
+        var buttonObj = Instantiate(m_serverButtonPrefab, serverButtonParent);
         g.buttonScript = buttonObj.GetComponent<ServerButtonScript>();
         g.buttonScript.Setup(g);
         buttonObj.name = "ServerButtonPrefab"; //don't change, we delete these by this exact name
-        //move it down
-        float spacerY = -20;
 
-        //replace X, dynamically adjust to how big the main tool panel is now? Well, I tried for 1 minute and it seems tricky due to parenting/etc so forget it, I'll just move the
-        //prefab for now
-        //Debug.Log("Top right of panel is " + GetTopRightPosition(panel));
-
-        //all buttons come from the same prefab, so its default localPosition is our shared baseline.
-        //Re-stack every existing button by its (possibly shifted) localGPUID so the order matches the list.
-        float baseY = buttonObj.transform.localPosition.y;
+        // Re-stack every existing button by its (possibly shifted) localGPUID so the order matches the list.
         foreach (var gi in m_gpuInfo)
         {
             if (gi.buttonScript == null) continue;
             gi.buttonScript.Setup(gi); //refresh the button's cached index/text to match the (possibly renumbered) localGPUID, otherwise a later busy repaint pulls the wrong server's name
-            var giPos = gi.buttonScript.transform.localPosition;
-            giPos.y = baseY + spacerY * gi.localGPUID;
-            gi.buttonScript.transform.localPosition = giPos;
+            PositionServerDisplayButton(gi.buttonScript.gameObject, gi.localGPUID);
         }
 
             if (g._requestedRendererType == RTRendererType.AI_Tools || g._requestedRendererType == RTRendererType.A1111)
@@ -1118,10 +1160,11 @@ set_default_audio_negative_prompt|music|
     {
         m_gpuInfo = new List<GPUInfo>();
 
-        RTUtil.KillAllObjectsByName(RTUtil.FindIncludingInactive("Panel").gameObject, "ServerButtonPrefab", true);
-        RTUtil.KillAllObjectsByName(RTUtil.FindIncludingInactive("Panel").gameObject, "NoServersButtonPrefab", true);
+        KillGeneratedServerDisplayObjects("ServerButtonPrefab");
+        KillGeneratedServerDisplayObjects("NoServersButtonPrefab");
 
-        GameObject noServersObg = Instantiate(m_noServersButtonPrefab, RTUtil.FindIncludingInactive("Panel").transform);
+        GameObject noServersObg = Instantiate(m_noServersButtonPrefab, GetServerButtonParent());
+        PositionServerDisplayButton(noServersObg, 0);
 
         //wire up its button
         var button = noServersObg.GetComponent<Button>();

@@ -1799,6 +1799,8 @@ public string GetPrompt() { return m_prompt; }
         BindActiveLLMLabelUpdates();
         UpdateActiveLLMLabel();
 
+        MainToolPanelModeController.Install();
+
         // If the LLM settings manager isn't ready yet, retry until it is (or we time out).
         if (LLMSettingsManager.Get() == null)
         {
@@ -2154,8 +2156,8 @@ public string GetPrompt() { return m_prompt; }
     private static string GetShortInstanceName(string name)
     {
         if (string.IsNullOrEmpty(name)) return "LLM";
-        // Truncate long names
-        if (name.Length > 10) return name.Substring(0, 8) + "..";
+        const int maxVisibleNameChars = 16;
+        if (name.Length > maxVisibleNameChars) return name.Substring(0, maxVisibleNameChars) + "..";
         return name;
     }
 

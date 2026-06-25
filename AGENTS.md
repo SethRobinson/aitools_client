@@ -75,9 +75,10 @@ Text-to-image and single-step image-to-image presets (`-i` / `-i2` inputs) both 
 ### Core Unity App
 
 - `Assets/_Script/GameLogic.cs` is the central UI/state coordinator. It owns prompts, negative prompts, generation parameters, selected renderer, preset/job-list text, temp image slots, global variables, and normal vs experiment mode.
-- `Assets/_Script/Config.cs` loads `config.txt` and `config_cam.txt`, manages `GPUInfo` server entries, renderer selection, server busy state, and per-server overrides.
+- `Assets/_Script/Config.cs` loads `config.txt` and `config_cam.txt`, manages `GPUInfo` server entries, renderer selection, server busy state, per-server overrides, and the generated top-right server status rows.
 - `Assets/_Script/ImageGenerator.cs` owns the global generation loop, GPU event queues, server selection, continuous generation, and throttling when job scripts start with LLM work before GPU work.
 - `Assets/_Script/GUI/AppSettingsPanel.cs` is the unified Settings window. It owns the visible General, Configuration, Audio, and LLM Settings tabs; the old generate gear, Configuration button, and LLM Settings button route into it. Its Configuration and Audio tabs write the modern supported subset of `config.txt` (ComfyUI servers, tokens/names, VRAM annotations, image editor path, audio defaults, and Text To Speech settings) and reconnect through `Config.ProcessConfigString()` where needed.
+- `Assets/_Script/GUI/MainToolPanelModeController.cs` toggles the scene-authored `CompactToolControls` and `ManualToolControls` groups on the main Tools panel without changing the underlying `GameLogic` state. It captures the scene-authored manual panel rect at startup, fits the panel to compact controls in compact mode, and restores the captured rect in manual mode.
 - `Assets/_Script/PresetManager.cs` reads and writes `Presets/*.txt` files using `COMMAND_START|...COMMAND_END` blocks and `COMMAND_SET|...` lines.
 - `Assets/_Script/VariableManager.cs` implements `%variable%` substitution for job scripts. Variables are local to a `PicMain` unless prefixed with `global_`.
 
