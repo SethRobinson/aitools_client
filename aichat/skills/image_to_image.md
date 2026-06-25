@@ -5,7 +5,7 @@ inputs: attachment
 autoload: true
 triggers: edit the image, edit this image, modify the image, alter the image, change the image, tweak the image, adjust the image, retouch, refine the image, transform the image, restyle, restyle as, redraw, repaint, change the pose, change her pose, change his pose, new pose, different pose, dress her, dress him, undress, replace the, swap the, swap out, remove from the image, in the style of, them together, all together, side by side, group photo of them, group shot of, all three of them, all four of them, all five of them, both of them in, the two of them in, in one image, all in one, use them as anchors, use these as anchors, combine them, combine these, put them together, put them all, put all of them, scene with them, scene with all, posing together, line them up, hanging out together
 exclude_triggers: generate a brand new, brand new image, fresh image of a, fresh image from scratch, picture from scratch
-template: <aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit.txt}}" prompt="<narrative prose, 40-70 words. For multi-input: name each subject by slot, give each a placement, end with scene + lighting. See examples below.>" chat_image="N"/>  # 1-INPUT (default): one source via chat_image / attachment / chain. For multi-input use preset="{{Image To Image Klein Edit N Input.txt}}" with chat_image2..chat_image5 (or attachment2..attachment5). Pick N = EXACT count of references you're feeding (4 people -> 4 Input). 5 Input is the absolute maximum.
+template: <aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 1 Input.txt}}" prompt="<narrative prose, 40-70 words. For multi-input: name each subject by slot, give each a placement, end with scene + lighting. See examples below.>" chat_image="N"/>  # 1-INPUT (default): one source via chat_image / attachment / chain. For multi-input use preset="{{Image To Image Klein Edit N Input.txt}}" with chat_image2..chat_image5 (or attachment2..attachment5). Pick N = EXACT count of references you're feeding (4 people -> 4 Input). 5 Input is the absolute maximum.
 ---
 # Image-to-image (Klein / Flux 2 edit family)
 
@@ -33,7 +33,7 @@ drifted composite. The live name->slot map is printed every turn in the
 
 WRONG (drift trap - points at the composite, and guesses a number):
 > User: "now show them at the beach"
-> `<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit.txt}}"
+> `<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 1 Input.txt}}"
 >   prompt="Move them to a sunny beach scene..." chat_image="5"/>`
 
 RIGHT (reference each character by anchor name):
@@ -63,7 +63,7 @@ fresh image of them FROM their current anchor and re-tag the SAME name -
 `chat_image="Elias"` then uses the updated look:
 
 ```
-<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit.txt}}" prompt="Keep his face, white beard, and ~60s age exactly as is. Change his outfit to a charcoal three-piece suit." chat_image="Elias" anchor="Elias"/>
+<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 1 Input.txt}}" prompt="Keep his face, white beard, and ~60s age exactly as is. Change his outfit to a charcoal three-piece suit." chat_image="Elias" anchor="Elias"/>
 ```
 
 Single-character variation series follow the same rule: feed
@@ -198,7 +198,7 @@ Integrated same-reply example:
 
 ## Presets - pick by INPUT COUNT
 
-- `{{Image To Image Klein Edit.txt}}` - 1 input. DEFAULT.
+- `{{Image To Image Klein Edit 1 Input.txt}}` - 1 input. DEFAULT.
 - `{{Image To Image Klein Edit 2 Input.txt}}` - 2 inputs.
 - `{{Image To Image Klein Edit 3 Input.txt}}` - 3 inputs.
 - `{{Image To Image Klein Edit 4 Input.txt}}` - 4 inputs.
@@ -233,7 +233,7 @@ with a brief identity clause ("Keep her face and hair exactly as is,
 ~32, Latina") then state the delta:
 
 ```
-<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit.txt}}" prompt="Keep her face and hair exactly as is, ~32, Latina. Add a wide-brimmed black straw sunhat with a faded pink ribbon, tilted slightly over her right brow." chat_image="1"/>
+<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 1 Input.txt}}" prompt="Keep her face and hair exactly as is, ~32, Latina. Add a wide-brimmed black straw sunhat with a faded pink ribbon, tilted slightly over her right brow." chat_image="1"/>
 ```
 
 Drop the identity clause ONLY if the user explicitly asked to change
@@ -245,7 +245,7 @@ OTHERS explicitly so only the requested attribute moves.
 Same-reply generate then edit (chain):
 ```
 <aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full Z-Image scene>"/>
-<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit.txt}}" prompt="Keep everything as is except change the time of day to dusk, warm orange light from the west." chain="true"/>
+<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 1 Input.txt}}" prompt="Keep everything as is except change the time of day to dusk, warm orange light from the west." chain="true"/>
 ```
 
 Subject + scene combine (2-Input):

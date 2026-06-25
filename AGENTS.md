@@ -65,7 +65,7 @@ AI agents (Claude, Codex, etc.) can and should use this CLI themselves — on Wi
 
 ```bat
 cli\aitools_cli.bat "a cat" out.png -p "Prompt To Image (Z-Image)" -v
-cli\aitools_cli.bat "make the sky red" out.png -p "Image To Image Klein Edit" -i input.png
+cli\aitools_cli.bat "make the sky red" out.png -p "Image To Image Klein Edit 1 Input" -i input.png
 ```
 
 Text-to-image and single-step image-to-image presets (`-i` / `-i2` inputs) both work; multi-step chains and LLM presets error out by design.

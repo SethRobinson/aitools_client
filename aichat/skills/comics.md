@@ -156,8 +156,8 @@ pattern is:
 
 ```
 <aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<panel A - establishing>" anchor="comic_panel_a"/>
-<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit.txt}}" prompt="<panel B edit, keeping the recurring subject consistent>" chat_image="OldMan" anchor="comic_panel_b"/>
-<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit.txt}}" prompt="<panel C edit, keeping the recurring subject consistent>" chat_image="OldMan" anchor="comic_panel_c"/>
+<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 1 Input.txt}}" prompt="<panel B edit, keeping the recurring subject consistent>" chat_image="OldMan" anchor="comic_panel_b"/>
+<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 1 Input.txt}}" prompt="<panel C edit, keeping the recurring subject consistent>" chat_image="OldMan" anchor="comic_panel_c"/>
 ```
 
 Never paste `source_chat_image="comic_panel_b"` or

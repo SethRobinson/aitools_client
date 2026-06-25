@@ -115,7 +115,7 @@ aitools_cli.py "" subject_masked.png \
 Single-image edit using the Klein 9B model:
 ```
 aitools_cli.py "make her hair red" edited.png \
-    -p "Image To Image Klein Edit" \
+    -p "Image To Image Klein Edit 1 Input" \
     -i portrait.jpg
 ```
 

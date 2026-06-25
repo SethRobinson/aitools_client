@@ -1212,7 +1212,7 @@ namespace AITools.AIChat.Skills
         /// the CLOSEST match to <paramref name="requestedFile"/>, but ONLY when that match
         /// is both close and clearly unambiguous. Catches the common LLM slip of dropping
         /// or garbling a word in a long preset name ("Image To Image Edit" ->
-        /// "Image To Image Klein Edit"). Returns the on-disk filename, or null when no
+        /// "Image To Image Klein Edit 1 Input"). Returns the on-disk filename, or null when no
         /// confident match exists (caller then errors as before). Deliberately conservative
         /// so two similarly-named presets never silently resolve to the wrong one.
         /// </summary>

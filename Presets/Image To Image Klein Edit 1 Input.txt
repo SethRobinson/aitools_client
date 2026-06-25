@@ -1,0 +1,8 @@
+COMMAND_START|joblist
+#Edit image using Klien2 9b model
+%klein_model%="flux-2-klein-9b-fp8.safetensors"
+%klein_clip%="qwen_3_8b_fp8mixed.safetensors"
+
+img_to_img_klein_edit_1_input.json @upload|image1|input1| @replace|flux-2-klein-9b-fp8.safetensors|%klein_model%| @replace|qwen_3_8b_fp8mixed.safetensors|%klein_clip%|
+
+COMMAND_END
