@@ -188,7 +188,7 @@ public class AppSettingsPanel : MonoBehaviour
         layout.childControlHeight = true;
 
         CreateTabButton(strip, AppSettingsTab.General, "General Settings", 185f);
-        CreateTabButton(strip, AppSettingsTab.Configuration, "Configuration", 165f);
+        CreateTabButton(strip, AppSettingsTab.Configuration, "ComfyUI Settings", 190f);
         CreateTabButton(strip, AppSettingsTab.Audio, "Audio", 110f);
         CreateTabButton(strip, AppSettingsTab.LLM, "LLM Settings", 165f);
     }
@@ -217,14 +217,14 @@ public class AppSettingsPanel : MonoBehaviour
         _footerStatusText.rectTransform.anchorMin = new Vector2(0, 0);
         _footerStatusText.rectTransform.anchorMax = new Vector2(1, 1);
         _footerStatusText.rectTransform.offsetMin = new Vector2(12, 0);
-        _footerStatusText.rectTransform.offsetMax = new Vector2(-130, 0);
+        _footerStatusText.rectTransform.offsetMax = new Vector2(-250, 0);
 
-        var ok = CreateButton(footer, "Ok", "Ok", 96f, Hide);
-        var okRt = ok.GetComponent<RectTransform>();
-        okRt.anchorMin = new Vector2(1, 0.5f);
-        okRt.anchorMax = new Vector2(1, 0.5f);
-        okRt.pivot = new Vector2(1, 0.5f);
-        okRt.anchoredPosition = new Vector2(-16f, 0f);
+        var applyReconnect = CreateButton(footer, "OkApplyReconnect", "Ok (Apply and reconnect)", 220f, ApplyServerConfigurationAndClose);
+        var applyReconnectRt = applyReconnect.GetComponent<RectTransform>();
+        applyReconnectRt.anchorMin = new Vector2(1, 0.5f);
+        applyReconnectRt.anchorMax = new Vector2(1, 0.5f);
+        applyReconnectRt.pivot = new Vector2(1, 0.5f);
+        applyReconnectRt.anchoredPosition = new Vector2(-16f, 0f);
     }
 
     private void SetTab(AppSettingsTab tab)
@@ -474,7 +474,7 @@ public class AppSettingsPanel : MonoBehaviour
             SetTab(AppSettingsTab.Configuration);
             SetFooterStatus("Reloaded server rows from current config.");
         });
-        CreateButton(actions, "ApplyReconnect", "Apply and Reconnect", 170f, ApplyServerConfiguration);
+        CreateButton(actions, "ApplyReconnect", "Apply and reconnect", 170f, ApplyServerConfiguration);
 
         var statusRow = CreateRow(content, "ConfigStatusRow", 70f);
         _configStatusText = CreateText("ConfigStatus", statusRow, "", 13f, TextDark, TextAlignmentOptions.TopLeft);
@@ -807,6 +807,19 @@ public class AppSettingsPanel : MonoBehaviour
 
     private void ApplyServerConfiguration()
     {
+        ApplyServerConfiguration(false);
+    }
+
+    private void ApplyServerConfigurationAndClose()
+    {
+        ApplyServerConfiguration(true);
+    }
+
+    private void ApplyServerConfiguration(bool closeOnSuccess)
+    {
+        if (!_configDirty)
+            LoadServersFromConfig();
+
         if (HasActiveGenerationWork())
         {
             SetConfigStatus("Cannot reconnect servers while generation, queued GPU work, or a GPU request is active.");
@@ -833,6 +846,12 @@ public class AppSettingsPanel : MonoBehaviour
 
         _configDirty = false;
         LoadServersFromConfig();
+        if (closeOnSuccess)
+        {
+            Hide();
+            return;
+        }
+
         SetTab(AppSettingsTab.Configuration);
         SetFooterStatus("Saved config.txt and reconnecting to ComfyUI servers.");
     }

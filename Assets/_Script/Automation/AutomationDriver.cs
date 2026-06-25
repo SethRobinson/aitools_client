@@ -81,7 +81,7 @@ public class AutomationDriver : MonoBehaviour
     {
         AppSettingsTab tab = AppSettingsTab.General;
         string key = (tabName ?? "").Trim().ToLowerInvariant();
-        if (key == "configuration" || key == "config" || key == "servers")
+        if (key == "configuration" || key == "config" || key == "servers" || key == "comfyui" || key == "comfyui settings")
             tab = AppSettingsTab.Configuration;
         else if (key == "audio" || key == "tts" || key == "speech")
             tab = AppSettingsTab.Audio;

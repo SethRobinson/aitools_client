@@ -270,5 +270,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: edd328fb144e819498d395172c8823a0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _text: No servers/renderers connected yet.<br><br>Click Configuration and edit/add
+  _text: No servers/renderers connected yet.<br><br>Click ComfyUI Settings and edit/add
     server info.  You can mix and match them.

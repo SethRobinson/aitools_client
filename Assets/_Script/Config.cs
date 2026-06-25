@@ -432,7 +432,7 @@ public class Config : MonoBehaviour
     {
         var sb = new StringBuilder();
         sb.AppendLine("# Seth's AI Tools config file");
-        sb.AppendLine("# Managed by the Settings > Configuration screen.");
+        sb.AppendLine("# Managed by the Settings > ComfyUI Settings screen.");
         sb.AppendLine();
         sb.AppendLine("# ComfyUI servers. Start ComfyUI with --listen when connecting from another machine.");
 

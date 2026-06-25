@@ -158,7 +158,7 @@ public class WebRequestServerInfo : MonoBehaviour
                 }
 
                 RTConsole.Log("Error connecting to server " + serverClickableURL + ". (" + postRequest.error + ")  Are you sure it's up and this address/port is right?  (If not on this machine, it needs the --listen parm too probably)");
-                RTConsole.Log("Click Configuration, then Save & Apply to try again.");
+                RTConsole.Log("Click ComfyUI Settings, then Apply and reconnect to try again.");
                 GameLogic.Get().ShowConsole(true);
             }
             else
@@ -288,7 +288,7 @@ public class WebRequestServerInfo : MonoBehaviour
                     goto again;
                 }
                 RTConsole.Log("Error getting config from server " + serverClickableURL + ". (" + postRequest.error + ")  Are you sure it's up and this address/port is right? (If not on this machine, it needs the --listen parm too probably)");
-                RTConsole.Log("Click Configuration, then Save & Apply to try again.");
+                RTConsole.Log("Click ComfyUI Settings, then Apply and reconnect to try again.");
                 GameLogic.Get().ShowConsole(true);
             }
             else
@@ -375,7 +375,7 @@ public class WebRequestServerInfo : MonoBehaviour
                     goto again;
                 }
                 RTConsole.Log("Error getting models from server " + serverClickableURL + ". (" + postRequest.error + ")  Are you sure it's up and this address/port is right? (If not on this machine, it needs the --listen parm too probably)");
-                RTConsole.Log("Click Configuration, then Save & Apply to try again.");
+                RTConsole.Log("Click ComfyUI Settings, then Apply and reconnect to try again.");
                 GameLogic.Get().ShowConsole(true);
             }
             else
@@ -663,7 +663,7 @@ public class WebRequestServerInfo : MonoBehaviour
                     goto again;
                 }
                 Debug.Log("Error getting samplers from server " + serverClickableURL + ". (" + postRequest.error + ")  Are you sure it's up and this address/port is right? (If not on this machine, it needs the --listen parm too probably)");
-                Debug.Log("Click Configuration, then Save & Apply to try again.");
+                Debug.Log("Click ComfyUI Settings, then Apply and reconnect to try again.");
                 GameLogic.Get().ShowConsole(true);
             }
             else

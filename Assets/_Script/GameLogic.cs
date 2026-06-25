@@ -2054,7 +2054,7 @@ public string GetPrompt() { return m_prompt; }
     public void OnNoServersButtonClicked()
     {
         Debug.Log("No servers button clicked");
-        RTQuickMessageManager.Get().ShowMessage("Click Configuration, then Apply to try to reconnect to servers");
+        RTQuickMessageManager.Get().ShowMessage("Open ComfyUI Settings, then Apply and reconnect to rescan servers");
 //        Config.Get().ConnectToServers();
     }
 
