@@ -32,6 +32,10 @@ public class PicInpaint : MonoBehaviour
         {
             m_picScript.SetStatusMessage("(killing process)");
             m_picScript.ClearRenderingCallbacks();
+            StopAllCoroutines();
+            if (Config.Get() != null && Config.Get().IsValidGPU(m_gpu))
+                Config.Get().SetGPUBusy(m_gpu, false);
+            m_bIsGenerating = false;
             m_gpu = -1; //invalid
         }
 

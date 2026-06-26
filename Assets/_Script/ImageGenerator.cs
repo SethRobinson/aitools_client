@@ -376,10 +376,12 @@ public class ImageGenerator : MonoBehaviour
         }
     }
 
-    public void ShutdownAllGPUProcesses()
+    public void ShutdownAllGPUProcesses(bool forceImmediate = false)
     {
 
         SetGenerate(false);
+        m_gpuEventList.Clear();
+        m_eventList.Clear();
 
         var aiScripts = RTUtil.FindObjectOrCreate("Pics").transform.GetComponentsInChildren<PicMain>();
 
@@ -387,7 +389,7 @@ public class ImageGenerator : MonoBehaviour
         {
             if (!picScript.IsDestroyed())
             {
-                picScript.KillGPUProcesses();
+                picScript.KillGPUProcesses(forceImmediate);
             }
         }
     }

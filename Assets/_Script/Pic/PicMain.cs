@@ -656,10 +656,15 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         RTUtil.FindInChildrenIncludingInactive(gameObject, "StatusText").SetActive(bNew);
 
     }
-    public void KillGPUProcesses()
+    public void KillGPUProcesses(bool forceImmediate = false)
     {
-        
-        if (m_picTextToImageScript.IsBusy()) m_picTextToImageScript.SetForceFinish(true);
+        if (m_picTextToImageScript.IsBusy())
+        {
+            if (forceImmediate)
+                m_picTextToImageScript.ForceCancelForReconnect();
+            else
+                m_picTextToImageScript.SetForceFinish(true);
+        }
         if (m_picInpaintScript.IsBusy()) m_picInpaintScript.SetForceFinish(true);
         if (m_picUpscaleScript.IsBusy()) m_picUpscaleScript.SetForceFinish(true);
         if (m_picGenerateMaskScript != null && m_picGenerateMaskScript.IsBusy()) m_picGenerateMaskScript.SetForceFinish(true);

@@ -854,9 +854,21 @@ set_default_audio_negative_prompt|music|
             m_gpuInfo[gpuID].IsGPUBusy = bNew;
 
             //visually reflect its state as well
-            m_gpuInfo[gpuID].buttonScript.OnSetBusy(bNew);
+            if (m_gpuInfo[gpuID].buttonScript != null)
+                m_gpuInfo[gpuID].buttonScript.OnSetBusy(bNew);
         }
        
+    }
+
+    public void ForceClearRuntimeGPUState()
+    {
+        for (int i = 0; i < m_gpuInfo.Count; i++)
+        {
+            m_gpuInfo[i].IsGPUBusy = false;
+            m_gpuInfo[i].pendingLLMCount = 0;
+            if (m_gpuInfo[i].buttonScript != null)
+                m_gpuInfo[i].buttonScript.OnSetBusy(false);
+        }
     }
 
     /// <summary>

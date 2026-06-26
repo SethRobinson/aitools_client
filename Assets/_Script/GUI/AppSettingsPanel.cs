@@ -33,6 +33,7 @@ public class AppSettingsPanel : MonoBehaviour
     private TextMeshProUGUI _configStatusText;
     private TextMeshProUGUI _audioStatusText;
     private TextMeshProUGUI _llmSummaryText;
+    private GameObject _forceReconnectDialogRoot;
     private TMP_InputField _imageEditorInput;
     private TMP_Dropdown _ttsProviderDropdown;
     private TMP_Dropdown _elevenLabsVoiceDropdown;
@@ -109,6 +110,7 @@ public class AppSettingsPanel : MonoBehaviour
 
     private void OnDestroy()
     {
+        HideForceReconnectDialog();
         _instance = null;
         _panelRoot = null;
     }
@@ -817,12 +819,18 @@ public class AppSettingsPanel : MonoBehaviour
 
     private void ApplyServerConfiguration(bool closeOnSuccess)
     {
+        ApplyServerConfiguration(closeOnSuccess, false);
+    }
+
+    private void ApplyServerConfiguration(bool closeOnSuccess, bool forceReset)
+    {
         if (!_configDirty)
             LoadServersFromConfig();
 
-        if (HasActiveGenerationWork())
+        if (!forceReset && HasActiveGenerationWork())
         {
-            SetConfigStatus("Cannot reconnect servers while generation, queued GPU work, or a GPU request is active.");
+            SetConfigStatus("Reconnect blocked because generation, queued GPU work, or a GPU request is active.");
+            ShowForceReconnectDialog(closeOnSuccess);
             return;
         }
 
@@ -837,6 +845,9 @@ public class AppSettingsPanel : MonoBehaviour
             SetConfigStatus("Config is not initialized.");
             return;
         }
+
+        if (forceReset)
+            ForceCancelGenerationWorkForReconnect();
 
         if (!Config.Get().SaveModernComfyServerConfigs(sanitized, out string error))
         {
@@ -854,6 +865,125 @@ public class AppSettingsPanel : MonoBehaviour
 
         SetTab(AppSettingsTab.Configuration);
         SetFooterStatus("Saved config.txt and reconnecting to ComfyUI servers.");
+    }
+
+    private void ShowForceReconnectDialog(bool closeOnSuccess)
+    {
+        HideForceReconnectDialog();
+
+        if (_panelRoot == null)
+            return;
+
+        var overlay = CreateRect("ForceReconnectDialogOverlay", _panelRoot.transform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f));
+        overlay.offsetMin = Vector2.zero;
+        overlay.offsetMax = Vector2.zero;
+        overlay.SetAsLastSibling();
+        var overlayImg = overlay.gameObject.AddComponent<Image>();
+        overlayImg.color = new Color(0f, 0f, 0f, 0.38f);
+        var overlayButton = overlay.gameObject.AddComponent<Button>();
+        overlayButton.targetGraphic = overlayImg;
+        overlayButton.onClick.AddListener(HideForceReconnectDialog);
+        _forceReconnectDialogRoot = overlay.gameObject;
+
+        var dialog = CreateRect("Dialog", overlay, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+        dialog.sizeDelta = new Vector2(590f, 270f);
+        var dialogImg = dialog.gameObject.AddComponent<Image>();
+        dialogImg.color = PanelBg;
+        var dialogButton = dialog.gameObject.AddComponent<Button>();
+        dialogButton.targetGraphic = dialogImg;
+        dialogButton.onClick.AddListener(() => { });
+
+        var title = CreateText("Title", dialog, "Force GPU reset?", 20f, TextDark, TextAlignmentOptions.MidlineLeft);
+        title.fontStyle = FontStyles.Bold;
+        title.rectTransform.anchorMin = new Vector2(0f, 1f);
+        title.rectTransform.anchorMax = new Vector2(1f, 1f);
+        title.rectTransform.pivot = new Vector2(0.5f, 1f);
+        title.rectTransform.offsetMin = new Vector2(24f, -58f);
+        title.rectTransform.offsetMax = new Vector2(-24f, -18f);
+
+        var body = CreateText("Body", dialog, BuildForceReconnectWarningText(), 14f, TextMuted, TextAlignmentOptions.TopLeft);
+        body.overflowMode = TextOverflowModes.Overflow;
+        body.rectTransform.anchorMin = new Vector2(0f, 0f);
+        body.rectTransform.anchorMax = new Vector2(1f, 1f);
+        body.rectTransform.offsetMin = new Vector2(24f, 82f);
+        body.rectTransform.offsetMax = new Vector2(-24f, -68f);
+
+        var forceButton = CreateButton(dialog, "ForceReset", "Force reset", 140f, () => ApplyServerConfiguration(closeOnSuccess, true));
+        var forceRt = forceButton.GetComponent<RectTransform>();
+        forceRt.anchorMin = new Vector2(1f, 0f);
+        forceRt.anchorMax = new Vector2(1f, 0f);
+        forceRt.pivot = new Vector2(1f, 0f);
+        forceRt.anchoredPosition = new Vector2(-154f, 24f);
+        var forceImg = forceButton.GetComponent<Image>();
+        if (forceImg != null)
+            forceImg.color = new Color(0.72f, 0.22f, 0.18f, 1f);
+        var forceLabel = forceButton.GetComponentInChildren<TextMeshProUGUI>();
+        if (forceLabel != null)
+            forceLabel.color = Color.white;
+
+        var cancelButton = CreateButton(dialog, "Cancel", "Cancel", 110f, HideForceReconnectDialog);
+        var cancelRt = cancelButton.GetComponent<RectTransform>();
+        cancelRt.anchorMin = new Vector2(1f, 0f);
+        cancelRt.anchorMax = new Vector2(1f, 0f);
+        cancelRt.pivot = new Vector2(1f, 0f);
+        cancelRt.anchoredPosition = new Vector2(-24f, 24f);
+    }
+
+    private void HideForceReconnectDialog()
+    {
+        if (_forceReconnectDialogRoot != null)
+            Destroy(_forceReconnectDialogRoot);
+        _forceReconnectDialogRoot = null;
+    }
+
+    private string BuildForceReconnectWarningText()
+    {
+        int rawBusy = 0;
+        int pendingLLM = 0;
+        var cfg = Config.Get();
+        if (cfg != null)
+        {
+            for (int i = 0; i < cfg.GetGPUCount(); i++)
+            {
+                var info = cfg.GetGPUInfo(i);
+                if (info == null) continue;
+                if (info.IsGPUBusy) rawBusy++;
+                pendingLLM += Mathf.Max(0, info.pendingLLMCount);
+            }
+        }
+
+        var generator = ImageGenerator.Get();
+        int queued = generator != null ? generator.GetCountOfQueudCommands() : 0;
+        bool generating = generator != null && generator.IsGenerating();
+
+        return
+            "Some GPU work is still marked active. You can wait and try again, or force a reset now.\n\n" +
+            "Force reset will stop continuous generation, clear queued GPU work, cancel active Pic jobs, release busy GPU flags, and reconnect ComfyUI servers. Running ComfyUI jobs are interrupted when possible.\n\n" +
+            "Current state: " + rawBusy + " busy GPU(s), " + pendingLLM + " pending LLM-gated GPU job(s), " +
+            queued + " queued GPU event(s), generation " + (generating ? "on" : "off") + ".";
+    }
+
+    private void ForceCancelGenerationWorkForReconnect()
+    {
+        HideForceReconnectDialog();
+
+        var generator = ImageGenerator.Get();
+        if (generator != null)
+        {
+            generator.ShutdownAllGPUProcesses(true);
+        }
+        else
+        {
+            var picsRoot = RTUtil.FindObjectOrCreate("Pics");
+            var pics = picsRoot.transform.GetComponentsInChildren<PicMain>();
+            foreach (var pic in pics)
+            {
+                if (pic != null && !pic.IsDestroyed())
+                    pic.KillGPUProcesses(true);
+            }
+        }
+
+        Config.Get()?.ForceClearRuntimeGPUState();
     }
 
     private bool TryValidateServers(out List<ComfyServerConfig> sanitized, out string error)

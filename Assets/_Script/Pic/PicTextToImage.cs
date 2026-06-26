@@ -65,6 +65,56 @@ public class PicTextToImage : MonoBehaviour
             }
         }
     }
+
+    public void ForceCancelForReconnect()
+    {
+        if (!m_bIsGenerating)
+            return;
+
+        string url = null;
+        string promptID = m_comfyUIPromptID;
+        if (Config.Get() != null && Config.Get().IsValidGPU(m_gpu))
+            url = Config.Get().GetGPUInfo(m_gpu).remoteURL;
+
+        m_picScript.SetStatusMessage("Cancelled");
+        m_picScript.ClearRenderingCallbacks();
+        StopAllCoroutines();
+        CloseWebSocket();
+
+        if (Config.Get() != null && Config.Get().IsValidGPU(m_gpu))
+            Config.Get().SetGPUBusy(m_gpu, false);
+
+        m_bIsGenerating = false;
+        m_comfyUIPromptID = null;
+        m_scheduledEvent = null;
+        m_picScript.OnFinishedRenderingWorkflow(false);
+
+        if (!string.IsNullOrEmpty(url))
+            StartCoroutine(SendComfyCancelRequests(url, promptID));
+    }
+
+    private IEnumerator SendComfyCancelRequests(string url, string promptID)
+    {
+        using (var interruptRequest = UnityWebRequest.PostWwwForm(url + "/interrupt", ""))
+        {
+            Config.Get().ApplyComfyAuth(interruptRequest);
+            yield return interruptRequest.SendWebRequest();
+        }
+
+        if (!string.IsNullOrEmpty(promptID))
+        {
+            string json = JsonUtility.ToJson(new { delete = new[] { promptID } });
+            using (var queueRequest = UnityWebRequest.PostWwwForm(url + "/queue", "POST"))
+            {
+                byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
+                queueRequest.uploadHandler = new UploadHandlerRaw(bodyRaw);
+                queueRequest.SetRequestHeader("Content-Type", "application/json");
+                Config.Get().ApplyComfyAuth(queueRequest);
+                yield return queueRequest.SendWebRequest();
+            }
+        }
+    }
+
     private void CancelRenderImmediate()
     {
         if (!m_bIsGenerating || m_gpu == -1)
@@ -1090,7 +1140,10 @@ public class PicTextToImage : MonoBehaviour
         if (m_comfyUIPromptID == null || m_comfyUIPromptID == "")
         {
             RTConsole.Log("Bad promptid for some reason, can't continue");
-            yield return false;
+            m_picScript.SetStatusMessage("Missing ComfyUI prompt id");
+            FinishUpEverything(false);
+            CloseWebSocket();
+            yield break;
         }
         string historyURL = url + "/history/" + m_comfyUIPromptID;
 
@@ -1120,7 +1173,30 @@ public class PicTextToImage : MonoBehaviour
                     yield break;
                 }
 
-                JSONNode rootNode = JSON.Parse(historyRequest.downloadHandler.text);
+                JSONNode rootNode = null;
+                try
+                {
+                    rootNode = JSON.Parse(historyRequest.downloadHandler.text);
+                }
+                catch (Exception ex)
+                {
+                    string msg = "Bad ComfyUI history JSON: " + ex.Message;
+                    Debug.LogWarning(msg);
+                    RTConsole.Log(msg);
+                    m_picScript.SetStatusMessage("Bad ComfyUI history JSON");
+                    FinishUpEverything(false);
+                    CloseWebSocket();
+                    yield break;
+                }
+
+                if (rootNode == null)
+                {
+                    RTConsole.Log("ComfyUI history returned empty JSON.");
+                    m_picScript.SetStatusMessage("Bad ComfyUI history");
+                    FinishUpEverything(false);
+                    CloseWebSocket();
+                    yield break;
+                }
 
               
                 if (rootNode.Count > 0)
@@ -1131,14 +1207,35 @@ public class PicTextToImage : MonoBehaviour
                         //what are we doing here?
                         Debug.Log("No prompt id, ignoring");
                         //exit
-                        m_bIsGenerating = false;
                         m_picScript.SetStatusMessage("Generate error");
+                        FinishUpEverything(false);
                         CloseWebSocket();
                         yield break;
 
                     }
-                    JSONNode statusNode = rootNode[m_comfyUIPromptID]["status"];
-                    JSONNode outputsNode = rootNode[m_comfyUIPromptID]["outputs"];
+                    if (!rootNode.HasKey(m_comfyUIPromptID))
+                    {
+                        string msg = "ComfyUI history did not contain prompt id " + m_comfyUIPromptID;
+                        Debug.LogWarning(msg);
+                        RTConsole.Log(msg);
+                        m_picScript.SetStatusMessage("Missing ComfyUI history");
+                        FinishUpEverything(false);
+                        CloseWebSocket();
+                        yield break;
+                    }
+
+                    JSONNode promptHistoryNode = rootNode[m_comfyUIPromptID];
+                    if (promptHistoryNode == null || !promptHistoryNode.HasKey("status"))
+                    {
+                        RTConsole.Log("ComfyUI history entry was missing status.");
+                        m_picScript.SetStatusMessage("Bad ComfyUI history");
+                        FinishUpEverything(false);
+                        CloseWebSocket();
+                        yield break;
+                    }
+
+                    JSONNode statusNode = promptHistoryNode["status"];
+                    JSONNode outputsNode = promptHistoryNode["outputs"];
 
                     if (statusNode["status_str"] == "success")
                     {
