@@ -16,4 +16,5 @@ copy config_llm.txt build\win
 copy config_cam.txt build\win
 copy config_preferences.txt build\win
 copy model_data.json build\win
-pause
+copy README.md build\win
+if "%NO_PAUSE%"=="" pause
