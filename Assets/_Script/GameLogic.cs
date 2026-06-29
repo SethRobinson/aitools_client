@@ -2093,7 +2093,7 @@ public string GetPrompt() { return m_prompt; }
     /// </summary>
     public void OnLLMSettingsButtonClicked()
     {
-        AppSettingsPanel.Show(AppSettingsTab.LLM);
+        LLMSettingsPanel.Show();
     }
 
     /// <summary>

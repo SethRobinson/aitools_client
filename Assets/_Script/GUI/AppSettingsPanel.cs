@@ -32,7 +32,6 @@ public class AppSettingsPanel : MonoBehaviour
     private TextMeshProUGUI _generalStatusText;
     private TextMeshProUGUI _configStatusText;
     private TextMeshProUGUI _audioStatusText;
-    private TextMeshProUGUI _llmSummaryText;
     private GameObject _forceReconnectDialogRoot;
     private TMP_InputField _imageEditorInput;
     private TMP_Dropdown _ttsProviderDropdown;
@@ -69,6 +68,20 @@ public class AppSettingsPanel : MonoBehaviour
     private static readonly Color CheckColor = new Color(0.18f, 0.45f, 0.18f, 1f);
 
     public static void Show(AppSettingsTab tab = AppSettingsTab.General)
+    {
+        // The LLM Settings "tab" is a launcher for the standalone advanced dialog, not a
+        // content page. Open the window on General and pop the advanced LLM dialog on top.
+        if (tab == AppSettingsTab.LLM)
+        {
+            ShowInternal(AppSettingsTab.General);
+            LLMSettingsPanel.Show();
+            return;
+        }
+
+        ShowInternal(tab);
+    }
+
+    private static void ShowInternal(AppSettingsTab tab)
     {
         if (_instance != null)
         {
@@ -192,7 +205,13 @@ public class AppSettingsPanel : MonoBehaviour
         CreateTabButton(strip, AppSettingsTab.General, "General Settings", 185f);
         CreateTabButton(strip, AppSettingsTab.Configuration, "ComfyUI Settings", 190f);
         CreateTabButton(strip, AppSettingsTab.Audio, "Audio", 110f);
-        CreateTabButton(strip, AppSettingsTab.LLM, "LLM Settings", 165f);
+        // LLM is a launcher, not a content page: it opens the standalone advanced dialog
+        // directly. It is intentionally NOT added to _tabButtons (never highlighted active),
+        // and it keeps the inactive-tab color so it never looks like the selected page.
+        var llmLauncher = CreateButton(strip, "Tab_LLM", "LLM Settings", 165f, () => LLMSettingsPanel.Show());
+        var llmLauncherImg = llmLauncher.GetComponent<Image>();
+        if (llmLauncherImg != null)
+            llmLauncherImg.color = InactiveTabBg;
     }
 
     private void CreateTabButton(RectTransform parent, AppSettingsTab tab, string text, float width)
@@ -243,14 +262,12 @@ public class AppSettingsPanel : MonoBehaviour
         ClearContent();
         var content = CreateScrollContent();
 
-        if (tab == AppSettingsTab.General)
-            BuildGeneralTab(content);
-        else if (tab == AppSettingsTab.Configuration)
+        if (tab == AppSettingsTab.Configuration)
             BuildConfigurationTab(content);
         else if (tab == AppSettingsTab.Audio)
             BuildAudioTab(content);
         else
-            BuildLLMTab(content);
+            BuildGeneralTab(content);
 
         SetFooterStatus("");
     }
@@ -747,55 +764,6 @@ public class AppSettingsPanel : MonoBehaviour
             return;
     }
 
-    private void BuildLLMTab(RectTransform content)
-    {
-        CreateSectionHeader(content, "LLM Settings");
-
-        var box = CreateVerticalBox(content, "LLMSummaryBox", 180f);
-        _llmSummaryText = CreateText("LLMSummary", box, BuildLLMSummaryText(), 14f, TextDark, TextAlignmentOptions.TopLeft);
-        _llmSummaryText.textWrappingMode = TextWrappingModes.Normal;
-        var llmSummaryLayout = _llmSummaryText.gameObject.AddComponent<LayoutElement>();
-        llmSummaryLayout.preferredHeight = 118f;
-        llmSummaryLayout.flexibleWidth = 1f;
-
-        var row = CreateRow(box, "LLMButtons", 38f);
-        CreateButton(row, "OpenLLM", "Open Advanced LLM Settings", 230f, () => LLMSettingsPanel.Show());
-        CreateButton(row, "RefreshLLM", "Refresh Summary", 140f, () =>
-        {
-            if (_llmSummaryText != null)
-                _llmSummaryText.text = BuildLLMSummaryText();
-        });
-    }
-
-    private string BuildLLMSummaryText()
-    {
-        var manager = LLMInstanceManager.Get();
-        if (manager == null)
-            return "LLM settings manager is not initialized yet.";
-
-        int configured = manager.GetInstanceCount();
-        int active = manager.GetActiveLLMCount();
-        int busy = manager.GetBusyLLMCount();
-        int capacity = manager.GetTotalLLMCapacity();
-        int vision = 0;
-        foreach (var instance in manager.GetAllInstances())
-        {
-            if (instance != null && instance.isActive && instance.supportsVision)
-                vision++;
-        }
-
-        var def = manager.GetDefaultInstance();
-        string defaultText = def == null ? "(none)" : def.GetDisplayString();
-
-        return
-            "Configured instances: " + configured + "\n" +
-            "Active instances: " + active + "\n" +
-            "Busy instances: " + busy + "\n" +
-            "Total capacity: " + capacity + "\n" +
-            "Vision-capable active instances: " + vision + "\n" +
-            "Default instance: " + defaultText;
-    }
-
     private void LoadServersFromConfig()
     {
         _workingServers.Clear();
@@ -1229,8 +1197,6 @@ public class AppSettingsPanel : MonoBehaviour
     {
         if (_activeTab == AppSettingsTab.General)
             RefreshGeneralStatus();
-        else if (_activeTab == AppSettingsTab.LLM && _llmSummaryText != null)
-            _llmSummaryText.text = BuildLLMSummaryText();
     }
 
     private RectTransform CreateVerticalBox(Transform parent, string name, float minHeight)

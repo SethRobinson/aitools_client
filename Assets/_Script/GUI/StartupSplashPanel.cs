@@ -338,7 +338,7 @@ public class StartupSplashPanel : MonoBehaviour
 
     private void OpenLLMSettings()
     {
-        AppSettingsPanel.Show(AppSettingsTab.LLM);
+        LLMSettingsPanel.Show();
     }
 
     private void OpenAIChat()
