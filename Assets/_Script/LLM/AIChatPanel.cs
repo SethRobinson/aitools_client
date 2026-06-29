@@ -283,6 +283,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private ChatImageAttachmentZone _attachmentZone;
     private RectTransform _attachmentsStrip;
     private RectTransform _footerRT;
+    // User-resizable footer (input box) height. FOOTER_HEIGHT is the floor/default; the
+    // FooterResizeHandle on the footer's top bar drags this taller, shrinking the body
+    // above. The attachments strip height is added on top of this, not baked into it.
+    private float _footerBaseHeight = FOOTER_HEIGHT;
+    private const float MIN_BODY_HEIGHT = 140f; // never shrink the columns above below this
     private const float ATTACHMENT_STRIP_HEIGHT = 70f;
     private const float FOOTER_RIGHT_RESERVED_WIDTH = 200f;
     private const float MAIN_LLM_FOOTER_RESERVED_WIDTH = 274f;
@@ -908,6 +913,50 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         RequestBubbleRelayout();
     }
 
+    /// <summary>Current user-chosen footer (input box) base height, excluding the
+    /// attachments strip. Read by FooterResizeHandle as its drag baseline.</summary>
+    public float CurrentFooterBaseHeight => _footerBaseHeight;
+
+    /// <summary>
+    /// Applies the three coupled footer measurements from the current _footerBaseHeight
+    /// (+ the attachments strip when present): the footer's own height, the body's bottom
+    /// inset above it, and the input field's top inset (status row + strip). Shared by the
+    /// attachment-strip path and the resize-drag path so they never drift apart.
+    /// </summary>
+    private void UpdateFooterLayout()
+    {
+        bool hasAttachments = _attachmentZone != null && _attachmentZone.HasAttachments;
+        float extra = hasAttachments ? ATTACHMENT_STRIP_HEIGHT : 0f;
+        float total = _footerBaseHeight + extra;
+
+        if (_footerRT != null)
+            _footerRT.sizeDelta = new Vector2(_footerRT.sizeDelta.x, total);
+        if (_bodyRT != null)
+            _bodyRT.offsetMin = new Vector2(_bodyRT.offsetMin.x, total);
+        if (_inputFieldRT != null)
+            _inputFieldRT.offsetMax = new Vector2(_inputFieldRT.offsetMax.x, -(32f + extra));
+    }
+
+    /// <summary>
+    /// Updates _footerBaseHeight (clamped) and re-lays-out the footer/body/input. Called
+    /// from FooterResizeHandle.OnDrag and from OnPanelResized (to re-clamp after the whole
+    /// window shrinks). Mirror of ApplySplit on the vertical axis.
+    /// </summary>
+    public void ApplyFooterHeight(float newBaseHeight)
+    {
+        if (_footerRT == null || _bodyRT == null) return;
+        // Vertical space between the header's bottom and the window's bottom edge.
+        float panelHeight = _mainPanel != null ? _mainPanel.rect.height : 0f;
+        float extra = (_attachmentZone != null && _attachmentZone.HasAttachments)
+                      ? ATTACHMENT_STRIP_HEIGHT : 0f;
+        float maxBase = Mathf.Max(FOOTER_HEIGHT, panelHeight - HEADER_HEIGHT - MIN_BODY_HEIGHT - extra);
+        _footerBaseHeight = Mathf.Clamp(newBaseHeight, FOOTER_HEIGHT, maxBase);
+
+        UpdateFooterLayout();
+        // Body height changed (width didn't), but bubbles re-fit to the new viewport.
+        RequestBubbleRelayout();
+    }
+
     /// <summary>
     /// Mini-header strip across the top of the media panel: just a title and a
     /// "Clear" button (which trims to keep-last-N media bubbles).
@@ -1465,7 +1514,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     private void CreateFooterDragBar(Transform footerTransform)
     {
-        var bar = new GameObject("FooterDragBar");
+        // The bar across the top of the footer is the draggable divider between the input
+        // box and the columns above: drag it up to grow the input box, down to shrink it.
+        var bar = new GameObject("FooterResizeBar");
         bar.transform.SetParent(footerTransform, false);
         var rt = bar.AddComponent<RectTransform>();
         rt.anchorMin = new Vector2(0f, 1f);
@@ -1477,7 +1528,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         var img = bar.AddComponent<Image>();
         img.color = new Color(0.62f, 0.62f, 0.66f, 1f);
 
-        bar.AddComponent<PanelDragHandler>().SetTarget(_mainPanel, HEADER_HEIGHT);
+        bar.AddComponent<FooterResizeHandle>().SetTarget(this, _mainPanel, _footerBaseHeight);
     }
 
     private Button CreateFooterButton(Transform parent, string text, Vector2 anchoredPos, Vector2 size, UnityEngine.Events.UnityAction onClick)
@@ -2516,25 +2567,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     /// </summary>
     private void OnAttachmentsChanged()
     {
-        bool hasAttachments = _attachmentZone != null && _attachmentZone.HasAttachments;
-        float extraFooterHeight = hasAttachments ? ATTACHMENT_STRIP_HEIGHT : 0f;
         // Caption may have just arrived (or an attachment was removed); refresh Send.
         RecomputeSendInteractable();
         UpdateAttachmentCaptionStatus(force: true);
 
-        // 1) Grow / shrink the footer itself so the input field still has its original
-        //    height after the strip reserves space at its top.
-        if (_footerRT != null)
-            _footerRT.sizeDelta = new Vector2(_footerRT.sizeDelta.x, FOOTER_HEIGHT + extraFooterHeight);
-
-        // 2) Push the body's bottom edge up by the same amount so neither the media
-        //    panel nor the chat panel overlaps the now-taller footer.
-        if (_bodyRT != null)
-            _bodyRT.offsetMin = new Vector2(_bodyRT.offsetMin.x, FOOTER_HEIGHT + extraFooterHeight);
-
-        // 3) Input field's top reserves room for the strip + the existing 32 px status row.
-        if (_inputFieldRT != null)
-            _inputFieldRT.offsetMax = new Vector2(_inputFieldRT.offsetMax.x, -(32f + extraFooterHeight));
+        // Re-apply the footer/body/input measurements; the strip's presence is read inside
+        // UpdateFooterLayout, so it adds/removes its height on top of the resizable base.
+        UpdateFooterLayout();
     }
 
     private void CreateResizeGrip()
@@ -2660,6 +2699,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     {
         ClampPanelToScreen();
         ApplySplit(_splitX);
+        // Footer height is absolute; re-clamp so a shrinking window can't squeeze the
+        // columns above below MIN_BODY_HEIGHT.
+        ApplyFooterHeight(_footerBaseHeight);
         RequestBubbleRelayout();
     }
 
@@ -8867,6 +8909,48 @@ public class ChatSplitterHandle : MonoBehaviour, IBeginDragHandler, IDragHandler
         // pivot, so we can just add it to our left-edge-anchored start position.
         float deltaX = nowLocal.x - _startPointerLocal.x;
         _panel.ApplySplit(_startSplitX + deltaX);
+    }
+}
+
+/// <summary>
+/// Horizontal divider handle on the top bar of the AIChatPanel footer. Drags vertically
+/// to grow/shrink the input box: dragging up makes the footer taller (the columns above
+/// shrink), dragging down makes it shorter. Calls back into AIChatPanel.ApplyFooterHeight
+/// which clamps and re-lays-out the footer/body/input. Vertical-axis twin of ChatSplitterHandle.
+/// </summary>
+public class FooterResizeHandle : MonoBehaviour, IBeginDragHandler, IDragHandler
+{
+    private AIChatPanel _panel;
+    private RectTransform _panelRT;   // _mainPanel, the common reference frame for the drag
+    private Vector2 _startPointerLocal;
+    private float _startHeight;
+
+    public void SetTarget(AIChatPanel panel, RectTransform panelRT, float startHeight)
+    {
+        _panel = panel;
+        _panelRT = panelRT;
+        _startHeight = startHeight;
+    }
+
+    public void OnBeginDrag(PointerEventData eventData)
+    {
+        if (_panelRT == null || _panel == null) return;
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(
+            _panelRT, eventData.position, eventData.pressEventCamera, out _startPointerLocal);
+        _startHeight = _panel.CurrentFooterBaseHeight;
+    }
+
+    public void OnDrag(PointerEventData eventData)
+    {
+        if (_panelRT == null || _panel == null) return;
+        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                _panelRT, eventData.position, eventData.pressEventCamera, out var nowLocal))
+            return;
+
+        // The footer is anchored to the window's bottom, so a taller footer means the
+        // divider moves UP: positive local-Y delta -> larger base height.
+        float deltaY = nowLocal.y - _startPointerLocal.y;
+        _panel.ApplyFooterHeight(_startHeight + deltaY);
     }
 }
 
