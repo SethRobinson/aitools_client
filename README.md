@@ -75,6 +75,8 @@ This is optional; leave `|token=...` off for normal open ComfyUI servers. For Co
 
 # Setting up with ComfyUI
 
+**Tip:** modern AI assistants (Claude, ChatGPT, etc.) can read this README and figure out how to download, install, and test the workflows AI Tools needs to run. I actually recommend doing it that way - just point your AI at this page and let it walk you through (or do) the setup, it saves a lot of time.
+
 First, install [ComfyUI](https://github.com/comfyanonymous/ComfyUI) and get it rendering stuff.
 
 Then install my [Workflow to API Converter Endpoint](https://github.com/SethRobinson/comfyui-workflow-to-api-converter-endpoint) via ComfyUI Manager
@@ -92,6 +94,25 @@ Adjust it until it works (change paths or models or whatever you need, you could
 So you don't have to create custom workflows for every checkpoint/filesize etc, you can use AITools' "@replace" to change any part of a workflow before it's sent to ComfyUI's API. You'll see it used in various presets.
 
 Check discussions for some more info [here](https://github.com/SethRobinson/aitools_client/discussions/18)
+
+# Command-line tool (Windows & Linux)
+
+A small Python CLI in `cli/` lets you generate images straight from a terminal, pointed at the same ComfyUI servers and `Presets/` as the app. Great for scripting or for AI agents.
+
+On Windows (the `.bat` auto-creates a venv and installs dependencies on first run):
+
+```bat
+cli\aitools_cli.bat "a cat playing a guitar" out.png -p "Prompt To Image (Z-Image)"
+cli\aitools_cli.bat "make the sky red" out.png -p "Image To Image Klein Edit 1 Input" -i input.png
+```
+
+On Linux/macOS:
+
+```bash
+python cli/aitools_cli.py "a cat playing a guitar" out.png -p "Prompt To Image (Z-Image)"
+```
+
+`-p` picks a preset (any text-to-image or single-step image-to-image preset works; pass an input image with `-i`). Add `-v` for verbose output. It reads `cli/config.txt` for server settings - see `cli/README.md` for details.
 
 # The coolest feature
 
