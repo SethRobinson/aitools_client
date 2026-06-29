@@ -1,7 +1,8 @@
 //place this script in the Editor folder within Assets.
- using UnityEditor;
+using UnityEditor;
 using UnityEngine;
 using System.Collections.Generic;
+using System.Reflection;
   
  //to be used on the command line:
  //$ Unity -quit -batchmode -executeMethod WebGLBuilder.build
@@ -36,7 +37,7 @@ using System.Collections.Generic;
      static void BuildForceVR() 
     {
         EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.Standalone, BuildTarget.StandaloneWindows64);
-        UnityEditorInternal.VR.VREditor.SetVREnabledDevicesOnTargetGroup(BuildTargetGroup.Standalone,  new string[] { "OpenVR", "Oculus" });
+        TrySetLegacyVREnabledDevices(BuildTargetGroup.Standalone, new string[] { "OpenVR", "Oculus" });
         BuildPipeline.BuildPlayer(GetScenes(), "build\\win\\" + GetProjectName() + ".exe", BuildTarget.StandaloneWindows64, BuildOptions.None);
 
         //BuildPipeline.BuildPlayer(GetScenes(), "build\\win", BuildTarget.StandaloneWindows64, BuildOptions.Development);
@@ -57,4 +58,23 @@ using System.Collections.Generic;
      	BuildPipeline.BuildPlayer(GetScenes(), "build\\win\\"+ GetProjectName() + ".exe", BuildTarget.StandaloneWindows64, BuildOptions.None);
 		RTBuildTools.RemoveDefine(BuildTargetGroup.Standalone, "RT_RELEASE");
      }
+
+    static void TrySetLegacyVREnabledDevices(BuildTargetGroup targetGroup, string[] devices)
+    {
+        var vrEditorType = typeof(Editor).Assembly.GetType("UnityEditorInternal.VR.VREditor");
+        var method = vrEditorType?.GetMethod(
+            "SetVREnabledDevicesOnTargetGroup",
+            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static,
+            null,
+            new[] { typeof(BuildTargetGroup), typeof(string[]) },
+            null);
+
+        if (method == null)
+        {
+            Debug.LogWarning("Legacy UnityEditorInternal.VR.VREditor API is unavailable in this Unity version; skipping legacy VR device setup.");
+            return;
+        }
+
+        method.Invoke(null, new object[] { targetGroup, devices });
+    }
  }

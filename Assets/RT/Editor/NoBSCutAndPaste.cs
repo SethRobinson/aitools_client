@@ -72,7 +72,7 @@ public class NoBSCutAndPaste
 
         var window = EditorWindow.focusedWindow;
 
-        methodInfo.Invoke(window, new object[] { go.GetInstanceID(), expand });
+        methodInfo.Invoke(window, new object[] { go.GetEntityId(), expand });
     }
 
     [MenuItem("GameObject/Paste without changing shit (Shift-Ctrl-V) %#v", false, 0)]
@@ -126,4 +126,3 @@ public class NoBSCutAndPaste
     */
 
 }
- 
