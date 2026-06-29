@@ -70,6 +70,54 @@ Single-character variation series follow the same rule: feed
 `chat_image="Elias"` (the anchor) for every "show him doing X" follow-up,
 NOT the previous variant's bubble.
 
+## "DO N MORE VERSIONS" - keep it image_to_image, emit them all at once
+
+When the user asks for several variations of someone already in chat -
+"now as an elephant, a bee, and a dragon", "give me three more versions",
+"same boys but at the beach / in space / as superheroes" - EVERY variation
+is another `image_to_image` edit, NOT a `generate_image`. Rules:
+
+- Feed the SAME ORIGINAL source on every variation (`chat_image="1"` or the
+  anchor name) - the canonical face, never the previous variation's output
+  (chaining off the last variant compounds drift).
+- NEVER use `generate_image` / Z-Image for a variation of an existing person.
+  Re-describing them from text produces a stranger no matter how detailed -
+  that is the exact failure this skill exists to prevent.
+- The variations are INDEPENDENT of each other, so emit ALL of them in ONE
+  reply (one `image_to_image` tag per variation). You do NOT need `continue`
+  for independent variations - only use `continue` when a later step needs an
+  earlier step's OUTPUT image. Do not stop after one or two and trail off.
+- Put the full IDENTITY LOCK clause on every single variation.
+
+## IDENTITY LOCK - anchoring MEANS "keep their identity" BY DEFAULT
+
+Using an anchor, or editing an existing person via `chat_image`, IS the
+instruction to keep their face / height / build - that is the entire point of
+anchoring. The user does NOT have to say "don't change their faces"; assume
+it. Include the lock clause on EVERY anchored / `chat_image` edit by default,
+unless the user EXPLICITLY asks to change their face, age, or body. Don't wait
+to be asked, and don't wait for a second complaint to make it strong.
+
+The #1 quality complaint is faces and HEIGHTS drifting on an edit. Lock
+identity hard on the FIRST attempt:
+
+> "preserving exact faces, exact hairstyles, exact heights, exact body
+>  proportions, exact poses, and exact relative positioning - do NOT change
+>  their faces, heights, or stances at all"
+
+"face, hair, and build" alone is too weak for full-body or multi-person
+shots - HEIGHT, proportions, stance, and left-to-right spacing are exactly
+what slip. Name them explicitly the first time, not only after a complaint.
+
+RELOCATION edits (costume swap + new setting, e.g. "put them at the North
+Pole") are the HIGHEST-drift case: the more of a fresh scene you describe,
+the more the model re-renders the people and loses their likeness. Keep the
+people clause as the hard lock above, and describe the change as a tight
+DELTA - "only swap the duck onesie for a penguin costume; background becomes
+Arctic ice with real penguins" - NEVER a full from-scratch scene description
+("They stand on ice floes, aurora overhead, photorealistic daylight..."). A
+full scene re-description is what made identity drift on the first pass.
+
 ## NEVER use chat character names in the prompt - HARDEST RULE
 
 Klein has NO access to chat history. It sees only the numbered input
@@ -239,6 +287,12 @@ with a brief identity clause ("Keep her face and hair exactly as is,
 Drop the identity clause ONLY if the user explicitly asked to change
 the face/hair/age/ethnicity. When changing one of those, anchor the
 OTHERS explicitly so only the requested attribute moves.
+
+The brief "face and hair" clause is enough only for tight head-and-shoulders
+edits. For full-body or multi-person subjects, or any edit that also moves
+them to a new setting, use the stronger lock from IDENTITY LOCK above
+(exact heights, body proportions, poses, relative positioning) on the FIRST
+attempt and keep the setting change a tight delta.
 
 ## Invocation examples
 

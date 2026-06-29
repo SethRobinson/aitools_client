@@ -14,6 +14,14 @@ if their wording is "create / make / generate an image of them" - that
 is **image_to_image** with the N-Input Klein preset, not this skill.
 generate_image cannot reproduce a specific past face from text.
 
+Same trap for "do N more versions / variations" of a person already in
+chat ("now as an elephant", "same boys at the beach", "three more costume
+versions"). Each variation is another **image_to_image** edit off the SAME
+original source/anchor - NOT a generate_image. Reaching for generate_image
+here is the most common way to accidentally replace an anchored person with
+a stranger. If there is an existing face to keep, you are editing, not
+generating.
+
 If the user asks for a brand-new subject WITH an attached logo, mark,
 watermark, decal, or sticker, `generate_image` is only stage 1: create the
 clean base subject first. For a literal flat sticker/decal/watermark, follow
