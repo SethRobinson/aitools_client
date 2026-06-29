@@ -24,6 +24,16 @@ Current local facts:
 - Main scene: `Assets/Main.unity`
 - Primary platform: Windows desktop; a limited Python CLI (Windows + Linux) also exists under `cli/`
 
+### Bumping the app version
+
+When the user says "bump the version", update ALL of these in the same task (do not stop after the code change):
+1. `Assets/_Script/Config.cs` — `m_version` float (e.g. `3.02f`).
+2. `latest_version_checker.json` (repo root) — `latest_version` number.
+3. This file's "App version in code/version metadata" line above.
+4. `README.md` — the `# Download` line (version number, date, and the zip size in MB) AND add a new `### V<x.yz> (<date>)` entry at the top of `## Recent changes` summarizing what changed since the last release (derive it from `git log <last-version-bump>..HEAD`).
+
+Use the current date for README date strings. The download zip size changes per build; check the freshly built `SethsAIToolsWindows.zip` size and match it.
+
 ## Hard Rules
 
 - Never automatically commit, push, or pull from git without explicit user directions.

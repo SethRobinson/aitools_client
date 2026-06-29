@@ -4,7 +4,7 @@ License:  BSD style attribution, see LICENSE.md
 
 # Download
 
-Download the latest: V3.01 (Jun 21st, 2026) [AI Tools Client (Windows, 62 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) (codesigned by me)
+Download the latest: V3.02 (Jun 29th, 2026) [AI Tools Client (Windows, 66 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) (codesigned by me)
 
 ## Features
 
@@ -20,6 +20,17 @@ Download the latest: V3.01 (Jun 21st, 2026) [AI Tools Client (Windows, 62 MB)](h
 
 ## Recent changes
 
+### V3.02 (Jun 29th, 2026)
+
+* AI Chat now surfaces LLM/backend errors as visible bubbles instead of failing silently
+* Added Opus 4.8, refreshed the Gemini model list
+* AI Chat input box: draggable resize divider, scroll bar, and command-line style prompt history
+* Stronger anchoring and multi-step "continue" handling so the model can carry out longer plans
+* Comic creation now defaults to Ideogram 4, plus improved prompt caching
+* Krea 2 Turbo image generation, AI Chat help system, background-removal and tiling skills
+* Highlight words in AI Chat and have them spoken via ElevenLabs (add an API key)
+* Force GPU reset option for reconnect, copy images to the Windows clipboard
+
 ### V3.01 (Jun 21st, 2026)
 
 * Tons of work done on the AI Chat feature as that's kind of all you need now
@@ -32,6 +43,9 @@ Download the latest: V3.01 (Jun 21st, 2026) [AI Tools Client (Windows, 62 MB)](h
 - Things tend to get broken if I haven't used that particular feature in a while.  It's probably the app, not you
 
 # Screenshots
+
+<a href="Media/aitools_ai_generate_example.png"><img src="Media/aitools_ai_generate_example.png" width="420"></a>
+<a href="Media/aitools_ai_edit_example.png"><img src="Media/aitools_ai_edit_example.png" width="420"></a>
 
 <a href="Media/ai_tools_dungeons_generate.png"><img src="Media/ai_tools_dungeons_generate.png" width="300"></a>
 <a href="Media/ait_dungeon_twine_export.png"><img src="Media/ait_dungeon_twine_export.png" width="300"></a>
