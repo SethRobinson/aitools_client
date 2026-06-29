@@ -4080,7 +4080,9 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                     case LLMProvider.Gemini:
                         {
                             string apiKey = activeSettings.apiKey;
-                            string model = activeSettings.selectedModel ?? "gemini-2.5-pro";
+                            // No silent fallback model: an unset model surfaces a clear error rather
+                            // than masking the misconfiguration by quietly using some default.
+                            string model = activeSettings.selectedModel ?? "";
                             string baseEndpoint = activeSettings.endpoint ?? "https://generativelanguage.googleapis.com/v1beta/models";
                             bool enableThinking = activeSettings.enableThinking;
 

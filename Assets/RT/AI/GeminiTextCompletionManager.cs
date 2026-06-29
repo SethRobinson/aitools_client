@@ -46,11 +46,11 @@ public class GeminiTextCompletionManager : MonoBehaviour
     /// <param name="lines">Queue of chat lines</param>
     /// <param name="max_tokens">Maximum output tokens</param>
     /// <param name="temperature">Temperature for generation</param>
-    /// <param name="model">Model name (e.g., gemini-2.5-pro)</param>
+    /// <param name="model">Model name (e.g., gemini-3.5-flash). Callers pass the selected model; no default is assumed.</param>
     /// <param name="stream">Whether to stream response</param>
     /// <param name="enableThinking">Whether to enable thinking mode</param>
     /// <returns>JSON request string</returns>
-    public string BuildChatCompleteJSON(Queue<GTPChatLine> lines, int max_tokens = 8192, float temperature = 1.0f, string model = "gemini-2.5-pro", bool stream = false, bool enableThinking = true)
+    public string BuildChatCompleteJSON(Queue<GTPChatLine> lines, int max_tokens = 8192, float temperature = 1.0f, string model = "", bool stream = false, bool enableThinking = true)
     {
         // Build contents array in Gemini format
         // Gemini uses: { "role": "user"|"model", "parts": [{"text": "..."}] }
@@ -222,6 +222,7 @@ public class GeminiTextCompletionManager : MonoBehaviour
 
                 db.Set("status", "failed");
                 db.Set("msg", msg);
+                db.Set("response_body", responseBody);
                 myCallback.Invoke(db, null, "");
             }
             else
@@ -302,6 +303,7 @@ public class GeminiTextCompletionManager : MonoBehaviour
 
                 db.Set("status", "failed");
                 db.Set("msg", msg);
+                db.Set("response_body", errorBody);
                 myCallback.Invoke(db, null, "");
             }
             else

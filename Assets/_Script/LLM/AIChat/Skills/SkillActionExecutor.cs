@@ -1875,7 +1875,8 @@ namespace AITools.AIChat.Skills
                 case LLMProvider.Gemini:
                 {
                     var mgr = runner.gameObject.AddComponent<GeminiTextCompletionManager>();
-                    string model = string.IsNullOrEmpty(settings.selectedModel) ? "gemini-2.5-pro" : settings.selectedModel;
+                    // No silent fallback model: an unset model surfaces an error, not a default.
+                    string model = settings.selectedModel ?? "";
                     string baseEndpoint = string.IsNullOrEmpty(settings.endpoint)
                         ? "https://generativelanguage.googleapis.com/v1beta/models"
                         : settings.endpoint;

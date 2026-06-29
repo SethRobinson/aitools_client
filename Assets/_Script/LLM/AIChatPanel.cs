@@ -2833,6 +2833,62 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         return AppendBubble("Info", new Color(0.35f, 0.35f, 0.45f), text, new Color(0.92f, 0.92f, 0.95f, 1f));
     }
 
+    // Always-visible error bubble (NOT gated by "Show debug stuff"). Real backend/LLM
+    // failures must reach the user even with debug off - unlike Info/system bubbles, which
+    // are diagnostic and stay hidden by default. Read-only (linkedInteraction = null).
+    private TMP_InputField AddErrorBubble(string text)
+    {
+        return AppendBubble("Error", new Color(0.75f, 0.15f, 0.15f), text, new Color(0.99f, 0.92f, 0.92f, 1f));
+    }
+
+    // Build the most useful human-readable error from a failed LLM callback's db.
+    // Providers differ: OpenAI already extracts a clean "msg"; Anthropic/Gemini put the
+    // transport code in "msg" and the real provider message in the JSON "response_body"
+    // (error.message). Prefer the provider message, then msg, then a trimmed raw body.
+    // Returns "" when nothing useful is available (caller picks the generic fallback).
+    private static string BuildLLMErrorDetail(RTDB db)
+    {
+        if (db == null) return "";
+        string msg = db.GetStringWithDefault("msg", "");
+        string body = db.GetStringWithDefault("response_body", "");
+
+        string providerMsg = "";
+        if (!string.IsNullOrEmpty(body))
+        {
+            try
+            {
+                var root = JSON.Parse(body);
+                var errNode = root != null ? root["error"] : null;
+                if (errNode != null)
+                {
+                    if (errNode["message"] != null && !string.IsNullOrEmpty(errNode["message"].Value))
+                        providerMsg = errNode["message"].Value;       // Anthropic / OpenAI / Gemini shape
+                    else if (!string.IsNullOrEmpty(errNode.Value))
+                        providerMsg = errNode.Value;                  // error is a bare string
+                }
+            }
+            catch { /* non-JSON or unexpected shape - fall back to msg/body below */ }
+        }
+
+        string detail;
+        if (!string.IsNullOrEmpty(providerMsg))
+        {
+            // Keep the transport code if it adds info the provider message lacks (e.g. the 4xx).
+            detail = (!string.IsNullOrEmpty(msg) && providerMsg.IndexOf(msg, StringComparison.OrdinalIgnoreCase) < 0)
+                ? $"{providerMsg} ({msg})"
+                : providerMsg;
+        }
+        else if (!string.IsNullOrEmpty(msg))
+            detail = msg;
+        else
+            detail = body.Trim();
+
+        if (string.IsNullOrEmpty(detail)) return "";
+        const int maxLen = 600;
+        if (detail.Length > maxLen) detail = detail.Substring(0, maxLen - 3).TrimEnd() + "...";
+        return detail;
+    }
+
     /// <summary>
     /// Make a bubble editable AFTER it has been created (used for assistant bubbles,
     /// which are created readOnly during streaming and switched to editable on completion).
@@ -5312,7 +5368,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private static int GetAnthropicMaxOutputTokens(string model)
     {
         string m = (model ?? "").ToLowerInvariant();
-        if (m.Contains("opus-4-7"))
+        if (m.Contains("opus-4-7") || m.Contains("opus-4-8"))
             return AI_CHAT_ANTHROPIC_OPUS_47_MAX_OUTPUT_TOKENS;
         if (m.Contains("claude-4") || m.Contains("opus-4") || m.Contains("sonnet-4") || m.Contains("haiku-4"))
             return AI_CHAT_ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS;
@@ -5604,7 +5660,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             case LLMProvider.Gemini:
             {
                 string apiKey = activeSettings.apiKey;
-                string model = string.IsNullOrEmpty(activeSettings.selectedModel) ? "gemini-2.5-pro" : activeSettings.selectedModel;
+                string model = activeSettings.selectedModel;
+                if (string.IsNullOrEmpty(model))
+                {
+                    AddErrorBubble("No model selected for this Gemini LLM instance - choose one in LLM Settings.");
+                    FinalizeAssistantTurn(aborted: true);
+                    return;
+                }
                 string baseEndpoint = string.IsNullOrEmpty(activeSettings.endpoint)
                     ? "https://generativelanguage.googleapis.com/v1beta/models" : activeSettings.endpoint;
                 bool enableThinking = activeSettings.enableThinking;
@@ -6041,7 +6103,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         if (jsonNode == null && (string.IsNullOrEmpty(streamedText) || streamedText.Length == 0))
         {
-            string error = db != null ? db.GetStringWithDefault("msg", "") : "";
+            string error = BuildLLMErrorDetail(db);
             if (string.IsNullOrEmpty(error))
             {
                 string status = db != null ? db.GetStringWithDefault("status", "") : "";
@@ -6049,7 +6111,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                     ? "LLM returned an empty response. Check text_completion_sent.json and textgen_json_received.json for the raw exchange."
                     : "Unknown error";
             }
-            AddSystemMessage("LLM error: " + error, includeInLLMRecap: false);
+            AddErrorBubble("LLM error: " + error);
             FinalizeAssistantTurn(aborted: true);
             return;
         }

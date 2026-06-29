@@ -89,13 +89,13 @@ public class LLMModelData
         data.anthropic = new LLMProviderModelData
         {
             defaultEndpoint = "https://api.anthropic.com/v1/messages",
-            models = new List<string> { "claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5" }
+            models = new List<string> { "claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5" }
         };
 
         data.gemini = new LLMProviderModelData
         {
             defaultEndpoint = "https://generativelanguage.googleapis.com/v1beta/models",
-            models = new List<string> { "gemini-3.1-pro-preview", "gemini-3.1-flash-lite", "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite" }
+            models = new List<string> { "gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-3.1-flash-lite" }
         };
 
         return data;

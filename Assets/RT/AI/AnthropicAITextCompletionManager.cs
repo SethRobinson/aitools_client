@@ -51,8 +51,9 @@ public class AnthropicAITextCompletionManager : MonoBehaviour
     {
         if (string.IsNullOrEmpty(model)) return false;
         string m = model.ToLowerInvariant();
-        // Currently confirmed: claude-opus-4-7 and beyond. Add new families here as they ship.
-        if (m.Contains("opus-4-7")) return true;
+        // Currently confirmed: claude-opus-4-7 and 4-8 (4.8 keeps 4.7's request surface).
+        // Add new families here as they ship.
+        if (m.Contains("opus-4-7") || m.Contains("opus-4-8")) return true;
         // Future-proofing: anything that parses as opus-4-N where N >= 7, or any 5.x line.
         if (m.Contains("opus-5") || m.Contains("sonnet-5") || m.Contains("haiku-5")) return true;
         return false;

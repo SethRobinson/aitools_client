@@ -95,7 +95,7 @@ public class LLMInstanceManager : MonoBehaviour
             bool changed = MigrateJobModes();
 
             // Merge any newly-shipped cloud models from model_data.json into existing instances
-            // so users see new models (gpt-5.5, claude-opus-4-7, gemini-3.1-pro, etc.) without
+            // so users see new models (gpt-5.5, claude-opus-4-8, gemini-3.5-flash, etc.) without
             // having to recreate their configurations.
             if (RefreshCloudModelsFromModelData()) changed = true;
 

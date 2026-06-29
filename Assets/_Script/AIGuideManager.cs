@@ -473,7 +473,8 @@ public class AIGuideManager : MonoBehaviour
         var mgr = LLMSettingsManager.Get();
         var settings = activeSettings ?? mgr?.GetProviderSettings(LLMProvider.Gemini);
         string apiKey = settings?.apiKey ?? "";
-        string model = settings?.selectedModel ?? "gemini-2.5-pro";
+        // No silent fallback model: an unset model surfaces an error, not a default.
+        string model = settings?.selectedModel ?? "";
         string baseEndpoint = settings?.endpoint ?? "https://generativelanguage.googleapis.com/v1beta/models";
         bool enableThinking = settings?.enableThinking ?? true;
 
