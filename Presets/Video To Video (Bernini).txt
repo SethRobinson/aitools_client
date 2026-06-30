@@ -1,0 +1,15 @@
+COMMAND_START|joblist
+#Restyle / edit a video with ByteDance Bernini-R. Load a video into the Pic, then run.
+%width%="832"
+%height%="480"
+%length%="81"
+
+#Restyle the loaded video (v2v):
+video_to_video_bernini.json @upload|video|input1| @replace|"width": 832|"width": %width%| @replace|"height": 480|"height": %height%| @replace|"length": 81|"length": %length%|
+
+#Guided by a reference image (rv2v) - also select a reference image Pic before running:
+#video_to_video_bernini_ref.json @upload|video|input1| @upload|image1|input2| @replace|"width": 832|"width": %width%| @replace|"height": 480|"height": %height%| @replace|"length": 81|"length": %length%|
+COMMAND_END
+COMMAND_START|default_negative_prompt
+blurry, low quality, distorted faces, jittery motion, watermark, deformed, repetitive, black and white
+COMMAND_END

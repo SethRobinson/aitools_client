@@ -211,6 +211,14 @@ namespace AITools.AIChat.Context
                 }
 
                 sb.AppendLine("If a composed image has clean_base=available and you need to redo/change text, labels, borders, or speech bubbles, use chat_image=\"N\" clean_base=\"true\" on the FIRST replacement draw_shape/draw_text/add_border step so you do not draw over baked-in old overlays.");
+                bool anyMovieListed = false;
+                for (int i = 0; i < listedCount; i++)
+                {
+                    ChatImageState s = (chatImages != null && i < chatImages.Count) ? chatImages[i] : null;
+                    if (s != null && s.IsMovie) { anyMovieListed = true; break; }
+                }
+                if (anyMovieListed)
+                    sb.AppendLine("\"movie\" entries are existing playable VIDEO clips. To restyle/edit a clip into a new video, use video_to_video with chat_image=\"N\" pointing at that movie - do NOT generate a brand-new clip. You can also reference a movie's current frame as the source for image_to_image / image_to_movie.");
                 for (int i = 0; i < listedCount; i++)
                 {
                     ChatImageState state = (chatImages != null && i < chatImages.Count) ? chatImages[i] : null;

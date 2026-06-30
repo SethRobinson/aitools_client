@@ -5944,16 +5944,25 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             if (string.IsNullOrEmpty(dimensions) && reusable && pic.TryGetCurrentTexture(out var tex) && tex != null)
                 dimensions = tex.width + "x" + tex.height;
 
+            // Reflect the Pic's CURRENT state, not just what it was when the bubble was
+            // created: a Pic that started as an image and later had a video rendered into it
+            // (image_to_movie / video_to_video) is now a movie even if the record still says
+            // "image". Without this the LLM can't tell which bubbles are clips, so it can't
+            // pick a video_to_video source and re-generates new clips instead.
+            bool isMovie = (record != null && record.isMovie) || (reusable && pic.IsMovie());
+
             states.Add(new ChatImageState
             {
                 Index = i + 1,
                 IsUserAttachment = userAttachment,
-                IsMovie = record != null && record.isMovie,
+                IsMovie = isMovie,
                 IsReusable = reusable,
                 IncludeCaption = !string.IsNullOrEmpty(caption),
-                Kind = record != null && !string.IsNullOrEmpty(record.kind)
-                    ? record.kind
-                    : (userAttachment ? "user attachment" : "generated image"),
+                Kind = isMovie
+                    ? "movie"
+                    : (record != null && !string.IsNullOrEmpty(record.kind)
+                        ? record.kind
+                        : (userAttachment ? "user attachment" : "generated image")),
                 AnchorName = record != null ? record.anchorName : null,
                 Dimensions = dimensions,
                 Caption = caption,
@@ -8241,6 +8250,15 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         var pic = GetChatImagePic(oneBasedIndex);
         if (pic == null) return null;
         return pic.TryGetImageAsPng(out byte[] png) ? png : null;
+    }
+
+    string IChatHost.GetChatImageMovieFilePath(int oneBasedIndex)
+    {
+        var pic = GetChatImagePic(oneBasedIndex);
+        if (pic == null || pic.m_picMovie == null || !pic.IsMovie())
+            return null;
+        string path = pic.m_picMovie.GetFileName();
+        return string.IsNullOrEmpty(path) ? null : path;
     }
 
     byte[] IChatHost.GetChatImageCleanBasePngBytes(int oneBasedIndex)

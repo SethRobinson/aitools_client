@@ -113,6 +113,15 @@ namespace AITools.AIChat.Skills
         byte[] GetChatImagePngBytes(int oneBasedIndex);
 
         /// <summary>
+        /// Local file path of the Nth chat-image bubble's source VIDEO, when that bubble
+        /// is a "Movie #N" clip (its world Pic is a movie). Returns null when N is out of
+        /// range, the Pic was destroyed, or the bubble is a still image. Used by
+        /// <c>video_to_video</c> to load the real clip onto a fresh Pic so the v2v preset's
+        /// <c>@upload|video|input1|</c> step has a movie to upload.
+        /// </summary>
+        string GetChatImageMovieFilePath(int oneBasedIndex);
+
+        /// <summary>
         /// Read the preserved pre-overlay PNG for the Nth chat-image bubble, if one
         /// exists. Annotation-style local composition ops capture this before the
         /// first destructive raster overlay so later retries can rebuild text/bubbles

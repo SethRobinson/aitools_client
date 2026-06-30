@@ -81,6 +81,7 @@ namespace AITools.AIChat.Skills
         public const string GenerateMovie = "generate_movie";
         public const string ImageToImage = "image_to_image";
         public const string ImageToMovie = "image_to_movie";
+        public const string VideoToVideo = "video_to_video";
         public const string ReadSkill = "read_skill";
         public const string SummarizeWithSmallLlm = "summarize_with_small_llm";
         public const string DescribeImage = "describe_image";

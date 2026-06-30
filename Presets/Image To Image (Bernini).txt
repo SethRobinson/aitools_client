@@ -1,0 +1,7 @@
+COMMAND_START|joblist
+#Edit image using ByteDance Bernini-R (Wan2.2-A14B in-context renderer). Instruction-style edit of a single image.
+img_to_img_bernini.json @upload|image1|input1|
+COMMAND_END
+COMMAND_START|default_negative_prompt
+cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white
+COMMAND_END

@@ -27,7 +27,9 @@ Keep the first help answer brief and easy to scan:
    - `Create an amazing image of robots fighting.`
    - `Create an amazing image of robots fighting using zimage.`
    - `Make this image into a short movie using ltx.`
+   - `Restyle movie 1 to look like winter.` (edit/restyle an existing clip)
    - `Edit image 2 so it is raining at night.`
+   - `Edit image 2 with bernini so it is raining at night.` (alternative edit model)
    - `Combine images 1 and 2 into one scene.`
    - `Make a comic page/poster/book page about ...`
    - `Remove the background from this image.`
@@ -35,6 +37,7 @@ Keep the first help answer brief and easy to scan:
    - `Check this image and tell me if anything looks wrong.`
 3. Mention optional render hints only at the user level:
    images: `zimage`, `krea`, `ideogram`;
+   image editing: `bernini` (alternative to the default edit model);
    movies: `ltx`, `wan`.
 4. Mention: for consistent characters, objects, or styles across multiple
    images, ask to `use anchors`.
@@ -42,7 +45,7 @@ Keep the first help answer brief and easy to scan:
    Group related internal skills into user-facing areas instead of dumping every
    internal action name. For example:
    - images and image editing
-   - movies and animation
+   - movies and animation (from text, from an image, or restyling an existing clip)
    - comics, books, posters, and layouts
    - background removal, tiling, crop/resize, text/borders/shapes
    - image inspection/checking

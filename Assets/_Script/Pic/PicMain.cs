@@ -192,6 +192,10 @@ public class PicMain : MonoBehaviour
     public PicGenerateMask m_picGenerateMaskScript;
     public PicInfoPanel m_infoPanelScript;
     public PicMovie m_picMovie;
+    // When set, an @upload|video|...| step uploads THIS file instead of the Pic's own loaded
+    // movie. Lets chat video_to_video supply the source clip while the Pic itself stays an
+    // image (so the rendered result transitions image -> video like image_to_movie does).
+    public string m_pendingVideoUploadPath = null;
     List<PicJob> m_picJobs = new List<PicJob>();
     List<PicJob> _jobHistory = new List<PicJob>();
     PicJob m_jobDefaultInfo = null;
@@ -2669,6 +2673,65 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         return false;
     }
 
+    /// <summary>
+    /// Draw a centered "play" badge (dark translucent disc + white right-pointing
+    /// triangle) onto a decoded frame PNG so the "?" info panel can show a video input
+    /// as visibly a CLIP, not a still. Returns null on any failure (caller falls back
+    /// to the bare frame).
+    /// </summary>
+    private static byte[] MakeVideoThumbPng(byte[] framePng)
+    {
+        if (framePng == null || framePng.Length == 0) return null;
+        Texture2D tex = null;
+        try
+        {
+            tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            if (!tex.LoadImage(framePng)) return null;
+            int w = tex.width, h = tex.height;
+            if (w < 8 || h < 8) return tex.EncodeToPNG();
+            float cx = w * 0.5f, cy = h * 0.5f;
+            float rad = Mathf.Min(w, h) * 0.16f;
+
+            int discR = Mathf.CeilToInt(rad * 1.8f);
+            for (int y = -discR; y <= discR; y++)
+                for (int x = -discR; x <= discR; x++)
+                {
+                    if (x * x + y * y > discR * discR) continue;
+                    int px = (int)cx + x, py = (int)cy + y;
+                    if (px < 0 || py < 0 || px >= w || py >= h) continue;
+                    Color bg = tex.GetPixel(px, py);
+                    tex.SetPixel(px, py, Color.Lerp(bg, new Color(0f, 0f, 0f, 1f), 0.55f));
+                }
+
+            // White right-pointing triangle: vertical base on the left, apex on the right.
+            float ax = cx - rad * 0.55f;            // left base x
+            float bx = cx + rad;                    // apex x
+            int yTop = Mathf.CeilToInt(cy + rad), yBot = Mathf.FloorToInt(cy - rad);
+            for (int y = yBot; y <= yTop; y++)
+            {
+                float t = Mathf.Clamp01(Mathf.Abs(y - cy) / rad); // 0 center -> 1 tip
+                float xRight = Mathf.Lerp(bx, ax, t);
+                for (int x = (int)ax; x <= (int)xRight; x++)
+                {
+                    if (x < 0 || y < 0 || x >= w || y >= h) continue;
+                    tex.SetPixel(x, y, Color.white);
+                }
+            }
+
+            tex.Apply();
+            return tex.EncodeToPNG();
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogWarning("PicMain.MakeVideoThumbPng: " + ex.Message);
+            return null;
+        }
+        finally
+        {
+            if (tex != null) UnityEngine.Object.Destroy(tex);
+        }
+    }
+
     public void OnGetPromptFromImageButton()
     {
         RunPresetByName("Image To Prompt (LLM).txt");
@@ -3817,12 +3880,29 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                     }
                     else if (source == "video" || source == "video1")
                     {
-                        // Video source - upload from file path
-                        if (IsMovie())
+                        // Video source - upload from file path. Prefer an explicitly-supplied
+                        // source clip (m_pendingVideoUploadPath, set by chat video_to_video so the
+                        // Pic can stay an image and transition cleanly to the result), else the
+                        // Pic's own loaded movie. Upload under remoteFileName (the parse-stage
+                        // placeholder name, e.g. pic_<guid>.mp4) so the file we send matches the
+                        // <AITOOLS_INPUT_N> token already baked into the workflow - using the
+                        // source's own name would desync them and the loader would point at a
+                        // file that was never uploaded.
+                        string videoPath = !string.IsNullOrEmpty(m_pendingVideoUploadPath)
+                            ? m_pendingVideoUploadPath
+                            : (IsMovie() ? m_picMovie.GetFileName() : null);
+                        if (!string.IsNullOrEmpty(videoPath))
                         {
-                            string videoPath = m_picMovie.GetFileName();
-                            string videoRemoteName = m_picMovie.GetFileNameWithoutPath();
-                            uploaderScript.UploadFile(serverID, videoPath, videoRemoteName, OnUploadFinished);
+                            // Stash a poster frame (with a play badge) for the "?" info panel so the
+                            // user can see a VIDEO was fed into this slot - and, on multi-input
+                            // presets, a video alongside any still inputs in the same row.
+                            if (int.TryParse(uploadParts[1], out int vIdx)
+                                && vIdx >= 0 && vIdx < m_pendingInputImagePngs.Length
+                                && TryGetImageAsPng(out byte[] framePng) && framePng != null)
+                            {
+                                m_pendingInputImagePngs[vIdx] = MakeVideoThumbPng(framePng) ?? framePng;
+                            }
+                            uploaderScript.UploadFile(serverID, videoPath, remoteFileName, OnUploadFinished);
                             return; // Video upload handled, exit early
                         }
                         else
@@ -4529,9 +4609,21 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
                             if (inputIndex >= 0 && inputIndex < 5)
                             {
-                                // Generate a GUID filename for this upload
-                                string guidFilename = "pic_" + System.Guid.NewGuid() + ".png";
-                                
+                                // Generate a GUID filename for this upload. Video sources keep
+                                // their real container extension (.mp4 etc.) so the uploaded file
+                                // and the workflow's video loader agree on the path; image sources
+                                // stay .png.
+                                string uploadExt = ".png";
+                                if (source == "video" || source == "video1")
+                                {
+                                    string movieFile = !string.IsNullOrEmpty(m_pendingVideoUploadPath)
+                                        ? m_pendingVideoUploadPath
+                                        : ((m_picMovie != null && IsMovie()) ? m_picMovie.GetFileName() : null);
+                                    string movieExt = string.IsNullOrEmpty(movieFile) ? null : System.IO.Path.GetExtension(movieFile);
+                                    uploadExt = string.IsNullOrEmpty(movieExt) ? ".mp4" : movieExt;
+                                }
+                                string guidFilename = "pic_" + System.Guid.NewGuid() + uploadExt;
+
                                 UploadInfo uploadInfo = new UploadInfo()
                                 {
                                     source = source,

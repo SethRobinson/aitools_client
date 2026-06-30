@@ -1,6 +1,6 @@
 ---
 id: image_to_image
-summary: Edit / compose an image with a prompt (Klein, Flux 2 family). Pick the preset by INPUT COUNT (1/2/3/4/5 Input) - one input per distinct REFERENCE image. Klein wants NARRATIVE PROSE (40-70 words total), NOT keyword soup or repeated "Keep X identical" boilerplate. Reference each subject by SLOT NUMBER (image 1, image 2, ...) - NEVER by chat name (Klein has no chat history). Multi-person scenes need (a) "maintaining exact likeness of image N's face, hair, build" as a concise identity clause per slot, (b) PER-SUBJECT PLACEMENT ("image 1's man on the left holding a mug, image 2's woman on the right beside the tree"), and (c) explicit left-to-right ordering. Generic "all four together smiling" produces vague placement - place each subject individually. Result spawns as a new image; originals unchanged.
+summary: Edit / compose an image with a prompt (Klein, Flux 2 family by default; ByteDance Bernini-R is ALSO available for single-image edits when the user explicitly says "bernini" - Bernini does image editing too, not just video). Pick the preset by INPUT COUNT (1/2/3/4/5 Input) - one input per distinct REFERENCE image. Klein wants NARRATIVE PROSE (40-70 words total), NOT keyword soup or repeated "Keep X identical" boilerplate. Reference each subject by SLOT NUMBER (image 1, image 2, ...) - NEVER by chat name (Klein has no chat history). Multi-person scenes need (a) "maintaining exact likeness of image N's face, hair, build" as a concise identity clause per slot, (b) PER-SUBJECT PLACEMENT ("image 1's man on the left holding a mug, image 2's woman on the right beside the tree"), and (c) explicit left-to-right ordering. Generic "all four together smiling" produces vague placement - place each subject individually. Result spawns as a new image; originals unchanged.
 inputs: attachment
 autoload: true
 triggers: edit the image, edit this image, modify the image, alter the image, change the image, tweak the image, adjust the image, retouch, refine the image, transform the image, restyle, restyle as, redraw, repaint, change the pose, change her pose, change his pose, new pose, different pose, dress her, dress him, undress, replace the, swap the, swap out, remove from the image, in the style of, them together, all together, side by side, group photo of them, group shot of, all three of them, all four of them, all five of them, both of them in, the two of them in, in one image, all in one, use them as anchors, use these as anchors, combine them, combine these, put them together, put them all, put all of them, scene with them, scene with all, posing together, line them up, hanging out together
@@ -258,6 +258,19 @@ Integrated same-reply example:
 Pick N = EXACTLY the count of references you're feeding (primary +
 extras). 4 people -> 4 Input, NOT 5 Input. Picking a larger preset than
 you have inputs for fails the workflow.
+
+## Bernini - EXPLICIT OPT-IN ONLY
+
+- `{{Image To Image (Bernini).txt}}` - 1 input. ByteDance Bernini-R
+  (Wan2.2-A14B in-context renderer) instruction edit.
+
+Use this preset ONLY when the user EXPLICITLY names "Bernini" (e.g. "edit
+this with Bernini", "use Bernini"). For every other image edit, default to
+the Klein presets above - do NOT pick Bernini on your own. Bernini is a
+single-image edit path here (one input via `chat_image` / `attachment` /
+`chain`); it does not take multiple reference slots, so use it only for
+single-source edits. Same narrative-prose, identity-lock, and
+describe-the-delta rules apply.
 
 ## Multi-person heuristic
 

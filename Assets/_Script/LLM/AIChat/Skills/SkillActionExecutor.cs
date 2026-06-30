@@ -284,6 +284,7 @@ namespace AITools.AIChat.Skills
 
                 case BuiltInSkillIds.ImageToImage:
                 case BuiltInSkillIds.ImageToMovie:
+                case BuiltInSkillIds.VideoToVideo:
                     ExecuteGenerate(action, useAttachment: true);
                     break;
 
@@ -560,6 +561,35 @@ namespace AITools.AIChat.Skills
             byte[] attachmentBytes5 = ResolveExtraInputBytes(action, 5, out bool errored5, out bool deferred5);
             if (errored5 || deferred5) return;
 
+            if (action.SkillId.ToLowerInvariant() == BuiltInSkillIds.VideoToVideo)
+            {
+                // Reference-still rescue. For v2v the primary source is ALWAYS the movie
+                // (chat_image / chain), so any fresh STILL the user pasted this turn is almost
+                // certainly the intended reference (face/look to inject). Models routinely
+                // mis-slot it - e.g. attachment="2" or "image 2" instead of attachment2/
+                // chat_image2 - which would otherwise be silently dropped and fall back to a
+                // plain restyle. If slot 2 isn't already wired, adopt the first turn attachment
+                // as the reference so "swap in this face" works without precise slot syntax.
+                if (attachmentBytes2 == null && (_host?.GetTurnAttachmentCount() ?? 0) > 0)
+                {
+                    byte[] refBytes = _host?.GetTurnAttachmentBytes(1);
+                    if (refBytes != null)
+                    {
+                        attachmentBytes2 = refBytes;
+                        _host?.AddInfoBubble("(using your attached image as the face/style reference for the video edit)");
+                    }
+                }
+
+                // Pick the workflow by whether a reference still ended up wired into slot 2:
+                // with one -> the reference-guided "_ref" preset (inject a face/character/style
+                // onto the clip); without -> plain restyle. Auto-selecting here means the model
+                // never has to match presets by hand, and a stray ref-preset pick without a
+                // reference can't dead-end on a "need image2" abort. ResolvePresetName still
+                preset = (attachmentBytes2 != null)
+                    ? "Video To Video Ref (Bernini).txt"
+                    : "Video To Video (Bernini).txt";
+            }
+
             // Auto-downgrade preset name when fewer inputs were wired than the preset
             // expects. The LLM frequently picks a "5 Input" preset but only supplies 4
             // anchors (or picks "3 Input" with only one anchor) - without this rescue,
@@ -652,6 +682,29 @@ namespace AITools.AIChat.Skills
             if (!TryWireExtraInput(picMain, attachmentBytes3, 3, action.SkillId)) return;
             if (!TryWireExtraInput(picMain, attachmentBytes4, 4, action.SkillId)) return;
             if (!TryWireExtraInput(picMain, attachmentBytes5, 5, action.SkillId)) return;
+
+            // video_to_video needs the actual SOURCE VIDEO file - the Bernini v2v preset
+            // uploads it via @upload|video|input1|. We hand the source clip's path to the Pic
+            // as a pending upload path (NOT by playing it as a movie): the Pic stays an image
+            // (the source frame set above) so that when the rendered result lands it transitions
+            // image -> video exactly like image_to_movie, and the chat bubble updates correctly.
+            // The chat source resolved above is only a still FRAME; the path below is the real clip.
+            // (Chained v2v runs on the prior movie Pic via ExecuteChainedGenerate and never reaches
+            // here - it already has its movie and uploads via m_picMovie.)
+            if (action.SkillId.ToLowerInvariant() == BuiltInSkillIds.VideoToVideo)
+            {
+                int srcChatN = action.ChatImageIndex ?? (_host?.GetLatestChatImageIndex() ?? -1);
+                string moviePath = _host?.GetChatImageMovieFilePath(srcChatN);
+                if (string.IsNullOrEmpty(moviePath))
+                {
+                    _host?.AddSystemInjectionAndBubble(
+                        $"Skill 'video_to_video' needs a SOURCE VIDEO, but chat_image=\"{srcChatN}\" is not a \"Movie #N\" bubble. " +
+                        "Point chat_image at an existing movie clip, or to restyle a movie you make in THIS same reply, emit the " +
+                        "generate/animate action first and add chain=\"true\" to the video_to_video action.");
+                    return;
+                }
+                picMain.m_pendingVideoUploadPath = moviePath;
+            }
 
             // Aspect-aware dimension override for img2X presets. Explicit width/height
             // attributes from the LLM win; otherwise fall back to "match the source's
@@ -2074,6 +2127,13 @@ namespace AITools.AIChat.Skills
                 case "imagetomovie":
                 case "image_to_video":
                     return BuiltInSkillIds.ImageToMovie;
+
+                // video_to_video / v2v / restyle a clip -> video_to_video
+                case "v2v":
+                case "vid2vid":
+                case "videotovideo":
+                case "video2video":
+                    return BuiltInSkillIds.VideoToVideo;
 
                 default:
                     return id;
