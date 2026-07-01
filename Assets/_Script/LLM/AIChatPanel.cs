@@ -225,9 +225,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private const int DEFAULT_ATTACHMENT_MAX_EDGE = 1024;
     // Auto repeat msg: when the toggle is checked, automatically re-send whatever
     // is in the input box, once per completed reply, up to N times total - then
-    // auto-uncheck. The toggle and N value live in PlayerPrefs so they stick
-    // across sessions.
-    private const string PREFS_AUTO_CONTINUE_ON = "aichat_auto_continue_on";
+    // auto-uncheck. The checkbox is session-only and always starts OFF (never
+    // persisted); only the N count below is saved across sessions.
     private const string PREFS_AUTO_CONTINUE_COUNT = "aichat_auto_continue_count";
     private const int DEFAULT_AUTO_CONTINUE_COUNT = 10;
     // Compact: how many of the most recent user->assistant exchanges to keep
@@ -1285,7 +1284,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             "Auto repeat msg",
             new Vector2(-72, -130),
             new Vector2(122, 22),
-            GetAutoContinueEnabled(),
+            // Always starts OFF: the checked state is intentionally session-only
+            // (never restored from PlayerPrefs) so the app never comes up primed
+            // to auto-resend messages. Only the repeat COUNT below persists.
+            false,
             OnAutoRepeatToggled);
         {
             var tt = _autoContinueToggle.gameObject.AddComponent<RTToolTip>();
@@ -3462,7 +3464,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     /// </summary>
     private void OnAutoRepeatToggled(bool on)
     {
-        SetAutoContinueEnabled(on);
+        // Deliberately NOT persisted: the toggle is session-only and always
+        // starts OFF on launch (see CreateUI). Only the repeat count is saved.
         if (!on)
         {
             _autoContinueRemaining = 0;
@@ -7489,6 +7492,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                         FinishVideoImport();
                         AddSystemMessage("Video import cancelled.", includeInLLMRecap: false);
                     }
+                },
+                onImportStill: seconds =>
+                {
+                    if (epoch != _videoImportEpoch)
+                        return;
+                    StartCoroutine(ExtractAndAppendStillFrame(path, info, seconds, epoch));
                 });
             UpdateVideoImportStatus(force: true);
             yield break;
@@ -7545,6 +7554,134 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             AddSystemMessage($"Imported {durationText}s video clip starting at {startText}s as Movie #{idx}.", includeInLLMRecap: false);
         }
         FinishVideoImport();
+    }
+
+    /// <summary>
+    /// Shared core for both "Import still" entry points (drag-drop video import and a
+    /// movie pic's Export movie clip): extract the single frame at
+    /// <paramref name="atSeconds"/> from the ORIGINAL source (ffmpeg decodes HEVC even
+    /// when Unity needs a preview proxy) and append it to chat as a still image bubble.
+    /// <paramref name="isStale"/> is checked right before the append so a caller can
+    /// abort silently if its context was cancelled mid-extraction (null = never stale).
+    /// Reports <c>(true, null)</c> on success, <c>(false, null)</c> when aborted stale,
+    /// and <c>(false, error)</c> on a real failure.
+    /// </summary>
+    private IEnumerator AppendStillFrameFromSource(string sourcePath, string dimensions, float atSeconds,
+        System.Func<bool> isStale, System.Action<bool, string> onDone)
+    {
+        string outputPath = FfmpegTool.GetStillFrameOutputPath(sourcePath);
+        FfmpegTool.ClipResult result = null;
+        yield return FfmpegTool.ExtractStillFrame(sourcePath, atSeconds, outputPath, r => result = r);
+
+        if (isStale != null && isStale())
+        {
+            onDone?.Invoke(false, null);
+            yield break;
+        }
+
+        if (result == null || !result.Success)
+        {
+            onDone?.Invoke(false, result != null ? result.Error : "unknown error");
+            yield break;
+        }
+
+        var imageGen = ImageGenerator.Get();
+        GameObject go = imageGen != null ? imageGen.AddImageByFileName(result.OutputPath) : null;
+        PicMain pic = go != null ? go.GetComponent<PicMain>() : null;
+        if (pic == null)
+        {
+            onDone?.Invoke(false, "failed to load extracted frame");
+            yield break;
+        }
+
+        AppendUserAttachmentBubble(pic, dimensions: dimensions);
+        onDone?.Invoke(true, null);
+    }
+
+    // A still keeps the source frame's native resolution; report just WxH (no fps).
+    private static string BuildStillDimensionsText(FfmpegTool.VideoInfo info)
+    {
+        return info != null && info.Width > 0 && info.Height > 0 ? $"{info.Width}x{info.Height}" : null;
+    }
+
+    /// <summary>
+    /// Drag-drop video import "Import still": extract + append, gated by the video-import
+    /// busy state and epoch so a Clear/cancel mid-extraction drops the frame silently. The
+    /// clip chooser stays open, so several stills can be grabbed from different positions.
+    /// </summary>
+    private IEnumerator ExtractAndAppendStillFrame(string sourcePath, FfmpegTool.VideoInfo info, float atSeconds, int epoch)
+    {
+        BeginVideoImport();
+
+        bool ok = false;
+        string err = null;
+        yield return AppendStillFrameFromSource(sourcePath, BuildStillDimensionsText(info), atSeconds,
+            isStale: () => epoch != _videoImportEpoch,
+            onDone: (o, e) => { ok = o; err = e; });
+
+        if (ok)
+        {
+            int idx = _chatImagePics.Count;
+            string atText = atSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+            AddSystemMessage($"Imported still frame at {atText}s as #{idx}.", includeInLLMRecap: false);
+        }
+        else if (!string.IsNullOrEmpty(err))
+        {
+            AddSystemMessage("Could not import still frame: " + err, includeInLLMRecap: false);
+        }
+
+        FinishVideoImport();
+    }
+
+    /// <summary>
+    /// Static entry point used by a movie pic's "Export movie clip" dialog so its
+    /// "Import still" button lands the current-position frame in AI Chat as an image
+    /// bubble. Fire-and-forget (extraction is async); returns false only if chat could
+    /// not be opened or the source is missing.
+    /// </summary>
+    public static bool AddLocalStillFrameToChat(string sourcePath, float atSeconds, string dimensions, out string error)
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(sourcePath))
+        {
+            error = "no source path";
+            return false;
+        }
+        if (!System.IO.File.Exists(sourcePath))
+        {
+            error = "source file not found: " + sourcePath;
+            return false;
+        }
+
+        Show();
+        if (_instance == null)
+        {
+            error = "no chat panel";
+            return false;
+        }
+
+        _instance.StartCoroutine(_instance.AppendExportedStillRoutine(sourcePath, dimensions, atSeconds));
+        return true;
+    }
+
+    private IEnumerator AppendExportedStillRoutine(string sourcePath, string dimensions, float atSeconds)
+    {
+        bool ok = false;
+        string err = null;
+        yield return AppendStillFrameFromSource(sourcePath, dimensions, atSeconds,
+            isStale: null,
+            onDone: (o, e) => { ok = o; err = e; });
+
+        if (ok)
+        {
+            int idx = _chatImagePics.Count;
+            string atText = atSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+            AddSystemMessage($"Exported still frame at {atText}s as #{idx}.", includeInLLMRecap: false);
+        }
+        else if (!string.IsNullOrEmpty(err))
+        {
+            AddSystemMessage("Could not export still frame: " + err, includeInLLMRecap: false);
+        }
     }
 
     private static ChatVideoClipChooser.ClipSelection CreateDefaultClipSelection(FfmpegTool.VideoInfo info, float startSeconds, float durationSeconds)
@@ -8655,17 +8792,6 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // avoid pointlessly tiny images that the captioner can't make sense of.
         int clamped = v <= 0 ? 0 : Mathf.Clamp(v, 64, 8192);
         PlayerPrefs.SetInt(PREFS_ATTACHMENT_MAX_EDGE, clamped);
-        PlayerPrefs.Save();
-    }
-
-    public static bool GetAutoContinueEnabled()
-    {
-        return PlayerPrefs.GetInt(PREFS_AUTO_CONTINUE_ON, 0) != 0;
-    }
-
-    public static void SetAutoContinueEnabled(bool v)
-    {
-        PlayerPrefs.SetInt(PREFS_AUTO_CONTINUE_ON, v ? 1 : 0);
         PlayerPrefs.Save();
     }
 

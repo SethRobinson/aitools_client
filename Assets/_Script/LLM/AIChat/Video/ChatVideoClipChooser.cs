@@ -24,6 +24,10 @@ namespace AITools.AIChat.Video
         private FfmpegTool.VideoInfo _info;
         private Action<ClipSelection> _onConfirm;
         private Action _onCancel;
+        // Invoked by the "Import still" button with the current preview position in
+        // seconds. Unlike Confirm/Cancel it does NOT close the dialog, so the user can
+        // scrub and import several stills.
+        private Action<float> _onImportStill;
 
         private VideoPlayer _player;
         private RenderTexture _rt;
@@ -82,17 +86,18 @@ namespace AITools.AIChat.Video
             Action onCancel,
             string titleText = "Import Video Clip",
             string confirmText = "Import Clip",
-            float initialStartSeconds = 0f)
+            float initialStartSeconds = 0f,
+            Action<float> onImportStill = null)
         {
             RectTransform dialogParent = ResolveDialogParent(parent);
             var go = new GameObject("AIChatVideoClipChooser");
             go.transform.SetParent(dialogParent, false);
             var chooser = go.AddComponent<ChatVideoClipChooser>();
-            chooser.Initialize(dialogParent, font, sourcePath, info, onConfirm, onCancel, titleText, confirmText, initialStartSeconds);
+            chooser.Initialize(dialogParent, font, sourcePath, info, onConfirm, onCancel, titleText, confirmText, initialStartSeconds, onImportStill);
             return chooser;
         }
 
-        private void Initialize(RectTransform parent, TMP_FontAsset font, string sourcePath, FfmpegTool.VideoInfo info, Action<ClipSelection> onConfirm, Action onCancel, string titleText, string confirmText, float initialStartSeconds)
+        private void Initialize(RectTransform parent, TMP_FontAsset font, string sourcePath, FfmpegTool.VideoInfo info, Action<ClipSelection> onConfirm, Action onCancel, string titleText, string confirmText, float initialStartSeconds, Action<float> onImportStill)
         {
             _font = font;
             _sourcePath = sourcePath;
@@ -107,6 +112,7 @@ namespace AITools.AIChat.Video
             _includeAudio = true;
             _onConfirm = onConfirm;
             _onCancel = onCancel;
+            _onImportStill = onImportStill;
 
             _root = gameObject.AddComponent<RectTransform>();
             _root.anchorMin = new Vector2(0.5f, 0.5f);
@@ -217,7 +223,11 @@ namespace AITools.AIChat.Video
                 _includeAudio = on;
             });
 
-            CreateButton("Import", _confirmText, new Vector2(right - 190f, actionY), new Vector2(118, 28), Confirm);
+            // "Import still" grabs the single frame at the current scrub position as a
+            // still image and leaves the dialog open, so it sits left of Import Clip.
+            if (_onImportStill != null)
+                CreateButton("ImportStill", "Import still", new Vector2(right - 326f, actionY), new Vector2(118, 28), ImportStill);
+            CreateButton("Import", _confirmText, new Vector2(right - 200f, actionY), new Vector2(118, 28), Confirm);
             CreateButton("Cancel", "Cancel", new Vector2(right - 82f, actionY), new Vector2(84, 28), Cancel);
             CreateResizeGrip();
             RefreshDurationControls();
@@ -507,6 +517,14 @@ namespace AITools.AIChat.Video
             var cb = _onCancel;
             Destroy(gameObject);
             cb?.Invoke();
+        }
+
+        // Grab the frame at the current preview position. Deliberately does NOT close
+        // the dialog so the user can scrub to another spot and import more stills.
+        private void ImportStill()
+        {
+            float seconds = GetCurrentPreviewSeconds();
+            _onImportStill?.Invoke(seconds);
         }
 
         private void RefreshPlayButton()

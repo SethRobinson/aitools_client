@@ -168,6 +168,24 @@ namespace AITools.AIChat.Video
             return System.IO.Path.Combine(dir, stem + "_" + Guid.NewGuid().ToString("N") + ".mp4");
         }
 
+        public static string GetStillFrameOutputPath(string sourcePath)
+        {
+            string root = GetAppRoot();
+            string dir = System.IO.Path.Combine(root, "tempCache", "aichat_video_stills");
+            Directory.CreateDirectory(dir);
+
+            string stem = "still";
+            try
+            {
+                string fileStem = System.IO.Path.GetFileNameWithoutExtension(sourcePath);
+                if (!string.IsNullOrWhiteSpace(fileStem))
+                    stem = SanitizeFileStem(fileStem);
+            }
+            catch { }
+
+            return System.IO.Path.Combine(dir, stem + "_" + Guid.NewGuid().ToString("N") + ".png");
+        }
+
         public static string GetPreviewProxyOutputPath(string sourcePath)
         {
             string root = GetAppRoot();
@@ -313,6 +331,64 @@ namespace AITools.AIChat.Video
 
             ProcessResult pr = task.Result;
             UnityEngine.Debug.Log("ffmpeg: " + pr.Command + "\n" + pr.Stderr);
+            result.Command = pr.Command;
+            result.Stdout = pr.Stdout;
+            result.Stderr = pr.Stderr;
+            result.ExitCode = pr.ExitCode;
+            result.Success = pr.Success && File.Exists(outputPath);
+            if (!result.Success)
+                result.Error = BuildProcessError("ffmpeg", pr);
+            onDone?.Invoke(result);
+        }
+
+        /// <summary>
+        /// Extract a single full-resolution still frame from <paramref name="inputPath"/>
+        /// at <paramref name="atSeconds"/> as a PNG. Used by AI Chat's "Import still"
+        /// button in the video clip chooser. Seeks with -ss before -i for a fast seek,
+        /// and does NOT scale (a still should keep the source frame's native quality).
+        /// </summary>
+        public static IEnumerator ExtractStillFrame(
+            string inputPath,
+            float atSeconds,
+            string outputPath,
+            Action<ClipResult> onDone)
+        {
+            if (!TryGetToolPaths(out string ffmpegPath, out _, out string toolError))
+            {
+                onDone?.Invoke(new ClipResult { Success = false, OutputPath = outputPath, Error = toolError });
+                yield break;
+            }
+
+            if (string.IsNullOrWhiteSpace(outputPath))
+                outputPath = GetStillFrameOutputPath(inputPath);
+            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(outputPath));
+
+            if (float.IsNaN(atSeconds) || float.IsInfinity(atSeconds))
+                atSeconds = 0f;
+            atSeconds = Mathf.Max(0f, atSeconds);
+            string ssStr = atSeconds.ToString("0.###", CultureInfo.InvariantCulture);
+
+            string args = "-hide_banner -y"
+                + " -ss " + ssStr
+                + " -i " + QuoteArg(inputPath)
+                + " -an -frames:v 1 -q:v 2 "
+                + QuoteArg(outputPath);
+
+            Task<ProcessResult> task = Task.Run(() => RunProcess(ffmpegPath, args, FrameExtractTimeoutMs));
+            while (!task.IsCompleted)
+                yield return null;
+
+            ClipResult result = new ClipResult { OutputPath = outputPath };
+            if (task.IsFaulted)
+            {
+                result.Success = false;
+                result.Error = task.Exception != null ? task.Exception.GetBaseException().Message : "ffmpeg failed.";
+                onDone?.Invoke(result);
+                yield break;
+            }
+
+            ProcessResult pr = task.Result;
+            UnityEngine.Debug.Log("ffmpeg still frame: " + pr.Command + "\n" + pr.Stderr);
             result.Command = pr.Command;
             result.Stdout = pr.Stdout;
             result.Stderr = pr.Stderr;

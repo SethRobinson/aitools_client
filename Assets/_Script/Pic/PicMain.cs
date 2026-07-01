@@ -1763,7 +1763,15 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             () => { },
             "Export Movie Clip",
             "Export Clip",
-            initialStartSeconds);
+            initialStartSeconds,
+            onImportStill: seconds =>
+            {
+                // Same shared clip chooser as the drag-drop video import: grab the frame
+                // at the current scrub position and drop it into AI Chat as an image bubble.
+                string dims = info.Width > 0 && info.Height > 0 ? $"{info.Width}x{info.Height}" : null;
+                if (!AIChatPanel.AddLocalStillFrameToChat(sourcePath, seconds, dims, out string stillError))
+                    RTQuickMessageManager.Get().ShowMessage("Could not import still: " + stillError);
+            });
     }
 
     private IEnumerator ExportMovieClipSelection(string sourcePath, ChatVideoClipChooser.ClipSelection selection)
