@@ -734,7 +734,7 @@
         }
       },
       "widgets_values": [
-        "output_D_%year%%month%%day%-%hour%%minute%%second%",
+        "output_D_%year%%month%%day%-%hour%%minute%%second%_AITOOLS_UNIQUE_ID",
         "auto",
         "auto"
       ]

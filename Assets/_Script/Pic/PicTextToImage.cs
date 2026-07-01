@@ -677,6 +677,13 @@ public class PicTextToImage : MonoBehaviour
             ReplaceInString(ref comfyUIGraphJSon, placeholder, JSONNode.Escape(promptValue));
         }
 
+        // Give every render a unique output filename so simultaneous GPU jobs (two ComfyUI
+        // instances can share an output folder) never collide and return each other's video.
+        // The workflow ships a literal AITOOLS_UNIQUE_ID placeholder so manual ComfyUI runs
+        // still produce a valid filename; we swap it for a unique tag here before sending.
+        string uniqueTag = $"g{m_gpu}_{System.DateTime.Now.ToString("yyyyMMdd_HHmmssfff")}_{UnityEngine.Random.Range(0, 0x10000):x4}";
+        ReplaceInString(ref comfyUIGraphJSon, "AITOOLS_UNIQUE_ID", uniqueTag);
+
         JSONNode jsonNode = null;
 
         try
