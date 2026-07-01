@@ -361,6 +361,9 @@ namespace B83.Win32
         [DllImport("user32.dll", SetLastError = true)]
         public static extern bool GetWindowRect(IntPtr hwnd, out RECT lpRect);
 
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool GetClientRect(IntPtr hwnd, out RECT lpRect);
+
         [DllImport("user32.dll")]
         public static extern bool IsWindowVisible(IntPtr hWnd);
 
@@ -454,6 +457,22 @@ namespace B83.Win32
             m_Hook = IntPtr.Zero;
         }
 
+        public static bool TryGetMainWindowClientSize(out int width, out int height)
+        {
+            width = 0;
+            height = 0;
+            if (mainWindow == IntPtr.Zero)
+                return false;
+
+            RECT rect;
+            if (!Window.GetClientRect(mainWindow, out rect))
+                return false;
+
+            width = Math.Max(0, rect.Right - rect.Left);
+            height = Math.Max(0, rect.Bottom - rect.Top);
+            return width > 0 && height > 0;
+        }
+
         // attribute required for IL2CPP, also has to be a static method
         [AOT.MonoPInvokeCallback(typeof(HookProc))]
         private static IntPtr Callback(int code, IntPtr wParam, ref MSG lParam)
@@ -486,6 +505,13 @@ namespace B83.Win32
         }
         public static void UninstallHook()
         {
+        }
+
+        public static bool TryGetMainWindowClientSize(out int width, out int height)
+        {
+            width = 0;
+            height = 0;
+            return false;
         }
 #endif
     }

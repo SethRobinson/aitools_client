@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using B83.Win32;
@@ -87,10 +88,15 @@ public class ChatImageAttachmentZone : MonoBehaviour
     // Configuration set in Initialize.
     private RectTransform _dropTargetRect;
     private RectTransform _stripContainer;
+    private RectTransform _thumbContainer;
+    private ScrollRect _stripScroll;
     private TMP_InputField _pasteField;
     private TMP_FontAsset _font;
     private int _maxAttachments = 8;
     private float _stripHeight = 70f;
+    private bool _highPriorityDropClaim = false;
+    private int _lastRefreshAttachmentCount = -1;
+    private Coroutine _scrollToEndCoroutine;
     // Optional callback the host wires up to return the current max-edge cap
     // (in pixels). Queried per AddAttachment so a runtime settings change
     // takes effect on the next drop without re-initializing the zone. Returns
@@ -139,6 +145,7 @@ public class ChatImageAttachmentZone : MonoBehaviour
                 height = att.height,
                 captionShort = att.captionShort,
                 captionLong = att.captionLong,
+                captionState = att.captionState,
             });
         }
         return list;
@@ -218,8 +225,10 @@ public class ChatImageAttachmentZone : MonoBehaviour
     /// <summary>
     /// Wire this zone to the host's UI. Must be called once before any drops/pastes are
     /// expected. Drop hit-testing uses <paramref name="dropTarget"/>; thumbnails are
-    /// built inside <paramref name="stripContainer"/>; Ctrl+V only fires while
-    /// <paramref name="pasteField"/> is focused.
+    /// built inside <paramref name="stripContainer"/> or optional
+    /// <paramref name="thumbnailContent"/>; Ctrl+V only fires while
+    /// <paramref name="pasteField"/> is focused. If <paramref name="highPriorityDropClaim"/>
+    /// is true, this claimant is registered before existing claimants.
     /// </summary>
     public void Initialize(
         RectTransform dropTarget,
@@ -228,22 +237,31 @@ public class ChatImageAttachmentZone : MonoBehaviour
         TMP_FontAsset font,
         int maxAttachments = 8,
         float stripHeight = 70f,
-        Func<int> maxEdgeProvider = null)
+        Func<int> maxEdgeProvider = null,
+        RectTransform thumbnailContent = null,
+        ScrollRect thumbnailScroll = null,
+        bool highPriorityDropClaim = false)
     {
         _dropTargetRect = dropTarget;
         _stripContainer = stripContainer;
+        _thumbContainer = thumbnailContent != null ? thumbnailContent : stripContainer;
+        _stripScroll = thumbnailScroll;
         _pasteField = pasteField;
         _font = font;
         _maxAttachments = Mathf.Max(1, maxAttachments);
         _stripHeight = Mathf.Max(16f, stripHeight);
         _maxEdgeProvider = maxEdgeProvider;
+        _highPriorityDropClaim = highPriorityDropClaim;
 
         // Register with the global drop hook. Multiple zones can register independently;
         // first one whose hit-test passes wins.
         if (_claimDelegate == null)
         {
             _claimDelegate = TryClaimDrop;
-            DragAndDropHandler.ClaimHandlers.Add(_claimDelegate);
+            if (_highPriorityDropClaim)
+                DragAndDropHandler.ClaimHandlers.Insert(0, _claimDelegate);
+            else
+                DragAndDropHandler.ClaimHandlers.Add(_claimDelegate);
         }
 
         // Initial layout pass so the strip starts at zero height when empty.
@@ -256,6 +274,11 @@ public class ChatImageAttachmentZone : MonoBehaviour
         {
             DragAndDropHandler.ClaimHandlers.Remove(_claimDelegate);
             _claimDelegate = null;
+        }
+        if (_scrollToEndCoroutine != null)
+        {
+            StopCoroutine(_scrollToEndCoroutine);
+            _scrollToEndCoroutine = null;
         }
 
         // Free any attachment textures we still own.
@@ -389,15 +412,18 @@ public class ChatImageAttachmentZone : MonoBehaviour
     /// </summary>
     private void Refresh()
     {
-        if (_stripContainer != null)
+        RectTransform content = _thumbContainer != null ? _thumbContainer : _stripContainer;
+        if (_stripContainer != null && content != null)
         {
-            for (int i = _stripContainer.childCount - 1; i >= 0; i--)
-                Destroy(_stripContainer.GetChild(i).gameObject);
+            for (int i = content.childCount - 1; i >= 0; i--)
+                Destroy(content.GetChild(i).gameObject);
 
             bool hasAttachments = _attachments.Count > 0;
             _stripContainer.gameObject.SetActive(hasAttachments);
             _stripContainer.sizeDelta = new Vector2(_stripContainer.sizeDelta.x,
                 hasAttachments ? _stripHeight : 0f);
+            if (content != _stripContainer)
+                content.sizeDelta = new Vector2(content.sizeDelta.x, hasAttachments ? _stripHeight : 0f);
 
             if (hasAttachments)
             {
@@ -406,8 +432,12 @@ public class ChatImageAttachmentZone : MonoBehaviour
                     int capturedIdx = i;
                     CreateThumb(_attachments[i], capturedIdx);
                 }
+                LayoutRebuilder.ForceRebuildLayoutImmediate(content);
+                if (_stripScroll != null && _attachments.Count > _lastRefreshAttachmentCount)
+                    QueueScrollToEnd();
             }
         }
+        _lastRefreshAttachmentCount = _attachments.Count;
 
         OnAttachmentsChanged?.Invoke();
     }
@@ -417,7 +447,7 @@ public class ChatImageAttachmentZone : MonoBehaviour
         float sz = _stripHeight - 8f;
 
         var item = new GameObject("Attachment_" + idx);
-        item.transform.SetParent(_stripContainer, false);
+        item.transform.SetParent(_thumbContainer != null ? _thumbContainer : _stripContainer, false);
         var itemRt = item.AddComponent<RectTransform>();
         itemRt.sizeDelta = new Vector2(sz, sz);
         var le = item.AddComponent<LayoutElement>();
@@ -487,6 +517,23 @@ public class ChatImageAttachmentZone : MonoBehaviour
         xTxt.color = Color.white;
         xTxt.alignment = TextAlignmentOptions.Center;
         xTxt.raycastTarget = false;
+    }
+
+    private void QueueScrollToEnd()
+    {
+        if (_stripScroll == null) return;
+        if (_scrollToEndCoroutine != null)
+            StopCoroutine(_scrollToEndCoroutine);
+        _scrollToEndCoroutine = StartCoroutine(ScrollToEndNextFrame());
+    }
+
+    private IEnumerator ScrollToEndNextFrame()
+    {
+        yield return null;
+        Canvas.ForceUpdateCanvases();
+        if (_stripScroll != null)
+            _stripScroll.horizontalNormalizedPosition = 1f;
+        _scrollToEndCoroutine = null;
     }
 
     private void CreateCaptionBadge(Transform parent, ChatAttachment att, float itemSize)
@@ -588,6 +635,28 @@ public class ChatImageAttachmentZone : MonoBehaviour
             && unityScreenPos.y <= maxY + DropTargetPaddingPx;
     }
 
+    private static Vector2 DropPointToUnityScreen(POINT screenPos, bool normalizeToUnityScreen)
+    {
+        float x = screenPos.x;
+        float y = screenPos.y;
+
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+        if (normalizeToUnityScreen
+            && UnityDragAndDropHook.TryGetMainWindowClientSize(out int clientW, out int clientH)
+            && clientW > 0
+            && clientH > 0
+            && Screen.width > 0
+            && Screen.height > 0)
+        {
+            x = x * Screen.width / clientW;
+            y = y * Screen.height / clientH;
+        }
+#endif
+
+        // Win32 POINT is top-left client origin; Unity screen coords are bottom-left.
+        return new Vector2(x, Screen.height - y);
+    }
+
     /// <summary>
     /// DragAndDropHandler claim callback. Returns true if the drop landed over our drop
     /// target rect (and was therefore consumed as attachments) - false to let the next
@@ -598,10 +667,15 @@ public class ChatImageAttachmentZone : MonoBehaviour
         if (_dropTargetRect == null || !gameObject.activeInHierarchy) return false;
         if (!_dropTargetRect.gameObject.activeInHierarchy) return false;
 
-        // Win32 POINT is top-left origin; Unity screen coords are bottom-left origin.
-        Vector2 unityScreenPos = new Vector2(screenPos.x, Screen.height - screenPos.y);
+        Vector2 unityScreenPos = DropPointToUnityScreen(screenPos, normalizeToUnityScreen: true);
         if (!IsPointOverDropTarget(unityScreenPos))
-            return false;
+        {
+            // Preserve the older raw mapping as a fallback for editor/player setups
+            // where Unity's Screen size already matches DragQueryPoint units.
+            Vector2 rawUnityScreenPos = DropPointToUnityScreen(screenPos, normalizeToUnityScreen: false);
+            if (!IsPointOverDropTarget(rawUnityScreenPos))
+                return false;
+        }
 
         bool addedAny = false;
         bool handledVideo = false;

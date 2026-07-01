@@ -283,6 +283,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // we can resize them when the strip appears/disappears.
     private ChatImageAttachmentZone _attachmentZone;
     private RectTransform _attachmentsStrip;
+    private RectTransform _attachmentsContent;
+    private ScrollRect _attachmentsScroll;
     private ChatVideoClipChooser _videoClipChooser;
     private int _videoImportCount = 0;
     private int _videoImportEpoch = 0;
@@ -299,6 +301,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private float _footerBaseHeight = FOOTER_HEIGHT;
     private const float MIN_BODY_HEIGHT = 140f; // never shrink the columns above below this
     private const float ATTACHMENT_STRIP_HEIGHT = 70f;
+    private const int MAX_CHAT_ATTACHMENTS = 99;
     private const float FOOTER_RIGHT_RESERVED_WIDTH = 200f;
     private const float MAIN_LLM_FOOTER_RESERVED_WIDTH = 274f;
 
@@ -1321,10 +1324,14 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             stripContainer: _attachmentsStrip,
             pasteField: _inputField,
             font: _font,
+            maxAttachments: MAX_CHAT_ATTACHMENTS,
             stripHeight: ATTACHMENT_STRIP_HEIGHT,
             // Live-read the cap so the user can change it in settings without
             // having to reopen the chat panel; takes effect on the next drop.
-            maxEdgeProvider: GetAttachmentMaxEdge);
+            maxEdgeProvider: GetAttachmentMaxEdge,
+            thumbnailContent: _attachmentsContent,
+            thumbnailScroll: _attachmentsScroll,
+            highPriorityDropClaim: true);
         _attachmentZone.OnAttachmentsChanged += OnAttachmentsChanged;
         _attachmentZone.OnAttachmentAdded += OnAttachmentAdded;
         _attachmentZone.OnCaptionCancelled += OnCaptionCancelled;
@@ -1737,9 +1744,35 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         rt.offsetMin = new Vector2(MAIN_LLM_FOOTER_RESERVED_WIDTH, 0f);
         rt.offsetMax = new Vector2(-FOOTER_RIGHT_RESERVED_WIDTH, 0f);
 
-        strip.AddComponent<RectMask2D>();
+        var scroll = strip.AddComponent<ScrollRect>();
+        scroll.horizontal = true;
+        scroll.vertical = false;
+        scroll.movementType = ScrollRect.MovementType.Clamped;
+        scroll.inertia = true;
+        scroll.scrollSensitivity = 34f;
 
-        var hlg = strip.AddComponent<HorizontalLayoutGroup>();
+        var viewport = new GameObject("Viewport");
+        viewport.transform.SetParent(strip.transform, false);
+        var viewportRT = viewport.AddComponent<RectTransform>();
+        viewportRT.anchorMin = Vector2.zero;
+        viewportRT.anchorMax = Vector2.one;
+        viewportRT.offsetMin = Vector2.zero;
+        viewportRT.offsetMax = Vector2.zero;
+        var viewportImg = viewport.AddComponent<Image>();
+        viewportImg.color = new Color(0f, 0f, 0f, 0f);
+        viewportImg.raycastTarget = true;
+        viewport.AddComponent<RectMask2D>();
+
+        var content = new GameObject("Content");
+        content.transform.SetParent(viewport.transform, false);
+        var contentRT = content.AddComponent<RectTransform>();
+        contentRT.anchorMin = new Vector2(0, 1);
+        contentRT.anchorMax = new Vector2(0, 1);
+        contentRT.pivot = new Vector2(0, 1);
+        contentRT.anchoredPosition = Vector2.zero;
+        contentRT.sizeDelta = new Vector2(0f, ATTACHMENT_STRIP_HEIGHT);
+
+        var hlg = content.AddComponent<HorizontalLayoutGroup>();
         hlg.padding = new RectOffset(8, 8, 4, 4);
         hlg.spacing = 6;
         hlg.childAlignment = TextAnchor.UpperLeft;
@@ -1748,7 +1781,16 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         hlg.childForceExpandWidth = false;
         hlg.childForceExpandHeight = false;
 
+        var fitter = content.AddComponent<ContentSizeFitter>();
+        fitter.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
+        fitter.verticalFit = ContentSizeFitter.FitMode.Unconstrained;
+
+        scroll.viewport = viewportRT;
+        scroll.content = contentRT;
+
         _attachmentsStrip = rt;
+        _attachmentsContent = contentRT;
+        _attachmentsScroll = scroll;
     }
 
     /// <summary>
