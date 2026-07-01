@@ -74,6 +74,8 @@ public class MainToolPanelModeController : MonoBehaviour
         }
 
         BindManualButton();
+        DisableDecorativeRaycasts(_compactControls);
+        DisableDecorativeRaycasts(_manualControls);
 
         _initialized = true;
         ApplyMode(false);
@@ -135,6 +137,35 @@ public class MainToolPanelModeController : MonoBehaviour
     {
         if (_manualButtonText != null)
             _manualButtonText.text = _isManualMode ? ShowSimpleText : ShowManualText;
+    }
+
+    private static void DisableDecorativeRaycasts(RectTransform root)
+    {
+        if (root == null) return;
+
+        var graphics = root.GetComponentsInChildren<Graphic>(true);
+        foreach (var graphic in graphics)
+        {
+            if (graphic == null) continue;
+            if (ShouldKeepRaycastTarget(graphic)) continue;
+
+            graphic.raycastTarget = false;
+        }
+    }
+
+    private static bool ShouldKeepRaycastTarget(Graphic graphic)
+    {
+        if (graphic == null) return false;
+
+        var selectable = graphic.GetComponentInParent<Selectable>(true);
+        if (selectable != null)
+            return true;
+
+        var scrollRect = graphic.GetComponentInParent<ScrollRect>(true);
+        if (scrollRect != null)
+            return true;
+
+        return false;
     }
 
     private void FitPanelToCompactControls()

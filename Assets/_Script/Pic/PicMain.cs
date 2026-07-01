@@ -2383,6 +2383,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     private int m_workflowHeightOverride = 0;
     private int m_workflowAspectSrcW = 0;
     private int m_workflowAspectSrcH = 0;
+    private int m_workflowFrameCountOverride = 0;
 
     // Dimensions the most recent workflow was queued at, after any override applied.
     // Lets a chained step query this Pic's "size class so far" while the prior step's
@@ -2399,6 +2400,12 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             System.Text.RegularExpressions.RegexOptions.Compiled);
     private static readonly System.Text.RegularExpressions.Regex WorkflowHeightReplaceRx =
         new System.Text.RegularExpressions.Regex(@"@replace\|""height"":\s*(\d+)\|",
+            System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex WorkflowLengthReplaceRx =
+        new System.Text.RegularExpressions.Regex(@"@replace\|""length"":\s*(\d+)\|",
+            System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex WorkflowFrameLoadCapReplaceRx =
+        new System.Text.RegularExpressions.Regex(@"@replace\|""frame_load_cap"":\s*(\d+)\|",
             System.Text.RegularExpressions.RegexOptions.Compiled);
 
     /// <summary>
@@ -2428,6 +2435,16 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     }
 
     /// <summary>
+    /// Force the next RunPresetByName / AppendPresetJobs to use this frame count for
+    /// workflows that expose length/frame_load_cap through standard @replace lines.
+    /// One-shot and independent from the width/height overrides.
+    /// </summary>
+    public void SetWorkflowFrameCountOverride(int frameCount)
+    {
+        m_workflowFrameCountOverride = Mathf.Max(0, frameCount);
+    }
+
+    /// <summary>
     /// Mutates <paramref name="lines"/> to inject extra @replace operations for width/
     /// height on the workflow-loading line, honouring the one-shot dimension overrides
     /// set via SetWorkflowDimensionOverride / SetWorkflowAspectSource. Clears the
@@ -2439,6 +2456,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     {
         bool hasExplicit = m_workflowWidthOverride > 0 && m_workflowHeightOverride > 0;
         bool hasAspect = m_workflowAspectSrcW > 0 && m_workflowAspectSrcH > 0;
+        bool hasFrameOverride = m_workflowFrameCountOverride > 0;
         try
         {
             if (lines == null || lines.Count == 0) return;
@@ -2451,52 +2469,68 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
                 var wMatch = WorkflowWidthReplaceRx.Match(line);
                 var hMatch = WorkflowHeightReplaceRx.Match(line);
-                if (!wMatch.Success || !hMatch.Success) continue;
-                if (!int.TryParse(wMatch.Groups[1].Value, out int presetW)) continue;
-                if (!int.TryParse(hMatch.Groups[1].Value, out int presetH)) continue;
-                if (presetW <= 0 || presetH <= 0) continue;
+                int presetW = 0;
+                int presetH = 0;
+                bool hasDimensionReplace = wMatch.Success
+                    && hMatch.Success
+                    && int.TryParse(wMatch.Groups[1].Value, out presetW)
+                    && int.TryParse(hMatch.Groups[1].Value, out presetH)
+                    && presetW > 0
+                    && presetH > 0;
+                bool touched = false;
 
                 // No override requested: just record the preset's dims as the
-                // "last queued" pair so a follow-up chain step can use them, then exit.
-                if (!hasExplicit && !hasAspect)
+                // "last queued" pair so a follow-up chain step can use them.
+                if (hasDimensionReplace && !hasExplicit && !hasAspect)
                 {
                     LastQueuedWorkflowWidth = presetW;
                     LastQueuedWorkflowHeight = presetH;
+                }
+                else if (hasDimensionReplace && (hasExplicit || hasAspect))
+                {
+                    int newW, newH;
+                    if (hasExplicit)
+                    {
+                        newW = m_workflowWidthOverride;
+                        newH = m_workflowHeightOverride;
+                    }
+                    else
+                    {
+                        // Preserve the preset's budget; rotate it to the source's aspect.
+                        long budget = (long)presetW * presetH;
+                        float srcAspect = m_workflowAspectSrcW / (float)m_workflowAspectSrcH;
+                        if (srcAspect <= 0f) return; // bad source - skip
+                        double h = Math.Sqrt(budget / (double)srcAspect);
+                        double w = h * srcAspect;
+                        newW = Mathf.RoundToInt((float)(w / 32.0)) * 32;
+                        newH = Mathf.RoundToInt((float)(h / 32.0)) * 32;
+                    }
+
+                    newW = Mathf.Clamp((newW / 32) * 32, 256, 1280);
+                    newH = Mathf.Clamp((newH / 32) * 32, 256, 1280);
+                    if (newW <= 0 || newH <= 0) return;
+
+                    // Record what we're queueing so the next chain step can read it.
+                    LastQueuedWorkflowWidth = newW;
+                    LastQueuedWorkflowHeight = newH;
+
+                    if (newW != presetW || newH != presetH)
+                    {
+                        line = line
+                            + $" @replace|\"width\": {presetW}|\"width\": {newW}|"
+                            + $" @replace|\"height\": {presetH}|\"height\": {newH}|";
+                        touched = true;
+                    }
+                }
+
+                if (hasFrameOverride && TryAppendFrameCountOverride(ref line, m_workflowFrameCountOverride))
+                    touched = true;
+
+                if (touched)
+                    lines[i] = line;
+
+                if (hasDimensionReplace || touched)
                     return;
-                }
-
-                int newW, newH;
-                if (hasExplicit)
-                {
-                    newW = m_workflowWidthOverride;
-                    newH = m_workflowHeightOverride;
-                }
-                else
-                {
-                    // Preserve the preset's budget; rotate it to the source's aspect.
-                    long budget = (long)presetW * presetH;
-                    float srcAspect = m_workflowAspectSrcW / (float)m_workflowAspectSrcH;
-                    if (srcAspect <= 0f) return; // bad source - skip
-                    double h = Math.Sqrt(budget / (double)srcAspect);
-                    double w = h * srcAspect;
-                    newW = Mathf.RoundToInt((float)(w / 32.0)) * 32;
-                    newH = Mathf.RoundToInt((float)(h / 32.0)) * 32;
-                }
-
-                newW = Mathf.Clamp((newW / 32) * 32, 256, 1280);
-                newH = Mathf.Clamp((newH / 32) * 32, 256, 1280);
-                if (newW <= 0 || newH <= 0) return;
-
-                // Record what we're queueing so the next chain step can read it.
-                LastQueuedWorkflowWidth = newW;
-                LastQueuedWorkflowHeight = newH;
-
-                if (newW == presetW && newH == presetH) return; // no JSON edit needed
-
-                lines[i] = line
-                    + $" @replace|\"width\": {presetW}|\"width\": {newW}|"
-                    + $" @replace|\"height\": {presetH}|\"height\": {newH}|";
-                return;
             }
         }
         finally
@@ -2507,7 +2541,32 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             m_workflowHeightOverride = 0;
             m_workflowAspectSrcW = 0;
             m_workflowAspectSrcH = 0;
+            m_workflowFrameCountOverride = 0;
         }
+    }
+
+    private static bool TryAppendFrameCountOverride(ref string line, int frameCount)
+    {
+        if (frameCount <= 0 || string.IsNullOrEmpty(line))
+            return false;
+
+        var lengthMatch = WorkflowLengthReplaceRx.Match(line);
+        if (!lengthMatch.Success || !int.TryParse(lengthMatch.Groups[1].Value, out int defaultLength) || defaultLength <= 0)
+            return false;
+
+        int defaultFrameLoadCap = defaultLength;
+        var frameLoadCapMatch = WorkflowFrameLoadCapReplaceRx.Match(line);
+        if (frameLoadCapMatch.Success
+            && int.TryParse(frameLoadCapMatch.Groups[1].Value, out int parsedFrameLoadCap)
+            && parsedFrameLoadCap > 0)
+        {
+            defaultFrameLoadCap = parsedFrameLoadCap;
+        }
+
+        line = line
+            + $" @replace|\"length\": {defaultLength}|\"length\": {frameCount}|"
+            + $" @replace|\"frame_load_cap\": {defaultFrameLoadCap}|\"frame_load_cap\": {frameCount}|";
+        return true;
     }
 
     /// <summary>

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-aitools_cli — generate an image from the command line via a ComfyUI server.
+aitools_cli — generate media from the command line via a ComfyUI server.
 
 Mirrors what the Unity app (PicTextToImage.cs + PresetManager.cs) does:
 load a workflow JSON (directly or via a Presets/*.txt file), ask a ComfyUI
@@ -47,10 +47,13 @@ WORKFLOW_DIR = SCRIPT_DIR.parent / "ComfyUI"
 
 def build_argparser():
     p = argparse.ArgumentParser(
-        description="Generate an image from a text prompt using a ComfyUI workflow or preset.",
+        description="Generate media from a text prompt using a ComfyUI workflow or preset.",
     )
     p.add_argument("prompt", help="Text prompt")
-    p.add_argument("output", help="Output image file (always saved as PNG)")
+    p.add_argument(
+        "output",
+        help="Output path; images are saved as PNG, videos keep their source extension",
+    )
     p.add_argument("-n", "--negative", default=None,
                    help="Negative prompt (overrides preset's default_negative_prompt)")
     p.add_argument("-w", "--workflow", default=None,
@@ -66,6 +69,8 @@ def build_argparser():
     p.add_argument("-i2", "--input2", default=None,
                    help="Second input image file (image2 — required for two-input presets, "
                         "e.g. \"Image To Image Klein Edit 2 Input\")")
+    p.add_argument("--video", default=None,
+                   help="Input video file (video/video1 — required for presets that @upload video)")
     p.add_argument("-s", "--seed", type=int, default=None,
                    help="Seed (default: random)")
     p.add_argument("-c", "--config", default=str(DEFAULT_CONFIG),
@@ -172,6 +177,12 @@ def main():
             f"pass one with -i2 <path>",
             1,
         )
+    if "video" in needed_sources and not args.video:
+        die(
+            f"preset {preset.source_path.name} needs a video input; "
+            f"pass one with --video <path>",
+            1,
+        )
     if args.input and "image1" not in needed_sources:
         if args.verbose:
             print(f"warning: -i {args.input!r} ignored "
@@ -180,6 +191,10 @@ def main():
         if args.verbose:
             print(f"warning: -i2 {args.input2!r} ignored "
                   f"({'preset has no image2 @upload' if preset else 'no preset specified'})")
+    if args.video and "video" not in needed_sources:
+        if args.verbose:
+            print(f"warning: --video {args.video!r} ignored "
+                  f"({'preset has no video @upload' if preset else 'no preset specified'})")
 
     effective_prompt, effective_negative = assemble_prompts(args, preset)
     if args.verbose:
@@ -238,19 +253,24 @@ def main():
     # every slot that source was routed to.
     input_path_replacements = {}
     if preset and preset.uploads:
-        source_paths = {"image1": args.input, "image2": args.input2}
+        source_paths = {"image1": args.input, "image2": args.input2, "video": args.video}
         for source in needed_sources:
             local_path = source_paths[source]
-            if args.verbose:
-                print(f"loading {source} input: {local_path}")
-            img = images.load_input_image(Path(local_path))
-            if source == "image1":
-                for op in presets.resolve_resizes(preset.resizes, all_vars, args.verbose):
-                    img = images.apply_resize(img, op, args.verbose)
-            elif preset.resizes and args.verbose:
-                print(f"  note: @resize directives only apply to image1, "
-                      f"not {source}")
-            server_path = images.upload_image(server_url, img, args.verbose)
+            if source == "video":
+                if args.verbose:
+                    print(f"uploading {source} input: {local_path}")
+                server_path = images.upload_file(server_url, Path(local_path), args.verbose)
+            else:
+                if args.verbose:
+                    print(f"loading {source} input: {local_path}")
+                img = images.load_input_image(Path(local_path))
+                if source == "image1":
+                    for op in presets.resolve_resizes(preset.resizes, all_vars, args.verbose):
+                        img = images.apply_resize(img, op, args.verbose)
+                elif preset.resizes and args.verbose:
+                    print(f"  note: @resize directives only apply to image1, "
+                          f"not {source}")
+                server_path = images.upload_image(server_url, img, args.verbose)
             for upload in preset.uploads:
                 if upload.source == source:
                     input_path_replacements[
@@ -304,7 +324,7 @@ def main():
         ext = comfy_api.save_extension(src_filename)
         if i == 0:
             target = out_base.with_suffix(ext)
-            if args.verbose and target.name != args.output:
+            if args.verbose and target != out_base:
                 print(f"output extension adjusted: {target}")
         else:
             target = out_base.with_name(f"{out_base.stem}_{i+1}{ext}")

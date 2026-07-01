@@ -59339,7 +59339,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 311706015}
-        m_TargetAssemblyTypeName: AIImageGenerator, Assembly-CSharp
+        m_TargetAssemblyTypeName: ImageGenerator, Assembly-CSharp
         m_MethodName: OnGenerateButton
         m_Mode: 1
         m_Arguments:

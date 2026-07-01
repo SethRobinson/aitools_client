@@ -6,7 +6,7 @@ COMMAND_START|joblist
 %height%="480"
 %length%="81"
 
-video_to_video_bernini_ref.json @upload|video|input1| @upload|image2|input2| @replace|"width": 832|"width": %width%| @replace|"height": 480|"height": %height%| @replace|"length": 81|"length": %length%|
+video_to_video_bernini_ref.json @upload|video|input1| @upload|image2|input2| @replace|"width": 832|"width": %width%| @replace|"height": 480|"height": %height%| @replace|"length": 81|"length": %length%| @replace|"frame_load_cap": 81|"frame_load_cap": %length%|
 COMMAND_END
 COMMAND_START|default_negative_prompt
 blurry, low quality, distorted faces, jittery motion, watermark, deformed, repetitive, black and white

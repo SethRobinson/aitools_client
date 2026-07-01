@@ -58,6 +58,8 @@ namespace AITools.AIChat.Skills
         // (job queued but no GPU server has picked it up).
         private const float ChatImageReloadAbsoluteCapSeconds = 600f;
         private const float ChatImageNotYetBusyGraceSeconds = 20f;
+        private const double VideoToVideoWorkflowInputFps = 16.0;
+        private const int VideoToVideoFrameStride = 4;
 
         // ----- Per-turn serial action scheduler -----
         // Skill action tags stream from the LLM and were historically executed
@@ -771,6 +773,9 @@ namespace AITools.AIChat.Skills
                     return;
                 }
                 picMain.m_pendingVideoUploadPath = moviePath;
+                int frameCount = EstimateVideoToVideoFrameCount(moviePath);
+                if (frameCount > 0)
+                    picMain.SetWorkflowFrameCountOverride(frameCount);
             }
 
             // Aspect-aware dimension override for img2X presets. Explicit width/height
@@ -1003,6 +1008,16 @@ namespace AITools.AIChat.Skills
                     prevPic.SetWorkflowAspectSource(chainSrcW, chainSrcH);
             }
 
+            if (action.SkillId.ToLowerInvariant() == BuiltInSkillIds.VideoToVideo
+                && prevPic.m_picMovie != null
+                && prevPic.IsMovie())
+            {
+                string moviePath = prevPic.m_picMovie.GetProcessingFileName();
+                int frameCount = EstimateVideoToVideoFrameCount(moviePath);
+                if (frameCount > 0)
+                    prevPic.SetWorkflowFrameCountOverride(frameCount);
+            }
+
             // Same workflow-error reporter as the non-chained path: surface PicMain
             // runtime aborts back to the LLM as a system injection.
             WireWorkflowErrorReporter(prevPic, action.SkillId, resolved);
@@ -1051,6 +1066,30 @@ namespace AITools.AIChat.Skills
                 Debug.LogWarning("SkillActionExecutor.ReadPresetDefaultNegativePrompt: " + ex.Message);
                 return null;
             }
+        }
+
+        private static int EstimateVideoToVideoFrameCount(string moviePath)
+        {
+            if (string.IsNullOrWhiteSpace(moviePath) || !System.IO.File.Exists(moviePath))
+                return 0;
+
+            if (!FfmpegTool.TryProbeVideoSync(moviePath, out var info, out string error) || info == null)
+            {
+                Debug.LogWarning("SkillActionExecutor: could not probe v2v source frame count: " + error);
+                return 0;
+            }
+
+            if (info.DurationSeconds <= 0 || double.IsNaN(info.DurationSeconds) || double.IsInfinity(info.DurationSeconds))
+                return 0;
+
+            // Bernini v2v currently forces the source loader to 16 fps and Wan-style
+            // temporal models expect lengths on a 4n+1 cadence. 5s therefore becomes
+            // 81 frames, and an 8s source becomes 129 instead of being capped to 81.
+            int frames = Mathf.Max(1, Mathf.CeilToInt((float)(info.DurationSeconds * VideoToVideoWorkflowInputFps - 0.001)));
+            int remainder = (frames - 1) % VideoToVideoFrameStride;
+            if (remainder != 0)
+                frames += VideoToVideoFrameStride - remainder;
+            return frames;
         }
 
         /// <summary>
@@ -1221,22 +1260,29 @@ namespace AITools.AIChat.Skills
             string requestedFile = requested.EndsWith(".txt", StringComparison.OrdinalIgnoreCase)
                 ? requested : requested + ".txt";
 
-            string found = FindPresetFile(presetsDir, requestedFile);
-            if (found != null)
-                return found;
-
             string prefix = PlayerPrefs.GetString(SkillManager.PresetPrefixPrefsKey, "");
+            string found = null;
             if (!string.IsNullOrEmpty(prefix))
             {
-                string withoutLeadingUnderscore = requestedFile.TrimStart('_');
                 if (!requestedFile.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
                 {
+                    // The prompt builder rewrites {{Preset Name.txt}} markers to
+                    // <prefix>Preset Name.txt before the LLM sees them, but some host-side
+                    // actions intentionally choose a base preset in code (notably
+                    // video_to_video's plain/ref auto-switch). When a prefix is active,
+                    // prefer that parallel preset family before falling back to the bare
+                    // production filename.
+                    string withoutLeadingUnderscore = requestedFile.TrimStart('_');
                     found = FindPresetFile(presetsDir, prefix + withoutLeadingUnderscore);
                     if (found != null)
                         return found;
                 }
                 else
                 {
+                    found = FindPresetFile(presetsDir, requestedFile);
+                    if (found != null)
+                        return found;
+
                     // Reverse fallback: the system prompt shows every {{...}} preset
                     // sentinel WITH the prefix applied (ApplyPresetPrefix), so the LLM
                     // faithfully asks for e.g. "test_Prompt To Image (Ideogram 4).txt"
@@ -1247,6 +1293,10 @@ namespace AITools.AIChat.Skills
                         return found;
                 }
             }
+
+            found = FindPresetFile(presetsDir, requestedFile);
+            if (found != null)
+                return found;
 
             if (requestedFile.StartsWith("_", StringComparison.Ordinal))
             {

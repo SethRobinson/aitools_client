@@ -229,6 +229,45 @@ namespace AITools.AIChat.Video
             }
         }
 
+        public static bool TryProbeVideoSync(string inputPath, out VideoInfo info, out string error)
+        {
+            info = null;
+            error = null;
+
+            if (!TryGetToolPaths(out _, out string ffprobePath, out string toolError))
+            {
+                error = toolError;
+                return false;
+            }
+
+            string args = "-v error -print_format json -show_format -show_streams " + QuoteArg(inputPath);
+            ProcessResult pr = RunProcess(ffprobePath, args, ProbeTimeoutMs);
+            UnityEngine.Debug.Log("ffprobe sync: " + pr.Command + "\n" + pr.Stderr);
+            if (!pr.Success)
+            {
+                error = BuildProcessError("ffprobe", pr);
+                return false;
+            }
+
+            try
+            {
+                info = ParseProbeJson(inputPath, pr.Stdout);
+                if (info == null || !info.HasVideo)
+                {
+                    error = "ffprobe did not find a video stream in " + inputPath;
+                    info = null;
+                    return false;
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = "Could not parse ffprobe output: " + ex.Message;
+                info = null;
+                return false;
+            }
+        }
+
         public static IEnumerator CreateClip(
             string inputPath,
             float startSeconds,

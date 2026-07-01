@@ -55,10 +55,15 @@ def fetch_outputs(server_url, prompt_id):
                 if outputs:
                     images = []
                     for _node_id, out in outputs.items():
-                        for img in out.get("images") or []:
-                            if "ait_ignore" in (img.get("filename") or ""):
+                        for key, value in out.items():
+                            if not isinstance(value, list):
                                 continue
-                            images.append(img)
+                            for img in value:
+                                if not isinstance(img, dict) or "filename" not in img:
+                                    continue
+                                if "ait_ignore" in (img.get("filename") or ""):
+                                    continue
+                                images.append(img)
                     if images:
                         return images
         time.sleep(HISTORY_POLL_INTERVAL)

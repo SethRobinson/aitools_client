@@ -5,6 +5,7 @@ Mirrors the Unity behavior (PicMain.cs:2819-2897 for resize math,
 ResizeTool.cs:107-138 for the centered crop, ComfyUIFileUploader.cs:109-205
 for upload semantics)."""
 import io
+import mimetypes
 import uuid
 from pathlib import Path
 
@@ -123,4 +124,48 @@ def upload_image(server_url: str, img: Image.Image, verbose: bool = False) -> st
     server_path = f"{prefix}/{name}" if prefix else name
     if verbose:
         print(f"  uploaded {img.width}x{img.height} -> {server_path}")
+    return server_path
+
+
+def upload_file(server_url: str, path: Path, verbose: bool = False) -> str:
+    """Upload an arbitrary local file to ComfyUI temp storage.
+
+    Unity uses the same /upload/image endpoint and form field for videos; the
+    endpoint accepts non-image bytes as long as the filename extension is intact.
+    """
+    if not path.exists():
+        die(f"input file not found: {path}", 1)
+    try:
+        data = path.read_bytes()
+    except OSError as e:
+        die(f"could not read input file {path}: {e}", 1)
+
+    ext = path.suffix or ".bin"
+    fname = f"aitools_cli_{uuid.uuid4()}{ext}"
+    mime = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
+    try:
+        r = requests.post(
+            f"{server_url}/upload/image",
+            files={"image": (fname, data, mime)},
+            data={"type": "temp", "overwrite": "true"},
+            headers=auth.headers_for(server_url),
+            timeout=UPLOAD_TIMEOUT,
+        )
+    except requests.RequestException as e:
+        die(f"file upload failed: {e}", 2)
+    if r.status_code != 200:
+        die(f"file upload failed: HTTP {r.status_code}\n{r.text[:500]}", 2)
+    try:
+        body = r.json()
+    except ValueError:
+        die(f"file upload returned non-JSON response: {r.text[:200]}", 2)
+    name = body.get("name")
+    subfolder = body.get("subfolder") or ""
+    folder_type = body.get("type") or "temp"
+    if not name:
+        die(f"file upload response missing 'name': {body}", 2)
+    prefix = subfolder or folder_type
+    server_path = f"{prefix}/{name}" if prefix else name
+    if verbose:
+        print(f"  uploaded {path.name} ({len(data):,} bytes) -> {server_path}")
     return server_path

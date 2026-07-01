@@ -8,6 +8,7 @@ Supports the subset relevant to single-step image generation:
   - COMMAND_START|default_post_prompt
   - @replace|find|with|             (string substitution on the workflow JSON)
   - @upload|image1|inputN|          (uploads CLI's -i image to <AITOOLS_INPUT_N>)
+  - @upload|video|inputN|           (uploads CLI's --video file to <AITOOLS_INPUT_N>)
   - @resize|x|W|y|H|aspect_correct|N|        (always resize input image)
   - @resize_if_larger|x|W|y|H|aspect_correct|N|
 
@@ -71,8 +72,8 @@ class ResizeOp:
 
 @dataclass
 class UploadSpec:
-    """An @upload directive: route source image to input slot N (0..3)."""
-    source: str        # 'image1' or 'image2'
+    """An @upload directive: route a local media source to input slot N (0..3)."""
+    source: str        # 'image1', 'image2', or 'video'
     slot_idx: int      # 0..3 -> <AITOOLS_INPUT_(slot_idx+1)>
 
 
@@ -284,10 +285,13 @@ def _handle_upload(args: List[str], data: PresetData, path: Path):
     # 'image' is a documented alias for 'image1' (matches Unity's PicMain.cs).
     if source == "image":
         source = "image1"
-    if source not in ("image1", "image2"):
+    if source == "video1":
+        source = "video"
+    if source not in ("image1", "image2", "video"):
         die(
             f"preset {path.name}: @upload source '{source}' not supported — "
-            f"aitools_cli handles 'image1' (-i input) and 'image2' (-i2 input). "
+            f"aitools_cli handles 'image1' (-i input), 'image2' (-i2 input), "
+            f"and 'video' (--video input). "
             f"Sources like temp1/temp2/temp3 require multi-step workflows.",
             1,
         )
