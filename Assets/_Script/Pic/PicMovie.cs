@@ -73,6 +73,7 @@ public class PicMovie : MonoBehaviour
                 _audioSource = gameObject.AddComponent<AudioSource>();
         }
         _audioSource.playOnAwake = false;
+        ApplyClipVolume();
 
         _videoPlayer.audioOutputMode = VideoAudioOutputMode.AudioSource;
         _videoPlayer.SetTargetAudioSource(0, _audioSource);
@@ -270,6 +271,7 @@ public class PicMovie : MonoBehaviour
 
             if (_videoPlayer.isPlaying && _audioSource != null)
             {
+                ApplyClipVolume();
                 GameObject go = GameLogic.Get().GetPicWereHoveringOver();
                 // GetPicWereHoveringOver() does a 2D physics raycast that ignores UI canvases,
                 // so it will happily report "hovering" even when an overlay panel (AI Chat,
@@ -854,7 +856,10 @@ public class PicMovie : MonoBehaviour
             // Re-bind the AudioSource each play — controlledAudioTrackCount is a
             // serialized field that can reset the per-track target bindings.
             if (_audioSource != null)
+            {
                 _videoPlayer.SetTargetAudioSource(0, _audioSource);
+                ApplyClipVolume();
+            }
             if (forceLoad && _audioSource != null)
                 _audioSource.mute = true;
 
@@ -880,6 +885,15 @@ public class PicMovie : MonoBehaviour
         return !string.IsNullOrWhiteSpace(m_playbackFileName)
             && !string.IsNullOrWhiteSpace(m_playbackProxyFileName)
             && string.Equals(m_playbackFileName, m_playbackProxyFileName, System.StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void ApplyClipVolume()
+    {
+        if (_audioSource == null)
+            return;
+
+        GameLogic gameLogic = GameLogic.Get();
+        _audioSource.volume = gameLogic != null ? gameLogic.GetClipVolume() : 1f;
     }
 
     private bool TryStartPlaybackProxyAfterVideoError(string message)

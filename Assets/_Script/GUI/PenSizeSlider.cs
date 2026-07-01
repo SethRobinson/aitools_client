@@ -13,6 +13,7 @@ public class PenSizeSlider : MonoBehaviour
     void Start()
     {
         UpdateValue();
+        ClipVolumeSlider.CreateUnderPenSizeSlider(this);
     }
 
     // Update is called once per frame

@@ -52,6 +52,7 @@ public class GameLogic : MonoBehaviour
     float m_inpaintStrength = 0.80f;
     float m_extraNoiseStrength = 0;
     float m_penSize = 20;
+    float m_clipVolume = 1.0f;
     float m_controlNetGuidance = 1.0f;
     public TMP_InputField m_inputField;
     public TMP_InputField m_negativeInputField;
@@ -173,6 +174,8 @@ public class GameLogic : MonoBehaviour
     public void SetRandomizePrompt(bool bNew) { m_bRandomizePrompt = bNew; }
 
     public bool GetGlobalMute() { return m_bGlobalMute; }
+    public float GetClipVolume() { return m_clipVolume; }
+    public void SetClipVolume(float volume) { m_clipVolume = Mathf.Clamp01(volume); }
     public bool GetAutoSave() { return m_bAutoSave; }
     public bool GetAutoSavePNG() { return m_bAutoSavePNG; }
     public void SetAutoSave(bool bNew) { m_bAutoSave = bNew; }
