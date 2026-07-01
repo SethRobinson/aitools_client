@@ -101,10 +101,27 @@ WAN is silent. Do not include dialog or sound tags. Use a longer motion prompt:
 Subject -> Scene -> Motion -> Aesthetic Control -> Stylization. Describe body
 motion, environmental motion, camera motion, and lighting changes over time.
 
+## Small Size
+
+If the user asks for a **"small size"** (or "small" / "low res") video, render
+it at **832x480** (or **480x832** for a clearly portrait scene) - WAN's native
+fast resolution, and fine for LTX too. Because the chained movie only inherits
+the still's ASPECT and keeps the video preset's own pixel budget, put the same
+`width`/`height` on BOTH actions - the `generate_image` still AND the
+`image_to_movie` step - so the first frame is small too. See `image_to_movie` ->
+"Small size" for the full example.
+
+```
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<still prompt>" width="832" height="480"/>
+<aitools_action skill="image_to_movie" preset="{{Image To Video (WAN) 5s.txt}}" prompt="<motion prompt>" chain="true" width="832" height="480"/>
+```
+
 ## Rules
 
 - User asked for a new video -> spawn it, no confirmation.
 - Default is Z-Image still -> `image_to_movie chain="true"`.
+- "Small size" video -> 832x480 (or 480x832 portrait), applied to BOTH the
+  still and the movie action.
 - "WAN video of X" means Z-Image still -> `Image To Video (WAN) 5s.txt`, NOT
   direct `Prompt To Video (Wan22).txt`.
 - "LTX video of X" and generic "make a video of X" mean Z-Image still ->

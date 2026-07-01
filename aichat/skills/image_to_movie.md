@@ -145,6 +145,41 @@ to a sensible range. Example for a 9:16 portrait:
 Skip `width`/`height` unless the user is explicitly asking for a non-source
 aspect ratio - the auto-match is correct in 99% of cases.
 
+### "Small size" keyword (WAN / LTX)
+
+When the user asks for a **"small size"** video (or "small", "smaller size",
+"low res / lower res video", "make it small") - especially for WAN, which is
+slow at large sizes - use **832x480** as the target size. Pass it explicitly:
+
+```
+<aitools_action skill="image_to_movie" preset="{{Image To Video (WAN) 5s.txt}}" prompt="..." chat_image="2" width="832" height="480"/>
+```
+
+Keep 832x480 for landscape/square sources; for a clearly portrait source, swap
+to **480x832** so the small size still matches the source aspect. This is WAN's
+native fast resolution, so it renders much quicker than the default. Both
+`width` and `height` are required together. This applies to LTX too, not just
+WAN - "small size" means 832x480 (or 480x832 portrait) whichever video preset
+is in use.
+
+**Also size the still base.** When the video is chained onto a `generate_image`
+still you make in the SAME reply (the default text-to-video flow: Z-Image ->
+`chain="true"` movie), the chained movie keeps the video preset's own pixel
+budget - it only inherits the still's ASPECT, not its size. So "small size"
+must be applied to BOTH actions: put the same `width`/`height` on the
+`generate_image` still AND on this movie action. Sizing only the movie leaves
+the still rendering at its full 1024 default (slower, and a needlessly large
+first frame). Example small-size text-to-video:
+
+```
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full still prompt>" width="832" height="480"/>
+<aitools_action skill="image_to_movie" preset="{{Image To Video (WAN) 5s.txt}}" prompt="<motion prompt>" chain="true" width="832" height="480"/>
+```
+
+(This works because Z-Image and the other still presets honor `width`/`height`.
+If the user only wants a small VIDEO from an existing image - no still made this
+turn - just size this movie action.)
+
 ## Rules
 
 - Pick exactly ONE source: `attachment`, `chat_image`, OR `chain="true"`.
