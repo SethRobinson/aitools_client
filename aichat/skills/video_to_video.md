@@ -1,6 +1,6 @@
 ---
 id: video_to_video
-summary: Restyle / edit an EXISTING short video clip into a new video, optionally guided by a reference image (e.g. "restyle this clip", "make this video look like winter", "turn the video anime", "redo the clip with her as the character in image 2"). Source is a video already in chat as a "Movie #N" bubble. Freshly dropped home videos are imported/clipped into Movie bubbles first; use clip_video for explicit start/duration trims. Always uses ByteDance Bernini-R - it is the only video-to-video path. For animating a STILL image into a video use image_to_movie instead.
+summary: Restyle / edit an EXISTING short video clip into a new video, optionally guided by a reference image (e.g. "restyle this clip", "make this video look like winter", "turn the video anime", "redo the clip with her as the character in image 2"). Source is a video already in chat as a "Movie #N" bubble. Freshly dropped home videos are imported/clipped into Movie bubbles first; use clip_video for explicit start/duration trims. Uses ByteDance Bernini-R for content edits/restyles. For pure smoothing/FPS interpolation use rife_video instead. For animating a STILL image into a video use image_to_movie instead.
 inputs: attachment
 autoload: true
 triggers: video to video, restyle the video, restyle this clip, edit the video, edit the clip, change the video, change the clip, redo the video, redo the clip, make the video, make the clip, the video but, the clip but, same video but, restyle the clip, turn the video, turn the clip, video into, clip into, re-render the video, regenerate the video
@@ -11,9 +11,12 @@ template: <aitools_action skill="video_to_video" preset="{{Video To Video (Berni
 
 Use this skill when the user wants to RESTYLE or EDIT an EXISTING video clip
 into a new clip - change its style, setting, lighting, or content while keeping
-its motion - optionally guided by one reference image. This is the only
-video-to-video path in the app, so it always uses the Bernini preset; never
-pick a different preset for v2v.
+its motion - optionally guided by one reference image. This is the content-edit
+video-to-video path in the app, so it always uses the Bernini preset; never pick
+a different preset for restyle/edit v2v.
+
+If the user only wants smoother playback, interpolation, or higher FPS without
+changing the pixels/content, use `rife_video` instead.
 
 If the user instead wants to ANIMATE a still image into a video, that is
 `image_to_movie`, not this skill.

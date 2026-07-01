@@ -60,6 +60,7 @@ namespace AITools.AIChat.Skills
         private const float ChatImageNotYetBusyGraceSeconds = 20f;
         private const double VideoToVideoWorkflowInputFps = 16.0;
         private const int VideoToVideoFrameStride = 4;
+        private const string RifeVideoDefaultPreset = "Video To Video (RIFE Interpolation).txt";
 
         // ----- Per-turn serial action scheduler -----
         // Skill action tags stream from the LLM and were historically executed
@@ -291,6 +292,10 @@ namespace AITools.AIChat.Skills
                     ExecuteGenerate(action, useAttachment: true);
                     break;
 
+                case BuiltInSkillIds.RifeVideo:
+                    ExecuteRifeVideo(action);
+                    break;
+
                 case BuiltInSkillIds.ClipVideo:
                     ExecuteClipVideo(action);
                     break;
@@ -366,6 +371,22 @@ namespace AITools.AIChat.Skills
                         string.Join(", ", GetKnownSkillIds()));
                     break;
             }
+        }
+
+        // ---------- RIFE video interpolation ----------
+
+        private void ExecuteRifeVideo(SkillAction action)
+        {
+            if (string.IsNullOrWhiteSpace(action.GetArg("preset")))
+                action.Args["preset"] = RifeVideoDefaultPreset;
+
+            // Utility workflow: the prompt is only provenance text. The workflow does
+            // not consume <AITOOLS_PROMPT>, but ExecuteGenerate's shared path expects a
+            // prompt-like label for chat logs and Pic history.
+            if (string.IsNullOrWhiteSpace(action.Prompt))
+                action.Args["prompt"] = "RIFE frame interpolation only; preserve the source video exactly.";
+
+            ExecuteGenerate(action, useAttachment: true);
         }
 
         // ---------- Local video clip import ----------
@@ -444,7 +465,7 @@ namespace AITools.AIChat.Skills
             // chat. Surface this loudly so it doesn't ship silent "no prompt" videos.
             // Checked for both chained AND non-chained paths, so the fast-fail catches
             // the common LLM mistake of emitting an action tag with no prompt attribute.
-            if (string.IsNullOrWhiteSpace(action.Prompt))
+            if (SkillRequiresPrompt(action.SkillId) && string.IsNullOrWhiteSpace(action.Prompt))
             {
                 var skill = _skills?.GetById(action.SkillId);
                 string template = skill != null && !string.IsNullOrEmpty(skill.Template)
@@ -468,6 +489,7 @@ namespace AITools.AIChat.Skills
             // there's no small LLM available or no coroutine runner to dispatch on.
             if (!string.IsNullOrEmpty(_styleDirective)
                 && !_styleAppliedActions.Contains(action)
+                && !IsRifeVideoSkill(action.SkillId)
                 && TryApplyStyleDirective(action))
             {
                 return;
@@ -760,23 +782,29 @@ namespace AITools.AIChat.Skills
             // The chat source resolved above is only a still FRAME; the path below is the real clip.
             // (Chained v2v runs on the prior movie Pic via ExecuteChainedGenerate and never reaches
             // here - it already has its movie and uploads via m_picMovie.)
-            if (action.SkillId.ToLowerInvariant() == BuiltInSkillIds.VideoToVideo)
+            if (IsVideoSourceWorkflowSkill(action.SkillId))
             {
                 int srcChatN = action.ChatImageIndex ?? (_host?.GetLatestChatImageIndex() ?? -1);
                 string moviePath = _host?.GetChatImageMovieFilePath(srcChatN);
                 if (string.IsNullOrEmpty(moviePath))
                 {
                     _host?.AddSystemInjectionAndBubble(
-                        $"Skill 'video_to_video' needs a SOURCE VIDEO, but chat_image=\"{srcChatN}\" is not a \"Movie #N\" bubble. " +
-                        "Point chat_image at an existing movie clip, or to restyle a movie you make in THIS same reply, emit the " +
-                        "generate/animate action first and add chain=\"true\" to the video_to_video action.");
+                        $"Skill '{action.SkillId}' needs a SOURCE VIDEO, but chat_image=\"{srcChatN}\" is not a \"Movie #N\" bubble. " +
+                        "Point chat_image at an existing movie clip, or to operate on a movie you make in THIS same reply, emit the " +
+                        "generate/animate/clip action first and add chain=\"true\" to this action.");
                     return;
                 }
                 picMain.m_pendingVideoUploadPath = moviePath;
-                int frameCount = EstimateVideoToVideoFrameCount(moviePath);
-                if (frameCount > 0)
-                    picMain.SetWorkflowFrameCountOverride(frameCount);
+                if (action.SkillId.ToLowerInvariant() == BuiltInSkillIds.VideoToVideo)
+                {
+                    int frameCount = EstimateVideoToVideoFrameCount(moviePath);
+                    if (frameCount > 0)
+                        picMain.SetWorkflowFrameCountOverride(frameCount);
+                }
             }
+
+            if (IsRifeVideoSkill(action.SkillId))
+                ConfigureRifeVideoVariables(picMain, action);
 
             // Aspect-aware dimension override for img2X presets. Explicit width/height
             // attributes from the LLM win; otherwise fall back to "match the source's
@@ -1018,6 +1046,9 @@ namespace AITools.AIChat.Skills
                     prevPic.SetWorkflowFrameCountOverride(frameCount);
             }
 
+            if (IsRifeVideoSkill(action.SkillId))
+                ConfigureRifeVideoVariables(prevPic, action);
+
             // Same workflow-error reporter as the non-chained path: surface PicMain
             // runtime aborts back to the LLM as a system injection.
             WireWorkflowErrorReporter(prevPic, action.SkillId, resolved);
@@ -1090,6 +1121,47 @@ namespace AITools.AIChat.Skills
             if (remainder != 0)
                 frames += VideoToVideoFrameStride - remainder;
             return frames;
+        }
+
+        private static bool IsRifeVideoSkill(string skillId)
+        {
+            return string.Equals(skillId, BuiltInSkillIds.RifeVideo, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsVideoSourceWorkflowSkill(string skillId)
+        {
+            return string.Equals(skillId, BuiltInSkillIds.VideoToVideo, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(skillId, BuiltInSkillIds.RifeVideo, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool SkillRequiresPrompt(string skillId)
+        {
+            return !IsRifeVideoSkill(skillId);
+        }
+
+        private static void ConfigureRifeVideoVariables(PicMain picMain, SkillAction action)
+        {
+            if (picMain == null || action == null)
+                return;
+
+            var vm = picMain.GetVariableManager();
+            if (vm == null)
+                return;
+
+            float explicitFps = ParseFloat(
+                action.GetArg("fps")
+                ?? action.GetArg("frame_rate")
+                ?? action.GetArg("framerate"),
+                0f);
+            if (explicitFps > 0f)
+            {
+                float clamped = Mathf.Clamp(explicitFps, 1f, 240f);
+                vm.SetText("rife_output_fps", clamped.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture));
+            }
+            else
+            {
+                vm.Clear("rife_output_fps");
+            }
         }
 
         /// <summary>
@@ -2251,6 +2323,19 @@ namespace AITools.AIChat.Skills
                 case "videotovideo":
                 case "video2video":
                     return BuiltInSkillIds.VideoToVideo;
+
+                // rife / interpolate video -> rife_video
+                case "rife":
+                case "rifevideo":
+                case "rife_video":
+                case "interpolate":
+                case "interpolate_video":
+                case "interpolatevideo":
+                case "frame_interpolate":
+                case "frameinterpolate":
+                case "smooth_video":
+                case "smoothvideo":
+                    return BuiltInSkillIds.RifeVideo;
 
                 // clip / trim / cut video -> clip_video
                 case "clip":

@@ -3350,8 +3350,69 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         if (varLower == "temp_text3") return m_tempText3 ?? "";
         if (varLower == "temp_text4") return m_tempText4 ?? "";
         if (varLower == "requirements") return m_requirements ?? "";
+        if (TryResolveVideoFpsBuiltIn(varLower, out string videoFpsValue)) return videoFpsValue;
         
         return null; // Not a built-in variable
+    }
+
+    private bool TryResolveVideoFpsBuiltIn(string varLower, out string value)
+    {
+        value = null;
+        if (string.IsNullOrEmpty(varLower)) return false;
+
+        int multiplier = 0;
+        if (varLower == "video_fps" || varLower == "source_video_fps")
+        {
+            multiplier = 1;
+        }
+        else if (varLower == "video_fps_2x" || varLower == "source_video_fps_2x")
+        {
+            multiplier = 2;
+        }
+        else if (varLower == "video_fps_3x" || varLower == "source_video_fps_3x")
+        {
+            multiplier = 3;
+        }
+        else if (varLower == "video_fps_4x" || varLower == "source_video_fps_4x")
+        {
+            multiplier = 4;
+        }
+        else if (varLower == "rife_output_fps")
+        {
+            multiplier = 2;
+        }
+
+        if (multiplier <= 0)
+            return false;
+
+        double sourceFps = ProbeWorkflowVideoSourceFps();
+        if (sourceFps <= 0 || double.IsNaN(sourceFps) || double.IsInfinity(sourceFps))
+            sourceFps = FfmpegTool.DefaultFps;
+
+        double outFps = Math.Max(1.0, Math.Min(240.0, sourceFps * multiplier));
+        value = outFps.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+        return true;
+    }
+
+    private double ProbeWorkflowVideoSourceFps()
+    {
+        string videoPath = !string.IsNullOrEmpty(m_pendingVideoUploadPath)
+            ? m_pendingVideoUploadPath
+            : ((m_picMovie != null && IsMovie()) ? m_picMovie.GetProcessingFileName() : null);
+
+        if (string.IsNullOrWhiteSpace(videoPath) || !File.Exists(videoPath))
+            return 0;
+
+        if (FfmpegTool.TryProbeVideoSync(videoPath, out var info, out string error)
+            && info != null
+            && info.Fps > 0)
+        {
+            return info.Fps;
+        }
+
+        if (!string.IsNullOrEmpty(error))
+            RTConsole.Log("Warning: could not probe source video fps for workflow variable: " + error);
+        return 0;
     }
 
     string ConvertVarToText(ref PicJob job, string source)

@@ -139,7 +139,7 @@
       "title": "lightx2v distill (high)",
       "widgets_values": [
         "lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors",
-        3.0
+        3
       ]
     },
     {
@@ -499,7 +499,7 @@
       "widgets_values": [
         "simple",
         6,
-        1.0
+        1
       ]
     },
     {
@@ -648,7 +648,7 @@
         true,
         0,
         "fixed",
-        1.0
+        1
       ]
     },
     {
@@ -719,7 +719,7 @@
         false,
         0,
         "fixed",
-        1.0
+        1
       ]
     },
     {
@@ -781,7 +781,7 @@
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 28
+          "link": 27
         }
       ],
       "outputs": [
@@ -796,7 +796,7 @@
       },
       "title": "Save video",
       "widgets_values": {
-        "frame_rate": 64,
+        "frame_rate": 16,
         "loop_count": 0,
         "filename_prefix": "bernini_v2v_ref",
         "format": "video/h264-mp4",
@@ -807,46 +807,6 @@
         "pingpong": false,
         "save_output": true
       }
-    },
-    {
-      "id": 19,
-      "type": "FL_RIFE",
-      "pos": [
-        1680,
-        1040
-      ],
-      "size": [
-        260,
-        110
-      ],
-      "flags": {},
-      "order": 17,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "images",
-          "type": "IMAGE",
-          "link": 27
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            28
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "FL_RIFE"
-      },
-      "title": "RIFE 4x interpolation",
-      "widgets_values": [
-        "rife49",
-        4,
-        false
-      ]
     }
   ],
   "links": [
@@ -1053,14 +1013,6 @@
     [
       27,
       17,
-      0,
-      19,
-      0,
-      "IMAGE"
-    ],
-    [
-      28,
-      19,
       0,
       18,
       0,

@@ -1,13 +1,22 @@
 ---
 id: image_to_movie
-summary: Animate an image (user-pasted OR a previously-generated chat image) into a short video clip. LTX 2.3 has audio - include ONE short quoted line of in-scene dialog (with language+accent) in the motion beat unless the scene has no plausible speaker.
+summary: Animate an image (user-pasted OR a previously-generated chat image) into a short video clip. Default to LTX 2.3; use WAN / Wan 2.2 via preset `Image To Video (WAN) 5s.txt` when the user asks for WAN or higher-quality silent video.
 inputs: attachment
-template: <aitools_action skill="image_to_movie" preset="{{Image To Video (LTX) 5s.txt}}" prompt="describe motion + camera, with ONE short line of in-scene dialog in double-quotes (language+accent), then ambient sound" chat_image="N"/>  # default = animate an existing chat bubble; replace N with its number from CHAT IMAGES. Use attachment="N" for a freshly-pasted image. Use chain="true" (and drop chat_image/attachment) ONLY for a same-reply generate->animate pair.
+autoload: true
+triggers: animate, animation, image to video, image-to-video, image to movie, image-to-movie, animate this, animate it, make this move, make it move, using wan, use wan, with wan, wan 2.2, wan2.2, wan22
+template: <aitools_action skill="image_to_movie" preset="{{Image To Video (LTX) 5s.txt}}" prompt="describe motion + camera, with ONE short line of in-scene dialog in double-quotes (language+accent), then ambient sound" chat_image="N"/>  # default LTX; when the user asks for WAN/Wan 2.2, use preset="{{Image To Video (WAN) 5s.txt}}" and write a silent WAN motion prompt.
 ---
 # Image-to-movie
 
 Use this skill when the user wants you to ANIMATE an image into a short
 video clip. The source can be either freshly pasted or already in chat.
+
+If the user asks for a NEW text-described video with no source image
+("generate a WAN video of X", "make an LTX movie of X", "create a video of X"),
+first emit `generate_image` with `{{Prompt To Image (Z-Image).txt}}`, then emit
+this skill with `chain="true"`. Do NOT use direct `generate_movie` /
+text-to-video unless the user explicitly asks for direct text-to-video, "no
+still first", or a named `Prompt To Video ...` preset.
 
 Specify EXACTLY ONE source via:
 
@@ -19,7 +28,8 @@ Specify EXACTLY ONE source via:
 
 ## Available presets
 
-- `{{Image To Video (Wan22).txt}}` - high-quality 5s, slow (Wan 2.2)
+- `{{Image To Video (WAN) 5s.txt}}` - high-quality 5s, slow, silent (Wan 2.2 / WAN). In `test_` mode this resolves to the test WAN image-to-video preset.
+- `{{Image To Video (Wan22).txt}}` - legacy alias for the same production Wan 2.2 path.
 - `{{Image To Video (LTX) 5s.txt}}` - fast 5s clip (LTX 2.3)
 
 ## Invocation
@@ -104,7 +114,7 @@ Roleplay / identity-anchor example style:
 > reflected across black water; ambient sound of humming machines, dripping
 > water, and flare crackle.
 
-### Wan 2.2 (`{{Image To Video (Wan22).txt}}`)
+### WAN / Wan 2.2 (`{{Image To Video (WAN) 5s.txt}}`)
 
 Source: [wan2-2.app/prompt](https://wan2-2.app/prompt).
 

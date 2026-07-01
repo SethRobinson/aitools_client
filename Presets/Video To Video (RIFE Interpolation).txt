@@ -1,0 +1,4 @@
+COMMAND_START|joblist
+#2x RIFE frame interpolation for a loaded video. Preserves content and audio.
+video_to_video_rife.json @upload|video|input1| @replace|"frame_rate": 32|"frame_rate": %rife_output_fps%|
+COMMAND_END

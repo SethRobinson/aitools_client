@@ -437,6 +437,7 @@ namespace AITools.AIChat.Skills
                 case BuiltInSkillIds.GenerateMovie:
                 case BuiltInSkillIds.ImageToMovie:
                 case BuiltInSkillIds.VideoToVideo:
+                case BuiltInSkillIds.RifeVideo:
                 case BuiltInSkillIds.ClipVideo:
                 case BuiltInSkillIds.DrawText:
                 case BuiltInSkillIds.AddBorder:

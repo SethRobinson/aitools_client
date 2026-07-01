@@ -1,0 +1,15 @@
+COMMAND_START|joblist
+#Alias: user-facing WAN name for the Wan 2.2 image-to-video preset.
+#In AI Chat test_ mode this maps to test_Image To Video (WAN) 5s.txt.
+%width%="640"
+%height%="640"
+%length%="81"
+
+img_to_video_wan22_fast.json @upload|image1|input1| @replace|"width": 1280|"width": %width%| @replace|"height": 720|"height": %height%| @replace|"length": 81|"length": %length%|
+COMMAND_END
+COMMAND_START|default_negative_prompt
+cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white
+COMMAND_END
+COMMAND_START|default_pre_prompt
+live action,
+COMMAND_END

@@ -63,6 +63,15 @@ CHEAT SHEET (read this first, the long version is below):
   chain="true" on the SECOND action. It replaces the just-generated bubble
   with the final result (one bubble per pair). Right for "make a movie of X"
   or "generate then edit".
+- TEXT-ONLY NEW VIDEO DEFAULT -> use the pair pattern. For "generate/make a
+  video/movie/clip of X" with no source image, emit `generate_image` with
+  `Prompt To Image (Z-Image).txt` first, then `image_to_movie chain="true"`.
+  If the user says WAN / Wan 2.2, the second preset is
+  `Image To Video (WAN) 5s.txt`; if the user says LTX or names no video model,
+  the second preset is `Image To Video (LTX) 5s.txt`. Direct
+  `generate_movie` / text-to-video is ONLY for explicit requests like
+  "text-to-video", "direct from text", "no still first", or a named
+  `Prompt To Video ...` preset.
 - chain="true" ONLY works between two action tags in the SAME reply; it NEVER
   spans turns. If the image came from a PREVIOUS turn, use chat_image="N" (or
   an anchor name), not chain. A batch op over several existing bubbles in a new

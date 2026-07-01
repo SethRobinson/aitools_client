@@ -1,124 +1,113 @@
 ---
 id: generate_movie
-summary: Generate a short video clip from a text prompt. LTX 2.3 has audio - include ONE short quoted line of in-scene dialog (with language+accent) in the motion beat unless the scene has no plausible speaker. Wan 2.2 preset = higher quality but slow and silent (no dialog/sound tags).
+summary: Make a new video from a text description. DEFAULT recipe is two actions: generate a Z-Image still, then animate it with image_to_movie chain="true". For "WAN video", use `Image To Video (WAN) 5s.txt` as the second preset; otherwise use LTX. Use direct text-to-video (`skill="generate_movie"`) only when the user explicitly asks for direct/text-to-video or no still-image base.
 inputs: none
-template: <aitools_action skill="generate_movie" preset="{{Prompt To Video (LTX) 5s.txt}}" prompt="4-8 sentences: subject, then motion with ONE short line of in-scene dialog in double-quotes (language+accent), then one camera move, then mood/lighting, then ambient sound"/>
+autoload: true
+triggers: generate a video, generate video, make a video, create a video, create video, generate a movie, make a movie, create a movie, generate a clip, make a clip, wan video, wan movie, ltx video, ltx movie, prompt to video, text to video, text-to-video, direct video
+exclude_triggers: edit this video, restyle this video, video to video, video-to-video, animate this image, animate this, animate it, image to video, image-to-video
+template: <aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="full self-contained still-image scene prompt"/><aitools_action skill="image_to_movie" preset="{{Image To Video (LTX) 5s.txt}}" prompt="motion + one camera move + one short quoted dialog line if plausible, then ambient sound" chain="true"/>
 ---
 # Generate a movie
 
-Use this skill when the user asks for a short video / animation / clip /
-movie from a text prompt (no input image required).
+Use this skill when the user asks for a NEW short video / animation /
+clip / movie from a text description and has not supplied a source image.
 
-## Available presets
+## Default Workflow
 
-- `{{Prompt To Video (Wan22).txt}}` - high-quality 5s, slow (Wan 2.2, no audio)
-- `{{Prompt To Video (LTX) 5s.txt}}` - fast 5s clip (LTX 2.3, with audio)
+For normal "make a video of X" requests, DO NOT use direct text-to-video.
+Build the clip in two actions:
 
-Default to LTX. Pick Wan 2.2 when the user asks for it by name or wants
-maximum visual quality and doesn't need sound/dialog.
+1. Generate a strong still frame with `{{Prompt To Image (Z-Image).txt}}`.
+2. Animate that exact still with `image_to_movie chain="true"`.
 
-## Invocation
+This gives the video model a concrete first frame, which is more reliable than
+raw text-to-video for both LTX and WAN.
 
+Generic or LTX video:
 ```
-<aitools_action skill="generate_movie" preset="{{Prompt To Video (LTX) 5s.txt}}" prompt="vivid visual description with motion"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full Z-Image still prompt: subject, wardrobe, pose, setting, lighting, camera, style>"/>
+<aitools_action skill="image_to_movie" preset="{{Image To Video (LTX) 5s.txt}}" prompt="<4-8 sentence LTX motion prompt with one camera move, one short quoted dialog line if plausible, and ambient sound>" chain="true"/>
 ```
 
-## Writing good LTX 2.3 prompts (`{{Prompt To Video (LTX) 5s.txt}}`)
+WAN / Wan 2.2 video:
+```
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full Z-Image still prompt for the opening frame>"/>
+<aitools_action skill="image_to_movie" preset="{{Image To Video (WAN) 5s.txt}}" prompt="<silent WAN motion prompt: subject, scene, motion over time, camera, lighting, style>" chain="true"/>
+```
 
-Source: [docs.ltx.video](https://docs.ltx.video/api-documentation/prompting-guide).
+The chained movie action carries ONLY `chain="true"` plus its preset/prompt.
+Do not also pass `attachment` or `chat_image`; the prior Z-Image result is
+inherited automatically.
 
-### Structure
+## Model Choice
 
-**4-8 sentences, single flowing paragraph.** Tuned for this length -
-longer pads / smears. Write in this order:
+- If the user says **WAN**, **Wan 2.2**, or asks for higher-quality silent
+  video, use `{{Image To Video (WAN) 5s.txt}}` for the second action.
+- If the user says **LTX** or does not name a video model, use
+  `{{Image To Video (LTX) 5s.txt}}` for the second action.
+- Always use `{{Prompt To Image (Z-Image).txt}}` for the still base unless the
+  user explicitly names a different still-image model.
 
-1. **Subject** - what the viewer notices, with physical detail (age,
-   clothing, emotional cues like "shoulders lowered"). No style words yet.
-2. **Motion + dialog** - concrete verbs (walking, turning, exhaling),
-   not abstract energy words. **Fold ONE short line of in-scene dialog
-   into this beat** (see below).
-3. **Camera** - one explicit move (push-in, tracking, orbit, static).
-4. **Mood / lighting** - cinematic tone, lighting, atmosphere.
-5. **Ambient sound tag** - one short closing phrase.
+## Direct Text-To-Video Escape Hatch
 
-### Dialog (DEFAULT ON)
+Only use `skill="generate_movie"` directly when the user explicitly asks for:
 
-LTX 2.3 generates real audio for quoted lines - a 5s clip with no
-dialog wastes the model. **Add ONE short line by default** (~3-12
-words), double quotes, language + accent, tucked INTO the motion
-sentence - e.g. `she murmurs "I'll be right there" in English with a
-soft Irish accent`. Write the EXACT words, never "she says something".
-Skip ONLY when the scene has no plausible speaker (alone and silent,
-face hidden, empty landscape / abstract, or user said "silent").
+- "text-to-video", "direct text-to-video", or "prompt to video";
+- "do not generate an image first" / "no still-image base";
+- a specific `Prompt To Video ...` preset.
 
-### Don'ts
+Direct text-to-video presets are still available, but they are NOT the default:
 
-- No aesthetic-only padding ("cinematic, epic" with no motion = still video).
-- No jump-cut words ("suddenly", "flashes", "cuts to") - LTX can't cut.
-- One priority per scene. No competing ideas.
+- `{{Prompt To Video (LTX) 5s.txt}}` - fast 5s text-to-video with audio.
+- `{{Prompt To Video (Wan22).txt}}` - slow silent Wan 2.2 text-to-video.
 
-### Example
+Direct LTX example, only for explicit direct T2V:
+```
+<aitools_action skill="generate_movie" preset="{{Prompt To Video (LTX) 5s.txt}}" prompt="4-8 sentence direct text-to-video prompt"/>
+```
 
-User asked: "a woman writing at a desk". Ship something like:
+## Prompt Writing
 
-> A woman in her early 30s, half-Korean half-French, in a cream cable-knit
-> sweater, sits hunched over an old oak writing desk in a converted
-> Brooklyn loft at night, an open leather-bound journal and a brass
-> beeswax candle in front of her. She is mid-sentence with a fountain pen,
-> then slowly pauses, lifts her head, brushes a strand of espresso bob
-> hair behind her right ear, and murmurs to herself "if he reads this,
-> he'll understand" in English with a faint French accent, before
-> exhaling softly and returning to writing. The camera holds a very slow
-> dolly-in - just a few centimetres of push - from chest height, 50mm
-> equivalent, shallow depth of field. Warm amber candlelight from
-> camera-right is the key, cool moonlight from a tall arched window
-> camera-left is the fill, with the candle flame gently flickering and
-> shifting soft shadows on the brick wall behind her. Style of a Roger
-> Deakins night interior, Portra 400 film grain, natural skin tones;
-> ambient sound of distant traffic and a slow ceiling fan.
+### Z-Image Still Base
 
-## Writing good Wan 2.2 prompts (`{{Prompt To Video (Wan22).txt}}`)
+Write a full still-image prompt, not the user's short wording. Include visible
+subject identity, clothing, pose/body language, exact setting, lighting, camera,
+and style. The opening frame should already look like the video the user asked
+for.
 
-Source: [wan2-2.app/prompt](https://wan2-2.app/prompt).
+For "a Japanese woman playing basketball", the still prompt should choose the
+court, time of day, wardrobe, pose, camera, and style explicitly instead of
+passing that phrase unchanged.
 
-- Formula: **Subject → Scene → Motion → Aesthetic Control →
-  Stylization**. No strict word count - "more complete = higher quality".
-- Handles longer multi-beat motion than LTX. 200-400 words of timed
-  motion + environmental motion + lighting evolution work well.
-- **No audio.** Wan 2.2 generates silent video - do NOT add the quoted
-  dialog line or an ambient-sound tag; spend those words on motion and
-  lighting instead.
-- There's no source image, so the first subject sentence must be fully
-  self-contained: physical detail, wardrobe, expression, posture.
-- **Wan 2.2 uses negative prompts** (unlike LTX / Z-Image). The preset
-  ships a good default; only pass `negative_prompt="..."` to override it
-  for a specific need.
-- Same hard-cut rule: avoid "suddenly", "flashes", "cuts to".
+### LTX Image-To-Video
 
-## Scenario / recurring characters
+Use 4-8 sentences in one paragraph:
 
-Detailed roleplay, scenario, character-sheet, and identity-anchor
-workflows live in `scenario_storytelling`. If that skill is auto-loaded,
-follow it for story prose, visual pacing, reference characters, and
-GPU-aware multi-shot planning.
+1. Restate the visible subject briefly.
+2. Describe concrete motion over the 5 seconds.
+3. Include ONE short quoted line of in-scene dialog if there is a plausible
+   speaker, with language + accent. Skip only when the user asks for silent
+   video or the scene has no plausible speaker.
+4. Add one camera move.
+5. Add mood/lighting continuity and ambient sound.
 
-Text-to-video has no source image to anchor identity. For recurring
-fictional characters, keep the FIRST subject sentence fully
-self-contained: apparent age, ethnicity/complexion, build, hair, face,
-wardrobe, expression, and posture. Never prompt only with a character
-name. For user-supplied reference identities, do not use `generate_movie`;
-use `image_to_image` followed by `image_to_movie` with `chain="true"` as
-described in `scenario_storytelling`.
+Avoid jump cuts ("suddenly", "cuts to") and vague motion words ("dynamic",
+"epic"). The source image already exists; the motion prompt should tell LTX how
+that image moves.
+
+### WAN Image-To-Video
+
+WAN is silent. Do not include dialog or sound tags. Use a longer motion prompt:
+Subject -> Scene -> Motion -> Aesthetic Control -> Stylization. Describe body
+motion, environmental motion, camera motion, and lighting changes over time.
 
 ## Rules
 
-- User asked for a video → spawn it, no confirmation.
-- Default to the LTX preset; use Wan 2.2 when asked for it or for
-  max-quality silent clips.
-- LTX 2.3: 4-8 sentences, order Subject → Motion+Dialog → Camera → Mood →
-  Ambient. Don't pass the user's 1-liner verbatim; don't pad past 8
-  sentences. **Always include ONE short quoted in-scene line** (language +
-  accent) in the motion beat, unless no plausible speaker. Write EXACT words.
-- Wan 2.2: longer multi-beat motion (200-400 words) is fine, but NO
-  dialog or ambient-sound tags - it renders silent video.
+- User asked for a new video -> spawn it, no confirmation.
+- Default is Z-Image still -> `image_to_movie chain="true"`.
+- "WAN video of X" means Z-Image still -> `Image To Video (WAN) 5s.txt`, NOT
+  direct `Prompt To Video (Wan22).txt`.
+- "LTX video of X" and generic "make a video of X" mean Z-Image still ->
+  `Image To Video (LTX) 5s.txt`, unless the user explicitly asks for direct
+  text-to-video.
 - Default to 5s unless the user asks longer.
