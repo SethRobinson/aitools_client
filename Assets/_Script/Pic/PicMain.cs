@@ -1028,7 +1028,22 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             else
             {
                 texture = new Texture2D(16, 16, TextureFormat.RGBA32, false);
-                texture.LoadImage(buffer);
+                if (!texture.LoadImage(buffer))
+                {
+                    Debug.LogError("Error loading image " + filename);
+                    Destroy(texture);
+                    return;
+                }
+
+                if (fExt == ".jpg" || fExt == ".jpeg")
+                {
+                    Texture2D orientedTexture = texture.ApplyJpegExifOrientation(buffer);
+                    if (!ReferenceEquals(orientedTexture, texture))
+                    {
+                        Destroy(texture);
+                        texture = orientedTexture;
+                    }
+                }
             }
 
             if (bResize)

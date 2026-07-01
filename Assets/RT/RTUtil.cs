@@ -403,6 +403,218 @@ public static class Tex2DExtension
         return copyTexture;
     }
 
+    public static int GetJpegExifOrientation(byte[] data)
+    {
+        if (data == null || data.Length < 4) return 1;
+        if (data[0] != 0xFF || data[1] != 0xD8) return 1;
+
+        int offset = 2;
+        while (offset < data.Length - 1)
+        {
+            if (data[offset] != 0xFF)
+            {
+                offset++;
+                continue;
+            }
+
+            while (offset < data.Length && data[offset] == 0xFF)
+                offset++;
+            if (offset >= data.Length) break;
+
+            byte marker = data[offset++];
+            if (marker == 0xD9 || marker == 0xDA) break;
+            if (marker == 0x01 || (marker >= 0xD0 && marker <= 0xD7))
+                continue;
+
+            if (offset + 2 > data.Length) break;
+            int segmentLength = (data[offset] << 8) | data[offset + 1];
+            if (segmentLength < 2) break;
+
+            int segmentStart = offset + 2;
+            int segmentDataLength = segmentLength - 2;
+            if (segmentStart + segmentDataLength > data.Length) break;
+
+            if (marker == 0xE1)
+            {
+                int orientation = ParseExifOrientation(data, segmentStart, segmentDataLength);
+                if (orientation >= 1 && orientation <= 8)
+                    return orientation;
+            }
+
+            offset = segmentStart + segmentDataLength;
+        }
+
+        return 1;
+    }
+
+    public static Texture2D ApplyExifOrientation(this Texture2D src, int orientation)
+    {
+        if (src == null || orientation <= 1 || orientation > 8)
+            return src;
+
+        int srcW = src.width;
+        int srcH = src.height;
+        bool swapAxes = orientation >= 5 && orientation <= 8;
+        int dstW = swapAxes ? srcH : srcW;
+        int dstH = swapAxes ? srcW : srcH;
+
+        Color32[] srcPixels = src.GetPixels32();
+        Color32[] dstPixels = new Color32[srcPixels.Length];
+
+        for (int dstY = 0; dstY < dstH; dstY++)
+        {
+            int dstYTop = dstH - 1 - dstY;
+            for (int dstX = 0; dstX < dstW; dstX++)
+            {
+                int srcXTop;
+                int srcYTop;
+                MapExifDestinationToSourceTopLeft(
+                    orientation, dstX, dstYTop, srcW, srcH, out srcXTop, out srcYTop);
+
+                int srcY = srcH - 1 - srcYTop;
+                dstPixels[dstY * dstW + dstX] = srcPixels[srcY * srcW + srcXTop];
+            }
+        }
+
+        Texture2D dst = new Texture2D(dstW, dstH, TextureFormat.RGBA32, false);
+        dst.SetPixels32(dstPixels);
+        dst.Apply(false, false);
+        dst.filterMode = src.filterMode;
+        dst.wrapMode = src.wrapMode;
+        dst.name = src.name;
+        return dst;
+    }
+
+    public static Texture2D ApplyJpegExifOrientation(this Texture2D src, byte[] jpegBytes)
+    {
+        return src.ApplyExifOrientation(GetJpegExifOrientation(jpegBytes));
+    }
+
+    private static int ParseExifOrientation(byte[] data, int segmentStart, int segmentLength)
+    {
+        if (segmentLength < 14) return 0;
+        if (data[segmentStart] != (byte)'E'
+            || data[segmentStart + 1] != (byte)'x'
+            || data[segmentStart + 2] != (byte)'i'
+            || data[segmentStart + 3] != (byte)'f'
+            || data[segmentStart + 4] != 0
+            || data[segmentStart + 5] != 0)
+            return 0;
+
+        int tiffStart = segmentStart + 6;
+        int tiffEnd = segmentStart + segmentLength;
+        if (tiffStart + 8 > tiffEnd) return 0;
+
+        bool littleEndian;
+        if (data[tiffStart] == (byte)'I' && data[tiffStart + 1] == (byte)'I')
+            littleEndian = true;
+        else if (data[tiffStart] == (byte)'M' && data[tiffStart + 1] == (byte)'M')
+            littleEndian = false;
+        else
+            return 0;
+
+        if (ReadExifUInt16(data, tiffStart + 2, littleEndian) != 0x002A)
+            return 0;
+
+        uint ifdOffset = ReadExifUInt32(data, tiffStart + 4, littleEndian);
+        if (ifdOffset > int.MaxValue) return 0;
+
+        int ifdStart = tiffStart + (int)ifdOffset;
+        if (ifdStart < tiffStart || ifdStart + 2 > tiffEnd) return 0;
+
+        int entryCount = ReadExifUInt16(data, ifdStart, littleEndian);
+        int entriesStart = ifdStart + 2;
+        if (entriesStart + entryCount * 12 > tiffEnd) return 0;
+
+        for (int i = 0; i < entryCount; i++)
+        {
+            int entry = entriesStart + i * 12;
+            ushort tag = ReadExifUInt16(data, entry, littleEndian);
+            if (tag != 0x0112) continue;
+
+            ushort type = ReadExifUInt16(data, entry + 2, littleEndian);
+            uint count = ReadExifUInt32(data, entry + 4, littleEndian);
+            if (type != 3 || count < 1) return 0;
+
+            int valueOffset = entry + 8;
+            if (count > 2)
+            {
+                uint relativeOffset = ReadExifUInt32(data, entry + 8, littleEndian);
+                if (relativeOffset > int.MaxValue) return 0;
+                valueOffset = tiffStart + (int)relativeOffset;
+                if (valueOffset < tiffStart || valueOffset + 2 > tiffEnd) return 0;
+            }
+
+            int orientation = ReadExifUInt16(data, valueOffset, littleEndian);
+            return orientation >= 1 && orientation <= 8 ? orientation : 0;
+        }
+
+        return 0;
+    }
+
+    private static ushort ReadExifUInt16(byte[] data, int offset, bool littleEndian)
+    {
+        if (littleEndian)
+            return (ushort)(data[offset] | (data[offset + 1] << 8));
+        return (ushort)((data[offset] << 8) | data[offset + 1]);
+    }
+
+    private static uint ReadExifUInt32(byte[] data, int offset, bool littleEndian)
+    {
+        if (littleEndian)
+        {
+            return (uint)(data[offset]
+                | (data[offset + 1] << 8)
+                | (data[offset + 2] << 16)
+                | (data[offset + 3] << 24));
+        }
+
+        return (uint)((data[offset] << 24)
+            | (data[offset + 1] << 16)
+            | (data[offset + 2] << 8)
+            | data[offset + 3]);
+    }
+
+    private static void MapExifDestinationToSourceTopLeft(
+        int orientation, int dstX, int dstYTop, int srcW, int srcH, out int srcXTop, out int srcYTop)
+    {
+        switch (orientation)
+        {
+            case 2:
+                srcXTop = srcW - 1 - dstX;
+                srcYTop = dstYTop;
+                break;
+            case 3:
+                srcXTop = srcW - 1 - dstX;
+                srcYTop = srcH - 1 - dstYTop;
+                break;
+            case 4:
+                srcXTop = dstX;
+                srcYTop = srcH - 1 - dstYTop;
+                break;
+            case 5:
+                srcXTop = dstYTop;
+                srcYTop = dstX;
+                break;
+            case 6:
+                srcXTop = dstYTop;
+                srcYTop = srcH - 1 - dstX;
+                break;
+            case 7:
+                srcXTop = srcW - 1 - dstYTop;
+                srcYTop = srcH - 1 - dstX;
+                break;
+            case 8:
+                srcXTop = srcW - 1 - dstYTop;
+                srcYTop = dstX;
+                break;
+            default:
+                srcXTop = dstX;
+                srcYTop = dstYTop;
+                break;
+        }
+    }
+
     //range checking is up to you.  Block copy, alpha etc is fully replaced with no processing
     //You may need to .Apply() yourself
     public static void Blit(this Texture2D dst, int dstOffsetX, int dstOffsetY, Texture2D src, int srcOffsetX, int srcOffsetY, int width, int height)

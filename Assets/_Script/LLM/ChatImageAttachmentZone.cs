@@ -326,6 +326,13 @@ public class ChatImageAttachmentZone : MonoBehaviour
             return;
         }
 
+        Texture2D orientedTex = tex.ApplyJpegExifOrientation(imgBytes);
+        if (!ReferenceEquals(orientedTex, tex))
+        {
+            UnityEngine.Object.Destroy(tex);
+            tex = orientedTex;
+        }
+
         // Auto-downscale oversized drops. Huge source images (4K, 6K, mobile photos
         // at 8K+) blow up every downstream cost - PNG re-encode time, captioning
         // payload, image_to_image source bytes, hover-tooltip latency. A bilinear
