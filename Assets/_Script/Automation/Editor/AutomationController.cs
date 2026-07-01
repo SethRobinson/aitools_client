@@ -33,7 +33,8 @@ using UnityEngine;
 //   POST /llm_settings -> open the advanced LLM Settings panel
 //   POST /server_settings -> body: id=<serverID>; open that server's Overrides panel
 //   POST /chat        -> body = message text; open chat + send one turn
-//   GET  /chat_images -> JSON array: index/w/h/busy for each chat image
+//   POST /chat_import_video -> body: path=<file>, optional start=<seconds>, duration=<seconds>, fps=<n>, audio=<true|false>; import clipped Movie bubble
+//   GET  /chat_images -> JSON array: index/w/h/busy/movie for each chat image
 //   POST /save        -> body: index=<n|latest>, path=<file>; save chat image PNG
 //   POST /screenshot  -> body: path=<file> [x,y,w,h top-left region]; capture game view
 //
@@ -253,6 +254,29 @@ public static class AutomationController
                     WriteJson(stream, 200, "{\"ok\":true,\"accepted\":\"chat\"}");
                     break;
 
+                case "/chat_import_video":
+                {
+                    // Body: key=value lines. path=<file>; optional start=<seconds>, duration=<seconds>.
+                    var kv = ParseKeyValues(body);
+                    string videoPath = kv.TryGetValue("path", out var vp) ? vp : "";
+                    float startSeconds = ParseFloat(kv, "start", 0f);
+                    float durationSeconds = ParseFloat(kv, "duration", 5f);
+                    float fps = ParseFloat(kv, "fps", 0f);
+                    bool includeAudio = ParseBool(kv, "audio", ParseBool(kv, "include_audio", true));
+                    if (ParseBool(kv, "no_audio", false))
+                        includeAudio = false;
+                    string result = RunOnMainAndWait(() =>
+                    {
+                        AutomationBridge.OpenChat();
+                        bool ok = AutomationBridge.ImportChatVideo(videoPath, startSeconds, durationSeconds, fps, includeAudio, out string err);
+                        return ok
+                            ? $"{{\"ok\":true,\"accepted\":\"chat_import_video\",\"path\":{JsonStr(videoPath)}}}"
+                            : $"{{\"ok\":false,\"error\":{JsonStr(err)}}}";
+                    }, "{\"ok\":false,\"error\":\"timed out\"}");
+                    WriteJson(stream, 200, result);
+                    break;
+                }
+
                 case "/chat_images":
                     WriteJson(stream, 200, RunOnMainAndWait(AutomationBridge.ChatImagesJson, "[]"));
                     break;
@@ -424,6 +448,24 @@ public static class AutomationController
     static int ParseInt(Dictionary<string, string> kv, string key, int fallback)
     {
         return kv.TryGetValue(key, out string v) && int.TryParse(v.Trim(), out int n) ? n : fallback;
+    }
+
+    static float ParseFloat(Dictionary<string, string> kv, string key, float fallback)
+    {
+        if (!kv.TryGetValue(key, out string v)) return fallback;
+        return float.TryParse(v.Trim(),
+            System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out float n) ? n : fallback;
+    }
+
+    static bool ParseBool(Dictionary<string, string> kv, string key, bool fallback)
+    {
+        if (!kv.TryGetValue(key, out string v)) return fallback;
+        string s = (v ?? "").Trim().ToLowerInvariant();
+        if (s == "true" || s == "1" || s == "yes" || s == "on") return true;
+        if (s == "false" || s == "0" || s == "no" || s == "off") return false;
+        return fallback;
     }
 
     // Minimal JSON string encoder (quotes + escapes) for paths/errors.

@@ -1,0 +1,24 @@
+FFmpeg helper binaries for AI Chat video import
+
+This folder bundles FFmpeg as external command-line helper programs. The Unity
+app launches these executables as separate processes; it does not link FFmpeg as
+a Unity plugin or library.
+
+Bundled files:
+- bin/ffmpeg.exe
+- bin/ffprobe.exe
+
+Build source:
+- FFmpeg 8.1.2 essentials build from https://www.gyan.dev/ffmpeg/builds/
+- Build README and source commit: licenses/README.txt
+- License text: licenses/LICENSE
+
+Important license note:
+This bundled build is GPL v3 and includes libx264. Before distributing release
+packages, keep this notice, licenses/README.txt, and licenses/LICENSE with the
+executables and follow FFmpeg's legal checklist:
+https://www.ffmpeg.org/legal.html
+
+Official command documentation:
+- https://ffmpeg.org/ffmpeg.html
+- https://ffmpeg.org/ffprobe.html

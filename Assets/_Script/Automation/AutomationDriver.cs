@@ -109,6 +109,12 @@ public class AutomationDriver : MonoBehaviour
         return AIChatPanel.AutomationSend(text);
     }
 
+    /// <summary>Import a local video file into AI Chat as a clipped Movie bubble.</summary>
+    public bool ImportChatVideo(string path, float startSeconds, float durationSeconds, double fps, bool includeAudio, out string error)
+    {
+        return AIChatPanel.AutomationImportVideo(path, startSeconds, durationSeconds, fps, includeAudio, out error);
+    }
+
     /// <summary>Save a chat image to disk as PNG. index &lt;= 0 means latest.</summary>
     public bool Save(int index, string path, out string error)
     {

@@ -81,6 +81,14 @@ public static class AutomationBridge
         return _driver != null && _driver.SendChat(text);
     }
 
+    /// <summary>Import a local video file into AI Chat as a clipped Movie bubble.</summary>
+    public static bool ImportChatVideo(string path, float startSeconds, float durationSeconds, double fps, bool includeAudio, out string error)
+    {
+        error = "no driver";
+        if (_driver == null) return false;
+        return _driver.ImportChatVideo(path, startSeconds, durationSeconds, fps, includeAudio, out error);
+    }
+
     /// <summary>JSON array describing the current chat images. "[]" if no chat panel.</summary>
     public static string ChatImagesJson()
     {

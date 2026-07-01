@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Text;
 using SimpleJSON;
 using TMPro;
+using AITools.AIChat.Video;
 using UnityEngine;
 
 namespace AITools.AIChat.Skills
@@ -288,6 +289,10 @@ namespace AITools.AIChat.Skills
                     ExecuteGenerate(action, useAttachment: true);
                     break;
 
+                case BuiltInSkillIds.ClipVideo:
+                    ExecuteClipVideo(action);
+                    break;
+
                 case BuiltInSkillIds.ReadSkill:
                     ExecuteReadSkill(action);
                     break;
@@ -359,6 +364,68 @@ namespace AITools.AIChat.Skills
                         string.Join(", ", GetKnownSkillIds()));
                     break;
             }
+        }
+
+        // ---------- Local video clip import ----------
+
+        private void ExecuteClipVideo(SkillAction action)
+        {
+            int chatN = action.ChatImageIndex ?? (_host?.GetLatestChatImageIndex() ?? -1);
+            if (chatN <= 0)
+            {
+                _host?.AddSystemInjectionAndBubble(
+                    "clip_video needs chat_image=\"N\" pointing at an existing Movie bubble. " +
+                    "If the user just dropped a video, wait for it to import as Movie #N first.");
+                return;
+            }
+
+            string moviePath = _host?.GetChatImageMovieFilePath(chatN);
+            if (string.IsNullOrEmpty(moviePath))
+            {
+                _host?.AddSystemInjectionAndBubble(
+                    $"clip_video needs a SOURCE VIDEO, but chat_image=\"{chatN}\" is not a Movie bubble. " +
+                    "Use a Movie #N entry from CHAT IMAGES.");
+                return;
+            }
+
+            float start = ParseFloat(
+                action.GetArg("start")
+                ?? action.GetArg("start_seconds")
+                ?? action.GetArg("time")
+                ?? action.GetArg("at"),
+                0f);
+            float duration = ParseFloat(
+                action.GetArg("duration")
+                ?? action.GetArg("duration_seconds")
+                ?? action.GetArg("seconds")
+                ?? action.GetArg("length"),
+                FfmpegTool.DefaultClipDurationSeconds);
+            float fps = ParseFloat(
+                action.GetArg("fps")
+                ?? action.GetArg("frame_rate")
+                ?? action.GetArg("framerate"),
+                0f);
+            bool includeAudio = ParseBool(
+                action.GetArg("include_audio")
+                ?? action.GetArg("audio"),
+                true);
+            if (ParseBool(action.GetArg("no_audio"), false))
+                includeAudio = false;
+
+            _host?.MarkChainTargetStale();
+            bool started = _host != null && _host.StartClipVideoAction(action, chatN, start, duration, fps, includeAudio, ok =>
+            {
+                ResumePumpAfterDeferredComplete(action);
+            });
+
+            if (!started)
+            {
+                _host?.AddSystemInjectionAndBubble(
+                    $"clip_video could not start for chat_image=\"{chatN}\". The movie may have been deleted or unloaded.");
+                return;
+            }
+
+            _lastActionDeferred = true;
         }
 
         // ---------- Generate (image or movie) ----------
@@ -2134,6 +2201,17 @@ namespace AITools.AIChat.Skills
                 case "videotovideo":
                 case "video2video":
                     return BuiltInSkillIds.VideoToVideo;
+
+                // clip / trim / cut video -> clip_video
+                case "clip":
+                case "clipvideo":
+                case "trim_video":
+                case "trimvideo":
+                case "cut_video":
+                case "cutvideo":
+                case "cut_clip":
+                case "make_clip":
+                    return BuiltInSkillIds.ClipVideo;
 
                 default:
                     return id;

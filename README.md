@@ -116,7 +116,7 @@ python cli/aitools_cli.py "a cat playing a guitar" out.png -p "Prompt To Image (
 
 # The coolest feature
 
-AI Chat is a feature is kind of "but we have chatgpt image stuff at home" that allows an LLM to basically do everything - try things like "Make a funny motivational poster about the commodore 64", or attach three images of people and say "dress these three people like the 3 stooges".  It will automatically use zimage, Klein based image to image, LTX, etc as needed to perform whatever actions you want.  
+AI Chat is a feature is kind of "but we have chatgpt image stuff at home" that allows an LLM to basically do everything - try things like "Make a funny motivational poster about the commodore 64", or attach three images of people and say "dress these three people like the 3 stooges".  It will automatically use zimage, Klein based image to image, LTX, etc as needed to perform whatever actions you want.  You can also drop `.mov`, `.mp4`, or `.avi` videos into AI Chat and use short imported clips for video-to-video edits.
 
 It can intelligently create and use 'anchor images' as needed to provide consistency across multiple images, for example if you ask it to "make a comic book about my dog and cat" it can create an anchor image of the dog and cat and reuse that across panels to keep them looking the same. 
 

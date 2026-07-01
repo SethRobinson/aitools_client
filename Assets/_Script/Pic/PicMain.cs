@@ -13,6 +13,7 @@ using System.Data;
 using System.Linq.Expressions;
 using UnityEngine.ProBuilder.MeshOperations;
 using SimpleJSON;
+using AITools.AIChat.Video;
 
 public class PicJobData
 {
@@ -1286,13 +1287,32 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         PicTargetRect targetRectScript = go.GetComponent<PicTargetRect>();
         PicTextToImage targetTextToImageScript = go.GetComponent<PicTextToImage>();
         
-        targetPicScript.SetImage(m_pic.sprite.texture, true);
-        targetPicScript.SetMask(m_mask.sprite.texture, true);
-        targetTextToImageScript.SetSeed(m_picTextToImageScript.GetSeed()); //if we've set it, it will carry to the duplicate as well
-        targetTextToImageScript.SetTextStrength(m_picTextToImageScript.GetTextStrength()); //if we've set it, it will carry to the duplicate as well
-        targetTextToImageScript.SetPrompt(m_picTextToImageScript.GetPrompt()); //if we've set it, it will carry to the duplicate as well
-        targetTextToImageScript.SetNegativePrompt(m_picTextToImageScript.GetNegativePrompt()); //if we've set it, it will carry to the duplicate as well
-        targetRectScript.SetOffsetRect(m_targetRectScript.GetOffsetRect());
+        if (IsMovie() && m_picMovie != null)
+        {
+            string moviePath = m_picMovie.GetFileName();
+            if (!string.IsNullOrWhiteSpace(moviePath) && File.Exists(moviePath) && targetPicScript.m_picMovie != null)
+            {
+                targetPicScript.m_picMovie.SetAutoDeleteFileWhenDone(false);
+                targetPicScript.m_picMovie.PlayMovie(moviePath);
+            }
+        }
+        else
+        {
+            if (m_pic != null && m_pic.sprite != null && m_pic.sprite.texture != null)
+                targetPicScript.SetImage(m_pic.sprite.texture, true);
+            if (m_mask != null && m_mask.sprite != null && m_mask.sprite.texture != null)
+                targetPicScript.SetMask(m_mask.sprite.texture, true);
+        }
+
+        if (targetTextToImageScript != null && m_picTextToImageScript != null)
+        {
+            targetTextToImageScript.SetSeed(m_picTextToImageScript.GetSeed()); //if we've set it, it will carry to the duplicate as well
+            targetTextToImageScript.SetTextStrength(m_picTextToImageScript.GetTextStrength()); //if we've set it, it will carry to the duplicate as well
+            targetTextToImageScript.SetPrompt(m_picTextToImageScript.GetPrompt()); //if we've set it, it will carry to the duplicate as well
+            targetTextToImageScript.SetNegativePrompt(m_picTextToImageScript.GetNegativePrompt()); //if we've set it, it will carry to the duplicate as well
+        }
+        if (targetRectScript != null && m_targetRectScript != null)
+            targetRectScript.SetOffsetRect(m_targetRectScript.GetOffsetRect());
         targetPicScript.SetCurrentEvent(m_curEvent); //copy the current event
         
         targetPicScript._jobHistory = new List<PicJob>(_jobHistory); //copy the job history
@@ -1307,13 +1327,32 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         PicTargetRect targetRectScript = go.GetComponent<PicTargetRect>();
         PicTextToImage targetTextToImageScript = go.GetComponent<PicTextToImage>();
 
-        targetPicScript.SetImage(m_pic.sprite.texture, true);
-        targetPicScript.SetMask(m_mask.sprite.texture, true);
-        targetTextToImageScript.SetSeed(m_picTextToImageScript.GetSeed()); //if we've set it, it will carry to the duplicate as well
-        targetTextToImageScript.SetTextStrength(m_picTextToImageScript.GetTextStrength()); //if we've set it, it will carry to the duplicate as well
-        targetTextToImageScript.SetPrompt(m_picTextToImageScript.GetPrompt()); //if we've set it, it will carry to the duplicate as well
-        targetTextToImageScript.SetNegativePrompt(m_picTextToImageScript.GetNegativePrompt()); //if we've set it, it will carry to the duplicate as well
-        targetRectScript.SetOffsetRect(m_targetRectScript.GetOffsetRect());
+        if (IsMovie() && m_picMovie != null)
+        {
+            string moviePath = m_picMovie.GetFileName();
+            if (!string.IsNullOrWhiteSpace(moviePath) && File.Exists(moviePath) && targetPicScript.m_picMovie != null)
+            {
+                targetPicScript.m_picMovie.SetAutoDeleteFileWhenDone(false);
+                targetPicScript.m_picMovie.PlayMovie(moviePath);
+            }
+        }
+        else
+        {
+            if (m_pic != null && m_pic.sprite != null && m_pic.sprite.texture != null)
+                targetPicScript.SetImage(m_pic.sprite.texture, true);
+            if (m_mask != null && m_mask.sprite != null && m_mask.sprite.texture != null)
+                targetPicScript.SetMask(m_mask.sprite.texture, true);
+        }
+
+        if (targetTextToImageScript != null && m_picTextToImageScript != null)
+        {
+            targetTextToImageScript.SetSeed(m_picTextToImageScript.GetSeed()); //if we've set it, it will carry to the duplicate as well
+            targetTextToImageScript.SetTextStrength(m_picTextToImageScript.GetTextStrength()); //if we've set it, it will carry to the duplicate as well
+            targetTextToImageScript.SetPrompt(m_picTextToImageScript.GetPrompt()); //if we've set it, it will carry to the duplicate as well
+            targetTextToImageScript.SetNegativePrompt(m_picTextToImageScript.GetNegativePrompt()); //if we've set it, it will carry to the duplicate as well
+        }
+        if (targetRectScript != null && m_targetRectScript != null)
+            targetRectScript.SetOffsetRect(m_targetRectScript.GetOffsetRect());
         targetPicScript.SetCurrentEvent(m_curEvent); //copy the current event
 
         targetPicScript._jobHistory = new List<PicJob>(_jobHistory); //copy the job history
@@ -1681,6 +1720,95 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     public void SaveFilePNG()
     {
         SaveFile("", "/" + Config._saveDirName, null,"",true);
+    }
+
+    public void OnExportMovieClipButton()
+    {
+        if (!IsMovie() || m_picMovie == null)
+        {
+            RTQuickMessageManager.Get().ShowMessage("Export movie clip only works on a movie pic");
+            return;
+        }
+
+        string sourcePath = m_picMovie.GetProcessingFileName();
+        if (string.IsNullOrWhiteSpace(sourcePath) || !File.Exists(sourcePath))
+        {
+            RTQuickMessageManager.Get().ShowMessage("Movie source file is missing");
+            return;
+        }
+
+        float currentPlaybackSeconds = (float)m_picMovie.GetCurrentPlaybackTimeSeconds();
+        StartCoroutine(ShowExportMovieClipDialog(sourcePath, currentPlaybackSeconds));
+    }
+
+    private IEnumerator ShowExportMovieClipDialog(string sourcePath, float initialStartSeconds)
+    {
+        FfmpegTool.VideoInfo info = null;
+        string error = null;
+        RTQuickMessageManager.Get().ShowMessage("Inspecting movie...");
+        yield return FfmpegTool.ProbeVideo(sourcePath, (i, e) => { info = i; error = e; });
+
+        if (!string.IsNullOrWhiteSpace(error) || info == null)
+        {
+            RTQuickMessageManager.Get().ShowMessage("Could not inspect movie: " + (error ?? "unknown error"));
+            yield break;
+        }
+
+        ChatVideoClipChooser.Show(
+            null,
+            null,
+            sourcePath,
+            info,
+            selection => StartCoroutine(ExportMovieClipSelection(sourcePath, selection)),
+            () => { },
+            "Export Movie Clip",
+            "Export Clip",
+            initialStartSeconds);
+    }
+
+    private IEnumerator ExportMovieClipSelection(string sourcePath, ChatVideoClipChooser.ClipSelection selection)
+    {
+        if (selection == null)
+            yield break;
+
+        string outputPath = FfmpegTool.GetClipOutputPath(sourcePath);
+        FfmpegTool.ClipResult result = null;
+        RTQuickMessageManager.Get().ShowMessage("Exporting movie clip...");
+        yield return FfmpegTool.CreateClip(
+            sourcePath,
+            selection.StartSeconds,
+            selection.DurationSeconds,
+            outputPath,
+            r => result = r,
+            fps: selection.Fps,
+            includeAudio: selection.IncludeAudio);
+
+        if (result == null || !result.Success)
+        {
+            RTQuickMessageManager.Get().ShowMessage("Could not export movie clip: " + (result != null ? result.Error : "unknown error"));
+            yield break;
+        }
+
+        string dimensions = null;
+        FfmpegTool.VideoInfo outputInfo = null;
+        string probeError = null;
+        yield return FfmpegTool.ProbeVideo(result.OutputPath, (i, e) => { outputInfo = i; probeError = e; });
+        if (outputInfo != null)
+            dimensions = BuildMovieClipDimensionsText(outputInfo);
+
+        if (AIChatPanel.AddLocalMovieClipToChat(result.OutputPath, dimensions, out string chatError))
+            RTQuickMessageManager.Get().ShowMessage("Exported clip and added it to AI Chat");
+        else
+            RTQuickMessageManager.Get().ShowMessage("Exported clip, but could not add to AI Chat: " + chatError);
+    }
+
+    private static string BuildMovieClipDimensionsText(FfmpegTool.VideoInfo info)
+    {
+        if (info == null || info.Width <= 0 || info.Height <= 0) return null;
+        string dims = $"{info.Width}x{info.Height}";
+        if (info.Fps > 0)
+            dims += $" @{info.Fps:0.##}fps";
+        return dims;
     }
 
     //Encodes the current image to a temp PNG and shells out to utils\RTClip.exe in "set"
@@ -2924,8 +3052,8 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         if (m_picMovie.IsMovie())
         {
             //the VHS movie loader requires the "temp/" part of the path
-            mediaLocalFilename = m_picMovie.GetFileName();
-            m_mediaRemoteFilename = m_picMovie.GetFileNameWithoutPath();
+            mediaLocalFilename = m_picMovie.GetProcessingFileName();
+            m_mediaRemoteFilename = m_picMovie.GetProcessingFileNameWithoutPath();
         }
 
         //Replace the <MOVIE_FILENAME> with the actual filename in job.m_string_parm1
@@ -3890,7 +4018,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                         // file that was never uploaded.
                         string videoPath = !string.IsNullOrEmpty(m_pendingVideoUploadPath)
                             ? m_pendingVideoUploadPath
-                            : (IsMovie() ? m_picMovie.GetFileName() : null);
+                            : (IsMovie() ? m_picMovie.GetProcessingFileName() : null);
                         if (!string.IsNullOrEmpty(videoPath))
                         {
                             // Stash a poster frame (with a play badge) for the "?" info panel so the
@@ -4618,7 +4746,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                                 {
                                     string movieFile = !string.IsNullOrEmpty(m_pendingVideoUploadPath)
                                         ? m_pendingVideoUploadPath
-                                        : ((m_picMovie != null && IsMovie()) ? m_picMovie.GetFileName() : null);
+                                        : ((m_picMovie != null && IsMovie()) ? m_picMovie.GetProcessingFileName() : null);
                                     string movieExt = string.IsNullOrEmpty(movieFile) ? null : System.IO.Path.GetExtension(movieFile);
                                     uploadExt = string.IsNullOrEmpty(movieExt) ? ".mp4" : movieExt;
                                 }

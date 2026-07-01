@@ -1,11 +1,11 @@
 ---
 id: video_to_video
-summary: Restyle / edit an EXISTING video clip into a new video, optionally guided by a reference image (e.g. "restyle this clip", "make this video look like winter", "turn the video anime", "redo the clip with her as the character in image 2"). Source is a video already in chat (a "Movie #N" bubble) or a freshly-attached video, NOT a still image. Always uses ByteDance Bernini-R - it is the only video-to-video path. For animating a STILL image into a video use image_to_movie instead.
+summary: Restyle / edit an EXISTING short video clip into a new video, optionally guided by a reference image (e.g. "restyle this clip", "make this video look like winter", "turn the video anime", "redo the clip with her as the character in image 2"). Source is a video already in chat as a "Movie #N" bubble. Freshly dropped home videos are imported/clipped into Movie bubbles first; use clip_video for explicit start/duration trims. Always uses ByteDance Bernini-R - it is the only video-to-video path. For animating a STILL image into a video use image_to_movie instead.
 inputs: attachment
 autoload: true
 triggers: video to video, restyle the video, restyle this clip, edit the video, edit the clip, change the video, change the clip, redo the video, redo the clip, make the video, make the clip, the video but, the clip but, same video but, restyle the clip, turn the video, turn the clip, video into, clip into, re-render the video, regenerate the video
 exclude_triggers: animate the image, animate this, make a movie of, make a video of a, turn this image into a video, turn the photo into
-template: <aitools_action skill="video_to_video" preset="{{Video To Video (Bernini).txt}}" prompt="<what changes + motion to keep, 4-8 sentences>" chat_image="N"/>  # chat_image="N" = source "Movie #N" bubble (or chain="true" for a movie made earlier THIS reply). SUPPORTS a reference still for face/character/look swaps: ALSO add chat_image2="M" (existing still bubble or anchor) or attachment2="M" (a still pasted this turn) - the host auto-switches to the reference-guided workflow. Do NOT use image_to_image+image_to_movie for this; v2v takes the reference directly.
+template: <aitools_action skill="video_to_video" preset="{{Video To Video (Bernini).txt}}" prompt="<what changes + motion to keep, 4-8 sentences>" chat_image="N"/>  # chat_image="N" = source "Movie #N" bubble (or chain="true" for a movie made/clipped earlier THIS reply). SUPPORTS a reference still for face/character/look swaps: ALSO add chat_image2="M" (existing still bubble or anchor) or attachment2="M" (a still pasted this turn) - the host auto-switches to the reference-guided workflow. Do NOT use image_to_image+image_to_movie for this; v2v takes the reference directly.
 ---
 # Video-to-video (Bernini-R)
 
@@ -20,15 +20,19 @@ If the user instead wants to ANIMATE a still image into a video, that is
 
 ## Source selection
 
-The source MUST be a video. Pick EXACTLY ONE of:
+The source MUST be a short imported/clipped video. Pick EXACTLY ONE of:
 
 - `chat_image="N"` - the Nth chat bubble that is a VIDEO ("Movie #N" label).
   Use when the user says "restyle the clip you just made" or "edit movie 1" - the
   CHAT IMAGES line in the system prompt shows the reachable Movie numbers. Pointing
   it at a still IMAGE bubble will not work - that is `image_to_movie`, not this skill.
-- `chain="true"` - a movie produced by a generate/animate action emitted earlier in
-  THIS SAME reply (do not also pass chat_image). Example: animate an image, then in
-  the same reply restyle the resulting clip.
+- `chain="true"` - a movie produced by a generate/animate/clip action emitted earlier
+  in THIS SAME reply (do not also pass chat_image). Example: clip Movie 1 from 30s
+  for 5s, then in the same reply restyle the resulting short clip.
+
+Freshly dropped `.mov` / `.mp4` / `.avi` files are not image attachments. The host
+imports them as Movie bubbles. If the user requests a specific segment, call
+`clip_video` first, then run this skill with `chain="true"` in the same reply.
 
 ## Reference still (optional) - inject a face / character / look from an image
 

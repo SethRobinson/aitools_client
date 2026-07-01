@@ -12,6 +12,7 @@ using AITools.AIChat.Context;
 using AITools.AIChat.Mirroring;
 using AITools.AIChat.Skills;
 using AITools.AIChat.UI;
+using AITools.AIChat.Video;
 
 /// <summary>
 /// Programmatic multi-turn AI chat popup. Mirrors the LLMSettingsPanel pattern
@@ -102,6 +103,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // label without disturbing the index/source prefix. Stale entries (Pic destroyed)
     // are tolerated - we null-check before writing.
     private readonly Dictionary<PicMain, (TextMeshProUGUI label, string baseText)> _captionLabels = new Dictionary<PicMain, (TextMeshProUGUI, string)>();
+    private readonly HashSet<PicMain> _videoCaptionInFlight = new HashSet<PicMain>();
 
     // Stable per-session list of chat-image bubbles (1-based via index+1). Lets the LLM
     // reference "the image you generated in turn 3" via chat_image="3". Only cleared on
@@ -282,6 +284,15 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // we can resize them when the strip appears/disappears.
     private ChatImageAttachmentZone _attachmentZone;
     private RectTransform _attachmentsStrip;
+    private ChatVideoClipChooser _videoClipChooser;
+    private int _videoImportCount = 0;
+    private int _videoImportEpoch = 0;
+    private float _videoImportStartTime = 0f;
+    private float _videoImportStatusNextRefresh = 0f;
+    private int _videoImportSpinnerStep = 0;
+    private float _videoCaptionStartTime = 0f;
+    private float _videoCaptionStatusNextRefresh = 0f;
+    private int _videoCaptionSpinnerStep = 0;
     private RectTransform _footerRT;
     // User-resizable footer (input box) height. FOOTER_HEIGHT is the floor/default; the
     // FooterResizeHandle on the footer's top bar drags this taller, shrinking the body
@@ -587,6 +598,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         ClearCachedSpeakSelection();
         if (_skillManager != null)
             _skillManager.OnSkillListChanged -= OnSkillListChanged;
+        if (_videoClipChooser != null)
+        {
+            Destroy(_videoClipChooser.gameObject);
+            _videoClipChooser = null;
+        }
         // The ChatImageAttachmentZone component on _panelRoot auto-deregisters and frees
         // its textures in its own OnDestroy.
         _instance = null;
@@ -1310,6 +1326,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _attachmentZone.OnAttachmentsChanged += OnAttachmentsChanged;
         _attachmentZone.OnAttachmentAdded += OnAttachmentAdded;
         _attachmentZone.OnCaptionCancelled += OnCaptionCancelled;
+        _attachmentZone.OnVideoFileDropped += OnVideoFileDropped;
 
         CreateFooterDragBar(footer.transform);
     }
@@ -1888,9 +1905,17 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         return n;
     }
 
+    private int CountPendingVideoCaptions()
+    {
+        return _videoCaptionInFlight.Count;
+    }
+
     private bool HasPendingSidecarWork()
     {
-        return CountPendingAttachmentCaptions() > 0 || CountPendingInspectImageJobs() > 0;
+        return CountPendingAttachmentCaptions() > 0
+            || CountPendingInspectImageJobs() > 0
+            || _videoImportCount > 0
+            || CountPendingVideoCaptions() > 0;
     }
 
     private void EnqueueInspectImage(byte[] png, string prompt, string sourceLabel, int? llmInstanceId, bool resumeOnResult)
@@ -2488,7 +2513,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     private void UpdateAttachmentCaptionStatus(bool force = false)
     {
-        if (_statusText == null || _isStreaming || _waitingForForcedMainLLM || _compactSummaryInFlight || CountPendingInspectImageJobs() > 0)
+        if (_statusText == null || _isStreaming || _waitingForForcedMainLLM || _compactSummaryInFlight || CountPendingInspectImageJobs() > 0 || _videoImportCount > 0 || CountPendingVideoCaptions() > 0)
             return;
 
         int pending = CountPendingAttachmentCaptions();
@@ -2514,6 +2539,55 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             _attachmentCaptionStartTime = 0f;
             _attachmentCaptionStatusNextRefresh = 0f;
             _statusText.text = _attachmentZone != null && _attachmentZone.HasAttachments ? "Images ready" : "Idle";
+        }
+    }
+
+    private void UpdateVideoImportStatus(bool force = false)
+    {
+        if (_statusText == null || _isStreaming || _waitingForForcedMainLLM || _compactSummaryInFlight || CountPendingInspectImageJobs() > 0)
+            return;
+
+        if (_videoImportCount > 0)
+        {
+            if (_videoImportStartTime <= 0f)
+                _videoImportStartTime = Time.unscaledTime;
+            if (!force && Time.unscaledTime < _videoImportStatusNextRefresh)
+                return;
+
+            _videoImportStatusNextRefresh = Time.unscaledTime + STREAM_STATUS_INTERVAL;
+            _videoImportSpinnerStep = (_videoImportSpinnerStep + 1) % StreamSpinnerFrames.Length;
+            float elapsed = Time.unscaledTime - _videoImportStartTime;
+            _statusText.text = $"{StreamSpinnerFrames[_videoImportSpinnerStep]} Importing video   {elapsed:F0}s";
+            return;
+        }
+
+        int pendingVideoCaptions = CountPendingVideoCaptions();
+        if (pendingVideoCaptions > 0)
+        {
+            if (_videoCaptionStartTime <= 0f)
+                _videoCaptionStartTime = Time.unscaledTime;
+            if (!force && Time.unscaledTime < _videoCaptionStatusNextRefresh)
+                return;
+
+            _videoCaptionStatusNextRefresh = Time.unscaledTime + STREAM_STATUS_INTERVAL;
+            _videoCaptionSpinnerStep = (_videoCaptionSpinnerStep + 1) % StreamSpinnerFrames.Length;
+            float elapsed = Time.unscaledTime - _videoCaptionStartTime;
+            _statusText.text = $"{StreamSpinnerFrames[_videoCaptionSpinnerStep]} Captioning video   {elapsed:F0}s";
+            return;
+        }
+
+        if (_videoImportStartTime > 0f)
+        {
+            _videoImportStartTime = 0f;
+            _videoImportStatusNextRefresh = 0f;
+            _statusText.text = "Video ready";
+        }
+
+        if (_videoCaptionStartTime > 0f)
+        {
+            _videoCaptionStartTime = 0f;
+            _videoCaptionStatusNextRefresh = 0f;
+            _statusText.text = "Video ready";
         }
     }
 
@@ -3564,6 +3638,23 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             UpdateInspectImageStatus(force: true);
             return;
         }
+        if (_videoImportCount > 0)
+        {
+            AddSystemMessage(
+                $"Importing video clip{(_videoImportCount == 1 ? "" : "s")}... waiting before send.",
+                includeInLLMRecap: false);
+            UpdateVideoImportStatus(force: true);
+            return;
+        }
+        int pendingVideoCaptions = CountPendingVideoCaptions();
+        if (pendingVideoCaptions > 0)
+        {
+            AddSystemMessage(
+                $"Captioning video clip{(pendingVideoCaptions == 1 ? "" : "s")}... waiting before send.",
+                includeInLLMRecap: false);
+            UpdateVideoImportStatus(force: true);
+            return;
+        }
 
         // A user-driven send (typed message OR an auto-repeat fire) means the human is
         // back in control, so reset the model's runaway self-continue counter. Synthetic
@@ -4159,6 +4250,17 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         CancelSkillLoadAutoResume();
         CancelGenericContinue();
         _consecutiveSelfContinues = 0;
+        _videoImportEpoch++;
+        _videoImportCount = 0;
+        _videoImportStartTime = 0f;
+        _videoImportStatusNextRefresh = 0f;
+        _videoCaptionStartTime = 0f;
+        _videoCaptionStatusNextRefresh = 0f;
+        if (_videoClipChooser != null)
+        {
+            Destroy(_videoClipChooser.gameObject);
+            _videoClipChooser = null;
+        }
         // Discard any in-flight compact-summary; if its response landed after this
         // reset it would ReplaceInteractions() the old history right back in.
         _compactSummaryCancel?.Invoke();
@@ -4177,6 +4279,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _chatImageRecords?.Clear();
         _anchors?.Clear();
         _captionLabels?.Clear();
+        _videoCaptionInFlight.Clear();
         _interactionMediaCheckpoints.Clear();
         _infoMessages.Clear();
         _actionParser?.Reset();
@@ -6676,6 +6779,20 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         "\n" +
         "Output exactly those two lines (LONG can wrap), nothing else.";
 
+    private const string DefaultVideoCaptionPrompt =
+        "Describe this video clip factually for a downstream video-editing AI. " +
+        "You are seeing a chronological contact sheet of sampled frames from the clip, " +
+        "read left-to-right, top-to-bottom. Infer visible motion and camera movement from " +
+        "the frame sequence, but do not claim to hear audio. Return BOTH descriptions, " +
+        "each prefixed exactly as shown:\n" +
+        "\n" +
+        "SHORT: <one sentence, max 15 words, suitable as a UI label>\n" +
+        "LONG: <a detailed paragraph (200-300 words) describing subjects, setting, " +
+        "actions/motion over time, camera/framing, lighting, colors, mood, style, " +
+        "and any visible text. No preamble, no markdown, no quotes>\n" +
+        "\n" +
+        "Output exactly those two lines (LONG can wrap), nothing else.";
+
     /// <summary>
     /// Result of a one-shot caption call: a short, label-friendly summary plus
     /// a long, detailed description. Either may be empty if the LLM call
@@ -6701,7 +6818,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     /// returns null instead of dispatching to an at-capacity vision route; callers
     /// should keep their item queued and retry later.
     /// </summary>
-    private CaptionJob TryCaptionBytes(byte[] png, Action<CaptionResult> onResult, bool requireFreeSlot = false)
+    private CaptionJob TryCaptionBytes(byte[] png, Action<CaptionResult> onResult, bool requireFreeSlot = false, string promptOverride = null, string jobName = "ImageCaption", string debugFileName = "examine_image_sent.json")
     {
         var job = new CaptionJob();
         Action<CaptionResult> safeResult = (r) =>
@@ -6755,7 +6872,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // aichat/test_caption_prompt.txt if the user staged an override) so it
         // can be tuned without recompiling. The fallback below is only used
         // when neither file exists.
-        string captionPrompt = (_skillManager != null && !string.IsNullOrWhiteSpace(_skillManager.CaptionPrompt))
+        string captionPrompt = !string.IsNullOrWhiteSpace(promptOverride)
+            ? promptOverride
+            : (_skillManager != null && !string.IsNullOrWhiteSpace(_skillManager.CaptionPrompt))
             ? _skillManager.CaptionPrompt
             : DefaultCaptionPrompt;
 
@@ -6792,8 +6911,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 string failureDetail = GetSidecarFailureDetail(db);
                 if (string.IsNullOrEmpty(raw) && !string.IsNullOrEmpty(failureDetail))
                 {
+                    string failureLabel = string.Equals(jobName, "VideoCaption", StringComparison.OrdinalIgnoreCase)
+                        ? "Video caption"
+                        : "Image caption";
                     AddSystemMessage(
-                        $"Image caption failed on LLM #{capturedTargetId}: {failureDetail}",
+                        $"{failureLabel} failed on LLM #{capturedTargetId}: {failureDetail}",
                         includeInLLMRecap: true);
                 }
                 result = ParseCaptionResponse(raw);
@@ -6801,7 +6923,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             finally { safeResult(result); }
         };
 
-        SkillActionExecutor.DispatchOneShot(this, inst, lines, onDone, "ImageCaption", "examine_image_sent.json");
+        SkillActionExecutor.DispatchOneShot(this, inst, lines, onDone, jobName, debugFileName);
 
         // Watchdog: if the request never returns (hung local model), force-release
         // the LLM slot after CAPTION_TIMEOUT_SECONDS so the user isn't stuck.
@@ -6821,15 +6943,15 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     /// </summary>
     private void WarnNoVisionLLM()
     {
-        AIChatLog.Note("vision", "No active LLM accepts vision jobs; image left uncaptioned.");
+        AIChatLog.Note("vision", "No active LLM accepts vision jobs; media left uncaptioned.");
 
         float now = Time.unscaledTime;
         if (now - _lastNoVisionWarnTime < NO_VISION_WARN_THROTTLE_SECONDS) return;
         _lastNoVisionWarnTime = now;
 
         AddSystemMessage(
-            "Warning: no active LLM is set to accept vision (image) jobs, so attached or " +
-            "generated images can't be described. In LLM Settings, turn on \"Supports vision\" " +
+            "Warning: no active LLM is set to accept vision jobs, so attached or " +
+            "generated image/video media can't be described. In LLM Settings, turn on \"Supports vision\" " +
             "for an active vision-capable instance.",
             includeInLLMRecap: false);
     }
@@ -6984,23 +7106,119 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         {
             try
             {
-                if (capturedPic != null && capturedPic.gameObject != null)
-                {
-                    string shortCaption = result.IsEmpty ? "caption unavailable" : (result.shortCaption ?? "");
-                    string longCaption = result.IsEmpty ? "caption unavailable" : (result.longCaption ?? "");
-                    capturedPic.Caption = longCaption;
-                    capturedPic.CaptionShort = shortCaption;
-                    string labelSuffix = !string.IsNullOrEmpty(result.shortCaption)
-                        ? result.shortCaption
-                        : longCaption;
-                    if (!string.IsNullOrEmpty(labelSuffix)
-                        && _captionLabels.TryGetValue(capturedPic, out var entry)
-                        && entry.label != null)
-                        entry.label.text = entry.baseText + " " + labelSuffix;
-                }
+                ApplyCaptionResultToPic(capturedPic, result, "caption unavailable");
             }
             finally { safeComplete(); }
         });
+    }
+
+    private void ApplyCaptionResultToPic(PicMain capturedPic, CaptionResult result, string unavailableText)
+    {
+        if (capturedPic == null || capturedPic.gameObject == null) return;
+
+        string fallback = string.IsNullOrWhiteSpace(unavailableText) ? "caption unavailable" : unavailableText;
+        string shortCaption = result.IsEmpty ? fallback : (result.shortCaption ?? "");
+        string longCaption = result.IsEmpty ? fallback : (result.longCaption ?? "");
+        capturedPic.Caption = longCaption;
+        capturedPic.CaptionShort = shortCaption;
+        string labelSuffix = !string.IsNullOrEmpty(result.shortCaption)
+            ? result.shortCaption
+            : longCaption;
+        if (!string.IsNullOrEmpty(labelSuffix)
+            && _captionLabels.TryGetValue(capturedPic, out var entry)
+            && entry.label != null)
+            entry.label.text = entry.baseText + " " + labelSuffix;
+    }
+
+    private bool BeginVideoCaption(PicMain pic)
+    {
+        if (pic == null || pic.gameObject == null) return false;
+        if (_videoCaptionInFlight.Contains(pic)) return false;
+
+        if (_videoCaptionInFlight.Count == 0)
+        {
+            _videoCaptionStartTime = Time.unscaledTime;
+            _videoCaptionStatusNextRefresh = 0f;
+        }
+        _videoCaptionInFlight.Add(pic);
+        RecomputeSendInteractable();
+        UpdateVideoImportStatus(force: true);
+        return true;
+    }
+
+    private void FinishVideoCaption(PicMain pic)
+    {
+        _videoCaptionInFlight.Remove(pic);
+        RecomputeSendInteractable();
+        UpdateVideoImportStatus(force: true);
+    }
+
+    private IEnumerator CaptionVideoClipBubble(PicMain pic, string clipPath)
+    {
+        if (pic == null || pic.gameObject == null) yield break;
+        if (string.IsNullOrWhiteSpace(clipPath) || !System.IO.File.Exists(clipPath)) yield break;
+        if (!BeginVideoCaption(pic)) yield break;
+
+        FfmpegTool.VideoInfo info = null;
+        string probeError = null;
+        yield return FfmpegTool.ProbeVideo(clipPath, (i, e) => { info = i; probeError = e; });
+
+        if (pic == null || pic.gameObject == null)
+        {
+            FinishVideoCaption(pic);
+            yield break;
+        }
+
+        if (!string.IsNullOrWhiteSpace(probeError))
+            Debug.LogWarning("AIChatPanel: could not inspect video for captioning: " + probeError);
+
+        double duration = info != null && info.DurationSeconds > 0
+            ? info.DurationSeconds
+            : FfmpegTool.DefaultClipDurationSeconds;
+
+        FfmpegTool.ContactSheetResult sheet = null;
+        yield return FfmpegTool.CreateCaptionContactSheet(clipPath, duration, r => sheet = r);
+
+        if (pic == null || pic.gameObject == null)
+        {
+            FinishVideoCaption(pic);
+            yield break;
+        }
+
+        if (sheet == null || !sheet.Success || string.IsNullOrWhiteSpace(sheet.OutputPath) || !System.IO.File.Exists(sheet.OutputPath))
+        {
+            Debug.LogWarning("AIChatPanel: video caption contact sheet failed: " + (sheet != null ? sheet.Error : "unknown error"));
+            ApplyCaptionResultToPic(pic, default, "video caption unavailable");
+            FinishVideoCaption(pic);
+            yield break;
+        }
+
+        byte[] contactSheetPng = null;
+        try { contactSheetPng = System.IO.File.ReadAllBytes(sheet.OutputPath); }
+        catch (Exception ex) { Debug.LogWarning("AIChatPanel: could not read video caption contact sheet: " + ex.Message); }
+        try { System.IO.File.Delete(sheet.OutputPath); } catch { }
+
+        if (contactSheetPng == null || contactSheetPng.Length == 0)
+        {
+            ApplyCaptionResultToPic(pic, default, "video caption unavailable");
+            FinishVideoCaption(pic);
+            yield break;
+        }
+
+        PicMain capturedPic = pic;
+        TryCaptionBytes(
+            contactSheetPng,
+            result =>
+            {
+                try { ApplyCaptionResultToPic(capturedPic, result, "video caption unavailable"); }
+                finally
+                {
+                    FinishVideoCaption(capturedPic);
+                }
+            },
+            promptOverride: DefaultVideoCaptionPrompt,
+            jobName: "VideoCaption",
+            debugFileName: "examine_video_contact_sheet_sent.json");
     }
 
     /// <summary>
@@ -7131,13 +7349,25 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // gives the user a quick scan of which slot they're hovering even when
         // the caption is empty/still being computed.
         int idx0 = _chatImagePics.IndexOf(pic);
-        string header = idx0 >= 0 ? $"Image #{idx0 + 1}" : "Image";
+        var record = FindChatImageRecord(pic);
+        bool isMovie = (record != null && record.isMovie) || (pic != null && pic.IsMovie());
+        string header = idx0 >= 0
+            ? (isMovie ? $"Movie #{idx0 + 1}" : $"Image #{idx0 + 1}")
+            : (isMovie ? "Movie" : "Image");
         if (string.IsNullOrEmpty(caption))
         {
-            var record = FindChatImageRecord(pic);
-            caption = record != null && !record.isUserAttachment && !GetAutoCaptionGeneratedImages()
+            if (isMovie)
+            {
+                caption = _videoCaptionInFlight.Contains(pic)
+                    ? "(video captioning...)"
+                    : "(video clip; no caption available)";
+            }
+            else
+            {
+                caption = record != null && !record.isUserAttachment && !GetAutoCaptionGeneratedImages()
                 ? "(generated image; captioning off)"
                 : "(captioning...)";
+            }
         }
         _captionTooltipText.text = $"<b>{header}</b>\n{caption}";
 
@@ -7203,6 +7433,204 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         }
     }
 
+    private void OnVideoFileDropped(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return;
+        StartCoroutine(HandleDroppedVideoFile(path, _videoImportEpoch));
+    }
+
+    private IEnumerator HandleDroppedVideoFile(string path, int epoch)
+    {
+        BeginVideoImport();
+        AddSystemMessage("Preparing video clip import...", includeInLLMRecap: false);
+
+        FfmpegTool.VideoInfo info = null;
+        string error = null;
+        yield return FfmpegTool.ProbeVideo(path, (i, e) => { info = i; error = e; });
+
+        if (epoch != _videoImportEpoch)
+            yield break;
+
+        if (!string.IsNullOrWhiteSpace(error) || info == null)
+        {
+            FinishVideoImport();
+            AddSystemMessage("Could not inspect dropped video: " + (error ?? "unknown error"), includeInLLMRecap: false);
+            yield break;
+        }
+
+        float sourceDuration = info.DurationSeconds > 0 ? (float)info.DurationSeconds : FfmpegTool.DefaultClipDurationSeconds;
+        float clipDuration = Mathf.Min(FfmpegTool.DefaultClipDurationSeconds, sourceDuration);
+
+        if (sourceDuration > FfmpegTool.DefaultClipDurationSeconds + 0.25f && _mainPanel != null)
+        {
+            if (_videoClipChooser != null)
+            {
+                Destroy(_videoClipChooser.gameObject);
+                _videoClipChooser = null;
+                FinishVideoImport();
+            }
+            _videoClipChooser = ChatVideoClipChooser.Show(
+                _mainPanel,
+                _font,
+                path,
+                info,
+                selection =>
+                {
+                    _videoClipChooser = null;
+                    if (epoch != _videoImportEpoch)
+                        return;
+                    StartCoroutine(TranscodeAndAppendVideoClip(path, info, selection, epoch, null, isUserImport: true));
+                },
+                () =>
+                {
+                    _videoClipChooser = null;
+                    if (epoch == _videoImportEpoch)
+                    {
+                        FinishVideoImport();
+                        AddSystemMessage("Video import cancelled.", includeInLLMRecap: false);
+                    }
+                });
+            UpdateVideoImportStatus(force: true);
+            yield break;
+        }
+
+        yield return TranscodeAndAppendVideoClip(path, info, CreateDefaultClipSelection(info, 0f, clipDuration), epoch, null, isUserImport: true);
+    }
+
+    private IEnumerator TranscodeAndAppendVideoClip(string sourcePath, FfmpegTool.VideoInfo info, float startSeconds, float durationSeconds, int epoch, SkillAction action, bool isUserImport)
+    {
+        yield return TranscodeAndAppendVideoClip(sourcePath, info, CreateDefaultClipSelection(info, startSeconds, durationSeconds), epoch, action, isUserImport);
+    }
+
+    private IEnumerator TranscodeAndAppendVideoClip(string sourcePath, FfmpegTool.VideoInfo info, ChatVideoClipChooser.ClipSelection selection, int epoch, SkillAction action, bool isUserImport)
+    {
+        string outputPath = FfmpegTool.GetClipOutputPath(sourcePath);
+        FfmpegTool.ClipResult result = null;
+        float startSeconds = selection != null ? selection.StartSeconds : 0f;
+        float durationSeconds = selection != null ? selection.DurationSeconds : FfmpegTool.DefaultClipDurationSeconds;
+        double fps = selection != null ? selection.Fps : GetDefaultClipFps(info);
+        bool includeAudio = selection == null || selection.IncludeAudio;
+        yield return FfmpegTool.CreateClip(sourcePath, startSeconds, durationSeconds, outputPath, r => result = r,
+            fps: fps,
+            includeAudio: includeAudio);
+
+        if (epoch != _videoImportEpoch)
+            yield break;
+
+        if (result == null || !result.Success)
+        {
+            FinishVideoImport();
+            string err = result != null ? result.Error : "unknown error";
+            AddSystemMessage("Could not import video clip: " + err, includeInLLMRecap: false);
+            yield break;
+        }
+
+        FfmpegTool.VideoInfo outputInfo = null;
+        string outputProbeError = null;
+        yield return FfmpegTool.ProbeVideo(result.OutputPath, (i, e) => { outputInfo = i; outputProbeError = e; });
+
+        if (epoch != _videoImportEpoch)
+            yield break;
+
+        if (!string.IsNullOrWhiteSpace(outputProbeError))
+            Debug.LogWarning("Could not inspect imported video clip output: " + outputProbeError);
+
+        string dims = BuildVideoDimensionsText(outputInfo ?? info);
+        PicMain pic = AppendVideoClipBubble(result.OutputPath, action, isUserImport, dims);
+        if (pic != null)
+        {
+            int idx = _chatImagePics.Count;
+            string startText = startSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+            string durationText = durationSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+            AddSystemMessage($"Imported {durationText}s video clip starting at {startText}s as Movie #{idx}.", includeInLLMRecap: false);
+        }
+        FinishVideoImport();
+    }
+
+    private static ChatVideoClipChooser.ClipSelection CreateDefaultClipSelection(FfmpegTool.VideoInfo info, float startSeconds, float durationSeconds)
+    {
+        return new ChatVideoClipChooser.ClipSelection
+        {
+            StartSeconds = startSeconds,
+            DurationSeconds = durationSeconds,
+            Fps = GetDefaultClipFps(info),
+            IncludeAudio = true
+        };
+    }
+
+    private static double GetDefaultClipFps(FfmpegTool.VideoInfo info)
+    {
+        return info != null && info.Fps > 0 ? info.Fps : FfmpegTool.DefaultFps;
+    }
+
+    private PicMain AppendVideoClipBubble(string clipPath, SkillAction action, bool isUserImport, string dimensions)
+    {
+        var imageGen = ImageGenerator.Get();
+        if (imageGen == null || string.IsNullOrEmpty(clipPath)) return null;
+        var go = imageGen.AddImageByFileName(clipPath);
+        if (go == null) return null;
+        var pic = go.GetComponent<PicMain>();
+        if (pic == null) return null;
+
+        if (pic.m_picMovie != null)
+            pic.m_picMovie.SetAutoDeleteFileWhenDone(true);
+
+        _chatImagePics.Add(pic);
+        int chatImageNumber = _chatImagePics.Count;
+        RegisterChatImageRecord(pic, action, isUserAttachment: isUserImport, isMovie: true, dimensions: dimensions);
+        string label = isUserImport ? $"Movie #{chatImageNumber} (you)" : $"Movie #{chatImageNumber}";
+        AppendImageBubbleInternal(pic, label, isMovie: true);
+        StartCoroutine(CaptionVideoClipBubble(pic, clipPath));
+
+        if (action != null)
+        {
+            if (!string.IsNullOrEmpty(action.AnchorName))
+            {
+                _anchors[action.AnchorName] = pic;
+                Debug.Log($"AIChatPanel: anchor '{action.AnchorName}' -> Movie #{chatImageNumber}");
+            }
+
+            MarkLatestAssistantMediaCheckpoint();
+            _infoMessages.Add(new InfoMessage(
+                $"(Movie just spawned as #{chatImageNumber} in CHAT IMAGES. " +
+                $"Reference it on later turns via chat_image=\"{chatImageNumber}\". " +
+                "Same-reply follow-ups should use chain=\"true\".)"));
+            ((IChatHost)this).SetLastSpawnedPicForTurn(pic);
+        }
+
+        return pic;
+    }
+
+    private void BeginVideoImport()
+    {
+        if (_videoImportCount <= 0)
+            _videoImportStartTime = Time.unscaledTime;
+        _videoImportCount++;
+        RecomputeSendInteractable();
+        UpdateVideoImportStatus(force: true);
+    }
+
+    private void FinishVideoImport()
+    {
+        _videoImportCount = Mathf.Max(0, _videoImportCount - 1);
+        if (_videoImportCount == 0)
+        {
+            _videoImportStartTime = 0f;
+            _videoImportStatusNextRefresh = 0f;
+        }
+        RecomputeSendInteractable();
+        UpdateVideoImportStatus(force: true);
+    }
+
+    private static string BuildVideoDimensionsText(FfmpegTool.VideoInfo info)
+    {
+        if (info == null || info.Width <= 0 || info.Height <= 0) return null;
+        string dims = $"{info.Width}x{info.Height}";
+        if (info.Fps > 0)
+            dims += $" @{info.Fps:0.##}fps";
+        return dims;
+    }
+
     private void RegisterChatImageRecord(PicMain pic, SkillAction action, bool isUserAttachment, bool isMovie, string dimensions)
     {
         var record = new ChatImageRecord
@@ -7215,7 +7643,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             dimensions = dimensions
         };
 
-        string step = isUserAttachment ? "user attachment" : BuildActionProvenanceStep(action);
+        string step = isUserAttachment ? (isMovie ? "user video clip" : "user attachment") : BuildActionProvenanceStep(action);
         if (!string.IsNullOrEmpty(step))
             record.provenanceSteps.Add(step);
         SeedCleanBaseFromSource(record, action);
@@ -7298,8 +7726,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     private static string ResolveChatImageKind(SkillAction action, bool isUserAttachment, bool isMovie)
     {
-        if (isUserAttachment) return "user attachment";
         if (isMovie) return "movie";
+        if (isUserAttachment) return "user attachment";
         string skillId = action?.SkillId ?? "";
         switch (skillId)
         {
@@ -7899,6 +8327,112 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         return true;
     }
 
+    /// <summary>
+    /// Register an already-created local MP4 clip as a Movie bubble in AI Chat. Used by
+    /// the PicMain movie export path after FFmpeg has written the clip.
+    /// </summary>
+    public static bool AddLocalMovieClipToChat(string clipPath, string dimensions, out string error)
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(clipPath))
+        {
+            error = "no clip path";
+            return false;
+        }
+        if (!System.IO.File.Exists(clipPath))
+        {
+            error = "clip file not found: " + clipPath;
+            return false;
+        }
+
+        Show();
+        if (_instance == null)
+        {
+            error = "no chat panel";
+            return false;
+        }
+
+        PicMain pic = _instance.AppendVideoClipBubble(clipPath, null, isUserImport: true, dimensions: dimensions);
+        if (pic == null)
+        {
+            error = "could not append movie bubble";
+            return false;
+        }
+
+        _instance.AddSystemMessage($"Exported movie clip as Movie #{_instance._chatImagePics.Count}.", includeInLLMRecap: false);
+        return true;
+    }
+
+    /// <summary>
+    /// Automation-only local video import. Bypasses the human clip chooser by taking
+    /// explicit start/duration values, then appends the normalized MP4 as a Movie bubble.
+    /// </summary>
+    public static bool AutomationImportVideo(string path, float startSeconds, float durationSeconds, double fps, bool includeAudio, out string error)
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            error = "no path given";
+            return false;
+        }
+
+        try { path = System.IO.Path.GetFullPath(path); }
+        catch { }
+
+        if (!System.IO.File.Exists(path))
+        {
+            error = "video file not found: " + path;
+            return false;
+        }
+        if (!FfmpegTool.IsSupportedVideoExtension(path))
+        {
+            error = "unsupported video extension: " + path;
+            return false;
+        }
+
+        Show();
+        if (_instance == null)
+        {
+            error = "no chat panel";
+            return false;
+        }
+
+        _instance.StartCoroutine(_instance.AutomationImportVideoRoutine(path, startSeconds, durationSeconds, fps, includeAudio));
+        return true;
+    }
+
+    private IEnumerator AutomationImportVideoRoutine(string path, float startSeconds, float durationSeconds, double fps, bool includeAudio)
+    {
+        int epoch = _videoImportEpoch;
+        BeginVideoImport();
+        AddSystemMessage("Preparing automation video clip import...", includeInLLMRecap: false);
+
+        FfmpegTool.VideoInfo info = null;
+        string error = null;
+        yield return FfmpegTool.ProbeVideo(path, (i, e) => { info = i; error = e; });
+
+        if (epoch != _videoImportEpoch)
+            yield break;
+
+        if (!string.IsNullOrWhiteSpace(error) || info == null)
+        {
+            FinishVideoImport();
+            AddSystemMessage("Could not inspect automation video: " + (error ?? "unknown error"), includeInLLMRecap: false);
+            yield break;
+        }
+
+        float maxDuration = info.DurationSeconds > 0 ? (float)info.DurationSeconds : FfmpegTool.DefaultClipDurationSeconds;
+        startSeconds = Mathf.Clamp(startSeconds, 0f, Mathf.Max(0f, maxDuration - 0.1f));
+        durationSeconds = Mathf.Clamp(durationSeconds <= 0f ? FfmpegTool.DefaultClipDurationSeconds : durationSeconds, 0.1f, Mathf.Max(0.1f, maxDuration - startSeconds));
+
+        var selection = CreateDefaultClipSelection(info, startSeconds, durationSeconds);
+        if (fps > 0 && !double.IsNaN(fps) && !double.IsInfinity(fps))
+            selection.Fps = fps;
+        selection.IncludeAudio = includeAudio;
+
+        yield return TranscodeAndAppendVideoClip(path, info, selection, epoch, null, isUserImport: true);
+    }
+
     /// <summary>JSON array describing each chat image: 1-based index, dimensions, busy.</summary>
     public string AutomationGetChatImagesJson()
     {
@@ -7917,16 +8451,46 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                     var tex = pic.GetCurrentTexture();
                     if (tex != null) { w = tex.width; h = tex.height; }
                 }
+                bool movie = pic != null && pic.IsMovie();
+                string moviePath = movie && pic.m_picMovie != null ? pic.m_picMovie.GetProcessingFileName() : null;
                 if (i > 0) sb.Append(",");
                 sb.Append("{\"index\":").Append(i + 1)
                   .Append(",\"w\":").Append(w)
                   .Append(",\"h\":").Append(h)
                   .Append(",\"busy\":").Append(busy ? "true" : "false")
                   .Append(",\"exists\":").Append(pic != null ? "true" : "false")
-                  .Append("}");
+                  .Append(",\"movie\":").Append(movie ? "true" : "false")
+                  .Append(",\"captionPending\":").Append(pic != null && _videoCaptionInFlight.Contains(pic) ? "true" : "false");
+                if (!string.IsNullOrEmpty(moviePath))
+                    sb.Append(",\"moviePath\":").Append(AutomationJsonString(moviePath));
+                if (!string.IsNullOrEmpty(pic?.CaptionShort))
+                    sb.Append(",\"captionShort\":").Append(AutomationJsonString(pic.CaptionShort));
+                if (!string.IsNullOrEmpty(pic?.Caption))
+                    sb.Append(",\"captionLong\":").Append(AutomationJsonString(pic.Caption));
+                sb.Append("}");
             }
         }
         sb.Append("]");
+        return sb.ToString();
+    }
+
+    private static string AutomationJsonString(string s)
+    {
+        if (s == null) return "null";
+        var sb = new StringBuilder("\"");
+        foreach (char c in s)
+        {
+            switch (c)
+            {
+                case '"': sb.Append("\\\""); break;
+                case '\\': sb.Append("\\\\"); break;
+                case '\n': sb.Append("\\n"); break;
+                case '\r': sb.Append("\\r"); break;
+                case '\t': sb.Append("\\t"); break;
+                default: sb.Append(c); break;
+            }
+        }
+        sb.Append("\"");
         return sb.ToString();
     }
 
@@ -8157,7 +8721,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             for (int i = 0; i < popN; i++)
             {
                 var poppedPic = _chatImagePics[i];
-                if (poppedPic != null) _captionLabels.Remove(poppedPic);
+                if (poppedPic != null)
+                {
+                    _captionLabels.Remove(poppedPic);
+                    _videoCaptionInFlight.Remove(poppedPic);
+                }
             }
             _chatImagePics.RemoveRange(0, popN);
             if (_chatImageRecords != null && _chatImageRecords.Count > 0)
@@ -8240,6 +8808,52 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         AppendImageBubble(action, spawnedPic);
     }
 
+    bool IChatHost.StartClipVideoAction(SkillAction action, int sourceChatImageIndex, float startSeconds, float durationSeconds, double fps, bool includeAudio, Action<bool> onDone)
+    {
+        string sourcePath = ((IChatHost)this).GetChatImageMovieFilePath(sourceChatImageIndex);
+        if (string.IsNullOrEmpty(sourcePath))
+            return false;
+
+        int epoch = _videoImportEpoch;
+        BeginVideoImport();
+        StartCoroutine(ClipVideoActionCoroutine(sourcePath, sourceChatImageIndex, action, startSeconds, durationSeconds, fps, includeAudio, epoch, onDone));
+        return true;
+    }
+
+    private IEnumerator ClipVideoActionCoroutine(string sourcePath, int sourceChatImageIndex, SkillAction action, float startSeconds, float durationSeconds, double fps, bool includeAudio, int epoch, Action<bool> onDone)
+    {
+        FfmpegTool.VideoInfo info = null;
+        string error = null;
+        yield return FfmpegTool.ProbeVideo(sourcePath, (i, e) => { info = i; error = e; });
+
+        if (epoch != _videoImportEpoch)
+        {
+            onDone?.Invoke(false);
+            yield break;
+        }
+
+        if (!string.IsNullOrWhiteSpace(error) || info == null)
+        {
+            FinishVideoImport();
+            ((IChatHost)this).AddSystemInjectionAndBubble(
+                $"clip_video could not inspect Movie #{sourceChatImageIndex}: {error ?? "unknown ffprobe error"}");
+            onDone?.Invoke(false);
+            yield break;
+        }
+
+        float maxDuration = info.DurationSeconds > 0 ? (float)info.DurationSeconds : FfmpegTool.DefaultClipDurationSeconds;
+        startSeconds = Mathf.Clamp(startSeconds, 0f, Mathf.Max(0f, maxDuration - 0.1f));
+        durationSeconds = Mathf.Clamp(durationSeconds <= 0f ? FfmpegTool.DefaultClipDurationSeconds : durationSeconds, 0.1f, Mathf.Max(0.1f, maxDuration - startSeconds));
+
+        var selection = CreateDefaultClipSelection(info, startSeconds, durationSeconds);
+        if (fps > 0 && !double.IsNaN(fps) && !double.IsInfinity(fps))
+            selection.Fps = fps;
+        selection.IncludeAudio = includeAudio;
+
+        yield return TranscodeAndAppendVideoClip(sourcePath, info, selection, epoch, action, isUserImport: false);
+        onDone?.Invoke(epoch == _videoImportEpoch);
+    }
+
     void IChatHost.RecordChatImageProvenance(PicMain pic, SkillAction action)
     {
         RecordChainedProvenance(pic, action);
@@ -8257,7 +8871,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         var pic = GetChatImagePic(oneBasedIndex);
         if (pic == null || pic.m_picMovie == null || !pic.IsMovie())
             return null;
-        string path = pic.m_picMovie.GetFileName();
+        string path = pic.m_picMovie.GetProcessingFileName();
         return string.IsNullOrEmpty(path) ? null : path;
     }
 
@@ -8806,6 +9420,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (!_isStreaming && !_waitingForForcedMainLLM && !_compactSummaryInFlight)
         {
             UpdateInspectImageStatus();
+            UpdateVideoImportStatus();
             UpdateAttachmentCaptionStatus();
         }
 

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System;
 using UnityEngine;
 
 namespace AITools.AIChat.Skills
@@ -95,6 +96,13 @@ namespace AITools.AIChat.Skills
         /// The bubble is positioned in stream order with the rest of the chat content.
         /// </summary>
         void AppendImageBubbleForPic(SkillAction action, PicMain spawnedPic);
+
+        /// <summary>
+        /// Start a local FFmpeg clip job from an existing Movie #N chat bubble. The host
+        /// appends the resulting short MP4 as a new Movie bubble and updates the same-turn
+        /// chain target before invoking <paramref name="onDone"/>.
+        /// </summary>
+        bool StartClipVideoAction(SkillAction action, int sourceChatImageIndex, float startSeconds, float durationSeconds, double fps, bool includeAudio, Action<bool> onDone);
 
         /// <summary>
         /// Record a follow-up action that modifies an existing chat Pic without spawning

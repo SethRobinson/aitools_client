@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using B83.Win32;
 using TMPro;
+using AITools.AIChat.Video;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -70,6 +71,8 @@ public class ChatImageAttachmentZone : MonoBehaviour
     public event Action OnAttachmentsChanged;
     /// <summary>Fires once per AddAttachment with the new attachment's info (incl. stable id).</summary>
     public event Action<AttachmentInfo> OnAttachmentAdded;
+    /// <summary>Fires when a video file is dropped over this chat zone. Videos are imported as Movie bubbles, not PNG attachments.</summary>
+    public event Action<string> OnVideoFileDropped;
     /// <summary>
     /// Fires when an attachment is removed (typically: user clicked the X) while its
     /// caption was still in flight. The id matches <see cref="AttachmentInfo.id"/> from
@@ -555,24 +558,29 @@ public class ChatImageAttachmentZone : MonoBehaviour
 
     /// <summary>
     /// True if <paramref name="unityScreenPos"/> is "on" our drop target. Computes
-    /// the drop target's actual screen-space rect from its world corners (works for
-    /// ScreenSpaceOverlay canvases, where world corners ARE pixel coords), then pads
-    /// it. RectTransformUtility.RectangleContainsScreenPoint is bypassed because it
-    /// has been observed to mis-classify drops near the edges of the panel under
-    /// some DPI scales.
+    /// the drop target's actual screen-space rect from its world corners, then pads
+    /// it. The explicit WorldToScreenPoint conversion matters under CanvasScaler;
+    /// raw world corners are not reliably pixel coordinates at every UI scale.
     /// </summary>
     private bool IsPointOverDropTarget(Vector2 unityScreenPos)
     {
         if (_dropTargetRect == null) return false;
         var corners = new Vector3[4];
         _dropTargetRect.GetWorldCorners(corners);
-        float minX = corners[0].x, minY = corners[0].y, maxX = corners[0].x, maxY = corners[0].y;
+        Canvas canvas = _dropTargetRect.GetComponentInParent<Canvas>();
+        Camera cam = null;
+        if (canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay)
+            cam = canvas.worldCamera != null ? canvas.worldCamera : Camera.main;
+
+        Vector3 first = RectTransformUtility.WorldToScreenPoint(cam, corners[0]);
+        float minX = first.x, minY = first.y, maxX = first.x, maxY = first.y;
         for (int i = 1; i < 4; i++)
         {
-            if (corners[i].x < minX) minX = corners[i].x;
-            if (corners[i].y < minY) minY = corners[i].y;
-            if (corners[i].x > maxX) maxX = corners[i].x;
-            if (corners[i].y > maxY) maxY = corners[i].y;
+            Vector3 screen = RectTransformUtility.WorldToScreenPoint(cam, corners[i]);
+            if (screen.x < minX) minX = screen.x;
+            if (screen.y < minY) minY = screen.y;
+            if (screen.x > maxX) maxX = screen.x;
+            if (screen.y > maxY) maxY = screen.y;
         }
         return unityScreenPos.x >= minX - DropTargetPaddingPx
             && unityScreenPos.x <= maxX + DropTargetPaddingPx
@@ -596,15 +604,26 @@ public class ChatImageAttachmentZone : MonoBehaviour
             return false;
 
         bool addedAny = false;
+        bool handledVideo = false;
         foreach (var f in files)
         {
             string ext;
             try { ext = new FileInfo(f).Extension.ToLowerInvariant(); }
             catch { continue; }
 
-            if (ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".bmp")
+            bool isImage = ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp";
+            bool isVideo = FfmpegTool.IsSupportedVideoExtension(ext);
+            if (!isImage && !isVideo)
                 continue;
             if (!File.Exists(f)) continue;
+
+            if (isVideo)
+            {
+                handledVideo = true;
+                try { OnVideoFileDropped?.Invoke(f); }
+                catch (Exception ex) { Debug.LogError("ChatImageAttachmentZone: video drop handler failed for " + f + ": " + ex); }
+                continue;
+            }
 
             try
             {
@@ -620,7 +639,7 @@ public class ChatImageAttachmentZone : MonoBehaviour
 
         // Even if no images were valid, return true to indicate "drop was over us" so the
         // default handler doesn't also try to load them as new pics.
-        return addedAny || files.Count > 0;
+        return addedAny || handledVideo || files.Count > 0;
     }
 
     /// <summary>

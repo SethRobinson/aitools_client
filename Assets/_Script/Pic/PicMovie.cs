@@ -6,6 +6,7 @@ using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using UnityEngine.Video;
 using TMPro;
+using AITools.AIChat.Video;
 
 public class PicMovie : MonoBehaviour
 {
@@ -15,6 +16,11 @@ public class PicMovie : MonoBehaviour
     private RenderTexture _renderTexture; // We'll create this dynamically
     public Renderer _renderer;
     string m_fileName;
+    string m_playbackFileName;
+    string m_playbackProxyFileName;
+    string m_playbackProxySourceFileName;
+    string m_playbackProxyAttemptedSourceFileName;
+    string m_playbackProxyConversionSourceFileName;
     float _updateTimerSeconds = 0.0f;
     float _updateIntervalSeconds = 0.1f;
     public PicMain _picMainScript;
@@ -28,6 +34,9 @@ public class PicMovie : MonoBehaviour
     TextMeshProUGUI _progressBarTimeText;
     TextMeshProUGUI _playPauseButtonText;
     bool _progressBarCreated = false;
+    bool _showingConversionProgress = false;
+    bool _playbackProxyConversionInFlight = false;
+    FfmpegTool.CancelToken _playbackProxyCancelToken;
     const float PROGRESS_BAR_HEIGHT = 8f;
 
     // Audio is routed through an AudioSource (not VideoAudioOutputMode.Direct) because
@@ -101,8 +110,19 @@ public class PicMovie : MonoBehaviour
     }
 
     public Vector2Int GetMovieSize() { return m_movieSize; }
+
+    public double GetCurrentPlaybackTimeSeconds()
+    {
+        if (_videoPlayer == null) return 0;
+        try { return Mathf.Max(0f, (float)_videoPlayer.time); }
+        catch { return 0; }
+    }
+
     public void TogglePlay()
     {
+        if (_showingConversionProgress || _playbackProxyConversionInFlight)
+            return;
+
         if (!IsMovie())
         {
             //show message
@@ -126,10 +146,23 @@ public class PicMovie : MonoBehaviour
         return m_fileName;
     }
 
+    public string GetProcessingFileName()
+    {
+        if (CanReusePlaybackProxy(m_fileName))
+            return m_playbackProxyFileName;
+        return m_fileName;
+    }
+
     public string GetFileNameWithoutPath()
     {
         return System.IO.Path.GetFileName(m_fileName);
     }
+
+    public string GetProcessingFileNameWithoutPath()
+    {
+        return System.IO.Path.GetFileName(GetProcessingFileName());
+    }
+
     public string GetFileExtensionOfMovie()
     {
         return System.IO.Path.GetExtension(m_fileName);
@@ -229,7 +262,7 @@ public class PicMovie : MonoBehaviour
             bool isVisible = _picMainScript.IsVisible();
 
             //if we have a valid movie filename, but it isn't loaded/playing, let's load and play it now
-            if (_bDidCleanupSoAllowReload && m_fileName != null && m_fileName.Length > 0 && _renderTexture == null && isVisible)
+            if (!_playbackProxyConversionInFlight && _bDidCleanupSoAllowReload && m_fileName != null && m_fileName.Length > 0 && _renderTexture == null && isVisible)
             {
                 PlayMovie(m_fileName);
                 _bDidCleanupSoAllowReload = false;
@@ -430,6 +463,7 @@ public class PicMovie : MonoBehaviour
 
     void OnProgressBarClicked(PointerEventData eventData, RectTransform barRect)
     {
+        if (_showingConversionProgress || _playbackProxyConversionInFlight) return;
         if (_videoPlayer == null || _videoPlayer.length <= 0) return;
 
         Camera cam = _picMainScript.GetCamera();
@@ -457,22 +491,23 @@ public class PicMovie : MonoBehaviour
     {
         if (_progressBarContainer == null) return;
 
+        if (_showingConversionProgress)
+        {
+            PositionProgressBar();
+            if (!_progressBarContainer.activeSelf)
+                _progressBarContainer.SetActive(true);
+            if (_playPauseButtonText != null)
+                _playPauseButtonText.text = "...";
+            return;
+        }
+
         bool shouldShow = IsMovie() && _videoPlayer.length > 0;
         if (_progressBarContainer.activeSelf != shouldShow)
             _progressBarContainer.SetActive(shouldShow);
 
         if (!shouldShow) return;
 
-        // Position the bar just below the actual movie quad
-        RectTransform canvasRect = _picMainScript.GetCanvas().GetComponent<RectTransform>();
-        float movieBottomWorld = _movieObject.transform.position.y
-            - _movieObject.transform.lossyScale.y * 0.5f;
-        Vector3 localInCanvas = canvasRect.InverseTransformPoint(
-            new Vector3(_movieObject.transform.position.x, movieBottomWorld, _movieObject.transform.position.z));
-
-        RectTransform containerRect = _progressBarContainer.GetComponent<RectTransform>();
-        containerRect.anchoredPosition = new Vector2(0, localInCanvas.y);
-        containerRect.sizeDelta = new Vector2(canvasRect.sizeDelta.x, PROGRESS_BAR_HEIGHT);
+        PositionProgressBar();
 
         double currentTime = _videoPlayer.time;
         double totalTime = _videoPlayer.length;
@@ -485,6 +520,22 @@ public class PicMovie : MonoBehaviour
             _playPauseButtonText.text = _videoPlayer.isPlaying ? "\u2590\u2590" : "\u25B6";
     }
 
+    void PositionProgressBar()
+    {
+        if (_progressBarContainer == null || _picMainScript == null || _picMainScript.GetCanvas() == null || _movieObject == null)
+            return;
+
+        RectTransform canvasRect = _picMainScript.GetCanvas().GetComponent<RectTransform>();
+        float movieBottomWorld = _movieObject.transform.position.y
+            - _movieObject.transform.lossyScale.y * 0.5f;
+        Vector3 localInCanvas = canvasRect.InverseTransformPoint(
+            new Vector3(_movieObject.transform.position.x, movieBottomWorld, _movieObject.transform.position.z));
+
+        RectTransform containerRect = _progressBarContainer.GetComponent<RectTransform>();
+        containerRect.anchoredPosition = new Vector2(0, localInCanvas.y);
+        containerRect.sizeDelta = new Vector2(canvasRect.sizeDelta.x, PROGRESS_BAR_HEIGHT);
+    }
+
     public bool IsMovie()
     {
         return _movieObject.activeSelf;
@@ -492,12 +543,19 @@ public class PicMovie : MonoBehaviour
 
     public void KillMovie()
     {
+        CancelPlaybackProxyConversion();
         DeleteMovieIfNeeded();
         CleanupVideoResources();
+        DeletePlaybackProxyIfNeeded();
         _bDidCleanupSoAllowReload = false;
         m_bAutoDeleteFileWhenDone = true;
         m_fileName = null;
+        m_playbackFileName = null;
+        m_playbackProxySourceFileName = null;
+        m_playbackProxyAttemptedSourceFileName = null;
+        m_playbackProxyConversionSourceFileName = null;
         m_movieSize = new Vector2Int(0, 0);
+        _showingConversionProgress = false;
         _movieObject.SetActive(false);
 
         if (_progressBarContainer != null)
@@ -592,16 +650,168 @@ public class PicMovie : MonoBehaviour
 
     public void PlayMovie(string filename, bool forceLoad = false)
     {
+        if (string.IsNullOrWhiteSpace(filename))
+            return;
+
         if (!forceLoad && (!Application.isFocused || !_picMainScript.IsVisible()))
         {
-        
             m_fileName = filename;
+            m_playbackFileName = filename;
             _movieObject.SetActive(true);
 
             _bDidCleanupSoAllowReload = true;
             return; //don't play it now
         }
 
+        if (_playbackProxyConversionInFlight)
+        {
+            if (string.Equals(m_playbackProxyConversionSourceFileName, filename, System.StringComparison.OrdinalIgnoreCase))
+                return;
+            CancelPlaybackProxyConversion();
+        }
+
+        if (!string.IsNullOrWhiteSpace(m_playbackProxySourceFileName)
+            && !string.Equals(m_playbackProxySourceFileName, filename, System.StringComparison.OrdinalIgnoreCase))
+        {
+            DeletePlaybackProxyIfNeeded();
+        }
+
+        if (CanReusePlaybackProxy(filename))
+        {
+            PlayMovieDirect(filename, m_playbackProxyFileName, forceLoad);
+            return;
+        }
+
+        if (FfmpegTool.IsSupportedVideoExtension(filename))
+        {
+            StartCoroutine(PlayMovieWithProxyIfNeeded(filename, forceLoad));
+            return;
+        }
+
+        PlayMovieDirect(filename, filename, forceLoad);
+    }
+
+    private IEnumerator PlayMovieWithProxyIfNeeded(string filename, bool forceLoad)
+    {
+        m_fileName = filename;
+        m_playbackFileName = filename;
+        _movieObject.SetActive(true);
+        _bDidCleanupSoAllowReload = false;
+
+        FfmpegTool.VideoInfo info = null;
+        string probeError = null;
+        yield return FfmpegTool.ProbeVideo(filename, (i, e) =>
+        {
+            info = i;
+            probeError = e;
+        });
+
+        if (!string.Equals(m_fileName, filename, System.StringComparison.OrdinalIgnoreCase))
+            yield break;
+
+        if (info == null)
+        {
+            if (!string.IsNullOrWhiteSpace(probeError))
+                Debug.LogWarning("PicMovie ffprobe failed, falling back to Unity VideoPlayer: " + probeError);
+            PlayMovieDirect(filename, filename, forceLoad);
+            yield break;
+        }
+
+        if (!FfmpegTool.ShouldUseUnityPreviewProxy(info))
+        {
+            PlayMovieDirect(filename, filename, forceLoad);
+            yield break;
+        }
+
+        yield return CreatePlaybackProxyAndPlay(filename, forceLoad, info, "Converting video for Windows playback...");
+    }
+
+    private IEnumerator CreatePlaybackProxyAndPlay(string filename, bool forceLoad, FfmpegTool.VideoInfo info, string initialMessage)
+    {
+        m_playbackProxyAttemptedSourceFileName = filename;
+        m_playbackProxyConversionSourceFileName = filename;
+        _playbackProxyConversionInFlight = true;
+        SetConversionProgress(0f, initialMessage);
+        DeletePlaybackProxyIfNeeded();
+
+        FfmpegTool.ClipResult result = null;
+        var cancelToken = new FfmpegTool.CancelToken();
+        _playbackProxyCancelToken = cancelToken;
+        double proxyFps = info != null && info.Fps > 0 ? System.Math.Min(info.Fps, 30.0) : 30.0;
+        double duration = info != null ? info.DurationSeconds : 0;
+
+        yield return FfmpegTool.CreatePreviewProxy(
+            filename,
+            duration,
+            proxyFps,
+            r => result = r,
+            (p, msg) =>
+            {
+                if (ReferenceEquals(_playbackProxyCancelToken, cancelToken)
+                    && string.Equals(m_playbackProxyConversionSourceFileName, filename, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    SetConversionProgress(p, string.IsNullOrWhiteSpace(msg) ? "Converting video..." : msg);
+                }
+            },
+            cancelToken,
+            includeAudio: true);
+
+        bool stillCurrent = string.Equals(m_playbackProxyConversionSourceFileName, filename, System.StringComparison.OrdinalIgnoreCase)
+            && ReferenceEquals(_playbackProxyCancelToken, cancelToken);
+        if (stillCurrent && !cancelToken.CancelRequested
+            && (result == null || !result.Success || string.IsNullOrWhiteSpace(result.OutputPath) || !System.IO.File.Exists(result.OutputPath)))
+        {
+            Debug.LogWarning("PicMovie audio preview proxy failed; retrying without audio for " + filename);
+            SetConversionProgress(0f, "Retrying conversion without audio...");
+            result = null;
+            yield return FfmpegTool.CreatePreviewProxy(
+                filename,
+                duration,
+                proxyFps,
+                r => result = r,
+                (p, msg) =>
+                {
+                    if (ReferenceEquals(_playbackProxyCancelToken, cancelToken)
+                        && string.Equals(m_playbackProxyConversionSourceFileName, filename, System.StringComparison.OrdinalIgnoreCase))
+                    {
+                        SetConversionProgress(p, string.IsNullOrWhiteSpace(msg) ? "Converting video..." : msg);
+                    }
+                },
+                cancelToken);
+        }
+
+        stillCurrent = string.Equals(m_playbackProxyConversionSourceFileName, filename, System.StringComparison.OrdinalIgnoreCase)
+            && ReferenceEquals(_playbackProxyCancelToken, cancelToken);
+        if (stillCurrent)
+        {
+            _playbackProxyCancelToken = null;
+            _playbackProxyConversionInFlight = false;
+            m_playbackProxyConversionSourceFileName = null;
+            SetConversionProgressVisible(false);
+        }
+        if (!stillCurrent || cancelToken.CancelRequested)
+            yield break;
+
+        if (!string.Equals(m_fileName, filename, System.StringComparison.OrdinalIgnoreCase))
+            yield break;
+
+        if (result != null && result.Success && !string.IsNullOrWhiteSpace(result.OutputPath) && System.IO.File.Exists(result.OutputPath))
+        {
+            m_playbackProxyFileName = result.OutputPath;
+            m_playbackProxySourceFileName = filename;
+            RTQuickMessageManager.Get().ShowMessage("Converted video for Windows playback");
+            PlayMovieDirect(filename, m_playbackProxyFileName, forceLoad);
+            yield break;
+        }
+
+        string err = result != null ? result.Error : "unknown error";
+        Debug.LogWarning("PicMovie preview proxy failed for " + filename + "\n" + err);
+        RTQuickMessageManager.Get().ShowMessage("FFmpeg video conversion failed. Check utils/ffmpeg/bin.");
+        PlayMovieDirect(filename, filename, forceLoad);
+    }
+
+    private void PlayMovieDirect(string sourceFilename, string playbackFilename, bool forceLoad = false)
+    {
         try
         {
             if (RTUtil.IsMemoryLow())
@@ -616,12 +826,14 @@ public class PicMovie : MonoBehaviour
             }
 
             CleanupVideoResources();
-            m_fileName = filename;
+            SetConversionProgressVisible(false);
+            m_fileName = sourceFilename;
+            m_playbackFileName = playbackFilename;
             _bDidCleanupSoAllowReload = false;
             _movieObject.SetActive(true);
 
             _videoPlayer.source = VideoSource.Url;
-            _videoPlayer.url = filename;
+            _videoPlayer.url = playbackFilename;
             _videoPlayer.isLooping = true;
             _videoPlayer.playOnAwake = false;
             // Defensive re-assert — Start() sets these too, but if the prefab is
@@ -645,7 +857,6 @@ public class PicMovie : MonoBehaviour
                 _videoPlayer.SetTargetAudioSource(0, _audioSource);
             if (forceLoad && _audioSource != null)
                 _audioSource.mute = true;
-            
 
             _videoPlayer.Prepare();
         }
@@ -656,10 +867,104 @@ public class PicMovie : MonoBehaviour
         }
     }
 
+    private bool CanReusePlaybackProxy(string sourceFilename)
+    {
+        return !string.IsNullOrWhiteSpace(m_playbackProxyFileName)
+            && !string.IsNullOrWhiteSpace(m_playbackProxySourceFileName)
+            && string.Equals(m_playbackProxySourceFileName, sourceFilename, System.StringComparison.OrdinalIgnoreCase)
+            && System.IO.File.Exists(m_playbackProxyFileName);
+    }
+
+    private bool IsUsingPlaybackProxy()
+    {
+        return !string.IsNullOrWhiteSpace(m_playbackFileName)
+            && !string.IsNullOrWhiteSpace(m_playbackProxyFileName)
+            && string.Equals(m_playbackFileName, m_playbackProxyFileName, System.StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool TryStartPlaybackProxyAfterVideoError(string message)
+    {
+        if (_playbackProxyConversionInFlight)
+            return true;
+        if (IsUsingPlaybackProxy())
+            return false;
+        if (string.IsNullOrWhiteSpace(m_fileName) || !System.IO.File.Exists(m_fileName))
+            return false;
+        if (!FfmpegTool.IsSupportedVideoExtension(m_fileName))
+            return false;
+        if (string.Equals(m_playbackProxyAttemptedSourceFileName, m_fileName, System.StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        Debug.LogWarning("PicMovie VideoPlayer failed, trying FFmpeg preview proxy: " + message);
+        var info = new FfmpegTool.VideoInfo { Path = m_fileName, Fps = 30 };
+        StartCoroutine(CreatePlaybackProxyAndPlay(m_fileName, false, info, "Windows could not play this video; converting..."));
+        return true;
+    }
+
+    private void CancelPlaybackProxyConversion()
+    {
+        if (_playbackProxyCancelToken != null)
+        {
+            _playbackProxyCancelToken.Cancel();
+            _playbackProxyCancelToken = null;
+        }
+        _playbackProxyConversionInFlight = false;
+        m_playbackProxyConversionSourceFileName = null;
+        SetConversionProgressVisible(false);
+    }
+
+    private void DeletePlaybackProxyIfNeeded(string keepSourceFilename = null)
+    {
+        if (string.IsNullOrWhiteSpace(m_playbackProxyFileName))
+            return;
+
+        if (!string.IsNullOrWhiteSpace(keepSourceFilename)
+            && string.Equals(m_playbackProxySourceFileName, keepSourceFilename, System.StringComparison.OrdinalIgnoreCase)
+            && System.IO.File.Exists(m_playbackProxyFileName))
+        {
+            return;
+        }
+
+        try { System.IO.File.Delete(m_playbackProxyFileName); } catch { }
+        m_playbackProxyFileName = null;
+        m_playbackProxySourceFileName = null;
+    }
+
+    private void SetConversionProgress(float progress, string message)
+    {
+        _showingConversionProgress = true;
+        if (_movieObject != null)
+            _movieObject.SetActive(true);
+        if (_progressBarContainer != null)
+            _progressBarContainer.SetActive(true);
+        if (_progressBarFill != null)
+            _progressBarFill.rectTransform.anchorMax = new Vector2(Mathf.Clamp01(progress), 1f);
+        if (_progressBarTimeText != null)
+            _progressBarTimeText.text = string.IsNullOrWhiteSpace(message) ? "Converting video..." : message;
+        if (_playPauseButtonText != null)
+            _playPauseButtonText.text = "...";
+        PositionProgressBar();
+    }
+
+    private void SetConversionProgressVisible(bool visible)
+    {
+        _showingConversionProgress = visible;
+        if (visible)
+        {
+            SetConversionProgress(0f, "Converting video...");
+        }
+        else if (_progressBarContainer != null)
+        {
+            _progressBarContainer.SetActive(false);
+        }
+    }
+
 
 
     private void OnVideoError(VideoPlayer source, string message)
     {
+        if (TryStartPlaybackProxyAfterVideoError(message))
+            return;
         HandleVideoError(message);
     }
 
