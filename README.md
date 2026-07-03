@@ -4,7 +4,7 @@ License:  BSD style attribution, see LICENSE.md
 
 # Download
 
-Download the latest: V3.02 (Jun 29th, 2026) [AI Tools Client (Windows, 66 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) (codesigned by me)
+Download the latest: V3.03 (Jul 3rd, 2026) [AI Tools Client (Windows, 139 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) (codesigned by me)
 
 ## Features
 
@@ -19,6 +19,15 @@ Download the latest: V3.02 (Jun 29th, 2026) [AI Tools Client (Windows, 66 MB)](h
 - Privacy respected - does not phone home or collect any statistics, purely local usage. (it does check a single file on github.com to check for newer versions, but that's it)
 
 ## Recent changes
+
+### V3.03 (Jul 3rd, 2026)
+
+* Added AI Chat video import/clipping with FFmpeg-backed transcodes, long-clip selection, preview proxies, audio controls, and still-frame import
+* Added Bernini-R image editing/video-to-video presets and a separate RIFE video interpolation utility
+* Improved video workflow reliability with MOV/HEVC processing proxies, source-duration Bernini frame caps, and unique ComfyUI output names for LTX renders
+* Improved AI Chat attachment drops and fixed EXIF orientation on imported images
+* Fixed Generate button and Unity 6000.5 build/editor issues
+* Bundled FFmpeg/ffprobe helpers and licenses for video processing
 
 ### V3.02 (Jun 29th, 2026)
 
