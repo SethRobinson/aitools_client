@@ -1986,13 +1986,19 @@ namespace AITools.AIChat.Skills
             }
         }
 
+        // maxNewTokens: output-token budget for the one-shot. The 1024 default suits
+        // short sidecar jobs (captions, delegation, /applystyle rewrites). Pass 0 for
+        // NO explicit cap - the request omits max_tokens so the server/model default
+        // applies (llama.cpp: unlimited; OpenAI/Gemini: model max), except Anthropic,
+        // whose API requires an explicit value and gets its per-model maximum.
         public static void DispatchOneShot(
             MonoBehaviour runner,
             LLMInstanceInfo inst,
             Queue<GTPChatLine> lines,
             Action<RTDB, JSONObject, string> onDone,
             string callerLabel,
-            string sentJsonFilename = "text_completion_sent.json")
+            string sentJsonFilename = "text_completion_sent.json",
+            int maxNewTokens = 1024)
         {
             var settings = inst.settings;
             var db = new RTDB();
@@ -2019,7 +2025,7 @@ namespace AITools.AIChat.Skills
                     var mgr = runner.gameObject.AddComponent<TexGenWebUITextCompletionManager>();
                     string serverAddress = settings.endpoint ?? "";
                     string suggestedEndpoint;
-                    string json = mgr.BuildForInstructJSON(lines, out suggestedEndpoint, 1024, 0.4f, "chat-instruct", false, null, true, false);
+                    string json = mgr.BuildForInstructJSON(lines, out suggestedEndpoint, maxNewTokens, 0.4f, "chat-instruct", false, null, true, false);
                     mgr.SpawnChatCompleteRequest(json, (rtdb, jn, str) =>
                     {
                         try { onDone(rtdb, jn, str); }
@@ -2033,7 +2039,7 @@ namespace AITools.AIChat.Skills
                     string serverAddress = settings.endpoint ?? "";
                     string suggestedEndpoint;
                     var llmParms = BuildLLMParmsForInstance(inst);
-                    string json = mgr.BuildForInstructJSON(lines, out suggestedEndpoint, 1024, 0.4f, "chat-instruct", false, llmParms, false, true);
+                    string json = mgr.BuildForInstructJSON(lines, out suggestedEndpoint, maxNewTokens, 0.4f, "chat-instruct", false, llmParms, false, true);
                     mgr.SpawnChatCompleteRequest(json, (rtdb, jn, str) =>
                     {
                         try { onDone(rtdb, jn, str); }
@@ -2053,7 +2059,7 @@ namespace AITools.AIChat.Skills
                         : (settings.enableThinking ? LLMReasoningEffort.High : LLMReasoningEffort.Off);
                     float temp = isDeepSeek ? LLMRequestProfile.GetRecommendedTemperature(model, effort, 0.4f) : 0.4f;
                     float? topP = isDeepSeek ? (float?)LLMRequestProfile.GetRecommendedTopP(model, effort, 1.0f) : null;
-                    int maxTokens = isDeepSeek ? LLMRequestProfile.GetRecommendedMaxTokens(model, effort, 1024) : 1024;
+                    int maxTokens = isDeepSeek ? LLMRequestProfile.GetRecommendedMaxTokens(model, effort, maxNewTokens) : maxNewTokens;
                     string reasoningEffortParam = isDeepSeek ? LLMReasoningEffortUtil.ToConfigValue(effort) : null;
                     string json = mgr.BuildChatCompleteJSON(lines, maxTokens, temp, model, false,
                         enableThinking: isDeepSeek ? effort != LLMReasoningEffort.Off : settings.enableThinking,
@@ -2071,7 +2077,7 @@ namespace AITools.AIChat.Skills
                     var mgr = runner.gameObject.AddComponent<OpenAITextCompletionManager>();
                     string model = string.IsNullOrEmpty(settings.selectedModel) ? "gpt-4o-mini" : settings.selectedModel;
                     var profile = OpenAIRequestProfileResolver.Resolve(model, settings, 0);
-                    string json = mgr.BuildChatCompleteJSON(lines, 1024, 0.4f, model, false,
+                    string json = mgr.BuildChatCompleteJSON(lines, maxNewTokens, 0.4f, model, false,
                         profile.useResponsesAPI, profile.isReasoningModel, profile.includeTemperature,
                         profile.reasoningEffort, profile.enableThinking);
                     mgr.SpawnChatCompleteRequest(json, (rtdb, jn, str) =>
@@ -2094,7 +2100,9 @@ namespace AITools.AIChat.Skills
                     // Non-streaming: simpler for one-shots, mirrors the OpenAI/Ollama path
                     // above. Anthropic returns content as a typed-block array; we pull text
                     // out via ExtractTextFromResponseJSON so callers see plain text in `str`.
-                    string json = mgr.BuildChatCompleteJSON(lines, 1024, 0.4f, model, false);
+                    // Anthropic requires max_tokens; "no cap" resolves to the model max.
+                    int anthropicMaxTokens = maxNewTokens > 0 ? maxNewTokens : AIChatPanel.GetAnthropicMaxOutputTokens(model);
+                    string json = mgr.BuildChatCompleteJSON(lines, anthropicMaxTokens, 0.4f, model, false);
                     mgr.SpawnChatCompletionRequest(json, (rtdb, jn, str) =>
                     {
                         try
@@ -2128,7 +2136,7 @@ namespace AITools.AIChat.Skills
                     // inlineData parts, so this path covers the vision-caption
                     // sidecar as well as plain text summarization.
                     string endpoint = GeminiTextCompletionManager.BuildEndpointUrl(baseEndpoint, model, false);
-                    string json = mgr.BuildChatCompleteJSON(lines, 1024, 0.4f, model, false, settings.enableThinking);
+                    string json = mgr.BuildChatCompleteJSON(lines, maxNewTokens, 0.4f, model, false, settings.enableThinking);
                     mgr.SpawnChatCompleteRequest(json, (rtdb, jn, str) =>
                     {
                         try { onDone(rtdb, jn, str ?? ""); }

@@ -1,6 +1,6 @@
 ---
 id: scenario_storytelling
-summary: Roleplay / story workflow. Default is anchor-free, image-rich narration: interleave short prose/dialog beats with self-contained generate_image stills, aiming for about four images (3-5) per turn. Use anchors/image_to_image only when the user explicitly asks for anchors, exact recurring identity, reference-character reuse, or a deliverable that requires persistent character refs; movie requests use per-beat generate_image -> image_to_movie pairs.
+summary: Roleplay / story workflow. Default is anchor-free narration under ~500 words of prose with TWO visuals per turn; each visual is a movie only when the newest CURRENT STATE GPUS list shows an IDLE GPU for it (one movie per IDLE GPU, stills fill the rest; all stills when every GPU is busy). Use anchors/image_to_image only when the user explicitly asks for anchors, exact recurring identity, reference-character reuse, or a deliverable that requires persistent character refs; movie beats use generate_image -> image_to_movie pairs.
 inputs: none
 autoload: true
 triggers: roleplay, role-play, rp, scenario, scenarios, storytelling, tell a story, tell me a story, continue the story, continue our story, start a story, these are the characters, this is the heroine, this is the hero, use this person, use this image as, use these as the characters, reference character, reference characters, main character, identity anchor, anchor image, illustrate the story, let's roleplay, lets roleplay
@@ -18,10 +18,12 @@ woven into the story.
 DO:
 - DRIVE the scene yourself. Narrate the next beat, let other characters act
   and speak, introduce complications, and stop on a story line.
-- SHIP VISUALS BY DEFAULT. Unless the user asks for text-only, include still
-  images in ordinary roleplay turns.
-- Aim for about four still images per roleplay turn. Three to five is fine;
-  four is the normal target. Obey an explicit user count.
+- SHIP VISUALS BY DEFAULT. Unless the user asks for text-only, include
+  visuals in ordinary roleplay turns.
+- Aim for TWO visuals per roleplay turn. Each visual is either a still or a
+  movie pair - pick per the GPU rule below. Obey an explicit user count.
+- KEEP IT TIGHT. The whole turn's prose stays under about 500 words. Short
+  beats, short dialog - the visuals carry the scene.
 - Interleave the image tags with the fiction: write a short prose/dialog beat
   (usually 1-3 sentences), then immediately emit the `generate_image` tag for
   that exact moment, then continue with the next beat.
@@ -47,12 +49,11 @@ DO NOT:
 
 ## Default anchor-free flow
 
-For normal roleplay, each visual beat is a brand-new, self-contained
-`generate_image` call. This is deliberate: the user prefers the story to keep
-flowing with multiple images, rather than spending the setup turn minting
-reference portraits.
+For normal roleplay, each visual beat is brand-new and self-contained. This
+is deliberate: the user prefers the story to keep flowing, rather than
+spending the setup turn minting reference portraits.
 
-Pattern:
+Pattern (two illustrated beats per turn):
 
 ```
 <short prose/dialog beat>
@@ -60,8 +61,6 @@ Pattern:
 
 <short prose/dialog beat>
 <aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full self-contained Z-Image prompt for this exact moment>"/>
-
-<repeat until you have about four illustrated beats>
 ```
 
 Every `generate_image` prompt must stand alone: visible identities,
@@ -73,12 +72,29 @@ use `chat_image="Name"` unless the user explicitly requested anchors.
 The tradeoff is acceptable: anchor-free stills may drift a little between
 beats, but the default roleplay priority is momentum plus multiple images.
 
-## Movie requests
+## Stills vs movies: the GPU rule
 
-If the user has asked for movies ("provide movies", "illustrate with movies",
-"two movies each turn"), treat that as a standing default for the session.
-Use movie pairs instead of still-only beats, interleaved in the same story
-position:
+Movies make roleplay more immersive but render slowly; stills are fast.
+Decide the mix every turn from the GPUS list in the NEWEST [CURRENT STATE]
+block attached to the latest user message (older CURRENT STATE copies are
+historical - ignore them):
+
+- Count the GPUs whose status is IDLE. BUSY and INACTIVE GPUs do not count.
+- 0 IDLE: the render queue is behind. Make this turn's visuals STILLS ONLY
+  so it can catch up. Never queue a movie while every GPU is busy.
+- 1+ IDLE: make at most ONE movie per IDLE GPU, capped by the per-turn
+  visual target (default two). Fill the remaining beats with stills.
+- With the default two visuals per turn: 2+ IDLE -> two movie beats;
+  1 IDLE -> one movie beat + one still; 0 IDLE -> two stills.
+
+Do not mention GPUs, queues, or render speed in the story - silently pick
+the mix. Do not pin `gpu="N"` on the actions; just count IDLE entries and
+let the scheduler place the work. Explicit user instructions override this
+rule: "stills only" / "no videos", "movies every beat", or an explicit
+image/movie count always wins, even if every GPU is busy.
+
+A movie beat is the standard pair, interleaved at the same story position
+as a still beat:
 
 ```
 <short prose/dialog beat>
@@ -86,12 +102,9 @@ position:
 <aitools_action skill="image_to_movie" preset="{{Image To Video (LTX) 5s.txt}}" prompt="<LTX motion + camera + ONE short quoted in-scene dialog line>" chain="true"/>
 ```
 
-Do not automatically make four movies just because ordinary still roleplay
-aims for four images. If the user gives a movie count, obey it. If they only
-ask for movies without a count, make one strong movie beat per turn unless the
-story clearly benefits from two. Each movie still starts with a `generate_image`
-base and then `image_to_movie chain="true"`; the chained movie action carries
-ONLY `chain="true"` plus preset/prompt.
+Each movie starts with a `generate_image` base and then
+`image_to_movie chain="true"`; the chained movie action carries ONLY
+`chain="true"` plus preset/prompt.
 
 ## Opt-in anchor flow
 
@@ -137,5 +150,7 @@ asks to use an existing image.
 ## Final gate
 
 No anchors by default. No tool-narration, no menus, no compliments. Short NPC
-lines, appearance-only prompts. Interleave about four still images with the
-story unless the user asked for movies, anchors, a different count, or text-only.
+lines, appearance-only prompts, under ~500 words of prose. Interleave two
+visuals with the story: movies only up to the number of IDLE GPUs in the
+newest CURRENT STATE, stills for the rest (all stills when every GPU is
+busy), unless the user asked for a different count, anchors, or text-only.

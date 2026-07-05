@@ -89,6 +89,14 @@ public static class AutomationBridge
         return _driver.ImportChatVideo(path, startSeconds, durationSeconds, fps, includeAudio, out error);
     }
 
+    /// <summary>Run AI Chat's Compact feature (mode "summarize" or "truncate").</summary>
+    public static bool CompactChat(string mode, int keepExchanges, out string error)
+    {
+        error = "no driver";
+        if (_driver == null) return false;
+        return _driver.CompactChat(mode, keepExchanges, out error);
+    }
+
     /// <summary>JSON array describing the current chat images. "[]" if no chat panel.</summary>
     public static string ChatImagesJson()
     {

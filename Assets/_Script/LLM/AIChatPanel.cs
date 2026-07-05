@@ -43,13 +43,23 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private ChatContextBuilder _contextBuilder;
     private SkillActionParser _actionParser;
     private SkillActionExecutor _actionExecutor;
-    private readonly HashSet<string> _stickyAutoloadSkillIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-    private const string AUTOLOAD_SKILL_CONTEXT_TAG = "aichat_autoload_skill_context";
+    // Keyword-autoloaded skill bodies ride the info-recap tail of the triggering
+    // user message (the same path read_skill bodies use), NOT a system-role
+    // interaction: BuildPromptChat folds system-role lines into the FRONT system
+    // message, and rewriting the prompt head mid-conversation invalidated the
+    // server-side prompt cache for the entire history every time a new skill
+    // triggered (a ~40s full re-prefill on a long llama.cpp chat). Liveness is
+    // derived by scanning history for these marker headers (see
+    // ComputeLiveAutoloadSkillIds), so Rewind/Compact/Clear self-heal with no
+    // stored id list. ReadSkillBodyMarkerPrefix must match the injection header in
+    // SkillActionExecutor.ExecuteReadSkill.
+    private const string AutoloadSkillBodyMarkerPrefix = "AUTO-LOADED SKILL REFERENCE '";
+    private const string ReadSkillBodyMarkerPrefix = "Reference material for skill '";
 
-    // Auto-loaded skill bodies are large, but once a trigger loads one in a chat we
-    // keep it live for that chat. Removing bodies mid-chat is confusing to the user
-    // and can make the LLM lose detailed instructions it already started following.
-    private readonly List<string> _autoloadSkillIds = new List<string>();
+    // Body text (post preset-prefix substitution) last delivered per skill id, so the
+    // per-turn skill-file reload re-sends only genuinely edited bodies. Not a
+    // liveness record - that is always re-derived from history.
+    private readonly Dictionary<string, string> _sentAutoloadSkillBodies = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
     // Header status pill - GPU busy count + LLM count, refreshed periodically.
     private TextMeshProUGUI _statusPillText;
@@ -329,9 +339,15 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private const float NO_VISION_WARN_THROTTLE_SECONDS = 30f;
     private float _lastNoVisionWarnTime = -999f;
 
-    // Watchdog timeout for the one-shot "compact to summary" LLM request. Longer
-    // than the caption timeout because it digests the whole conversation.
-    private const float COMPACT_TIMEOUT_SECONDS = 180f;
+    // Watchdog bounds for the one-shot "compact to summary" LLM request. The actual
+    // deadline scales with transcript size in DoCompactSummarize: summarizing a very
+    // long chat on a local model is dominated by prompt prefill (a ~180-turn /
+    // ~113k-token conversation measured ~6 minutes on llama.cpp before any output),
+    // so a flat timeout fired first and the good summary arriving later was
+    // discarded by the done-latch. The watchdog is only a safety net - transport
+    // errors surface through the request's own callback.
+    private const float COMPACT_TIMEOUT_MIN_SECONDS = 300f;
+    private const float COMPACT_TIMEOUT_MAX_SECONDS = 1800f;
     // Guards against overlapping compact-summary requests (the button is in the
     // settings panel, which can be reopened while one is still in flight).
     private bool _compactSummaryInFlight;
@@ -3617,6 +3633,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         ResetPerTurnExecutionState();
         _lastTurnAttachments.Clear();
 
+        // Parity with the real-send path: the session post-message text can contain
+        // trigger words, and the old dispatch-time scan saw continue turns too.
+        QueueTriggeredSkillBodyInjections(visibleText);
+
         string llmPayloadText = BuildLLMPayloadWithInfoRecap(baseText);
         llmPayloadText = AppendUserPostMessageToText(llmPayloadText);
         _promptManager.AddInteraction("user", llmPayloadText);
@@ -3784,6 +3804,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         }
 
         string visibleText = AppendUserPostMessageToText(text);
+
+        // Attach any newly keyword-triggered skill bodies BEFORE the recap fold below
+        // so the model can use them on this very turn. They ride this user message's
+        // LLM payload (append-only at the request tail), keeping the prompt head
+        // byte-stable for server-side prompt caches.
+        QueueTriggeredSkillBodyInjections(visibleText);
 
         // Quietly fold any unsent Info bubbles (skill warnings/errors that have piled
         // up since the last send) into the LLM payload as a "for the future, please
@@ -4316,8 +4342,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         }
 
         _promptManager.Reset();
-        _stickyAutoloadSkillIds.Clear();
-        _autoloadSkillIds.Clear();
+        // Autoload-skill liveness resets by itself (it is derived from the now-empty
+        // history); only the edit-tracking cache needs an explicit wipe.
+        _sentAutoloadSkillBodies.Clear();
         _attachmentZone?.ClearAttachments();
         _lastTurnAttachments?.Clear();
         _chatImagePics?.Clear();
@@ -4431,9 +4458,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             }
             else
             {
-                // Internal system context. Skip bulky autoloaded skill blocks;
-                // surface the compact summary (and other plain notes) as Info.
-                if (line._internalTag == AUTOLOAD_SKILL_CONTEXT_TAG) continue;
+                // Internal system context (e.g. the compact summary) surfaces as Info.
                 if (GetShowDebugStuff())
                     AppendInfoBubble(line._content);
             }
@@ -4462,7 +4487,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         int from = FindKeepFromIndex(all, keepExchanges);
         if (from <= 0)
         {
-            AddSystemMessage($"Nothing to compact - the conversation is already within the last {keepExchanges} exchange(s).", includeInLLMRecap: false);
+            // Visible without "Show debug stuff" - it's a direct reply to a click.
+            RTQuickMessageManager.Get().ShowMessage($"Nothing to compact - already within the last {keepExchanges} exchange(s)");
             return;
         }
 
@@ -4491,7 +4517,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         int from = FindKeepFromIndex(all, keepExchanges);
         if (from <= 0)
         {
-            AddSystemMessage($"Nothing to compact - the conversation is already within the last {keepExchanges} exchange(s).", includeInLLMRecap: false);
+            // Toasts, not debug-gated Info bubbles: these are direct responses to the
+            // user clicking Summarize and must be visible with "Show debug stuff" off.
+            RTQuickMessageManager.Get().ShowMessage($"Nothing to compact - already within the last {keepExchanges} exchange(s)");
             return;
         }
 
@@ -4501,7 +4529,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         var instanceMgr = LLMInstanceManager.Get();
         if (instanceMgr == null || instanceMgr.GetInstanceCount() == 0)
         {
-            AddSystemMessage("No LLM is configured, so the conversation can't be summarized. Use Truncate instead.", includeInLLMRecap: false);
+            RTQuickMessageManager.Get().ShowMessage("No LLM is configured - can't summarize. Use Truncate instead");
             return;
         }
         int targetId = instanceMgr.GetFreeLLM(isSmallJob: false, isVisionJob: false, out int replicaIndex);
@@ -4509,13 +4537,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             targetId = instanceMgr.GetLeastBusyLLM(isSmallJob: false, isVisionJob: false, out replicaIndex);
         if (targetId < 0)
         {
-            AddSystemMessage("No LLM slot is available right now. Try again shortly, or use Truncate.", includeInLLMRecap: false);
+            RTQuickMessageManager.Get().ShowMessage("No LLM slot is available right now. Try again shortly, or use Truncate");
             return;
         }
         var inst = instanceMgr.GetInstance(targetId);
         if (inst == null || inst.settings == null)
         {
-            AddSystemMessage("The selected LLM is not ready. Use Truncate instead.", includeInLLMRecap: false);
+            RTQuickMessageManager.Get().ShowMessage("The selected LLM is not ready. Use Truncate instead");
             return;
         }
 
@@ -4614,7 +4642,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                     }
                     catch { }
                 }
-                AddSystemMessage("Compact failed: the LLM returned an empty summary. History is unchanged." + detail, includeInLLMRecap: false);
+                // Always-visible: a user-initiated summarize that fails must not be
+                // silent when "Show debug stuff" is off.
+                AddErrorBubble("Compact failed: the LLM returned an empty summary. History is unchanged." + detail);
                 return;
             }
 
@@ -4633,16 +4663,29 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 _statusText.text = $"Summarized {older.Count} msgs in {Time.unscaledTime - _compactSummaryStartTime:F0}s";
         };
 
-        watchdog = StartCoroutine(CompactSummaryWatchdog(() => done, release));
-        SkillActionExecutor.DispatchOneShot(this, inst, lines, onDone, "CompactSummary", "compact_summary_sent.json");
+        // Deadline scales with what the model must prefill (~400 transcript chars/sec
+        // as a conservative local-model floor). A ~480KB transcript (the measured
+        // ~6-minute llama.cpp case) gets ~25 minutes; small compacts keep a 5-minute
+        // floor. Purely a safety net - real transport errors arrive via onDone.
+        float watchdogSeconds = Mathf.Clamp(
+            COMPACT_TIMEOUT_MIN_SECONDS + transcript.Length / 400f,
+            COMPACT_TIMEOUT_MIN_SECONDS, COMPACT_TIMEOUT_MAX_SECONDS);
+        watchdog = StartCoroutine(CompactSummaryWatchdog(watchdogSeconds, () => done, release));
+        // maxNewTokens 0 = no explicit output cap (model max), same as the main chat
+        // turn: a 180-turn recap can legitimately run long, and thinking models also
+        // burn part of the budget inside <think> before any visible summary appears.
+        SkillActionExecutor.DispatchOneShot(this, inst, lines, onDone, "CompactSummary", "compact_summary_sent.json",
+            maxNewTokens: 0);
     }
 
-    private IEnumerator CompactSummaryWatchdog(Func<bool> isDone, Action release)
+    private IEnumerator CompactSummaryWatchdog(float timeoutSeconds, Func<bool> isDone, Action release)
     {
-        yield return new WaitForSeconds(COMPACT_TIMEOUT_SECONDS);
+        yield return new WaitForSeconds(timeoutSeconds);
         if (isDone()) yield break;
         release();
-        AddSystemMessage("Compact timed out - the LLM didn't return a summary in time. History is unchanged.", includeInLLMRecap: false);
+        // Always-visible: with "Show debug stuff" off, a debug-gated Info bubble made
+        // this failure look like the summarize silently did nothing.
+        AddErrorBubble($"Compact timed out after {Mathf.RoundToInt(timeoutSeconds / 60f)} minute(s) - the LLM didn't return a summary in time. History is unchanged.");
     }
 
     private void OnCopyClicked()
@@ -4927,15 +4970,14 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _consecutiveSelfContinues = 0;
         _compactSummaryCancel?.Invoke();
         _lastTurnAttachments?.Clear();
-        _stickyAutoloadSkillIds.Clear();
-        _autoloadSkillIds.Clear();
         _infoMessages.Clear();
         _actionParser?.Reset();
         ResetPerTurnExecutionState();
 
+        // No autoload-skill bookkeeping needed: liveness is re-derived from the kept
+        // history on the next send, so bodies trimmed away simply re-trigger later.
         var kept = all.GetRange(0, targetIndex + 1);
         _promptManager.ReplaceInteractions(kept);
-        _promptManager.RemoveInteractionsByInternalTag(AUTOLOAD_SKILL_CONTEXT_TAG);
         var finalKept = _promptManager.GetInteractionsList();
         PruneMediaCheckpointsTo(finalKept);
 
@@ -5513,7 +5555,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (_geminiMgr != null && _geminiMgr.IsRequestActive()) _geminiMgr.CancelCurrentRequest();
     }
 
-    private static int GetAnthropicMaxOutputTokens(string model)
+    // Public: SkillActionExecutor.DispatchOneShot reuses this for uncapped one-shots
+    // (Anthropic is the one provider whose API REQUIRES an explicit max_tokens).
+    public static int GetAnthropicMaxOutputTokens(string model)
     {
         string m = (model ?? "").ToLowerInvariant();
         if (m.Contains("opus-4-7") || m.Contains("opus-4-8"))
@@ -5674,7 +5718,6 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (_contextBuilder != null && _promptManager != null)
         {
             _promptManager.SetBaseSystemPrompt(_contextBuilder.Build(GetKeepOldToolCallsInPrompt()));
-            InjectTriggeredSkillContextIfNeeded(latestUserMessage);
         }
 
         _activeProviderInFlight = activeProvider;
@@ -5875,135 +5918,161 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         }
     }
 
-    private void InjectTriggeredSkillContextIfNeeded(string latestUserMessage)
+    // ---------- keyword-autoloaded skill bodies ----------
+
+    /// <summary>
+    /// Queue the full body of each newly keyword-triggered autoload skill as an
+    /// info-recap message. Called from the send paths BEFORE
+    /// BuildLLMPayloadWithInfoRecap so the body folds into THIS turn's outgoing user
+    /// message and the model can use it immediately. Delivery through the recap tail
+    /// (the same path read_skill bodies use) is deliberate: these used to be a
+    /// system-role interaction, but BuildPromptChat folds those into the FRONT system
+    /// message, and growing the prompt head mid-conversation invalidated the server's
+    /// prompt cache for the entire history every time a new skill triggered - a ~40s
+    /// full re-prefill on a long llama.cpp chat. The recap rides the request tail, so
+    /// the cached prefix survives and the body persists in that user line's history
+    /// for the rest of the chat.
+    /// </summary>
+    private void QueueTriggeredSkillBodyInjections(string outgoingUserText)
     {
-        if (_skillManager == null || _promptManager == null || string.IsNullOrWhiteSpace(latestUserMessage))
+        if (_skillManager == null || _promptManager == null || string.IsNullOrWhiteSpace(outgoingUserText))
             return;
 
-        var matched = _skillManager.GetAutoloadSkillsForMessage(latestUserMessage);
+        var matched = _skillManager.GetAutoloadSkillsForMessage(outgoingUserText);
         if (matched == null || matched.Count == 0)
             return;
 
-        // Add each newly triggered autoload skill once. Already-live skill bodies stay
-        // in place so the context block remains stable for prompt caching.
-        bool anyNew = false;
+        var live = ComputeLiveAutoloadSkillIds();
+        var loadedIds = new List<string>();
         foreach (var skill in matched)
         {
-            if (skill == null || string.IsNullOrEmpty(skill.Id))
+            if (skill == null || string.IsNullOrEmpty(skill.Id) || live.Contains(skill.Id))
                 continue;
-            if (_autoloadSkillIds.Contains(skill.Id))
-                continue;
-            anyNew = true;
-            _autoloadSkillIds.Add(skill.Id);
+
+            string body = SkillManager.ApplyPresetPrefix(skill.RawMarkdown ?? "");
+            _infoMessages.Add(new InfoMessage(
+                AutoloadSkillBodyMarkerPrefix + skill.Id + "' (full body of aichat/skills/" +
+                skill.Id + ".md, auto-loaded because a trigger word appeared in the " +
+                "conversation). Use this knowledge directly in this and later replies; " +
+                "do NOT call read_skill for this id.\n\n" + body));
+            _sentAutoloadSkillBodies[skill.Id] = body;
+            loadedIds.Add(skill.Id);
         }
 
-        // Nothing new triggered: the live set is unchanged, so leave the cached
-        // context block alone.
-        if (!anyNew)
+        if (loadedIds.Count == 0)
             return;
 
-        RebuildAutoloadSkillContext();
+        var sb = new StringBuilder();
+        sb.Append("AI Chat skill references changed: loaded ");
+        AppendQuotedSkillIdList(sb, loadedIds);
+        sb.Append(".");
+        AddSystemMessage(sb.ToString(), includeInLLMRecap: false);
+        Debug.Log("AIChatPanel: auto-loaded skill bodies attached to this turn: " + string.Join(", ", loadedIds));
     }
 
     /// <summary>
-    /// Recompute which auto-loaded skill bodies are live and rewrite the single tagged
-    /// context block to match. Bulk remove + re-add mirrors the long-standing per-turn
-    /// refresh; the STABLE base system prompt is untouched, so only this block (at the
-    /// tail) changes while the rest of the cached conversation prefix survives. Also
-    /// drives the per-turn reload path so deleted/renamed skill files are dropped.
+    /// A skill counts as live when a full-body copy is already reachable by the model:
+    /// baked into a user line's LLM payload on an earlier turn (keyword autoload or
+    /// read_skill), or queued in a not-yet-sent info message. Derived by substring
+    /// scan instead of a stored id list so history changes (Rewind, Compact, Clear,
+    /// bubble edits) can never leave the tracking stale - a body that fell out of
+    /// history simply re-triggers on the next keyword hit.
     /// </summary>
-    private void RebuildAutoloadSkillContext()
+    private HashSet<string> ComputeLiveAutoloadSkillIds()
+    {
+        var live = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var skills = _skillManager != null ? _skillManager.GetSkills() : null;
+        if (skills == null || skills.Count == 0 || _promptManager == null)
+            return live;
+
+        var texts = new List<string>();
+        foreach (var line in _promptManager.GetInteractionsList())
+        {
+            if (line != null && line._role == "user" && !string.IsNullOrEmpty(line._content))
+                texts.Add(line._content);
+        }
+        foreach (var msg in _infoMessages)
+        {
+            if (msg != null && !msg.m_alreadySentToLLM && !string.IsNullOrEmpty(msg.m_text))
+                texts.Add(msg.m_text);
+        }
+        if (texts.Count == 0)
+            return live;
+
+        foreach (var skill in skills)
+        {
+            if (skill == null || string.IsNullOrEmpty(skill.Id))
+                continue;
+            string autoloadMarker = AutoloadSkillBodyMarkerPrefix + skill.Id + "'";
+            string readSkillMarker = ReadSkillBodyMarkerPrefix + skill.Id + "'";
+            foreach (string text in texts)
+            {
+                if (text.IndexOf(autoloadMarker, StringComparison.Ordinal) >= 0 ||
+                    text.IndexOf(readSkillMarker, StringComparison.Ordinal) >= 0)
+                {
+                    live.Add(skill.Id);
+                    break;
+                }
+            }
+        }
+        return live;
+    }
+
+    /// <summary>
+    /// After a skill-file reload, re-send bodies whose files genuinely changed so the
+    /// model stops following a stale copy. The update rides the info-recap tail of the
+    /// NEXT outgoing message (append-only, prompt-cache safe) instead of rewriting the
+    /// earlier copy in place; unchanged bodies send nothing. Ids that are live via a
+    /// copy this panel never recorded (rediscovered after Rewind, or loaded by
+    /// read_skill) are baselined against the current file so FUTURE edits diff
+    /// correctly.
+    /// </summary>
+    private void QueueUpdatedSkillBodiesAfterReload()
     {
         if (_skillManager == null || _promptManager == null)
             return;
 
-        var previousLiveIds = new HashSet<string>(_stickyAutoloadSkillIds, StringComparer.OrdinalIgnoreCase);
-
-        // Drop ids whose skill file disappeared (e.g. user deleted/renamed it and the
-        // config was reloaded) so the live reference list doesn't leak dead entries.
-        _autoloadSkillIds.RemoveAll(id => _skillManager.GetById(id) == null);
-
-        var keep = ComputeKeptAutoloadSkills();
-        var currentLiveIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var s in keep)
-        {
-            if (s != null && !string.IsNullOrEmpty(s.Id))
-                currentLiveIds.Add(s.Id);
-        }
-
-        _promptManager.RemoveInteractionsByInternalTag(AUTOLOAD_SKILL_CONTEXT_TAG);
-        _stickyAutoloadSkillIds.Clear();
-        foreach (var s in keep)
-            _stickyAutoloadSkillIds.Add(s.Id);
-
-        if (keep.Count == 0)
-        {
-            AddAutoloadSkillContextNotice(previousLiveIds, currentLiveIds);
-            return;
-        }
-
-        string block = _skillManager.BuildSkillReferenceMaterialBlock(keep);
-        if (!string.IsNullOrWhiteSpace(block))
-            _promptManager.AddInteraction("system", block, AUTOLOAD_SKILL_CONTEXT_TAG);
-
-        AddAutoloadSkillContextNotice(previousLiveIds, currentLiveIds);
-        Debug.Log("AIChatPanel: auto-loaded skill context now: " + string.Join(", ", keep.ConvertAll(s => s.Id)));
-    }
-
-    private void AddAutoloadSkillContextNotice(HashSet<string> previousLiveIds, HashSet<string> currentLiveIds)
-    {
-        var loaded = new List<string>();
-        var removed = new List<string>();
-
-        foreach (string id in currentLiveIds)
-        {
-            if (!previousLiveIds.Contains(id))
-                loaded.Add(id);
-        }
-
-        foreach (string id in previousLiveIds)
-        {
-            if (!currentLiveIds.Contains(id))
-                removed.Add(id);
-        }
-
-        if (loaded.Count == 0 && removed.Count == 0)
+        var live = ComputeLiveAutoloadSkillIds();
+        if (live.Count == 0)
             return;
 
-        loaded.Sort(StringComparer.OrdinalIgnoreCase);
-        removed.Sort(StringComparer.OrdinalIgnoreCase);
+        var updatedIds = new List<string>();
+        foreach (string id in live)
+        {
+            var skill = _skillManager.GetById(id);
+            if (skill == null)
+            {
+                // Skill file vanished. The copy already baked into history is
+                // harmless; drop only the edit-tracking entry.
+                _sentAutoloadSkillBodies.Remove(id);
+                continue;
+            }
+
+            string body = SkillManager.ApplyPresetPrefix(skill.RawMarkdown ?? "");
+            if (!_sentAutoloadSkillBodies.TryGetValue(id, out string sentBody))
+            {
+                _sentAutoloadSkillBodies[id] = body;
+                continue;
+            }
+            if (string.Equals(sentBody, body, StringComparison.Ordinal))
+                continue;
+
+            _infoMessages.Add(new InfoMessage(
+                AutoloadSkillBodyMarkerPrefix + id + "' (updated copy - aichat/skills/" + id +
+                ".md changed on disk; this supersedes any earlier copy of this skill above).\n\n" + body));
+            _sentAutoloadSkillBodies[id] = body;
+            updatedIds.Add(id);
+        }
+
+        if (updatedIds.Count == 0)
+            return;
 
         var sb = new StringBuilder();
-        sb.Append("AI Chat skill references changed:");
-        if (loaded.Count > 0)
-        {
-            sb.Append(" loaded ");
-            AppendQuotedSkillIdList(sb, loaded);
-        }
-        if (removed.Count > 0)
-        {
-            if (loaded.Count > 0)
-                sb.Append(";");
-            sb.Append(" removed ");
-            AppendQuotedSkillIdList(sb, removed);
-        }
-        sb.Append(".");
+        sb.Append("AI Chat skill references changed: updated ");
+        AppendQuotedSkillIdList(sb, updatedIds);
+        sb.Append(" (revised body rides the next message).");
         AddSystemMessage(sb.ToString(), includeInLLMRecap: false);
-    }
-
-    /// <summary>
-    /// Resolve loaded autoload ids to live Skill objects. Returned in first-load order
-    /// for a stable block ordering.
-    /// </summary>
-    private List<Skill> ComputeKeptAutoloadSkills()
-    {
-        var skills = new List<Skill>();
-        foreach (string id in _autoloadSkillIds)
-        {
-            var s = _skillManager?.GetById(id);
-            if (s != null) skills.Add(s);
-        }
-        return skills;
+        Debug.Log("AIChatPanel: queued updated skill bodies: " + string.Join(", ", updatedIds));
     }
 
     /// <summary>
@@ -6630,16 +6699,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (_skillManager == null)
             return;
 
-        bool hadAutoload = _autoloadSkillIds.Count > 0;
         _skillManager.Reload();
 
-        if (!hadAutoload)
-            return;
-
-        // Re-emit the (possibly user-edited) bodies for the still-loaded set, dropping
-        // any skill whose file vanished. Driving this through the shared helper keeps
-        // the reload path and the trigger path on one code path.
-        RebuildAutoloadSkillContext();
+        // If a live skill's file was edited, queue the revised body so the model
+        // stops following the stale copy (rides the next message's info recap).
+        QueueUpdatedSkillBodiesAfterReload();
     }
 
     private void OnSettingsClicked()
@@ -6649,8 +6713,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             // Reload from disk so any user edits to prompt or skill files take
             // effect on the very next turn (rebuilt by ChatContextBuilder.Build()).
             _skillManager?.Reload();
-            if (_autoloadSkillIds.Count > 0)
-                RebuildAutoloadSkillContext();
+            QueueUpdatedSkillBodiesAfterReload();
             int n = _skillManager?.GetSkills().Count ?? 0;
             AddSystemMessage($"Reloaded aichat config: {n} skill{(n == 1 ? "" : "s")}.", includeInLLMRecap: false);
             AddPromptConfigNotice();
@@ -8482,11 +8545,17 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     }
 
     /// <summary>Inject a message into the input field and run the normal send path.</summary>
-    public void AutomationSendMessage(string text)
+    public bool AutomationSendMessage(string text)
     {
+        // Report the silent OnSendClicked gates back to the automation caller: a
+        // human sees a greyed Send button, but a scripted POST /chat racing the end
+        // of the previous turn was swallowed with no signal, dropping the message.
+        if (_isStreaming || _waitingForForcedMainLLM || _compactSummaryInFlight || HasPendingSidecarWork())
+            return false;
         if (_inputField != null)
             _inputField.text = text ?? "";
         OnSendClicked();
+        return true;
     }
 
     /// <summary>Static accessor: report idle for the live panel. False if no panel exists.</summary>
@@ -8502,8 +8571,32 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     public static bool AutomationSend(string text)
     {
         if (_instance == null) return false;
-        _instance.AutomationSendMessage(text);
-        return true;
+        return _instance.AutomationSendMessage(text);
+    }
+
+    /// <summary>
+    /// Automation-only: run the Compact feature ("summarize" or "truncate"), keeping the
+    /// last <paramref name="keepExchanges"/> exchanges verbatim. Summarize is async - the
+    /// caller should poll /status until idle, then inspect the chat/history.
+    /// </summary>
+    public static bool AutomationCompact(string mode, int keepExchanges, out string error)
+    {
+        error = "";
+        if (_instance == null) { error = "no chat panel"; return false; }
+        if (keepExchanges < 0) keepExchanges = 0;
+        switch ((mode ?? "").Trim().ToLowerInvariant())
+        {
+            case "truncate":
+                _instance.DoCompactTruncate(keepExchanges);
+                return true;
+            case "":
+            case "summarize":
+                _instance.DoCompactSummarize(keepExchanges);
+                return true;
+            default:
+                error = "unknown mode '" + mode + "' (use summarize or truncate)";
+                return false;
+        }
     }
 
     /// <summary>

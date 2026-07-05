@@ -115,6 +115,12 @@ public class AutomationDriver : MonoBehaviour
         return AIChatPanel.AutomationImportVideo(path, startSeconds, durationSeconds, fps, includeAudio, out error);
     }
 
+    /// <summary>Run AI Chat's Compact feature (mode "summarize" or "truncate").</summary>
+    public bool CompactChat(string mode, int keepExchanges, out string error)
+    {
+        return AIChatPanel.AutomationCompact(mode, keepExchanges, out error);
+    }
+
     /// <summary>Save a chat image to disk as PNG. index &lt;= 0 means latest.</summary>
     public bool Save(int index, string path, out string error)
     {

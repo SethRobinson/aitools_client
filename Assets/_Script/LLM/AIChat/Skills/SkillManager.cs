@@ -350,41 +350,6 @@ namespace AITools.AIChat.Skills
             return sb.ToString();
         }
 
-        /// <summary>
-        /// Returns full skill bodies for skills that opted into same-turn preload and
-        /// whose trigger terms match the latest user message. Trigger terms live in
-        /// skill front matter so adding a new autoloaded skill does not require code.
-        /// </summary>
-        public string BuildAutoloadSkillBodiesBlock(string latestUserMessage)
-        {
-            return BuildSkillReferenceMaterialBlock(GetAutoloadSkillsForMessage(latestUserMessage));
-        }
-
-        public string BuildSkillReferenceMaterialBlock(IEnumerable<Skill> skills)
-        {
-            var sb = new StringBuilder();
-            bool wroteAny = false;
-            sb.AppendLine("AUTO-LOADED SKILL REFERENCE MATERIAL:");
-            sb.AppendLine("The following skill bodies were loaded because a trigger word appeared in the conversation. Use them directly in this and later replies; do NOT call read_skill for these skills.");
-            foreach (var skill in skills ?? Array.Empty<Skill>())
-            {
-                if (skill == null || string.IsNullOrEmpty(skill.Id))
-                    continue;
-                wroteAny = true;
-                sb.AppendLine();
-                sb.Append("## ").AppendLine(skill.Id);
-                // Skip the Summary: and Template: lines here - the SKILLS section in the
-                // base system prompt already shows both, so re-emitting them wastes ~600
-                // tokens per auto-loaded skill (a measurable chunk of the context window
-                // for a 27B model). The body below is the only non-duplicate content.
-                sb.AppendLine();
-                string body = ApplyPresetPrefix(skill.RawMarkdown ?? "");
-                sb.AppendLine(body.TrimEnd());
-            }
-            sb.AppendLine();
-            return wroteAny ? sb.ToString() : "";
-        }
-
         public List<Skill> GetAutoloadSkillsForMessage(string latestUserMessage)
         {
             var result = new List<Skill>();

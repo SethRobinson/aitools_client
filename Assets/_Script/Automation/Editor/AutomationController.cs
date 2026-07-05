@@ -32,8 +32,9 @@ using UnityEngine;
 //   POST /settings    -> body: tab=<general|configuration|comfyui|audio|llm>; open Settings panel
 //   POST /llm_settings -> open the advanced LLM Settings panel
 //   POST /server_settings -> body: id=<serverID>; open that server's Overrides panel
-//   POST /chat        -> body = message text; open chat + send one turn
+//   POST /chat        -> body = message text; open chat + send one turn (ok:false if a busy gate refused the send)
 //   POST /chat_import_video -> body: path=<file>, optional start=<seconds>, duration=<seconds>, fps=<n>, audio=<true|false>; import clipped Movie bubble
+//   POST /chat_compact -> body: mode=<summarize|truncate> (default summarize), keep=<n> exchanges kept (default 2); runs AI Chat's Compact
 //   GET  /chat_images -> JSON array: index/w/h/busy/movie for each chat image
 //   POST /save        -> body: index=<n|latest>, path=<file>; save chat image PNG
 //   POST /screenshot  -> body: path=<file> [x,y,w,h top-left region]; capture game view
@@ -243,16 +244,24 @@ public static class AutomationController
                 }
 
                 case "/chat":
+                {
                     // Body is the raw message text. Open the chat panel first so a fresh
-                    // session can be driven without a separate /open_chat call.
+                    // session can be driven without a separate /open_chat call. Waits for
+                    // the main thread so a send refused by a busy gate (previous turn
+                    // still streaming, summarize in flight, sidecars pending) reports
+                    // ok:false instead of silently dropping the message.
                     string message = body;
-                    EnqueueMain(() =>
+                    string result = RunOnMainAndWait(() =>
                     {
                         AutomationBridge.OpenChat();
-                        AutomationBridge.SendChat(message);
-                    });
-                    WriteJson(stream, 200, "{\"ok\":true,\"accepted\":\"chat\"}");
+                        bool ok = AutomationBridge.SendChat(message);
+                        return ok
+                            ? "{\"ok\":true,\"accepted\":\"chat\"}"
+                            : "{\"ok\":false,\"error\":\"chat is busy - poll /status until idle, then retry\"}";
+                    }, "{\"ok\":false,\"error\":\"timed out\"}");
+                    WriteJson(stream, 200, result);
                     break;
+                }
 
                 case "/chat_import_video":
                 {
@@ -271,6 +280,26 @@ public static class AutomationController
                         bool ok = AutomationBridge.ImportChatVideo(videoPath, startSeconds, durationSeconds, fps, includeAudio, out string err);
                         return ok
                             ? $"{{\"ok\":true,\"accepted\":\"chat_import_video\",\"path\":{JsonStr(videoPath)}}}"
+                            : $"{{\"ok\":false,\"error\":{JsonStr(err)}}}";
+                    }, "{\"ok\":false,\"error\":\"timed out\"}");
+                    WriteJson(stream, 200, result);
+                    break;
+                }
+
+                case "/chat_compact":
+                {
+                    // Body: key=value lines. mode=<summarize|truncate> (default summarize),
+                    // keep=<n> most-recent exchanges kept verbatim (default 2). Summarize is
+                    // async: poll /status until idle, then inspect the chat.
+                    var kv = ParseKeyValues(body);
+                    string compactMode = kv.TryGetValue("mode", out var cm) ? cm : "summarize";
+                    int keepExchanges = ParseInt(kv, "keep", 2);
+                    string result = RunOnMainAndWait(() =>
+                    {
+                        AutomationBridge.OpenChat();
+                        bool ok = AutomationBridge.CompactChat(compactMode, keepExchanges, out string err);
+                        return ok
+                            ? $"{{\"ok\":true,\"accepted\":\"chat_compact\",\"mode\":{JsonStr(compactMode)}}}"
                             : $"{{\"ok\":false,\"error\":{JsonStr(err)}}}";
                     }, "{\"ok\":false,\"error\":\"timed out\"}");
                     WriteJson(stream, 200, result);
