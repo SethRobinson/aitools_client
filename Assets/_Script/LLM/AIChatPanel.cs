@@ -348,6 +348,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // errors surface through the request's own callback.
     private const float COMPACT_TIMEOUT_MIN_SECONDS = 300f;
     private const float COMPACT_TIMEOUT_MAX_SECONDS = 1800f;
+    // Internal tag on the summary GTPChatLine so RebuildChatBubblesFromHistory can
+    // render it as a first-class, always-visible, EDITABLE "Summary" bubble (the
+    // user verifies/corrects what the model distilled) instead of a debug-gated
+    // Info bubble like other system-role context lines.
+    private const string COMPACT_SUMMARY_TAG = "aichat_compact_summary";
+    private static readonly Color SummaryLabelColor = new Color(0.34f, 0.24f, 0.55f);
+    private static readonly Color SummaryBubbleBg = new Color(0.93f, 0.91f, 0.98f, 1f);
     // Guards against overlapping compact-summary requests (the button is in the
     // settings panel, which can be reopened while one is still in flight).
     private bool _compactSummaryInFlight;
@@ -358,6 +365,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private int _compactSummaryMsgCount = 0;
     private float _compactStatusNextRefresh = 0f;
     private int _compactSpinnerStep = 0;
+    // Rough size of the in-flight summarize request (chars/4), shown in the status
+    // line so the user can gauge how big a prefill the server is chewing on.
+    private int _compactSummaryApproxSentTokens = 0;
     // Set while a compact-summary is in flight; invoking it flips the request's
     // done-latch so a late HTTP response is discarded. Clear (which resets the
     // whole conversation) uses this so the summary can't resurrect old history.
@@ -2196,6 +2206,58 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             }
         }
         return false;
+    }
+
+    // Used when a job MUST run on a specific instance (e.g. the compact summary
+    // honoring the Main LLM override) and no replica is free: queue on the one
+    // with the fewest active tasks instead of failing or switching instances.
+    private static int FindLeastLoadedReplica(LLMInstanceInfo inst)
+    {
+        if (inst == null) return 0;
+        inst.EnsureReplicaActiveTasks();
+        int repCount = inst.GetEffectiveReplicaCount();
+        int best = 0, bestTasks = int.MaxValue;
+        for (int i = 0; i < repCount; i++)
+        {
+            if (inst.replicaActiveTasks[i] < bestTasks)
+            {
+                bestTasks = inst.replicaActiveTasks[i];
+                best = i;
+            }
+        }
+        return best;
+    }
+
+    private static string FormatApproxTokenCount(int tokens)
+    {
+        if (tokens >= 100000) return $"{tokens / 1000f:F0}k";
+        if (tokens >= 1000) return $"{tokens / 1000f:F1}k";
+        return tokens.ToString();
+    }
+
+    /// <summary>
+    /// Cut a user line's LLM payload at the first injected skill-body marker for the
+    /// compact-summary transcript. Bodies are folded at the tail of the recap section
+    /// (QueueTriggeredSkillBodyInjections queues them right before the fold), so the
+    /// user's real text and earlier recap notes survive; in the rare case another
+    /// note landed after a read_skill body it is dropped too - acceptable for a
+    /// summarizer input. A stub line replaces the cut so the recap bullet list does
+    /// not end dangling.
+    /// </summary>
+    private static string StripInjectedSkillBodiesForTranscript(string userContent)
+    {
+        if (string.IsNullOrEmpty(userContent)) return userContent;
+        int cut = userContent.IndexOf(AutoloadSkillBodyMarkerPrefix, StringComparison.Ordinal);
+        int readSkillCut = userContent.IndexOf(ReadSkillBodyMarkerPrefix, StringComparison.Ordinal);
+        if (readSkillCut >= 0 && (cut < 0 || readSkillCut < cut))
+            cut = readSkillCut;
+        if (cut < 0) return userContent;
+
+        string head = userContent.Substring(0, cut);
+        // Drop the recap bullet prefix ("- ") the fold added in front of the marker.
+        if (head.EndsWith("- ", StringComparison.Ordinal))
+            head = head.Substring(0, head.Length - 2);
+        return head.TrimEnd() + "\n- [auto-loaded skill reference material omitted]";
     }
 
     private void DispatchInspectImageJob(InspectImageRequest req, LLMInstanceManager instanceMgr, LLMInstanceInfo inst, int targetId, int replicaIndex)
@@ -4458,7 +4520,15 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             }
             else
             {
-                // Internal system context (e.g. the compact summary) surfaces as Info.
+                // The compact summary is a first-class, always-visible, EDITABLE
+                // bubble: linking the interaction makes HookEditingTo push user
+                // corrections straight back into the history line the LLM reads.
+                if (line._internalTag == COMPACT_SUMMARY_TAG)
+                {
+                    AppendBubble("Summary", SummaryLabelColor, line._content, SummaryBubbleBg, line);
+                    continue;
+                }
+                // Other internal system context surfaces as debug-gated Info.
                 if (GetShowDebugStuff())
                     AppendInfoBubble(line._content);
             }
@@ -4532,9 +4602,37 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             RTQuickMessageManager.Get().ShowMessage("No LLM is configured - can't summarize. Use Truncate instead");
             return;
         }
-        int targetId = instanceMgr.GetFreeLLM(isSmallJob: false, isVisionJob: false, out int replicaIndex);
+
+        // Honor the footer Main LLM override: a non-Default selection forces the
+        // summary onto that same instance (it owns the follow-up turns, so it should
+        // be the one writing the recap it will rely on). If every replica is busy,
+        // queue on the least-loaded one rather than silently using a different LLM -
+        // matching the default path's least-busy fallback below.
+        int targetId = -1;
+        int replicaIndex = 0;
+        int overrideId = GetMainLLMOverrideInstanceID();
+        if (overrideId != MAIN_LLM_DEFAULT_ID)
+        {
+            var forcedInst = instanceMgr.GetInstance(overrideId);
+            if (!IsSelectableMainLLMInstance(forcedInst))
+            {
+                SetMainLLMOverrideInstanceID(MAIN_LLM_DEFAULT_ID);
+                RefreshMainLLMDropdownOptions();
+                RTQuickMessageManager.Get().ShowMessage("Main LLM override reset to Default - the selected LLM is no longer active");
+            }
+            else
+            {
+                targetId = overrideId;
+                if (!TryFindFreeReplica(forcedInst, out replicaIndex))
+                    replicaIndex = FindLeastLoadedReplica(forcedInst);
+            }
+        }
         if (targetId < 0)
-            targetId = instanceMgr.GetLeastBusyLLM(isSmallJob: false, isVisionJob: false, out replicaIndex);
+        {
+            targetId = instanceMgr.GetFreeLLM(isSmallJob: false, isVisionJob: false, out replicaIndex);
+            if (targetId < 0)
+                targetId = instanceMgr.GetLeastBusyLLM(isSmallJob: false, isVisionJob: false, out replicaIndex);
+        }
         if (targetId < 0)
         {
             RTQuickMessageManager.Get().ShowMessage("No LLM slot is available right now. Try again shortly, or use Truncate");
@@ -4579,19 +4677,67 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             string roleLabel = line._role == "user" ? "User"
                 : line._role == "assistant" ? "Assistant"
                 : "Note";
-            transcript.Append(roleLabel).Append(": ").Append(line._content).Append("\n\n");
+            // User lines can carry injected skill reference bodies in their recap
+            // tail - instructions, not story, and often 10k+ tokens. Keep them OUT
+            // of the summarizer's input; the restore step below keeps them alive in
+            // the post-compact context instead.
+            string flat = line._role == "user"
+                ? StripInjectedSkillBodiesForTranscript(line._content)
+                : line._content;
+            transcript.Append(roleLabel).Append(": ").Append(flat).Append("\n\n");
         }
 
         var lines = new Queue<GTPChatLine>();
         lines.Enqueue(new GTPChatLine("system",
             "You are a precise conversation summarizer. You will be given the earlier portion of a chat. Produce a dense recap and nothing else."));
+        // Per-image recap notes follow the same window as the CHAT IMAGES block: only
+        // the newest <Image context limit> images (plus named anchors, which stay
+        // referenceable forever by name) get one-line descriptions. Without this,
+        // summarizing a 200-image story burns the recap on descriptions of images
+        // that already scrolled out of the usable image window.
+        int imageContextLimit = GetImageContextLimit();
+        string anchorPairs = BuildAnchorSlotPairs();
+        string imageClause;
+        if (imageCount <= 0)
+        {
+            imageClause = "There are currently no chat images. ";
+        }
+        else if (imageContextLimit > 0 && imageCount <= imageContextLimit)
+        {
+            imageClause =
+                "CRUCIALLY, for every generated or attached image referred to as chat_image=\"N\", keep a one-line note of what image #N depicts and any name/identity tied to it, so it can still be referenced later. " +
+                "There are currently " + imageCount + " chat image(s). ";
+        }
+        else
+        {
+            var noteTargets = new List<string>();
+            if (imageContextLimit > 0)
+            {
+                int firstKept = imageCount - imageContextLimit + 1;
+                noteTargets.Add("chat images #" + firstKept + "-#" + imageCount +
+                                " (the newest " + imageContextLimit + " of " + imageCount + ")");
+            }
+            if (!string.IsNullOrEmpty(anchorPairs))
+                noteTargets.Add("the ANCHORED images " + anchorPairs + " (named recurring subjects)");
+
+            imageClause = noteTargets.Count == 0
+                ? "Do NOT describe the " + imageCount + " chat images individually; mention them only in aggregate if the story needs it. "
+                : "CRUCIALLY, keep a one-line note of what the image depicts and any name/identity tied to it ONLY for " +
+                  string.Join(" and ", noteTargets) + ". " +
+                  "Do NOT describe other older images individually - they are outside the usable image window; cover them in aggregate at most. ";
+        }
+
         string instruction =
             "Summarize the conversation so far into a concise but information-dense recap that a continuation of this chat can rely on. " +
             "Preserve: the user's goals; any decisions, rules or constraints agreed on; key facts established; and where things currently stand. " +
-            "CRUCIALLY, for every generated or attached image referred to as chat_image=\"N\", keep a one-line note of what image #N depicts and any name/identity tied to it, so it can still be referenced later. " +
-            "There are currently " + imageCount + " chat image(s). Output the recap only - no preamble and no sign-off.\n\n" +
+            imageClause +
+            "Output the recap only - no preamble and no sign-off.\n\n" +
             "Here is the earlier conversation to summarize:\n\n" + transcript.ToString();
         lines.Enqueue(new GTPChatLine("user", instruction));
+
+        // ~4 chars/token is the usual English-prose ballpark; close enough for a
+        // progress readout (the request is the instruction + a tiny system line).
+        _compactSummaryApproxSentTokens = instruction.Length / 4;
 
         AddSystemMessage($"Compacting: summarizing {older.Count} older message(s) with the active LLM... the last {keepExchanges} exchange(s) and all images are kept.", includeInLLMRecap: false);
 
@@ -4599,11 +4745,36 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         Coroutine watchdog = null;
         int capId = targetId, capReplica = replicaIndex;
 
+        // Live preview bubble: shows the summary text as it streams in, so a long
+        // compact visibly makes progress instead of looking hung. Read-only; it is
+        // destroyed on release and (on success) replaced by the real editable
+        // Summary bubble when the rebuilt history lands.
+        TMP_InputField previewField = AppendBubble(
+            "Summary (generating...)", SummaryLabelColor,
+            $"(summarizing {older.Count} older message{(older.Count == 1 ? "" : "s")}, ~{FormatApproxTokenCount(_compactSummaryApproxSentTokens)} tokens sent to the LLM...)",
+            SummaryBubbleBg);
+        GameObject previewRoot = previewField != null ? previewField.transform.parent.gameObject : null;
+        var streamed = new StringBuilder();
+        float lastPreviewUpdate = 0f;
+        Action<string> onStreamChunk = chunk =>
+        {
+            if (done || string.IsNullOrEmpty(chunk)) return;
+            streamed.Append(chunk);
+            if (previewField == null) return;
+            if (Time.unscaledTime - lastPreviewUpdate < 0.25f) return;
+            lastPreviewUpdate = Time.unscaledTime;
+            bool shouldAutoScroll = IsScrollAtBottom(_chatScroll);
+            previewField.text = ConvertMarkdownToTMP(BuildVisibleStreamText(streamed.ToString()));
+            if (shouldAutoScroll)
+                StartCoroutine(ScrollToBottomDeferred());
+        };
+
         Action release = () =>
         {
             if (done) return;
             done = true;
             if (watchdog != null) { try { StopCoroutine(watchdog); } catch { } }
+            if (previewRoot != null) { Destroy(previewRoot); previewRoot = null; previewField = null; }
             instanceMgr.SetLLMBusy(capId, capReplica, false);
             _compactSummaryInFlight = false;
             _compactSummaryCancel = null;
@@ -4623,6 +4794,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             {
                 try { raw = OpenAITextCompletionManager.ExtractTextFromResponseJSON(json); } catch { }
             }
+            // Streaming providers may hand the completion callback less than the
+            // full text; the accumulated stream is the authoritative fallback.
+            if (string.IsNullOrEmpty(raw) && streamed.Length > 0)
+                raw = streamed.ToString().Trim();
             if (GenerateSettingsPanel.GetStripThinkTags())
                 raw = OpenAITextCompletionManager.RemoveThinkTagsFromString(raw ?? "");
             raw = (raw ?? "").Trim();
@@ -4649,13 +4824,43 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             }
 
             var summaryLine = new GTPChatLine("system",
-                "[Conversation summary - earlier history was compacted to save space]\n" + raw);
+                "[Conversation summary - earlier history was compacted to save space]\n" + raw,
+                COMPACT_SUMMARY_TAG);
             var rebuilt = new List<GTPChatLine>(keptTail.Count + 1) { summaryLine };
             rebuilt.AddRange(keptTail);
+
+            // Loaded skill bodies must SURVIVE the compact even though they are
+            // excluded from the summarizer's transcript: snapshot liveness against
+            // the old history, replace it, then re-queue any body that lived only in
+            // the summarized-away lines. The re-queue must happen AFTER
+            // RebuildChatBubblesFromHistory, which clears _infoMessages as part of
+            // its stale-recap protection; the restored copy then rides the next
+            // outgoing message's recap tail exactly like a fresh keyword load.
+            var liveSkillIdsBeforeCompact = ComputeLiveAutoloadSkillIds();
             _promptManager.ReplaceInteractions(rebuilt);
             MarkInteractionMediaCheckpoint(summaryLine);
             PruneMediaCheckpointsTo(rebuilt);
             RebuildChatBubblesFromHistory();
+
+            var liveSkillIdsAfterCompact = ComputeLiveAutoloadSkillIds();
+            var restoredSkillIds = new List<string>();
+            foreach (string skillId in liveSkillIdsBeforeCompact)
+            {
+                if (liveSkillIdsAfterCompact.Contains(skillId)) continue;
+                var liveSkill = _skillManager?.GetById(skillId);
+                if (liveSkill == null) continue;
+                QueueSkillBodyInjection(liveSkill);
+                restoredSkillIds.Add(skillId);
+            }
+            if (restoredSkillIds.Count > 0)
+            {
+                restoredSkillIds.Sort(StringComparer.OrdinalIgnoreCase);
+                var noticeSb = new StringBuilder();
+                noticeSb.Append("Compact kept auto-loaded skill references alive: ");
+                AppendQuotedSkillIdList(noticeSb, restoredSkillIds);
+                noticeSb.Append(" (re-attached to the next message).");
+                AddSystemMessage(noticeSb.ToString(), includeInLLMRecap: false);
+            }
             AddSystemMessage($"Compacted {older.Count} older message(s) into a summary. Kept the last {keepExchanges} exchange(s); all images are intact.", includeInLLMRecap: false);
             // release() above reset the status to Idle; leave the result on screen
             // instead, matching how finished turns keep their token stats visible.
@@ -4675,7 +4880,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // turn: a 180-turn recap can legitimately run long, and thinking models also
         // burn part of the budget inside <think> before any visible summary appears.
         SkillActionExecutor.DispatchOneShot(this, inst, lines, onDone, "CompactSummary", "compact_summary_sent.json",
-            maxNewTokens: 0);
+            maxNewTokens: 0, onStreamChunk: onStreamChunk);
     }
 
     private IEnumerator CompactSummaryWatchdog(float timeoutSeconds, Func<bool> isDone, Action release)
@@ -5949,13 +6154,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             if (skill == null || string.IsNullOrEmpty(skill.Id) || live.Contains(skill.Id))
                 continue;
 
-            string body = SkillManager.ApplyPresetPrefix(skill.RawMarkdown ?? "");
-            _infoMessages.Add(new InfoMessage(
-                AutoloadSkillBodyMarkerPrefix + skill.Id + "' (full body of aichat/skills/" +
-                skill.Id + ".md, auto-loaded because a trigger word appeared in the " +
-                "conversation). Use this knowledge directly in this and later replies; " +
-                "do NOT call read_skill for this id.\n\n" + body));
-            _sentAutoloadSkillBodies[skill.Id] = body;
+            QueueSkillBodyInjection(skill);
             loadedIds.Add(skill.Id);
         }
 
@@ -5968,6 +6167,24 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         sb.Append(".");
         AddSystemMessage(sb.ToString(), includeInLLMRecap: false);
         Debug.Log("AIChatPanel: auto-loaded skill bodies attached to this turn: " + string.Join(", ", loadedIds));
+    }
+
+    /// <summary>
+    /// Queue one skill's full body as an info-recap message (rides the tail of the
+    /// next outgoing user message) and record the delivered text for reload diffing.
+    /// Shared by keyword autoload and the compact-summary restore path.
+    /// </summary>
+    private void QueueSkillBodyInjection(Skill skill)
+    {
+        if (skill == null || string.IsNullOrEmpty(skill.Id))
+            return;
+        string body = SkillManager.ApplyPresetPrefix(skill.RawMarkdown ?? "");
+        _infoMessages.Add(new InfoMessage(
+            AutoloadSkillBodyMarkerPrefix + skill.Id + "' (full body of aichat/skills/" +
+            skill.Id + ".md, auto-loaded because a trigger word appeared in the " +
+            "conversation). Use this knowledge directly in this and later replies; " +
+            "do NOT call read_skill for this id.\n\n" + body));
+        _sentAutoloadSkillBodies[skill.Id] = body;
     }
 
     /// <summary>
@@ -9298,6 +9515,19 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     /// </summary>
     private string BuildAnchorsStateLine()
     {
+        string pairs = BuildAnchorSlotPairs();
+        if (string.IsNullOrEmpty(pairs)) return "";
+        return "ANCHORS (named reusable images - reference by NAME via chat_image=\"<name>\" or source_chat_image=\"<name>\"): "
+               + pairs;
+    }
+
+    /// <summary>
+    /// "Bob=#3, layout_canvas=#5" for every anchor whose Pic still has a live slot,
+    /// or "" when none. Shared by the ANCHORS state line and the compact summary's
+    /// image-window clause.
+    /// </summary>
+    private string BuildAnchorSlotPairs()
+    {
         if (_anchors == null || _anchors.Count == 0) return "";
 
         // Snapshot keys first: ResolveAnchorToIndex may remove dead entries mid-iteration.
@@ -9309,9 +9539,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             if (idx > 0)
                 parts.Add($"{name}=#{idx}");
         }
-        if (parts.Count == 0) return "";
-        return "ANCHORS (named reusable images - reference by NAME via chat_image=\"<name>\" or source_chat_image=\"<name>\"): "
-               + string.Join(", ", parts);
+        return string.Join(", ", parts);
     }
 
     PicMain IChatHost.GetLastSpawnedPicForTurn()
@@ -9660,7 +9888,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             _compactStatusNextRefresh = Time.unscaledTime + STREAM_STATUS_INTERVAL;
             _compactSpinnerStep = (_compactSpinnerStep + 1) % StreamSpinnerFrames.Length;
             float elapsed = Time.unscaledTime - _compactSummaryStartTime;
-            _statusText.text = $"{StreamSpinnerFrames[_compactSpinnerStep]} Summarizing {_compactSummaryMsgCount} msgs   {elapsed:F0}s";
+            _statusText.text = $"{StreamSpinnerFrames[_compactSpinnerStep]} Summarizing {_compactSummaryMsgCount} msgs (~{FormatApproxTokenCount(_compactSummaryApproxSentTokens)} tok sent)   {elapsed:F0}s";
         }
 
         if (_attachmentCaptionQueue.Count > 0 && Time.unscaledTime >= _attachmentCaptionNextDispatch)

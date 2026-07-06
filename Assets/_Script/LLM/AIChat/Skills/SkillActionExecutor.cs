@@ -1991,6 +1991,9 @@ namespace AITools.AIChat.Skills
         // NO explicit cap - the request omits max_tokens so the server/model default
         // applies (llama.cpp: unlimited; OpenAI/Gemini: model max), except Anthropic,
         // whose API requires an explicit value and gets its per-model maximum.
+        // onStreamChunk: optional delta-text callback; when provided the request is
+        // sent streaming and chunks arrive as they generate (used by the compact
+        // summary's live preview). The completion callback still fires at the end.
         public static void DispatchOneShot(
             MonoBehaviour runner,
             LLMInstanceInfo inst,
@@ -1998,11 +2001,13 @@ namespace AITools.AIChat.Skills
             Action<RTDB, JSONObject, string> onDone,
             string callerLabel,
             string sentJsonFilename = "text_completion_sent.json",
-            int maxNewTokens = 1024)
+            int maxNewTokens = 1024,
+            Action<string> onStreamChunk = null)
         {
             var settings = inst.settings;
             var db = new RTDB();
             string apiKey = settings.apiKey ?? "";
+            bool stream = onStreamChunk != null;
 
             // Editor-only: log this sidecar's reply to the AI Chat log under its
             // caller label (e.g. "ImageCaption"). The replies arrive async, outside
@@ -2025,12 +2030,12 @@ namespace AITools.AIChat.Skills
                     var mgr = runner.gameObject.AddComponent<TexGenWebUITextCompletionManager>();
                     string serverAddress = settings.endpoint ?? "";
                     string suggestedEndpoint;
-                    string json = mgr.BuildForInstructJSON(lines, out suggestedEndpoint, maxNewTokens, 0.4f, "chat-instruct", false, null, true, false);
+                    string json = mgr.BuildForInstructJSON(lines, out suggestedEndpoint, maxNewTokens, 0.4f, "chat-instruct", stream, null, true, false);
                     mgr.SpawnChatCompleteRequest(json, (rtdb, jn, str) =>
                     {
                         try { onDone(rtdb, jn, str); }
                         finally { UnityEngine.Object.Destroy(mgr); }
-                    }, db, serverAddress, suggestedEndpoint, null, false, apiKey, sentJsonFilename, debugJobSize: LLMDebugLog.JobSize.Small);
+                    }, db, serverAddress, suggestedEndpoint, onStreamChunk, stream, apiKey, sentJsonFilename, debugJobSize: LLMDebugLog.JobSize.Small);
                     break;
                 }
                 case LLMProvider.LlamaCpp:
@@ -2039,12 +2044,12 @@ namespace AITools.AIChat.Skills
                     string serverAddress = settings.endpoint ?? "";
                     string suggestedEndpoint;
                     var llmParms = BuildLLMParmsForInstance(inst);
-                    string json = mgr.BuildForInstructJSON(lines, out suggestedEndpoint, maxNewTokens, 0.4f, "chat-instruct", false, llmParms, false, true);
+                    string json = mgr.BuildForInstructJSON(lines, out suggestedEndpoint, maxNewTokens, 0.4f, "chat-instruct", stream, llmParms, false, true);
                     mgr.SpawnChatCompleteRequest(json, (rtdb, jn, str) =>
                     {
                         try { onDone(rtdb, jn, str); }
                         finally { UnityEngine.Object.Destroy(mgr); }
-                    }, db, serverAddress, suggestedEndpoint, null, false, apiKey, sentJsonFilename, debugJobSize: LLMDebugLog.JobSize.Small);
+                    }, db, serverAddress, suggestedEndpoint, onStreamChunk, stream, apiKey, sentJsonFilename, debugJobSize: LLMDebugLog.JobSize.Small);
                     break;
                 }
                 case LLMProvider.OpenAICompatible:
@@ -2061,7 +2066,7 @@ namespace AITools.AIChat.Skills
                     float? topP = isDeepSeek ? (float?)LLMRequestProfile.GetRecommendedTopP(model, effort, 1.0f) : null;
                     int maxTokens = isDeepSeek ? LLMRequestProfile.GetRecommendedMaxTokens(model, effort, maxNewTokens) : maxNewTokens;
                     string reasoningEffortParam = isDeepSeek ? LLMReasoningEffortUtil.ToConfigValue(effort) : null;
-                    string json = mgr.BuildChatCompleteJSON(lines, maxTokens, temp, model, false,
+                    string json = mgr.BuildChatCompleteJSON(lines, maxTokens, temp, model, stream,
                         enableThinking: isDeepSeek ? effort != LLMReasoningEffort.Off : settings.enableThinking,
                         topP: topP,
                         customReasoningEffort: reasoningEffortParam);
@@ -2069,7 +2074,7 @@ namespace AITools.AIChat.Skills
                     {
                         try { onDone(rtdb, jn, str); }
                         finally { UnityEngine.Object.Destroy(mgr); }
-                    }, db, apiKey, endpoint, null, false, sentJsonFilename, debugJobSize: LLMDebugLog.JobSize.Small);
+                    }, db, apiKey, endpoint, onStreamChunk, stream, sentJsonFilename, debugJobSize: LLMDebugLog.JobSize.Small);
                     break;
                 }
                 case LLMProvider.OpenAI:
@@ -2077,14 +2082,14 @@ namespace AITools.AIChat.Skills
                     var mgr = runner.gameObject.AddComponent<OpenAITextCompletionManager>();
                     string model = string.IsNullOrEmpty(settings.selectedModel) ? "gpt-4o-mini" : settings.selectedModel;
                     var profile = OpenAIRequestProfileResolver.Resolve(model, settings, 0);
-                    string json = mgr.BuildChatCompleteJSON(lines, maxNewTokens, 0.4f, model, false,
+                    string json = mgr.BuildChatCompleteJSON(lines, maxNewTokens, 0.4f, model, stream,
                         profile.useResponsesAPI, profile.isReasoningModel, profile.includeTemperature,
                         profile.reasoningEffort, profile.enableThinking);
                     mgr.SpawnChatCompleteRequest(json, (rtdb, jn, str) =>
                     {
                         try { onDone(rtdb, jn, str); }
                         finally { UnityEngine.Object.Destroy(mgr); }
-                    }, db, apiKey, profile.endpoint, null, false, sentJsonFilename, debugJobSize: LLMDebugLog.JobSize.Small);
+                    }, db, apiKey, profile.endpoint, onStreamChunk, stream, sentJsonFilename, debugJobSize: LLMDebugLog.JobSize.Small);
                     break;
                 }
                 case LLMProvider.Anthropic:
@@ -2102,7 +2107,7 @@ namespace AITools.AIChat.Skills
                     // out via ExtractTextFromResponseJSON so callers see plain text in `str`.
                     // Anthropic requires max_tokens; "no cap" resolves to the model max.
                     int anthropicMaxTokens = maxNewTokens > 0 ? maxNewTokens : AIChatPanel.GetAnthropicMaxOutputTokens(model);
-                    string json = mgr.BuildChatCompleteJSON(lines, anthropicMaxTokens, 0.4f, model, false);
+                    string json = mgr.BuildChatCompleteJSON(lines, anthropicMaxTokens, 0.4f, model, stream);
                     mgr.SpawnChatCompletionRequest(json, (rtdb, jn, str) =>
                     {
                         try
@@ -2119,7 +2124,7 @@ namespace AITools.AIChat.Skills
                             onDone(rtdb, jn, extracted ?? "");
                         }
                         finally { UnityEngine.Object.Destroy(mgr); }
-                    }, db, anthropicKey, endpoint, null, false, sentJsonFilename, debugJobSize: LLMDebugLog.JobSize.Small);
+                    }, db, anthropicKey, endpoint, onStreamChunk, stream, sentJsonFilename, debugJobSize: LLMDebugLog.JobSize.Small);
                     break;
                 }
                 case LLMProvider.Gemini:
@@ -2135,13 +2140,13 @@ namespace AITools.AIChat.Skills
                     // by `lines` (via GTPChatLine.AddImage) are serialized as
                     // inlineData parts, so this path covers the vision-caption
                     // sidecar as well as plain text summarization.
-                    string endpoint = GeminiTextCompletionManager.BuildEndpointUrl(baseEndpoint, model, false);
-                    string json = mgr.BuildChatCompleteJSON(lines, maxNewTokens, 0.4f, model, false, settings.enableThinking);
+                    string endpoint = GeminiTextCompletionManager.BuildEndpointUrl(baseEndpoint, model, stream);
+                    string json = mgr.BuildChatCompleteJSON(lines, maxNewTokens, 0.4f, model, stream, settings.enableThinking);
                     mgr.SpawnChatCompleteRequest(json, (rtdb, jn, str) =>
                     {
                         try { onDone(rtdb, jn, str ?? ""); }
                         finally { UnityEngine.Object.Destroy(mgr); }
-                    }, db, apiKey, endpoint, null, false, debugJobSize: LLMDebugLog.JobSize.Small);
+                    }, db, apiKey, endpoint, onStreamChunk, stream, debugJobSize: LLMDebugLog.JobSize.Small);
                     break;
                 }
                 default:
