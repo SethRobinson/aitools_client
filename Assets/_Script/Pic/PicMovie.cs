@@ -59,6 +59,23 @@ public class PicMovie : MonoBehaviour
     // every new clip shows a frozen frame while audio races (Unity 6 / Media Foundation).
     bool _waitingForSecondPrepare = false;
 
+    // Media Foundation can wedge a Prepare() forever without firing errorReceived when
+    // too many videos prepare at once (big canvas after the "\" unload-all hotkey).
+    // FirstPrepareWatchdog cancels a wedged first prepare and lets Update()'s lazy
+    // reload retry after a growing backoff. _playGeneration guards stale watchdogs:
+    // it is bumped every time playback state resets.
+    int _playGeneration = 0;
+    int _consecutivePrepareFailures = 0;
+    float _nextAutoReloadTime = 0f;
+    const float FIRST_PREPARE_TIMEOUT_SECONDS = 10f;
+
+    // After unload-all, every visible movie used to reload in the same 0.1s tick,
+    // racing 100+ simultaneous Prepare() calls into Media Foundation (and an ffprobe
+    // process each). Lazy reloads claim a global slot instead so they trickle in a
+    // few per second.
+    static float s_nextGlobalReloadTime = 0f;
+    const float RELOAD_STAGGER_SECONDS = 0.1f;
+
     void Start()
     {
         if (_videoPlayer == null)
@@ -263,7 +280,8 @@ public class PicMovie : MonoBehaviour
             bool isVisible = _picMainScript.IsVisible();
 
             //if we have a valid movie filename, but it isn't loaded/playing, let's load and play it now
-            if (!_playbackProxyConversionInFlight && _bDidCleanupSoAllowReload && m_fileName != null && m_fileName.Length > 0 && _renderTexture == null && isVisible)
+            if (!_playbackProxyConversionInFlight && _bDidCleanupSoAllowReload && m_fileName != null && m_fileName.Length > 0 && _renderTexture == null && isVisible
+                && Time.time >= _nextAutoReloadTime && ClaimGlobalReloadSlot())
             {
                 PlayMovie(m_fileName);
                 _bDidCleanupSoAllowReload = false;
@@ -294,6 +312,16 @@ public class PicMovie : MonoBehaviour
             UpdateProgressBar();
         }
 
+    }
+
+    // One lazy reload may start per RELOAD_STAGGER_SECONDS across ALL movie pics, so
+    // an unload-all doesn't stampede the decoder. Keep this the LAST condition in the
+    // reload if() so slots are only claimed by movies that are actually ready to load.
+    static bool ClaimGlobalReloadSlot()
+    {
+        if (Time.time < s_nextGlobalReloadTime) return false;
+        s_nextGlobalReloadTime = Time.time + RELOAD_STAGGER_SECONDS;
+        return true;
     }
 
     // Reused across all PicMovie instances to avoid GC churn each tick.
@@ -550,6 +578,8 @@ public class PicMovie : MonoBehaviour
         CleanupVideoResources();
         DeletePlaybackProxyIfNeeded();
         _bDidCleanupSoAllowReload = false;
+        _consecutivePrepareFailures = 0;
+        _nextAutoReloadTime = 0f;
         m_bAutoDeleteFileWhenDone = true;
         m_fileName = null;
         m_playbackFileName = null;
@@ -566,10 +596,15 @@ public class PicMovie : MonoBehaviour
 
     private void CleanupVideoResources()
     {
+        _playGeneration++;
         _waitingForSecondPrepare = false;
         _bExternalAudioPermit = false;
-        if (_videoPlayer.isPlaying)
+        if (_videoPlayer != null)
         {
+            // Stop() unconditionally: it also cancels an in-flight Prepare(). A player
+            // wedged in "preparing" reports isPlaying == false, and calling Prepare()
+            // on it again later is a no-op, so the old isPlaying-gated Stop() left
+            // wedged movies permanently black through every reload.
             _videoPlayer.Stop();
         }
 
@@ -864,12 +899,39 @@ public class PicMovie : MonoBehaviour
                 _audioSource.mute = true;
 
             _videoPlayer.Prepare();
+            StartCoroutine(FirstPrepareWatchdog(_playGeneration));
         }
         catch (System.Exception e)
         {
             HandleVideoError($"Critical error in PlayMovie: {e.Message}");
             CleanupVideoResources();
         }
+    }
+
+    // The SECOND prepare already has SecondPrepareSafetyNet, but nothing guarded the
+    // FIRST one: if Media Foundation wedges it (no prepareCompleted, no errorReceived),
+    // the quad stayed black forever and reloads couldn't recover it. Cancel the wedged
+    // prepare and let Update()'s lazy reload retry after a growing backoff, so a
+    // transient decoder squeeze self-heals once other videos release their sessions.
+    private IEnumerator FirstPrepareWatchdog(int generation)
+    {
+        yield return new WaitForSeconds(FIRST_PREPARE_TIMEOUT_SECONDS);
+
+        if (generation != _playGeneration)
+            yield break; // superseded by a newer play/cleanup
+
+        if (_renderTexture != null || (_videoPlayer != null && _videoPlayer.isPlaying))
+            yield break; // first prepare completed normally
+
+        _consecutivePrepareFailures++;
+        float backoffSeconds = Mathf.Min(5f * _consecutivePrepareFailures, 30f);
+        Debug.LogWarning("PicMovie: video prepare timed out for " + m_playbackFileName
+            + " (attempt " + _consecutivePrepareFailures + "), retrying in " + backoffSeconds + "s");
+
+        if (_videoPlayer != null)
+            _videoPlayer.Stop();
+        _bDidCleanupSoAllowReload = true;
+        _nextAutoReloadTime = Time.time + backoffSeconds;
     }
 
     private bool CanReusePlaybackProxy(string sourceFilename)
@@ -986,6 +1048,9 @@ public class PicMovie : MonoBehaviour
     {
         CleanupVideoResources();
         _bDidCleanupSoAllowReload = true;
+        // An explicit unload/reload request (the "\" hotkey) should retry right away,
+        // not wait out a backoff earned by an earlier wedged prepare.
+        _nextAutoReloadTime = 0f;
     }
 
     private void HandleVideoError(string message)
@@ -1016,6 +1081,8 @@ public class PicMovie : MonoBehaviour
             // First prepare callback — we finally know the video dimensions, so build
             // the RT and bind it, then re-prepare to give the decoder a chance to
             // initialize against the actual target.
+            _consecutivePrepareFailures = 0;
+            _nextAutoReloadTime = 0f;
             _renderTexture = new RenderTexture((int)source.width, (int)source.height, 0);
             if (!_renderTexture.Create())
             {

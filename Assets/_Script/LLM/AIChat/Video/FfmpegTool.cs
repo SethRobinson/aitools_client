@@ -204,8 +204,78 @@ namespace AITools.AIChat.Video
             return System.IO.Path.Combine(dir, stem + "_" + Guid.NewGuid().ToString("N") + "_preview.mp4");
         }
 
+        // Successful probe results are cached per (path, size, mtime) for the session.
+        // Movie pics re-probe their file on every reload (the "\" unload-all hotkey,
+        // visibility churn), and on a large canvas that used to fan out 100+
+        // simultaneous blocking ffprobe Task.Run calls at once: the thread pool
+        // starves and movies sit black for minutes waiting for their probe to even
+        // start. The files never change once written, so re-probing is pure overhead.
+        private static readonly System.Collections.Generic.Dictionary<string, VideoInfo> s_probeCache =
+            new System.Collections.Generic.Dictionary<string, VideoInfo>();
+
+        private static string BuildProbeCacheKey(string inputPath)
+        {
+            try
+            {
+                var fi = new FileInfo(inputPath);
+                if (!fi.Exists) return null;
+                return fi.FullName.ToLowerInvariant() + "|" + fi.Length + "|" + fi.LastWriteTimeUtc.Ticks;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static bool TryGetCachedProbe(string inputPath, out VideoInfo info)
+        {
+            info = null;
+            string key = BuildProbeCacheKey(inputPath);
+            if (key == null) return false;
+            lock (s_probeCache)
+            {
+                if (!s_probeCache.TryGetValue(key, out VideoInfo cached)) return false;
+                info = CloneVideoInfo(cached);
+                return true;
+            }
+        }
+
+        private static void StoreProbeResult(string inputPath, VideoInfo info)
+        {
+            if (info == null) return;
+            string key = BuildProbeCacheKey(inputPath);
+            if (key == null) return;
+            lock (s_probeCache)
+            {
+                s_probeCache[key] = CloneVideoInfo(info);
+            }
+        }
+
+        // Callers get their own copy so nobody can mutate the cached entry.
+        private static VideoInfo CloneVideoInfo(VideoInfo src)
+        {
+            return new VideoInfo
+            {
+                Path = src.Path,
+                DurationSeconds = src.DurationSeconds,
+                Width = src.Width,
+                Height = src.Height,
+                Fps = src.Fps,
+                RotationDegrees = src.RotationDegrees,
+                CodecName = src.CodecName,
+                FormatName = src.FormatName,
+                HasVideo = src.HasVideo
+            };
+        }
+
         public static IEnumerator ProbeVideo(string inputPath, Action<VideoInfo, string> onDone)
         {
+            if (TryGetCachedProbe(inputPath, out VideoInfo cachedInfo))
+            {
+                onDone?.Invoke(cachedInfo, null);
+                yield break;
+            }
+
             if (!TryGetToolPaths(out _, out string ffprobePath, out string toolError))
             {
                 onDone?.Invoke(null, toolError);
@@ -239,6 +309,7 @@ namespace AITools.AIChat.Video
                     onDone?.Invoke(null, "ffprobe did not find a video stream in " + inputPath);
                     yield break;
                 }
+                StoreProbeResult(inputPath, info);
                 onDone?.Invoke(info, null);
             }
             catch (Exception ex)
@@ -251,6 +322,9 @@ namespace AITools.AIChat.Video
         {
             info = null;
             error = null;
+
+            if (TryGetCachedProbe(inputPath, out info))
+                return true;
 
             if (!TryGetToolPaths(out _, out string ffprobePath, out string toolError))
             {
@@ -276,6 +350,7 @@ namespace AITools.AIChat.Video
                     info = null;
                     return false;
                 }
+                StoreProbeResult(inputPath, info);
                 return true;
             }
             catch (Exception ex)
