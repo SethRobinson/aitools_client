@@ -5765,7 +5765,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     public static int GetAnthropicMaxOutputTokens(string model)
     {
         string m = (model ?? "").ToLowerInvariant();
-        if (m.Contains("opus-4-7") || m.Contains("opus-4-8"))
+        // Fable 5 / Mythos 5 share the Opus 4.7+ 128K output ceiling.
+        if (m.Contains("opus-4-7") || m.Contains("opus-4-8") || m.Contains("fable") || m.Contains("mythos"))
             return AI_CHAT_ANTHROPIC_OPUS_47_MAX_OUTPUT_TOKENS;
         if (m.Contains("claude-4") || m.Contains("opus-4") || m.Contains("sonnet-4") || m.Contains("haiku-4"))
             return AI_CHAT_ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS;

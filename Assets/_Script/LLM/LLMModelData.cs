@@ -83,13 +83,13 @@ public class LLMModelData
         data.openAI = new LLMProviderModelData
         {
             defaultEndpoint = "https://api.openai.com/v1/responses",
-            models = new List<string> { "gpt-5.5", "gpt-5.5-pro" }
+            models = new List<string> { "gpt-5.6", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-5.5-pro" }
         };
 
         data.anthropic = new LLMProviderModelData
         {
             defaultEndpoint = "https://api.anthropic.com/v1/messages",
-            models = new List<string> { "claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5" }
+            models = new List<string> { "claude-fable-5", "claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5" }
         };
 
         data.gemini = new LLMProviderModelData

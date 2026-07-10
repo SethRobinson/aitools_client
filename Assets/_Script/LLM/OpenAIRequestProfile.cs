@@ -15,7 +15,7 @@ public struct OpenAIRequestProfile
 {
     /// <summary>
     /// True when we should hit OpenAI's /v1/responses endpoint instead of the
-    /// classic /v1/chat/completions. Reasoning models (gpt-5.2, gpt-5.5, o3, o4) want this.
+    /// classic /v1/chat/completions. Reasoning models (gpt-5.2, gpt-5.5, gpt-5.6, o3, o4) want this.
     /// </summary>
     public bool useResponsesAPI;
 
@@ -32,7 +32,7 @@ public struct OpenAIRequestProfile
     public bool isReasoningModel;
 
     /// <summary>
-    /// Whether to include the "temperature" field at all. gpt-5.5 / 5.2 / o-series
+    /// Whether to include the "temperature" field at all. gpt-5.6 / 5.5 / 5.2 / o-series
     /// reject temperature on the Responses API; mini/nano use a fixed temp=1.
     /// </summary>
     public bool includeTemperature;
@@ -92,7 +92,16 @@ public static class OpenAIRequestProfileResolver
             profile.useResponsesAPI = true;
             profile.endpoint = OpenAIResponsesEndpoint;
 
-            if (m.Contains("gpt-5.5-pro"))
+            if (m.Contains("gpt-5.6"))
+            {
+                // gpt-5.6 (alias of gpt-5.6-sol) plus the -sol/-terra/-luna variants.
+                // Reasoning model on the Responses API; temperature is not supported.
+                // OpenAI's default reasoning effort for the 5.6 line is "medium".
+                profile.isReasoningModel = true;
+                profile.includeTemperature = false;
+                profile.reasoningEffort = "medium";
+            }
+            else if (m.Contains("gpt-5.5-pro"))
             {
                 profile.isReasoningModel = true;
                 profile.includeTemperature = false;

@@ -2,6 +2,9 @@
     "openAI": {
         "defaultEndpoint": "https://api.openai.com/v1/responses",
         "models": [
+            "gpt-5.6",
+            "gpt-5.6-terra",
+            "gpt-5.6-luna",
             "gpt-5.5",
             "gpt-5.5-pro"
         ]
@@ -9,6 +12,7 @@
     "anthropic": {
         "defaultEndpoint": "https://api.anthropic.com/v1/messages",
         "models": [
+            "claude-fable-5",
             "claude-opus-4-8",
             "claude-sonnet-4-6",
             "claude-haiku-4-5"
