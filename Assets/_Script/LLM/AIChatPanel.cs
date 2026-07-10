@@ -513,11 +513,6 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private const float RESIZE_EDGE_THICKNESS = 10f;
     private const float RESIZE_CORNER_SIZE = 24f;
     private const float HEADER_RIGHT_RESIZE_EXCLUSION = 270f;
-    private const int AI_CHAT_NO_EXPLICIT_OUTPUT_TOKEN_CAP = 0;
-    private const int AI_CHAT_GEMINI_MAX_OUTPUT_TOKENS = 65536;
-    private const int AI_CHAT_LEGACY_MAX_OUTPUT_TOKENS = 8192;
-    private const int AI_CHAT_ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS = 64000;
-    private const int AI_CHAT_ANTHROPIC_OPUS_47_MAX_OUTPUT_TOKENS = 128000;
     private const float SCROLL_BOTTOM_PIXEL_EPSILON = 12f;
     private const string ChatPrimaryFontResourcePath = "Fonts & Materials/LiberationSans SDF";
     private const string ChatCjkFallbackFontName = "NotoSansCJKjp-VF SDF";
@@ -4876,11 +4871,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             COMPACT_TIMEOUT_MIN_SECONDS + transcript.Length / 400f,
             COMPACT_TIMEOUT_MIN_SECONDS, COMPACT_TIMEOUT_MAX_SECONDS);
         watchdog = StartCoroutine(CompactSummaryWatchdog(watchdogSeconds, () => done, release));
-        // maxNewTokens 0 = no explicit output cap (model max), same as the main chat
-        // turn: a 180-turn recap can legitimately run long, and thinking models also
+        // No explicit output cap, same as the main chat turn: a 180-turn recap can
+        // legitimately run long, and thinking models also
         // burn part of the budget inside <think> before any visible summary appears.
         SkillActionExecutor.DispatchOneShot(this, inst, lines, onDone, "CompactSummary", "compact_summary_sent.json",
-            maxNewTokens: 0, onStreamChunk: onStreamChunk);
+            maxNewTokens: LLMRequestProfile.NoExplicitOutputTokenCap, onStreamChunk: onStreamChunk);
     }
 
     private IEnumerator CompactSummaryWatchdog(float timeoutSeconds, Func<bool> isDone, Action release)
@@ -5760,27 +5755,6 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (_geminiMgr != null && _geminiMgr.IsRequestActive()) _geminiMgr.CancelCurrentRequest();
     }
 
-    // Public: SkillActionExecutor.DispatchOneShot reuses this for uncapped one-shots
-    // (Anthropic is the one provider whose API REQUIRES an explicit max_tokens).
-    public static int GetAnthropicMaxOutputTokens(string model)
-    {
-        string m = (model ?? "").ToLowerInvariant();
-        // Fable 5 / Mythos 5 share the Opus 4.7+ 128K output ceiling.
-        if (m.Contains("opus-4-7") || m.Contains("opus-4-8") || m.Contains("fable") || m.Contains("mythos"))
-            return AI_CHAT_ANTHROPIC_OPUS_47_MAX_OUTPUT_TOKENS;
-        if (m.Contains("claude-4") || m.Contains("opus-4") || m.Contains("sonnet-4") || m.Contains("haiku-4"))
-            return AI_CHAT_ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS;
-        return AI_CHAT_LEGACY_MAX_OUTPUT_TOKENS;
-    }
-
-    private static int GetGeminiMaxOutputTokens(string model)
-    {
-        string m = (model ?? "").ToLowerInvariant();
-        if (m.Contains("gemini-3") || m.Contains("gemini-2.5"))
-            return AI_CHAT_GEMINI_MAX_OUTPUT_TOKENS;
-        return AI_CHAT_LEGACY_MAX_OUTPUT_TOKENS;
-    }
-
     private static List<LLMParm> GetAIChatLLMParms(LLMSettingsManager settingsMgr, LLMInstanceInfo llmInstance, int llmInstanceID, LLMProvider provider, LLMProviderSettings activeSettings)
     {
         List<LLMParm> source = llmInstance != null
@@ -6007,7 +5981,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 // Edit OpenAIRequestProfileResolver to add new model families.
                 var profile = OpenAIRequestProfileResolver.Resolve(model, activeSettings, llmReplicaIndex);
 
-                string json = _openAIMgr.BuildChatCompleteJSON(lines, AI_CHAT_NO_EXPLICIT_OUTPUT_TOKEN_CAP, temperature, model, true,
+                string json = _openAIMgr.BuildChatCompleteJSON(lines, LLMRequestProfile.NoExplicitOutputTokenCap, temperature, model, true,
                     profile.useResponsesAPI, profile.isReasoningModel, profile.includeTemperature,
                     profile.reasoningEffort, profile.enableThinking);
                 _openAIMgr.SpawnChatCompleteRequest(json, OnLLMCompletedCallback, db, apiKey, profile.endpoint, OnStreamingTextCallback, true);
@@ -6023,7 +5997,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 if (string.IsNullOrEmpty(model)) model = Config.Get().GetAnthropicAI_APIModel();
                 if (string.IsNullOrEmpty(endpoint)) endpoint = Config.Get().GetAnthropicAI_APIEndpoint();
 
-                string json = _anthropicMgr.BuildChatCompleteJSON(lines, GetAnthropicMaxOutputTokens(model), temperature, model, true);
+                string json = _anthropicMgr.BuildChatCompleteJSON(lines, LLMRequestProfile.GetAnthropicMaxOutputTokens(model), temperature, model, true);
                 _anthropicMgr.SpawnChatCompletionRequest(json, OnLLMCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
                 break;
             }
@@ -6033,10 +6007,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 string serverAddress = LLMInstanceManager.ApplyReplicaPortOffset(activeSettings.endpoint, llmReplicaIndex);
                 string apiKey = activeSettings.apiKey;
                 var llmParms = GetAIChatLLMParms(settingsMgr, llmInstance, llmInstanceID, LLMProvider.LlamaCpp, activeSettings);
-                LLMReasoningEffort effort = activeSettings.GetReasoningEffort();
-                int maxTokens = LLMRequestProfile.GetRecommendedMaxTokens(activeSettings.selectedModel, effort, AI_CHAT_NO_EXPLICIT_OUTPUT_TOKEN_CAP);
                 string suggestedEndpoint;
-                string json = _texGenMgr.BuildForInstructJSON(lines, out suggestedEndpoint, maxTokens, temperature,
+                string json = _texGenMgr.BuildForInstructJSON(lines, out suggestedEndpoint, LLMRequestProfile.NoExplicitOutputTokenCap, temperature,
                     Config.Get().GetGenericLLMMode(), true, llmParms, false, true);
                 _texGenMgr.SpawnChatCompleteRequest(json, OnLLMCompletedCallback, db, serverAddress, suggestedEndpoint, OnStreamingTextCallback, true, apiKey);
                 break;
@@ -6048,7 +6020,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 string apiKey = activeSettings.apiKey;
                 var llmParms = GetAIChatLLMParms(settingsMgr, llmInstance, llmInstanceID, LLMProvider.Ollama, activeSettings);
                 string suggestedEndpoint;
-                string json = _texGenMgr.BuildForInstructJSON(lines, out suggestedEndpoint, AI_CHAT_NO_EXPLICIT_OUTPUT_TOKEN_CAP, temperature,
+                string json = _texGenMgr.BuildForInstructJSON(lines, out suggestedEndpoint, LLMRequestProfile.NoExplicitOutputTokenCap, temperature,
                     Config.Get().GetGenericLLMMode(), true, llmParms, true, false);
                 _texGenMgr.SpawnChatCompleteRequest(json, OnLLMCompletedCallback, db, serverAddress, suggestedEndpoint, OnStreamingTextCallback, true, apiKey);
                 break;
@@ -6072,7 +6044,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 if (!HasUserMessage(lines))
                     lines.Enqueue(new GTPChatLine("user", "Please proceed."));
 
-                string json = _geminiMgr.BuildChatCompleteJSON(lines, GetGeminiMaxOutputTokens(model), temperature, model, true, enableThinking);
+                string json = _geminiMgr.BuildChatCompleteJSON(lines, LLMRequestProfile.NoExplicitOutputTokenCap, temperature, model, true, enableThinking);
                 _geminiMgr.SpawnChatCompleteRequest(json, OnLLMCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
                 break;
             }
@@ -6092,9 +6064,6 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 bool? compatEnableThinking = isDeepSeek
                     ? compatReasoningEffort != LLMReasoningEffort.Off
                     : activeSettings.enableThinking;
-                int compatMaxTokens = isDeepSeek
-                    ? LLMRequestProfile.GetRecommendedMaxTokens(model, compatReasoningEffort, AI_CHAT_NO_EXPLICIT_OUTPUT_TOKEN_CAP)
-                    : AI_CHAT_NO_EXPLICIT_OUTPUT_TOKEN_CAP;
                 float compatTemperature = activeSettings.overrideTemperature
                     ? activeSettings.temperature
                     : (isDeepSeek ? LLMRequestProfile.GetRecommendedTemperature(model, compatReasoningEffort, temperature) : temperature);
@@ -6108,7 +6077,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 float? compatFrequencyPenalty = activeSettings.overrideFrequencyPenalty ? (float?)activeSettings.frequencyPenalty : null;
                 int? compatRepeatLastN = activeSettings.overrideRepeatLastN ? (int?)activeSettings.repeatLastN : null;
                 string compatReasoningEffortParam = isDeepSeek ? LLMReasoningEffortUtil.ToConfigValue(compatReasoningEffort) : null;
-                string json = _openAIMgr.BuildChatCompleteJSON(normalizedLines, compatMaxTokens, compatTemperature, model, true,
+                string json = _openAIMgr.BuildChatCompleteJSON(normalizedLines, LLMRequestProfile.NoExplicitOutputTokenCap, compatTemperature, model, true,
                     enableThinking: compatEnableThinking,
                     topP: compatTopP, topK: compatTopK, minP: compatMinP, repetitionPenalty: compatRepPenalty,
                     frequencyPenalty: compatFrequencyPenalty, presencePenalty: compatPresencePenalty, repeatLastN: compatRepeatLastN,

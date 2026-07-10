@@ -4369,7 +4369,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                             var profile = OpenAIRequestProfileResolver.Resolve(model, activeSettings, llmReplicaIndex);
 
                             string json = _openAITextCompletionManager.BuildChatCompleteJSON(
-                                lines, 4096, temperature, model, true,
+                                lines, LLMRequestProfile.NoExplicitOutputTokenCap, temperature, model, true,
                                 profile.useResponsesAPI, profile.isReasoningModel, profile.includeTemperature,
                                 profile.reasoningEffort, profile.enableThinking);
                             RTConsole.Log("Contacting OpenAI at " + profile.endpoint);
@@ -4390,7 +4390,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                             if (string.IsNullOrEmpty(endpoint)) endpoint = Config.Get().GetAnthropicAI_APIEndpoint();
                             
                             RTConsole.Log("Contacting Anthropic at " + endpoint);
-                            string json = _anthropicAITextCompletionManager.BuildChatCompleteJSON(lines, 4096, temperature, model, true);
+                            string json = _anthropicAITextCompletionManager.BuildChatCompleteJSON(lines, LLMRequestProfile.GetAnthropicMaxOutputTokens(model), temperature, model, true);
                             _anthropicAITextCompletionManager.SpawnChatCompletionRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true, debugJobSize: LLMDebugLog.JobSize.Small);
                             SetLLMActive(true, llmInstanceID, llmReplicaIndex);
                         }
@@ -4405,7 +4405,8 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                             string suggestedEndpoint;
                             // Build LLM params from instance settings if available
                             var llmParms = llmInstance != null ? mgr.GetInstanceLLMParms(llmInstanceID) : mgr.GetLLMParms(LLMProvider.LlamaCpp);
-                            string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, 4096, temperature, 
+                            string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint,
+                                LLMRequestProfile.NoExplicitOutputTokenCap, temperature,
                                 Config.Get().GetGenericLLMMode(), true, llmParms, false, true);
                             _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, serverAddress, suggestedEndpoint, OnStreamingTextCallback, true, apiKey, debugJobSize: LLMDebugLog.JobSize.Small);
                             SetLLMActive(true, llmInstanceID, llmReplicaIndex);
@@ -4421,7 +4422,8 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                             string suggestedEndpoint;
                             // Build LLM params from instance settings if available
                             var llmParms = llmInstance != null ? mgr.GetInstanceLLMParms(llmInstanceID) : mgr.GetLLMParms(LLMProvider.Ollama);
-                            string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, 4096, temperature, 
+                            string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint,
+                                LLMRequestProfile.NoExplicitOutputTokenCap, temperature,
                                 Config.Get().GetGenericLLMMode(), true, llmParms, true, false);
                             _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, serverAddress, suggestedEndpoint, OnStreamingTextCallback, true, apiKey, debugJobSize: LLMDebugLog.JobSize.Small);
                             SetLLMActive(true, llmInstanceID, llmReplicaIndex);
@@ -4467,7 +4469,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                                 }
                             }
 
-                            string json = _geminiTextCompletionManager.BuildChatCompleteJSON(lines, 4096, temperature, model, true, enableThinking);
+                            string json = _geminiTextCompletionManager.BuildChatCompleteJSON(lines, LLMRequestProfile.NoExplicitOutputTokenCap, temperature, model, true, enableThinking);
                             _geminiTextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true, debugJobSize: LLMDebugLog.JobSize.Small);
                             SetLLMActive(true, llmInstanceID, llmReplicaIndex);
                         }
@@ -4501,11 +4503,8 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                                 ? LLMRequestProfile.GetRecommendedTopP(model, compatReasoningEffort, 1.0f)
                                 : (float?)null;
                             
-                            int compatMaxTokens = isDeepSeek
-                                ? LLMRequestProfile.GetRecommendedMaxTokens(model, compatReasoningEffort, 4096)
-                                : 4096;
                             string compatReasoningEffortParam = isDeepSeek ? LLMReasoningEffortUtil.ToConfigValue(compatReasoningEffort) : null;
-                            string json = _openAITextCompletionManager.BuildChatCompleteJSON(normalizedLines, compatMaxTokens, compatTemperature, model, true,
+                            string json = _openAITextCompletionManager.BuildChatCompleteJSON(normalizedLines, LLMRequestProfile.NoExplicitOutputTokenCap, compatTemperature, model, true,
                                 enableThinking: compatEnableThinking,
                                 topP: compatTopP,
                                 customReasoningEffort: compatReasoningEffortParam);

@@ -71,7 +71,6 @@ public class AIGuideManager : MonoBehaviour
     private string _textToProcessForPics;
     public TMP_Dropdown m_textFontDropdown;
     public TMP_Dropdown m_titleFontDropdown;
-    int m_max_tokens;
     bool m_bCreatedRandomAutoSaveFolder = false;
     TextFileConfigExtractor m_extractor = new TextFileConfigExtractor();
     public TextMeshProUGUI m_statusText;
@@ -374,7 +373,7 @@ public class AIGuideManager : MonoBehaviour
 
         string json = _openAITextCompletionManager.BuildChatCompleteJSON(
             lines,
-            m_max_tokens,
+            LLMRequestProfile.NoExplicitOutputTokenCap,
             m_extractor.Temperature,
             model,
             true,
@@ -422,7 +421,7 @@ public class AIGuideManager : MonoBehaviour
         if (string.IsNullOrEmpty(endpoint)) endpoint = Config.Get().GetAnthropicAI_APIEndpoint();
 
         RTConsole.Log($"Anthropic final - API key length: {apiKey.Length}, model: {model}, endpoint: {endpoint}");
-        string json = _anthropicAITextCompletionManager.BuildChatCompleteJSON(lines, m_max_tokens, m_extractor.Temperature, model, true);
+        string json = _anthropicAITextCompletionManager.BuildChatCompleteJSON(lines, LLMRequestProfile.GetAnthropicMaxOutputTokens(model), m_extractor.Temperature, model, true);
         RTDB db = new RTDB();
         _anthropicAITextCompletionManager.SpawnChatCompletionRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
     }
@@ -439,7 +438,8 @@ public class AIGuideManager : MonoBehaviour
         string suggestedEndpoint;
         // Use instance LLM params if we have an active instance, otherwise use manager's
         var llmParms = _activeLLMInstanceID >= 0 ? mgr?.GetInstanceLLMParms(_activeLLMInstanceID) : mgr?.GetLLMParms(LLMProvider.LlamaCpp);
-        string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, m_max_tokens, m_extractor.Temperature, 
+        string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint,
+            LLMRequestProfile.NoExplicitOutputTokenCap, m_extractor.Temperature,
             Config.Get().GetGenericLLMMode(), true, llmParms ?? new List<LLMParm>(), false, true);
 
         RTDB db = new RTDB();
@@ -459,7 +459,8 @@ public class AIGuideManager : MonoBehaviour
         string suggestedEndpoint;
         // Use instance LLM params if we have an active instance, otherwise use manager's
         var llmParms = _activeLLMInstanceID >= 0 ? mgr?.GetInstanceLLMParms(_activeLLMInstanceID) : mgr?.GetLLMParms(LLMProvider.Ollama);
-        string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, m_max_tokens, m_extractor.Temperature, 
+        string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint,
+            LLMRequestProfile.NoExplicitOutputTokenCap, m_extractor.Temperature,
             Config.Get().GetGenericLLMMode(), true, llmParms ?? new List<LLMParm>(), true, false);
 
         RTDB db = new RTDB();
@@ -508,7 +509,7 @@ public class AIGuideManager : MonoBehaviour
             }
         }
 
-        string json = _geminiTextCompletionManager.BuildChatCompleteJSON(lines, m_max_tokens, m_extractor.Temperature, model, true, enableThinking);
+        string json = _geminiTextCompletionManager.BuildChatCompleteJSON(lines, LLMRequestProfile.NoExplicitOutputTokenCap, m_extractor.Temperature, model, true, enableThinking);
         RTDB db = new RTDB();
         _geminiTextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
     }
@@ -549,9 +550,8 @@ public class AIGuideManager : MonoBehaviour
         float? compatMinP = (settings != null && settings.overrideMinP) ? (float?)settings.minP : null;
         float? compatRepPenalty = (settings != null && settings.overrideRepeatPenalty) ? (float?)settings.repeatPenalty : null;
 
-        int maxTokens = isDeepSeek ? LLMRequestProfile.GetRecommendedMaxTokens(model, compatReasoningEffort, m_max_tokens) : m_max_tokens;
         string compatReasoningEffortParam = isDeepSeek ? LLMReasoningEffortUtil.ToConfigValue(compatReasoningEffort) : null;
-        string json = _openAITextCompletionManager.BuildChatCompleteJSON(normalizedLines, maxTokens, compatTemperature, model, true,
+        string json = _openAITextCompletionManager.BuildChatCompleteJSON(normalizedLines, LLMRequestProfile.NoExplicitOutputTokenCap, compatTemperature, model, true,
             enableThinking: compatEnableThinking,
             topP: compatTopP, topK: compatTopK, minP: compatMinP, repetitionPenalty: compatRepPenalty,
             customReasoningEffort: compatReasoningEffortParam);
@@ -621,23 +621,6 @@ public class AIGuideManager : MonoBehaviour
         }
 
 
-
-        //RTConsole.Log("Contacting LLM...");
-        //set m_max_tokens from m_input_max_tokens (and not crash if the input is blank or bad)
-
-        int maxTokens;
-        bool parseSuccess = int.TryParse(m_input_max_tokens.text, out maxTokens);
-        if (parseSuccess)
-        {
-            m_max_tokens = maxTokens;
-        }
-        else
-        {
-            // Handle parse failure
-            RTConsole.Log("Error:  You need to set the max tokens to something valid");
-            GameLogic.Get().ShowConsole(true);
-            m_max_tokens = 4096;
-        }
 
         m_prompt_used_on_last_send = _inputPrompt.text; //might be useful later
 
@@ -1711,6 +1694,14 @@ public class AIGuideManager : MonoBehaviour
         // Apply saved AI Guide preset from user preferences
         ApplyPresetFromPreferences();
 
+        // Output length is provider/model limited, not capped by the client. Keep the
+        // legacy scene field visible as an explicit 0 = unlimited indicator.
+        if (m_input_max_tokens != null)
+        {
+            m_input_max_tokens.text = "0";
+            m_input_max_tokens.interactable = false;
+        }
+
         // Optional: turn off rich text parsing in the output field if not needed
         if (_inputPromptOutput != null && _inputPromptOutput.textComponent != null)
             _inputPromptOutput.textComponent.richText = false;
@@ -1848,7 +1839,6 @@ public class AIGuideManager : MonoBehaviour
         m_imageTextColor.color = preset.m_textColor;
         m_imageBorderColor.color = preset.m_borderColor;
         m_input_max_tokens.text = preset.m_maxTokens.ToString();
-        m_max_tokens = preset.m_maxTokens;
         m_prependPromptCheckbox.isOn = preset.m_prependPrompt;
         m_llmSelectionDropdown.value = (int)preset.m_llmToUse;
         m_textToPrependToGeneration.text = preset.m_textToPrependToGeneration;

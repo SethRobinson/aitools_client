@@ -1986,11 +1986,9 @@ namespace AITools.AIChat.Skills
             }
         }
 
-        // maxNewTokens: output-token budget for the one-shot. The 1024 default suits
-        // short sidecar jobs (captions, delegation, /applystyle rewrites). Pass 0 for
-        // NO explicit cap - the request omits max_tokens so the server/model default
-        // applies (llama.cpp: unlimited; OpenAI/Gemini: model max), except Anthropic,
-        // whose API requires an explicit value and gets its per-model maximum.
+        // maxNewTokens: optional output-token budget for specialized callers. The
+        // default is uncapped: optional limit fields are omitted so the model/server
+        // owns the ceiling. Anthropic requires a value and gets its model maximum.
         // onStreamChunk: optional delta-text callback; when provided the request is
         // sent streaming and chunks arrive as they generate (used by the compact
         // summary's live preview). The completion callback still fires at the end.
@@ -2001,7 +1999,7 @@ namespace AITools.AIChat.Skills
             Action<RTDB, JSONObject, string> onDone,
             string callerLabel,
             string sentJsonFilename = "text_completion_sent.json",
-            int maxNewTokens = 1024,
+            int maxNewTokens = LLMRequestProfile.NoExplicitOutputTokenCap,
             Action<string> onStreamChunk = null)
         {
             var settings = inst.settings;
@@ -2064,9 +2062,8 @@ namespace AITools.AIChat.Skills
                         : (settings.enableThinking ? LLMReasoningEffort.High : LLMReasoningEffort.Off);
                     float temp = isDeepSeek ? LLMRequestProfile.GetRecommendedTemperature(model, effort, 0.4f) : 0.4f;
                     float? topP = isDeepSeek ? (float?)LLMRequestProfile.GetRecommendedTopP(model, effort, 1.0f) : null;
-                    int maxTokens = isDeepSeek ? LLMRequestProfile.GetRecommendedMaxTokens(model, effort, maxNewTokens) : maxNewTokens;
                     string reasoningEffortParam = isDeepSeek ? LLMReasoningEffortUtil.ToConfigValue(effort) : null;
-                    string json = mgr.BuildChatCompleteJSON(lines, maxTokens, temp, model, stream,
+                    string json = mgr.BuildChatCompleteJSON(lines, maxNewTokens, temp, model, stream,
                         enableThinking: isDeepSeek ? effort != LLMReasoningEffort.Off : settings.enableThinking,
                         topP: topP,
                         customReasoningEffort: reasoningEffortParam);
@@ -2106,7 +2103,7 @@ namespace AITools.AIChat.Skills
                     // above. Anthropic returns content as a typed-block array; we pull text
                     // out via ExtractTextFromResponseJSON so callers see plain text in `str`.
                     // Anthropic requires max_tokens; "no cap" resolves to the model max.
-                    int anthropicMaxTokens = maxNewTokens > 0 ? maxNewTokens : AIChatPanel.GetAnthropicMaxOutputTokens(model);
+                    int anthropicMaxTokens = maxNewTokens > 0 ? maxNewTokens : LLMRequestProfile.GetAnthropicMaxOutputTokens(model);
                     string json = mgr.BuildChatCompleteJSON(lines, anthropicMaxTokens, 0.4f, model, stream);
                     mgr.SpawnChatCompletionRequest(json, (rtdb, jn, str) =>
                     {

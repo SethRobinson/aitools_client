@@ -94,29 +94,31 @@ public static class LLMReasoningPrompts
 
 public static class LLMRequestProfile
 {
-    public const int DeepSeekNoThinkMaxTokens = 4096;
-    public const int DeepSeekThinkHighMaxTokens = 4096;
-    public const int DeepSeekThinkMaxMaxTokens = 8000;
+    // Zero tells request builders to omit optional output-token limits and let the
+    // model/server run until its natural stop or its own context/output ceiling.
+    public const int NoExplicitOutputTokenCap = 0;
+
+    private const int AnthropicLegacyMaxOutputTokens = 8192;
+    private const int AnthropicDefaultMaxOutputTokens = 64000;
+    private const int AnthropicOpus47MaxOutputTokens = 128000;
 
     public static bool IsDeepSeekModel(string model)
     {
         return !string.IsNullOrEmpty(model) && model.ToLowerInvariant().Contains("deepseek");
     }
 
-    public static int GetRecommendedMaxTokens(string model, LLMReasoningEffort effort, int fallback)
+    // Anthropic requires max_tokens in every Messages API request. Use the known
+    // model ceiling there instead of imposing a smaller application-level budget.
+    public static int GetAnthropicMaxOutputTokens(string model)
     {
-        if (!IsDeepSeekModel(model))
-            return fallback;
-
-        switch (effort)
-        {
-            case LLMReasoningEffort.Max:
-                return DeepSeekThinkMaxMaxTokens;
-            case LLMReasoningEffort.High:
-                return DeepSeekThinkHighMaxTokens;
-            default:
-                return DeepSeekNoThinkMaxTokens;
-        }
+        string normalized = (model ?? "").ToLowerInvariant();
+        if (normalized.Contains("opus-4-7") || normalized.Contains("opus-4-8") ||
+            normalized.Contains("fable") || normalized.Contains("mythos"))
+            return AnthropicOpus47MaxOutputTokens;
+        if (normalized.Contains("claude-4") || normalized.Contains("opus-4") ||
+            normalized.Contains("sonnet-4") || normalized.Contains("haiku-4"))
+            return AnthropicDefaultMaxOutputTokens;
+        return AnthropicLegacyMaxOutputTokens;
     }
 
     public static float GetRecommendedTemperature(string model, LLMReasoningEffort effort, float fallback)

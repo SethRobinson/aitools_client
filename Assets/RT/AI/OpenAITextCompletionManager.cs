@@ -377,7 +377,7 @@ public class OpenAITextCompletionManager : MonoBehaviour
     // topP/topK/minP/repetitionPenalty/frequencyPenalty/presencePenalty: optional sampling overrides (vLLM/sglang/LMStudio extras).
     //   When non-null they are emitted in the request body. Only included by the Chat Completions branch
     //   (OpenAI Responses API does not accept these extras and would reject the request).
-    public string BuildChatCompleteJSON(Queue<GTPChatLine> lines, int max_tokens = 100, float temperature = 1.3f, string model = "gpt-3.5-turbo", bool stream = false, bool useResponsesAPI = false, bool isReasoningModel = false, bool includeTemperature = true, string reasoningEffort = null, bool? enableThinking = null,
+    public string BuildChatCompleteJSON(Queue<GTPChatLine> lines, int max_tokens = LLMRequestProfile.NoExplicitOutputTokenCap, float temperature = 1.3f, string model = "gpt-3.5-turbo", bool stream = false, bool useResponsesAPI = false, bool isReasoningModel = false, bool includeTemperature = true, string reasoningEffort = null, bool? enableThinking = null,
         float? topP = null, int? topK = null, float? minP = null, float? repetitionPenalty = null, float? frequencyPenalty = null, float? presencePenalty = null, int? repeatLastN = null, string customReasoningEffort = null)
     {
         string bStreamText = stream ? "true" : "false";

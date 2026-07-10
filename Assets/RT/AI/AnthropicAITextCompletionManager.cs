@@ -86,7 +86,7 @@ public class AnthropicAITextCompletionManager : MonoBehaviour
         return sb.ToString();
     }
 
-    public string BuildChatCompleteJSON(Queue<GTPChatLine> lines, int max_tokens = 100, float temperature = 1.3f, string model = "claude-3-sonnet-20240229", bool stream = false)
+    public string BuildChatCompleteJSON(Queue<GTPChatLine> lines, int max_tokens, float temperature = 1.3f, string model = "claude-3-sonnet-20240229", bool stream = false)
     {
         var messagesSb = new StringBuilder();
         string systemPrompt = "";

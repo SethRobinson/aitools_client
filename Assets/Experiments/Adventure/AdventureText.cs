@@ -1355,7 +1355,7 @@ public class AdventureText : MonoBehaviour
 
                     string json = _openAITextCompletionManager.BuildChatCompleteJSON(
                         lines,
-                        4096,
+                        LLMRequestProfile.NoExplicitOutputTokenCap,
                         AdventureLogic.Get().GetExtractor().Temperature,
                         model,
                         true,
@@ -1378,7 +1378,7 @@ public class AdventureText : MonoBehaviour
                     if (string.IsNullOrEmpty(model)) model = Config.Get().GetAnthropicAI_APIModel();
                     if (string.IsNullOrEmpty(endpoint)) endpoint = Config.Get().GetAnthropicAI_APIEndpoint();
                     
-                    string json = _anthropicAITextCompletionManager.BuildChatCompleteJSON(lines, 4096, AdventureLogic.Get().GetExtractor().Temperature, model, true);
+                    string json = _anthropicAITextCompletionManager.BuildChatCompleteJSON(lines, LLMRequestProfile.GetAnthropicMaxOutputTokens(model), AdventureLogic.Get().GetExtractor().Temperature, model, true);
                     _anthropicAITextCompletionManager.SpawnChatCompletionRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
                     SetLLMActive(true);
                 }
@@ -1393,7 +1393,7 @@ public class AdventureText : MonoBehaviour
                     string suggestedEndpoint;
                     // Use instance LLM params if we have an active instance
                     var llmParms = _activeLLMInstanceID >= 0 ? mgr?.GetInstanceLLMParms(_activeLLMInstanceID) : mgr?.GetLLMParms(LLMProvider.LlamaCpp);
-                    string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, 4096, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetGenericLLMMode(), true, llmParms ?? new List<LLMParm>(), false, true);
+                    string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, LLMRequestProfile.NoExplicitOutputTokenCap, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetGenericLLMMode(), true, llmParms ?? new List<LLMParm>(), false, true);
                     
                     _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, serverAddress, suggestedEndpoint, OnStreamingTextCallback, true, settings?.apiKey ?? "");
                     SetLLMActive(true);
@@ -1409,7 +1409,7 @@ public class AdventureText : MonoBehaviour
                     string suggestedEndpoint;
                     // Use instance LLM params if we have an active instance
                     var llmParms = _activeLLMInstanceID >= 0 ? mgr?.GetInstanceLLMParms(_activeLLMInstanceID) : mgr?.GetLLMParms(LLMProvider.Ollama);
-                    string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, 4096, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetGenericLLMMode(), true, llmParms ?? new List<LLMParm>(), true, false);
+                    string json = _texGenWebUICompletionManager.BuildForInstructJSON(lines, out suggestedEndpoint, LLMRequestProfile.NoExplicitOutputTokenCap, AdventureLogic.Get().GetExtractor().Temperature, Config.Get().GetGenericLLMMode(), true, llmParms ?? new List<LLMParm>(), true, false);
                     
                     // Use suggestedEndpoint which is /api/chat for Ollama (supports options.num_ctx)
                     _texGenWebUICompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, serverAddress, suggestedEndpoint, OnStreamingTextCallback, true, settings?.apiKey ?? "");
@@ -1457,7 +1457,7 @@ public class AdventureText : MonoBehaviour
                         }
                     }
 
-                    string json = _geminiTextCompletionManager.BuildChatCompleteJSON(lines, 4096, AdventureLogic.Get().GetExtractor().Temperature, model, true, enableThinking);
+                    string json = _geminiTextCompletionManager.BuildChatCompleteJSON(lines, LLMRequestProfile.NoExplicitOutputTokenCap, AdventureLogic.Get().GetExtractor().Temperature, model, true, enableThinking);
                     _geminiTextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
                     SetLLMActive(true);
                 }
@@ -1490,7 +1490,7 @@ public class AdventureText : MonoBehaviour
                     float? compatMinP = (settings != null && settings.overrideMinP) ? (float?)settings.minP : null;
                     float? compatRepPenalty = (settings != null && settings.overrideRepeatPenalty) ? (float?)settings.repeatPenalty : null;
 
-                    string json = _openAITextCompletionManager.BuildChatCompleteJSON(normalizedLines, 4096, compatTemperature, model, true,
+                    string json = _openAITextCompletionManager.BuildChatCompleteJSON(normalizedLines, LLMRequestProfile.NoExplicitOutputTokenCap, compatTemperature, model, true,
                         enableThinking: compatEnableThinking,
                         topP: compatTopP, topK: compatTopK, minP: compatMinP, repetitionPenalty: compatRepPenalty);
                     _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);

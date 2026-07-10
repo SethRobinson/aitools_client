@@ -94,7 +94,7 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
 
   
     // ""name1"": ""Jeff"",
-    public string BuildForInstructJSON(Queue<GTPChatLine> lines, out string suggestedEndpoint, int max_new_tokens = 100, float temperature = 1.3f, string mode = "instruct", bool stream = false, List<LLMParm> parms = null, bool bIsOllama = false, bool bIsLlamaCpp = false)
+    public string BuildForInstructJSON(Queue<GTPChatLine> lines, out string suggestedEndpoint, int max_new_tokens = LLMRequestProfile.NoExplicitOutputTokenCap, float temperature = 1.3f, string mode = "instruct", bool stream = false, List<LLMParm> parms = null, bool bIsOllama = false, bool bIsLlamaCpp = false)
     {
         // Initialize the suggested endpoint to default (chat completions)
         suggestedEndpoint = "/v1/chat/completions";
@@ -351,7 +351,6 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
         string numCtxValue = "";
         bool hasTemperatureParm = false;
         bool hasTopPParm = false;
-        bool hasMaxTokensParm = false;
         
         // First pass: collect special flags and num_ctx
         if (parms != null)
@@ -374,10 +373,6 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
                 {
                     hasTopPParm = true;
                 }
-                else if (parm._key == "max_tokens" || parm._key == "n_predict")
-                {
-                    hasMaxTokensParm = true;
-                }
             }
         }
         
@@ -394,6 +389,13 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
             {
                 // Skip internal flags that shouldn't be sent
                 if (parm._key == "use_ollama_defaults" || parm._key == "skip_ait_suffix")
+                {
+                    continue;
+                }
+
+                // Output length is intentionally uncapped by the client. Ignore old
+                // saved provider parameters that would silently reintroduce a limit.
+                if (IsOutputTokenLimitParameter(parm._key))
                 {
                     continue;
                 }
@@ -511,7 +513,7 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
                 extra += ",\"top_p\": " + LLMRequestProfile.GetRecommendedTopP(modelName, reasoningEffort, 1.0f).ToString(System.Globalization.CultureInfo.InvariantCulture) + "\r\n";
         }
 
-        if (!bIsOllama && max_new_tokens > 0 && !hasMaxTokensParm)
+        if (!bIsOllama && max_new_tokens > 0)
         {
             extra += $",\"max_tokens\": {max_new_tokens}\r\n";
         }
@@ -560,6 +562,17 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
              }}";
             return json;
         }
+    }
+
+    private static bool IsOutputTokenLimitParameter(string key)
+    {
+        if (string.IsNullOrEmpty(key)) return false;
+        return key.Equals("max_tokens", StringComparison.OrdinalIgnoreCase) ||
+               key.Equals("max_new_tokens", StringComparison.OrdinalIgnoreCase) ||
+               key.Equals("max_output_tokens", StringComparison.OrdinalIgnoreCase) ||
+               key.Equals("max_completion_tokens", StringComparison.OrdinalIgnoreCase) ||
+               key.Equals("n_predict", StringComparison.OrdinalIgnoreCase) ||
+               key.Equals("num_predict", StringComparison.OrdinalIgnoreCase);
     }
 
     private static Queue<GTPChatLine> PrependSystemMessage(Queue<GTPChatLine> lines, string systemPrompt)
