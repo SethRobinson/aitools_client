@@ -4,7 +4,7 @@ License:  BSD style attribution, see LICENSE.md
 
 # Download
 
-Download the latest: V3.03 (Jul 3rd, 2026) [AI Tools Client (Windows, 139 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) (codesigned by me)
+Download the latest: V3.04 (Jul 10th, 2026) [AI Tools Client (Windows, 139 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) (codesigned by me)
 
 ## Features
 
@@ -19,6 +19,12 @@ Download the latest: V3.03 (Jul 3rd, 2026) [AI Tools Client (Windows, 139 MB)](h
 - Privacy respected - does not phone home or collect any statistics, purely local usage. (it does check a single file on github.com to check for newer versions, but that's it)
 
 ## Recent changes
+
+### V3.04 (Jul 10th, 2026)
+
+* Fixed movies staying black after a mass reload on big canvases (ffprobe result caching, stalled-prepare watchdog, staggered reloads)
+* Fixed AI Chat summarize bug and improved compact summaries
+* Fixed text input not working right in the server configuration panel
 
 ### V3.03 (Jul 3rd, 2026)
 
