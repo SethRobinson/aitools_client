@@ -528,6 +528,13 @@ public class AppSettingsPanel : MonoBehaviour
         titleText.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
         if (liveIndex >= 0)
             CreateButton(titleRow, "Overrides", "Overrides...", 112f, () => ServerSettingsPanel.Show(liveIndex));
+        CreateButton(titleRow, "Duplicate", "Duplicate", 100f, () =>
+        {
+            _workingServers.Insert(index + 1, server.Clone());
+            _configDirty = true;
+            SetTab(AppSettingsTab.Configuration);
+            SetFooterStatus("Duplicated Server " + index + " - edit the copy's URL, then apply.");
+        });
         CreateButton(titleRow, "Remove", "Remove", 86f, () =>
         {
             _workingServers.RemoveAt(index);
@@ -1365,7 +1372,12 @@ public class AppSettingsPanel : MonoBehaviour
             img.color = InputBg;
 
         input.SetTextWithoutNotify(value ?? "");
-        input.ForceLabelUpdate();
+
+        // The field was created (and TMP_InputField.OnEnable ran) before textComponent
+        // and parenting were wired up, so TMP never built its caret/selection renderer:
+        // invisible caret, invisible highlight, and dead wheel-scroll over the field.
+        // Re-run its OnEnable now that everything is in place.
+        TMPInputFieldCaretFix.Apply(input);
 
         return input;
     }

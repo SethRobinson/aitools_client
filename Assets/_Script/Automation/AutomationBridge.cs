@@ -81,6 +81,16 @@ public static class AutomationBridge
         return _driver != null && _driver.SendChat(text);
     }
 
+    /// <summary>Focus a TMP_InputField by hierarchy-path substring; see AutomationDriver.FocusInput.</summary>
+    public static bool FocusInput(string nameSubstring, bool selectAll, out string error, out string matchedPath, out bool hasCaretGraphic)
+    {
+        error = "no driver";
+        matchedPath = "";
+        hasCaretGraphic = false;
+        if (_driver == null) return false;
+        return _driver.FocusInput(nameSubstring, selectAll, out error, out matchedPath, out hasCaretGraphic);
+    }
+
     /// <summary>Import a local video file into AI Chat as a clipped Movie bubble.</summary>
     public static bool ImportChatVideo(string path, float startSeconds, float durationSeconds, double fps, bool includeAudio, out string error)
     {

@@ -32,6 +32,8 @@ using UnityEngine;
 //   POST /settings    -> body: tab=<general|configuration|comfyui|audio|llm>; open Settings panel
 //   POST /llm_settings -> open the advanced LLM Settings panel
 //   POST /server_settings -> body: id=<serverID>; open that server's Overrides panel
+//   POST /focus_input -> body: name=<hierarchy-path substring>, optional selectall=<true|false>;
+//                        focus a TMP_InputField (returns matched path + whether a caret graphic exists)
 //   POST /chat        -> body = message text; open chat + send one turn (ok:false if a busy gate refused the send)
 //   POST /chat_import_video -> body: path=<file>, optional start=<seconds>, duration=<seconds>, fps=<n>, audio=<true|false>; import clipped Movie bubble
 //   POST /chat_compact -> body: mode=<summarize|truncate> (default summarize), keep=<n> exchanges kept (default 2); runs AI Chat's Compact
@@ -240,6 +242,25 @@ public static class AutomationController
                         int.TryParse(idText, out serverID);
                     EnqueueMain(() => AutomationBridge.OpenServerSettings(serverID));
                     WriteJson(stream, 200, "{\"ok\":true,\"accepted\":\"server_settings\"}");
+                    break;
+                }
+
+                case "/focus_input":
+                {
+                    // Body: name=<hierarchy-path substring> (case-insensitive, "/" separators,
+                    // e.g. "server_0/urlrow"); optional selectall=<true|false> to also select
+                    // the field's text once activation settles (for screenshot verification).
+                    var kv = ParseKeyValues(body);
+                    string inputName = kv.TryGetValue("name", out var nameValue) ? nameValue : "";
+                    bool selectAll = ParseBool(kv, "selectall", false);
+                    string result = RunOnMainAndWait(() =>
+                    {
+                        bool ok = AutomationBridge.FocusInput(inputName, selectAll, out string err, out string matchedPath, out bool hasCaret);
+                        return ok
+                            ? $"{{\"ok\":true,\"path\":{JsonStr(matchedPath)},\"caretGraphic\":{(hasCaret ? "true" : "false")}}}"
+                            : $"{{\"ok\":false,\"error\":{JsonStr(err)}}}";
+                    }, "{\"ok\":false,\"error\":\"timed out\"}");
+                    WriteJson(stream, 200, result);
                     break;
                 }
 

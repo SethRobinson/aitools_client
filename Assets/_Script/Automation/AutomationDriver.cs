@@ -103,6 +103,80 @@ public class AutomationDriver : MonoBehaviour
         ServerSettingsPanel.Show(Mathf.Max(0, serverID));
     }
 
+    /// <summary>
+    /// Focus the first active, interactable TMP_InputField whose hierarchy path contains
+    /// nameSubstring (case-insensitive, "/" separators, e.g. "server_0/urlrow"). With
+    /// selectAll, also selects the field's whole text a couple of frames later (after TMP
+    /// finishes activating) so a following screenshot can prove selection-highlight
+    /// rendering. Reports whether a caret/selection graphic (TMP_SelectionCaret) exists
+    /// under the field - the thing TMP forgets to create for runtime-built fields.
+    /// </summary>
+    public bool FocusInput(string nameSubstring, bool selectAll, out string error, out string matchedPath, out bool hasCaretGraphic)
+    {
+        error = "";
+        matchedPath = "";
+        hasCaretGraphic = false;
+        if (string.IsNullOrWhiteSpace(nameSubstring))
+        {
+            error = "no name given";
+            return false;
+        }
+
+        string needle = nameSubstring.Trim().ToLowerInvariant();
+        TMPro.TMP_InputField match = null;
+        foreach (var input in FindObjectsByType<TMPro.TMP_InputField>(FindObjectsSortMode.None))
+        {
+            if (input == null || !input.interactable) continue;
+            string path = GetTransformPath(input.transform);
+            if (path.ToLowerInvariant().Contains(needle))
+            {
+                match = input;
+                matchedPath = path;
+                break;
+            }
+        }
+
+        if (match == null)
+        {
+            error = "no active TMP_InputField hierarchy path contains '" + nameSubstring + "'";
+            return false;
+        }
+
+        var eventSystem = UnityEngine.EventSystems.EventSystem.current;
+        if (eventSystem != null)
+            eventSystem.SetSelectedGameObject(match.gameObject);
+        match.ActivateInputField();
+
+        hasCaretGraphic = match.GetComponentsInChildren<TMPro.TMP_SelectionCaret>(true).Length > 0;
+
+        if (selectAll)
+            StartCoroutine(SelectAllAfterActivation(match));
+        return true;
+    }
+
+    static string GetTransformPath(Transform t)
+    {
+        string path = t.name;
+        while (t.parent != null)
+        {
+            t = t.parent;
+            path = t.name + "/" + path;
+        }
+        return path;
+    }
+
+    System.Collections.IEnumerator SelectAllAfterActivation(TMPro.TMP_InputField input)
+    {
+        // TMP finishes ActivateInputField on its next update and moves the caret to the
+        // end, which would clobber a selection made now. Select after that has happened.
+        yield return null;
+        yield return null;
+        if (input == null) yield break;
+        input.selectionStringAnchorPosition = 0;
+        input.selectionStringFocusPosition = (input.text ?? "").Length;
+        input.ForceLabelUpdate();
+    }
+
     /// <summary>Send a chat message through the live panel. False if no panel is open.</summary>
     public bool SendChat(string text)
     {

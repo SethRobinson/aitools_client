@@ -272,6 +272,7 @@ public class PresetPickerDialog : MonoBehaviour
         _filterInput.caretColor = TextDark;
         _filterInput.caretWidth = 2;
         _filterInput.selectionColor = new Color(0.25f, 0.5f, 1f, 0.40f);
+        TMPInputFieldCaretFix.Apply(_filterInput);
 
         _filterInput.onValueChanged.AddListener(OnFilterChanged);
         _filterInput.onSubmit.AddListener(OnFilterSubmit);

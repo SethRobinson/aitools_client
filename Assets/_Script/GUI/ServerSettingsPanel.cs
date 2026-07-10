@@ -402,6 +402,7 @@ public class ServerSettingsPanel : MonoBehaviour
         input.caretWidth = 2;
         input.selectionColor = new Color(0.25f, 0.5f, 1f, 0.40f);
         TMPInputFieldUndo.Ensure(input);
+        TMPInputFieldCaretFix.Apply(input);
 
         if (input.placeholder is TextMeshProUGUI ph)
         {
