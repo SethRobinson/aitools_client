@@ -643,6 +643,8 @@ set_default_audio_negative_prompt|music|
 
     public int GetFreeGPU(RTRendererType requestedGPUType = RTRendererType.Any_Local, bool bFreeOrBusyIsOk = false, bool skipIgnored = false, string nameMatchFilter = null)
     {
+        // m_gpuInfo is kept in config.txt add_server order. Returning the first
+        // matching idle entry makes that order the scheduling priority.
         //special types
 
         if (requestedGPUType != RTRendererType.Any_Local)

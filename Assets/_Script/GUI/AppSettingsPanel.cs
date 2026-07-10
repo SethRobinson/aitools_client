@@ -28,6 +28,7 @@ public class AppSettingsPanel : MonoBehaviour
     private TMP_FontAsset _font;
     private RectTransform _mainPanel;
     private RectTransform _contentHost;
+    private ScrollRect _contentScrollRect;
     private TextMeshProUGUI _footerStatusText;
     private TextMeshProUGUI _generalStatusText;
     private TextMeshProUGUI _configStatusText;
@@ -291,6 +292,7 @@ public class AppSettingsPanel : MonoBehaviour
         scrollRt.offsetMax = Vector2.zero;
 
         var scrollRect = scrollGo.AddComponent<ScrollRect>();
+        _contentScrollRect = scrollRect;
         scrollRect.horizontal = false;
         scrollRect.vertical = true;
         scrollRect.scrollSensitivity = 30f;
@@ -471,10 +473,10 @@ public class AppSettingsPanel : MonoBehaviour
         CreateSectionHeader(content, "ComfyUI Servers");
 
         var help = CreateText("Help", content,
-            "Add ComfyUI API endpoints here. Use --listen on remote ComfyUI servers, and add a token only for password-protected API endpoints.",
+            "Add ComfyUI API endpoints here. Servers are tried from top to bottom when more than one is idle; use the arrows to set priority. Use --listen on remote servers, and add a token only for password-protected API endpoints.",
             13f, TextMuted, TextAlignmentOptions.TopLeft);
         help.textWrappingMode = TextWrappingModes.Normal;
-        help.gameObject.AddComponent<LayoutElement>().preferredHeight = 40f;
+        help.gameObject.AddComponent<LayoutElement>().preferredHeight = 54f;
 
         for (int i = 0; i < _workingServers.Count; i++)
             CreateServerEditor(content, i);
@@ -526,6 +528,10 @@ public class AppSettingsPanel : MonoBehaviour
         var titleText = CreateText("Title", titleRow, title, 14f, TextDark, TextAlignmentOptions.MidlineLeft);
         titleText.fontStyle = FontStyles.Bold;
         titleText.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
+        var moveUpButton = CreateButton(titleRow, "MoveUp", "▲", 34f, () => MoveServer(index, -1));
+        moveUpButton.interactable = index > 0;
+        var moveDownButton = CreateButton(titleRow, "MoveDown", "▼", 34f, () => MoveServer(index, 1));
+        moveDownButton.interactable = index < _workingServers.Count - 1;
         if (liveIndex >= 0)
             CreateButton(titleRow, "Overrides", "Overrides...", 112f, () => ServerSettingsPanel.Show(liveIndex));
         CreateButton(titleRow, "Duplicate", "Duplicate", 100f, () =>
@@ -599,6 +605,29 @@ public class AppSettingsPanel : MonoBehaviour
         string status = GetLiveServerStatus(server.Url);
         var statusText = CreateText("LiveStatus", vramRow, status, 13f, TextMuted, TextAlignmentOptions.MidlineLeft);
         statusText.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
+    }
+
+    private void MoveServer(int index, int direction)
+    {
+        int targetIndex = index + direction;
+        if (index < 0 || index >= _workingServers.Count ||
+            targetIndex < 0 || targetIndex >= _workingServers.Count)
+            return;
+
+        ComfyServerConfig moving = _workingServers[index];
+        _workingServers[index] = _workingServers[targetIndex];
+        _workingServers[targetIndex] = moving;
+        _configDirty = true;
+
+        float scrollPosition = _contentScrollRect != null ? _contentScrollRect.verticalNormalizedPosition : 1f;
+        SetTab(AppSettingsTab.Configuration);
+        Canvas.ForceUpdateCanvases();
+        if (_contentScrollRect != null)
+        {
+            LayoutRebuilder.ForceRebuildLayoutImmediate(_contentScrollRect.content);
+            _contentScrollRect.verticalNormalizedPosition = scrollPosition;
+        }
+        SetFooterStatus("Changed ComfyUI server priority. Apply and reconnect to make the new order active.");
     }
 
     private void BuildAudioTab(RectTransform content)

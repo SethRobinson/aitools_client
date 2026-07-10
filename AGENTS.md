@@ -1,10 +1,41 @@
 # AGENTS.md
 
-This file provides guidance to LLMs when working in this repository. Read it in full at the START of every task, before reading, searching, editing, or answering — it is the authoritative source of truth for this repo.
+Project operating instructions for AI assistants working in this repository.
 
-## Keeping this file current (self-maintenance)
+## Shared Project Memory
 
-**This file must stay accurate. Whenever a change you make invalidates something documented here, update AGENTS.md in the SAME task — do not leave it stale.** Treat it as part of the deliverable, not a follow-up.
+- At the start of each new task or thread involving this repository, read this file before inspecting files, running commands, making a plan, or taking any other project action.
+- Treat follow-up replies in the same continuous task as part of that task. Do not reread this file unless the repository or working directory changes, this file is modified, or its instructions are no longer available in context.
+- Treat this file as the shared project memory for AI assistants.
+- Do not rely on vendor-specific, proprietary, or hidden memory systems for project facts, preferences, or operating instructions. (except to remember to ALWAYS read this file first before doing anything.  Remember that.)
+- Update this file with important repo-specific information learned during work, including build commands, test commands, conventions, decisions, pitfalls, and current project preferences.
+- Keep this file accurate and current. Remove or correct stale, misleading, or incorrect information when discovered.
+- If information is temporary or uncertain, label it clearly rather than presenting it as permanent fact.
+
+Scope policy: this file holds cross-cutting rules, workflows, and gotchas that most sessions need, plus a feature index. Keep it around 30 KB. Feature deep-dives live in `docs/<topic>.md`: before working on a feature listed in the index, read its doc; when finishing feature work, update that doc and keep the index entry here to one or two lines (where it lives + the non-obvious constraint). Cross-cutting rules and new gotchas still land here directly. When a change makes anything stale, here or in a linked doc, update it in the same change.
+
+## Testing
+
+- When possible, design automated tests for new features and bug fixes.
+- Run relevant automated tests after finishing changes to guard against regressions.
+- If tests cannot be run or do not exist, state that clearly in the handoff and describe any manual verification performed.
+
+
+## Security
+
+- Never commit sensitive data, including credentials, tokens, passwords, private keys, cookies, customer data, personal data, or machine-specific authentication material.
+- If an AI assistant needs authentication data or other secrets for local work, use `agents_secret.md` for those notes.
+- `agents_secret.md` must stay ignored by git and must not be committed.
+- Do not put secrets in commit messages, logs, issue text, pull request descriptions, generated docs, or other tracked files.
+- Before committing, review staged changes for accidental secrets.
+
+## Git
+
+- Never add OpenAI/Codex/Claude etc as a co-author on git commits.
+- NEVER `git commit` unless explicitly told to commit.
+- NEVER `git push` unless explicitly told to push. "Commit" means commit
+  locally only; committing is not permission to push.
+
 
 Update this file when a change touches any of:
 - Build/run commands, build scripts, or what they copy/produce (the "Essential Commands" section).
@@ -88,7 +119,7 @@ Text-to-image, single-step image-to-image presets (`-i` / `-i2` inputs), and sin
 - `Assets/_Script/GameLogic.cs` is the central UI/state coordinator. It owns prompts, negative prompts, generation parameters, selected renderer, preset/job-list text, temp image slots, global variables, and normal vs experiment mode.
 - `Assets/_Script/Config.cs` loads `config.txt` and `config_cam.txt`, manages `GPUInfo` server entries, renderer selection, server busy state, per-server overrides, and the generated top-right server status rows.
 - `Assets/_Script/ImageGenerator.cs` owns the global generation loop, GPU event queues, server selection, continuous generation, and throttling when job scripts start with LLM work before GPU work.
-- `Assets/_Script/GUI/AppSettingsPanel.cs` is the unified Settings window. It owns the visible General, ComfyUI Settings, and Audio content tabs plus an "LLM Settings" launcher in the same tab strip; the old generate gear and Configuration button route into it. The "LLM Settings" tab is a launcher, not a content page: clicking it opens the standalone advanced `LLMSettingsPanel` dialog directly (there is no in-tab LLM summary). The standalone LLM Settings button (`GameLogic.OnLLMSettingsButtonClicked`) opens that dialog directly too, and `AppSettingsPanel.Show(AppSettingsTab.LLM)` / automation `/settings tab=llm` open the window on General and pop the advanced dialog. Its ComfyUI Settings and Audio tabs write the modern supported subset of `config.txt` (ComfyUI servers, tokens/names, VRAM annotations, image editor path, audio defaults, and Text To Speech settings) and reconnect through `Config.ProcessConfigString()` where needed. If reconnect is blocked by active/queued GPU work, it shows a confirmation dialog that can force-cancel generation work, clear runtime GPU busy state, and reconnect.
+- `Assets/_Script/GUI/AppSettingsPanel.cs` is the unified Settings window. It owns the visible General, ComfyUI Settings, and Audio content tabs plus an "LLM Settings" launcher in the same tab strip; the old generate gear and Configuration button route into it. The "LLM Settings" tab is a launcher, not a content page: clicking it opens the standalone advanced `LLMSettingsPanel` dialog directly (there is no in-tab LLM summary). The standalone LLM Settings button (`GameLogic.OnLLMSettingsButtonClicked`) opens that dialog directly too, and `AppSettingsPanel.Show(AppSettingsTab.LLM)` / automation `/settings tab=llm` open the window on General and pop the advanced dialog. Its ComfyUI Settings and Audio tabs write the modern supported subset of `config.txt` (ComfyUI servers, tokens/names, VRAM annotations, image editor path, audio defaults, and Text To Speech settings) and reconnect through `Config.ProcessConfigString()` where needed. ComfyUI server rows have up/down priority controls; Apply/reconnect writes that order to `add_server` lines, and `Config.GetFreeGPU()` tries matching idle servers from top to bottom. If reconnect is blocked by active/queued GPU work, the panel shows a confirmation dialog that can force-cancel generation work, clear runtime GPU busy state, and reconnect.
 - `Assets/_Script/GUI/MainToolPanelModeController.cs` toggles the scene-authored `CompactToolControls` and `ManualToolControls` groups on the main Tools panel without changing the underlying `GameLogic` state. It captures the scene-authored manual panel rect at startup, fits the panel to compact controls in compact mode, and restores the captured rect in manual mode.
 - `Assets/_Script/PresetManager.cs` reads and writes `Presets/*.txt` files using `COMMAND_START|...COMMAND_END` blocks and `COMMAND_SET|...` lines.
 - `Assets/_Script/VariableManager.cs` implements `%variable%` substitution for job scripts. Variables are local to a `PicMain` unless prefixed with `global_`.
