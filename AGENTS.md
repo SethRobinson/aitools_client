@@ -51,7 +51,7 @@ Seth's AI Tools is a Unity 6 Windows application that provides a native front-en
 
 Current local facts:
 - Unity editor version: `6000.5.1f1` (`ProjectSettings/ProjectVersion.txt`)
-- App version in code/version metadata: `3.04`
+- App version in code/version metadata: `3.05`
 - Main scene: `Assets/Main.unity`
 - Primary platform: Windows desktop; a limited Python CLI (Windows + Linux) also exists under `cli/`
 
@@ -87,6 +87,8 @@ UpdateBuildDirConfigFiles.bat
 ```
 
 `GenerateBuildDate.bat` updates build-date data. `UpdateBuildDirConfigFiles.bat` copies `utils`, `web`, `Adventure`, `AIGuide`, `ComfyUI`, `Presets`, `aichat`, and local config files into `build/win`. `utils` includes runtime helper EXEs such as `RTClip` and the bundled FFmpeg/ffprobe helpers under `utils/ffmpeg/bin/`; those third-party FFmpeg binaries are copied as data and are not signed by the build scripts.
+
+AI-harness note for running `BuildWin64.bat` from a tool shell: run it from the repo root, clear `NoDefaultCurrentDirectoryInExePath` first (Claude Code sets it to 1, which makes cmd's bare `call app_info_setup.bat` lines fail with "not recognized" even in the right directory), set `NO_PAUSE=1` so the final `pause` doesn't hang a background run, and disable sandboxing (the script needs `f:\Unity\base_setup.bat`, registry queries to find Unity, and `d:\projects\util`). Working invocation: `Set-Location f:\Unity\aitools_client; Remove-Item Env:\NoDefaultCurrentDirectoryInExePath; $env:NO_PAUSE='1'; cmd /c .\BuildWin64.bat`. On failure the script pops notepad with `log.txt` and pauses; check `build\win\aitools_client.exe` exists to confirm success.
 
 There is no current root `BuildWebGL.bat`. WebGL build support is present in `Assets/RT/Editor/WebGLBuilder.cs`, and upload scripts exist (`UploadWebGLRSync*.bat`), but do not document or call a missing WebGL build script unless it is reintroduced.
 

@@ -4,7 +4,7 @@ License:  BSD style attribution, see LICENSE.md
 
 # Download
 
-Download the latest: V3.04 (Jul 10th, 2026) [AI Tools Client (Windows, 139 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) (codesigned by me)
+Download the latest: V3.05 (Jul 13th, 2026) [AI Tools Client (Windows, 132 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) (codesigned by me)
 
 ## Features
 
@@ -19,6 +19,12 @@ Download the latest: V3.04 (Jul 10th, 2026) [AI Tools Client (Windows, 139 MB)](
 - Privacy respected - does not phone home or collect any statistics, purely local usage. (it does check a single file on github.com to check for newer versions, but that's it)
 
 ## Recent changes
+
+### V3.05 (Jul 13th, 2026)
+
+* Added Claude Fable 5 and GPT-5.6 model support
+* ComfyUI servers can now be reordered in Settings to control which ones get used first
+* Removed client-side LLM output token caps (model/server limits still apply)
 
 ### V3.04 (Jul 10th, 2026)
 
