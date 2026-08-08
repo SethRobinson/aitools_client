@@ -1,0 +1,11 @@
+COMMAND_START|joblist
+#Convert image to ~5-second video with native stereo audio using MiniMax H3
+#Length is a 24fps frame count, snapped up to the model's 17k+5 grid (124 = ~5s, trained max 362 = ~15s)
+#Variable names are video-specific on purpose: a chained still preset (Z-Image) runs on the SAME
+#PicMain and shares its variable scope, so a plain %width% here would collide with the still's.
+%vid_width%="864"
+%vid_height%="480"
+%vid_length%="124"
+
+img_to_video_minimax_h3.json @upload|image1|input1| @replace|"width": 864|"width": %vid_width%| @replace|"height": 480|"height": %vid_height%| @replace|"length": 124|"length": %vid_length%|
+COMMAND_END

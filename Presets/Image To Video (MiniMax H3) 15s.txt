@@ -1,0 +1,8 @@
+COMMAND_START|joblist
+#Convert image to ~15-second video with native stereo audio using MiniMax H3 (about 3x the render time of the 5s preset)
+%vid_width%="864"
+%vid_height%="480"
+%vid_length%="362"
+
+img_to_video_minimax_h3.json @upload|image1|input1| @replace|"width": 864|"width": %vid_width%| @replace|"height": 480|"height": %vid_height%| @replace|"length": 124|"length": %vid_length%|
+COMMAND_END

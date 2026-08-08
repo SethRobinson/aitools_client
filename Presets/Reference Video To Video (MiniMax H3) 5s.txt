@@ -1,0 +1,15 @@
+COMMAND_START|joblist
+#Generate a NEW ~5-second video with audio using a loaded VIDEO as the reference (MiniMax H3 Ref2VA).
+#The output carries the subject/motion/style of the source clip; it does not restyle or continue it.
+#The clip's SOUNDTRACK is referenced too (up to 15s of frames+audio at 24fps), so music/voices can
+#carry over. Prompts refer to the clip as <Video 1> and its soundtrack as <Audio 1>.
+#The source clip MUST have an audio track - a silent source fails in the video loader
+#("VHS failed to extract audio from ...") before sampling starts.
+#NOTE: no @replace|"length"| here on purpose - AI Chat's video_to_video path overrides any exposed
+#length to match the SOURCE duration (at WAN's 16fps cadence), which is wrong for a reference
+#generation. Duration stays the workflow's 124 frames (~5s @24fps).
+%vid_width%="864"
+%vid_height%="480"
+
+ref_video_to_video_minimax_h3.json @upload|video|input1| @replace|"width": 864|"width": %vid_width%| @replace|"height": 480|"height": %vid_height%|
+COMMAND_END

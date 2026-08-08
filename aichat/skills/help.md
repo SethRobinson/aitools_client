@@ -38,7 +38,7 @@ Keep the first help answer brief and easy to scan:
 3. Mention optional render hints only at the user level:
    images: `zimage`, `krea`, `ideogram`;
    image editing: `bernini` (alternative to the default edit model);
-   movies: `ltx`, `wan`.
+   movies: `minimax` (default, audio + dialog), `ltx` (fastest), `wan` (silent).
 4. Mention: for consistent characters, objects, or styles across multiple
    images, ask to `use anchors`.
 5. Add a short "Available areas" list based on the loaded SKILLS summaries.

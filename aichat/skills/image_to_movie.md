@@ -1,10 +1,10 @@
 ---
 id: image_to_movie
-summary: Animate an image (user-pasted OR a previously-generated chat image) into a short video clip. Default to LTX 2.3; use WAN / Wan 2.2 via preset `Image To Video (WAN) 5s.txt` when the user asks for WAN or higher-quality silent video.
+summary: Animate an image (user-pasted OR a previously-generated chat image) into a short video clip. Default to MiniMax H3 (`Image To Video (MiniMax H3) 5s.txt`, native audio + dialog). Use LTX 2.3 via `Image To Video (LTX) 5s.txt` when the user asks for LTX or the fastest option; use WAN / Wan 2.2 via `Image To Video (WAN) 5s.txt` when the user asks for WAN or silent video.
 inputs: attachment
 autoload: true
-triggers: animate, animation, image to video, image-to-video, image to movie, image-to-movie, animate this, animate it, make this move, make it move, using wan, use wan, with wan, wan 2.2, wan2.2, wan22
-template: <aitools_action skill="image_to_movie" preset="{{Image To Video (LTX) 5s.txt}}" prompt="describe motion + camera, with ONE short line of in-scene dialog in double-quotes (language+accent), then ambient sound" chat_image="N"/>  # default LTX; when the user asks for WAN/Wan 2.2, use preset="{{Image To Video (WAN) 5s.txt}}" and write a silent WAN motion prompt.
+triggers: animate, animation, image to video, image-to-video, image to movie, image-to-movie, animate this, animate it, make this move, make it move, using wan, use wan, with wan, wan 2.2, wan2.2, wan22, using ltx, use ltx, with ltx, ltx 2.3, minimax, mini max, minmax, minimax h3, minmax h3, h3, hailuo
+template: <aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3) 5s.txt}}" prompt="describe motion + camera, with ONE short line of in-scene dialog in double-quotes (language+accent), then ambient sound" chat_image="N"/>  # default MiniMax H3 (native audio). When the user asks for LTX use preset="{{Image To Video (LTX) 5s.txt}}"; for WAN/Wan 2.2 use preset="{{Image To Video (WAN) 5s.txt}}" with a silent motion prompt.
 ---
 # Image-to-movie
 
@@ -12,7 +12,7 @@ Use this skill when the user wants you to ANIMATE an image into a short
 video clip. The source can be either freshly pasted or already in chat.
 
 If the user asks for a NEW text-described video with no source image
-("generate a WAN video of X", "make an LTX movie of X", "create a video of X"),
+("make a video of X", "generate a MiniMax/WAN/LTX video of X"),
 first emit `generate_image` with `{{Prompt To Image (Z-Image).txt}}`, then emit
 this skill with `chain="true"`. Do NOT use direct `generate_movie` /
 text-to-video unless the user explicitly asks for direct text-to-video, "no
@@ -28,32 +28,41 @@ Specify EXACTLY ONE source via:
 
 ## Available presets
 
-- `{{Image To Video (WAN) 5s.txt}}` - high-quality 5s, slow, silent (Wan 2.2 / WAN). In `test_` mode this resolves to the test WAN image-to-video preset.
+- `{{Image To Video (MiniMax H3) 5s.txt}}` - DEFAULT. ~5s, native stereo audio +
+  spoken dialog (11 languages), strong motion/identity. MiniMax H3.
+- `{{Image To Video (MiniMax H3) 15s.txt}}` - same model, ~15s single
+  generation. Only when the user explicitly asks for a long clip (~3x render time).
+- `{{Reference To Video (MiniMax H3) 5s.txt}}` - the SUBJECT of the source
+  image doing something new; output does NOT start on the source frame. See
+  "Reference-to-video" below.
+- `{{Image To Video (LTX) 5s.txt}}` - fast 5s clip with audio (LTX 2.3). Use
+  when the user asks for LTX or the fastest/quickest video.
+- `{{Image To Video (WAN) 5s.txt}}` - high-quality 5s, slow, silent (Wan 2.2 / WAN).
 - `{{Image To Video (Wan22).txt}}` - legacy alias for the same production Wan 2.2 path.
-- `{{Image To Video (LTX) 5s.txt}}` - fast 5s clip (LTX 2.3)
 
 ## Invocation
 
-DEFAULT - stack onto the image you JUST generated in this same reply (chain="true"):
+DEFAULT - stack onto the image you JUST generated in this same reply (chain="true").
+Size BOTH actions to the video canvas (see "Sizing" below):
 ```
-<aitools_action skill="generate_image" preset="Prompt To Image (Z-Image).txt" prompt="<full Z-Image scene description>"/>
-<aitools_action skill="image_to_movie" preset="{{Image To Video (LTX) 5s.txt}}" prompt="<full LTX motion + dialog beat>" chain="true"/>
+<aitools_action skill="generate_image" preset="Prompt To Image (Z-Image).txt" prompt="<full Z-Image scene description>" width="864" height="480"/>
+<aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3) 5s.txt}}" prompt="<full H3 motion + dialog beat>" chain="true" width="864" height="480"/>
 ```
-This stacks the LTX video onto the SAME Pic as the image you just made, so the
+This stacks the video onto the SAME Pic as the image you just made, so the
 chat shows ONE bubble that updates from still -> playing video. Do NOT also pass
 attachment / chat_image when you set chain="true" - the prior step's output is
 inherited automatically. chain="true" only works as a follow-up to a generate
 action emitted earlier in the same reply. This is the right form for any
-"<image-model> + <video-model>" combo (e.g. Z-Image + LTX).
+"<image-model> + <video-model>" combo (e.g. Z-Image + MiniMax H3).
 
 Animate a freshly-pasted image (user dropped/pasted an image THIS turn):
 ```
-<aitools_action skill="image_to_movie" preset="{{Image To Video (LTX) 5s.txt}}" prompt="slow camera push-in, leaves rustling" attachment="1"/>
+<aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3) 5s.txt}}" prompt="slow camera push-in, leaves rustling" attachment="1"/>
 ```
 
 Animate an image already in the chat from earlier (numbered bubble):
 ```
-<aitools_action skill="image_to_movie" preset="{{Image To Video (LTX) 5s.txt}}" prompt="the wind picks up, hair flutters" chat_image="2"/>
+<aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3) 5s.txt}}" prompt="the wind picks up, hair flutters" chat_image="2"/>
 ```
 
 ## Writing good image-to-video prompts
@@ -66,26 +75,60 @@ person fully: apparent age, ethnicity/complexion, build, hair, face, wardrobe,
 and expression. Never animate "Mara", "Bob", "the heroine", or "the same
 person" by name only.
 
+### MiniMax H3 (`{{Image To Video (MiniMax H3) 5s.txt}}`) - DEFAULT
+
+H3 generates video AND native stereo audio (speech, ambience, music cues) in
+one pass, and understands the source frame as `<Picture 1>`.
+
+- For a single continuous scene, use the same shape as LTX: 4-8 sentences, one
+  paragraph - subject restatement -> motion + ONE short quoted dialog line ->
+  one camera move -> mood/lighting -> ambient-sound tag.
+- **Dialog is DEFAULT ON.** Give any plausible speaker a short line (~3-12
+  words) in double quotes with language + accent, e.g. `she murmurs "I told
+  him I was done" in English with a soft New York accent`. Write EXACT words,
+  never "she says something". Skip ONLY when there is no plausible speaker
+  (empty landscape, face hidden, user said "silent").
+- **Multi-shot IS allowed** (unlike LTX/WAN): H3 is trained for explicit cuts.
+  Structure them as numbered shots, each with concrete motion:
+  `SHOT 1: the scene opens exactly on image 1, ... SHOT 2: cut to an extreme
+  macro profile of ..., ... SHOT 3: cut to a low-angle beauty shot ...`.
+  Keep the environment/palette description constant across shots. 1-2 shots
+  fit the 5s preset; save 3-4 shots for the 15s preset.
+- A `Timeline: [0s-1s] ... [1s-3s] ...` block is also understood for precisely
+  timed beats.
+- Do NOT use negative prompts with H3; there is no negative path.
+- Avoid vague energy words ("dynamic", "epic") - describe literal motion.
+
+### Reference-to-video (`{{Reference To Video (MiniMax H3) 5s.txt}}`)
+
+Use INSTEAD of the normal i2v preset when the user wants the PERSON/OBJECT
+from an image doing something new - not that exact frame animated. The output
+does not start on the source image; the reference locks identity/style. This
+is ideal for anchors: "make a video of Mara surfing" from an anchored portrait.
+
+- The prompt MUST refer to the reference as `<Picture 1>` (e.g. `The woman
+  from <Picture 1>, now in a wetsuit, carves across a wave...`), and should
+  still restate her key visible traits once.
+- Same source attributes as normal (`attachment` / `chat_image` / `chain`).
+- Dialog/audio rules are the same as normal H3.
+- If the reference is a MOVIE bubble rather than a still, use
+  `skill="video_to_video"` with `{{Reference Video To Video (MiniMax H3) 5s.txt}}`
+  and `<Video 1>` in the prompt instead - see the video_to_video skill.
+
 ### LTX 2.3 (`{{Image To Video (LTX) 5s.txt}}`)
 
 Source: [docs.ltx.video](https://docs.ltx.video/api-documentation/prompting-guide).
+Use when the user asks for LTX or the fastest option.
 
 - **4-8 sentences, single flowing paragraph.** Tuned for this length.
 - Order: visual subject restatement → **motion + ONE short line of dialog** →
   one camera move → mood/lighting → short ambient-sound tag.
-- **Dialog is DEFAULT ON.** LTX 2.3 generates real audio for quoted
-  lines - animating a person without giving them one wastes the
-  feature. Add a short line (~3-12 words) in double quotes with
-  language + accent, tucked into the motion sentence - e.g.
-  `she murmurs "I told him I was done" in English with a soft New York
-  accent`. Write EXACT words, never "she says something". Skip ONLY
-  when the source has no plausible speaker (alone and silent, face
-  hidden / turned away, empty landscape / abstract, user said "silent").
+- Dialog default ON, same quoting rules as H3.
 - Don'ts: no abstract energy words ("dynamic", "epic"); no jump-cut
   words ("suddenly", "flashes", "cuts to"); don't pile aesthetics
-  without described motion.
+  without described motion. Single continuous shot ONLY.
 
-LTX 2.3 example for a previously-generated rooftop-smoking image:
+Example (H3 or LTX) for a previously-generated rooftop-smoking image:
 
 > She slowly raises the cigarette and takes a long drag, eyes
 > half-closing, then lowers her hand, tilts her head slightly back, and
@@ -122,66 +165,71 @@ Source: [wan2-2.app/prompt](https://wan2-2.app/prompt).
   Stylization**. No strict word count - "more complete = higher quality".
 - Handles longer multi-beat motion than LTX. 200-400 words of timed
   motion + environmental motion + lighting evolution work well.
-- **Wan 2.2 uses negative prompts** (unlike LTX / Z-Image). Common:
+- **WAN is silent** - no dialog or sound tags.
+- **Wan 2.2 uses negative prompts** (unlike H3 / LTX / Z-Image). Common:
   `blurry, low quality, distorted faces, jittery motion, watermark`.
-- Same hard-cut rule: avoid "suddenly", "flashes", "cuts to".
+- Hard-cut rule applies: avoid "suddenly", "flashes", "cuts to".
 
-## Aspect handling (auto)
+## Sizing
 
-The host automatically matches the output video's aspect ratio to the source
-image's aspect, while keeping the preset's overall pixel budget. So a 1024x1024
-source animated with the LTX 5s preset (default 960x544 landscape) actually
-runs at ~720x720 - no top/bottom crop. You don't need to do anything for this.
+The video presets render at **864x480** (~0.4MP). Video cost scales with pixel
+count, so an oversized canvas is the single easiest way to make a clip take
+twice as long for no visible benefit.
 
-If you specifically want a different aspect (e.g. portrait video from a
-landscape source), pass explicit `width="N" height="N"` attributes (both
-required, both must be > 0). They'll be snapped to multiples of 32 and clamped
-to a sensible range. Example for a 9:16 portrait:
+### Chaining a still into a movie: size BOTH actions
 
-```
-<aitools_action skill="image_to_movie" preset="{{Image To Video (LTX) 5s.txt}}" prompt="..." chat_image="2" width="448" height="768"/>
-```
-
-Skip `width`/`height` unless the user is explicitly asking for a non-source
-aspect ratio - the auto-match is correct in 99% of cases.
-
-### "Small size" keyword (WAN / LTX)
-
-When the user asks for a **"small size"** video (or "small", "smaller size",
-"low res / lower res video", "make it small") - especially for WAN, which is
-slow at large sizes - use **832x480** as the target size. Pass it explicitly:
+When you generate a still and chain a movie onto it in the same reply (the
+default text-to-video flow), put the SAME `width`/`height` on BOTH actions, so
+the still is made at exactly the video's canvas:
 
 ```
-<aitools_action skill="image_to_movie" preset="{{Image To Video (WAN) 5s.txt}}" prompt="..." chat_image="2" width="832" height="480"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full still prompt>" width="864" height="480"/>
+<aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3) 5s.txt}}" prompt="<motion prompt>" chain="true" width="864" height="480"/>
 ```
 
-Keep 832x480 for landscape/square sources; for a clearly portrait source, swap
-to **480x832** so the small size still matches the source aspect. This is WAN's
-native fast resolution, so it renders much quicker than the default. Both
-`width` and `height` are required together. This applies to LTX too, not just
-WAN - "small size" means 832x480 (or 480x832 portrait) whichever video preset
-is in use.
+**The user's request always wins.** If they name a size or format, use it on
+both actions: `720p` -> 1280x720, `1080p` -> 1920x1080, `4k`/`2k` -> the
+closest sensible size, "vertical/portrait/phone" -> a tall canvas, an explicit
+"1024x576" -> exactly that. Only fall back to the defaults below when the user
+said nothing about size.
 
-**Also size the still base.** When the video is chained onto a `generate_image`
-still you make in the SAME reply (the default text-to-video flow: Z-Image ->
-`chain="true"` movie), the chained movie keeps the video preset's own pixel
-budget - it only inherits the still's ASPECT, not its size. So "small size"
-must be applied to BOTH actions: put the same `width`/`height` on the
-`generate_image` still AND on this movie action. Sizing only the movie leaves
-the still rendering at its full 1024 default (slower, and a needlessly large
-first frame). Example small-size text-to-video:
+Default canvas when the user did not ask for one:
 
-```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full still prompt>" width="832" height="480"/>
-<aitools_action skill="image_to_movie" preset="{{Image To Video (WAN) 5s.txt}}" prompt="<motion prompt>" chain="true" width="832" height="480"/>
-```
+- landscape (default): `width="864" height="480"`
+- portrait / vertical / phone: `width="480" height="864"`
+- square: `width="640" height="640"`
 
-(This works because Z-Image and the other still presets honor `width`/`height`.
-If the user only wants a small VIDEO from an existing image - no still made this
-turn - just size this movie action.)
+Without this the still defaults to 1024x1024 - slower to render than the video
+canvas needs, and a needlessly large first frame that just gets resampled.
+Bigger canvases cost proportionally more time (1080p is ~5x the pixels of the
+default), so don't upsize unless asked.
+
+### Animating an image that already exists
+
+When the source is an `attachment` or `chat_image` (no still made this turn),
+OMIT `width`/`height`. The host automatically matches the video to the source's
+aspect while keeping the preset's pixel budget, so a square source renders a
+square video with no crop. Only pass explicit `width`/`height` here if the user
+asks for a different shape than the source (e.g. a portrait video from a
+landscape photo). Both are required together; they snap to multiples of 32.
+
+### Size keywords
+
+The default canvas is already the fast size. Map vague size words like this,
+and put the result on both actions:
+
+- "small" / "low res" -> 640x352 (352x640 portrait, 512x512 square). Don't go
+  lower; H3 quality falls apart under ~384p.
+- "big" / "high res" / "detailed" -> 1152x640, near H3's trained maximum.
+- "720p" -> 1280x720. "1080p" -> 1920x1080. These are above what H3 was
+  trained on (~1MP), so they are slower and can look softer, but if the user
+  asked for them, use them.
 
 ## Rules
 
+- Chained still -> movie: put the SAME `width`/`height` on BOTH actions
+  (864x480 landscape, 480x864 portrait, 640x640 square). Animating an existing
+  attachment/chat_image: omit them and let the host match the source aspect.
 - Pick exactly ONE source: `attachment`, `chat_image`, OR `chain="true"`.
   If both `attachment` and `chat_image` are set, `chat_image` wins. `chain="true"`
   must NOT be combined with the others - the chained step inherits the prior
@@ -189,9 +237,11 @@ turn - just size this movie action.)
 - Describe MOTION/CAMERA over time. For roleplay / identity anchors, also
   restate the visible character identity in the first sentence; name-only
   prompts are not valid.
-- Pick ONE camera move with magnitude. Two competing moves fight.
-- LTX 2.3: 4-8 sentence paragraph, motion-first, one camera move, and
-  **ONE short quoted line of in-scene dialog** (language + accent) in
-  the motion beat unless no plausible speaker.
-- Wan 2.2: longer multi-beat motion (200-400 words) is fine.
+- Pick ONE camera move with magnitude per shot. Two competing moves fight.
+- MiniMax H3 (default): paragraph or numbered SHOT structure, dialog default
+  ON, cuts allowed between shots, no negative prompts. 15s preset only on
+  explicit request.
+- LTX 2.3: 4-8 sentence paragraph, single continuous shot, one camera move,
+  ONE short quoted dialog line unless no plausible speaker.
+- Wan 2.2: longer multi-beat motion (200-400 words) is fine; silent.
 - User asked to animate → just do it.

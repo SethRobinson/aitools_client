@@ -654,31 +654,41 @@ namespace AITools.AIChat.Skills
 
             if (action.SkillId.ToLowerInvariant() == BuiltInSkillIds.VideoToVideo)
             {
-                // Reference-still rescue. For v2v the primary source is ALWAYS the movie
-                // (chat_image / chain), so any fresh STILL the user pasted this turn is almost
-                // certainly the intended reference (face/look to inject). Models routinely
-                // mis-slot it - e.g. attachment="2" or "image 2" instead of attachment2/
-                // chat_image2 - which would otherwise be silently dropped and fall back to a
-                // plain restyle. If slot 2 isn't already wired, adopt the first turn attachment
-                // as the reference so "swap in this face" works without precise slot syntax.
-                if (attachmentBytes2 == null && (_host?.GetTurnAttachmentCount() ?? 0) > 0)
+                // Reference-VIDEO generation (MiniMax H3 Ref2VA): the model explicitly picked
+                // the preset that carries the source clip's subject/motion into a brand-NEW
+                // clip. That's a different operation from Bernini restyle/edit, so it must
+                // survive the auto-select below (which exists only to spare the model from
+                // matching the two Bernini restyle presets by hand).
+                bool wantsRefVideoGenerate = !string.IsNullOrEmpty(preset)
+                    && preset.IndexOf("Reference Video To Video", StringComparison.OrdinalIgnoreCase) >= 0;
+                if (!wantsRefVideoGenerate)
                 {
-                    byte[] refBytes = _host?.GetTurnAttachmentBytes(1);
-                    if (refBytes != null)
+                    // Reference-still rescue. For v2v the primary source is ALWAYS the movie
+                    // (chat_image / chain), so any fresh STILL the user pasted this turn is almost
+                    // certainly the intended reference (face/look to inject). Models routinely
+                    // mis-slot it - e.g. attachment="2" or "image 2" instead of attachment2/
+                    // chat_image2 - which would otherwise be silently dropped and fall back to a
+                    // plain restyle. If slot 2 isn't already wired, adopt the first turn attachment
+                    // as the reference so "swap in this face" works without precise slot syntax.
+                    if (attachmentBytes2 == null && (_host?.GetTurnAttachmentCount() ?? 0) > 0)
                     {
-                        attachmentBytes2 = refBytes;
-                        _host?.AddInfoBubble("(using your attached image as the face/style reference for the video edit)");
+                        byte[] refBytes = _host?.GetTurnAttachmentBytes(1);
+                        if (refBytes != null)
+                        {
+                            attachmentBytes2 = refBytes;
+                            _host?.AddInfoBubble("(using your attached image as the face/style reference for the video edit)");
+                        }
                     }
-                }
 
-                // Pick the workflow by whether a reference still ended up wired into slot 2:
-                // with one -> the reference-guided "_ref" preset (inject a face/character/style
-                // onto the clip); without -> plain restyle. Auto-selecting here means the model
-                // never has to match presets by hand, and a stray ref-preset pick without a
-                // reference can't dead-end on a "need image2" abort. ResolvePresetName still
-                preset = (attachmentBytes2 != null)
-                    ? "Video To Video Ref (Bernini).txt"
-                    : "Video To Video (Bernini).txt";
+                    // Pick the workflow by whether a reference still ended up wired into slot 2:
+                    // with one -> the reference-guided "_ref" preset (inject a face/character/style
+                    // onto the clip); without -> plain restyle. Auto-selecting here means the model
+                    // never has to match presets by hand, and a stray ref-preset pick without a
+                    // reference can't dead-end on a "need image2" abort. ResolvePresetName still
+                    preset = (attachmentBytes2 != null)
+                        ? "Video To Video Ref (Bernini).txt"
+                        : "Video To Video (Bernini).txt";
+                }
             }
 
             // Auto-downgrade preset name when fewer inputs were wired than the preset
@@ -782,6 +792,9 @@ namespace AITools.AIChat.Skills
             // The chat source resolved above is only a still FRAME; the path below is the real clip.
             // (Chained v2v runs on the prior movie Pic via ExecuteChainedGenerate and never reaches
             // here - it already has its movie and uploads via m_picMovie.)
+            // Real pixel dimensions of the source CLIP (not the UI snapshot). Filled in
+            // below for video-source skills so the aspect match uses the video itself.
+            int videoSrcW = 0, videoSrcH = 0;
             if (IsVideoSourceWorkflowSkill(action.SkillId))
             {
                 int srcChatN = action.ChatImageIndex ?? (_host?.GetLatestChatImageIndex() ?? -1);
@@ -795,6 +808,7 @@ namespace AITools.AIChat.Skills
                     return;
                 }
                 picMain.m_pendingVideoUploadPath = moviePath;
+                TryGetVideoAspectSource(moviePath, out videoSrcW, out videoSrcH);
                 if (action.SkillId.ToLowerInvariant() == BuiltInSkillIds.VideoToVideo)
                 {
                     int frameCount = EstimateVideoToVideoFrameCount(moviePath);
@@ -816,6 +830,17 @@ namespace AITools.AIChat.Skills
                 && action.Width.Value > 0 && action.Height.Value > 0)
             {
                 picMain.SetWorkflowDimensionOverride(action.Width.Value, action.Height.Value);
+            }
+            else if (videoSrcW > 0 && videoSrcH > 0)
+            {
+                // Video source: the clip's REAL dimensions win over the still snapshot.
+                // srcW/srcH above come from whatever the Movie bubble's Pic was displaying,
+                // which is a UI artifact - a movie Pic that has never been played (or was
+                // unloaded to save memory) still carries PicMain.Awake's 512x512 black
+                // placeholder sprite. That square placeholder used to drive the aspect
+                // match, so a 16:9 clip queued a SQUARE render (864x480's budget rotated
+                // to 1:1 = 640x640). ffprobe (cached per path+size+mtime) is the truth.
+                picMain.SetWorkflowAspectSource(videoSrcW, videoSrcH);
             }
             else if (useAttachment && srcW > 0 && srcH > 0)
             {
@@ -1018,7 +1043,17 @@ namespace AITools.AIChat.Skills
             else
             {
                 int chainSrcW = 0, chainSrcH = 0;
-                if (prevPic.TryGetCurrentTexture(out var prevTex) && prevTex != null)
+                // Movie source: probe the clip itself first. prevPic's live texture is the
+                // VideoPlayer RenderTexture only while the movie is loaded; an unloaded (or
+                // never-played) movie Pic falls back to PicMain's square 512x512 placeholder
+                // sprite, which would rotate the preset's pixel budget into a square render.
+                if (prevPic.m_picMovie != null && prevPic.IsMovie()
+                    && TryGetVideoAspectSource(prevPic.m_picMovie.GetProcessingFileName(), out int movieW, out int movieH))
+                {
+                    chainSrcW = movieW;
+                    chainSrcH = movieH;
+                }
+                else if (prevPic.TryGetCurrentTexture(out var prevTex) && prevTex != null)
                 {
                     chainSrcW = prevTex.width;
                     chainSrcH = prevTex.height;
@@ -1097,6 +1132,44 @@ namespace AITools.AIChat.Skills
                 Debug.LogWarning("SkillActionExecutor.ReadPresetDefaultNegativePrompt: " + ex.Message);
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Real display dimensions of a video file, for aspect matching. Uses the shared
+        /// ffprobe helper (results cached per path+size+mtime, so repeated actions on the
+        /// same clip never re-spawn ffprobe) and swaps width/height for 90/270-degree
+        /// rotated sources so a portrait phone clip matches as portrait. Returns false when
+        /// the path is missing or ffprobe can't read a video stream; callers then fall back
+        /// to whatever the Pic is displaying.
+        /// </summary>
+        private static bool TryGetVideoAspectSource(string moviePath, out int width, out int height)
+        {
+            width = 0;
+            height = 0;
+            if (string.IsNullOrWhiteSpace(moviePath) || !System.IO.File.Exists(moviePath))
+                return false;
+
+            if (!FfmpegTool.TryProbeVideoSync(moviePath, out var info, out string error) || info == null)
+            {
+                Debug.LogWarning("SkillActionExecutor: could not probe video source dimensions: " + error);
+                return false;
+            }
+
+            if (info.Width <= 0 || info.Height <= 0)
+                return false;
+
+            int rot = ((info.RotationDegrees % 360) + 360) % 360;
+            if (rot == 90 || rot == 270)
+            {
+                width = info.Height;
+                height = info.Width;
+            }
+            else
+            {
+                width = info.Width;
+                height = info.Height;
+            }
+            return true;
         }
 
         private static int EstimateVideoToVideoFrameCount(string moviePath)

@@ -1,0 +1,15 @@
+COMMAND_START|joblist
+#Generate a NEW ~15-second video with audio using a loaded VIDEO as the reference (MiniMax H3 Ref2VA).
+#Same as the 5s preset at the model's trained maximum duration (~3x the render time).
+#The clip's visuals AND soundtrack condition the output; prompts refer to them as <Video 1> and <Audio 1>.
+#The source clip MUST have an audio track - a silent source fails in the video loader
+#("VHS failed to extract audio from ...") before sampling starts.
+#The length @replace below is safe against AI Chat's video_to_video source-duration override: it runs
+#first (124 -> 362), so the appended override's find-text no longer exists. Only a preset whose length
+#value EQUALS the workflow default is vulnerable - the 5s preset omits the replace for that reason.
+%vid_width%="864"
+%vid_height%="480"
+%vid_length%="362"
+
+ref_video_to_video_minimax_h3.json @upload|video|input1| @replace|"width": 864|"width": %vid_width%| @replace|"height": 480|"height": %vid_height%| @replace|"length": 124|"length": %vid_length%|
+COMMAND_END

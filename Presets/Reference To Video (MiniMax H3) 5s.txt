@@ -1,0 +1,10 @@
+COMMAND_START|joblist
+#Generate a ~5-second video with audio featuring the SUBJECT of the input image (MiniMax H3 Ref2VA).
+#Unlike image-to-video, the output does not start on the input frame; the reference locks identity/style.
+#Prompts must refer to the reference as <Picture 1>.
+%vid_width%="864"
+%vid_height%="480"
+%vid_length%="124"
+
+ref_to_video_minimax_h3.json @upload|image1|input1| @replace|"width": 864|"width": %vid_width%| @replace|"height": 480|"height": %vid_height%| @replace|"length": 124|"length": %vid_length%|
+COMMAND_END

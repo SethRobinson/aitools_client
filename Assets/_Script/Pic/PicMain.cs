@@ -2529,8 +2529,13 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                         newH = Mathf.RoundToInt((float)(h / 32.0)) * 32;
                     }
 
-                    newW = Mathf.Clamp((newW / 32) * 32, 256, 1280);
-                    newH = Mathf.Clamp((newH / 32) * 32, 256, 1280);
+                    // Ceiling is deliberately above 1080p so an explicit "720p"/"1080p"
+                    // request survives instead of being silently squashed to a wrong
+                    // aspect (1920x1080 used to clamp to 1280x1080). Models still have
+                    // their own trained limits; this only stops the host from lying
+                    // about what was asked for.
+                    newW = Mathf.Clamp((newW / 32) * 32, 256, 2048);
+                    newH = Mathf.Clamp((newH / 32) * 32, 256, 2048);
                     if (newW <= 0 || newH <= 0) return;
 
                     // Record what we're queueing so the next chain step can read it.

@@ -1,0 +1,8 @@
+COMMAND_START|joblist
+#Generate ~5-second video with native stereo audio from text using MiniMax H3
+%width%="864"
+%height%="480"
+%length%="124"
+
+text_to_video_minimax_h3.json @replace|"width": 864|"width": %width%| @replace|"height": 480|"height": %height%| @replace|"length": 124|"length": %length%|
+COMMAND_END

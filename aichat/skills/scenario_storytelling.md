@@ -98,13 +98,15 @@ as a still beat:
 
 ```
 <short prose/dialog beat>
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full self-contained Z-Image scene prompt>"/>
-<aitools_action skill="image_to_movie" preset="{{Image To Video (LTX) 5s.txt}}" prompt="<LTX motion + camera + ONE short quoted in-scene dialog line>" chain="true"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full self-contained Z-Image scene prompt>" width="864" height="480"/>
+<aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3) 5s.txt}}" prompt="<H3 motion + camera + ONE short quoted in-scene dialog line>" chain="true" width="864" height="480"/>
 ```
 
 Each movie starts with a `generate_image` base and then
 `image_to_movie chain="true"`; the chained movie action carries ONLY
-`chain="true"` plus preset/prompt.
+`chain="true"` plus preset/prompt plus the matching `width`/`height` (both
+actions get the SAME size so the still is made at the video's canvas, not an
+oversized 1024x1024 frame).
 
 ## Opt-in anchor flow
 

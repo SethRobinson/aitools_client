@@ -8912,6 +8912,19 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 }
                 bool movie = pic != null && pic.IsMovie();
                 string moviePath = movie && pic.m_picMovie != null ? pic.m_picMovie.GetProcessingFileName() : null;
+                // Movie bubbles: report the CLIP's real dimensions, not the Pic's still
+                // sprite. A movie Pic that was never played (or was unloaded to save
+                // memory) still carries PicMain.Awake's 512x512 black placeholder, which
+                // made this endpoint report every imported clip as a square.
+                if (movie && !string.IsNullOrEmpty(moviePath)
+                    && FfmpegTool.TryProbeVideoSync(moviePath, out var probedInfo, out _)
+                    && probedInfo != null && probedInfo.Width > 0 && probedInfo.Height > 0)
+                {
+                    int rot = ((probedInfo.RotationDegrees % 360) + 360) % 360;
+                    bool swap = rot == 90 || rot == 270;
+                    w = swap ? probedInfo.Height : probedInfo.Width;
+                    h = swap ? probedInfo.Width : probedInfo.Height;
+                }
                 if (i > 0) sb.Append(",");
                 sb.Append("{\"index\":").Append(i + 1)
                   .Append(",\"w\":").Append(w)
