@@ -30,6 +30,7 @@ namespace AITools.AIChat.Video
         private Action<float> _onImportStill;
 
         private VideoPlayer _player;
+        private AudioSource _audioSource;
         private RenderTexture _rt;
         private RawImage _preview;
         private TextMeshProUGUI _previewHint;
@@ -221,6 +222,7 @@ namespace AITools.AIChat.Video
             _includeAudioToggle = CreateToggle("IncludeAudio", "Audio", new Vector2(right - 36f, durationY), new Vector2(78f, 26f), _includeAudio, on =>
             {
                 _includeAudio = on;
+                ApplyPreviewAudioSettings();
             });
 
             // "Import still" grabs the single frame at the current scrub position as a
@@ -246,7 +248,23 @@ namespace AITools.AIChat.Video
                 _player.playOnAwake = false;
                 _player.isLooping = true;
                 _player.waitForFirstFrame = true;
-                _player.audioOutputMode = VideoAudioOutputMode.None;
+                // Audio goes through an AudioSource, not Direct — Direct mode desyncs
+                // the audio track on the first play of a clip under Media Foundation
+                // (see PicMovie). DSPTime + skipOnDrop=false is part of the same fix.
+                if (_audioSource == null)
+                {
+                    _audioSource = gameObject.GetComponent<AudioSource>();
+                    if (_audioSource == null)
+                        _audioSource = gameObject.AddComponent<AudioSource>();
+                }
+                _audioSource.playOnAwake = false;
+                _player.audioOutputMode = VideoAudioOutputMode.AudioSource;
+                _player.controlledAudioTrackCount = 1;
+                _player.EnableAudioTrack(0, true);
+                _player.SetTargetAudioSource(0, _audioSource);
+                _player.timeUpdateMode = VideoTimeUpdateMode.DSPTime;
+                _player.skipOnDrop = false;
+                ApplyPreviewAudioSettings();
                 _player.renderMode = VideoRenderMode.RenderTexture;
 
                 Vector2Int rtSize = GetFittedPreviewTextureSize(
@@ -313,6 +331,7 @@ namespace AITools.AIChat.Video
 
         private void Update()
         {
+            ApplyPreviewAudioSettings();
             if (_player != null && _prepared && _info.DurationSeconds > 0)
             {
                 _previewCurrentSeconds = ClampPreviewSeconds((float)_player.time);
@@ -332,6 +351,16 @@ namespace AITools.AIChat.Video
             try { _player.time = t; } catch { }
             SetStartSeconds(t);
             UpdateTimeLabel();
+        }
+
+        // Preview audio follows the Audio toggle (what you hear is what Import Clip
+        // will keep) plus the app's global mute and clip volume settings.
+        private void ApplyPreviewAudioSettings()
+        {
+            if (_audioSource == null) return;
+            var gameLogic = global::GameLogic.Get();
+            _audioSource.volume = gameLogic != null ? gameLogic.GetClipVolume() : 1f;
+            _audioSource.mute = !_includeAudio || (gameLogic != null && gameLogic.GetGlobalMute());
         }
 
         private void TogglePlay()
@@ -358,15 +387,33 @@ namespace AITools.AIChat.Video
             RefreshPlayButton();
 
             FfmpegTool.ClipResult result = null;
-            _proxyCancelToken = new FfmpegTool.CancelToken();
+            var cancelToken = new FfmpegTool.CancelToken();
+            _proxyCancelToken = cancelToken;
             double proxyFps = _info != null && _info.Fps > 0 ? Math.Min(_info.Fps, 30) : 30;
+            double sourceDuration = _info != null ? _info.DurationSeconds : 0;
             yield return FfmpegTool.CreatePreviewProxy(
                 _sourcePath,
-                _info != null ? _info.DurationSeconds : 0,
+                sourceDuration,
                 proxyFps,
                 r => result = r,
                 (p, msg) => SetProxyProgress(p, msg),
-                _proxyCancelToken);
+                cancelToken,
+                includeAudio: true);
+
+            if (!cancelToken.CancelRequested
+                && (result == null || !result.Success || string.IsNullOrWhiteSpace(result.OutputPath) || !System.IO.File.Exists(result.OutputPath)))
+            {
+                Debug.LogWarning("ChatVideoClipChooser audio preview proxy failed; retrying without audio for " + _sourcePath);
+                SetProxyProgress(0f, "Retrying conversion without audio...");
+                result = null;
+                yield return FfmpegTool.CreatePreviewProxy(
+                    _sourcePath,
+                    sourceDuration,
+                    proxyFps,
+                    r => result = r,
+                    (p, msg) => SetProxyProgress(p, msg),
+                    cancelToken);
+            }
             _proxyCancelToken = null;
 
             if (result == null || !result.Success || string.IsNullOrWhiteSpace(result.OutputPath) || !System.IO.File.Exists(result.OutputPath))
