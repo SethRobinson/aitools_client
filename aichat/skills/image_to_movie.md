@@ -1,9 +1,9 @@
 ---
 id: image_to_movie
-summary: Animate an image (user-pasted OR a previously-generated chat image) into a short video clip. Default to MiniMax H3 (`Image To Video (MiniMax H3) 5s.txt`, native audio + dialog). Use LTX 2.3 via `Image To Video (LTX) 5s.txt` when the user asks for LTX or the fastest option; use WAN / Wan 2.2 via `Image To Video (WAN) 5s.txt` when the user asks for WAN or silent video.
+summary: Animate an image (user-pasted OR a previously-generated chat image) into a short video clip. Default to MiniMax H3 (`Image To Video (MiniMax H3) 5s.txt`, native audio + dialog). Explicit LONG ~15s request -> `Image To Video (MiniMax H3) 15s.txt` (~3x render time); other lengths keep the 5s H3 preset and add duration="N" (seconds, ~5-15, H3 only - LTX/WAN ignore it). A video STARRING existing people/photos (identity from references, no exact start frame) -> `Reference To Video (MiniMax H3) 5s.txt` with the photos in chat_image/chat_image2..chat_image9 (up to 9 refs; prompt calls them <Picture 1>..<Picture 9>) - do NOT composite a Klein still first. Use LTX 2.3 via `Image To Video (LTX) 5s.txt` when the user asks for LTX or the fastest option; use WAN / Wan 2.2 via `Image To Video (WAN) 5s.txt` when the user asks for WAN or silent video.
 inputs: attachment
 autoload: true
-triggers: animate, animation, image to video, image-to-video, image to movie, image-to-movie, animate this, animate it, make this move, make it move, using wan, use wan, with wan, wan 2.2, wan2.2, wan22, using ltx, use ltx, with ltx, ltx 2.3, minimax, mini max, minmax, minimax h3, minmax h3, h3, hailuo
+triggers: animate, animation, image to video, image-to-video, image to movie, image-to-movie, animate this, animate it, make this move, make it move, make a video, make a movie, make a clip, create a video, create a movie, generate a video, generate a movie, video starring, movie starring, video of, movie of, second video, second movie, reference to video, using wan, use wan, with wan, wan 2.2, wan2.2, wan22, using ltx, use ltx, with ltx, ltx 2.3, minimax, mini max, minmax, minimax h3, minmax h3, h3, hailuo
 template: <aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3) 5s.txt}}" prompt="describe motion + camera, with ONE short line of in-scene dialog in double-quotes (language+accent), then ambient sound" chat_image="N"/>  # default MiniMax H3 (native audio). When the user asks for LTX use preset="{{Image To Video (LTX) 5s.txt}}"; for WAN/Wan 2.2 use preset="{{Image To Video (WAN) 5s.txt}}" with a silent motion prompt.
 ---
 # Image-to-movie
@@ -114,11 +114,19 @@ is ideal for anchors: "make a video of Mara surfing" from an anchored portrait.
   from <Picture 1>, now in a wetsuit, carves across a wave...`), and should
   still restate her key visible traits once.
 - Same source attributes as normal (`attachment` / `chat_image` / `chain`).
-- UP TO 3 PHOTOS: add `chat_image2`/`attachment2` (and `chat_image3`/
-  `attachment3`) for a second/third reference - `<Picture 2>`, `<Picture 3>`
-  in slot order (e.g. `<Picture 1>` = the person, `<Picture 2>` = a second
-  character or the setting). Give each photo ONE job in the prompt; unused
-  slots are pruned automatically, same preset name.
+- UP TO 9 PHOTOS: add `chat_image2`..`chat_image9` (or `attachment2`..
+  `attachment9`) for more references - `<Picture 2>`..`<Picture 9>` in slot
+  order (e.g. `<Picture 1>` = the person, `<Picture 2>` = a second character,
+  `<Picture 3>` = the setting). Unused slots are pruned automatically, same
+  preset name.
+- **This is THE way to make a video STARRING several existing people**: one
+  action, each person's photo(s) in their own slots. Do NOT build a Klein
+  composite still first and animate it - that is only for pinning an exact
+  start frame (see the two-stage recipe below).
+- Reference each supplied photo by its `<Picture N>` tag in the prompt and
+  give it ONE job. Multiple photos of the SAME person are encouraged (better
+  identity lock) but must be described as ONE character: `the man from
+  <Picture 1> and <Picture 2>` - never as two people standing together.
 - Dialog/audio rules are the same as normal H3.
 - If a reference is a MOVIE bubble rather than a still, use
   `skill="video_to_video"` with `{{Reference Video To Video (MiniMax H3) 5s.txt}}`

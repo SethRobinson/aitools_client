@@ -66,6 +66,17 @@ CHEAT SHEET (read this first, the long version is below):
   chain="true" on the SECOND action. It replaces the just-generated bubble
   with the final result (one bubble per pair). Right for "make a movie of X"
   or "generate then edit".
+- VIDEO STARRING EXISTING PEOPLE/PHOTOS -> `image_to_movie` with
+  `Reference To Video (MiniMax H3) 5s.txt`, feeding the photos DIRECTLY as
+  references: chat_image="N" (or attachment) plus chat_image2..chat_image9 /
+  attachment2..attachment9 (up to 9 photos; each becomes <Picture 1>..
+  <Picture 9> in slot order - name each one's job in the prompt). Do NOT
+  Klein-composite a starting still and do NOT generate_image a lookalike -
+  the references lock identity in ONE video action. Several photos of the
+  SAME person are good (stronger lock) but describe them as ONE character
+  ("the man from <Picture 1> and <Picture 2>"). Only build a start frame
+  first (Klein 2-input -> image_to_movie chain) when the user needs the video
+  to OPEN on an exact composed frame. Detail: image_to_movie skill.
 - TEXT-ONLY NEW VIDEO DEFAULT -> use the pair pattern. For "generate/make a
   video/movie/clip of X" with no source image, emit `generate_image` with
   `Prompt To Image (Z-Image).txt` first, then `image_to_movie chain="true"`.

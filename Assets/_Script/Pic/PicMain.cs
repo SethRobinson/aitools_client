@@ -61,8 +61,18 @@ public class PicJob
     public float _timeOfStart = 0;
     public float _timeOfEnd = 0;
     
-    // Multi-input upload support: filenames for INPUT_1 through INPUT_4
-    public string[] _inputFilenames = new string[5] { "", "", "", "", "" };
+    // Multi-input upload support: filenames for <AITOOLS_INPUT_1>..<AITOOLS_INPUT_11>.
+    // 11 slots = 2 reference videos (inputs 1-2) + 9 reference photos (inputs 3-11),
+    // the MiniMax H3 Ref2VA ceiling (the node accepts up to 9 ref images).
+    public const int MAX_INPUT_SLOTS = 11;
+    public string[] _inputFilenames = CreateEmptyInputFilenames();
+
+    public static string[] CreateEmptyInputFilenames()
+    {
+        var arr = new string[MAX_INPUT_SLOTS];
+        for (int i = 0; i < arr.Length; i++) arr[i] = "";
+        return arr;
+    }
     // Pending uploads to process before running workflow
     public List<UploadInfo> _pendingUploads = new List<UploadInfo>();
 
@@ -73,12 +83,12 @@ public class PicJob
     // the old behavior where a leftover placeholder reaches the server as an error.
     public bool _allowInputPruning = false;
 
-    // PNG bytes of the input images that were uploaded for this job (slots 0..4 match
+    // PNG bytes of the input images that were uploaded for this job (indices match
     // _inputFilenames). Captured during upload_to_comfy and carried into _jobHistory so
     // the "?" info panel can show the user which images fed an N-input workflow.
     // Null slots mean "no input was uploaded for that index". Bytes are immutable and
     // shared by reference across Clones to avoid re-allocating thumbnails.
-    public byte[][] _inputImagePngs = new byte[5][];
+    public byte[][] _inputImagePngs = new byte[MAX_INPUT_SLOTS][];
 
     // PNG bytes of the generated result for this job, stamped on once the image comes
     // back so the "?" info panel can show "inputs + output" together. Null until the
@@ -163,10 +173,12 @@ public class PicMain : MonoBehaviour
     public Canvas m_canvas;
     public SpriteRenderer m_pic;
     public SpriteRenderer m_mask;
-    private Texture2D m_image2; // Secondary input texture for 2-input workflows (uploaded as "image2" via @upload). Not displayed.
-    private Texture2D m_image3; // 3rd-input texture for multi-image workflows (uploaded as "image3" via @upload). Not displayed.
-    private Texture2D m_image4; // 4th-input texture for multi-image workflows (uploaded as "image4" via @upload). Not displayed.
-    private Texture2D m_image5; // 5th-input texture for multi-image workflows (uploaded as "image5" via @upload). Not displayed.
+    // Extra input textures for multi-image workflows, uploaded as "image2".."image10"
+    // via @upload (array index == the number in the source token; [0]/[1] unused - the
+    // Pic's own texture is "image1"). Not displayed. 9 extra slots cover the MiniMax H3
+    // Ref2VA reference presets (up to 9 photo refs); Klein N-Input presets use 2..5.
+    public const int MaxExtraInputImageSlot = 10;
+    private readonly Texture2D[] m_extraInputImages = new Texture2D[MaxExtraInputImageSlot + 1];
 
     // Optional callback the AI Chat host installs so workflow-runtime aborts (e.g.
     // "Need image5 image first!" when an @upload step finds no source texture) get
@@ -181,7 +193,7 @@ public class PicMain : MonoBehaviour
     // these into the cloned PicJob._inputImagePngs and clear the buffer so the next
     // job starts empty. This is how the "?" info panel learns which images were
     // actually sent for an N-input image-to-image job (e.g. img_to_img_klein_edit_4_input).
-    byte[][] m_pendingInputImagePngs = new byte[5][];
+    byte[][] m_pendingInputImagePngs = new byte[PicJob.MAX_INPUT_SLOTS][];
     private volatile bool m_editFileHasChanged; //set on the FileSystemWatcher thread, read on the main thread
     private FileSystemWatcher m_editFileWatcher;
     //When a change is detected we don't read immediately (the editor may still be writing/holding
@@ -1409,40 +1421,37 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
     // Secondary reference image for 2-input workflows. Takes ownership of the passed texture
     // and uploads it as the "image2" source (see @upload|image2|inputN| in the preset).
-    public void SetImage2(Texture2D tex)
+    /// <summary>
+    /// Attach a texture to the "imageN" @upload slot (slot 2..MaxExtraInputImageSlot).
+    /// Destroys any texture previously in that slot. Slot 1 is the Pic's own image.
+    /// </summary>
+    public void SetExtraInputImage(int slot, Texture2D tex)
     {
-        if (m_image2 != null)
+        if (slot < 2 || slot > MaxExtraInputImageSlot)
         {
-            UnityEngine.Object.Destroy(m_image2);
+            RTConsole.Log($"SetExtraInputImage: slot {slot} out of range (2..{MaxExtraInputImageSlot})");
+            return;
         }
-        m_image2 = tex;
+        if (m_extraInputImages[slot] != null)
+        {
+            UnityEngine.Object.Destroy(m_extraInputImages[slot]);
+        }
+        m_extraInputImages[slot] = tex;
     }
 
-    public void SetImage3(Texture2D tex)
+    /// <summary>
+    /// Parses an "imageN" @upload source token (N = 2..MaxExtraInputImageSlot) into its
+    /// extra-slot index. Returns false for "image"/"image1" (the Pic's own texture) and
+    /// anything else.
+    /// </summary>
+    public static bool TryParseExtraImageSlot(string source, out int slot)
     {
-        if (m_image3 != null)
-        {
-            UnityEngine.Object.Destroy(m_image3);
-        }
-        m_image3 = tex;
-    }
-
-    public void SetImage4(Texture2D tex)
-    {
-        if (m_image4 != null)
-        {
-            UnityEngine.Object.Destroy(m_image4);
-        }
-        m_image4 = tex;
-    }
-
-    public void SetImage5(Texture2D tex)
-    {
-        if (m_image5 != null)
-        {
-            UnityEngine.Object.Destroy(m_image5);
-        }
-        m_image5 = tex;
+        slot = 0;
+        if (string.IsNullOrEmpty(source) || !source.StartsWith("image")) return false;
+        if (!int.TryParse(source.Substring("image".Length), out int n)) return false;
+        if (n < 2 || n > MaxExtraInputImageSlot) return false;
+        slot = n;
+        return true;
     }
 
     public void InvertMask()
@@ -3600,15 +3609,15 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             case "image": case "image1": case "temp1": case "temp2": case "temp3":
                 PicMain slotPic = GetPicMainForSlot(source);
                 return slotPic != null && slotPic.m_pic.sprite != null && slotPic.m_pic.sprite.texture != null;
-            case "image2": return m_image2 != null;
-            case "image3": return m_image3 != null;
-            case "image4": return m_image4 != null;
-            case "image5": return m_image5 != null;
             case "video": case "video1":
                 return !string.IsNullOrEmpty(m_pendingVideoUploadPath)
                     || (m_picMovie != null && IsMovie() && !string.IsNullOrEmpty(m_picMovie.GetProcessingFileName()));
             case "video2": return !string.IsNullOrEmpty(m_pendingVideoUploadPath2);
-            default: return false;
+            default:
+                // "image2".."image10" - extra input slots
+                if (TryParseExtraImageSlot(source, out int extraSlot))
+                    return m_extraInputImages[extraSlot] != null;
+                return false;
         }
     }
     
@@ -4264,32 +4273,12 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                             "Point chat_image2=\"N\" at the Movie #N bubble to supply the second reference clip.");
                         return;
                     }
-                    else if (source == "image2")
+                    else if (TryParseExtraImageSlot(source, out int extraImageSlot))
                     {
-                        if (m_image2 != null)
+                        // "image2".."image10" - extra input slots
+                        if (m_extraInputImages[extraImageSlot] != null)
                         {
-                            sourceTexture = m_image2;
-                        }
-                    }
-                    else if (source == "image3")
-                    {
-                        if (m_image3 != null)
-                        {
-                            sourceTexture = m_image3;
-                        }
-                    }
-                    else if (source == "image4")
-                    {
-                        if (m_image4 != null)
-                        {
-                            sourceTexture = m_image4;
-                        }
-                    }
-                    else if (source == "image5")
-                    {
-                        if (m_image5 != null)
-                        {
-                            sourceTexture = m_image5;
+                            sourceTexture = m_extraInputImages[extraImageSlot];
                         }
                     }
 
@@ -4299,7 +4288,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                         SetStatusMessage("Need " + source + "\nimage first!");
                         RTConsole.Log("Error: Source '" + source + "' has no valid texture for upload");
                         // Map "imageN" to the chat_imageN / attachmentN slot suffix the
-                        // LLM uses (image1 / image == primary slot, suffix-less; image2..5
+                        // LLM uses (image1 / image == primary slot, suffix-less; image2..10
                         // use the explicit number). Anything else falls back to no suffix
                         // so we don't crash on an unexpected source token.
                         string slotSuffix = "";
@@ -4679,9 +4668,9 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 // and the "?" info panel shows them (and the prior result) as belonging to
                 // this step. Each workflow re-declares its own @upload directives, so these
                 // get repopulated fresh for whatever this render actually needs.
-                job._inputFilenames = new string[5] { "", "", "", "", "" };
+                job._inputFilenames = PicJob.CreateEmptyInputFilenames();
                 job._pendingUploads = new List<UploadInfo>();
-                job._inputImagePngs = new byte[5][];
+                job._inputImagePngs = new byte[PicJob.MAX_INPUT_SLOTS][];
                 job._outputImagePng = null;
                 job._allowInputPruning = false;
 
@@ -4942,8 +4931,8 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                         else if (picJobData._name.ToLower() == "upload")
                         {
                             // Parse: @upload|source|inputN| or @upload|source|inputN|optional|
-                            // source: image1..image5, temp1..temp3, video/video1, video2
-                            // dest: input1, input2, input3, input4, input5 (or just 1, 2, 3, 4, 5)
+                            // source: image1..image10, temp1..temp3, video/video1, video2
+                            // dest: input1..input11 (or just the bare number)
                             // "optional": if the source isn't wired, skip the upload and leave the
                             // <AITOOLS_INPUT_N> placeholder unfilled so PicTextToImage prunes that
                             // loader from the API graph (universal multi-reference workflows).
@@ -4952,15 +4941,13 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                             string dest = picJobData._parm2.ToLower().Trim();
                             bool isOptionalUpload = commandParts.Length >= 4 && commandParts[3].Trim().ToLower() == "optional";
 
-                            // Parse input index from dest (input1 -> 0, input2 -> 1, etc.)
+                            // Parse input index from dest (input1 -> 0, input2 -> 1, ... input11 -> 10)
                             int inputIndex = -1;
-                            if (dest == "input1" || dest == "1") inputIndex = 0;
-                            else if (dest == "input2" || dest == "2") inputIndex = 1;
-                            else if (dest == "input3" || dest == "3") inputIndex = 2;
-                            else if (dest == "input4" || dest == "4") inputIndex = 3;
-                            else if (dest == "input5" || dest == "5") inputIndex = 4;
+                            string destNum = dest.StartsWith("input") ? dest.Substring("input".Length) : dest;
+                            if (int.TryParse(destNum, out int destN) && destN >= 1 && destN <= PicJob.MAX_INPUT_SLOTS)
+                                inputIndex = destN - 1;
 
-                            if (inputIndex >= 0 && inputIndex < 5)
+                            if (inputIndex >= 0)
                             {
                                 if (isOptionalUpload)
                                 {
@@ -5008,7 +4995,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                             }
                             else
                             {
-                                RTConsole.Log("Error: Invalid upload destination '" + dest + "'. Use input1-input5 or 1-5.");
+                                RTConsole.Log("Error: Invalid upload destination '" + dest + "'. Use input1-input" + PicJob.MAX_INPUT_SLOTS + " or 1-" + PicJob.MAX_INPUT_SLOTS + ".");
                             }
                         }
 
@@ -5114,25 +5101,13 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             UnityEngine.Object.Destroy(m_pic.sprite);
         }
 
-        if (m_image2 != null)
+        for (int slot = 2; slot <= MaxExtraInputImageSlot; slot++)
         {
-            UnityEngine.Object.Destroy(m_image2);
-            m_image2 = null;
-        }
-        if (m_image3 != null)
-        {
-            UnityEngine.Object.Destroy(m_image3);
-            m_image3 = null;
-        }
-        if (m_image4 != null)
-        {
-            UnityEngine.Object.Destroy(m_image4);
-            m_image4 = null;
-        }
-        if (m_image5 != null)
-        {
-            UnityEngine.Object.Destroy(m_image5);
-            m_image5 = null;
+            if (m_extraInputImages[slot] != null)
+            {
+                UnityEngine.Object.Destroy(m_extraInputImages[slot]);
+                m_extraInputImages[slot] = null;
+            }
         }
 
         KillUndoImageBuffers();

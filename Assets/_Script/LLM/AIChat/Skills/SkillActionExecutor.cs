@@ -655,21 +655,18 @@ namespace AITools.AIChat.Skills
                     secondClipPath = _host?.GetChatImageMovieFilePath(chat2N);
             }
 
-            // Resolve optional extra input images (slots 2..5). Used by N-input presets
-            // (Image To Image Klein Edit 2/3/4/5 Input). Each returns null when the LLM
-            // didn't ask for that slot; returns null + emits a bubble when it asked for
-            // one that isn't available (caller bails).
-            byte[] attachmentBytes2 = null;
-            bool errored2 = false, deferred2 = false;
-            if (secondClipPath == null)
-                attachmentBytes2 = ResolveExtraInputBytes(action, 2, out errored2, out deferred2);
-            if (errored2 || deferred2) return;
-            byte[] attachmentBytes3 = ResolveExtraInputBytes(action, 3, out bool errored3, out bool deferred3);
-            if (errored3 || deferred3) return;
-            byte[] attachmentBytes4 = ResolveExtraInputBytes(action, 4, out bool errored4, out bool deferred4);
-            if (errored4 || deferred4) return;
-            byte[] attachmentBytes5 = ResolveExtraInputBytes(action, 5, out bool errored5, out bool deferred5);
-            if (errored5 || deferred5) return;
+            // Resolve optional extra input images (slots 2..PicMain.MaxExtraInputImageSlot).
+            // Used by N-input presets (Image To Image Klein Edit 2/3/4/5 Input) and the H3
+            // reference presets (up to 9 photo refs). Each entry is null when the LLM
+            // didn't ask for that slot; an unavailable request emits a bubble and we bail.
+            byte[][] extraBytes = new byte[PicMain.MaxExtraInputImageSlot + 1][];
+            for (int slot = 2; slot <= PicMain.MaxExtraInputImageSlot; slot++)
+            {
+                if (slot == 2 && secondClipPath != null)
+                    continue; // slot 2 is the second reference CLIP here, not a still
+                extraBytes[slot] = ResolveExtraInputBytes(action, slot, out bool slotErrored, out bool slotDeferred);
+                if (slotErrored || slotDeferred) return;
+            }
 
             if (action.SkillId.ToLowerInvariant() == BuiltInSkillIds.VideoToVideo)
             {
@@ -687,19 +684,19 @@ namespace AITools.AIChat.Skills
                     // almost certainly meant as photo references (identity/setting), even if
                     // the model forgot the attachment2/attachment3 attributes. Adopt them
                     // into the free photo slots; the universal workflow prunes unused ones.
-                    if (attachmentBytes2 == null && secondClipPath == null
+                    if (extraBytes[2] == null && secondClipPath == null
                         && (_host?.GetTurnAttachmentCount() ?? 0) > 0)
                     {
                         byte[] refBytes = _host?.GetTurnAttachmentBytes(1);
                         if (refBytes != null)
                         {
-                            attachmentBytes2 = refBytes;
+                            extraBytes[2] = refBytes;
                             _host?.AddInfoBubble("(using your attached image as a photo reference for the new video)");
-                            if (attachmentBytes3 == null && (_host?.GetTurnAttachmentCount() ?? 0) > 1)
+                            if (extraBytes[3] == null && (_host?.GetTurnAttachmentCount() ?? 0) > 1)
                             {
                                 byte[] refBytes2 = _host?.GetTurnAttachmentBytes(2);
                                 if (refBytes2 != null)
-                                    attachmentBytes3 = refBytes2;
+                                    extraBytes[3] = refBytes2;
                             }
                         }
                     }
@@ -713,12 +710,12 @@ namespace AITools.AIChat.Skills
                     // chat_image2 - which would otherwise be silently dropped and fall back to a
                     // plain restyle. If slot 2 isn't already wired, adopt the first turn attachment
                     // as the reference so "swap in this face" works without precise slot syntax.
-                    if (attachmentBytes2 == null && (_host?.GetTurnAttachmentCount() ?? 0) > 0)
+                    if (extraBytes[2] == null && (_host?.GetTurnAttachmentCount() ?? 0) > 0)
                     {
                         byte[] refBytes = _host?.GetTurnAttachmentBytes(1);
                         if (refBytes != null)
                         {
-                            attachmentBytes2 = refBytes;
+                            extraBytes[2] = refBytes;
                             _host?.AddInfoBubble("(using your attached image as the face/style reference for the video edit)");
                         }
                     }
@@ -728,7 +725,7 @@ namespace AITools.AIChat.Skills
                     // onto the clip); without -> plain restyle. Auto-selecting here means the model
                     // never has to match presets by hand, and a stray ref-preset pick without a
                     // reference can't dead-end on a "need image2" abort. ResolvePresetName still
-                    preset = (attachmentBytes2 != null)
+                    preset = (extraBytes[2] != null)
                         ? "Video To Video Ref (Bernini).txt"
                         : "Video To Video (Bernini).txt";
                 }
@@ -740,11 +737,9 @@ namespace AITools.AIChat.Skills
             // PicMain's @upload|imageN|inputN| step aborts at runtime with "Need imageN
             // image first!" and the failure NEVER reaches the LLM, so it can't learn.
             // Rewriting the preset to match the actual input count avoids the dead-end.
-            int wiredInputCount = (useAttachment && attachmentBytes != null ? 1 : 0)
-                + (attachmentBytes2 != null ? 1 : 0)
-                + (attachmentBytes3 != null ? 1 : 0)
-                + (attachmentBytes4 != null ? 1 : 0)
-                + (attachmentBytes5 != null ? 1 : 0);
+            int wiredInputCount = (useAttachment && attachmentBytes != null ? 1 : 0);
+            for (int slot = 2; slot <= PicMain.MaxExtraInputImageSlot; slot++)
+                if (extraBytes[slot] != null) wiredInputCount++;
             preset = DowngradePresetToInputCount(preset, wiredInputCount, action.SkillId);
 
             if (string.IsNullOrEmpty(preset))
@@ -819,13 +814,16 @@ namespace AITools.AIChat.Skills
                 }
             }
 
-            // Optional extra inputs (slots 2..5) - feed the workflow's "image2".."image5"
+            // Optional extra inputs (slots 2..10) - feed the workflow's "image2".."image10"
             // upload slots. The Pic takes ownership of each texture and uploads it (no
             // display, no mask).
-            if (!TryWireExtraInput(picMain, attachmentBytes2, 2, action.SkillId)) return;
-            if (!TryWireExtraInput(picMain, attachmentBytes3, 3, action.SkillId)) return;
-            if (!TryWireExtraInput(picMain, attachmentBytes4, 4, action.SkillId)) return;
-            if (!TryWireExtraInput(picMain, attachmentBytes5, 5, action.SkillId)) return;
+            for (int slot = 2; slot <= PicMain.MaxExtraInputImageSlot; slot++)
+                if (!TryWireExtraInput(picMain, extraBytes[slot], slot, action.SkillId)) return;
+
+            // Tell the model up front when it staged more reference slots than this
+            // preset can consume - otherwise the extras vanish silently and the model
+            // only finds out from the rendered result (see the chat_image4 incident).
+            WarnUnconsumedExtraInputSlots(action, resolved, extraBytes, secondClipPath != null);
 
             // video_to_video needs the actual SOURCE VIDEO file - the Bernini v2v preset
             // uploads it via @upload|video|input1|. We hand the source clip's path to the Pic
@@ -1057,30 +1055,25 @@ namespace AITools.AIChat.Skills
                     chainSecondClipPath = _host?.GetChatImageMovieFilePath(chainChat2N);
             }
 
-            // Optional extra inputs (slots 2..5) - chain inherits image1 from the prior
-            // step, but the LLM can still bring separate image2..image5 references in via
+            // Optional extra inputs (slots 2..10) - chain inherits image1 from the prior
+            // step, but the LLM can still bring separate image2..image10 references in via
             // attachment{N} / chat_image{N} for N-input presets.
-            byte[] chainBytes2 = null;
-            bool chainErr2 = false, chainDef2 = false;
-            if (chainSecondClipPath == null)
-                chainBytes2 = ResolveExtraInputBytes(action, 2, out chainErr2, out chainDef2);
-            if (chainErr2 || chainDef2) return;
-            byte[] chainBytes3 = ResolveExtraInputBytes(action, 3, out bool chainErr3, out bool chainDef3);
-            if (chainErr3 || chainDef3) return;
-            byte[] chainBytes4 = ResolveExtraInputBytes(action, 4, out bool chainErr4, out bool chainDef4);
-            if (chainErr4 || chainDef4) return;
-            byte[] chainBytes5 = ResolveExtraInputBytes(action, 5, out bool chainErr5, out bool chainDef5);
-            if (chainErr5 || chainDef5) return;
+            byte[][] chainExtraBytes = new byte[PicMain.MaxExtraInputImageSlot + 1][];
+            for (int slot = 2; slot <= PicMain.MaxExtraInputImageSlot; slot++)
+            {
+                if (slot == 2 && chainSecondClipPath != null)
+                    continue; // slot 2 is the second reference CLIP here, not a still
+                chainExtraBytes[slot] = ResolveExtraInputBytes(action, slot, out bool slotErrored, out bool slotDeferred);
+                if (slotErrored || slotDeferred) return;
+            }
 
             // Auto-downgrade preset to match wired input count (see ExecuteGenerate for
             // the rationale). Chain always provides image1 from the prior step's output,
             // so wired = 1 + (non-null extras). Done BEFORE ResolvePresetName so the
             // resolver sees the corrected filename.
-            int chainWiredInputCount = 1
-                + (chainBytes2 != null ? 1 : 0)
-                + (chainBytes3 != null ? 1 : 0)
-                + (chainBytes4 != null ? 1 : 0)
-                + (chainBytes5 != null ? 1 : 0);
+            int chainWiredInputCount = 1;
+            for (int slot = 2; slot <= PicMain.MaxExtraInputImageSlot; slot++)
+                if (chainExtraBytes[slot] != null) chainWiredInputCount++;
             preset = DowngradePresetToInputCount(preset, chainWiredInputCount, action.SkillId);
 
             string resolved = ResolvePresetName(preset, _recentlyResolvedPresets, out bool presetFuzzy);
@@ -1096,10 +1089,11 @@ namespace AITools.AIChat.Skills
                     $"(preset '{preset}' wasn't found - used the closest match '{resolved}' instead. Use that exact name next time.)");
             RecordResolvedPreset(resolved);
 
-            if (!TryWireExtraInput(prevPic, chainBytes2, 2, action.SkillId)) return;
-            if (!TryWireExtraInput(prevPic, chainBytes3, 3, action.SkillId)) return;
-            if (!TryWireExtraInput(prevPic, chainBytes4, 4, action.SkillId)) return;
-            if (!TryWireExtraInput(prevPic, chainBytes5, 5, action.SkillId)) return;
+            for (int slot = 2; slot <= PicMain.MaxExtraInputImageSlot; slot++)
+                if (!TryWireExtraInput(prevPic, chainExtraBytes[slot], slot, action.SkillId)) return;
+
+            // Same unconsumed-slot check as the non-chained path.
+            WarnUnconsumedExtraInputSlots(action, resolved, chainExtraBytes, chainSecondClipPath != null);
 
             // Same per-Pic negative-prompt extraction as the non-chained path so the
             // chained workflow inherits the preset author's negative prompt instead of
@@ -1409,19 +1403,19 @@ namespace AITools.AIChat.Skills
         }
 
         /// <summary>
-        /// Resolve an optional extra input image (slot 2..5) to PNG bytes. Reads
-        /// attachment{slot} / chat_image{slot} from the action args. Returns null when
-        /// the LLM didn't ask for an image at that slot; returns null and sets
-        /// <paramref name="errored"/>=true (after emitting a system-injection bubble)
-        /// when it asked for one that isn't available; callers should bail in that case.
-        /// chat_image{slot} wins over attachment{slot} if both are set, matching the
-        /// precedence rule on the primary slot.
+        /// Resolve an optional extra input image (slot 2..PicMain.MaxExtraInputImageSlot)
+        /// to PNG bytes. Reads attachment{slot} / chat_image{slot} from the action args.
+        /// Returns null when the LLM didn't ask for an image at that slot; returns null
+        /// and sets <paramref name="errored"/>=true (after emitting a system-injection
+        /// bubble) when it asked for one that isn't available; callers should bail in
+        /// that case. chat_image{slot} wins over attachment{slot} if both are set,
+        /// matching the precedence rule on the primary slot.
         /// </summary>
         private byte[] ResolveExtraInputBytes(SkillAction action, int slot, out bool errored, out bool deferred)
         {
             errored = false;
             deferred = false;
-            if (slot < 2 || slot > 5) return null;
+            if (slot < 2 || slot > PicMain.MaxExtraInputImageSlot) return null;
 
             int chatN = action.GetExtraChatImageIndex(slot) ?? -1;
             int attachN = action.GetExtraAttachmentIndex(slot) ?? -1;
@@ -1477,19 +1471,69 @@ namespace AITools.AIChat.Skills
                     $"Skill '{skillId}': could not decode input image at slot {slot}.");
                 return false;
             }
-            switch (slot)
+            if (slot < 2 || slot > PicMain.MaxExtraInputImageSlot)
             {
-                case 2: pic.SetImage2(tex); break;
-                case 3: pic.SetImage3(tex); break;
-                case 4: pic.SetImage4(tex); break;
-                case 5: pic.SetImage5(tex); break;
-                default:
-                    UnityEngine.Object.Destroy(tex);
-                    _host?.AddSystemInjectionAndBubble(
-                        $"Skill '{skillId}': internal error - unsupported input slot {slot}.");
-                    return false;
+                UnityEngine.Object.Destroy(tex);
+                _host?.AddSystemInjectionAndBubble(
+                    $"Skill '{skillId}': internal error - unsupported input slot {slot}.");
+                return false;
             }
+            pic.SetExtraInputImage(slot, tex);
             return true;
+        }
+
+        /// <summary>
+        /// Emits a system-injection bubble when the action wired more extra image slots
+        /// than the resolved preset's @upload lines actually consume, so the model learns
+        /// IMMEDIATELY instead of discovering missing references in the rendered result.
+        /// A staged slot K is consumed when the preset uploads "imageK" (or, for K=2 with
+        /// a second reference clip wired, "video2"). The render still proceeds with the
+        /// supported subset - the extras are simply never uploaded.
+        /// </summary>
+        private void WarnUnconsumedExtraInputSlots(SkillAction action, string resolvedPresetName,
+            byte[][] extraBytes, bool secondClipWired)
+        {
+            if (extraBytes == null || string.IsNullOrEmpty(resolvedPresetName)) return;
+
+            string presetText;
+            try
+            {
+                string projectRoot = System.IO.Path.GetFullPath(System.IO.Path.Combine(Application.dataPath, ".."));
+                string presetPath = System.IO.Path.Combine(projectRoot, "Presets", resolvedPresetName);
+                if (!System.IO.File.Exists(presetPath)) return;
+                presetText = System.IO.File.ReadAllText(presetPath);
+            }
+            catch (Exception)
+            {
+                return; // best-effort check only - never block a render over it
+            }
+
+            var unconsumed = new List<int>();
+            var consumedSlots = new HashSet<int>();
+            foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(
+                presetText, @"@upload\|image(\d+)\|", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            {
+                if (int.TryParse(m.Groups[1].Value, out int n)) consumedSlots.Add(n);
+            }
+            bool presetTakesVideo2 = presetText.IndexOf("@upload|video2|", StringComparison.OrdinalIgnoreCase) >= 0;
+
+            for (int slot = 2; slot < extraBytes.Length; slot++)
+            {
+                if (extraBytes[slot] == null) continue;
+                if (consumedSlots.Contains(slot)) continue;
+                unconsumed.Add(slot);
+            }
+            if (secondClipWired && !presetTakesVideo2)
+                unconsumed.Insert(0, 2);
+            if (unconsumed.Count == 0) return;
+
+            int maxImageSlot = 0;
+            foreach (int s in consumedSlots) maxImageSlot = Math.Max(maxImageSlot, s);
+            string slotList = string.Join(", ", unconsumed.ConvertAll(s => $"chat_image{s}/attachment{s}"));
+            _host?.AddSystemInjectionAndBubble(
+                $"Skill '{action.SkillId}': preset '{resolvedPresetName}' only consumes image slots up to " +
+                $"image{Math.Max(1, maxImageSlot)}, so {slotList} was IGNORED for this render. " +
+                "Re-run with fewer references, or use a preset that supports more input slots.");
         }
 
         /// <summary>
@@ -2423,8 +2467,16 @@ namespace AITools.AIChat.Skills
         // chat_image/source_chat_image slot attributes that may carry an anchor NAME
         // instead of a number. Resolved to live slot numbers in NormalizeAnchorRefs so
         // the rest of the executor (which int-parses these) needs no changes.
-        private static readonly string[] AnchorRefArgKeys =
-            { "chat_image", "chat_image2", "chat_image3", "chat_image4", "chat_image5", "source_chat_image" };
+        private static readonly string[] AnchorRefArgKeys = BuildAnchorRefArgKeys();
+
+        private static string[] BuildAnchorRefArgKeys()
+        {
+            var keys = new List<string> { "chat_image" };
+            for (int slot = 2; slot <= SkillAction.MaxExtraInputSlot; slot++)
+                keys.Add("chat_image" + slot);
+            keys.Add("source_chat_image");
+            return keys.ToArray();
+        }
 
         /// <summary>
         /// Rewrite any chat_image* / source_chat_image attribute whose value is an anchor NAME
@@ -3772,7 +3824,7 @@ namespace AITools.AIChat.Skills
             if (action == null) return false;
 
             bool allReady = true;
-            for (int slot = 1; slot <= 5; slot++)
+            for (int slot = 1; slot <= PicMain.MaxExtraInputImageSlot; slot++)
             {
                 int idx = slot == 1
                     ? (action.ChatImageIndex ?? -1)

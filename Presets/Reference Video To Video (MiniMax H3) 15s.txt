@@ -4,8 +4,10 @@ COMMAND_START|joblist
 #The clip's visuals AND soundtrack condition the output; prompts refer to them as <Video 1> and <Audio 1>.
 #OPTIONAL extra references, pruned from the graph when absent (wired by AI Chat):
 #  video2 (second Movie bubble via chat_image2) -> <Video 2> / <Audio 2>
-#  image2/image3/image4 (photo stills via chat_image2..4 or attachment2..4) -> <Picture 1>..<Picture 3>
+#  image2..image10 (photo stills via chat_image2..10 or attachment2..10) -> <Picture 1>..<Picture 9>
 #Give each reference ONE job (e.g. <Video 1> = motion/camera/voice, <Picture 1> = person identity).
+#Multiple photos of the SAME person are fine (better identity lock) - the prompt should still
+#give them one combined job ("the man from <Picture 1> and <Picture 2>" = one character).
 #Silent clips are handled automatically: AI Chat prunes that clip's audio wire (@prune_input) and
 #H3 synthesizes the soundtrack from the prompt alone; a manual run on a silent clip still fails in
 #the video loader ("VHS failed to extract audio from ...").
@@ -16,5 +18,5 @@ COMMAND_START|joblist
 %vid_height%="480"
 %vid_length%="362"
 
-ref_multi_to_video_minimax_h3.json @upload|video|input1| @upload|video2|input2|optional| @upload|image2|input3|optional| @upload|image3|input4|optional| @upload|image4|input5|optional| @replace|"width": 864|"width": %vid_width%| @replace|"height": 480|"height": %vid_height%| @replace|"length": 124|"length": %vid_length%|
+ref_multi_to_video_minimax_h3.json @upload|video|input1| @upload|video2|input2|optional| @upload|image2|input3|optional| @upload|image3|input4|optional| @upload|image4|input5|optional| @upload|image5|input6|optional| @upload|image6|input7|optional| @upload|image7|input8|optional| @upload|image8|input9|optional| @upload|image9|input10|optional| @upload|image10|input11|optional| @replace|"width": 864|"width": %vid_width%| @replace|"height": 480|"height": %vid_height%| @replace|"length": 124|"length": %vid_length%|
 COMMAND_END

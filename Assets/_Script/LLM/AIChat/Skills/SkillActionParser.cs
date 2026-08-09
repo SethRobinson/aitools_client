@@ -21,6 +21,10 @@ namespace AITools.AIChat.Skills
     /// <c>prompt="she shouts \"hi!\" then leaves"</c>) - LLMs default to this
     /// even though it isn't legal XML. We accept and decode it.</item>
     /// <item>XML-entity escapes (<c>&amp;quot;</c>, <c>&amp;amp;</c>, etc.) inside attribute values.</item>
+    /// <item>UNESCAPED inner quotes and apostrophes in free-text values
+    /// (<c>prompt="he says "hi" and I'm here"</c>) - apostrophes only open a
+    /// quote span directly after <c>=</c>, and a permissive whole-tag fallback
+    /// rescues tags whose quote mix defeats strict span pairing.</item>
     /// <item>Whitespace, newlines, missing trailing slash before <c>&gt;</c>.</item>
     /// <item>Mid-stream chunk boundaries inside a tag (buffer holds until close).</item>
     /// </list>
@@ -45,7 +49,18 @@ namespace AITools.AIChat.Skills
         // contain raw <Video 1> / <Picture 1> tags (the model is TOLD to write them).
         // Quoted spans (with backslash escapes) are consumed atomically so '>' only
         // terminates the tag when it appears outside quotes.
-        private const string AttrSpan = @"((?:[^>""']|""(?:[^""\\]|\\.)*""|'(?:[^'\\]|\\.)*')*?)";
+        //
+        // Two deliberate wrinkles:
+        // - A single-quote span only OPENS directly after '=' (value position). A
+        //   bare apostrophe anywhere else is a plain character. Without the guard,
+        //   an unescaped inner dialog quote offsets the double-quote span pairing
+        //   and a contraction in the prose (prompt="... says "hi" and I'm tall ...")
+        //   starts a bogus single-quote span that never closes, silently dropping
+        //   the whole tag (and with it the render).
+        // - '<' is NOT a plain attr character (only valid inside quoted spans), so
+        //   an unclosed tag can never swallow the next "<aitools_action" and merge
+        //   two actions into one Franken-match.
+        private const string AttrSpan = @"((?:[^<>""']|""(?:[^""\\]|\\.)*""|(?<==\s*)'(?:[^'\\]|\\.)*'|')*?)";
 
         // Self-closing: <aitools_action ... />
         private static readonly Regex SelfClosingRx = new Regex(
@@ -92,6 +107,25 @@ namespace AITools.AIChat.Skills
             @"\bnegative_prompt\s*=\s*""(.+?)""(?=\s*(?:[A-Za-z_][A-Za-z0-9_-]*\s*=|/\s*>|$))",
             RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
 
+        // Last-chance WHOLE-TAG fallback for tags the strict AttrSpan regexes cannot
+        // digest - typically free-text values whose unescaped quote mix defeats span
+        // pairing entirely (an ODD number of quotes, e.g. a 6'2" measurement or an
+        // unclosed dialog quote). The span is TEMPERED so it can never run across a
+        // following "<aitools_action" (no cross-tag merges), and the closing "/>" is
+        // anchored to a structural boundary so a "/>" inside a still-streaming value
+        // can never end the tag early:
+        // - Mid-stream variant: the tag must be followed by a newline or the next
+        //   action tag (models emit one action per line, per the protocol).
+        // - End-of-stream variant: additionally accepts end-of-buffer, used at
+        //   Flush() when no more text is coming.
+        private const string PermissiveTagSpan = @"<aitools_action\b((?:(?!<aitools_action\b)[\s\S])*?)/\s*>";
+        private static readonly Regex PermissiveSelfClosingMidRx = new Regex(
+            PermissiveTagSpan + @"(?=\s*(?:\r?\n|<aitools_action\b))",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex PermissiveSelfClosingEndRx = new Regex(
+            PermissiveTagSpan + @"(?=\s*(?:\r?\n|<aitools_action\b|$))",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
         public void Reset()
         {
             _buffer.Clear();
@@ -115,33 +149,28 @@ namespace AITools.AIChat.Skills
             // already been fired.
             // We still need to fire OnActionParsed exactly once per tag - track which
             // characters we've already inspected via _scannedUpTo.
-            ScanForActions();
+            ScanForActions(endOfStream: false);
         }
 
         // Index in _buffer up to which we've already scanned + fired tags. Tags ending
         // before this index have been emitted; new chunks may add tags after it.
         private int _scannedUpTo = 0;
 
-        private void ScanForActions()
+        private void ScanForActions(bool endOfStream)
         {
             string text = _buffer.ToString();
 
             // Combined scan: try paired form first (it's the longer, less-greedy match),
             // then self-closing form for the rest. Order matters because the body of a
             // paired tag could itself contain "/>", which the self-closing regex would
-            // mis-match.
+            // mis-match. Finally the permissive whole-tag fallback picks up tags the
+            // strict regexes could not digest (strict matches always win on overlap).
             var matches = new List<Match>();
             foreach (Match m in PairedRx.Matches(text, _scannedUpTo))
                 matches.Add(m);
-            foreach (Match m in SelfClosingRx.Matches(text, _scannedUpTo))
-            {
-                bool overlaps = false;
-                foreach (var pm in matches)
-                {
-                    if (m.Index >= pm.Index && m.Index < pm.Index + pm.Length) { overlaps = true; break; }
-                }
-                if (!overlaps) matches.Add(m);
-            }
+            AddNonOverlappingMatches(matches, SelfClosingRx.Matches(text, _scannedUpTo));
+            var permissiveRx = endOfStream ? PermissiveSelfClosingEndRx : PermissiveSelfClosingMidRx;
+            AddNonOverlappingMatches(matches, permissiveRx.Matches(text, _scannedUpTo));
             matches.Sort((a, b) => a.Index.CompareTo(b.Index));
 
             foreach (var m in matches)
@@ -149,6 +178,20 @@ namespace AITools.AIChat.Skills
                 var action = ParseAttributes(m.Groups[1].Value);
                 if (action != null) OnActionParsed?.Invoke(action);
                 _scannedUpTo = m.Index + m.Length;
+            }
+        }
+
+        private static void AddNonOverlappingMatches(List<Match> matches, MatchCollection candidates)
+        {
+            foreach (Match m in candidates)
+            {
+                bool overlaps = false;
+                foreach (var existing in matches)
+                {
+                    if (m.Index < existing.Index + existing.Length
+                        && existing.Index < m.Index + m.Length) { overlaps = true; break; }
+                }
+                if (!overlaps) matches.Add(m);
             }
         }
 
@@ -282,9 +325,12 @@ namespace AITools.AIChat.Skills
                 string remainder = text.Substring(holdFromIndex);
                 _buffer.Clear();
                 _buffer.Append(remainder);
-                // Re-scan offset is reset since we just trimmed the buffer (matches in the
-                // remainder will be re-detected next Feed()).
-                _scannedUpTo = 0;
+                // Translate the fired-tag watermark into the trimmed buffer's
+                // coordinates. A tag can be FIRED but still held for display (e.g.
+                // a value containing a bare '>' made FindHoldStart conservative);
+                // resetting to 0 here would re-detect it on the next Feed() and
+                // fire the SAME action twice - a duplicate render.
+                _scannedUpTo = Math.Max(0, _scannedUpTo - holdFromIndex);
             }
 
             emittable = SuppressPendingLeadingLineBreak(emittable);
@@ -298,6 +344,11 @@ namespace AITools.AIChat.Skills
         /// </summary>
         public string Flush()
         {
+            // Fire any last-chance action first: a permissive-fallback tag sitting at
+            // the very end of the stream (no trailing newline) only matches the
+            // end-of-stream variant, and the buffer is about to be discarded.
+            ScanForActions(endOfStream: true);
+
             string text = _buffer.ToString();
             _buffer.Clear();
             _scannedUpTo = 0;
@@ -361,6 +412,14 @@ namespace AITools.AIChat.Skills
         private static int FindHoldStart(string text)
         {
             int n = text.Length;
+            // Track the EARLIEST hold-worthy "<" instead of returning at the first one
+            // found scanning backwards. A value that is still streaming can contain an
+            // inner "<" (e.g. prompt="...from <Video 1>..." cut mid-token at "<"): that
+            // inner "<" is hold-worthy on its own, but holding from THERE would emit -
+            // and permanently discard - the partial tag head before it, losing the
+            // action. The enclosing tag's own "<" is also hold-worthy (it can't be
+            // matched yet), so taking the minimum keeps the whole tag in the buffer.
+            int holdIdx = n;
             for (int i = n - 1; i >= 0; i--)
             {
                 if (text[i] != '<') continue;
@@ -374,20 +433,25 @@ namespace AITools.AIChat.Skills
                     // looking earlier "<"s.
                     if (!suffix.StartsWith(TagOpen, StringComparison.OrdinalIgnoreCase))
                         continue;
-                    // It IS our tag. Is the closing ">" present?
-                    int closeIdx = suffix.IndexOf('>');
-                    if (closeIdx < 0)
-                        return i; // tag not closed yet - hold from here
-                    // Self-closing or open?
-                    // If self-closing ("/>"), it's complete - safe to emit (will be
-                    // stripped/replaced below).
-                    if (closeIdx > 0 && suffix[closeIdx - 1] == '/')
+                    // It IS our tag. Release it only when a tag-extraction regex can
+                    // actually consume it AT this position - "looks closed" (a '/' before
+                    // some later '>') is not enough: if no regex matches, the sentinel
+                    // replacement can't strip it and raw protocol text would leak into
+                    // the visible bubble. Held tags resolve on a later chunk once more
+                    // text arrives, or at Flush() (permissive end-of-stream pass /
+                    // truncated-tool-call marker). This also releases complete tags whose
+                    // values contain a bare '>' (e.g. "<Video 1>"), which the old
+                    // first-'>' heuristic misclassified as unclosed paired tags.
+                    var sc = SelfClosingRx.Match(text, i);
+                    if (sc.Success && sc.Index == i)
                         continue;
-                    // Open tag - need a matching </aitools_action> later. Hold if missing.
-                    if (suffix.IndexOf("</aitools_action", StringComparison.OrdinalIgnoreCase) < 0)
-                        return i;
-                    // Both opener and closer present - safe.
-                    continue;
+                    var pr = PairedRx.Match(text, i);
+                    if (pr.Success && pr.Index == i)
+                        continue;
+                    var pm = PermissiveSelfClosingMidRx.Match(text, i);
+                    if (pm.Success && pm.Index == i)
+                        continue;
+                    holdIdx = i; // incomplete (or not yet matchable) - hold from here
                 }
                 else
                 {
@@ -396,12 +460,12 @@ namespace AITools.AIChat.Skills
                     // it cannot be our tag - release.
                     string prefixWeHave = suffix;
                     if (TagOpen.StartsWith(prefixWeHave, StringComparison.OrdinalIgnoreCase))
-                        return i; // ambiguous - might be our tag, hold
-                    // Definitely not our tag - safe to emit, keep walking earlier "<"s.
-                    continue;
+                        holdIdx = i; // ambiguous - might be our tag, hold
+                    // Otherwise definitely not our tag - safe to emit, keep walking
+                    // earlier "<"s either way.
                 }
             }
-            return n;
+            return holdIdx;
         }
 
         /// <summary>
@@ -420,6 +484,17 @@ namespace AITools.AIChat.Skills
                 return MakeSentinel(m.Groups[1].Value, _imageBubbleCounter);
             });
             text = SelfClosingRx.Replace(text, m =>
+            {
+                _imageBubbleCounter++;
+                return MakeSentinel(m.Groups[1].Value, _imageBubbleCounter);
+            });
+            // Strip permissively-parsed tags too, so a tag only the fallback could
+            // extract doesn't leak protocol text into the bubble. The end-of-stream
+            // variant is correct here even mid-stream: this method only ever sees
+            // text FindHoldStart already released, so '$' can't truncate a tag that
+            // is still streaming - it just lets a fired tag sitting at the end of
+            // the released span be stripped.
+            text = PermissiveSelfClosingEndRx.Replace(text, m =>
             {
                 _imageBubbleCounter++;
                 return MakeSentinel(m.Groups[1].Value, _imageBubbleCounter);

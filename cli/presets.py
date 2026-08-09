@@ -72,7 +72,7 @@ class ResizeOp:
 
 @dataclass
 class UploadSpec:
-    """An @upload directive: route a local media source to input slot N (0..4)."""
+    """An @upload directive: route a local media source to input slot N (0..10)."""
     source: str        # 'image1', 'image2', or 'video' (others allowed when optional)
     slot_idx: int      # 0..4 -> <AITOOLS_INPUT_(slot_idx+1)>
     optional: bool = False  # unfilled optional slots get their loader node pruned
@@ -270,13 +270,12 @@ def _handle_directive(directive: str, args: List[str], data: PresetData, path: P
     die(f"preset {path.name}: unknown directive '@{d}'", 1)
 
 
-_INPUT_SLOTS = {
-    "input1": 0, "1": 0,
-    "input2": 1, "2": 1,
-    "input3": 2, "3": 2,
-    "input4": 3, "4": 3,
-    "input5": 4, "5": 4,
-}
+# input1..input11 (or bare 1..11) -> 0-based slot index. 11 slots mirror Unity's
+# PicJob.MAX_INPUT_SLOTS (2 reference videos + 9 reference photos for H3 Ref2VA).
+_INPUT_SLOTS = {}
+for _i in range(1, 12):
+    _INPUT_SLOTS[f"input{_i}"] = _i - 1
+    _INPUT_SLOTS[str(_i)] = _i - 1
 
 
 def _handle_upload(args: List[str], data: PresetData, path: Path):
@@ -309,7 +308,7 @@ def _handle_upload(args: List[str], data: PresetData, path: Path):
     if dest not in _INPUT_SLOTS:
         die(
             f"preset {path.name}: @upload dest '{dest}' not recognised — "
-            f"expected one of input1..input5 (or 1..5)",
+            f"expected one of input1..input11 (or 1..11)",
             1,
         )
     data.uploads.append(UploadSpec(source=source, slot_idx=_INPUT_SLOTS[dest], optional=optional))

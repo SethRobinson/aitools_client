@@ -104,14 +104,21 @@ namespace AITools.AIChat.Skills
         }
 
         /// <summary>
+        /// Highest extra input slot an action can carry (chat_image2..chat_image10 /
+        /// attachment2..attachment10). Matches PicMain.MaxExtraInputImageSlot: Klein
+        /// N-Input presets use 2..5, the H3 Ref2VA reference presets up to 9 photos.
+        /// </summary>
+        public const int MaxExtraInputSlot = 10;
+
+        /// <summary>
         /// Generic accessor for the 1-based attachment index of an extra input slot
-        /// (slot 2..5). Used by N-input presets (Image To Image Klein Edit 3/4/5 Input)
-        /// to pull additional anchor / reference images. Returns null if the LLM did
-        /// not provide attachment{slot}.
+        /// (slot 2..MaxExtraInputSlot). Used by N-input presets (Image To Image Klein
+        /// Edit 3/4/5 Input) and the H3 reference presets to pull additional anchor /
+        /// reference images. Returns null if the LLM did not provide attachment{slot}.
         /// </summary>
         public int? GetExtraAttachmentIndex(int slot)
         {
-            if (slot < 2 || slot > 5) return null;
+            if (slot < 2 || slot > MaxExtraInputSlot) return null;
             string key = "attachment" + slot;
             if (!Args.TryGetValue(key, out var v)) return null;
             if (int.TryParse(v, out int n) && n > 0) return n;
@@ -120,12 +127,13 @@ namespace AITools.AIChat.Skills
 
         /// <summary>
         /// Generic accessor for the 1-based chat-image index of an extra input slot
-        /// (slot 2..5). Wins over <see cref="GetExtraAttachmentIndex"/> at the same
-        /// slot when both are set, matching the precedence rule on the primary slot.
+        /// (slot 2..MaxExtraInputSlot). Wins over <see cref="GetExtraAttachmentIndex"/>
+        /// at the same slot when both are set, matching the precedence rule on the
+        /// primary slot.
         /// </summary>
         public int? GetExtraChatImageIndex(int slot)
         {
-            if (slot < 2 || slot > 5) return null;
+            if (slot < 2 || slot > MaxExtraInputSlot) return null;
             string key = "chat_image" + slot;
             if (!Args.TryGetValue(key, out var v)) return null;
             if (int.TryParse(v, out int n) && n > 0) return n;

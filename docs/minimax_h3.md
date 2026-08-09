@@ -54,7 +54,8 @@ native stereo audio (dialog in 11 languages), no RIFE in the output path.
   at submit time (below):
   - `<AITOOLS_INPUT_1>` clip 1 (`VHS_LoadVideoPath`) -> `ref_video_0` + `ref_video_audio_0`
   - `<AITOOLS_INPUT_2>` clip 2 -> `ref_video_1` + `ref_video_audio_1`
-  - `<AITOOLS_INPUT_3>`..`_5` photos 1-3 (`VHS_LoadImagePath`) -> `ref_image_0..2`
+  - `<AITOOLS_INPUT_3>`..`_11` photos 1-9 (`VHS_LoadImagePath`) -> `ref_image_0..8`
+    (the node's full 9-image capacity)
   To run it manually in ComfyUI, delete the loaders you aren't using.
 - `ref_to_video_minimax_h3.json`, `ref_video_to_video_minimax_h3.json` - legacy
   single-reference Ref2VA graphs, no longer referenced by any preset; kept as clean
@@ -94,13 +95,14 @@ native stereo audio (dialog in 11 languages), no RIFE in the output path.
 Three reference presets, all pointing at the universal workflow. 
 
 - `Reference Video To Video (MiniMax H3) 5s.txt` / `15s.txt`: clip required
-  (`@upload|video|input1|`), then optional `video2`->input2, `image2/3/4`->input3-5.
+  (`@upload|video|input1|`), then optional `video2`->input2 and `image2..image10`
+  ->inputs 3-11 (photo refs 1-9).
   The 5s preset deliberately has NO length `@replace` (opts out of AI Chat's
   video_to_video source-duration override, which uses WAN's 16fps/4n+1 cadence -
   wrong for a reference generation); the 15s preset's `124 -> 362` replace is
   override-safe because it stales the appended override's find-text.
 - `Reference To Video (MiniMax H3) 5s.txt`: photo 1 required (`image1`->input3),
-  photos 2-3 optional. Both video loaders prune away.
+  photos 2-9 (`image2..image9`->inputs 4-11) optional. Both video loaders prune away.
 - Video presets use `%vid_width%`/`%vid_height%`/`%vid_length%` because chained
   presets share one PicMain variable scope (see AGENTS.md job-script rules).
 - Preset names must keep the `"Reference Video To Video"` substring: the executor
@@ -118,10 +120,14 @@ Three reference presets, all pointing at the universal workflow.
     texture) and the path goes to `PicMain.m_pendingVideoUploadPath2`
     (`@upload|video2|`; no m_picMovie fallback - the pic's own movie is clip 1).
     A still in `chat_image2` (and `attachment2` always) = photo reference.
-  - Stills in slots 2-4 land in `m_image2..4` -> inputs 3-5 -> `<Picture 1..3>`
-    in slot order (pruning renumbers any gaps).
+  - Stills in slots 2-10 land in `PicMain.SetExtraInputImage(slot, ...)` ->
+    inputs 3-11 -> `<Picture 1..9>` in slot order (pruning renumbers any gaps).
   - Rescue: turn attachments are adopted as photo refs (slots 2-3) when the model
     forgot the slot attributes, mirroring the Bernini rescue.
+  - `WarnUnconsumedExtraInputSlots` compares the action's staged slots against the
+    resolved preset's `@upload|imageN|` lines and system-injects a warning when a
+    slot has no consumer, so over-slotted actions fail loudly instead of silently
+    dropping references (the pre-9-slot `chat_image4` incident).
   - Aspect comes from the PRIMARY clip only; length stays the preset's unless the
     action carries `duration="N"` (seconds).
 - Explicit durations: any H3 generation action (t2v/i2v/r2v/rv2v, chained or not)
@@ -134,7 +140,8 @@ Three reference presets, all pointing at the universal workflow.
   is refused there with an info bubble. On video_to_video an explicit duration
   also skips the (already H3-neutralized) source-duration override.
 - `image_to_movie` + `Reference To Video (MiniMax H3) 5s`: extra photos via the
-  standard slot-2/3 wiring; no executor special-casing needed.
+  standard slot 2-9 wiring (`chat_image2..9` / `attachment2..9` -> `image2..image9`);
+  no executor special-casing needed.
 - Skill docs: `aichat/skills/video_to_video.md` (modes, slots, tags, examples),
   `image_to_movie.md` (multi-photo r2v + the start-frame two-stage recipe).
 - `SkillActionParser`'s tag regexes are QUOTE-AWARE on purpose: H3 prompts carry raw

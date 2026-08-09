@@ -1,8 +1,8 @@
 {
  "id": "minimax-h3-ref-multi-aitools",
  "revision": 0,
- "last_node_id": 21,
- "last_link_id": 26,
+ "last_node_id": 27,
+ "last_link_id": 32,
  "nodes": [
   {
    "id": 1,
@@ -350,6 +350,42 @@
      "name": "ref_images.ref_image_2",
      "type": "IMAGE",
      "link": 26,
+     "shape": 7
+    },
+    {
+     "name": "ref_images.ref_image_3",
+     "type": "IMAGE",
+     "link": 27,
+     "shape": 7
+    },
+    {
+     "name": "ref_images.ref_image_4",
+     "type": "IMAGE",
+     "link": 28,
+     "shape": 7
+    },
+    {
+     "name": "ref_images.ref_image_5",
+     "type": "IMAGE",
+     "link": 29,
+     "shape": 7
+    },
+    {
+     "name": "ref_images.ref_image_6",
+     "type": "IMAGE",
+     "link": 30,
+     "shape": 7
+    },
+    {
+     "name": "ref_images.ref_image_7",
+     "type": "IMAGE",
+     "link": 31,
+     "shape": 7
+    },
+    {
+     "name": "ref_images.ref_image_8",
+     "type": "IMAGE",
+     "link": 32,
      "shape": 7
     }
    ],
@@ -780,7 +816,7 @@
     "Node name for S&R": "MarkdownNote"
    },
    "widgets_values": [
-    "## MiniMax H3 (universal multi-reference to video)\n\nOmni-modal video model: up to 15s of 24fps video with native stereo audio\n(dialog in 11 languages). Requires ComfyUI 0.30.0+ and the Ref2VA checkpoint.\n\nThis graph carries EVERY reference loader the app can wire:\n\n- `<AITOOLS_INPUT_1>` reference clip 1 -> `ref_videos.ref_video_0` (+ soundtrack)\n- `<AITOOLS_INPUT_2>` reference clip 2 -> `ref_videos.ref_video_1` (+ soundtrack)\n- `<AITOOLS_INPUT_3>`..`_5` reference photos 1-3 -> `ref_images.ref_image_0..2`\n\nSeth's AI Tools PRUNES unused loaders at submit time: any loader whose\n`<AITOOLS_INPUT_N>` placeholder is still unfilled is removed from the\nAPI-format JSON (references cascade-removed, autogrow indices renumbered),\nand a silent clip's audio wire is dropped via `@prune_input`. To run this\ngraph manually in ComfyUI, delete the loaders you aren't using and fill real\npaths into the rest.\n\nPrompt tags are per-type in connection order among the references that\nREMAIN: clips are `<Video 1>` / `<Video 2>`, their soundtracks `<Audio 1>` /\n`<Audio 2>`, photos are `<Picture 1>`..`<Picture 3>`. Give each reference ONE\njob (e.g. `<Video 1>` = motion/camera/voice, `<Picture 1>` = person identity).\n\n`length` is a frame count at 24fps, snapped up to the model's 17k+5 grid\n(124 = ~5s, trained range is ~124-362 = ~5-15s). Canvas max is 768x1344-area\n(~1MP); this workflow defaults to 864x480 (~0.4MP, the official template\ndefault).\n\nThe `MiniMaxH3MemoryEfficientSageAttentionPatch` node (kjnodes) needs the\n`sageattention` pip package on the server; delete or bypass it to run without.\n\n**Models** (from [Comfy-Org/MiniMax-H3](https://huggingface.co/Comfy-Org/MiniMax-H3)):\n\n- `diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors`\n- `text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors`\n- `vae/minimax_h3_video_vae_fp16.safetensors`\n- `vae/minimax_h3_audio_vae_fp32.safetensors`\n"
+    "## MiniMax H3 (universal multi-reference to video)\n\nOmni-modal video model: up to 15s of 24fps video with native stereo audio\n(dialog in 11 languages). Requires ComfyUI 0.30.0+ and the Ref2VA checkpoint.\n\nThis graph carries EVERY reference loader the app can wire:\n\n- `<AITOOLS_INPUT_1>` reference clip 1 -> `ref_videos.ref_video_0` (+ soundtrack)\n- `<AITOOLS_INPUT_2>` reference clip 2 -> `ref_videos.ref_video_1` (+ soundtrack)\n- `<AITOOLS_INPUT_3>`..`_11` reference photos 1-9 -> `ref_images.ref_image_0..8`\n\nSeth's AI Tools PRUNES unused loaders at submit time: any loader whose\n`<AITOOLS_INPUT_N>` placeholder is still unfilled is removed from the\nAPI-format JSON (references cascade-removed, autogrow indices renumbered),\nand a silent clip's audio wire is dropped via `@prune_input`. To run this\ngraph manually in ComfyUI, delete the loaders you aren't using and fill real\npaths into the rest.\n\nPrompt tags are per-type in connection order among the references that\nREMAIN: clips are `<Video 1>` / `<Video 2>`, their soundtracks `<Audio 1>` /\n`<Audio 2>`, photos are `<Picture 1>`..`<Picture 9>`. Give each reference ONE\njob (e.g. `<Video 1>` = motion/camera/voice, `<Picture 1>` = person identity).\n\n`length` is a frame count at 24fps, snapped up to the model's 17k+5 grid\n(124 = ~5s, trained range is ~124-362 = ~5-15s). Canvas max is 768x1344-area\n(~1MP); this workflow defaults to 864x480 (~0.4MP, the official template\ndefault).\n\nThe `MiniMaxH3MemoryEfficientSageAttentionPatch` node (kjnodes) needs the\n`sageattention` pip package on the server; delete or bypass it to run without.\n\n**Models** (from [Comfy-Org/MiniMax-H3](https://huggingface.co/Comfy-Org/MiniMax-H3)):\n\n- `diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors`\n- `text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors`\n- `vae/minimax_h3_video_vae_fp16.safetensors`\n- `vae/minimax_h3_audio_vae_fp32.safetensors`\n"
    ],
    "title": "About this workflow"
   },
@@ -998,6 +1034,294 @@
     "custom_height": 0
    },
    "title": "Reference photo 3"
+  },
+  {
+   "id": 22,
+   "type": "VHS_LoadImagePath",
+   "pos": [
+    -240,
+    1140
+   ],
+   "size": [
+    340,
+    130
+   ],
+   "flags": {},
+   "order": 21,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "vae",
+     "type": "VAE",
+     "link": null,
+     "shape": 7
+    }
+   ],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      27
+     ]
+    },
+    {
+     "name": "mask",
+     "type": "MASK",
+     "links": []
+    }
+   ],
+   "properties": {
+    "cnr_id": "comfyui-videohelpersuite",
+    "ver": "1.7.9",
+    "Node name for S&R": "VHS_LoadImagePath"
+   },
+   "widgets_values": {
+    "image": "<AITOOLS_INPUT_6>",
+    "custom_width": 0,
+    "custom_height": 0
+   },
+   "title": "Reference photo 4"
+  },
+  {
+   "id": 23,
+   "type": "VHS_LoadImagePath",
+   "pos": [
+    -240,
+    1300
+   ],
+   "size": [
+    340,
+    130
+   ],
+   "flags": {},
+   "order": 22,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "vae",
+     "type": "VAE",
+     "link": null,
+     "shape": 7
+    }
+   ],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      28
+     ]
+    },
+    {
+     "name": "mask",
+     "type": "MASK",
+     "links": []
+    }
+   ],
+   "properties": {
+    "cnr_id": "comfyui-videohelpersuite",
+    "ver": "1.7.9",
+    "Node name for S&R": "VHS_LoadImagePath"
+   },
+   "widgets_values": {
+    "image": "<AITOOLS_INPUT_7>",
+    "custom_width": 0,
+    "custom_height": 0
+   },
+   "title": "Reference photo 5"
+  },
+  {
+   "id": 24,
+   "type": "VHS_LoadImagePath",
+   "pos": [
+    -240,
+    1460
+   ],
+   "size": [
+    340,
+    130
+   ],
+   "flags": {},
+   "order": 23,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "vae",
+     "type": "VAE",
+     "link": null,
+     "shape": 7
+    }
+   ],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      29
+     ]
+    },
+    {
+     "name": "mask",
+     "type": "MASK",
+     "links": []
+    }
+   ],
+   "properties": {
+    "cnr_id": "comfyui-videohelpersuite",
+    "ver": "1.7.9",
+    "Node name for S&R": "VHS_LoadImagePath"
+   },
+   "widgets_values": {
+    "image": "<AITOOLS_INPUT_8>",
+    "custom_width": 0,
+    "custom_height": 0
+   },
+   "title": "Reference photo 6"
+  },
+  {
+   "id": 25,
+   "type": "VHS_LoadImagePath",
+   "pos": [
+    -240,
+    1620
+   ],
+   "size": [
+    340,
+    130
+   ],
+   "flags": {},
+   "order": 24,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "vae",
+     "type": "VAE",
+     "link": null,
+     "shape": 7
+    }
+   ],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      30
+     ]
+    },
+    {
+     "name": "mask",
+     "type": "MASK",
+     "links": []
+    }
+   ],
+   "properties": {
+    "cnr_id": "comfyui-videohelpersuite",
+    "ver": "1.7.9",
+    "Node name for S&R": "VHS_LoadImagePath"
+   },
+   "widgets_values": {
+    "image": "<AITOOLS_INPUT_9>",
+    "custom_width": 0,
+    "custom_height": 0
+   },
+   "title": "Reference photo 7"
+  },
+  {
+   "id": 26,
+   "type": "VHS_LoadImagePath",
+   "pos": [
+    -240,
+    1780
+   ],
+   "size": [
+    340,
+    130
+   ],
+   "flags": {},
+   "order": 25,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "vae",
+     "type": "VAE",
+     "link": null,
+     "shape": 7
+    }
+   ],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      31
+     ]
+    },
+    {
+     "name": "mask",
+     "type": "MASK",
+     "links": []
+    }
+   ],
+   "properties": {
+    "cnr_id": "comfyui-videohelpersuite",
+    "ver": "1.7.9",
+    "Node name for S&R": "VHS_LoadImagePath"
+   },
+   "widgets_values": {
+    "image": "<AITOOLS_INPUT_10>",
+    "custom_width": 0,
+    "custom_height": 0
+   },
+   "title": "Reference photo 8"
+  },
+  {
+   "id": 27,
+   "type": "VHS_LoadImagePath",
+   "pos": [
+    -240,
+    1940
+   ],
+   "size": [
+    340,
+    130
+   ],
+   "flags": {},
+   "order": 26,
+   "mode": 0,
+   "inputs": [
+    {
+     "name": "vae",
+     "type": "VAE",
+     "link": null,
+     "shape": 7
+    }
+   ],
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      32
+     ]
+    },
+    {
+     "name": "mask",
+     "type": "MASK",
+     "links": []
+    }
+   ],
+   "properties": {
+    "cnr_id": "comfyui-videohelpersuite",
+    "ver": "1.7.9",
+    "Node name for S&R": "VHS_LoadImagePath"
+   },
+   "widgets_values": {
+    "image": "<AITOOLS_INPUT_11>",
+    "custom_width": 0,
+    "custom_height": 0
+   },
+   "title": "Reference photo 9"
   }
  ],
  "links": [
@@ -1207,6 +1531,54 @@
    0,
    7,
    9,
+   "IMAGE"
+  ],
+  [
+   27,
+   22,
+   0,
+   7,
+   10,
+   "IMAGE"
+  ],
+  [
+   28,
+   23,
+   0,
+   7,
+   11,
+   "IMAGE"
+  ],
+  [
+   29,
+   24,
+   0,
+   7,
+   12,
+   "IMAGE"
+  ],
+  [
+   30,
+   25,
+   0,
+   7,
+   13,
+   "IMAGE"
+  ],
+  [
+   31,
+   26,
+   0,
+   7,
+   14,
+   "IMAGE"
+  ],
+  [
+   32,
+   27,
+   0,
+   7,
+   15,
    "IMAGE"
   ]
  ],

@@ -17,6 +17,11 @@ namespace AITools.AIChat.Context
         public string Caption;
         public string Provenance;
         public bool HasCleanBase;
+        // True while the Pic's render/job queue is still working (e.g. a queued
+        // image_to_movie that hasn't come back from the GPU). Surfaced in the
+        // CHAT IMAGES list so the model can tell "still rendering" apart from
+        // "failed" and doesn't re-queue an expensive duplicate.
+        public bool IsBusy;
     }
 
     /// <summary>
@@ -230,6 +235,8 @@ namespace AITools.AIChat.Context
                     sb.Append("- #").Append(index).Append(": ").Append(kind);
                     if (state != null)
                     {
+                        if (state.IsBusy)
+                            sb.Append(", STILL RENDERING (result not ready - wait for it; do NOT re-queue a duplicate)");
                         if (!state.IsReusable)
                             sb.Append(", not reusable");
                         if (!string.IsNullOrEmpty(state.AnchorName))

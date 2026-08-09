@@ -6371,7 +6371,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 Dimensions = dimensions,
                 Caption = caption,
                 Provenance = record != null ? BuildRecordProvenance(record) : "",
-                HasCleanBase = record != null && record.cleanBasePngBytes != null && record.cleanBasePngBytes.Length > 0
+                HasCleanBase = record != null && record.cleanBasePngBytes != null && record.cleanBasePngBytes.Length > 0,
+                // A still-working job queue means the visible pixels are a source frame
+                // or placeholder, not the result - tell the model so it waits instead of
+                // re-queuing a duplicate render (the "you didn't make a movie" trap).
+                IsBusy = reusable && pic.IsBusy()
             });
         }
 
@@ -8211,7 +8215,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         AddSourcePart(parts, action, "chat_image", "chat");
         AddSourcePart(parts, action, "attachment", "attach");
         if (IsTruthyArg(action.GetArg("clean_base"))) parts.Add("clean_base");
-        for (int i = 2; i <= 5; i++)
+        for (int i = 2; i <= SkillAction.MaxExtraInputSlot; i++)
         {
             AddSourcePart(parts, action, "chat_image" + i, "chat" + i);
             AddSourcePart(parts, action, "attachment" + i, "attach" + i);

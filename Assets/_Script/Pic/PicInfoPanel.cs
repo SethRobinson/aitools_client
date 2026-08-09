@@ -25,8 +25,9 @@ public class PicInfoPanel : MonoBehaviour
     // stable per _jobHistory record until that record actually changes.
     private List<ImageHistoryRow> _lastHistory;
 
-    // One generation step of the Pic's history: the input images it was fed (slots 0..4,
-    // empty slots null) and the result it produced (null until the result arrives).
+    // One generation step of the Pic's history: the input images it was fed (slots
+    // 0..PicJob.MAX_INPUT_SLOTS-1, empty slots null) and the result it produced
+    // (null until the result arrives).
     public class ImageHistoryRow
     {
         public byte[][] inputs;
