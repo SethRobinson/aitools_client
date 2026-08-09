@@ -29,9 +29,13 @@ Specify EXACTLY ONE source via:
 ## Available presets
 
 - `{{Image To Video (MiniMax H3) 5s.txt}}` - DEFAULT. ~5s, native stereo audio +
-  spoken dialog (11 languages), strong motion/identity. MiniMax H3.
+  spoken dialog (11 languages), strong motion/identity. MiniMax H3. For a
+  specific duration between 5 and 15 seconds, keep THIS preset and add
+  `duration="10"` (seconds) - the host snaps it to H3's frame grid (~10.1s).
+  H3 presets only; LTX/WAN are fixed-length.
 - `{{Image To Video (MiniMax H3) 15s.txt}}` - same model, ~15s single
-  generation. Only when the user explicitly asks for a long clip (~3x render time).
+  generation. Only when the user explicitly asks for a long clip (~3x render
+  time). `duration` is ignored here - use the 5s preset for in-between lengths.
 - `{{Reference To Video (MiniMax H3) 5s.txt}}` - the SUBJECT of the source
   image doing something new; output does NOT start on the source frame. See
   "Reference-to-video" below.
@@ -110,10 +114,31 @@ is ideal for anchors: "make a video of Mara surfing" from an anchored portrait.
   from <Picture 1>, now in a wetsuit, carves across a wave...`), and should
   still restate her key visible traits once.
 - Same source attributes as normal (`attachment` / `chat_image` / `chain`).
+- UP TO 3 PHOTOS: add `chat_image2`/`attachment2` (and `chat_image3`/
+  `attachment3`) for a second/third reference - `<Picture 2>`, `<Picture 3>`
+  in slot order (e.g. `<Picture 1>` = the person, `<Picture 2>` = a second
+  character or the setting). Give each photo ONE job in the prompt; unused
+  slots are pruned automatically, same preset name.
 - Dialog/audio rules are the same as normal H3.
-- If the reference is a MOVIE bubble rather than a still, use
+- If a reference is a MOVIE bubble rather than a still, use
   `skill="video_to_video"` with `{{Reference Video To Video (MiniMax H3) 5s.txt}}`
-  and `<Video 1>` in the prompt instead - see the video_to_video skill.
+  and `<Video 1>` in the prompt instead - that preset also takes photo
+  references and a second clip; see the video_to_video skill.
+
+### Exact START FRAME plus a specific person - two-stage recipe
+
+H3 cannot pin a literal start frame AND take references in one pass (start
+frames are the i2v model; references are a different checkpoint). When the
+user wants the video to open on an exact frame but with a specific person in
+it, build the frame first, then animate it:
+
+1. `image_to_image` with `{{Image To Image Klein Edit 2 Input.txt}}` - insert
+   the person (photo in slot 2) into the desired start frame.
+2. `image_to_movie` with `{{Image To Video (MiniMax H3) 5s.txt}}` and
+   `chain="true"` in the same reply - animates that exact composed frame.
+
+If the opening frame does NOT need to be exact, skip the two-stage recipe and
+use reference-to-video: the photo guides identity without pinning frame 1.
 
 ### LTX 2.3 (`{{Image To Video (LTX) 5s.txt}}`)
 

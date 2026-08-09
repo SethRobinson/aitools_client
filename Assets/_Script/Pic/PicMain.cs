@@ -66,6 +66,13 @@ public class PicJob
     // Pending uploads to process before running workflow
     public List<UploadInfo> _pendingUploads = new List<UploadInfo>();
 
+    // True when the workflow line declared at least one @upload|...|optional| slot.
+    // Enables submit-time graph pruning in PicTextToImage: loaders whose
+    // <AITOOLS_INPUT_N> placeholder stayed unfilled are removed from the API JSON
+    // (universal multi-reference workflows). Workflows without optional slots keep
+    // the old behavior where a leftover placeholder reaches the server as an error.
+    public bool _allowInputPruning = false;
+
     // PNG bytes of the input images that were uploaded for this job (slots 0..4 match
     // _inputFilenames). Captured during upload_to_comfy and carried into _jobHistory so
     // the "?" info panel can show the user which images fed an N-input workflow.
@@ -197,6 +204,10 @@ public class PicMain : MonoBehaviour
     // movie. Lets chat video_to_video supply the source clip while the Pic itself stays an
     // image (so the rendered result transitions image -> video like image_to_movie does).
     public string m_pendingVideoUploadPath = null;
+    // Second reference clip for @upload|video2|...| (multi-reference workflows). Always an
+    // explicit file path supplied by AI Chat (a Movie bubble in chat_image2); the Pic's own
+    // movie is clip 1 by definition, so video2 has no m_picMovie fallback.
+    public string m_pendingVideoUploadPath2 = null;
     List<PicJob> m_picJobs = new List<PicJob>();
     List<PicJob> _jobHistory = new List<PicJob>();
     PicJob m_jobDefaultInfo = null;
@@ -2467,6 +2478,18 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         m_workflowFrameCountOverride = Mathf.Max(0, frameCount);
     }
 
+    // One-shot directives (e.g. "@prune_input|ref_video_audios.ref_video_audio_0|")
+    // appended verbatim to the next workflow-loading joblist line. Used by the AI Chat
+    // executor for per-clip tweaks the preset can't know about, like dropping a silent
+    // source clip's audio wire before the submit-time graph pruner runs.
+    private readonly List<string> m_workflowAppendDirectives = new List<string>();
+
+    public void AddWorkflowDirective(string directive)
+    {
+        if (!string.IsNullOrEmpty(directive))
+            m_workflowAppendDirectives.Add(directive.Trim());
+    }
+
     /// <summary>
     /// Mutates <paramref name="lines"/> to inject extra @replace operations for width/
     /// height on the workflow-loading line, honouring the one-shot dimension overrides
@@ -2501,6 +2524,15 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                     && presetW > 0
                     && presetH > 0;
                 bool touched = false;
+
+                // One-shot appended directives ride the first workflow line, ahead of
+                // the dimension/frame-count handling below.
+                if (m_workflowAppendDirectives.Count > 0)
+                {
+                    line = line + " " + string.Join(" ", m_workflowAppendDirectives);
+                    m_workflowAppendDirectives.Clear();
+                    touched = true;
+                }
 
                 // No override requested: just record the preset's dims as the
                 // "last queued" pair so a follow-up chain step can use them.
@@ -2570,6 +2602,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             m_workflowAspectSrcW = 0;
             m_workflowAspectSrcH = 0;
             m_workflowFrameCountOverride = 0;
+            m_workflowAppendDirectives.Clear();
         }
     }
 
@@ -3557,6 +3590,27 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
         return go?.GetComponent<PicMain>();
     }
+
+    // Availability probe for @upload|source|inputN|optional| slots - mirrors what the
+    // upload_to_comfy execution stage can actually deliver for each source token.
+    bool IsUploadSourceAvailable(string source)
+    {
+        switch (source)
+        {
+            case "image": case "image1": case "temp1": case "temp2": case "temp3":
+                PicMain slotPic = GetPicMainForSlot(source);
+                return slotPic != null && slotPic.m_pic.sprite != null && slotPic.m_pic.sprite.texture != null;
+            case "image2": return m_image2 != null;
+            case "image3": return m_image3 != null;
+            case "image4": return m_image4 != null;
+            case "image5": return m_image5 != null;
+            case "video": case "video1":
+                return !string.IsNullOrEmpty(m_pendingVideoUploadPath)
+                    || (m_picMovie != null && IsMovie() && !string.IsNullOrEmpty(m_picMovie.GetProcessingFileName()));
+            case "video2": return !string.IsNullOrEmpty(m_pendingVideoUploadPath2);
+            default: return false;
+        }
+    }
     
     /// <summary>
     /// Get a Texture2D from a source slot name (image, image1, temp1, temp2, temp3).
@@ -4192,6 +4246,24 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                             return;
                         }
                     }
+                    else if (source == "video2")
+                    {
+                        // Second reference clip - always an explicit file path supplied by AI Chat
+                        // (a Movie bubble in chat_image2). The Pic's own movie is clip 1 by
+                        // definition, so there is no m_picMovie fallback here.
+                        if (!string.IsNullOrEmpty(m_pendingVideoUploadPath2))
+                        {
+                            uploaderScript.UploadFile(serverID, m_pendingVideoUploadPath2, remoteFileName, OnUploadFinished);
+                            return; // Video upload handled, exit early
+                        }
+                        ClearErrorsAndJobs();
+                        SetStatusMessage("Need second\nvideo first!");
+                        RTConsole.Log("Error: No second video wired for video2 upload");
+                        ReportWorkflowAbortOnce(
+                            "Workflow aborted: the preset expected a second video (video2), but none was wired. " +
+                            "Point chat_image2=\"N\" at the Movie #N bubble to supply the second reference clip.");
+                        return;
+                    }
                     else if (source == "image2")
                     {
                         if (m_image2 != null)
@@ -4611,6 +4683,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 job._pendingUploads = new List<UploadInfo>();
                 job._inputImagePngs = new byte[5][];
                 job._outputImagePng = null;
+                job._allowInputPruning = false;
 
 
                 if (m_jobDefaultInfo != null)
@@ -4868,11 +4941,16 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                         }
                         else if (picJobData._name.ToLower() == "upload")
                         {
-                            // Parse: @upload|source|inputN|
-                            // source: image1, image2 (future), temp1, temp2, temp3
+                            // Parse: @upload|source|inputN| or @upload|source|inputN|optional|
+                            // source: image1..image5, temp1..temp3, video/video1, video2
                             // dest: input1, input2, input3, input4, input5 (or just 1, 2, 3, 4, 5)
+                            // "optional": if the source isn't wired, skip the upload and leave the
+                            // <AITOOLS_INPUT_N> placeholder unfilled so PicTextToImage prunes that
+                            // loader from the API graph (universal multi-reference workflows).
+                            // Without the flag a missing source stays a hard abort at upload time.
                             string source = picJobData._parm1.ToLower().Trim();
                             string dest = picJobData._parm2.ToLower().Trim();
+                            bool isOptionalUpload = commandParts.Length >= 4 && commandParts[3].Trim().ToLower() == "optional";
 
                             // Parse input index from dest (input1 -> 0, input2 -> 1, etc.)
                             int inputIndex = -1;
@@ -4884,31 +4962,49 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
                             if (inputIndex >= 0 && inputIndex < 5)
                             {
-                                // Generate a GUID filename for this upload. Video sources keep
-                                // their real container extension (.mp4 etc.) so the uploaded file
-                                // and the workflow's video loader agree on the path; image sources
-                                // stay .png.
-                                string uploadExt = ".png";
-                                if (source == "video" || source == "video1")
+                                if (isOptionalUpload)
                                 {
-                                    string movieFile = !string.IsNullOrEmpty(m_pendingVideoUploadPath)
-                                        ? m_pendingVideoUploadPath
-                                        : ((m_picMovie != null && IsMovie()) ? m_picMovie.GetProcessingFileName() : null);
-                                    string movieExt = string.IsNullOrEmpty(movieFile) ? null : System.IO.Path.GetExtension(movieFile);
-                                    uploadExt = string.IsNullOrEmpty(movieExt) ? ".mp4" : movieExt;
+                                    job._allowInputPruning = true;
                                 }
-                                string guidFilename = "pic_" + System.Guid.NewGuid() + uploadExt;
 
-                                UploadInfo uploadInfo = new UploadInfo()
+                                if (isOptionalUpload && !IsUploadSourceAvailable(source))
                                 {
-                                    source = source,
-                                    inputIndex = inputIndex,
-                                    filename = guidFilename
-                                };
-                                job._pendingUploads.Add(uploadInfo);
-                                
-                                // Set the input filename that will be used in workflow replacement
-                                job._inputFilenames[inputIndex] = "temp/" + guidFilename;
+                                    RTConsole.Log($"@upload: optional source '{source}' not wired; leaving {dest} unfilled so its loader gets pruned");
+                                }
+                                else
+                                {
+                                    // Generate a GUID filename for this upload. Video sources keep
+                                    // their real container extension (.mp4 etc.) so the uploaded file
+                                    // and the workflow's video loader agree on the path; image sources
+                                    // stay .png.
+                                    string uploadExt = ".png";
+                                    if (source == "video" || source == "video1")
+                                    {
+                                        string movieFile = !string.IsNullOrEmpty(m_pendingVideoUploadPath)
+                                            ? m_pendingVideoUploadPath
+                                            : ((m_picMovie != null && IsMovie()) ? m_picMovie.GetProcessingFileName() : null);
+                                        string movieExt = string.IsNullOrEmpty(movieFile) ? null : System.IO.Path.GetExtension(movieFile);
+                                        uploadExt = string.IsNullOrEmpty(movieExt) ? ".mp4" : movieExt;
+                                    }
+                                    else if (source == "video2")
+                                    {
+                                        string movieExt2 = string.IsNullOrEmpty(m_pendingVideoUploadPath2)
+                                            ? null : System.IO.Path.GetExtension(m_pendingVideoUploadPath2);
+                                        uploadExt = string.IsNullOrEmpty(movieExt2) ? ".mp4" : movieExt2;
+                                    }
+                                    string guidFilename = "pic_" + System.Guid.NewGuid() + uploadExt;
+
+                                    UploadInfo uploadInfo = new UploadInfo()
+                                    {
+                                        source = source,
+                                        inputIndex = inputIndex,
+                                        filename = guidFilename
+                                    };
+                                    job._pendingUploads.Add(uploadInfo);
+
+                                    // Set the input filename that will be used in workflow replacement
+                                    job._inputFilenames[inputIndex] = "temp/" + guidFilename;
+                                }
                             }
                             else
                             {

@@ -72,9 +72,10 @@ class ResizeOp:
 
 @dataclass
 class UploadSpec:
-    """An @upload directive: route a local media source to input slot N (0..3)."""
-    source: str        # 'image1', 'image2', or 'video'
-    slot_idx: int      # 0..3 -> <AITOOLS_INPUT_(slot_idx+1)>
+    """An @upload directive: route a local media source to input slot N (0..4)."""
+    source: str        # 'image1', 'image2', or 'video' (others allowed when optional)
+    slot_idx: int      # 0..4 -> <AITOOLS_INPUT_(slot_idx+1)>
+    optional: bool = False  # unfilled optional slots get their loader node pruned
 
 
 @dataclass
@@ -274,20 +275,30 @@ _INPUT_SLOTS = {
     "input2": 1, "2": 1,
     "input3": 2, "3": 2,
     "input4": 3, "4": 3,
+    "input5": 4, "5": 4,
 }
 
 
 def _handle_upload(args: List[str], data: PresetData, path: Path):
-    if len(args) != 2:
-        die(f"preset {path.name}: @upload expects 2 args (source|input_slot), got {len(args)}: {args}", 1)
+    if len(args) not in (2, 3):
+        die(f"preset {path.name}: @upload expects source|input_slot[|optional], got {len(args)}: {args}", 1)
     source = args[0].strip().lower()
     dest = args[1].strip().lower()
+    optional = False
+    if len(args) == 3:
+        flag = args[2].strip().lower()
+        if flag != "optional":
+            die(f"preset {path.name}: @upload third arg must be 'optional', got '{flag}'", 1)
+        optional = True
     # 'image' is a documented alias for 'image1' (matches Unity's PicMain.cs).
     if source == "image":
         source = "image1"
     if source == "video1":
         source = "video"
-    if source not in ("image1", "image2", "video"):
+    if source not in ("image1", "image2", "video") and not optional:
+        # Optional uploads with sources the CLI can't supply (video2, image3+,
+        # temp slots) are fine: the slot stays unfilled and its loader node is
+        # pruned from the graph before submission.
         die(
             f"preset {path.name}: @upload source '{source}' not supported — "
             f"aitools_cli handles 'image1' (-i input), 'image2' (-i2 input), "
@@ -298,10 +309,10 @@ def _handle_upload(args: List[str], data: PresetData, path: Path):
     if dest not in _INPUT_SLOTS:
         die(
             f"preset {path.name}: @upload dest '{dest}' not recognised — "
-            f"expected one of input1..input4 (or 1..4)",
+            f"expected one of input1..input5 (or 1..5)",
             1,
         )
-    data.uploads.append(UploadSpec(source=source, slot_idx=_INPUT_SLOTS[dest]))
+    data.uploads.append(UploadSpec(source=source, slot_idx=_INPUT_SLOTS[dest], optional=optional))
 
 
 def _handle_resize(directive: str, args: List[str], data: PresetData, path: Path):

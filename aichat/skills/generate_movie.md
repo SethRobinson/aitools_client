@@ -56,8 +56,13 @@ inherited automatically.
   `{{Image To Video (LTX) 5s.txt}}`.
 - If the user says **WAN** / **Wan 2.2**, or asks for silent video, use
   `{{Image To Video (WAN) 5s.txt}}`.
+- If the user asks for a specific duration between 5 and 15 seconds (e.g.
+  "a 10 second video"), keep `{{Image To Video (MiniMax H3) 5s.txt}}` and add
+  `duration="10"` (seconds) to the movie action - the host snaps it to H3's
+  frame grid (so ~10.1s). H3 only; LTX/WAN stay fixed-length.
 - If the user explicitly asks for a LONG (~15 second) clip, use
   `{{Image To Video (MiniMax H3) 15s.txt}}` (about 3x the render time).
+  `duration` is ignored on the 15s preset.
 - Always use `{{Prompt To Image (Z-Image).txt}}` for the still base unless the
   user explicitly names a different still-image model.
 
@@ -154,5 +159,5 @@ unless asked. See `image_to_movie` -> "Sizing" for details.
 - "MiniMax / H3 video of X" and generic "make a video of X" mean Z-Image
   still -> `Image To Video (MiniMax H3) 5s.txt`, unless the user explicitly
   asks for direct text-to-video.
-- Default to 5s unless the user asks longer; ~15s requests use the H3 15s
-  preset.
+- Default to 5s unless the user asks longer. A specific 6-14s duration ->
+  H3 5s preset + `duration="N"` on the movie action; ~15s -> the H3 15s preset.

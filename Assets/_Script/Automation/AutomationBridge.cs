@@ -99,6 +99,14 @@ public static class AutomationBridge
         return _driver.ImportChatVideo(path, startSeconds, durationSeconds, fps, includeAudio, out error);
     }
 
+    /// <summary>Import a local still image file into AI Chat as a "#N (you)" image bubble.
+    /// Reuses the movie-export still path (ffmpeg reads a png/jpg as a 1-frame source), so
+    /// the bubble gets the same registration/captioning as a user-imported still.</summary>
+    public static bool ImportChatImage(string path, out string error)
+    {
+        return AIChatPanel.AddLocalStillFrameToChat(path, 0f, null, out error);
+    }
+
     /// <summary>Run AI Chat's Compact feature (mode "summarize" or "truncate").</summary>
     public static bool CompactChat(string mode, int keepExchanges, out string error)
     {

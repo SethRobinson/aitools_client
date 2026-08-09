@@ -1,6 +1,5 @@
 COMMAND_START|joblist
 #Alias: user-facing WAN name for the Wan 2.2 image-to-video preset.
-#In AI Chat test_ mode this maps to test_Image To Video (WAN) 5s.txt.
 %vid_width%="640"
 %vid_height%="640"
 %vid_length%="81"

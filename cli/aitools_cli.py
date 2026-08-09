@@ -163,8 +163,11 @@ def main():
         if not workflow_name:
             die("no workflow specified (use -p, -w, or set default_workflow in config)", 1)
 
-    # Validate -i / -i2 vs preset's @upload requirements.
-    needed_sources = sorted({u.source for u in preset.uploads}) if preset else []
+    # Validate -i / -i2 vs preset's @upload requirements. Optional uploads
+    # (@upload|...|optional|) never block: an unfilled optional slot gets its
+    # loader node pruned from the graph before submission.
+    needed_sources = sorted({u.source for u in preset.uploads if not u.optional}) if preset else []
+    all_upload_sources = sorted({u.source for u in preset.uploads}) if preset else []
     if "image1" in needed_sources and not args.input:
         die(
             f"preset {preset.source_path.name} needs an image1 input; "
@@ -183,15 +186,15 @@ def main():
             f"pass one with --video <path>",
             1,
         )
-    if args.input and "image1" not in needed_sources:
+    if args.input and "image1" not in all_upload_sources:
         if args.verbose:
             print(f"warning: -i {args.input!r} ignored "
                   f"({'preset has no image1 @upload' if preset else 'no preset specified'})")
-    if args.input2 and "image2" not in needed_sources:
+    if args.input2 and "image2" not in all_upload_sources:
         if args.verbose:
             print(f"warning: -i2 {args.input2!r} ignored "
                   f"({'preset has no image2 @upload' if preset else 'no preset specified'})")
-    if args.video and "video" not in needed_sources:
+    if args.video and "video" not in all_upload_sources:
         if args.verbose:
             print(f"warning: --video {args.video!r} ignored "
                   f"({'preset has no video @upload' if preset else 'no preset specified'})")
@@ -254,8 +257,14 @@ def main():
     input_path_replacements = {}
     if preset and preset.uploads:
         source_paths = {"image1": args.input, "image2": args.input2, "video": args.video}
-        for source in needed_sources:
-            local_path = source_paths[source]
+        for source in all_upload_sources:
+            local_path = source_paths.get(source)
+            if not local_path:
+                # Only reachable for optional uploads (required ones died above):
+                # the slot stays unfilled and prune_unfilled_inputs drops its loader.
+                if args.verbose:
+                    print(f"optional {source} input not provided - its loader will be pruned")
+                continue
             if source == "video":
                 if args.verbose:
                     print(f"uploading {source} input: {local_path}")
@@ -279,14 +288,17 @@ def main():
 
     # Standard placeholder substitution (<AITOOLS_PROMPT>, etc.)
     seed = args.seed if args.seed is not None else random.randint(0, 2**63 - 1)
-    placeholder_replacements = {
+    api_workflow = workflow.replace_placeholders(api_workflow, {
         "<AITOOLS_PROMPT>": effective_prompt,
         "<AITOOLS_NEGATIVE_PROMPT>": effective_negative,
         **input_path_replacements,
-    }
-    for ph in workflow.PLACEHOLDERS_BLANK_BY_DEFAULT:
-        placeholder_replacements.setdefault(ph, "")
-    api_workflow = workflow.replace_placeholders(api_workflow, placeholder_replacements)
+    })
+    # Prune unfilled optional loaders BEFORE the blank-by-default pass erases
+    # the <AITOOLS_INPUT_N> markers the pruner keys on.
+    if preset and any(u.optional for u in preset.uploads):
+        api_workflow = workflow.prune_unfilled_inputs(api_workflow, args.verbose)
+    blank_replacements = {ph: "" for ph in workflow.PLACEHOLDERS_BLANK_BY_DEFAULT}
+    api_workflow = workflow.replace_placeholders(api_workflow, blank_replacements)
     workflow.override_seeds(api_workflow, seed)
 
     if args.verbose:

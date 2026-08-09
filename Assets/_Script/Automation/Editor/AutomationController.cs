@@ -36,6 +36,7 @@ using UnityEngine;
 //                        focus a TMP_InputField (returns matched path + whether a caret graphic exists)
 //   POST /chat        -> body = message text; open chat + send one turn (ok:false if a busy gate refused the send)
 //   POST /chat_import_video -> body: path=<file>, optional start=<seconds>, duration=<seconds>, fps=<n>, audio=<true|false>; import clipped Movie bubble
+//   POST /chat_import_image -> body: path=<file>; import a local still image as a "#N (you)" bubble
 //   POST /chat_compact -> body: mode=<summarize|truncate> (default summarize), keep=<n> exchanges kept (default 2); runs AI Chat's Compact
 //   GET  /chat_images -> JSON array: index/w/h/busy/movie for each chat image
 //   POST /save        -> body: index=<n|latest>, path=<file>; save chat image PNG
@@ -301,6 +302,24 @@ public static class AutomationController
                         bool ok = AutomationBridge.ImportChatVideo(videoPath, startSeconds, durationSeconds, fps, includeAudio, out string err);
                         return ok
                             ? $"{{\"ok\":true,\"accepted\":\"chat_import_video\",\"path\":{JsonStr(videoPath)}}}"
+                            : $"{{\"ok\":false,\"error\":{JsonStr(err)}}}";
+                    }, "{\"ok\":false,\"error\":\"timed out\"}");
+                    WriteJson(stream, 200, result);
+                    break;
+                }
+
+                case "/chat_import_image":
+                {
+                    // Body: key=value lines. path=<file>. Appends the image as a normal
+                    // "#N (you)" chat bubble so scripted tests can supply photo references.
+                    var kv = ParseKeyValues(body);
+                    string imagePath = kv.TryGetValue("path", out var ip) ? ip : "";
+                    string result = RunOnMainAndWait(() =>
+                    {
+                        AutomationBridge.OpenChat();
+                        bool ok = AutomationBridge.ImportChatImage(imagePath, out string err);
+                        return ok
+                            ? $"{{\"ok\":true,\"accepted\":\"chat_import_image\",\"path\":{JsonStr(imagePath)}}}"
                             : $"{{\"ok\":false,\"error\":{JsonStr(err)}}}";
                     }, "{\"ok\":false,\"error\":\"timed out\"}");
                     WriteJson(stream, 200, result);

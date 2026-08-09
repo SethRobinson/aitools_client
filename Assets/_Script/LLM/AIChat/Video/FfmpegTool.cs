@@ -37,6 +37,7 @@ namespace AITools.AIChat.Video
             public string CodecName;
             public string FormatName;
             public bool HasVideo;
+            public bool HasAudio;
         }
 
         public sealed class ClipResult
@@ -264,7 +265,8 @@ namespace AITools.AIChat.Video
                 RotationDegrees = src.RotationDegrees,
                 CodecName = src.CodecName,
                 FormatName = src.FormatName,
-                HasVideo = src.HasVideo
+                HasVideo = src.HasVideo,
+                HasAudio = src.HasAudio
             };
         }
 
@@ -838,8 +840,12 @@ namespace AITools.AIChat.Video
             {
                 foreach (JSONNode stream in streams)
                 {
+                    if (stream != null && stream["codec_type"] != null && stream["codec_type"].Value == "audio")
+                        info.HasAudio = true;
                     if (stream == null || stream["codec_type"] == null || stream["codec_type"].Value != "video")
                         continue;
+                    if (info.HasVideo)
+                        continue; // first video stream wins; keep scanning so audio streams are still seen
 
                     info.HasVideo = true;
                     info.Width = stream["width"].AsInt;
@@ -862,7 +868,6 @@ namespace AITools.AIChat.Video
                                 info.RotationDegrees = Mathf.RoundToInt((float)ParseDouble(side["rotation"]));
                         }
                     }
-                    break;
                 }
             }
 

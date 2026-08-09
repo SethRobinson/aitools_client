@@ -14,7 +14,7 @@ PLACEHOLDERS_BLANK_BY_DEFAULT = [
     "<AITOOLS_AUDIO_PROMPT>",
     "<AITOOLS_AUDIO_NEGATIVE_PROMPT>",
     "<AITOOLS_SEGMENTATION_PROMPT>",
-] + [f"<AITOOLS_INPUT_{i}>" for i in range(1, 5)] \
+] + [f"<AITOOLS_INPUT_{i}>" for i in range(1, 6)] \
   + [f"<AITOOLS_PROMPT_{i}>" for i in range(1, 9)]
 
 
@@ -100,6 +100,62 @@ def replace_placeholders(node, replacements):
                 node = node.replace(ph, val)
         return node
     return node
+
+
+def prune_unfilled_inputs(api_workflow, verbose=False):
+    """Remove loader nodes whose inputs still hold an <AITOOLS_INPUT_N>
+    placeholder (an optional @upload slot with no source), cascade-remove
+    inputs that referenced them, and renumber ComfyUI autogrow list inputs
+    ("group.item_N") so indices stay contiguous from 0. Mirrors
+    PicTextToImage.PruneWorkflowInputs in the Unity app. Call BEFORE the
+    blank-by-default placeholder pass, which would otherwise erase the
+    markers this detection relies on."""
+    if not isinstance(api_workflow, dict):
+        return api_workflow
+    removed = []
+    for node_id in list(api_workflow.keys()):
+        node = api_workflow.get(node_id)
+        inputs = node.get("inputs") if isinstance(node, dict) else None
+        if not isinstance(inputs, dict):
+            continue
+        if any(isinstance(v, str) and "<AITOOLS_INPUT_" in v for v in inputs.values()):
+            removed.append(node_id)
+            del api_workflow[node_id]
+    for node in api_workflow.values():
+        inputs = node.get("inputs") if isinstance(node, dict) else None
+        if not isinstance(inputs, dict):
+            continue
+        doomed = [k for k, v in inputs.items()
+                  if isinstance(v, list) and len(v) == 2 and str(v[0]) in removed]
+        for k in doomed:
+            del inputs[k]
+        if doomed:
+            _renumber_autogrow_inputs(inputs)
+    if removed and verbose:
+        print(f"pruned unused loader node(s): {', '.join(removed)}")
+    return api_workflow
+
+
+def _renumber_autogrow_inputs(inputs):
+    """ComfyUI autogrow inputs are named "group.item_N"; after pruning, each
+    group's remaining indices must be contiguous from 0."""
+    groups = {}
+    for key in list(inputs.keys()):
+        dot = key.find(".")
+        us = key.rfind("_")
+        if dot <= 0 or us <= dot:
+            continue
+        tail = key[us + 1:]
+        if not tail.isdigit():
+            continue
+        groups.setdefault(key[:us + 1], []).append((int(tail), key))
+    for stem, entries in groups.items():
+        entries.sort()
+        if all(idx == i for i, (idx, _key) in enumerate(entries)):
+            continue
+        values = [inputs.pop(key) for _idx, key in entries]
+        for i, value in enumerate(values):
+            inputs[f"{stem}{i}"] = value
 
 
 def override_seeds(node, seed):

@@ -132,7 +132,7 @@ aitools_cli.py "put the cat from image2 into image1" combined.png \
 Video-input preset:
 ```
 aitools_cli.py "restyle this clip as a pencil animation" out.mp4 \
-    -p "test_Video To Video (Bernini)" \
+    -p "Video To Video (Bernini)" \
     --video clip.mp4
 ```
 

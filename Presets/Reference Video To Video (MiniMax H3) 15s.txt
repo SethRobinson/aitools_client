@@ -2,8 +2,13 @@ COMMAND_START|joblist
 #Generate a NEW ~15-second video with audio using a loaded VIDEO as the reference (MiniMax H3 Ref2VA).
 #Same as the 5s preset at the model's trained maximum duration (~3x the render time).
 #The clip's visuals AND soundtrack condition the output; prompts refer to them as <Video 1> and <Audio 1>.
-#The source clip MUST have an audio track - a silent source fails in the video loader
-#("VHS failed to extract audio from ...") before sampling starts.
+#OPTIONAL extra references, pruned from the graph when absent (wired by AI Chat):
+#  video2 (second Movie bubble via chat_image2) -> <Video 2> / <Audio 2>
+#  image2/image3/image4 (photo stills via chat_image2..4 or attachment2..4) -> <Picture 1>..<Picture 3>
+#Give each reference ONE job (e.g. <Video 1> = motion/camera/voice, <Picture 1> = person identity).
+#Silent clips are handled automatically: AI Chat prunes that clip's audio wire (@prune_input) and
+#H3 synthesizes the soundtrack from the prompt alone; a manual run on a silent clip still fails in
+#the video loader ("VHS failed to extract audio from ...").
 #The length @replace below is safe against AI Chat's video_to_video source-duration override: it runs
 #first (124 -> 362), so the appended override's find-text no longer exists. Only a preset whose length
 #value EQUALS the workflow default is vulnerable - the 5s preset omits the replace for that reason.
@@ -11,5 +16,5 @@ COMMAND_START|joblist
 %vid_height%="480"
 %vid_length%="362"
 
-ref_video_to_video_minimax_h3.json @upload|video|input1| @replace|"width": 864|"width": %vid_width%| @replace|"height": 480|"height": %vid_height%| @replace|"length": 124|"length": %vid_length%|
+ref_multi_to_video_minimax_h3.json @upload|video|input1| @upload|video2|input2|optional| @upload|image2|input3|optional| @upload|image3|input4|optional| @upload|image4|input5|optional| @replace|"width": 864|"width": %vid_width%| @replace|"height": 480|"height": %vid_height%| @replace|"length": 124|"length": %vid_length%|
 COMMAND_END

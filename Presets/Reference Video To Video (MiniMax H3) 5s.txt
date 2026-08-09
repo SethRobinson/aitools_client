@@ -3,13 +3,18 @@ COMMAND_START|joblist
 #The output carries the subject/motion/style of the source clip; it does not restyle or continue it.
 #The clip's SOUNDTRACK is referenced too (up to 15s of frames+audio at 24fps), so music/voices can
 #carry over. Prompts refer to the clip as <Video 1> and its soundtrack as <Audio 1>.
-#The source clip MUST have an audio track - a silent source fails in the video loader
-#("VHS failed to extract audio from ...") before sampling starts.
+#OPTIONAL extra references, pruned from the graph when absent (wired by AI Chat):
+#  video2 (second Movie bubble via chat_image2) -> <Video 2> / <Audio 2>
+#  image2/image3/image4 (photo stills via chat_image2..4 or attachment2..4) -> <Picture 1>..<Picture 3>
+#Give each reference ONE job (e.g. <Video 1> = motion/camera/voice, <Picture 1> = person identity).
+#Silent clips are handled automatically: AI Chat prunes that clip's audio wire (@prune_input) and
+#H3 synthesizes the soundtrack from the prompt alone; a manual run on a silent clip still fails in
+#the video loader ("VHS failed to extract audio from ...").
 #NOTE: no @replace|"length"| here on purpose - AI Chat's video_to_video path overrides any exposed
 #length to match the SOURCE duration (at WAN's 16fps cadence), which is wrong for a reference
 #generation. Duration stays the workflow's 124 frames (~5s @24fps).
 %vid_width%="864"
 %vid_height%="480"
 
-ref_video_to_video_minimax_h3.json @upload|video|input1| @replace|"width": 864|"width": %vid_width%| @replace|"height": 480|"height": %vid_height%|
+ref_multi_to_video_minimax_h3.json @upload|video|input1| @upload|video2|input2|optional| @upload|image2|input3|optional| @upload|image3|input4|optional| @upload|image4|input5|optional| @replace|"width": 864|"width": %vid_width%| @replace|"height": 480|"height": %vid_height%|
 COMMAND_END

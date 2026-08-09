@@ -1,11 +1,11 @@
 ---
 id: video_to_video
-summary: Operate on an EXISTING "Movie #N" clip. Two modes - (1) RESTYLE/EDIT it with Bernini-R, keeping its motion ("restyle this clip", "make this video look like winter"); (2) REFERENCE-generate a brand-NEW MiniMax H3 clip that carries the source's subject/motion/style into a new scene ("make a new video based on this clip", "the same cat but surfing"), preset `Reference Video To Video (MiniMax H3) 5s.txt`. For pure smoothing/FPS use rife_video; for animating a STILL use image_to_movie.
+summary: Operate on an EXISTING "Movie #N" clip. Two modes - (1) RESTYLE/EDIT it with Bernini-R, keeping its motion ("restyle this clip", "make this video look like winter"); (2) REFERENCE-generate a brand-NEW MiniMax H3 clip that carries the source's subject/motion/style into a new scene ("make a new video based on this clip", "the same cat but surfing", "put this person into a video like that clip"), preset `Reference Video To Video (MiniMax H3) 5s.txt` - optionally plus 1-3 reference PHOTOS (put a specific person/place into the new clip) and/or a SECOND reference clip. For pure smoothing/FPS use rife_video; for animating a STILL use image_to_movie.
 inputs: attachment
 autoload: true
 triggers: video to video, restyle the video, restyle this clip, edit the video, edit the clip, change the video, change the clip, redo the video, redo the clip, make the video, make the clip, the video but, the clip but, same video but, restyle the clip, turn the video, turn the clip, video into, clip into, re-render the video, regenerate the video, based on this video, based on that video, based on the clip, based on this clip, like this video, like the video, like this clip, same character as the video, from this video, from the clip
 exclude_triggers: animate the image, animate this, make a movie of, make a video of a, turn this image into a video, turn the photo into
-template: <aitools_action skill="video_to_video" preset="{{Video To Video (Bernini).txt}}" prompt="<what changes + motion to keep, 4-8 sentences>" chat_image="N"/>  # chat_image="N" = source "Movie #N" bubble (or chain="true" for a movie made/clipped earlier THIS reply). SUPPORTS a reference still for face/character/look swaps: ALSO add chat_image2="M" (existing still bubble or anchor) or attachment2="M" (a still pasted this turn) - the host auto-switches to the reference-guided workflow. Do NOT use image_to_image+image_to_movie for this; v2v takes the reference directly.
+template: <aitools_action skill="video_to_video" preset="{{Video To Video (Bernini).txt}}" prompt="<what changes + motion to keep, 4-8 sentences>" chat_image="N"/>  # chat_image="N" = source "Movie #N" bubble (or chain="true" for a movie made/clipped earlier THIS reply). Slot-2+ attributes add references: for Bernini restyle, ONE still (chat_image2="M" or attachment2="M") - the host auto-switches to the reference-guided workflow. For the H3 "Reference Video To Video" presets, stills in chat_image2/3/4 (or attachment2/3/4) become photo references <Picture 1>..<Picture 3>, and a MOVIE bubble in chat_image2 becomes a second reference clip <Video 2>. Do NOT use image_to_image+image_to_movie for this; v2v takes references directly.
 ---
 # Video-to-video (Bernini-R)
 
@@ -28,9 +28,25 @@ two distinct modes - pick by what the user wants:
    voices/score", "sounds like the clip"). For an explicitly LONG result
    ("15 second video like this clip") use
    `{{Reference Video To Video (MiniMax H3) 15s.txt}}` (~3x render time).
-   These two presets need a source clip that HAS an audio track - a silent
-   source fails outright in the video loader. If the user's clip was imported
-   without audio, use the Bernini restyle path or `image_to_movie` instead.
+   For a specific in-between duration ("10 second video like this clip"),
+   keep the 5s preset and add `duration="10"` (seconds; snapped to H3's frame
+   grid, ~5-15s range). `duration` is ignored on the 15s preset.
+   A silent source clip is fine: the host detects it, drops the audio
+   reference automatically, and H3 synthesizes a soundtrack from the prompt
+   (there is then no `<Audio 1>` to reference).
+
+   The SAME preset also accepts extra references alongside the clip:
+   - **Photo references** (up to 3): stills in `chat_image2/3/4` (existing
+     bubbles or anchors) or `attachment2/3/4` (pasted this turn) become
+     `<Picture 1>`..`<Picture 3>` in slot order. This is THE way to "put this
+     person into a video like that clip": the clip drives motion/camera/audio,
+     the photo locks the person's identity.
+   - **A second reference clip**: point `chat_image2` at another MOVIE bubble
+     and it becomes `<Video 2>` / `<Audio 2>` (e.g. `<Video 1>` = subject,
+     `<Video 2>` = camera style or music source). A movie in `chat_image2`
+     always means "second clip"; stills always mean photo references.
+   Give each reference ONE job in the prompt and unused slots simply don't
+   exist - no preset switching needed.
 
 Rule of thumb: "this video, but different-looking" -> Bernini restyle.
 "A NEW video of the same subject/motion" -> H3 reference-generate.
@@ -57,26 +73,32 @@ Freshly dropped `.mov` / `.mp4` / `.avi` files are not image attachments. The ho
 imports them as Movie bubbles. If the user requests a specific segment, call
 `clip_video` first, then run this skill with `chain="true"` in the same reply.
 
-## Reference still (optional) - inject a face / character / look from an image
+## Extra references - faces, characters, looks, second clips
 
-To steer the edit with a REFERENCE STILL - put a specific person's face into the
-clip, give the subject the outfit/look of a reference image, apply a style frame:
+The source MOVIE always stays in `chat_image="N"` (or `chain="true"`); references
+ride the SLOT-2+ attributes, NOT the primary one:
 
-- The source MOVIE stays in `chat_image="N"` (or `chain="true"`).
-- The reference STILL goes in the SLOT-2 attribute, NOT the primary one:
-  - `chat_image2="M"` - an existing still bubble (number or anchor name).
-  - `attachment2="M"` - the Mth still the user pasted THIS turn (use `attachment2="1"`
-    for a single pasted face). Do NOT use `attachment="2"` / `chat_image="2"` for a
-    reference - those are PRIMARY-source attributes and will be ignored here.
+- `chat_image2="M"` (then `chat_image3`/`chat_image4`) - existing bubbles
+  (number or anchor name).
+- `attachment2="M"` (then `attachment3`/`attachment4`) - stills the user pasted
+  THIS turn (use `attachment2="1"` for a single pasted face). Do NOT use
+  `attachment="2"` / `chat_image="2"` for a reference - those are PRIMARY-source
+  attributes and will be ignored here.
 
-A still the user pastes this turn is auto-detected as the reference even if the slot
-syntax is off, but prefer the explicit `attachment2` / `chat_image2` form. Keep
-`preset="{{Video To Video (Bernini).txt}}"` - the host switches to the reference-guided
-workflow automatically when a reference still is present.
+What the slots mean depends on the mode:
 
-In the prompt, say what to take from the reference, e.g. "give the runner the face and
-hair of the person in image 2, keeping the original running motion and camera exactly."
-Only ONE reference still is used.
+- **Bernini restyle**: only slot 2 is used, and it must be a STILL. Keep
+  `preset="{{Video To Video (Bernini).txt}}"` - the host switches to the
+  reference-guided workflow automatically when a reference still is present.
+  In the prompt, say what to take from the reference, e.g. "give the runner the
+  face and hair of the person in image 2, keeping the original running motion
+  and camera exactly."
+- **H3 reference-generate**: stills in slots 2-4 are `<Picture 1>`..`<Picture 3>`
+  photo references; a MOVIE bubble in `chat_image2` is the second reference clip
+  `<Video 2>`. Address them by tag in the prompt and give each one job.
+
+A still the user pastes this turn is auto-detected as a reference even if the slot
+syntax is off, but prefer the explicit `attachment2` / `chat_image2` form.
 
 ## Writing good v2v prompts
 
@@ -120,6 +142,17 @@ The H3 reference prompt follows normal H3 style (motion, ONE camera move,
 quoted dialog when there is a plausible speaker, ambient sound) and must
 name the source as `<Video 1>`, restating its key visible traits once.
 
+Put a specific person (from a photo) into a new clip guided by the source
+("make a video like movie 1 but starring the person in image 3"):
+```
+<aitools_action skill="video_to_video" preset="{{Reference Video To Video (MiniMax H3) 5s.txt}}" prompt="The woman from <Picture 1> - preserve her exact face, shoulder-length copper hair, and green jacket - walks the same beachside path as <Video 1>, matching its steady tracking shot and relaxed pace. <Audio 1> supplies the ambient waves and distant gulls. She smiles and says 'what a morning'." chat_image="1" chat_image2="3"/>
+```
+
+Two reference clips - subject from one, camera/music from the other:
+```
+<aitools_action skill="video_to_video" preset="{{Reference Video To Video (MiniMax H3) 5s.txt}}" prompt="The husky from <Video 1> runs through a sunflower field. Use the slow orbiting drone move and the upbeat acoustic track from <Video 2> / <Audio 2>. Golden-hour light, petals drifting in the wind." chat_image="1" chat_image2="4"/>
+```
+
 ## Rules
 
 - v2v source must be a VIDEO (a "Movie #N" bubble or a chained movie), not a still
@@ -128,8 +161,10 @@ name the source as `<Video 1>`, restating its key visible traits once.
   swaps to the reference-guided workflow automatically when you add a `chat_image2`
   still. NEW clip from the source's subject/motion -> `{{Reference Video To Video (MiniMax H3) 5s.txt}}`
   with `<Video 1>` in the prompt. Pick by intent; never mix the two presets up.
-- To inject a face/character/style from a still, add `chat_image2="M"` (only one
-  reference still is used); the source MOVIE stays in `chat_image="N"`.
+- To inject a face/character/style from a still: Bernini uses ONE `chat_image2`
+  still; the H3 reference presets take up to three (`chat_image2/3/4` ->
+  `<Picture 1>`..`<Picture 3>`) plus optionally a second MOVIE in `chat_image2`
+  (-> `<Video 2>`). The source MOVIE always stays in `chat_image="N"`.
 - Pick exactly ONE source MOVIE; `chain="true"` must not be combined with `chat_image`.
 - `chat_image="N"` must reference a Movie bubble. If you point it at a still image
   the action will report that it needs a video source.

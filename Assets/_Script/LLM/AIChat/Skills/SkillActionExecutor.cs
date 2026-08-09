@@ -639,11 +639,30 @@ namespace AITools.AIChat.Skills
                 }
             }
 
+            // A Movie bubble in chat_image2 on an H3 reference-video preset is the SECOND
+            // REFERENCE CLIP (-> @upload|video2|input2|), not a still: resolving it as bytes
+            // would only grab the bubble's poster/placeholder texture. Detect it up front and
+            // skip slot 2's byte resolution; a still in chat_image2 (and attachment2 always)
+            // stays a photo reference.
+            string secondClipPath = null;
+            bool isH3RefVideoPreset = action.SkillId.ToLowerInvariant() == BuiltInSkillIds.VideoToVideo
+                && !string.IsNullOrEmpty(preset)
+                && preset.IndexOf("Reference Video To Video", StringComparison.OrdinalIgnoreCase) >= 0;
+            if (isH3RefVideoPreset)
+            {
+                int chat2N = action.GetExtraChatImageIndex(2) ?? -1;
+                if (chat2N > 0)
+                    secondClipPath = _host?.GetChatImageMovieFilePath(chat2N);
+            }
+
             // Resolve optional extra input images (slots 2..5). Used by N-input presets
             // (Image To Image Klein Edit 2/3/4/5 Input). Each returns null when the LLM
             // didn't ask for that slot; returns null + emits a bubble when it asked for
             // one that isn't available (caller bails).
-            byte[] attachmentBytes2 = ResolveExtraInputBytes(action, 2, out bool errored2, out bool deferred2);
+            byte[] attachmentBytes2 = null;
+            bool errored2 = false, deferred2 = false;
+            if (secondClipPath == null)
+                attachmentBytes2 = ResolveExtraInputBytes(action, 2, out errored2, out deferred2);
             if (errored2 || deferred2) return;
             byte[] attachmentBytes3 = ResolveExtraInputBytes(action, 3, out bool errored3, out bool deferred3);
             if (errored3 || deferred3) return;
@@ -661,7 +680,31 @@ namespace AITools.AIChat.Skills
                 // matching the two Bernini restyle presets by hand).
                 bool wantsRefVideoGenerate = !string.IsNullOrEmpty(preset)
                     && preset.IndexOf("Reference Video To Video", StringComparison.OrdinalIgnoreCase) >= 0;
-                if (!wantsRefVideoGenerate)
+                if (wantsRefVideoGenerate)
+                {
+                    // Photo-reference rescue, H3 flavor (mirrors the Bernini rescue below):
+                    // fresh stills pasted this turn alongside a reference-video preset are
+                    // almost certainly meant as photo references (identity/setting), even if
+                    // the model forgot the attachment2/attachment3 attributes. Adopt them
+                    // into the free photo slots; the universal workflow prunes unused ones.
+                    if (attachmentBytes2 == null && secondClipPath == null
+                        && (_host?.GetTurnAttachmentCount() ?? 0) > 0)
+                    {
+                        byte[] refBytes = _host?.GetTurnAttachmentBytes(1);
+                        if (refBytes != null)
+                        {
+                            attachmentBytes2 = refBytes;
+                            _host?.AddInfoBubble("(using your attached image as a photo reference for the new video)");
+                            if (attachmentBytes3 == null && (_host?.GetTurnAttachmentCount() ?? 0) > 1)
+                            {
+                                byte[] refBytes2 = _host?.GetTurnAttachmentBytes(2);
+                                if (refBytes2 != null)
+                                    attachmentBytes3 = refBytes2;
+                            }
+                        }
+                    }
+                }
+                else
                 {
                     // Reference-still rescue. For v2v the primary source is ALWAYS the movie
                     // (chat_image / chain), so any fresh STILL the user pasted this turn is almost
@@ -811,14 +854,32 @@ namespace AITools.AIChat.Skills
                 TryGetVideoAspectSource(moviePath, out videoSrcW, out videoSrcH);
                 if (action.SkillId.ToLowerInvariant() == BuiltInSkillIds.VideoToVideo)
                 {
-                    int frameCount = EstimateVideoToVideoFrameCount(moviePath);
-                    if (frameCount > 0)
-                        picMain.SetWorkflowFrameCountOverride(frameCount);
+                    // Explicit duration wins over the source-duration match (which is
+                    // already neutralized by H3 preset design; skipping avoids the
+                    // stale-replace warnings its appended overrides would log).
+                    if (!(IsH3Preset(resolved) && ParseH3DurationFrames(action) > 0))
+                    {
+                        int frameCount = EstimateVideoToVideoFrameCount(moviePath);
+                        if (frameCount > 0)
+                            picMain.SetWorkflowFrameCountOverride(frameCount);
+                    }
+                    if (isH3RefVideoPreset)
+                    {
+                        if (secondClipPath != null)
+                        {
+                            picMain.m_pendingVideoUploadPath2 = secondClipPath;
+                            _host?.AddInfoBubble("(chat_image2 is a movie - wiring it as reference clip 2 / <Video 2>)");
+                        }
+                        AppendSilentClipPruneDirectives(picMain, moviePath, secondClipPath);
+                    }
                 }
             }
 
             if (IsRifeVideoSkill(action.SkillId))
                 ConfigureRifeVideoVariables(picMain, action);
+
+            // Explicit duration on any H3 generation action (t2v/i2v/r2v/rv2v).
+            ApplyH3DurationOverride(picMain, action, resolved);
 
             // Aspect-aware dimension override for img2X presets. Explicit width/height
             // attributes from the LLM win; otherwise fall back to "match the source's
@@ -983,10 +1044,26 @@ namespace AITools.AIChat.Skills
                 return;
             }
 
+            // Second-clip detection for H3 reference presets, mirroring ExecuteGenerate:
+            // a Movie bubble in chat_image2 is reference clip 2, not a still to decode.
+            string chainSecondClipPath = null;
+            bool chainIsH3RefVideo = action.SkillId.ToLowerInvariant() == BuiltInSkillIds.VideoToVideo
+                && !string.IsNullOrEmpty(preset)
+                && preset.IndexOf("Reference Video To Video", StringComparison.OrdinalIgnoreCase) >= 0;
+            if (chainIsH3RefVideo)
+            {
+                int chainChat2N = action.GetExtraChatImageIndex(2) ?? -1;
+                if (chainChat2N > 0)
+                    chainSecondClipPath = _host?.GetChatImageMovieFilePath(chainChat2N);
+            }
+
             // Optional extra inputs (slots 2..5) - chain inherits image1 from the prior
             // step, but the LLM can still bring separate image2..image5 references in via
             // attachment{N} / chat_image{N} for N-input presets.
-            byte[] chainBytes2 = ResolveExtraInputBytes(action, 2, out bool chainErr2, out bool chainDef2);
+            byte[] chainBytes2 = null;
+            bool chainErr2 = false, chainDef2 = false;
+            if (chainSecondClipPath == null)
+                chainBytes2 = ResolveExtraInputBytes(action, 2, out chainErr2, out chainDef2);
             if (chainErr2 || chainDef2) return;
             byte[] chainBytes3 = ResolveExtraInputBytes(action, 3, out bool chainErr3, out bool chainDef3);
             if (chainErr3 || chainDef3) return;
@@ -1076,13 +1153,29 @@ namespace AITools.AIChat.Skills
                 && prevPic.IsMovie())
             {
                 string moviePath = prevPic.m_picMovie.GetProcessingFileName();
-                int frameCount = EstimateVideoToVideoFrameCount(moviePath);
-                if (frameCount > 0)
-                    prevPic.SetWorkflowFrameCountOverride(frameCount);
+                // Same explicit-duration gate as the non-chained path.
+                if (!(IsH3Preset(resolved) && ParseH3DurationFrames(action) > 0))
+                {
+                    int frameCount = EstimateVideoToVideoFrameCount(moviePath);
+                    if (frameCount > 0)
+                        prevPic.SetWorkflowFrameCountOverride(frameCount);
+                }
+                if (chainIsH3RefVideo)
+                {
+                    // Unconditional assignment: prevPic is a reused Pic, so a null here
+                    // also CLEARS any second clip left over from an earlier action.
+                    prevPic.m_pendingVideoUploadPath2 = chainSecondClipPath;
+                    if (chainSecondClipPath != null)
+                        _host?.AddInfoBubble("(chat_image2 is a movie - wiring it as reference clip 2 / <Video 2>)");
+                    AppendSilentClipPruneDirectives(prevPic, moviePath, chainSecondClipPath);
+                }
             }
 
             if (IsRifeVideoSkill(action.SkillId))
                 ConfigureRifeVideoVariables(prevPic, action);
+
+            // Explicit duration on any H3 generation action (t2v/i2v/r2v/rv2v).
+            ApplyH3DurationOverride(prevPic, action, resolved);
 
             // Same workflow-error reporter as the non-chained path: surface PicMain
             // runtime aborts back to the LLM as a system injection.
@@ -1194,6 +1287,75 @@ namespace AITools.AIChat.Skills
             if (remainder != 0)
                 frames += VideoToVideoFrameStride - remainder;
             return frames;
+        }
+
+        // ---- Explicit H3 duration (duration="10" seconds on a generation action) ----
+        // H3's length is a 24fps frame count on a 17k+5 grid, trained range ~5-15s
+        // (124..362). The workflow's shipped default is 124; the 5s presets keep that
+        // literal intact (their own length replace is a 124->124 no-op or absent), so an
+        // appended @replace can retarget it. A 15s preset's 124->362 replace would stale
+        // the directive into a silent no-op, so duration is refused there with a hint.
+        private const int H3DefaultLengthFrames = 124;
+
+        private static bool IsH3Preset(string preset)
+        {
+            return !string.IsNullOrEmpty(preset)
+                && preset.IndexOf("(MiniMax H3)", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static int ParseH3DurationFrames(SkillAction action)
+        {
+            float seconds = ParseFloat(
+                action.GetArg("duration")
+                ?? action.GetArg("duration_seconds")
+                ?? action.GetArg("seconds"),
+                0f);
+            if (seconds <= 0f) return 0;
+            int frames = Mathf.CeilToInt(seconds * 24f);
+            int k = Mathf.CeilToInt(Mathf.Max(0, frames - 5) / 17f);
+            frames = 17 * k + 5;
+            return Mathf.Clamp(frames, 124, 362);
+        }
+
+        private void ApplyH3DurationOverride(PicMain picMain, SkillAction action, string preset)
+        {
+            int frames = IsH3Preset(preset) ? ParseH3DurationFrames(action) : 0;
+            if (frames <= 0 || picMain == null) return;
+            if (preset.IndexOf("15s", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                _host?.AddInfoBubble(
+                    "(duration=\"N\" is ignored on the 15s preset - put it on the 5s preset instead for non-default lengths)");
+                return;
+            }
+            picMain.AddWorkflowDirective($"@replace|\"length\": {H3DefaultLengthFrames}|\"length\": {frames}|");
+            _host?.AddInfoBubble($"(H3 duration: {frames} frames = ~{frames / 24f:0.#}s on the model's 17k+5 grid)");
+        }
+
+        // H3 reference workflows hard-fail in the VHS loader when a source clip has no
+        // audio stream. Probe each wired clip (cached ffprobe); for silent ones append a
+        // @prune_input directive so the submit-time pruner drops just that clip's audio
+        // wire and H3 synthesizes the soundtrack from the prompt instead.
+        private void AppendSilentClipPruneDirectives(PicMain picMain, string clip1Path, string clip2Path)
+        {
+            if (ClipLacksAudio(clip1Path))
+            {
+                picMain.AddWorkflowDirective("@prune_input|ref_video_audios.ref_video_audio_0|");
+                _host?.AddInfoBubble("(source clip has no audio track - the soundtrack will be synthesized from the prompt)");
+            }
+            if (!string.IsNullOrEmpty(clip2Path) && ClipLacksAudio(clip2Path))
+            {
+                picMain.AddWorkflowDirective("@prune_input|ref_video_audios.ref_video_audio_1|");
+                _host?.AddInfoBubble("(second clip has no audio track - its audio reference is skipped)");
+            }
+        }
+
+        private static bool ClipLacksAudio(string moviePath)
+        {
+            if (string.IsNullOrWhiteSpace(moviePath) || !System.IO.File.Exists(moviePath))
+                return false;
+            if (!FfmpegTool.TryProbeVideoSync(moviePath, out var info, out _) || info == null)
+                return false;
+            return !info.HasAudio;
         }
 
         private static bool IsRifeVideoSkill(string skillId)

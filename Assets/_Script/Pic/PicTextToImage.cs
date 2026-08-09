@@ -445,6 +445,121 @@ public class PicTextToImage : MonoBehaviour
         }
     }
 
+    // Universal multi-reference workflows (e.g. MiniMax H3's ref_multi_*) carry every
+    // loader the app can wire; @upload|...|optional| slots with no source leave their
+    // <AITOOLS_INPUT_N> placeholder unfilled. This removes those loader nodes from the
+    // API graph, cascade-removes inputs that referenced them, applies @prune_input
+    // directives (e.g. a silent clip's audio wire), then renumbers ComfyUI autogrow
+    // list inputs ("group.item_N") so no index gaps remain. Gated on the preset
+    // declaring optional uploads or prune directives - all other workflows keep the
+    // old behavior where a leftover placeholder reaches the server as a hard error.
+    void PruneWorkflowInputs(JSONNode root)
+    {
+        PicJob job = m_scheduledEvent.m_picJob;
+        List<string> pruneInputNames = new List<string>();
+        foreach (PicJobData d in job._data)
+        {
+            if (d._name.ToLower() == "prune_input" && !string.IsNullOrEmpty(d._parm1))
+                pruneInputNames.Add(d._parm1.Trim());
+        }
+
+        if ((!job._allowInputPruning && pruneInputNames.Count == 0) || root == null || !root.IsObject)
+            return;
+
+        // 1) Remove nodes whose string inputs still hold an unfilled placeholder.
+        List<string> removedNodes = new List<string>();
+        if (job._allowInputPruning)
+        {
+            // Snapshot the ids first - SimpleJSON's Keys enumerator is not an
+            // IEnumerable<string> and we mutate root during the removal below.
+            List<string> nodeIds = new List<string>();
+            foreach (string nodeId in root.Keys) nodeIds.Add(nodeId);
+            foreach (string nodeId in nodeIds)
+            {
+                JSONNode inputs = root[nodeId]["inputs"];
+                if (inputs == null || !inputs.IsObject) continue;
+                foreach (string key in inputs.Keys)
+                {
+                    JSONNode v = inputs[key];
+                    if (v != null && v.IsString && v.Value.Contains("<AITOOLS_INPUT_"))
+                    {
+                        removedNodes.Add(nodeId);
+                        break;
+                    }
+                }
+            }
+            foreach (string nodeId in removedNodes) root.Remove(nodeId);
+        }
+
+        // 2) Cascade-remove inputs referencing removed nodes, plus @prune_input names,
+        //    then renumber each node's autogrow groups.
+        List<string> removedInputs = new List<string>();
+        foreach (string nodeId in root.Keys)
+        {
+            JSONNode inputs = root[nodeId]["inputs"];
+            if (inputs == null || !inputs.IsObject) continue;
+            List<string> doomed = new List<string>();
+            foreach (string key in inputs.Keys)
+            {
+                JSONNode v = inputs[key];
+                bool refsRemovedNode = v != null && v.IsArray && v.Count == 2 && removedNodes.Contains(v[0].Value);
+                if (refsRemovedNode || pruneInputNames.Contains(key))
+                    doomed.Add(key);
+            }
+            foreach (string key in doomed)
+            {
+                inputs.Remove(key);
+                removedInputs.Add(nodeId + ":" + key);
+            }
+            if (doomed.Count > 0)
+                RenumberAutogrowInputs(inputs);
+        }
+
+        if (removedNodes.Count > 0 || removedInputs.Count > 0)
+        {
+            RTConsole.Log("Workflow prune: removed node(s) [" + string.Join(", ", removedNodes) +
+                          "], input(s) [" + string.Join(", ", removedInputs) + "]");
+        }
+    }
+
+    // ComfyUI autogrow list inputs are named "group.item_N" (e.g. "ref_images.ref_image_0");
+    // after pruning, the remaining indices of each group must be contiguous from 0.
+    static void RenumberAutogrowInputs(JSONNode inputs)
+    {
+        Dictionary<string, List<KeyValuePair<int, string>>> groups = new Dictionary<string, List<KeyValuePair<int, string>>>();
+        foreach (string key in inputs.Keys)
+        {
+            int dot = key.IndexOf('.');
+            int underscore = key.LastIndexOf('_');
+            if (dot <= 0 || underscore <= dot) continue;
+            if (!int.TryParse(key.Substring(underscore + 1), out int idx)) continue;
+            string stem = key.Substring(0, underscore + 1); // e.g. "ref_images.ref_image_"
+            if (!groups.TryGetValue(stem, out List<KeyValuePair<int, string>> list))
+            {
+                list = new List<KeyValuePair<int, string>>();
+                groups[stem] = list;
+            }
+            list.Add(new KeyValuePair<int, string>(idx, key));
+        }
+
+        foreach (KeyValuePair<string, List<KeyValuePair<int, string>>> group in groups)
+        {
+            List<KeyValuePair<int, string>> list = group.Value;
+            list.Sort((a, b) => a.Key.CompareTo(b.Key));
+            bool contiguous = true;
+            for (int i = 0; i < list.Count; i++)
+            {
+                if (list[i].Key != i) { contiguous = false; break; }
+            }
+            if (contiguous) continue;
+
+            List<JSONNode> values = new List<JSONNode>();
+            foreach (KeyValuePair<int, string> item in list) values.Add(inputs[item.Value]);
+            foreach (KeyValuePair<int, string> item in list) inputs.Remove(item.Value);
+            for (int i = 0; i < values.Count; i++) inputs[group.Key + i] = values[i];
+        }
+    }
+
     bool ReplaceInString(ref string str, string find, string replace)
     {
         if (str.Contains(find))
@@ -708,6 +823,8 @@ public class PicTextToImage : MonoBehaviour
             yield break;
         }
 
+
+        PruneWorkflowInputs(jsonNode);
 
         ExtractTotalSteps(jsonNode);
         BuildNodeTitleMapping(jsonNode);

@@ -40,14 +40,21 @@ namespace AITools.AIChat.Skills
         private const string TagOpen = "<aitools_action";
         private const string RemovedMediaActionMarker = "\uE000AIT_MEDIA_ACTION_REMOVED\uE000";
 
+        // The attribute span is QUOTE-AWARE: a bare [^>]*? would end the tag at the
+        // first '>' inside a quoted value, and H3 reference prompts legitimately
+        // contain raw <Video 1> / <Picture 1> tags (the model is TOLD to write them).
+        // Quoted spans (with backslash escapes) are consumed atomically so '>' only
+        // terminates the tag when it appears outside quotes.
+        private const string AttrSpan = @"((?:[^>""']|""(?:[^""\\]|\\.)*""|'(?:[^'\\]|\\.)*')*?)";
+
         // Self-closing: <aitools_action ... />
         private static readonly Regex SelfClosingRx = new Regex(
-            @"<aitools_action\b([^>]*?)/\s*>",
+            @"<aitools_action\b" + AttrSpan + @"/\s*>",
             RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
 
         // Paired: <aitools_action ...>BODY</aitools_action>  (BODY is ignored)
         private static readonly Regex PairedRx = new Regex(
-            @"<aitools_action\b([^>]*?)>(?:[\s\S]*?)</aitools_action\s*>",
+            @"<aitools_action\b" + AttrSpan + @">(?:[\s\S]*?)</aitools_action\s*>",
             RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         // Attribute parsers: key="value" or key='value'
