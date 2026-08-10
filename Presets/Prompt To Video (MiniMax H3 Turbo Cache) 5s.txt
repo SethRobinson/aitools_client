@@ -1,0 +1,12 @@
+COMMAND_START|joblist
+#EXPERIMENTAL: direct text-to-video, turbo 8-step + Spectrum step-forecast cache (default
+#audio-protecting settings), ~1.4x faster than the default turbo preset. Progress shows
+#16 steps (8 real + 8 cheap transformer-free replay ticks) vs the plain turbo preset's 8 -
+#that step count is the tell that the cache ran. EAR-TEST dialog for audio
+#stutter. Requires the ComfyUI-Spectrum-MiniMax-H3 custom node on the server.
+%width%="864"
+%height%="480"
+%length%="124"
+
+text_to_video_minimax_h3_turbo_cache.json @replace|"width": 864|"width": %width%| @replace|"height": 480|"height": %height%| @replace|"length": 124|"length": %length%|
+COMMAND_END

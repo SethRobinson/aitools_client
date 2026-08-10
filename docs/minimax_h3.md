@@ -37,18 +37,65 @@ native stereo audio (dialog in 11 languages), no RIFE in the output path.
   the `sageattention` pip package on the server (bypass/delete to run without).
 - H3 model files currently exist only on hal's ComfyUI instances.
 
+### Turbo distill LoRA (the default FL2VA path since 2026-08-10)
+
+- The default i2v/t2v presets run larryvrh's `MiniMax-H3-Turbo-Lora`
+  (`minimax_h3_turbo_v4_step600_ema.safetensors`, strength 1.0) at 8 steps /
+  `simple` scheduler instead of 20-step `res_multistep`: ~2.2x faster with
+  start-frame pinning, identity, and stereo audio intact in same-seed A/B.
+  4 steps works (~4x) but risks motion smear on fast action; 6-8 is the safe band.
+- Server needs the `Larryvrh/ComfyUI-MiniMax-H3-Turbo` custom nodes: a
+  `MiniMaxH3TurboLoRA` loader (bypass mode default; `low_vram`=merge for OOM) and a
+  `MiniMaxH3TurboSampler` (dual-clock Euler; replaces `KSamplerSelect` into
+  `SamplerCustomAdvanced`, fixes 4-step audio noise). Both installed on hal
+  (all 5 ComfyUI instances share `~/ComfyUI`); the LoRA is in
+  `~/minimax_h3_download.sh`.
+- **Ref2VA is NOT turbo-capable** (tested 2026-08-10): the node's time-conditioning
+  reinjection for pruned bases (`__init__.py` forward, the `h3_silu_temb_grid`
+  replay) assumes FL2VA's 2-stream latent packing and crashes on Ref2VA's 3-stream
+  ("size of tensor a (3) must match b (2)"), in both bypass and merge modes.
+  Reference presets stay 20-step; retest when the node/LoRA updates (lightx2v's
+  separate 4-step LoRA is FL2V-only preview quality, its Ref2V distill is
+  "on the roadmap"; their file is also on hal in models/loras for manual play).
+- The `SpectrumApplyMiniMaxH3` cache node (xmarre/ComfyUI-Spectrum-MiniMax-H3,
+  installed on hal) stacks with turbo for ~1.4x more (50s vs 70s per 5s clip on a
+  Blackwell) with A/B-identical frames; shipped only as the experimental opt-in
+  `Image To Video (MiniMax H3 Turbo Cache) 5s` preset until dialog audio is
+  ear-verified (the node is not lossless and has an audio-stutter history).
+  Kijai's `SolAttnPatch` sparse attention was also tested and was NOT faster than
+  the sage patch on the RTX PRO 6000s (72s vs 70s, defaults); node left installed,
+  not used by any workflow.
+
 ### Measured costs (RTX PRO 6000 Blackwell, uncontended unless noted)
 
-- i2v/t2v 5s @864x480: ~2.5 min (within ~5% of each other; "slow i2v" = oversized
-  canvas or slower GPU, not the task type). ~1.8x that on an A100.
-- Single-clip rv2v 5s: 242s (~4 min), ~1.6x plain i2v - reference tokens ride every
-  sampling step. 15s rv2v: measured ~51 min once but CONTENDED (shared host);
-  treat as "much worse than 3x the 5s cost" and re-measure before quoting.
+5s @864x480, warm server, CLI wall-clock (2026-08-10):
+
+- i2v/t2v turbo 8-step (the DEFAULT presets): **~70s** Blackwell, **~122s** A100.
+- i2v/t2v 20-step (`Quality` presets): ~163s Blackwell (~2.5 min), ~1.8x that on
+  an A100 (~4.5 min). t2v within ~5% of i2v; "slow i2v" = oversized canvas or
+  slower GPU, not the task type.
+- i2v turbo 8-step + Spectrum cache (experimental preset): ~50s Blackwell.
+- Cold-start adders the first time a server touches H3: ~20 GB checkpoint stage
+  (tens of seconds) + LoRA load a few more.
+- Single-clip rv2v 5s (20-step, no turbo - Ref2VA can't run the turbo LoRA):
+  242s (~4 min), ~1.6x plain 20-step i2v - reference tokens ride every sampling
+  step; 359s measured with the Ref2VA checkpoint cold-loading. 15s rv2v: measured
+  ~51 min once but CONTENDED (shared host); treat as "much worse than 3x the 5s
+  cost" and re-measure before quoting.
 - Two-clip rv2v: unmeasured; expect well above single-clip rv2v.
 
 ## Workflows (`ComfyUI/`)
 
-- `img_to_video_minimax_h3.json`, `text_to_video_minimax_h3.json` - FL2VA.
+- `img_to_video_minimax_h3_turbo.json`, `text_to_video_minimax_h3_turbo.json` -
+  FL2VA + turbo LoRA, 8 steps; what the DEFAULT i2v/t2v presets run. Same graphs
+  as the base versions plus `MiniMaxH3TurboLoRA` (between `UNETLoader` and the
+  sage patch) and `MiniMaxH3TurboSampler` (replacing `KSamplerSelect`). They keep
+  the literal `"length": 124` and all placeholders, so the AI Chat
+  duration/dimension overrides work unchanged.
+- `img_to_video_minimax_h3_turbo_cache.json`, `text_to_video_minimax_h3_turbo_cache.json` -
+  turbo + `SpectrumApplyMiniMaxH3` (experimental opt-in presets only).
+- `img_to_video_minimax_h3.json`, `text_to_video_minimax_h3.json` - FL2VA,
+  20-step; used by the `(MiniMax H3 Quality)` presets.
 - `ref_multi_to_video_minimax_h3.json` - **the universal Ref2VA graph** used by all
   reference presets. Carries EVERY loader the app can wire; unused ones are pruned
   at submit time (below):
@@ -92,7 +139,26 @@ native stereo audio (dialog in 11 languages), no RIFE in the output path.
 
 ## Presets (`Presets/`)
 
-Three reference presets, all pointing at the universal workflow. 
+FL2VA presets (all keep their long-standing names, so AI Chat skills were mostly
+untouched by the turbo flip):
+
+- `Image To Video (MiniMax H3) 5s.txt` / `15s.txt`, `Prompt To Video (MiniMax H3) 5s.txt` -
+  the DEFAULTS, now pointing at the `*_turbo.json` workflows (8-step turbo LoRA).
+- `Image To Video (MiniMax H3 Quality) 5s.txt` / `15s.txt`,
+  `Prompt To Video (MiniMax H3 Quality) 5s.txt` - the full 20-step render (~2x
+  time); skills route "maximum/highest quality" requests here.
+- `Image To Video (MiniMax H3 Turbo Cache) 5s.txt` /
+  `Prompt To Video (MiniMax H3 Turbo Cache) 5s.txt` - EXPERIMENTAL turbo +
+  Spectrum cache (i2v and direct t2v); routed only on explicit
+  "spectrum"/"turbo cache" requests (image_to_movie / generate_movie skills).
+  Cache runs report 16 progress steps (8 real sampler steps + 8 cheap
+  transformer-free replay ticks from Spectrum's default offline-smoothing
+  two-pass mode) vs 8 on the plain turbo presets - that step count is the
+  quickest tell it ran; render time (~50s vs ~70s per 5s clip on a Blackwell)
+  and `SpectrumApplyMiniMaxH3` in `comfyui_workflow_to_send_api.json` confirm.
+
+Three reference presets, all pointing at the universal workflow (all 20-step -
+Ref2VA cannot run the turbo LoRA, see Model facts). 
 
 - `Reference Video To Video (MiniMax H3) 5s.txt` / `15s.txt`: clip required
   (`@upload|video|input1|`), then optional `video2`->input2 and `image2..image10`

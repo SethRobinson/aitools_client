@@ -1,9 +1,9 @@
 ---
 id: image_to_movie
-summary: Animate a STILL image into a short video. Default to MiniMax H3 Image To Video (native audio/dialog); use its 15s preset only for explicit long clips and duration="N" for ~5-15s. For a video starring reference photos without an exact start frame, use H3 Reference To Video with up to 9 photos. Use LTX when explicitly requested/fastest and WAN when explicitly requested/silent. A Movie #N is not an image source by default: edit/reference an existing Movie with video_to_video. Only when the user explicitly wants to animate one current frame may image_to_movie target a Movie, and it must include movie_frame="true".
+summary: Animate a STILL image into a short video. Default to MiniMax H3 Image To Video (native audio/dialog, 8-step turbo); use its 15s preset only for explicit long clips and duration="N" for ~5-15s. Explicit max-quality requests use the (MiniMax H3 Quality) presets; explicit spectrum/cache requests use Image To Video (MiniMax H3 Turbo Cache) 5s (~1.4x faster; shows 16 progress steps vs the default's 8; the default does NOT include the cache). For a video starring reference photos without an exact start frame, use H3 Reference To Video with up to 9 photos. Use LTX when explicitly requested/fastest and WAN when explicitly requested/silent. A Movie #N is not an image source by default: edit/reference an existing Movie with video_to_video. Only when the user explicitly wants to animate one current frame may image_to_movie target a Movie, and it must include movie_frame="true".
 inputs: attachment
 autoload: true
-triggers: animate, animation, image to video, image-to-video, image to movie, image-to-movie, animate this, animate it, make this move, make it move, make a video, make a movie, make a clip, create a video, create a movie, generate a video, generate a movie, video starring, movie starring, video of, movie of, second video, second movie, reference to video, using wan, use wan, with wan, wan 2.2, wan2.2, wan22, using ltx, use ltx, with ltx, ltx 2.3, minimax, mini max, minmax, minimax h3, minmax h3, h3, hailuo
+triggers: animate, animation, image to video, image-to-video, image to movie, image-to-movie, animate this, animate it, make this move, make it move, make a video, make a movie, make a clip, create a video, create a movie, generate a video, generate a movie, video starring, movie starring, video of, movie of, second video, second movie, reference to video, using wan, use wan, with wan, wan 2.2, wan2.2, wan22, using ltx, use ltx, with ltx, ltx 2.3, minimax, mini max, minmax, minimax h3, minmax h3, h3, hailuo, spectrum, turbo cache, spectrum cache
 template: <aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3) 5s.txt}}" prompt="motion + camera + one short quoted dialog line + ambient sound" chat_image="N"/>  # STILL sources only. To use an explicit current frame from a Movie add movie_frame="true"; otherwise existing Movies require video_to_video. Use LTX only when requested/fastest and WAN when requested/silent.
 ---
 # Image-to-movie
@@ -33,13 +33,27 @@ animate one single still/current frame from that Movie; add
 ## Available presets
 
 - `{{Image To Video (MiniMax H3) 5s.txt}}` - DEFAULT. ~5s, native stereo audio +
-  spoken dialog (11 languages), strong motion/identity. MiniMax H3. For a
-  specific duration between 5 and 15 seconds, keep THIS preset and add
-  `duration="10"` (seconds) - the host snaps it to H3's frame grid (~10.1s).
-  H3 presets only; LTX/WAN are fixed-length.
+  spoken dialog (11 languages), strong motion/identity. MiniMax H3 with the
+  fast 8-step turbo LoRA. For a specific duration between 5 and 15 seconds,
+  keep THIS preset and add `duration="10"` (seconds) - the host snaps it to
+  H3's frame grid (~10.1s). H3 presets only; LTX/WAN are fixed-length.
 - `{{Image To Video (MiniMax H3) 15s.txt}}` - same model, ~15s single
   generation. Only when the user explicitly asks for a long clip (~3x render
   time). `duration` is ignored here - use the 5s preset for in-between lengths.
+- `{{Image To Video (MiniMax H3 Quality) 5s.txt}}` / `{{Image To Video (MiniMax H3 Quality) 15s.txt}}` -
+  the full 20-step render (~2x the default's render time, slightly finer
+  detail). Only when the user explicitly asks for maximum/highest quality or
+  complains about turbo output quality.
+- `{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}` - EXPERIMENTAL: the
+  default turbo pipeline plus the Spectrum step-forecast cache, ~1.4x faster
+  again. Use ONLY when the user explicitly asks for the spectrum / cache /
+  turbo-cache variant. NOTE: its progress shows "Step N/16" (8 real sampler
+  steps + 8 cheap transformer-free replay ticks from the cache's two-pass
+  mode) vs "Step N/8" on the plain default - that step count is how to tell
+  the cache actually ran. Supports `duration="N"`.
+  There is no Quality+cache or 15s cache variant; explicit direct text-to-video
+  with the cache uses `{{Prompt To Video (MiniMax H3 Turbo Cache) 5s.txt}}`
+  via generate_movie.
 - `{{Reference To Video (MiniMax H3) 5s.txt}}` - the SUBJECT of the source
   image doing something new; output does NOT start on the source frame. See
   "Reference-to-video" below.

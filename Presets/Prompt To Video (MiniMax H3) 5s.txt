@@ -1,8 +1,10 @@
 COMMAND_START|joblist
-#Generate ~5-second video with native stereo audio from text using MiniMax H3
+#Generate ~5-second video with native stereo audio from text using MiniMax H3.
+#DEFAULT path uses the turbo distill LoRA workflow (8 steps, ~2x faster); use the
+#"Prompt To Video (MiniMax H3 Quality) 5s" preset for the full 20-step render.
 %width%="864"
 %height%="480"
 %length%="124"
 
-text_to_video_minimax_h3.json @replace|"width": 864|"width": %width%| @replace|"height": 480|"height": %height%| @replace|"length": 124|"length": %length%|
+text_to_video_minimax_h3_turbo.json @replace|"width": 864|"width": %width%| @replace|"height": 480|"height": %height%| @replace|"length": 124|"length": %length%|
 COMMAND_END

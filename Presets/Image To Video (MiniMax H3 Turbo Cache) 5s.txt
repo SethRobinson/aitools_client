@@ -1,0 +1,14 @@
+COMMAND_START|joblist
+#EXPERIMENTAL: turbo 8-step + Spectrum step-forecast cache (SpectrumApplyMiniMaxH3, default
+#audio-protecting settings). Measured ~1.4x faster than the default turbo preset (50s vs 70s
+#for 5s @864x480 on a Blackwell). Progress shows 16 steps (8 real + 8 cheap replay ticks) vs
+#the plain turbo preset's 8 - that step count is the tell that the cache ran. Video quality
+#matched turbo in A/B frames; EAR-TEST dialog for audio stutter before trusting it for
+#speech-heavy clips. AI Chat routes here only on explicit spectrum/turbo-cache requests.
+#Requires the ComfyUI-Spectrum-MiniMax-H3 custom node on the server.
+%vid_width%="864"
+%vid_height%="480"
+%vid_length%="124"
+
+img_to_video_minimax_h3_turbo_cache.json @upload|image1|input1| @replace|"width": 864|"width": %vid_width%| @replace|"height": 480|"height": %vid_height%| @replace|"length": 124|"length": %vid_length%|
+COMMAND_END

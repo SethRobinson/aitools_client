@@ -63,6 +63,17 @@ inherited automatically.
 - If the user explicitly asks for a LONG (~15 second) clip, use
   `{{Image To Video (MiniMax H3) 15s.txt}}` (about 3x the render time).
   `duration` is ignored on the 15s preset.
+- The H3 defaults use the fast 8-step turbo LoRA. Only when the user
+  explicitly asks for maximum/highest quality, use the full 20-step
+  `{{Image To Video (MiniMax H3 Quality) 5s.txt}}` / `... 15s.txt` /
+  `{{Prompt To Video (MiniMax H3 Quality) 5s.txt}}` variants (~2x render time).
+- If the user explicitly asks for the spectrum / turbo-cache variant, use
+  `{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}` for the movie action,
+  or `{{Prompt To Video (MiniMax H3 Turbo Cache) 5s.txt}}` for explicit direct
+  text-to-video (no 15s or Quality cache variants). Cache runs show
+  "Step N/16" (8 real steps + 8 cheap replay ticks) vs "Step N/8" on the
+  plain default - that plus the shorter render time is the proof it ran.
+  The default preset does NOT include the cache.
 - Always use `{{Prompt To Image (Z-Image).txt}}` for the still base unless the
   user explicitly names a different still-image model.
 
@@ -77,6 +88,10 @@ Only use `skill="generate_movie"` directly when the user explicitly asks for:
 Direct text-to-video presets are still available, but they are NOT the default:
 
 - `{{Prompt To Video (MiniMax H3) 5s.txt}}` - 5s text-to-video with native audio.
+- `{{Prompt To Video (MiniMax H3 Turbo Cache) 5s.txt}}` - same + Spectrum cache,
+  ~1.4x faster; only on explicit spectrum/turbo-cache requests.
+- `{{Prompt To Video (MiniMax H3 Quality) 5s.txt}}` - full 20-step render, ~2x
+  time; only on explicit maximum-quality requests.
 - `{{Prompt To Video (LTX) 5s.txt}}` - fast 5s text-to-video with audio.
 - `{{Prompt To Video (Wan22).txt}}` - slow silent Wan 2.2 text-to-video.
 
