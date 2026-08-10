@@ -1316,19 +1316,24 @@ namespace AITools.AIChat.Skills
                 chainSrcW = movieW;
                 chainSrcH = movieH;
             }
+            // Queued dims BEFORE the live texture: the still-source placeholder trap.
+            // A chained generate's target queued its workflow earlier this same turn,
+            // and until that render lands the Pic is still displaying Awake's square
+            // 512x512 placeholder sprite - TryGetCurrentTexture returns that as a real
+            // texture, so texture-first turned an 864x480 request into a 640x640 render
+            // via the start-frame budget refit. The queued dimensions are the truth for
+            // any Pic that ran a workflow; the live texture is only consulted for chain
+            // targets that never queued one (local composition ops like new_canvas /
+            // paste_image, whose real pixels exist immediately).
+            else if (prevPic.LastQueuedWorkflowWidth > 0 && prevPic.LastQueuedWorkflowHeight > 0)
+            {
+                chainSrcW = prevPic.LastQueuedWorkflowWidth;
+                chainSrcH = prevPic.LastQueuedWorkflowHeight;
+            }
             else if (prevPic.TryGetCurrentTexture(out var prevTex) && prevTex != null)
             {
                 chainSrcW = prevTex.width;
                 chainSrcH = prevTex.height;
-            }
-            // Texture not rendered yet (typical for generate_image -> image_to_movie
-            // chain in one reply): fall back to the prior step's queued dimensions
-            // so e.g. a Z-Image 1024x1024 prior step propagates "square" to LTX.
-            if ((chainSrcW <= 0 || chainSrcH <= 0)
-                && prevPic.LastQueuedWorkflowWidth > 0 && prevPic.LastQueuedWorkflowHeight > 0)
-            {
-                chainSrcW = prevPic.LastQueuedWorkflowWidth;
-                chainSrcH = prevPic.LastQueuedWorkflowHeight;
             }
 
             if (action.Width.HasValue && action.Height.HasValue
