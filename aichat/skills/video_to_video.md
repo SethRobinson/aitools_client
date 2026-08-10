@@ -38,6 +38,11 @@ two distinct modes - pick by what the user wants:
    A silent source clip is fine: the host detects it, drops the audio
    reference automatically, and H3 synthesizes a soundtrack from the prompt
    (there is then no `<Audio 1>` to reference).
+   There is NO Turbo, Cache, or Quality variant of any Reference Video To
+   Video preset (the reference model cannot run the turbo LoRA; these always
+   run the full 20-step render). Never invent such a preset name - if the
+   user asks for the spectrum/cache/turbo variant on a reference generation,
+   use the plain preset above and tell them the speedup does not apply here.
 
    The SAME preset also accepts extra references alongside the clip:
    - **Photo references** (up to 9): stills in `chat_image2`..`chat_image10`

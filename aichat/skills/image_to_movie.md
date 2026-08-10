@@ -1,6 +1,6 @@
 ---
 id: image_to_movie
-summary: Animate a STILL image into a short video. Default to MiniMax H3 Image To Video (native audio/dialog, 8-step turbo); use its 15s preset only for explicit long clips and duration="N" for ~5-15s. Explicit max-quality requests use the (MiniMax H3 Quality) presets; explicit spectrum/cache requests use Image To Video (MiniMax H3 Turbo Cache) 5s (~1.4x faster; shows 16 progress steps vs the default's 8; the default does NOT include the cache). For a video starring reference photos without an exact start frame, use H3 Reference To Video with up to 9 photos. Use LTX when explicitly requested/fastest and WAN when explicitly requested/silent. A Movie #N is not an image source by default: edit/reference an existing Movie with video_to_video. Only when the user explicitly wants to animate one current frame may image_to_movie target a Movie, and it must include movie_frame="true".
+summary: Animate a STILL image into a short video. Default to MiniMax H3 Image To Video (native audio/dialog, 8-step turbo); use its 15s preset only for explicit long clips and duration="N" for ~5-15s. Explicit max-quality requests use the (MiniMax H3 Quality) presets; explicit spectrum/cache requests use Image To Video (MiniMax H3 Turbo Cache) 5s (~1.4x faster; shows 16 progress steps vs the default's 8; the default does NOT include the cache). Reference To Video presets REQUIRE a photo source and have NO Turbo/Cache/Quality variants - never invent preset names; a video with no source at all is generate_movie (direct t2v) territory. For a video starring reference photos without an exact start frame, use H3 Reference To Video with up to 9 photos. Use LTX when explicitly requested/fastest and WAN when explicitly requested/silent. A Movie #N is not an image source by default: edit/reference an existing Movie with video_to_video. Only when the user explicitly wants to animate one current frame may image_to_movie target a Movie, and it must include movie_frame="true".
 inputs: attachment
 autoload: true
 triggers: animate, animation, image to video, image-to-video, image to movie, image-to-movie, animate this, animate it, make this move, make it move, make a video, make a movie, make a clip, create a video, create a movie, generate a video, generate a movie, video starring, movie starring, video of, movie of, second video, second movie, reference to video, using wan, use wan, with wan, wan 2.2, wan2.2, wan22, using ltx, use ltx, with ltx, ltx 2.3, minimax, mini max, minmax, minimax h3, minmax h3, h3, hailuo, spectrum, turbo cache, spectrum cache
@@ -56,7 +56,12 @@ animate one single still/current frame from that Movie; add
   via generate_movie.
 - `{{Reference To Video (MiniMax H3) 5s.txt}}` - the SUBJECT of the source
   image doing something new; output does NOT start on the source frame. See
-  "Reference-to-video" below.
+  "Reference-to-video" below. REQUIRES at least one photo source
+  (`attachment`/`chat_image`/`chain`) - never emit it sourceless. There is NO
+  Turbo, Cache, or Quality variant of ANY Reference preset (the reference
+  model cannot run the turbo LoRA; reference generations are always the full
+  20-step render) - never invent preset names by combining suffixes; use only
+  names listed in this skill or generate_movie.
 - `{{Image To Video (LTX) 5s.txt}}` - fast 5s clip with audio (LTX 2.3). Use
   when the user asks for LTX or the fastest/quickest video.
 - `{{Image To Video (WAN) 5s.txt}}` - high-quality 5s, slow, silent (Wan 2.2 / WAN).
@@ -264,12 +269,20 @@ default), so don't upsize unless asked.
 
 ### Animating an image that already exists
 
-When the source is an `attachment` or `chat_image` (no still made this turn),
-OMIT `width`/`height`. The host automatically matches the video to the source's
-aspect while keeping the preset's pixel budget, so a square source renders a
-square video with no crop. Only pass explicit `width`/`height` here if the user
-asks for a different shape than the source (e.g. a portrait video from a
-landscape photo). Both are required together; they snap to multiples of 32.
+When the source is an `attachment` or `chat_image` (no still made this turn)
+and the user named no size, OMIT `width`/`height`. The host automatically
+matches the video to the source's aspect while keeping the preset's pixel
+budget, so a square source renders a square video with no crop.
+
+When the user DOES name a size (720p, 1080p, "big", an exact WxH), pass it as
+`width`/`height` even for existing sources: on start-frame presets the host
+treats a size whose aspect differs from the source as a PIXEL BUDGET and
+refits it to the source's aspect (720p on a portrait photo renders a ~0.92MP
+portrait), so the start frame is never distorted - you don't need to compute
+the aspect yourself. To truly CHANGE the shape of the output, crop_resize the
+still to the new shape first (start-frame presets stretch, never crop), or
+use reference-to-video where no frame is pinned. Both attributes are required
+together; they snap to multiples of 32.
 
 ### Size keywords
 
@@ -282,9 +295,22 @@ and put the result on both actions:
 - "720p" -> 1280x720. "1080p" -> 1920x1080. These are above what H3 was
   trained on (~1MP), so they are slower and can look softer, but if the user
   asked for them, use them.
+- "high quality" / "highest quality" -> BOTH the `(MiniMax H3 Quality)` preset
+  AND a 1280x720-budget canvas (1280x720 landscape / 720x1280 portrait /
+  960x960 square). Quality means more steps AND more pixels, not just one.
 
 ## Rules
 
+- Use ONLY exact preset names listed in this skill or generate_movie. Never
+  construct new names by mixing suffixes (e.g. there is no "Reference To
+  Video (MiniMax H3 Turbo Cache)"). If a requested speed/quality variant does
+  not exist for a mode, use the closest listed preset and tell the user which
+  variant applied (e.g. reference generations ignore the spectrum cache).
+- Reference To Video / Reference Video To Video always need at least one
+  photo/clip source. A brand-new video with NO source: default recipe is
+  Z-Image still + chained image_to_movie (cache requests -> chain onto
+  `{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}`); explicit direct
+  text-to-video -> generate_movie with a `Prompt To Video ...` preset.
 - Chained still -> movie: put the SAME `width`/`height` on BOTH actions
   (864x480 landscape, 480x864 portrait, 640x640 square). Animating an existing
   attachment/chat_image: omit them and let the host match the source aspect.

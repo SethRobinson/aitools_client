@@ -239,7 +239,13 @@ Ref2VA cannot run the turbo LoRA, see Model facts).
 - Dimension overrides: explicit `width`/`height` on any `video_to_video` /
   `image_to_movie` action WIN over the clip-aspect path
   (`SetWorkflowDimensionOverride`; snapped to /32, clamped 256..2048 by
-  `PicMain.ApplyDimensionOverrideToJoblist`). Skill docs recommend raising
+  `PicMain.ApplyDimensionOverrideToJoblist`). EXCEPTION (2026-08-10): on
+  START-FRAME presets with an image source, explicit dims whose aspect differs
+  >~5% from the source are refitted as a pixel budget at the SOURCE's aspect
+  (`SkillActionExecutor.ApplyBudgetDimensionOverride`, with an info bubble) -
+  H3's i2v node stretches the first frame to the canvas with crop disabled, so
+  honoring a clashing aspect literally would squish it. Reference presets
+  (photo or clip refs) and video sources pin no frame and keep exact dims. Skill docs recommend raising
   identity-critical renders from the 864x480 default toward the trained max
   ~1.03MP: 1152x640 landscape / 640x1152 portrait / 896x896 square (hard trained
   cap 1344x768). Cost scales with pixel count (~2x at 1152x640).

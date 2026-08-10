@@ -504,6 +504,42 @@ namespace AITools.AIChat.Skills
 
         // ---------- Generate (image or movie) ----------
 
+        // H3 reference-to-video presets (photo refs, no pinned start frame). Distinct
+        // from isH3RefVideoPreset ("Reference Video To Video", clip refs): the photo
+        // presets ride the image_to_movie skill, so the start-frame aspect logic below
+        // must exempt them by preset name.
+        private static bool IsReferencePhotoPreset(string presetName)
+            => !string.IsNullOrEmpty(presetName)
+               && presetName.IndexOf("Reference To Video", StringComparison.OrdinalIgnoreCase) >= 0;
+
+        // Explicit width/height on a START-FRAME video preset (H3/LTX/WAN i2v) whose
+        // aspect clashes with the source image would visibly SQUISH the pinned first
+        // frame: H3's MiniMaxH3ImageToVideo resizes the frame to the canvas with crop
+        // disabled (plain lanczos stretch). Reinterpret such requests as a PIXEL BUDGET
+        // at the source's aspect instead - "720p" on a portrait photo renders a
+        // ~0.92MP portrait canvas - so the user's quality tier is honored without
+        // distortion. Requests within ~5% of the source aspect pass through exactly
+        // (covers 864x480-vs-16:9 style rounding). Reference presets and video sources
+        // pin no frame, so their call sites keep SetWorkflowDimensionOverride directly.
+        private void ApplyBudgetDimensionOverride(PicMain pic, int reqW, int reqH, int srcW, int srcH)
+        {
+            float reqAspect = (float)reqW / reqH;
+            float srcAspect = (float)srcW / srcH;
+            float ratio = reqAspect / srcAspect;
+            if (ratio < 0.95f || ratio > 1.05f)
+            {
+                double budget = (double)reqW * reqH;
+                int fitH = Mathf.Max(32, Mathf.RoundToInt((float)Math.Sqrt(budget / srcAspect) / 32f) * 32);
+                int fitW = Mathf.Max(32, Mathf.RoundToInt((float)(budget / fitH) / 32f) * 32);
+                _host?.AddInfoBubble(
+                    $"(requested {reqW}x{reqH} doesn't match the source image's aspect - rendering " +
+                    $"{fitW}x{fitH} instead, same pixel budget, so the start frame isn't distorted)");
+                reqW = fitW;
+                reqH = fitH;
+            }
+            pic.SetWorkflowDimensionOverride(reqW, reqH);
+        }
+
         private void ExecuteGenerate(SkillAction action, bool useAttachment)
         {
             _lastLocalOpOutputChatImageIndex = -1;
@@ -960,7 +996,18 @@ namespace AITools.AIChat.Skills
             if (action.Width.HasValue && action.Height.HasValue
                 && action.Width.Value > 0 && action.Height.Value > 0)
             {
-                picMain.SetWorkflowDimensionOverride(action.Width.Value, action.Height.Value);
+                // Image source feeding a pinned start frame: refit mismatched-aspect
+                // requests as a pixel budget (see ApplyBudgetDimensionOverride).
+                // Reference presets (photo or clip refs) and video sources pin no
+                // frame, so the explicit dims pass through exactly.
+                bool pinsStartFrame = useAttachment && srcW > 0 && srcH > 0
+                    && videoSrcW <= 0
+                    && !isH3RefVideoPreset
+                    && !IsReferencePhotoPreset(resolved);
+                if (pinsStartFrame)
+                    ApplyBudgetDimensionOverride(picMain, action.Width.Value, action.Height.Value, srcW, srcH);
+                else
+                    picMain.SetWorkflowDimensionOverride(action.Width.Value, action.Height.Value);
             }
             else if (videoSrcW > 0 && videoSrcH > 0)
             {
@@ -1172,46 +1219,60 @@ namespace AITools.AIChat.Skills
             // whatever GameLogic's global state happens to hold.
             string negFromPreset = ReadPresetDefaultNegativePrompt(resolved);
 
-            // Aspect-aware dimension override: explicit width/height from the LLM win;
+            // Aspect-aware dimension override: explicit width/height from the LLM win
+            // (refit to the chain source's aspect when it feeds a pinned start frame);
             // otherwise inherit the prior step's actual texture dimensions if any are
             // already on the Pic, else fall back to the prior step's last queued
             // workflow dimensions (best-effort) - this keeps a Z-Image -> LTX chain
             // running at the Z-Image source's aspect even though the texture isn't
             // rendered yet at queue time.
+            int chainSrcW = 0, chainSrcH = 0;
+            bool chainSourceIsMovie = prevPic.m_picMovie != null && prevPic.IsMovie();
+            // Movie source: probe the clip itself first. prevPic's live texture is the
+            // VideoPlayer RenderTexture only while the movie is loaded; an unloaded (or
+            // never-played) movie Pic falls back to PicMain's square 512x512 placeholder
+            // sprite, which would rotate the preset's pixel budget into a square render.
+            if (chainSourceIsMovie
+                && TryGetVideoAspectSource(prevPic.m_picMovie.GetProcessingFileName(), out int movieW, out int movieH))
+            {
+                chainSrcW = movieW;
+                chainSrcH = movieH;
+            }
+            else if (prevPic.TryGetCurrentTexture(out var prevTex) && prevTex != null)
+            {
+                chainSrcW = prevTex.width;
+                chainSrcH = prevTex.height;
+            }
+            // Texture not rendered yet (typical for generate_image -> image_to_movie
+            // chain in one reply): fall back to the prior step's queued dimensions
+            // so e.g. a Z-Image 1024x1024 prior step propagates "square" to LTX.
+            if ((chainSrcW <= 0 || chainSrcH <= 0)
+                && prevPic.LastQueuedWorkflowWidth > 0 && prevPic.LastQueuedWorkflowHeight > 0)
+            {
+                chainSrcW = prevPic.LastQueuedWorkflowWidth;
+                chainSrcH = prevPic.LastQueuedWorkflowHeight;
+            }
+
             if (action.Width.HasValue && action.Height.HasValue
                 && action.Width.Value > 0 && action.Height.Value > 0)
             {
-                prevPic.SetWorkflowDimensionOverride(action.Width.Value, action.Height.Value);
+                // Same start-frame aspect guard as the non-chained path: a chained
+                // still feeding an i2v start frame must not be squished by a
+                // mismatched explicit canvas. (When the skill-documented pattern of
+                // identical width/height on both actions is followed, the aspects
+                // match and this passes the request through exactly.)
+                bool chainPinsStartFrame = !chainSourceIsMovie
+                    && !chainIsH3RefVideo
+                    && !IsReferencePhotoPreset(resolved)
+                    && chainSrcW > 0 && chainSrcH > 0;
+                if (chainPinsStartFrame)
+                    ApplyBudgetDimensionOverride(prevPic, action.Width.Value, action.Height.Value, chainSrcW, chainSrcH);
+                else
+                    prevPic.SetWorkflowDimensionOverride(action.Width.Value, action.Height.Value);
             }
-            else
+            else if (chainSrcW > 0 && chainSrcH > 0)
             {
-                int chainSrcW = 0, chainSrcH = 0;
-                // Movie source: probe the clip itself first. prevPic's live texture is the
-                // VideoPlayer RenderTexture only while the movie is loaded; an unloaded (or
-                // never-played) movie Pic falls back to PicMain's square 512x512 placeholder
-                // sprite, which would rotate the preset's pixel budget into a square render.
-                if (prevPic.m_picMovie != null && prevPic.IsMovie()
-                    && TryGetVideoAspectSource(prevPic.m_picMovie.GetProcessingFileName(), out int movieW, out int movieH))
-                {
-                    chainSrcW = movieW;
-                    chainSrcH = movieH;
-                }
-                else if (prevPic.TryGetCurrentTexture(out var prevTex) && prevTex != null)
-                {
-                    chainSrcW = prevTex.width;
-                    chainSrcH = prevTex.height;
-                }
-                // Texture not rendered yet (typical for generate_image -> image_to_movie
-                // chain in one reply): fall back to the prior step's queued dimensions
-                // so e.g. a Z-Image 1024x1024 prior step propagates "square" to LTX.
-                if ((chainSrcW <= 0 || chainSrcH <= 0)
-                    && prevPic.LastQueuedWorkflowWidth > 0 && prevPic.LastQueuedWorkflowHeight > 0)
-                {
-                    chainSrcW = prevPic.LastQueuedWorkflowWidth;
-                    chainSrcH = prevPic.LastQueuedWorkflowHeight;
-                }
-                if (chainSrcW > 0 && chainSrcH > 0)
-                    prevPic.SetWorkflowAspectSource(chainSrcW, chainSrcH);
+                prevPic.SetWorkflowAspectSource(chainSrcW, chainSrcH);
             }
 
             if (action.SkillId.ToLowerInvariant() == BuiltInSkillIds.VideoToVideo
