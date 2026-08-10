@@ -253,14 +253,21 @@ public class PicMovie : MonoBehaviour
 
     public void Update()
     {
+        bool pointerInsideAppWindow = IsPointerInsideAppWindow();
 
-
-
-        //if app doesn't have focus, exit
-        if (!Application.isFocused)
+        // Pointer coordinates continue beyond the client area in a windowed player.
+        // Mute before doing anything else so an out-of-window position can never be
+        // projected onto a movie (or inherit a stale chat-mirror hover permit).
+        if (!Application.isFocused || !pointerInsideAppWindow)
         {
-            return;
+            if (_audioSource != null)
+                _audioSource.mute = true;
         }
+
+        // Keep non-input maintenance running while the focused app merely has its
+        // pointer outside, but retain the old early-out when focus is lost.
+        if (!Application.isFocused)
+            return;
 
         if (_bIsHidden)
         {
@@ -299,7 +306,7 @@ public class PicMovie : MonoBehaviour
                 // _bExternalAudioPermit lets a chat-side mirror grant unmute permission
                 // for cases where the world Pic is covered by the chat panel itself.
                 bool worldHover = (go == gameObject && !IsMouseObscuredByOtherUI());
-                if (worldHover || _bExternalAudioPermit)
+                if (pointerInsideAppWindow && (worldHover || _bExternalAudioPermit))
                 {
                     _audioSource.mute = GameLogic.Get().GetGlobalMute();
                 }
@@ -312,6 +319,13 @@ public class PicMovie : MonoBehaviour
             UpdateProgressBar();
         }
 
+    }
+
+    private static bool IsPointerInsideAppWindow()
+    {
+        Vector3 pointer = Input.mousePosition;
+        return pointer.x >= 0f && pointer.y >= 0f
+            && pointer.x < Screen.width && pointer.y < Screen.height;
     }
 
     // One lazy reload may start per RELOAD_STAGGER_SECONDS across ALL movie pics, so
