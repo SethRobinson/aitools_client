@@ -30023,7 +30023,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _text: 'Shortcut: Backslash - If movies stop playing or overload things, this will
-    fix it.<BR>You can use P to pause/resume a specific movie as well.'
+    fix it. Shift+Backslash pauses all playing movies.<BR>You can use P to pause/resume
+    a specific movie as well.'
 --- !u!114 &769376883
 MonoBehaviour:
   m_ObjectHideFlags: 0

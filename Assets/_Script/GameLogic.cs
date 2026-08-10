@@ -2307,9 +2307,15 @@ public string GetPrompt() { return m_prompt; }
         
         if (Input.GetKeyDown(KeyCode.Backslash))
         {
-           
+            if (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
+            {
+                //| (Shift+Backslash) pauses playback without unloading anything
+                PauseAllMoviePics();
+            }
+            else
+            {
                 AskAllMoviePicsToUnloadTheMovieToSaveMemory();
-           
+            }
         }
 
 
@@ -2381,6 +2387,23 @@ public string GetPrompt() { return m_prompt; }
                     picScript.m_picGeneratorScript.OnInpaintGeneratorButton();
                 }
 
+            }
+        }
+    }
+
+    public void PauseAllMoviePics()
+    {
+        RTQuickMessageManager.Get().ShowMessage("Pausing all movies");
+
+        var aiScripts = RTUtil.FindObjectOrCreate("Pics").transform.GetComponentsInChildren<PicMain>();
+
+        foreach (PicMain picScript in aiScripts)
+        {
+            if (!picScript.IsDestroyed())
+            {
+                PicMovie movieScript = picScript.GetComponent<PicMovie>();
+                if (movieScript != null)
+                    movieScript.PauseIfPlaying();
             }
         }
     }

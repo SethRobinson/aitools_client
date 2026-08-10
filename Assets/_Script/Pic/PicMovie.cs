@@ -159,6 +159,14 @@ public class PicMovie : MonoBehaviour
         }
     }
 
+    public void PauseIfPlaying()
+    {
+        if (_videoPlayer != null && _videoPlayer.isPlaying)
+        {
+            _videoPlayer.Pause();
+        }
+    }
+
     public string GetFileName()
     {
         return m_fileName;
