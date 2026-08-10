@@ -1,10 +1,10 @@
 ---
 id: image_to_movie
-summary: Animate a STILL image into a short video. Default to MiniMax H3 Image To Video (native audio/dialog, 8-step turbo); use its 15s preset only for explicit long clips and duration="N" for ~5-15s. Explicit max-quality requests use the (MiniMax H3 Quality) presets; explicit spectrum/cache requests use Image To Video (MiniMax H3 Turbo Cache) 5s (~1.4x faster; shows 16 progress steps vs the default's 8; the default does NOT include the cache). Reference To Video presets REQUIRE a photo source and have NO Turbo/Cache/Quality variants - never invent preset names; a video with no source at all is generate_movie (direct t2v) territory. For a video starring reference photos without an exact start frame, use H3 Reference To Video with up to 9 photos. Use LTX when explicitly requested/fastest and WAN when explicitly requested/silent. A Movie #N is not an image source by default: edit/reference an existing Movie with video_to_video. Only when the user explicitly wants to animate one current frame may image_to_movie target a Movie, and it must include movie_frame="true".
+summary: Animate a STILL image into a short video. Default to MiniMax H3 Image To Video (native audio/dialog, 8-step turbo); use its 15s preset only for explicit long clips and duration="N" for ~5-15s. Explicit max-quality requests use the (MiniMax H3 Quality) presets; explicit spectrum/cache requests use Image To Video (MiniMax H3 Turbo Cache) 5s (~1.4x faster; shows 16 progress steps vs the default's 8; the default does NOT include the cache). Reference To Video presets REQUIRE a photo source and have NO Turbo/Cache/Quality variants - never invent preset names; a video with no source at all is generate_movie (direct t2v) territory. For a video starring reference photos without an exact start frame, use H3 Reference To Video with up to 9 photos. A Movie #N is not an image source by default: edit/reference an existing Movie with video_to_video. Only when the user explicitly wants to animate one current frame may image_to_movie target a Movie, and it must include movie_frame="true".
 inputs: attachment
 autoload: true
-triggers: animate, animation, image to video, image-to-video, image to movie, image-to-movie, animate this, animate it, make this move, make it move, make a video, make a movie, make a clip, create a video, create a movie, generate a video, generate a movie, video starring, movie starring, video of, movie of, second video, second movie, reference to video, using wan, use wan, with wan, wan 2.2, wan2.2, wan22, using ltx, use ltx, with ltx, ltx 2.3, minimax, mini max, minmax, minimax h3, minmax h3, h3, hailuo, spectrum, turbo cache, spectrum cache
-template: <aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3) 5s.txt}}" prompt="motion + camera + one short quoted dialog line + ambient sound" chat_image="N"/>  # STILL sources only. attachment= works only in the very message the user pasted the image in; on later turns use chat_image="N" (the paste's bubble number). To use an explicit current frame from a Movie add movie_frame="true"; otherwise existing Movies require video_to_video. Use LTX only when requested/fastest and WAN when requested/silent.
+triggers: animate, animation, image to video, image-to-video, image to movie, image-to-movie, animate this, animate it, make this move, make it move, make a video, make a movie, make a clip, create a video, create a movie, generate a video, generate a movie, video starring, movie starring, video of, movie of, second video, second movie, reference to video, minimax, mini max, minmax, minimax h3, minmax h3, h3, hailuo, spectrum, turbo cache, spectrum cache
+template: <aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3) 5s.txt}}" prompt="motion + camera + one short quoted dialog line + ambient sound" chat_image="N"/>  # STILL sources only. attachment= works only in the very message the user pasted the image in; on later turns use chat_image="N" (the paste's bubble number). To use an explicit current frame from a Movie add movie_frame="true"; otherwise existing Movies require video_to_video.
 ---
 # Image-to-movie
 
@@ -12,7 +12,7 @@ Use this skill when the user wants you to ANIMATE an image into a short
 video clip. The source can be either freshly pasted or already in chat.
 
 If the user asks for a NEW text-described video with no source image
-("make a video of X", "generate a MiniMax/WAN/LTX video of X"),
+("make a video of X", "generate a MiniMax video of X"),
 first emit `generate_image` with `{{Prompt To Image (Z-Image).txt}}`, then emit
 this skill with `chain="true"`. Do NOT use direct `generate_movie` /
 text-to-video unless the user explicitly asks for direct text-to-video, "no
@@ -38,7 +38,7 @@ animate one single still/current frame from that Movie; add
   spoken dialog (11 languages), strong motion/identity. MiniMax H3 with the
   fast 8-step turbo LoRA. For a specific duration between 5 and 15 seconds,
   keep THIS preset and add `duration="10"` (seconds) - the host snaps it to
-  H3's frame grid (~10.1s). H3 presets only; LTX/WAN are fixed-length.
+  H3's frame grid (~10.1s).
 - `{{Image To Video (MiniMax H3) 15s.txt}}` - same model, ~15s single
   generation. Only when the user explicitly asks for a long clip (~3x render
   time). `duration` is ignored here - use the 5s preset for in-between lengths.
@@ -64,10 +64,6 @@ animate one single still/current frame from that Movie; add
   model cannot run the turbo LoRA; reference generations are always the full
   20-step render) - never invent preset names by combining suffixes; use only
   names listed in this skill or generate_movie.
-- `{{Image To Video (LTX) 5s.txt}}` - fast 5s clip with audio (LTX 2.3). Use
-  when the user asks for LTX or the fastest/quickest video.
-- `{{Image To Video (WAN) 5s.txt}}` - high-quality 5s, slow, silent (Wan 2.2 / WAN).
-- `{{Image To Video (Wan22).txt}}` - legacy alias for the same production Wan 2.2 path.
 
 ## Invocation
 
@@ -109,15 +105,15 @@ person" by name only.
 H3 generates video AND native stereo audio (speech, ambience, music cues) in
 one pass, and understands the source frame as `<Picture 1>`.
 
-- For a single continuous scene, use the same shape as LTX: 4-8 sentences, one
-  paragraph - subject restatement -> motion + ONE short quoted dialog line ->
-  one camera move -> mood/lighting -> ambient-sound tag.
+- For a single continuous scene, use 4-8 sentences, one paragraph - subject
+  restatement -> motion + ONE short quoted dialog line -> one camera move ->
+  mood/lighting -> ambient-sound tag.
 - **Dialog is DEFAULT ON.** Give any plausible speaker a short line (~3-12
   words) in double quotes with language + accent, e.g. `she murmurs "I told
   him I was done" in English with a soft New York accent`. Write EXACT words,
   never "she says something". Skip ONLY when there is no plausible speaker
   (empty landscape, face hidden, user said "silent").
-- **Multi-shot IS allowed** (unlike LTX/WAN): H3 is trained for explicit cuts.
+- **Multi-shot IS allowed**: H3 is trained for explicit cuts.
   Structure them as numbered shots, each with concrete motion:
   `SHOT 1: the scene opens exactly on image 1, ... SHOT 2: cut to an extreme
   macro profile of ..., ... SHOT 3: cut to a low-angle beauty shot ...`.
@@ -180,20 +176,7 @@ it, build the frame first, then animate it:
 If the opening frame does NOT need to be exact, skip the two-stage recipe and
 use reference-to-video: the photo guides identity without pinning frame 1.
 
-### LTX 2.3 (`{{Image To Video (LTX) 5s.txt}}`)
-
-Source: [docs.ltx.video](https://docs.ltx.video/api-documentation/prompting-guide).
-Use when the user asks for LTX or the fastest option.
-
-- **4-8 sentences, single flowing paragraph.** Tuned for this length.
-- Order: visual subject restatement → **motion + ONE short line of dialog** →
-  one camera move → mood/lighting → short ambient-sound tag.
-- Dialog default ON, same quoting rules as H3.
-- Don'ts: no abstract energy words ("dynamic", "epic"); no jump-cut
-  words ("suddenly", "flashes", "cuts to"); don't pile aesthetics
-  without described motion. Single continuous shot ONLY.
-
-Example (H3 or LTX) for a previously-generated rooftop-smoking image:
+Example (H3) for a previously-generated rooftop-smoking image:
 
 > She slowly raises the cigarette and takes a long drag, eyes
 > half-closing, then lowers her hand, tilts her head slightly back, and
@@ -221,19 +204,6 @@ Roleplay / identity-anchor example style:
 > from a chest-height 35mm medium shot. Server lights ripple awake behind her,
 > reflected across black water; ambient sound of humming machines, dripping
 > water, and flare crackle.
-
-### WAN / Wan 2.2 (`{{Image To Video (WAN) 5s.txt}}`)
-
-Source: [wan2-2.app/prompt](https://wan2-2.app/prompt).
-
-- Formula: **Subject → Scene → Motion → Aesthetic Control →
-  Stylization**. No strict word count - "more complete = higher quality".
-- Handles longer multi-beat motion than LTX. 200-400 words of timed
-  motion + environmental motion + lighting evolution work well.
-- **WAN is silent** - no dialog or sound tags.
-- **Wan 2.2 uses negative prompts** (unlike H3 / LTX / Z-Image). Common:
-  `blurry, low quality, distorted faces, jittery motion, watermark`.
-- Hard-cut rule applies: avoid "suddenly", "flashes", "cuts to".
 
 ## Sizing
 
@@ -327,7 +297,4 @@ and put the result on both actions:
 - MiniMax H3 (default): paragraph or numbered SHOT structure, dialog default
   ON, cuts allowed between shots, no negative prompts. 15s preset only on
   explicit request.
-- LTX 2.3: 4-8 sentence paragraph, single continuous shot, one camera move,
-  ONE short quoted dialog line unless no plausible speaker.
-- Wan 2.2: longer multi-beat motion (200-400 words) is fine; silent.
 - User asked to animate → just do it.

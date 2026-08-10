@@ -171,7 +171,7 @@ use the H3 Reference Video To Video preset for those requests.
 
 Restyle the clip just made (chain):
 ```
-<aitools_action skill="image_to_movie" preset="{{Image To Video (LTX) 5s.txt}}" prompt="<motion beat>" chat_image="2"/>
+<aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3) 5s.txt}}" prompt="<motion beat>" chat_image="2"/>
 <aitools_action skill="video_to_video" preset="{{Video To Video (Bernini).txt}}" prompt="Re-render the same clip as a hand-painted watercolor animation, keeping every motion, pose, and camera move identical; soft paper texture, muted autumn palette." chain="true"/>
 ```
 

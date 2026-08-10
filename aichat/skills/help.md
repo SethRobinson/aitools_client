@@ -26,7 +26,7 @@ Keep the first help answer brief and easy to scan:
 2. Give a few example requests, such as:
    - `Create an amazing image of robots fighting.`
    - `Create an amazing image of robots fighting using zimage.`
-   - `Make this image into a short movie using ltx.`
+   - `Make this image into a short movie.`
    - `Restyle movie 1 to look like winter.` (edit/restyle an existing clip)
    - `Edit image 2 so it is raining at night.`
    - `Edit image 2 with bernini so it is raining at night.` (alternative edit model)
@@ -38,7 +38,7 @@ Keep the first help answer brief and easy to scan:
 3. Mention optional render hints only at the user level:
    images: `zimage`, `krea`, `ideogram`;
    image editing: `bernini` (alternative to the default edit model);
-   movies: `minimax` (default, audio + dialog), `ltx` (fastest), `wan` (silent).
+   movies: `minimax` (default, audio + dialog).
 4. Mention: for consistent characters, objects, or styles across multiple
    images, ask to `use anchors`.
 5. Add a short "Available areas" list based on the loaded SKILLS summaries.

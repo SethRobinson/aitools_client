@@ -136,7 +136,7 @@ User asked: "a woman smoking on a rooftop". Ship something like:
 
 ## Stacking with a follow-up step (chain="true")
 
-If the user asks for something like "make a movie with Z-Image and LTX" or
+If the user asks for something like "make a movie with Z-Image and MiniMax H3" or
 "image-to-image change the weather, then animate it" - emit `generate_image`
 first, then a follow-up action with `chain="true"` (image_to_movie /
 image_to_image) IN THE SAME REPLY. Both steps run on the SAME Pic, so the

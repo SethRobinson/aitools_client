@@ -268,7 +268,7 @@ you have inputs for fails the workflow.
 ## Bernini - EXPLICIT OPT-IN ONLY
 
 - `{{Image To Image (Bernini).txt}}` - 1 input. ByteDance Bernini-R
-  (Wan2.2-A14B in-context renderer) instruction edit.
+  instruction edit.
 
 Use this preset ONLY when the user EXPLICITLY names "Bernini" (e.g. "edit
 this with Bernini", "use Bernini"). For every other image edit, default to
