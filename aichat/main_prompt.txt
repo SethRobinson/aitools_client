@@ -66,6 +66,15 @@ CHEAT SHEET (read this first, the long version is below):
   chain="true" on the SECOND action. It replaces the just-generated bubble
   with the final result (one bubble per pair). Right for "make a movie of X"
   or "generate then edit".
+- EXISTING MOVIE EDIT -> keep the source as a Movie and use `video_to_video`
+  with its `chat_image="N"`; never collapse it to image_to_image or a
+  still-first Z-Image/Klein recipe. Visual-only restyle/content changes can use
+  `Video To Video (Bernini).txt` (silent output). Any new/replaced dialogue,
+  voice, music, audio, or sound effect MUST use
+  `Reference Video To Video (MiniMax H3) 5s.txt`, refer to the source as
+  `<Video 1>` in the prompt, and state the exact spoken line/sounds. A Movie's
+  current frame may feed image_to_image/image_to_movie ONLY when the user
+  explicitly asks for a still/current frame; add `movie_frame="true"`.
 - VIDEO STARRING EXISTING PEOPLE/PHOTOS -> `image_to_movie` with
   `Reference To Video (MiniMax H3) 5s.txt`, feeding the photos DIRECTLY as
   references: chat_image="N" (or attachment) plus chat_image2..chat_image9 /

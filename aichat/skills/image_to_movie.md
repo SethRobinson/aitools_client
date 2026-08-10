@@ -1,10 +1,10 @@
 ---
 id: image_to_movie
-summary: Animate an image (user-pasted OR a previously-generated chat image) into a short video clip. Default to MiniMax H3 (`Image To Video (MiniMax H3) 5s.txt`, native audio + dialog). Explicit LONG ~15s request -> `Image To Video (MiniMax H3) 15s.txt` (~3x render time); other lengths keep the 5s H3 preset and add duration="N" (seconds, ~5-15, H3 only - LTX/WAN ignore it). A video STARRING existing people/photos (identity from references, no exact start frame) -> `Reference To Video (MiniMax H3) 5s.txt` with the photos in chat_image/chat_image2..chat_image9 (up to 9 refs; prompt calls them <Picture 1>..<Picture 9>) - do NOT composite a Klein still first. Use LTX 2.3 via `Image To Video (LTX) 5s.txt` when the user asks for LTX or the fastest option; use WAN / Wan 2.2 via `Image To Video (WAN) 5s.txt` when the user asks for WAN or silent video.
+summary: Animate a STILL image into a short video. Default to MiniMax H3 Image To Video (native audio/dialog); use its 15s preset only for explicit long clips and duration="N" for ~5-15s. For a video starring reference photos without an exact start frame, use H3 Reference To Video with up to 9 photos. Use LTX when explicitly requested/fastest and WAN when explicitly requested/silent. A Movie #N is not an image source by default: edit/reference an existing Movie with video_to_video. Only when the user explicitly wants to animate one current frame may image_to_movie target a Movie, and it must include movie_frame="true".
 inputs: attachment
 autoload: true
 triggers: animate, animation, image to video, image-to-video, image to movie, image-to-movie, animate this, animate it, make this move, make it move, make a video, make a movie, make a clip, create a video, create a movie, generate a video, generate a movie, video starring, movie starring, video of, movie of, second video, second movie, reference to video, using wan, use wan, with wan, wan 2.2, wan2.2, wan22, using ltx, use ltx, with ltx, ltx 2.3, minimax, mini max, minmax, minimax h3, minmax h3, h3, hailuo
-template: <aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3) 5s.txt}}" prompt="describe motion + camera, with ONE short line of in-scene dialog in double-quotes (language+accent), then ambient sound" chat_image="N"/>  # default MiniMax H3 (native audio). When the user asks for LTX use preset="{{Image To Video (LTX) 5s.txt}}"; for WAN/Wan 2.2 use preset="{{Image To Video (WAN) 5s.txt}}" with a silent motion prompt.
+template: <aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3) 5s.txt}}" prompt="motion + camera + one short quoted dialog line + ambient sound" chat_image="N"/>  # STILL sources only. To use an explicit current frame from a Movie add movie_frame="true"; otherwise existing Movies require video_to_video. Use LTX only when requested/fastest and WAN when requested/silent.
 ---
 # Image-to-movie
 
@@ -21,10 +21,14 @@ still first", or a named `Prompt To Video ...` preset.
 Specify EXACTLY ONE source via:
 
 - `attachment="N"` - the Nth image pasted INTO THE CURRENT message (1-based).
-- `chat_image="N"` - the Nth chat-image bubble already in this conversation
-  ("Image #N" / "Movie #N" labels). Use when the user says "animate the
-  image you just made"; the CHAT IMAGES line in the system prompt shows
-  the highest N reachable.
+- `chat_image="N"` - the Nth STILL chat-image bubble already in this
+  conversation. Use when the user says "animate the image you just made";
+  the CHAT IMAGES line in the system prompt shows the highest N reachable.
+
+An existing `Movie #N` must use `video_to_video` for scene, motion, dialogue,
+voice, audio, or sound changes. The only exception is an explicit request to
+animate one single still/current frame from that Movie; add
+`movie_frame="true"`. Unmarked Movie-to-image actions are rejected.
 
 ## Available presets
 

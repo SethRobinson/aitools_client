@@ -112,6 +112,18 @@ Three reference presets, all pointing at the universal workflow.
 
 ## AI Chat wiring (`SkillActionExecutor.cs`)
 
+- Movie-aware routing: when the newest live chat medium is a Movie, deictic
+  edit phrases such as "change this scene" and speech/audio edits auto-load
+  the full `video_to_video` skill even if the user never says video/clip/movie.
+  The volatile CHAT IMAGES context also states that Movie edits stay
+  video-native.
+- A Movie may feed `image_to_image` / `image_to_movie` only with explicit
+  `movie_frame="true"`, reserved for user-requested still/current-frame work.
+  Otherwise the executor blocks the action and requests an automatic
+  correction turn instead of silently snapshotting the Movie into a still.
+- Bernini v2v output is silent. If a Bernini/default `video_to_video` action's
+  prompt requests new dialogue, voice, music, audio, or sound effects, the
+  executor blocks it and auto-continues with instructions to use H3 Ref2VA.
 - `video_to_video` + a "Reference Video To Video" preset (`isH3RefVideoPreset`):
   - Primary clip: `chat_image="N"` Movie bubble (or `chain="true"`) ->
     `m_pendingVideoUploadPath` / prevPic's movie, as before.

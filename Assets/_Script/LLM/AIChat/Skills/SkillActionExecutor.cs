@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Text;
+using System.Text.RegularExpressions;
 using SimpleJSON;
 using TMPro;
 using AITools.AIChat.Video;
@@ -477,6 +478,27 @@ namespace AITools.AIChat.Skills
                     "from the main GUI. Re-emit with the prompt filled in. Template:\n  " + template);
                 return;
             }
+
+            // Movie bubbles expose their current frame as PNG bytes for the legitimate
+            // "use this exact frame as a still/start frame" workflow. That permissive
+            // byte path also made a bad image_to_image decision silently collapse a
+            // requested video edit into one Klein still. Require an explicit opt-in for
+            // Movie-as-frame actions; scene/motion/dialog/audio edits stay video-native.
+            bool wouldAutoChain = !action.Chain
+                && useAttachment
+                && !action.AttachmentIndex.HasValue
+                && !action.ChatImageIndex.HasValue
+                && (_host?.GetTurnAttachmentCount() ?? 0) == 0
+                && _host?.GetLastSpawnedPicForTurn() != null;
+            if (RejectImplicitMovieFrameAction(action, action.Chain || wouldAutoChain))
+                return;
+
+            // Bernini's v2v graph produces pixels only; it has no output-audio wire.
+            // If the model asks Bernini to create speech, dialog, music, or sound, stop
+            // before spending GPU time and give it an automatic correction turn that
+            // selects H3 Ref2VA and rewrites the prompt for a reference video.
+            if (RejectBerniniForGeneratedAudio(action))
+                return;
 
             // ---------- /applystyle restyle pass ----------
             // If the user installed a session restyle directive, rewrite THIS render's
@@ -1219,6 +1241,84 @@ namespace AITools.AIChat.Skills
                 Debug.LogWarning("SkillActionExecutor.ReadPresetDefaultNegativePrompt: " + ex.Message);
                 return null;
             }
+        }
+
+        private bool RejectImplicitMovieFrameAction(SkillAction action, bool usesChainTarget)
+        {
+            if (action == null)
+                return false;
+
+            string skillId = action.SkillId?.ToLowerInvariant() ?? "";
+            if (skillId != BuiltInSkillIds.ImageToImage && skillId != BuiltInSkillIds.ImageToMovie)
+                return false;
+            if (ParseBool(action.GetArg("movie_frame"), false))
+                return false;
+
+            int chatN = action.ChatImageIndex ?? -1;
+            PicMain chainTarget = usesChainTarget ? _host?.GetLastSpawnedPicForTurn() : null;
+            bool chainTargetIsSource = chainTarget != null;
+            // A real same-reply chain target wins over a redundant chat_image. The
+            // chained executor deliberately drops that stray primary attribute later.
+            bool sourceIsMovie = chainTargetIsSource
+                ? chainTarget.IsMovie()
+                : chatN > 0 && !string.IsNullOrEmpty(_host?.GetChatImageMovieFilePath(chatN));
+            if (!sourceIsMovie)
+                return false;
+
+            string sourceLabel = chainTargetIsSource ? "the chained Movie" : $"Movie #{chatN}";
+            string h3Preset = SkillManager.ApplyPresetPrefix("{{Reference Video To Video (MiniMax H3) 5s.txt}}");
+            _host?.AddSystemInjectionAndBubble(
+                $"Blocked '{action.SkillId}' because its source is {sourceLabel}, not a still image. " +
+                "For any scene, motion, dialogue, voice, audio, or sound change, re-emit video_to_video against the Movie itself. " +
+                $"When the request creates new dialogue or sound, use preset '{h3Preset}', keep the Movie in chat_image, and refer to the source as Video 1 in the prompt. " +
+                $"Only if the user explicitly requested a single still/current frame may you re-emit '{action.SkillId}' with movie_frame=\"true\".");
+            _host?.RequestContinueTurn();
+            return true;
+        }
+
+        private bool RejectBerniniForGeneratedAudio(SkillAction action)
+        {
+            if (action == null || !string.Equals(action.SkillId, BuiltInSkillIds.VideoToVideo, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            string preset = action.Preset ?? "";
+            bool berniniOrDefault = string.IsNullOrWhiteSpace(preset)
+                || preset.IndexOf("Bernini", StringComparison.OrdinalIgnoreCase) >= 0;
+            if (!berniniOrDefault || !PromptRequestsGeneratedAudio(action.Prompt))
+                return false;
+
+            string h3Preset = SkillManager.ApplyPresetPrefix("{{Reference Video To Video (MiniMax H3) 5s.txt}}");
+            _host?.AddSystemInjectionAndBubble(
+                $"Blocked the Bernini video action because its prompt asks for new dialogue/audio/sound, but Bernini's video workflow is silent. " +
+                $"Re-emit video_to_video with preset '{h3Preset}', the same Movie chat_image, and a self-contained H3 prompt that refers to the source as Video 1 and states the exact spoken line and sound effects.");
+            _host?.RequestContinueTurn();
+            return true;
+        }
+
+        private static bool PromptRequestsGeneratedAudio(string prompt)
+        {
+            if (string.IsNullOrWhiteSpace(prompt))
+                return false;
+
+            // Speech, vocal actions, and concrete sound effects unambiguously need an
+            // audio-generating model even if the same prompt also says "no music".
+            if (Regex.IsMatch(
+                prompt,
+                @"\b(?:says?|speaks?|shouts?|whispers?|yells?|sings?|dialogue|dialog|spoken\s+line|voice[- ]?over|new\s+voice|sound\s+effects?|farts?|burps?)\b",
+                RegexOptions.IgnoreCase))
+            {
+                return true;
+            }
+
+            if (!Regex.IsMatch(prompt, @"\b(?:audio|soundtrack|music)\b", RegexOptions.IgnoreCase))
+                return false;
+
+            // A request to remove/mute sound is compatible with Bernini's silent output;
+            // preserving, replacing, or creating audio is not.
+            return !Regex.IsMatch(
+                prompt,
+                @"\b(?:silent|muted?|no\s+(?:audio|sound|music)|without\s+(?:audio|sound|music)|(?:remove|strip|drop|mute)\s+(?:the\s+)?(?:audio|soundtrack|music))\b",
+                RegexOptions.IgnoreCase);
         }
 
         /// <summary>

@@ -223,7 +223,9 @@ namespace AITools.AIChat.Context
                     if (s != null && s.IsMovie) { anyMovieListed = true; break; }
                 }
                 if (anyMovieListed)
-                    sb.AppendLine("\"movie\" entries are existing playable VIDEO clips. To restyle/edit a clip into a new video, use video_to_video with chat_image=\"N\" pointing at that movie - do NOT generate a brand-new clip. You can also reference a movie's current frame as the source for image_to_image / image_to_movie.");
+                {
+                    sb.AppendLine("\"movie\" entries are existing playable VIDEO clips. Any scene, motion, dialogue, voice, audio, or sound change must use video_to_video with chat_image=\"N\" pointing at that movie - never image_to_image or a still-first recipe. New dialogue/audio/sound effects require the Reference Video To Video (MiniMax H3) preset; Bernini is a silent visual-only restyle. Only when the user explicitly asks for a single still/current frame may image_to_image or image_to_movie read a Movie, and that action must include movie_frame=\"true\".");
+                }
                 for (int i = 0; i < listedCount; i++)
                 {
                     ChatImageState state = (chatImages != null && i < chatImages.Count) ? chatImages[i] : null;

@@ -56,6 +56,27 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private const string AutoloadSkillBodyMarkerPrefix = "AUTO-LOADED SKILL REFERENCE '";
     private const string ReadSkillBodyMarkerPrefix = "Reference material for skill '";
 
+    // Deictic movie-edit requests often omit the nouns in video_to_video's normal
+    // trigger list: after dropping a Movie, users naturally say "change this scene"
+    // or "make him say ...". Match those phrases only when the newest live chat
+    // medium is actually a Movie, so identical wording beside a still image keeps
+    // routing to image_to_image.
+    private static readonly string[] MovieContextVideoEditPhrases =
+    {
+        "change this scene", "change that scene", "change the scene",
+        "edit this scene", "edit that scene", "edit the scene",
+        "modify this scene", "modify that scene", "modify the scene",
+        "alter this scene", "alter that scene", "alter the scene",
+        "redo this scene", "redo that scene", "redo the scene",
+        "remake this scene", "remake that scene", "remake the scene",
+        "rework this scene", "rework that scene", "rework the scene"
+    };
+    private static readonly Regex MovieContextEditRx = new Regex(
+        @"\b(?:make|have|let)\s+(?:him|her|them|it|(?:the\s+)?[\w'-]+(?:\s+[\w'-]+){0,3})\s+(?:say|speak|talk|sing|fart|burp|laugh|cry|move|walk|run|dance|jump|turn|smile|wave|fall|stand|sit|look|wear|become)\b|" +
+        @"\b(?:starts?|begins?)\s+(?:speaking|talking|singing|farting|burping|laughing|crying|moving|walking|running|dancing|jumping)\b|" +
+        @"\b(?:change|replace|rewrite|add|remove)\s+(?:(?:the|their|his|her)\s+)?(?:dialogue|dialog|spoken\s+line|line|speech|voice|audio|soundtrack|sound\s+effects?)\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
     // Body text (post preset-prefix substitution) last delivered per skill id, so the
     // per-turn skill-file reload re-sends only genuinely edited bodies. Not a
     // liveness record - that is always re-derived from history.
@@ -6114,6 +6135,21 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             return;
 
         var matched = _skillManager.GetAutoloadSkillsForMessage(outgoingUserText);
+        if (ShouldAutoloadVideoToVideoForMovieContext(outgoingUserText))
+        {
+            var videoSkill = _skillManager.GetById(BuiltInSkillIds.VideoToVideo);
+            bool alreadyMatched = false;
+            foreach (var skill in matched)
+            {
+                if (skill != null && string.Equals(skill.Id, BuiltInSkillIds.VideoToVideo, StringComparison.OrdinalIgnoreCase))
+                {
+                    alreadyMatched = true;
+                    break;
+                }
+            }
+            if (!alreadyMatched && videoSkill != null)
+                matched.Add(videoSkill);
+        }
         if (matched == null || matched.Count == 0)
             return;
 
@@ -6139,6 +6175,36 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         Debug.Log("AIChatPanel: auto-loaded skill bodies attached to this turn: " + string.Join(", ", loadedIds));
     }
 
+    private bool ShouldAutoloadVideoToVideoForMovieContext(string outgoingUserText)
+    {
+        if (string.IsNullOrWhiteSpace(outgoingUserText) || !NewestLiveChatImageIsMovie())
+            return false;
+
+        foreach (string phrase in MovieContextVideoEditPhrases)
+        {
+            if (outgoingUserText.IndexOf(phrase, StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+        }
+
+        return MovieContextEditRx.IsMatch(outgoingUserText);
+    }
+
+    private bool NewestLiveChatImageIsMovie()
+    {
+        if (_chatImagePics == null)
+            return false;
+
+        for (int i = _chatImagePics.Count - 1; i >= 0; i--)
+        {
+            var pic = _chatImagePics[i];
+            if (pic == null || pic.gameObject == null)
+                continue;
+            return pic.IsMovie();
+        }
+
+        return false;
+    }
+
     /// <summary>
     /// Queue one skill's full body as an info-recap message (rides the tail of the
     /// next outgoing user message) and record the delivered text for reload diffing.
@@ -6151,8 +6217,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         string body = SkillManager.ApplyPresetPrefix(skill.RawMarkdown ?? "");
         _infoMessages.Add(new InfoMessage(
             AutoloadSkillBodyMarkerPrefix + skill.Id + "' (full body of aichat/skills/" +
-            skill.Id + ".md, auto-loaded because a trigger word appeared in the " +
-            "conversation). Use this knowledge directly in this and later replies; " +
+            skill.Id + ".md, auto-loaded because its trigger or the current media context matched). " +
+            "Use this knowledge directly in this and later replies; " +
             "do NOT call read_skill for this id.\n\n" + body));
         _sentAutoloadSkillBodies[skill.Id] = body;
     }

@@ -1,25 +1,29 @@
 ---
 id: video_to_video
-summary: Operate on an EXISTING "Movie #N" clip. Two modes - (1) RESTYLE/EDIT it with Bernini-R, keeping its motion ("restyle this clip", "make this video look like winter"); (2) REFERENCE-generate a brand-NEW MiniMax H3 clip that carries the source's subject/motion/style into a new scene ("make a new video based on this clip", "the same cat but surfing", "put this person into a video like that clip"), preset `Reference Video To Video (MiniMax H3) 5s.txt` - for an explicitly LONG ~15s request use `Reference Video To Video (MiniMax H3) 15s.txt` (~3x render time), for other lengths keep the 5s preset and add duration="N" (seconds, ~5-15); optionally plus up to 9 reference PHOTOS (put specific people/places into the new clip) and/or a SECOND reference clip. For pure smoothing/FPS use rife_video; for animating a STILL use image_to_movie.
+summary: Operate on an EXISTING "Movie #N" clip. Two modes - (1) VISUAL-ONLY RESTYLE/EDIT it with Bernini-R, keeping its motion but producing silent output; (2) REFERENCE-generate a brand-NEW MiniMax H3 clip that carries the source's subject/motion/style into a new scene, or creates/replaces dialogue, voice, music, audio, or sound effects. H3 preset: `Reference Video To Video (MiniMax H3) 5s.txt`; its prompt refers to the source as <Video 1>. For explicit LONG ~15s use the 15s preset; for other lengths use duration="N" (~5-15s). H3 also accepts up to 9 reference photos and/or a second clip. Never use image_to_image on a Movie unless the user explicitly requests one still/current frame and the action has movie_frame="true". For smoothing/FPS use rife_video; for animating a STILL use image_to_movie.
 inputs: attachment
 autoload: true
 triggers: video to video, restyle the video, restyle this clip, edit the video, edit the clip, change the video, change the clip, redo the video, redo the clip, make the video, make the clip, the video but, the clip but, same video but, restyle the clip, turn the video, turn the clip, video into, clip into, re-render the video, regenerate the video, based on this video, based on that video, based on the clip, based on this clip, like this video, like the video, like this clip, same character as the video, from this video, from the clip, restyle the movie, edit the movie, change the movie, redo the movie, make the movie, the movie but, same movie but, turn the movie, movie into, re-render the movie, regenerate the movie, based on this movie, based on that movie, based on the movie, like this movie, like the movie, same character as the movie, from this movie, from the movie, use movie, use the movie, use this movie, use that movie, as reference, as a reference, reference video, reference clip, reference movie
 exclude_triggers: animate the image, animate this, make a movie of, make a video of a, turn this image into a video, turn the photo into
-template: <aitools_action skill="video_to_video" preset="{{Video To Video (Bernini).txt}}" prompt="<what changes + motion to keep, 4-8 sentences>" chat_image="N"/>  # chat_image="N" = source "Movie #N" bubble (or chain="true" for a movie made/clipped earlier THIS reply). Slot-2+ attributes add references: for Bernini restyle, ONE still (chat_image2="M" or attachment2="M") - the host auto-switches to the reference-guided workflow. For the H3 "Reference Video To Video" presets, stills in chat_image2..chat_image10 (or attachment2..attachment10) become photo references <Picture 1>..<Picture 9>, and a MOVIE bubble in chat_image2 becomes a second reference clip <Video 2>. Do NOT use image_to_image+image_to_movie for this; v2v takes references directly.
+template: <aitools_action skill="video_to_video" preset="{{Video To Video (Bernini).txt}}" prompt="<visual-only changes + motion to keep, 4-8 sentences>" chat_image="N"/>  # Bernini is SILENT. For new/replaced dialogue, voice, audio, music, or sound effects use preset="{{Reference Video To Video (MiniMax H3) 5s.txt}}" and refer to <Video 1> in the prompt. chat_image="N" = source Movie. Slot-2+ adds references: Bernini takes one still; H3 takes up to 9 photos and/or a second Movie. Never use an image skill on a Movie unless the user explicitly asks for its still/current frame and supplies movie_frame="true".
 ---
-# Video-to-video (Bernini-R)
+# Video-to-video (Bernini-R / MiniMax H3)
 
 Use this skill when the user wants to work FROM an EXISTING video clip. It has
 two distinct modes - pick by what the user wants:
 
-1. **RESTYLE / EDIT (Bernini)** - change the clip's style, setting, lighting,
-   or content while KEEPING its motion and timeline, optionally guided by one
-   reference image. Preset is always `{{Video To Video (Bernini).txt}}`.
+1. **VISUAL-ONLY RESTYLE / EDIT (Bernini)** - change the clip's style,
+   setting, lighting, or visible content while KEEPING its motion and timeline,
+   optionally guided by one reference image. Bernini's output is SILENT: it
+   cannot create or replace dialogue, voices, music, audio, or sound effects.
+   Preset is always `{{Video To Video (Bernini).txt}}`.
 2. **REFERENCE-GENERATE (MiniMax H3)** - make a brand-NEW clip that carries
    the source's subject, style, or motion into a NEW scene or action ("make a
    new video based on this clip", "the same cat but chasing a butterfly",
-   "another shot of this character"). The output does NOT preserve the source's
-   timeline; it is a fresh ~5s generation with native audio. Preset is
+   "another shot of this character"). This is ALSO the required mode whenever
+   the user asks to create/replace dialogue, voice, music, audio, or sound
+   effects. The output does NOT preserve the source's timeline; it is a fresh
+   ~5s generation with native audio. Preset is
    `{{Reference Video To Video (MiniMax H3) 5s.txt}}`, and the prompt MUST
    refer to the source as `<Video 1>`. The source's SOUNDTRACK is a reference
    too: up to 15s of the clip's frames and audio condition the output, so the
@@ -51,8 +55,9 @@ two distinct modes - pick by what the user wants:
    Give each reference ONE job in the prompt and unused slots simply don't
    exist - no preset switching needed.
 
-Rule of thumb: "this video, but different-looking" -> Bernini restyle.
-"A NEW video of the same subject/motion" -> H3 reference-generate.
+Rule of thumb: "this video, but different-looking, no sound requested" ->
+Bernini restyle. "A NEW video of the same subject/motion" OR any new/replaced
+speech/audio/sound -> H3 reference-generate.
 
 If the user only wants smoother playback, interpolation, or higher FPS without
 changing the pixels/content, use `rife_video` instead.
@@ -108,6 +113,8 @@ syntax is off, but prefer the explicit `attachment2` / `chat_image2` form.
 Bernini keeps the source video's motion and timing; the prompt describes what
 should CHANGE and what should stay. Lead with the transformation (style,
 setting, wardrobe, lighting), then state what motion / framing to preserve.
+Do not put spoken lines, music, audio, or sound effects in a Bernini prompt;
+use the H3 Reference Video To Video preset for those requests.
 
 - 4-8 sentences, single flowing paragraph.
 - Restate the visible subject so the edit stays anchored (apparent age, build,
@@ -160,10 +167,11 @@ Two reference clips - subject from one, camera/music from the other:
 
 - v2v source must be a VIDEO (a "Movie #N" bubble or a chained movie), not a still
   image. If the user only has a still, use image_to_movie.
-- Restyle/edit (keep the timeline) -> `{{Video To Video (Bernini).txt}}` - the host
+- Visual-only restyle/edit (keep the timeline, silent result) -> `{{Video To Video (Bernini).txt}}` - the host
   swaps to the reference-guided workflow automatically when you add a `chat_image2`
-  still. NEW clip from the source's subject/motion -> `{{Reference Video To Video (MiniMax H3) 5s.txt}}`
-  with `<Video 1>` in the prompt. Pick by intent; never mix the two presets up.
+  still. NEW clip from the source's subject/motion, or any new dialogue/voice/audio/
+  music/sound effect -> `{{Reference Video To Video (MiniMax H3) 5s.txt}}` with
+  `<Video 1>` in the prompt. Pick by intent; never mix the two presets up.
 - To inject a face/character/style from a still: Bernini uses ONE `chat_image2`
   still; the H3 reference presets take up to nine (`chat_image2`..`chat_image10`
   -> `<Picture 1>`..`<Picture 9>`) plus optionally a second MOVIE in `chat_image2`

@@ -1,11 +1,11 @@
 ---
 id: image_to_image
-summary: Edit / compose an image with a prompt (Klein, Flux 2 family by default; ByteDance Bernini-R is ALSO available for single-image edits when the user explicitly says "bernini" - Bernini does image editing too, not just video). Pick the preset by INPUT COUNT (1/2/3/4/5 Input) - one input per distinct REFERENCE image. Klein wants NARRATIVE PROSE (40-70 words total), NOT keyword soup or repeated "Keep X identical" boilerplate. Reference each subject by SLOT NUMBER (image 1, image 2, ...) - NEVER by chat name (Klein has no chat history). Multi-person scenes need (a) "maintaining exact likeness of image N's face, hair, build" as a concise identity clause per slot, (b) PER-SUBJECT PLACEMENT ("image 1's man on the left holding a mug, image 2's woman on the right beside the tree"), and (c) explicit left-to-right ordering. Generic "all four together smiling" produces vague placement - place each subject individually. Result spawns as a new image; originals unchanged.
+summary: Edit / compose a STILL image with a prompt (Klein/Flux 2 by default; Bernini-R only when explicitly named). Pick the preset by INPUT COUNT (1-5), one input per distinct reference. Klein wants 40-70 words of narrative prose, slot-number references, concise identity locks, per-subject placement, and explicit left-to-right ordering. A Movie #N is NOT a still source by default: scene/motion/dialogue/audio edits use video_to_video. Only when the user explicitly requests one still/current frame may image_to_image target a Movie, and the action must include movie_frame="true". Result spawns as a new still; originals remain unchanged.
 inputs: attachment
 autoload: true
 triggers: edit the image, edit this image, modify the image, alter the image, change the image, tweak the image, adjust the image, retouch, refine the image, transform the image, restyle, restyle as, redraw, repaint, change the pose, change her pose, change his pose, new pose, different pose, dress her, dress him, undress, replace the, swap the, swap out, remove from the image, in the style of, them together, all together, side by side, group photo of them, group shot of, all three of them, all four of them, all five of them, both of them in, the two of them in, in one image, all in one, use them as anchors, use these as anchors, combine them, combine these, put them together, put them all, put all of them, scene with them, scene with all, posing together, line them up, hanging out together
 exclude_triggers: generate a brand new, brand new image, fresh image of a, fresh image from scratch, picture from scratch
-template: <aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 1 Input.txt}}" prompt="<narrative prose, 40-70 words. For multi-input: name each subject by slot, give each a placement, end with scene + lighting. See examples below.>" chat_image="N"/>  # 1-INPUT (default): one source via chat_image / attachment / chain. For multi-input use preset="{{Image To Image Klein Edit N Input.txt}}" with chat_image2..chat_image5 (or attachment2..attachment5). Pick N = EXACT count of references you're feeding (4 people -> 4 Input). 5 Input is the absolute maximum.
+template: <aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 1 Input.txt}}" prompt="<narrative prose, 40-70 words. For multi-input: name each subject by slot, give each a placement, end with scene + lighting.>" chat_image="N"/>  # STILL sources only. A Movie source is allowed only for an explicit single-frame/current-frame request and requires movie_frame="true". For multi-input use the N Input preset with chat_image2..chat_image5; N must equal the exact reference count.
 ---
 # Image-to-image (Klein / Flux 2 edit family)
 
@@ -192,6 +192,12 @@ Specify EXACTLY ONE primary source:
 - `chain="true"` - output of a generate-class action emitted earlier in
   THIS SAME reply. Do not also pass attachment / chat_image with it.
 
+A `Movie #N` bubble is not an ordinary image source. Use `video_to_video` for
+any scene, motion, dialogue, voice, audio, or sound change. Only when the user
+explicitly asks for a single still/current frame may `image_to_image` point at
+the Movie; add `movie_frame="true"` to make that opt-in explicit. The executor
+rejects an unmarked Movie-to-still action instead of silently grabbing a frame.
+
 Extra slots (for N-Input presets) go in `chat_image2`..`chat_image5` or
 `attachment2`..`attachment5` (each may be a number or an anchor name).
 `chat_image{N}` wins over `attachment{N}`.
@@ -331,6 +337,8 @@ That last example is ~80 words - on the high side but acceptable for
 ## Rules summary
 
 - Pick exactly ONE primary source.
+- Movie sources require an explicit still/current-frame request plus
+  `movie_frame="true"`; all other Movie edits use video_to_video.
 - Recurring characters: feed them by anchor NAME in `chat_image*`
   (`chat_image="Elias"`); the prose still refers to "image 1", "image 2".
 - Never feed a downstream composite as the anchor; names already prevent
