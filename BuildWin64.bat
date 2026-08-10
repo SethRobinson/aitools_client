@@ -5,7 +5,6 @@ SET FILENAME=%APP_NAME%
 :Actually do the unity build
 rmdir build\win /S /Q
 mkdir build\win
-call GenerateBuildDate.bat
 echo Building project...
 
 :So let's delete these things from the shared stuff that we don't need in this kind of build? (remove the : in front to delete)
