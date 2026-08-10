@@ -37,6 +37,8 @@ using UnityEngine;
 //   POST /chat        -> body = message text; open chat + send one turn (ok:false if a busy gate refused the send)
 //   POST /chat_import_video -> body: path=<file>, optional start=<seconds>, duration=<seconds>, fps=<n>, audio=<true|false>; import clipped Movie bubble
 //   POST /chat_import_image -> body: path=<file>; import a local still image as a "#N (you)" bubble
+//   POST /chat_attach -> body: path=<file>; stage a still as a PENDING attachment for the next /chat send
+//   POST /chat_main_llm -> body: name=<instance-name substring|default>; select the footer Main LLM override
 //   POST /chat_compact -> body: mode=<summarize|truncate> (default summarize), keep=<n> exchanges kept (default 2); runs AI Chat's Compact
 //   GET  /chat_images -> JSON array: index/w/h/busy/movie for each chat image
 //   POST /save        -> body: index=<n|latest>, path=<file>; save chat image PNG
@@ -320,6 +322,44 @@ public static class AutomationController
                         bool ok = AutomationBridge.ImportChatImage(imagePath, out string err);
                         return ok
                             ? $"{{\"ok\":true,\"accepted\":\"chat_import_image\",\"path\":{JsonStr(imagePath)}}}"
+                            : $"{{\"ok\":false,\"error\":{JsonStr(err)}}}";
+                    }, "{\"ok\":false,\"error\":\"timed out\"}");
+                    WriteJson(stream, 200, result);
+                    break;
+                }
+
+                case "/chat_main_llm":
+                {
+                    // Body: key=value lines. name=<instance-name substring|default>.
+                    // Selects the footer "Main LLM" override (persists like the dropdown;
+                    // tests should restore "default" or the prior instance when done).
+                    var kv = ParseKeyValues(body);
+                    string llmName = kv.TryGetValue("name", out var ln) ? ln : "default";
+                    string result = RunOnMainAndWait(() =>
+                    {
+                        bool ok = AutomationBridge.SetChatMainLLM(llmName, out string applied, out string err);
+                        return ok
+                            ? $"{{\"ok\":true,\"accepted\":\"chat_main_llm\",\"applied\":{JsonStr(applied)}}}"
+                            : $"{{\"ok\":false,\"error\":{JsonStr(err)}}}";
+                    }, "{\"ok\":false,\"error\":\"timed out\"}");
+                    WriteJson(stream, 200, result);
+                    break;
+                }
+
+                case "/chat_attach":
+                {
+                    // Body: key=value lines. path=<file>. Stages the image as a PENDING
+                    // attachment on the next /chat send - the REAL attachment path
+                    // (thumbnail strip, caption sidecar, attachment="N" resolution),
+                    // unlike /chat_import_image which promotes straight to a bubble.
+                    var kv = ParseKeyValues(body);
+                    string attachPath = kv.TryGetValue("path", out var ap) ? ap : "";
+                    string result = RunOnMainAndWait(() =>
+                    {
+                        AutomationBridge.OpenChat();
+                        bool ok = AutomationBridge.StageChatAttachment(attachPath, out string err);
+                        return ok
+                            ? $"{{\"ok\":true,\"accepted\":\"chat_attach\",\"path\":{JsonStr(attachPath)}}}"
                             : $"{{\"ok\":false,\"error\":{JsonStr(err)}}}";
                     }, "{\"ok\":false,\"error\":\"timed out\"}");
                     WriteJson(stream, 200, result);

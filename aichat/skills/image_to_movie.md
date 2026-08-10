@@ -4,7 +4,7 @@ summary: Animate a STILL image into a short video. Default to MiniMax H3 Image T
 inputs: attachment
 autoload: true
 triggers: animate, animation, image to video, image-to-video, image to movie, image-to-movie, animate this, animate it, make this move, make it move, make a video, make a movie, make a clip, create a video, create a movie, generate a video, generate a movie, video starring, movie starring, video of, movie of, second video, second movie, reference to video, using wan, use wan, with wan, wan 2.2, wan2.2, wan22, using ltx, use ltx, with ltx, ltx 2.3, minimax, mini max, minmax, minimax h3, minmax h3, h3, hailuo, spectrum, turbo cache, spectrum cache
-template: <aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3) 5s.txt}}" prompt="motion + camera + one short quoted dialog line + ambient sound" chat_image="N"/>  # STILL sources only. To use an explicit current frame from a Movie add movie_frame="true"; otherwise existing Movies require video_to_video. Use LTX only when requested/fastest and WAN when requested/silent.
+template: <aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3) 5s.txt}}" prompt="motion + camera + one short quoted dialog line + ambient sound" chat_image="N"/>  # STILL sources only. attachment= works only in the very message the user pasted the image in; on later turns use chat_image="N" (the paste's bubble number). To use an explicit current frame from a Movie add movie_frame="true"; otherwise existing Movies require video_to_video. Use LTX only when requested/fastest and WAN when requested/silent.
 ---
 # Image-to-movie
 
@@ -20,7 +20,9 @@ still first", or a named `Prompt To Video ...` preset.
 
 Specify EXACTLY ONE source via:
 
-- `attachment="N"` - the Nth image pasted INTO THE CURRENT message (1-based).
+- `attachment="N"` - the Nth image pasted INTO THE CURRENT message (1-based,
+  per-message; NOT the bubble number, and invalid on any later turn - use
+  chat_image then).
 - `chat_image="N"` - the Nth STILL chat-image bubble already in this
   conversation. Use when the user says "animate the image you just made";
   the CHAT IMAGES line in the system prompt shows the highest N reachable.

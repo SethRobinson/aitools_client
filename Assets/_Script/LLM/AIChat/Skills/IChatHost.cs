@@ -168,6 +168,51 @@ namespace AITools.AIChat.Skills
         int GetLatestChatImageIndex();
 
         /// <summary>
+        /// Highest currently tracked chat_image index whose world Pic still exists AND
+        /// is not a Movie (spawn-time record flag or live movie state), or 0 if none.
+        /// Implicit-source fallback for still-input skills (image_to_image /
+        /// image_to_movie), so "the latest image" never silently resolves to a movie's
+        /// poster frame.
+        /// </summary>
+        int GetLatestStillChatImageIndex();
+
+        /// <summary>
+        /// Resolve the Nth attachment (1-based) of the MOST RECENT paste group to its
+        /// CURRENT chat_image slot, or 0 if unknown/destroyed. Unlike
+        /// <see cref="GetTurnAttachmentBytes"/> this survives later sends and synthetic
+        /// continue turns, so a stale <c>attachment="N"</c> emitted turns after the
+        /// paste can be rewritten to the bubble the model actually meant.
+        /// </summary>
+        int ResolvePasteAttachmentToChatIndex(int oneBasedAttachment);
+
+        /// <summary>
+        /// True if the Nth chat image slot was created from a user-pasted attachment.
+        /// Used to catch the "model copied the bubble number into attachment=" mistake.
+        /// </summary>
+        bool IsChatImageUserAttachment(int oneBasedIndex);
+
+        /// <summary>
+        /// True if the Nth chat image slot is a Movie bubble, including one whose clip
+        /// is STILL RENDERING (spawn-time record flag) - unlike
+        /// <see cref="GetChatImageMovieFilePath"/>, which is null until the clip file
+        /// exists. Use for movie-vs-still routing decisions.
+        /// </summary>
+        bool IsChatImageMovie(int oneBasedIndex);
+
+        /// <summary>
+        /// Same movie test for a Pic reference (e.g. a chain target) instead of a slot
+        /// number: spawn-time record flag OR live PicMovie state.
+        /// </summary>
+        bool IsChatPicMovie(PicMain pic);
+
+        /// <summary>
+        /// CURRENT 1-based chat_image slot of a tracked Pic, or 0 if it isn't a chat
+        /// image (or was destroyed). Robust against media-trim renumbering; used when a
+        /// correction note must name a bubble's real number.
+        /// </summary>
+        int GetChatImageIndexForPic(PicMain pic);
+
+        /// <summary>
         /// Best-effort request to make the Nth chat image readable by
         /// <see cref="GetChatImagePngBytes"/>. Returns true if the slot exists and is
         /// either already readable or a reload/preparation was started. Returns false

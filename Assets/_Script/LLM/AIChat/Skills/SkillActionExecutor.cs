@@ -562,8 +562,15 @@ namespace AITools.AIChat.Skills
                     $"Skill '{action.SkillId}' was emitted without a prompt attribute (or it was empty). " +
                     "Generate-class skills must carry a non-empty prompt - the chat does NOT inherit prompt text " +
                     "from the main GUI. Re-emit with the prompt filled in. Template:\n  " + template);
+                _host?.RequestContinueTurn();
                 return;
             }
+
+            // Rewrite STALE attachment="N" refs (this turn has no live attachments, so
+            // the model means an EARLIER paste) to the bubble it actually meant, BEFORE
+            // the movie gate and chain inference below read the source attributes.
+            // Never touches the same-turn attachment flow.
+            NormalizeStaleAttachmentRefs(action, useAttachment);
 
             // Movie bubbles expose their current frame as PNG bytes for the legitimate
             // "use this exact frame as a still/start frame" workflow. That permissive
@@ -669,7 +676,9 @@ namespace AITools.AIChat.Skills
                             _host?.AddSystemInjectionAndBubble(
                                 $"Skill '{action.SkillId}': chat_image=\"{chatN}\" is not available. " +
                                 $"There are {chatImageCount} numbered chat image slot(s) this session. " +
-                                $"Use a smaller index, ask the user to paste an image, or use generate_image instead.");
+                                DescribeUserAttachmentBubbles() +
+                                $"Re-emit with a valid chat_image=\"N\", ask the user to paste an image, or use generate_image instead.");
+                            _host?.RequestContinueTurn();
                             return;
                         }
                         attachmentBytes = fallbackBytes;
@@ -681,21 +690,79 @@ namespace AITools.AIChat.Skills
                     attachmentBytes = _host?.GetTurnAttachmentBytes(idx);
                     if (attachmentBytes == null)
                     {
+                        // Out-of-range usually means the model copied the paste's BUBBLE
+                        // number from its [Attached Image chat_image="K"] header into
+                        // attachment=. If idx matches the bubble slot of one of THIS
+                        // turn's pastes, use that paste instead of failing.
+                        for (int a = 1; a <= turnAttachCount && attachmentBytes == null; a++)
+                        {
+                            if ((_host?.ResolvePasteAttachmentToChatIndex(a) ?? 0) != idx)
+                                continue;
+                            attachmentBytes = _host?.GetTurnAttachmentBytes(a);
+                            if (attachmentBytes != null)
+                            {
+                                AIChatLog.Note("source_fix",
+                                    $"{action.SkillId}: attachment=\"{idx}\" was the bubble number - used this turn's attachment {a}");
+                                _host?.AddInfoBubble(
+                                    $"(attachment=\"{idx}\" is the paste's bubble number - used this turn's attachment {a}, which is chat_image=\"{idx}\", for {action.SkillId})");
+                            }
+                        }
+                    }
+                    if (attachmentBytes == null)
+                    {
                         _host?.AddSystemInjectionAndBubble(
-                            $"Skill '{action.SkillId}' wanted attachment={idx} but the user only attached {turnAttachCount} image(s) this turn. " +
-                            $"Use attachment=\"1\" to reference the first one.");
+                            $"Skill '{action.SkillId}' wanted attachment={idx} but the user only attached {turnAttachCount} image(s) this turn " +
+                            $"(attachment indexes are per-message, 1..{turnAttachCount}). " +
+                            DescribeTurnPasteBubbles(turnAttachCount) +
+                            "Re-emit the action with the correct source.");
+                        _host?.RequestContinueTurn();
                         return;
                     }
                 }
                 else if (chatImageCount > 0)
                 {
-                    int implicitIdx = _host?.GetLatestChatImageIndex() ?? 0;
-                    if (implicitIdx <= 0)
+                    // A stale attachment="N" that normalization could NOT resolve means we
+                    // have no idea which image the model meant - the old "substitute the
+                    // latest bubble" guess animated the wrong media in practice (often the
+                    // just-spawned Movie). Name the usable numbers and let the model
+                    // correct itself in this same reply.
+                    if (action.AttachmentIndex.HasValue)
                     {
                         _host?.AddSystemInjectionAndBubble(
-                            $"Skill '{action.SkillId}' needs the user to paste an image into the chat first " +
-                            "(or you can reference an earlier chat image once one exists, via chat_image=\"N\"). " +
-                            "There are no live chat images right now.");
+                            $"Skill '{action.SkillId}': attachment=\"{action.AttachmentIndex.Value}\" can't be resolved - attachment indexes are per-message and the user attached nothing THIS turn. " +
+                            DescribeUserAttachmentBubbles() +
+                            $"Re-emit with chat_image=\"N\" (1..{chatImageCount}) instead; attachment= will not work on your continue turn either.");
+                        _host?.RequestContinueTurn();
+                        return;
+                    }
+
+                    // For still-input skills, "the latest image" must skip Movie bubbles:
+                    // the newest slot is often the clip the model JUST queued, and its
+                    // poster/placeholder frame is never the intended img2img/img2vid source.
+                    string skillLower = action.SkillId?.ToLowerInvariant() ?? "";
+                    bool wantsStillSource = (skillLower == BuiltInSkillIds.ImageToImage || skillLower == BuiltInSkillIds.ImageToMovie)
+                        && !ParseBool(action.GetArg("movie_frame"), false);
+                    int implicitIdx = wantsStillSource
+                        ? (_host?.GetLatestStillChatImageIndex() ?? 0)
+                        : (_host?.GetLatestChatImageIndex() ?? 0);
+                    if (implicitIdx <= 0)
+                    {
+                        if (wantsStillSource && (_host?.GetLatestChatImageIndex() ?? 0) > 0)
+                        {
+                            // Live media exists, but it's all Movies.
+                            _host?.AddSystemInjectionAndBubble(
+                                $"Skill '{action.SkillId}' has no still-image source: the only live chat media are Movies. " +
+                                "For scene, motion, dialogue, or audio changes re-emit video_to_video with the Movie's chat_image=\"N\". " +
+                                $"Only for an explicit single-frame request, re-emit {action.SkillId} with movie_frame=\"true\" and the Movie's chat_image.");
+                        }
+                        else
+                        {
+                            _host?.AddSystemInjectionAndBubble(
+                                $"Skill '{action.SkillId}' needs the user to paste an image into the chat first " +
+                                "(or you can reference an earlier chat image once one exists, via chat_image=\"N\"). " +
+                                "There are no live chat images right now.");
+                        }
+                        _host?.RequestContinueTurn();
                         return;
                     }
 
@@ -705,20 +772,27 @@ namespace AITools.AIChat.Skills
                         // Same-reply pair: the LLM emitted (e.g.) generate_image then a
                         // bare image_to_movie without chain="true". We can't safely
                         // auto-pick a chat_image because the just-spawned Pic isn't a
-                        // numbered bubble yet - point the LLM at chain="true" and let it
-                        // re-roll on the next turn.
+                        // numbered bubble yet - point the LLM at the real slot number
+                        // (chain state is reset before its continue turn, so "add
+                        // chain=\"true\"" would be dead advice there).
+                        int spawnedIdx = _host?.GetChatImageIndexForPic(_host?.GetLastSpawnedPicForTurn()) ?? 0;
+                        string spawnedRef = spawnedIdx > 0
+                            ? $"The image you just generated is chat_image=\"{spawnedIdx}\" - re-emit with that. "
+                            : "Re-emit with chain=\"true\" to stack onto the image you just generated (do not also pass chat_image / attachment). ";
                         _host?.AddSystemInjectionAndBubble(
                             $"Skill '{action.SkillId}' has no input image. " +
-                            "If you meant to stack this onto the image you JUST generated earlier in this same reply, add chain=\"true\" instead (do not also pass chat_image / attachment with chain=\"true\"). " +
+                            spawnedRef +
                             $"Otherwise reference an existing chat bubble via chat_image=\"N\" (1..{chatImageCount}).");
+                        _host?.RequestContinueTurn();
                         return;
                     }
 
                     // Standalone reply (e.g. follow-up "turn it into a video") - the LLM
                     // forgot chat_image="N" but there's only one reasonable target: the
-                    // most recent chat image. Fall back to it instead of erroring; this
-                    // is the single most common LLM omission with smaller models, and
-                    // failing strictly here breaks the user's flow for no real benefit.
+                    // most recent (still, for still-input skills) chat image. Fall back to
+                    // it instead of erroring; this is the single most common LLM omission
+                    // with smaller models, and failing strictly here breaks the user's
+                    // flow for no real benefit.
                     action.Args["chat_image"] = implicitIdx.ToString();
                     if (!TryResolveChatImageBytesOrDefer(action, action.SkillId, "implicit chat_image", implicitIdx, out attachmentBytes, out bool deferred))
                     {
@@ -728,9 +802,10 @@ namespace AITools.AIChat.Skills
                         _host?.AddSystemInjectionAndBubble(
                             $"Skill '{action.SkillId}': implicit chat_image=\"{implicitIdx}\" is no longer available (the world Pic may have been deleted). " +
                             $"Use a smaller chat_image=\"N\" index, or ask the user to paste a new image.");
+                        _host?.RequestContinueTurn();
                         return;
                     }
-                    _host?.AddInfoBubble($"(auto-picked chat_image=\"{implicitIdx}\" - the latest image - as the source for {action.SkillId})");
+                    _host?.AddInfoBubble($"(auto-picked chat_image=\"{implicitIdx}\" - the latest {(wantsStillSource ? "still image" : "image")} - as the source for {action.SkillId})");
                 }
                 else
                 {
@@ -743,6 +818,7 @@ namespace AITools.AIChat.Skills
                         $"(or you can reference an earlier chat image once one exists, via chat_image=\"N\"). " +
                         chainHint +
                         "There are no chat images right now.");
+                    _host?.RequestContinueTurn();
                     return;
                 }
             }
@@ -864,6 +940,7 @@ namespace AITools.AIChat.Skills
                     $"Skill '{action.SkillId}' is missing the required preset attribute. " +
                     $"Copy the Template line from the SKILLS block and only change the prompt:\n" +
                     $"  {template}");
+                _host?.RequestContinueTurn();
                 return;
             }
 
@@ -874,6 +951,7 @@ namespace AITools.AIChat.Skills
                 _host?.AddSystemInjectionAndBubble(
                     $"Skill '{action.SkillId}': preset '{preset}' was not found in Presets/. " +
                     "Re-pick from the list shown in your skill description.");
+                _host?.RequestContinueTurn();
                 return;
             }
             if (presetFuzzy)
@@ -1354,6 +1432,94 @@ namespace AITools.AIChat.Skills
             }
         }
 
+        /// <summary>
+        /// Rewrite a STALE <c>attachment="N"</c> (emitted on a turn with no live
+        /// attachments - the paste happened on an EARLIER turn, or this is a synthetic
+        /// continue turn, which always clears the per-turn attachment list) to the
+        /// chat_image slot the model actually meant. Two deterministic rules, in order:
+        ///   1. attachment "N" of the MOST RECENT paste group -> that paste's current bubble.
+        ///   2. N is itself the bubble number of a user-pasted image -> that bubble
+        ///      (the model copied the number from the [Attached Image chat_image="N"] header).
+        /// Anything else is left in place for the failure paths, which auto-continue
+        /// with the usable numbers. Never runs while this turn HAS attachments, so the
+        /// normal same-turn attachment flow is untouched.
+        /// </summary>
+        private void NormalizeStaleAttachmentRefs(SkillAction action, bool useAttachment)
+        {
+            if (action == null || _host == null) return;
+            if (_host.GetTurnAttachmentCount() > 0) return;
+
+            if (useAttachment && action.AttachmentIndex.HasValue && !action.ChatImageIndex.HasValue)
+            {
+                int n = action.AttachmentIndex.Value;
+                int resolved = _host.ResolvePasteAttachmentToChatIndex(n);
+                if (resolved <= 0 && _host.IsChatImageUserAttachment(n))
+                    resolved = n;
+                if (resolved > 0)
+                {
+                    action.Args["chat_image"] = resolved.ToString();
+                    action.Args.Remove("attachment");
+                    AIChatLog.Note("source_fix",
+                        $"{action.SkillId}: stale attachment=\"{n}\" resolved to chat_image=\"{resolved}\"");
+                    _host.AddInfoBubble(
+                        $"(attachment=\"{n}\" was pasted on an earlier turn - resolved it to that paste's bubble, chat_image=\"{resolved}\", for {action.SkillId})");
+                }
+            }
+
+            // Extra slots (attachment2..N on Klein multi-input / H3 reference presets).
+            for (int slot = 2; slot <= SkillAction.MaxExtraInputSlot; slot++)
+            {
+                int? attachN = action.GetExtraAttachmentIndex(slot);
+                if (!attachN.HasValue || action.GetExtraChatImageIndex(slot).HasValue) continue;
+                int resolved = _host.ResolvePasteAttachmentToChatIndex(attachN.Value);
+                if (resolved <= 0 && _host.IsChatImageUserAttachment(attachN.Value))
+                    resolved = attachN.Value;
+                if (resolved > 0)
+                {
+                    action.Args["chat_image" + slot] = resolved.ToString();
+                    action.Args.Remove("attachment" + slot);
+                    _host.AddInfoBubble(
+                        $"(attachment{slot}=\"{attachN.Value}\" was pasted on an earlier turn - resolved to chat_image{slot}=\"{resolved}\")");
+                }
+            }
+        }
+
+        /// <summary>
+        /// "Those pastes are chat_image=..." fragment for correction notes about THIS
+        /// turn's paste group. Continue turns clear the per-turn attachment list, so a
+        /// note must name chat_image numbers - "use attachment=1" would fail again.
+        /// Empty string when nothing resolves.
+        /// </summary>
+        private string DescribeTurnPasteBubbles(int turnAttachCount)
+        {
+            var nums = new List<string>();
+            for (int a = 1; a <= turnAttachCount; a++)
+            {
+                int k = _host?.ResolvePasteAttachmentToChatIndex(a) ?? 0;
+                if (k > 0) nums.Add($"\"{k}\"");
+            }
+            return nums.Count > 0
+                ? $"Those pastes are chat_image={string.Join(", ", nums)} - reference them that way. "
+                : "";
+        }
+
+        /// <summary>
+        /// "The user's pasted images are chat_image=..." fragment listing the newest
+        /// live user-attachment bubbles, for correction notes when a source ref could
+        /// not be resolved at all. Empty string when none exist.
+        /// </summary>
+        private string DescribeUserAttachmentBubbles(int maxToList = 4)
+        {
+            int count = _host?.GetChatImageCount() ?? 0;
+            var nums = new List<string>();
+            for (int i = count; i >= 1 && nums.Count < maxToList; i--)
+                if (_host?.IsChatImageUserAttachment(i) == true)
+                    nums.Insert(0, $"\"{i}\"");
+            return nums.Count > 0
+                ? $"The user's pasted images are chat_image={string.Join(", ", nums)} (newest last). "
+                : "";
+        }
+
         private bool RejectImplicitMovieFrameAction(SkillAction action, bool usesChainTarget)
         {
             if (action == null)
@@ -1370,9 +1536,13 @@ namespace AITools.AIChat.Skills
             bool chainTargetIsSource = chainTarget != null;
             // A real same-reply chain target wins over a redundant chat_image. The
             // chained executor deliberately drops that stray primary attribute later.
+            // Movie-ness comes from the spawn-time record flag OR live state
+            // (IsChatImageMovie/IsChatPicMovie), NOT GetChatImageMovieFilePath: a Movie
+            // whose clip is STILL RENDERING has no file yet, and probing the file let
+            // such actions slip past this gate into a multi-minute defer.
             bool sourceIsMovie = chainTargetIsSource
-                ? chainTarget.IsMovie()
-                : chatN > 0 && !string.IsNullOrEmpty(_host?.GetChatImageMovieFilePath(chatN));
+                ? (_host?.IsChatPicMovie(chainTarget) ?? chainTarget.IsMovie())
+                : chatN > 0 && (_host?.IsChatImageMovie(chatN) ?? false);
             if (!sourceIsMovie)
                 return false;
 
@@ -1645,6 +1815,7 @@ namespace AITools.AIChat.Skills
                         $"Skill '{action.SkillId}': {chatKey}=\"{chatN}\" is not available. " +
                         $"There are {chatImageCount} numbered chat image slot(s) this session. " +
                         $"Use a smaller index, or drop {chatKey} if an input at slot {slot} isn't needed.");
+                    _host?.RequestContinueTurn();
                     errored = true;
                     return null;
                 }
@@ -1657,8 +1828,11 @@ namespace AITools.AIChat.Skills
             if (aBytes == null)
             {
                 _host?.AddSystemInjectionAndBubble(
-                    $"Skill '{action.SkillId}' wanted {attachKey}=\"{attachN}\" but the user only attached {turnAttachCount} image(s) this turn. " +
-                    $"Use a smaller index, or drop {attachKey} if an input at slot {slot} isn't needed.");
+                    $"Skill '{action.SkillId}' wanted {attachKey}=\"{attachN}\" but the user only attached {turnAttachCount} image(s) this turn " +
+                    "(attachment indexes are per-message). " +
+                    DescribeTurnPasteBubbles(turnAttachCount) +
+                    $"Use a valid index, or drop {attachKey} if an input at slot {slot} isn't needed.");
+                _host?.RequestContinueTurn();
                 errored = true;
                 return null;
             }
@@ -4120,6 +4294,7 @@ namespace AITools.AIChat.Skills
                         $"Skill '{skillId}': {argName}=\"{chatN}\" exists but could not be reloaded for reading. " +
                         $"There are {chatImageCount} numbered chat image slot(s) this session. " +
                         "Try focusing that Pic on the main canvas, or ask the user to paste the image again.");
+                    _host?.RequestContinueTurn();
                 }
             }
             finally
@@ -4138,9 +4313,18 @@ namespace AITools.AIChat.Skills
             if (_host?.GetLastSpawnedPicForTurn() != null)
                 return null;
 
+            // Still-input skills must not be rescued onto a Movie bubble: this path reads
+            // raw bytes with no movie gate, so "latest" being a Movie would silently
+            // animate/edit its poster frame. Fall back to the latest STILL instead.
+            string skillLower = skillId?.ToLowerInvariant() ?? "";
+            bool wantsStillSource = (skillLower == BuiltInSkillIds.ImageToImage || skillLower == BuiltInSkillIds.ImageToMovie)
+                && !ParseBool(action?.GetArg("movie_frame"), false);
+
             int fallbackIndex = -1;
             if (requestedIndex == chatImageCount + 1)
-                fallbackIndex = _host?.GetLatestChatImageIndex() ?? 0;
+                fallbackIndex = wantsStillSource
+                    ? (_host?.GetLatestStillChatImageIndex() ?? 0)
+                    : (_host?.GetLatestChatImageIndex() ?? 0);
 
             if (fallbackIndex <= 0)
                 return null;

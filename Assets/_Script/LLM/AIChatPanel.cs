@@ -107,6 +107,15 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // even after ChatImageAttachmentZone has cleared its own thumbnail strip.
     private List<byte[]> _lastTurnAttachments = new List<byte[]>();
 
+    // The PicMains the MOST RECENT paste group was promoted into, parallel to
+    // _lastTurnAttachments (position k-1 = attachment "k"; null = that attachment
+    // failed to decode/promote). Unlike _lastTurnAttachments this survives synthetic
+    // continue turns and later sends, so a stale attachment="N" emitted turns after
+    // the paste can still be resolved deterministically to the bubble the model
+    // meant. Stores Pic REFERENCES, not slot numbers, for the same renumbering
+    // reason as _anchors; dead refs simply fail to resolve.
+    private readonly List<PicMain> _lastPasteGroupPics = new List<PicMain>();
+
     // Tracks "Info" bubbles (warnings/notes from skill execution, etc.) so that on
     // the user's NEXT send we can quietly recap any messages the LLM hasn't already
     // seen - giving it a chance to learn from its own mistakes without forcing the
@@ -3845,7 +3854,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             {
                 var info = attachmentInfos[i];
                 if (info.bytes == null) continue;
-                int chatIdx = firstChatIdx + i;
+                // Both indices derive from the count of non-null attachments so far, so a
+                // skipped (null-bytes) entry can't shift the numbering: attachIdx is the
+                // per-message index GetTurnAttachmentBytes uses, chatIdx the permanent
+                // bubble number PromoteAttachmentsToChatImages will assign.
+                int attachIdx = _lastTurnAttachments.Count + 1;
+                int chatIdx = firstChatIdx + attachIdx - 1;
                 if (includeBytes)
                     _promptManager.AddPendingImage(System.Convert.ToBase64String(info.bytes), chatIdx);
                 _lastTurnAttachments.Add(info.bytes);
@@ -3854,7 +3868,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 // The long description follows on its own indented line so the
                 // LLM has the full ~200-word context for THIS turn without
                 // visually drowning the user's typed message.
-                metadataBlock.Append("[Attached Image #").Append(chatIdx);
+                // The PERMANENT chat_image number leads and the per-message
+                // attachment index is explicitly scoped: models kept copying the
+                // bubble number into attachment= (which restarts at 1 each message),
+                // silently killing the action on later turns.
+                metadataBlock.Append("[Attached Image chat_image=\"").Append(chatIdx)
+                    .Append("\" (attachment=\"").Append(attachIdx).Append("\" this message only)");
                 if (info.width > 0 && info.height > 0)
                     metadataBlock.Append(", ").Append(info.width).Append('x').Append(info.height);
                 metadataBlock.Append(", PNG");
@@ -4425,6 +4444,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _sentAutoloadSkillBodies.Clear();
         _attachmentZone?.ClearAttachments();
         _lastTurnAttachments?.Clear();
+        _lastPasteGroupPics.Clear();
         _chatImagePics?.Clear();
         _chatImageRecords?.Clear();
         _anchors?.Clear();
@@ -7090,6 +7110,54 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         return inst != null && inst.isActive && inst.maxConcurrentTasks > 0 && inst.settings != null;
     }
 
+    /// <summary>
+    /// Automation seam: select the footer "Main LLM" override by instance-name
+    /// substring (case-insensitive), or restore normal routing with "default".
+    /// Same state the dropdown writes (PlayerPrefs-backed), so scripted tests that
+    /// change it should set it back to "default" (or the prior instance) when done.
+    /// </summary>
+    public static bool SetMainLLMOverrideByName(string nameSubstringOrDefault, out string applied, out string error)
+    {
+        applied = null;
+        error = null;
+        Show();
+        if (_instance == null)
+        {
+            error = "no chat panel";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(nameSubstringOrDefault)
+            || nameSubstringOrDefault.Trim().Equals("default", StringComparison.OrdinalIgnoreCase))
+        {
+            SetMainLLMOverrideInstanceID(MAIN_LLM_DEFAULT_ID);
+            _instance.RefreshMainLLMDropdownOptions();
+            applied = "Default";
+            return true;
+        }
+
+        var manager = LLMInstanceManager.Get();
+        if (manager == null)
+        {
+            error = "no LLM instance manager";
+            return false;
+        }
+
+        string needle = nameSubstringOrDefault.Trim();
+        foreach (var inst in manager.GetAllInstances())
+        {
+            if (!IsSelectableMainLLMInstance(inst)) continue;
+            if ((inst.name ?? "").IndexOf(needle, StringComparison.OrdinalIgnoreCase) < 0) continue;
+            SetMainLLMOverrideInstanceID(inst.instanceID);
+            _instance.RefreshMainLLMDropdownOptions();
+            applied = BuildMainLLMOptionText(inst);
+            return true;
+        }
+
+        error = "no active LLM instance matches: " + needle;
+        return false;
+    }
+
     private static string BuildMainLLMOptionText(LLMInstanceInfo inst)
     {
         if (inst == null) return "Unknown";
@@ -7778,21 +7846,33 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         var imageGen = ImageGenerator.Get();
         if (imageGen == null) return;
 
+        // This IS the new paste group. Positions must stay parallel to
+        // _lastTurnAttachments (which skips only null-bytes entries), so any
+        // non-null attachment that fails to promote records a null placeholder.
+        _lastPasteGroupPics.Clear();
+
         foreach (var info in attachments)
         {
-            if (info.bytes == null || info.bytes.Length == 0) continue;
+            if (info.bytes == null) continue;
+            if (info.bytes.Length == 0)
+            {
+                _lastPasteGroupPics.Add(null);
+                continue;
+            }
             // Same decode pattern SkillActionExecutor uses for chat_image inputs, so
             // round-trips of the same PNG are byte-identical.
             var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
             if (!tex.LoadImage(info.bytes))
             {
                 UnityEngine.Object.Destroy(tex);
+                _lastPasteGroupPics.Add(null);
                 continue;
             }
             var go = imageGen.AddImageByTexture(tex);
-            if (go == null) continue;
+            if (go == null) { _lastPasteGroupPics.Add(null); continue; }
             var pic = go.GetComponent<PicMain>();
-            if (pic == null) continue;
+            if (pic == null) { _lastPasteGroupPics.Add(null); continue; }
+            _lastPasteGroupPics.Add(pic);
             string dims = info.width > 0 && info.height > 0 ? $"{info.width}x{info.height}" : null;
             AppendUserAttachmentBubble(pic, info.captionShort, info.captionLong, dims);
         }
@@ -8001,6 +8081,48 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     /// bubble. Fire-and-forget (extraction is async); returns false only if chat could
     /// not be opened or the source is missing.
     /// </summary>
+    /// <summary>
+    /// Automation seam: stage a local image file as a PENDING attachment on the next
+    /// user message, going through the REAL attachment-zone path (thumbnail strip,
+    /// caption sidecar, Send gating, attachment="N" resolution) - unlike
+    /// <see cref="AddLocalStillFrameToChat"/>, which promotes straight to a "#N (you)"
+    /// bubble. Lets scripted tests exercise the true attachment flow end-to-end.
+    /// </summary>
+    public static bool StageAttachmentFromFile(string path, out string error)
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            error = "no path";
+            return false;
+        }
+        if (!System.IO.File.Exists(path))
+        {
+            error = "file not found: " + path;
+            return false;
+        }
+
+        Show();
+        if (_instance == null || _instance._attachmentZone == null)
+        {
+            error = "no chat panel / attachment zone";
+            return false;
+        }
+
+        byte[] bytes;
+        try { bytes = System.IO.File.ReadAllBytes(path); }
+        catch (Exception ex) { error = "read failed: " + ex.Message; return false; }
+
+        int before = _instance._attachmentZone.GetAttachmentInfo().Count;
+        _instance._attachmentZone.AddAttachment(bytes);
+        if (_instance._attachmentZone.GetAttachmentInfo().Count <= before)
+        {
+            error = "attachment zone rejected the image (decode failure or max attachments)";
+            return false;
+        }
+        return true;
+    }
+
     public static bool AddLocalStillFrameToChat(string sourcePath, float atSeconds, string dimensions, out string error)
     {
         error = null;
@@ -8396,7 +8518,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         }
 
         string skillId = action != null ? (action.SkillId ?? "") : "";
-        bool isMovie = skillId == BuiltInSkillIds.GenerateMovie || skillId == BuiltInSkillIds.ImageToMovie;
+        // Spawn-time movie flag: must cover EVERY skill whose output renders into a
+        // movie, because IsChatImageMovie relies on this record while the clip is
+        // still rendering (PicMovie.IsMovie() stays false until the file exists).
+        bool isMovie = skillId == BuiltInSkillIds.GenerateMovie || skillId == BuiltInSkillIds.ImageToMovie
+            || skillId == BuiltInSkillIds.VideoToVideo || skillId == BuiltInSkillIds.RifeVideo;
         RegisterChatImageRecord(spawnedPic, action, isUserAttachment: false, isMovie: isMovie, dimensions: null);
         // Keep the bubble label compact so the caption (appended async below) has
         // room: just "#N". The Image/Movie kind and skillId are visually obvious
@@ -9571,6 +9697,67 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         {
             var pic = _chatImagePics[i];
             if (pic != null && pic.gameObject != null)
+                return i + 1;
+        }
+        return 0;
+    }
+
+    int IChatHost.GetLatestStillChatImageIndex()
+    {
+        if (_chatImagePics == null) return 0;
+        for (int i = _chatImagePics.Count - 1; i >= 0; i--)
+        {
+            var pic = _chatImagePics[i];
+            if (pic == null || pic.gameObject == null) continue;
+            var record = (_chatImageRecords != null && i < _chatImageRecords.Count) ? _chatImageRecords[i] : null;
+            bool isMovie = (record != null && record.isMovie) || pic.IsMovie();
+            if (!isMovie)
+                return i + 1;
+        }
+        return 0;
+    }
+
+    int IChatHost.ResolvePasteAttachmentToChatIndex(int oneBasedAttachment)
+    {
+        int idx0 = oneBasedAttachment - 1;
+        if (idx0 < 0 || idx0 >= _lastPasteGroupPics.Count) return 0;
+        var pic = _lastPasteGroupPics[idx0];
+        if (pic == null || pic.gameObject == null) return 0;
+        return ((IChatHost)this).GetChatImageIndexForPic(pic);
+    }
+
+    bool IChatHost.IsChatImageUserAttachment(int oneBasedIndex)
+    {
+        var record = GetChatImageRecord(oneBasedIndex);
+        return record != null && record.isUserAttachment;
+    }
+
+    bool IChatHost.IsChatImageMovie(int oneBasedIndex)
+    {
+        // Same "record flag OR live state" test BuildChatImageStatesForPrompt uses:
+        // the record flag is set at spawn, so a movie whose clip is still rendering
+        // (PicMovie.IsMovie() false until the file exists) still counts as a movie.
+        var record = GetChatImageRecord(oneBasedIndex);
+        if (record != null && record.isMovie) return true;
+        var pic = GetChatImagePic(oneBasedIndex);
+        return pic != null && pic.IsMovie();
+    }
+
+    bool IChatHost.IsChatPicMovie(PicMain pic)
+    {
+        if (pic == null) return false;
+        var record = FindChatImageRecord(pic);
+        if (record != null && record.isMovie) return true;
+        return pic.IsMovie();
+    }
+
+    int IChatHost.GetChatImageIndexForPic(PicMain pic)
+    {
+        if (pic == null || _chatImagePics == null) return 0;
+        for (int i = _chatImagePics.Count - 1; i >= 0; i--)
+        {
+            var candidate = _chatImagePics[i];
+            if (candidate != null && candidate == pic)
                 return i + 1;
         }
         return 0;

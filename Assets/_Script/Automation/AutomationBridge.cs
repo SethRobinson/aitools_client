@@ -107,6 +107,23 @@ public static class AutomationBridge
         return AIChatPanel.AddLocalStillFrameToChat(path, 0f, null, out error);
     }
 
+    /// <summary>Stage a local image file as a PENDING AI Chat attachment for the next
+    /// /chat send, exercising the real attachment path (thumbnail strip, captioning,
+    /// attachment="N" resolution) rather than promoting it straight to a bubble like
+    /// <see cref="ImportChatImage"/>.</summary>
+    public static bool StageChatAttachment(string path, out string error)
+    {
+        return AIChatPanel.StageAttachmentFromFile(path, out error);
+    }
+
+    /// <summary>Select AI Chat's footer "Main LLM" override by instance-name substring,
+    /// or "default" to restore normal routing. Persists like the dropdown itself, so
+    /// tests should restore the prior selection when done.</summary>
+    public static bool SetChatMainLLM(string nameOrDefault, out string applied, out string error)
+    {
+        return AIChatPanel.SetMainLLMOverrideByName(nameOrDefault, out applied, out error);
+    }
+
     /// <summary>Run AI Chat's Compact feature (mode "summarize" or "truncate").</summary>
     public static bool CompactChat(string mode, int keepExchanges, out string error)
     {
