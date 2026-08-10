@@ -154,8 +154,38 @@ Three reference presets, all pointing at the universal workflow.
 - `image_to_movie` + `Reference To Video (MiniMax H3) 5s`: extra photos via the
   standard slot 2-9 wiring (`chat_image2..9` / `attachment2..9` -> `image2..image9`);
   no executor special-casing needed.
-- Skill docs: `aichat/skills/video_to_video.md` (modes, slots, tags, examples),
-  `image_to_movie.md` (multi-photo r2v + the start-frame two-stage recipe).
+- `extract_still` (model-invocable, local FFmpeg, no GPU): pulls one frame from a
+  Movie bubble as a new assistant still bubble - the intended way to self-serve
+  IDENTITY photo refs before a same-people rv2v regen (a clip alone locks
+  motion/audio well but faces drift). `chat_image="N"` Movie + `time="S"` +
+  `anchor="name"`; the pump blocks until the bubble exists, so the same reply can
+  stage the still via `chat_image2="name"`. Executor `ExecuteExtractStill` ->
+  `IChatHost.StartExtractStillAction` -> `AIChatPanel.ExtractStillActionCoroutine`
+  (probe, clamp time, `FfmpegTool.ExtractStillFrame`, `AppendExtractedStillBubble`:
+  label `#N`, kind `extracted still`, ALWAYS captioned attachment-style - NOT
+  gated on the auto-caption setting - chain target updated). Extraction
+  timestamps are guesses (clip captions carry no timecodes), so the skill docs
+  prescribe verifying guessed frames with same-reply `inspect_image`
+  (`resume="true"`) and rendering on the continue turn; the unconditional
+  caption is the next-turn safety net that exposes a frame that missed its
+  target. Frames come from the transcoded chat clip (<=832x480), not the
+  original source; the manual chooser "Import still" stays the native-res path.
+- Dimension overrides: explicit `width`/`height` on any `video_to_video` /
+  `image_to_movie` action WIN over the clip-aspect path
+  (`SetWorkflowDimensionOverride`; snapped to /32, clamped 256..2048 by
+  `PicMain.ApplyDimensionOverrideToJoblist`). Skill docs recommend raising
+  identity-critical renders from the 864x480 default toward the trained max
+  ~1.03MP: 1152x640 landscape / 640x1152 portrait / 896x896 square (hard trained
+  cap 1344x768). Cost scales with pixel count (~2x at 1152x640).
+- Prompting rule pushed in the skill docs: describe people ONLY as they appear
+  in the source clip/caption or photo refs, never from film/actor world
+  knowledge - H3 has no negative prompt and unfaithful prose beats the visual
+  reference (the "auburn hair on a blonde actress" failure). Defer identity to
+  `<Picture N>` tags and keep prose traits minimal.
+- Skill docs: `aichat/skills/video_to_video.md` (modes, slots, tags, examples,
+  same-people identity recipe), `image_to_movie.md` (multi-photo r2v + the
+  start-frame two-stage recipe), `extract_still.md` (frame extraction for
+  identity refs).
 - `SkillActionParser`'s tag regexes are QUOTE-AWARE on purpose: H3 prompts carry raw
   `<Video 1>` / `<Picture 1>` inside the prompt attribute, and a naive `[^>]*`
   attribute span would end the action tag at the first inner `>` and mis-report

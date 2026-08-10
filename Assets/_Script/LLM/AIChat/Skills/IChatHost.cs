@@ -105,6 +105,15 @@ namespace AITools.AIChat.Skills
         bool StartClipVideoAction(SkillAction action, int sourceChatImageIndex, float startSeconds, float durationSeconds, double fps, bool includeAudio, Action<bool> onDone);
 
         /// <summary>
+        /// Start a local FFmpeg single-frame extraction from an existing Movie #N chat
+        /// bubble (extract_still action). The host appends the frame as a new assistant
+        /// still-image bubble - anchor-registered and chain-target-updated - before
+        /// invoking <paramref name="onDone"/>, so later actions in the same reply can
+        /// reference it by anchor name.
+        /// </summary>
+        bool StartExtractStillAction(SkillAction action, int sourceChatImageIndex, float atSeconds, Action<bool> onDone);
+
+        /// <summary>
         /// Record a follow-up action that modifies an existing chat Pic without spawning
         /// a new bubble, e.g. chain="true" image_to_movie or local composition.
         /// </summary>

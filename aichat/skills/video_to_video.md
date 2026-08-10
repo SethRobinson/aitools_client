@@ -1,11 +1,11 @@
 ---
 id: video_to_video
-summary: Operate on an EXISTING "Movie #N" clip. Two modes - (1) VISUAL-ONLY RESTYLE/EDIT it with Bernini-R, keeping its motion but producing silent output; (2) REFERENCE-generate a brand-NEW MiniMax H3 clip that carries the source's subject/motion/style into a new scene, or creates/replaces dialogue, voice, music, audio, or sound effects. H3 preset: `Reference Video To Video (MiniMax H3) 5s.txt`; its prompt refers to the source as <Video 1>. For explicit LONG ~15s use the 15s preset; for other lengths use duration="N" (~5-15s). H3 also accepts up to 9 reference photos and/or a second clip. Never use image_to_image on a Movie unless the user explicitly requests one still/current frame and the action has movie_frame="true". For smoothing/FPS use rife_video; for animating a STILL use image_to_movie.
+summary: Operate on an EXISTING "Movie #N" clip. Two modes - (1) VISUAL-ONLY RESTYLE/EDIT it with Bernini-R, keeping its motion but producing silent output; (2) REFERENCE-generate a brand-NEW MiniMax H3 clip that carries the source's subject/motion/style into a new scene, or creates/replaces dialogue, voice, music, audio, or sound effects. H3 preset: `Reference Video To Video (MiniMax H3) 5s.txt`; its prompt refers to the source as <Video 1>. For explicit LONG ~15s use the 15s preset; for other lengths use duration="N" (~5-15s). H3 also accepts up to 9 reference photos and/or a second clip. When the result must keep the SAME people as the source, first extract_still a close-up frame per person (anchored) and stage the stills via chat_image2+ (they become <Picture 1>..); describe people ONLY as they appear in the clip/caption, never from film or actor knowledge. Never use image_to_image on a Movie unless the user explicitly requests one still/current frame and the action has movie_frame="true". For smoothing/FPS use rife_video; for animating a STILL use image_to_movie.
 inputs: attachment
 autoload: true
 triggers: video to video, restyle the video, restyle this clip, edit the video, edit the clip, change the video, change the clip, redo the video, redo the clip, make the video, make the clip, the video but, the clip but, same video but, restyle the clip, turn the video, turn the clip, video into, clip into, re-render the video, regenerate the video, based on this video, based on that video, based on the clip, based on this clip, like this video, like the video, like this clip, same character as the video, from this video, from the clip, restyle the movie, edit the movie, change the movie, redo the movie, make the movie, the movie but, same movie but, turn the movie, movie into, re-render the movie, regenerate the movie, based on this movie, based on that movie, based on the movie, like this movie, like the movie, same character as the movie, from this movie, from the movie, use movie, use the movie, use this movie, use that movie, as reference, as a reference, reference video, reference clip, reference movie
 exclude_triggers: animate the image, animate this, make a movie of, make a video of a, turn this image into a video, turn the photo into
-template: <aitools_action skill="video_to_video" preset="{{Video To Video (Bernini).txt}}" prompt="<visual-only changes + motion to keep, 4-8 sentences>" chat_image="N"/>  # Bernini is SILENT. For new/replaced dialogue, voice, audio, music, or sound effects use preset="{{Reference Video To Video (MiniMax H3) 5s.txt}}" and refer to <Video 1> in the prompt. chat_image="N" = source Movie. Slot-2+ adds references: Bernini takes one still; H3 takes up to 9 photos and/or a second Movie. Never use an image skill on a Movie unless the user explicitly asks for its still/current frame and supplies movie_frame="true".
+template: <aitools_action skill="video_to_video" preset="{{Video To Video (Bernini).txt}}" prompt="<visual-only changes + motion to keep, 4-8 sentences>" chat_image="N"/>  # Bernini is SILENT. For new/replaced dialogue, voice, audio, music, or sound effects use preset="{{Reference Video To Video (MiniMax H3) 5s.txt}}" and refer to <Video 1> in the prompt. chat_image="N" = source Movie. Slot-2+ adds references: Bernini takes one still; H3 takes up to 9 photos and/or a second Movie. Same-people H3 regens: emit extract_still per face (anchored) first, stage the stills via chat_image2+, and describe people only as seen in the clip. Never use an image skill on a Movie unless the user explicitly asks for its still/current frame and supplies movie_frame="true".
 ---
 # Video-to-video (Bernini-R / MiniMax H3)
 
@@ -108,6 +108,44 @@ What the slots mean depends on the mode:
 A still the user pastes this turn is auto-detected as a reference even if the slot
 syntax is off, but prefer the explicit `attachment2` / `chat_image2` form.
 
+## Keeping the SAME people from the source clip (identity-critical regens)
+
+The clip alone is a WEAK identity lock: H3 reads it mostly for motion, camera,
+and audio, and faces drift, especially over 10-15s. When the user wants the
+same people/characters to reappear ("more versions with the same actors",
+"keep her looking like the original"):
+
+1. Stage photo references. If matching stills already exist in chat (bubbles
+   or anchors), put them in `chat_image2+`. If none exist, emit `extract_still`
+   actions FIRST - one close-up frame per person, each with an `anchor` - then
+   reference them: `chat_image2="man_face"` `chat_image3="woman_face"`. Two or
+   three frames of the SAME person strengthen the lock further (describe them
+   as ONE character).
+2. VERIFY guessed frames before rendering. Extraction timestamps are guesses
+   (clip captions have no timecodes), and a frame with the wrong shot or
+   nobody in it silently ruins the identity lock. In the extraction reply,
+   `inspect_image` each still (last one `resume="true"`) and emit the render
+   on the continue turn only if the frames show the right people; re-extract
+   otherwise. Extracted stills are also auto-captioned (visible in CHAT
+   IMAGES by the next turn) - never reference a still whose caption/inspection
+   contradicts its purpose.
+3. Defer identity to the tags: "the man from <Picture 1>, exactly as he
+   appears there". Keep prose traits minimal and FAITHFUL (see the rule below).
+4. Prefer 5s over 10-15s when the user did not ask for length: identity drift
+   compounds with duration.
+5. For face-critical shots you may raise the canvas: add `width`/`height`
+   matching the source aspect - `width="1152" height="640"` landscape,
+   `640x1152` portrait, `896x896` square (H3 trained cap 1344x768; default is
+   864x480). Roughly 2x render time at 1152x640, so reserve it for identity
+   work the user cares about.
+
+**Describe people ONLY from what is visible in the clip and its caption. NEVER
+from outside knowledge of the film, show, or actor - even when you recognize
+them.** Text contradicting the references loses: inventing "auburn hair" for a
+blonde woman, or omitting a red neckerchief the caption mentions, actively
+overrides the visual reference and produces a stranger. When unsure of a trait,
+leave it out and let the tag carry it.
+
 ## Writing good v2v prompts
 
 Bernini keeps the source video's motion and timing; the prompt describes what
@@ -163,6 +201,14 @@ Two reference clips - subject from one, camera/music from the other:
 <aitools_action skill="video_to_video" preset="{{Reference Video To Video (MiniMax H3) 5s.txt}}" prompt="The husky from <Video 1> runs through a sunflower field. Use the slow orbiting drone move and the upbeat acoustic track from <Video 2> / <Audio 2>. Golden-hour light, petals drifting in the wind." chat_image="1" chat_image2="4"/>
 ```
 
+Same people as the clip, new dialog (identity-critical - extract face refs
+first, then regenerate with them):
+```
+<aitools_action skill="extract_still" chat_image="1" time="1.0" anchor="man_face"/>
+<aitools_action skill="extract_still" chat_image="1" time="2.5" anchor="woman_face"/>
+<aitools_action skill="video_to_video" preset="{{Reference Video To Video (MiniMax H3) 5s.txt}}" prompt="The man from <Picture 1> and the woman from <Picture 2>, exactly as they appear there - same faces, hair, and wardrobe - stand in the sunlit field from <Video 1>, matching its steady two-shot and warm daylight. He says 'new line'. She smiles and replies 'another line'. Ambient wind and birdsong." chat_image="1" chat_image2="man_face" chat_image3="woman_face" width="1152" height="640"/>
+```
+
 ## Rules
 
 - v2v source must be a VIDEO (a "Movie #N" bubble or a chained movie), not a still
@@ -176,6 +222,11 @@ Two reference clips - subject from one, camera/music from the other:
   still; the H3 reference presets take up to nine (`chat_image2`..`chat_image10`
   -> `<Picture 1>`..`<Picture 9>`) plus optionally a second MOVIE in `chat_image2`
   (-> `<Video 2>`). The source MOVIE always stays in `chat_image="N"`.
+- When the result must keep the SAME people as the source clip, stage photo
+  refs (anchored `extract_still` frames or existing stills) in `chat_image2+`
+  and describe each person only as seen in the clip/caption - never from
+  knowledge of the film or actor. Unfaithful text beats the reference and
+  changes the person.
 - Pick exactly ONE source MOVIE; `chain="true"` must not be combined with `chat_image`.
 - `chat_image="N"` must reference a Movie bubble. If you point it at a still image
   the action will report that it needs a video source.

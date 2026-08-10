@@ -84,6 +84,7 @@ namespace AITools.AIChat.Skills
         public const string VideoToVideo = "video_to_video";
         public const string RifeVideo = "rife_video";
         public const string ClipVideo = "clip_video";
+        public const string ExtractStill = "extract_still";
         public const string ReadSkill = "read_skill";
         public const string SummarizeWithSmallLlm = "summarize_with_small_llm";
         public const string DescribeImage = "describe_image";
@@ -112,7 +113,7 @@ namespace AITools.AIChat.Skills
         public static readonly HashSet<string> All = new HashSet<string>
         {
             GenerateImage, GenerateMovie, ImageToImage, ImageToMovie, VideoToVideo, RifeVideo, ClipVideo,
-            ReadSkill, SummarizeWithSmallLlm, DescribeImage, InspectImage, Continue,
+            ExtractStill, ReadSkill, SummarizeWithSmallLlm, DescribeImage, InspectImage, Continue,
             DrawText, AddBorder, PasteImage, NewCanvas, CropResize, DrawShape
         };
     }

@@ -8100,6 +8100,52 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         return pic;
     }
 
+    /// <summary>
+    /// Append a frame extracted from a Movie bubble by the extract_still action as an
+    /// ASSISTANT still bubble: plain "#N" label (not a "(you)" attachment), provenance
+    /// and anchor registered, chain target updated. ALWAYS captioned (attachment-style,
+    /// not gated on the auto-caption setting): the model picks extraction timestamps
+    /// blind from the clip caption's shot order, so without a caption a frame that
+    /// missed its target (wrong shot, nobody in it) silently poisons the identity
+    /// reference it exists to provide. The caption lands async - same-reply use should
+    /// verify with inspect_image when the timestamp was a guess (see extract_still.md).
+    /// </summary>
+    private void AppendExtractedStillBubble(PicMain pic, SkillAction action, string dimensions, int sourceChatImageIndex, float atSeconds)
+    {
+        if (pic == null) return;
+
+        _chatImagePics.Add(pic);
+        int chatImageNumber = _chatImagePics.Count;
+        RegisterChatImageRecord(pic, action, isUserAttachment: false, isMovie: false, dimensions: dimensions);
+        AppendImageBubbleInternal(pic, $"#{chatImageNumber}", isMovie: false);
+
+        string atText = atSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+        if (action != null)
+        {
+            if (!string.IsNullOrEmpty(action.AnchorName))
+            {
+                _anchors[action.AnchorName] = pic;
+                Debug.Log($"AIChatPanel: anchor '{action.AnchorName}' -> Image #{chatImageNumber}");
+            }
+
+            MarkLatestAssistantMediaCheckpoint();
+            string anchorHint = string.IsNullOrEmpty(action.AnchorName)
+                ? ""
+                : $" or its anchor \"{action.AnchorName}\"";
+            _infoMessages.Add(new InfoMessage(
+                $"(Still frame at {atText}s of Movie #{sourceChatImageIndex} just spawned as #{chatImageNumber} in CHAT IMAGES. " +
+                $"Reference it via chat_image slot attributes as \"{chatImageNumber}\"{anchorHint}. " +
+                "Its caption arrives shortly - CHECK it actually shows the intended subject before " +
+                "relying on it as an identity reference; if the caption is missing or wrong, " +
+                "inspect_image it or re-extract at a better time.)"));
+            ((IChatHost)this).SetLastSpawnedPicForTurn(pic);
+        }
+
+        AddSystemMessage($"Extracted still frame at {atText}s of Movie #{sourceChatImageIndex} as #{chatImageNumber}.", includeInLLMRecap: false);
+
+        StartCoroutine(WaitForPicAndCaption(pic));
+    }
+
     private void BeginVideoImport()
     {
         if (_videoImportCount <= 0)
@@ -8232,6 +8278,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         {
             case BuiltInSkillIds.ImageToImage:
                 return "edited image";
+            case BuiltInSkillIds.ExtractStill:
+                return "extracted still";
             case BuiltInSkillIds.NewCanvas:
                 return "canvas";
             case BuiltInSkillIds.AddBorder:
@@ -9383,6 +9431,81 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         yield return TranscodeAndAppendVideoClip(sourcePath, info, selection, epoch, action, isUserImport: false);
         onDone?.Invoke(epoch == _videoImportEpoch);
+    }
+
+    bool IChatHost.StartExtractStillAction(SkillAction action, int sourceChatImageIndex, float atSeconds, Action<bool> onDone)
+    {
+        string sourcePath = ((IChatHost)this).GetChatImageMovieFilePath(sourceChatImageIndex);
+        if (string.IsNullOrEmpty(sourcePath))
+            return false;
+
+        int epoch = _videoImportEpoch;
+        BeginVideoImport();
+        StartCoroutine(ExtractStillActionCoroutine(sourcePath, sourceChatImageIndex, action, atSeconds, epoch, onDone));
+        return true;
+    }
+
+    private IEnumerator ExtractStillActionCoroutine(string sourcePath, int sourceChatImageIndex, SkillAction action, float atSeconds, int epoch, Action<bool> onDone)
+    {
+        FfmpegTool.VideoInfo info = null;
+        string error = null;
+        yield return FfmpegTool.ProbeVideo(sourcePath, (i, e) => { info = i; error = e; });
+
+        if (epoch != _videoImportEpoch)
+        {
+            onDone?.Invoke(false);
+            yield break;
+        }
+
+        if (!string.IsNullOrWhiteSpace(error) || info == null)
+        {
+            FinishVideoImport();
+            ((IChatHost)this).AddSystemInjectionAndBubble(
+                $"extract_still could not inspect Movie #{sourceChatImageIndex}: {error ?? "unknown ffprobe error"}");
+            onDone?.Invoke(false);
+            yield break;
+        }
+
+        // Clamp inside the clip; the very end of a stream often has no decodable frame.
+        if (info.DurationSeconds > 0)
+            atSeconds = Mathf.Clamp(atSeconds, 0f, Mathf.Max(0f, (float)info.DurationSeconds - 0.05f));
+        else
+            atSeconds = Mathf.Max(0f, atSeconds);
+
+        string outputPath = FfmpegTool.GetStillFrameOutputPath(sourcePath);
+        FfmpegTool.ClipResult result = null;
+        yield return FfmpegTool.ExtractStillFrame(sourcePath, atSeconds, outputPath, r => result = r);
+
+        if (epoch != _videoImportEpoch)
+        {
+            onDone?.Invoke(false);
+            yield break;
+        }
+
+        if (result == null || !result.Success)
+        {
+            FinishVideoImport();
+            ((IChatHost)this).AddSystemInjectionAndBubble(
+                $"extract_still failed on Movie #{sourceChatImageIndex}: {(result != null ? result.Error : "unknown error")}");
+            onDone?.Invoke(false);
+            yield break;
+        }
+
+        var imageGen = ImageGenerator.Get();
+        GameObject frameGo = imageGen != null ? imageGen.AddImageByFileName(result.OutputPath) : null;
+        PicMain framePic = frameGo != null ? frameGo.GetComponent<PicMain>() : null;
+        if (framePic == null)
+        {
+            FinishVideoImport();
+            ((IChatHost)this).AddSystemInjectionAndBubble(
+                $"extract_still could not load the extracted frame from Movie #{sourceChatImageIndex} into an image.");
+            onDone?.Invoke(false);
+            yield break;
+        }
+
+        AppendExtractedStillBubble(framePic, action, BuildStillDimensionsText(info), sourceChatImageIndex, atSeconds);
+        FinishVideoImport();
+        onDone?.Invoke(true);
     }
 
     void IChatHost.RecordChatImageProvenance(PicMain pic, SkillAction action)

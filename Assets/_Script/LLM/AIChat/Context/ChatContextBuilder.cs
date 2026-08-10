@@ -224,7 +224,7 @@ namespace AITools.AIChat.Context
                 }
                 if (anyMovieListed)
                 {
-                    sb.AppendLine("\"movie\" entries are existing playable VIDEO clips. Any scene, motion, dialogue, voice, audio, or sound change must use video_to_video with chat_image=\"N\" pointing at that movie - never image_to_image or a still-first recipe. New dialogue/audio/sound effects require the Reference Video To Video (MiniMax H3) preset; Bernini is a silent visual-only restyle. Only when the user explicitly asks for a single still/current frame may image_to_image or image_to_movie read a Movie, and that action must include movie_frame=\"true\".");
+                    sb.AppendLine("\"movie\" entries are existing playable VIDEO clips. Any scene, motion, dialogue, voice, audio, or sound change must use video_to_video with chat_image=\"N\" pointing at that movie - never image_to_image or a still-first recipe. New dialogue/audio/sound effects require the Reference Video To Video (MiniMax H3) preset; Bernini is a silent visual-only restyle. To pull identity/photo reference stills OUT of a movie (e.g. before an H3 regeneration that must keep the same people), use extract_still with an anchor. Only when the user explicitly asks for a single still/current frame as a deliverable may image_to_image or image_to_movie read a Movie, and that action must include movie_frame=\"true\".");
                 }
                 for (int i = 0; i < listedCount; i++)
                 {

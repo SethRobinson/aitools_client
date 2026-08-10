@@ -14,6 +14,9 @@ COMMAND_START|joblist
 #The length @replace below is safe against AI Chat's video_to_video source-duration override: it runs
 #first (124 -> 362), so the appended override's find-text no longer exists. Only a preset whose length
 #value EQUALS the workflow default is vulnerable - the 5s preset omits the replace for that reason.
+#Default canvas 864x480 (~0.4MP). For identity-critical faces the AI Chat action may pass
+#width/height (e.g. 1152x640 landscape) - the dimension override appends here automatically.
+#H3's trained max is ~1.03MP (768 short edge, cap 1344x768); cost scales with pixel count.
 %vid_width%="864"
 %vid_height%="480"
 %vid_length%="362"

@@ -301,6 +301,10 @@ namespace AITools.AIChat.Skills
                     ExecuteClipVideo(action);
                     break;
 
+                case BuiltInSkillIds.ExtractStill:
+                    ExecuteExtractStill(action);
+                    break;
+
                 case BuiltInSkillIds.ReadSkill:
                     ExecuteReadSkill(action);
                     break;
@@ -446,6 +450,52 @@ namespace AITools.AIChat.Skills
             {
                 _host?.AddSystemInjectionAndBubble(
                     $"clip_video could not start for chat_image=\"{chatN}\". The movie may have been deleted or unloaded.");
+                return;
+            }
+
+            _lastActionDeferred = true;
+        }
+
+        // ---------- Local still-frame extraction ----------
+
+        private void ExecuteExtractStill(SkillAction action)
+        {
+            int chatN = action.ChatImageIndex ?? (_host?.GetLatestChatImageIndex() ?? -1);
+            if (chatN <= 0)
+            {
+                _host?.AddSystemInjectionAndBubble(
+                    "extract_still needs chat_image=\"N\" pointing at an existing Movie bubble. " +
+                    "If the user just dropped a video, wait for it to import as Movie #N first.");
+                return;
+            }
+
+            string moviePath = _host?.GetChatImageMovieFilePath(chatN);
+            if (string.IsNullOrEmpty(moviePath))
+            {
+                _host?.AddSystemInjectionAndBubble(
+                    $"extract_still needs a SOURCE VIDEO, but chat_image=\"{chatN}\" is not a Movie bubble. " +
+                    "Use a Movie #N entry from CHAT IMAGES.");
+                return;
+            }
+
+            float atSeconds = ParseFloat(
+                action.GetArg("time")
+                ?? action.GetArg("at")
+                ?? action.GetArg("seconds")
+                ?? action.GetArg("position")
+                ?? action.GetArg("start"),
+                0f);
+
+            _host?.MarkChainTargetStale();
+            bool started = _host != null && _host.StartExtractStillAction(action, chatN, atSeconds, ok =>
+            {
+                ResumePumpAfterDeferredComplete(action);
+            });
+
+            if (!started)
+            {
+                _host?.AddSystemInjectionAndBubble(
+                    $"extract_still could not start for chat_image=\"{chatN}\". The movie may have been deleted or unloaded.");
                 return;
             }
 
@@ -2744,6 +2794,17 @@ namespace AITools.AIChat.Skills
                 case "cut_clip":
                 case "make_clip":
                     return BuiltInSkillIds.ClipVideo;
+
+                // extract / grab a frame from a movie -> extract_still
+                case "extract_frame":
+                case "extractframe":
+                case "extractstill":
+                case "grab_frame":
+                case "grabframe":
+                case "still_frame":
+                case "stillframe":
+                case "frame_extract":
+                    return BuiltInSkillIds.ExtractStill;
 
                 default:
                     return id;

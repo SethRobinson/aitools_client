@@ -15,6 +15,9 @@ COMMAND_START|joblist
 #NOTE: no @replace|"length"| here on purpose - AI Chat's video_to_video path overrides any exposed
 #length to match the SOURCE duration (at WAN's 16fps cadence), which is wrong for a reference
 #generation. Duration stays the workflow's 124 frames (~5s @24fps).
+#Default canvas 864x480 (~0.4MP). For identity-critical faces the AI Chat action may pass
+#width/height (e.g. 1152x640 landscape) - the dimension override appends here automatically.
+#H3's trained max is ~1.03MP (768 short edge, cap 1344x768); cost scales with pixel count.
 %vid_width%="864"
 %vid_height%="480"
 

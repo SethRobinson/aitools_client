@@ -132,10 +132,17 @@ is ideal for anchors: "make a video of Mara surfing" from an anchored portrait.
   identity lock) but must be described as ONE character: `the man from
   <Picture 1> and <Picture 2>` - never as two people standing together.
 - Dialog/audio rules are the same as normal H3.
+- Describe each referenced person ONLY from what is visible in their photo(s)
+  or caption - NEVER from outside knowledge of a film, show, or actor, even
+  when you recognize them. Unfaithful prose (wrong hair color, missing
+  wardrobe detail) overrides the photo reference and changes the person; when
+  unsure of a trait, leave it out and let the `<Picture N>` tag carry it.
 - If a reference is a MOVIE bubble rather than a still, use
   `skill="video_to_video"` with `{{Reference Video To Video (MiniMax H3) 5s.txt}}`
   and `<Video 1>` in the prompt instead - that preset also takes photo
-  references and a second clip; see the video_to_video skill.
+  references and a second clip; see the video_to_video skill. To pull face
+  stills OUT of a movie for use as photo refs, use `extract_still` (anchored)
+  first.
 
 ### Exact START FRAME plus a specific person - two-stage recipe
 

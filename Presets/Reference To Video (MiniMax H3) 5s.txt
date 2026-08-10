@@ -6,6 +6,9 @@ COMMAND_START|joblist
 #chat_image2..chat_image9 or attachment2..attachment9. Give each photo ONE job (identity,
 #second character, setting/style). Multiple photos of the SAME person are fine (better identity
 #lock) - the prompt should treat them as one character ("the man from <Picture 1> and <Picture 2>").
+#Default canvas 864x480 (~0.4MP). For identity-critical faces the AI Chat action may pass
+#width/height (e.g. 1152x640 landscape) - the dimension override appends here automatically.
+#H3's trained max is ~1.03MP (768 short edge, cap 1344x768); cost scales with pixel count.
 %vid_width%="864"
 %vid_height%="480"
 %vid_length%="124"
