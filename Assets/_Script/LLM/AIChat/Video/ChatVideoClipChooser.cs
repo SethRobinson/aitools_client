@@ -58,6 +58,11 @@ namespace AITools.AIChat.Video
         private bool _proxyTried;
         private bool _proxyConversionInFlight;
         private bool _ignoreSlider;
+        private bool _isScrubbing;
+        private bool _resumeAfterScrub;
+        private bool _seekPending;
+        private float _pendingSeekSeconds;
+        private bool _resumeAfterPendingSeek;
         private bool _ignoreDurationField;
         private bool _ignoreFpsField;
         private float _proxyProgress;
@@ -305,6 +310,8 @@ namespace AITools.AIChat.Video
                 source.Pause();
             }
             catch { }
+            source.seekCompleted -= OnSeekCompleted;
+            source.seekCompleted += OnSeekCompleted;
             _previewCurrentSeconds = _initialStartSeconds;
             SetStartSeconds(_selectedStartSeconds);
             SetSliderSeconds(_initialStartSeconds);
@@ -329,10 +336,31 @@ namespace AITools.AIChat.Video
             StartCoroutine(ConvertPreviewProxyAndRetry(message));
         }
 
+        private void OnSeekCompleted(VideoPlayer source)
+        {
+            if (source == null || source != _player || !_seekPending) return;
+
+            bool resumePlayback = _resumeAfterPendingSeek;
+            float requestedSeconds = _pendingSeekSeconds;
+            _seekPending = false;
+            _resumeAfterPendingSeek = false;
+            _previewCurrentSeconds = requestedSeconds;
+            SetSliderSeconds(requestedSeconds);
+            SetStartSeconds(requestedSeconds);
+
+            if (resumePlayback)
+            {
+                try { source.Play(); } catch { }
+            }
+
+            RefreshPlayButton();
+            UpdateTimeLabel();
+        }
+
         private void Update()
         {
             ApplyPreviewAudioSettings();
-            if (_player != null && _prepared && _info.DurationSeconds > 0)
+            if (!_isScrubbing && !_seekPending && _player != null && _prepared && _info.DurationSeconds > 0)
             {
                 _previewCurrentSeconds = ClampPreviewSeconds((float)_player.time);
                 _ignoreSlider = true;
@@ -348,9 +376,71 @@ namespace AITools.AIChat.Video
             if (_ignoreSlider || _player == null || _info.DurationSeconds <= 0) return;
             float t = ClampPreviewSeconds((float)(Mathf.Clamp01(value) * _info.DurationSeconds));
             _previewCurrentSeconds = t;
-            try { _player.time = t; } catch { }
+            if (!_isScrubbing)
+            {
+                bool resumePlayback = _seekPending ? _resumeAfterPendingSeek : (_prepared && _player.isPlaying);
+                SeekPreview(t, resumePlayback);
+            }
             SetStartSeconds(t);
             UpdateTimeLabel();
+        }
+
+        private void BeginSliderScrub()
+        {
+            if (_isScrubbing) return;
+            _isScrubbing = true;
+            _resumeAfterScrub = _seekPending
+                ? _resumeAfterPendingSeek
+                : (_player != null && _prepared && _player.isPlaying);
+            _seekPending = false;
+            _resumeAfterPendingSeek = false;
+            if (_player != null && _player.isPlaying)
+            {
+                try { _player.Pause(); } catch { }
+            }
+        }
+
+        private void EndSliderScrub()
+        {
+            if (!_isScrubbing) return;
+
+            float t = _previewCurrentSeconds;
+            if (_slider != null && _info != null && _info.DurationSeconds > 0)
+                t = ClampPreviewSeconds(_slider.value * (float)_info.DurationSeconds);
+
+            bool resumePlayback = _resumeAfterScrub;
+            _isScrubbing = false;
+            _resumeAfterScrub = false;
+            _previewCurrentSeconds = t;
+            SeekPreview(t, resumePlayback);
+            SetStartSeconds(t);
+            UpdateTimeLabel();
+        }
+
+        private void SeekPreview(float seconds, bool resumePlayback)
+        {
+            if (_player == null || !_prepared) return;
+            seconds = ClampPreviewSeconds(seconds);
+            _seekPending = true;
+            _pendingSeekSeconds = seconds;
+            _resumeAfterPendingSeek = resumePlayback;
+            _previewCurrentSeconds = seconds;
+            try
+            {
+                // Unity 6 reports a transient zero and halts an audio-clocked player
+                // while Media Foundation resolves a seek. Hold the requested time and
+                // restore playback from OnSeekCompleted instead of calling Play here.
+                _player.time = seconds;
+            }
+            catch
+            {
+                _seekPending = false;
+                _resumeAfterPendingSeek = false;
+                if (resumePlayback)
+                {
+                    try { _player.Play(); } catch { }
+                }
+            }
         }
 
         // Preview audio follows the Audio toggle (what you hear is what Import Clip
@@ -366,6 +456,12 @@ namespace AITools.AIChat.Video
         private void TogglePlay()
         {
             if (_proxyConversionInFlight || _player == null || !_prepared) return;
+            if (_seekPending)
+            {
+                _resumeAfterPendingSeek = !_resumeAfterPendingSeek;
+                RefreshPlayButton();
+                return;
+            }
             if (_player.isPlaying) _player.Pause();
             else _player.Play();
             RefreshPlayButton();
@@ -471,12 +567,9 @@ namespace AITools.AIChat.Video
             SetSliderSeconds(_selectedStartSeconds);
             if (_player != null && _prepared)
             {
-                try
-                {
-                    _player.time = _selectedStartSeconds;
-                    _previewCurrentSeconds = _selectedStartSeconds;
-                }
-                catch { }
+                bool resumePlayback = _player.isPlaying;
+                _previewCurrentSeconds = _selectedStartSeconds;
+                SeekPreview(_selectedStartSeconds, resumePlayback);
             }
             UpdateTimeLabel();
         }
@@ -576,8 +669,11 @@ namespace AITools.AIChat.Video
 
         private void RefreshPlayButton()
         {
+            bool isPlayingOrPending = _seekPending
+                ? _resumeAfterPendingSeek
+                : (_player != null && _player.isPlaying);
             if (_playButtonLabel != null)
-                _playButtonLabel.text = _proxyConversionInFlight ? "Wait" : (_player != null && _player.isPlaying ? "Pause" : "Play");
+                _playButtonLabel.text = _proxyConversionInFlight ? "Wait" : (isPlayingOrPending ? "Pause" : "Play");
             if (_playButton != null)
                 _playButton.interactable = !_proxyConversionInFlight && _prepared;
         }
@@ -701,9 +797,12 @@ namespace AITools.AIChat.Video
 
         private void ReleasePreviewPlayer()
         {
+            _seekPending = false;
+            _resumeAfterPendingSeek = false;
             if (_player == null) return;
             try { _player.Stop(); } catch { }
             _player.prepareCompleted -= OnPrepared;
+            _player.seekCompleted -= OnSeekCompleted;
             _player.errorReceived -= OnPreviewError;
             _player.targetTexture = null;
             Destroy(_player);
@@ -888,6 +987,10 @@ namespace AITools.AIChat.Video
             var handleImg = handle.AddComponent<Image>();
             handleImg.color = Color.white;
 
+            // Add this before Slider so pointer-down captures the original play state
+            // before Slider changes its value and initiates the first seek.
+            var scrubHandler = go.AddComponent<SliderScrubHandler>();
+            scrubHandler.SetOwner(this);
             var slider = go.AddComponent<Slider>();
             slider.minValue = 0f;
             slider.maxValue = 1f;
@@ -897,6 +1000,26 @@ namespace AITools.AIChat.Video
             slider.targetGraphic = handleImg;
             slider.direction = Slider.Direction.LeftToRight;
             return slider;
+        }
+
+        private sealed class SliderScrubHandler : MonoBehaviour, IPointerDownHandler, IPointerUpHandler
+        {
+            private ChatVideoClipChooser _owner;
+
+            public void SetOwner(ChatVideoClipChooser owner)
+            {
+                _owner = owner;
+            }
+
+            public void OnPointerDown(PointerEventData eventData)
+            {
+                _owner?.BeginSliderScrub();
+            }
+
+            public void OnPointerUp(PointerEventData eventData)
+            {
+                _owner?.EndSliderScrub();
+            }
         }
 
         private TMP_InputField CreateInput(string name, Vector2 anchored, Vector2 size, string value)
