@@ -158,6 +158,10 @@ and clips) has its own section below: "Generating movies (MiniMax H3)".
 | `--dry-run` | Build and validate the final API JSON with no server contact; writes `<output>.api.json` |
 | `--prune-input NAME` | Remove a named node input from the graph before submit (repeatable) |
 | `--no-clip-audio N` | Declare reference clip N (1 or 2) silent so its audio input is pruned (when ffprobe can't auto-detect) |
+| `--alpha-key COLOR[:SIM[:BLEND]]` | Also write `<output>_alpha.webm` with this background color keyed to transparency (green/blue/#RRGGBB) |
+| `--alpha-from-luma` | Also write `<output>_alpha.webm` with alpha from luminance (emissive VFX on black backgrounds) |
+| `--sprite-sheet [COLS]` | Also write `<output>_sheet.png`, an RGBA flipbook atlas (near-square grid when COLS omitted) |
+| `--sheet-fps N` | Resample the sprite sheet to N fps (fewer, smaller frames) |
 | `-n, --negative TEXT` | Negative prompt (overrides preset default) |
 | `-s, --seed INT` | Seed (default: random in `0..2⁶³-1`) |
 | `-c, --config PATH` | Config file path (default: `./config.txt`) |
@@ -280,6 +284,80 @@ upload paths are faked as `temp/dryrun_*`.
 Concurrent renders are safe: each submission gets a unique output filename
 prefix, so several CLI runs (even against the same server) can't download
 each other's files.
+
+## Transparent-background movies (VFX for games)
+
+H3 can't output an alpha channel directly, but three pipelines get you
+game-ready transparent clips. Transparent output comes in two forms, both
+made locally with the repo's bundled ffmpeg:
+
+- `<output>_alpha.webm` — VP9 WebM with a real alpha channel (plays
+  transparently in engines that support it, e.g. Unity's VideoPlayer)
+- `<output>_sheet.png` — an RGBA sprite-sheet flipbook atlas for particle
+  systems (grid, frame count, and playback fps are printed; unused cells are
+  transparent). Use `--sheet-fps 12` to thin the frames — a full 124-frame
+  clip makes a huge atlas and the CLI warns when it would exceed common
+  8192px GPU texture caps.
+
+### Recipe A: emissive VFX (explosions, fire, magic, sparks)
+
+Generate on a PURE BLACK background and either use additive blending in your
+engine (black simply disappears — no alpha needed at all), or bake
+alpha-from-luminance:
+
+```
+aitools_cli.py "a single massive explosion: bright orange fireball, flying sparks, billowing smoke, centered, camera locked off, pure black background, nothing else visible" \
+    explosion.mp4 -p "Prompt To Video (MiniMax H3) 5s" \
+    --width 640 --height 640 --alpha-from-luma --sprite-sheet --sheet-fps 12
+```
+
+This is the best-quality option for glowing effects: no key fringing, and
+semi-transparent glow falls off naturally. (Dark smoke disappears with it —
+use Recipe C when the smoke matters.)
+
+### Recipe B: chroma key (solid objects with defined edges)
+
+Generate on a solid green (or blue) background and key it out; despill is
+applied automatically:
+
+```
+aitools_cli.py "a treasure chest opens and gold coins burst out, centered, camera locked off, pure solid bright green background, evenly lit, no shadows" \
+    chest.mp4 -p "Prompt To Video (MiniMax H3) 5s" --alpha-key green
+```
+
+Tune tolerance with `--alpha-key green:0.35:0.15` (COLOR:similarity:blend) if
+too much or too little is keyed. `#RRGGBB` colors also work.
+
+### Recipe C: AI matting (any background, smoke/hair/soft edges)
+
+The `Video Remove Background (BiRefNet)` preset runs a matting model
+server-side (MIT-licensed, auto-downloads on first use) and outputs a
+transparent `.webm` directly — no special background needed when generating:
+
+```
+aitools_cli.py "" matted.webm -p "Video Remove Background (BiRefNet)" --video anyclip.mp4
+aitools_cli.py "" matted.webm -p "Video Remove Background (BiRefNet)" --video anyclip.mp4 --sprite-sheet --sheet-fps 12
+```
+
+Output has no audio (it's a VFX asset). Non-24fps sources: add
+`--set-var vid_fps=N` to keep the original timing.
+
+### Converting existing videos: vid2alpha.py
+
+The same conversions work on any local file, no server needed:
+
+```
+vid2alpha.py explosion.mp4 --luma --sheet          # black bg -> webm + atlas
+vid2alpha.py greenscreen.mp4 --key green:0.35      # keyed webm only
+vid2alpha.py matted.webm --sheet 8 --sheet-fps 12  # atlas from an alpha webm
+```
+
+### Prompting tips for keyable/mattable H3 clips
+
+Ask for: a SINGLE centered subject, "camera locked off" (no pans), "pure
+black background" or "pure solid bright green background, evenly lit, no
+shadows", and "nothing else visible". Avoid ground planes and cast shadows —
+they key badly and matte as part of the subject.
 
 ## Preset support
 
@@ -413,6 +491,8 @@ cli/
   auth.py             # optional per-server bearer-token auth
   presets.py          # Presets/*.txt parser
   workflow.py         # load/convert/cache + @replace + placeholders + seed
+  alpha.py            # transparency post-processing (chroma key / luma -> webm alpha, sprite sheets)
+  vid2alpha.py        # standalone converter: existing video -> transparent webm / sprite sheet
   servers.py          # /queue probe + selection
   comfy_api.py        # /prompt, /history, /view, cleanup
   progress.py         # WebSocket loop + status display

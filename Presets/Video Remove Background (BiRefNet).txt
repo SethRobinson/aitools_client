@@ -1,0 +1,11 @@
+COMMAND_START|joblist
+#Removes the background from a loaded video using BiRefNet (MIT-licensed model,
+#auto-downloaded by the server on first use - expect an extra delay that first time).
+#Output is a TRANSPARENT VP9 .webm (alpha channel, no audio) for game/VFX use.
+#Assumes a 24fps source (H3 clips are always 24fps); for other sources override
+#with --set-var vid_fps=N from the CLI.
+#Note: in-app Movie preview may show black behind the transparent areas; the
+#alpha channel is intact in the saved .webm file.
+%vid_fps%="24"
+video_remove_background_birefnet.json @upload|video|input1| @replace|"fps": 24|"fps": %vid_fps%|
+COMMAND_END

@@ -1,0 +1,71 @@
+{
+  "1": {
+    "inputs": {
+      "video": "<AITOOLS_INPUT_1>",
+      "force_rate": 0,
+      "custom_width": 0,
+      "custom_height": 0,
+      "frame_load_cap": 0,
+      "skip_first_frames": 0,
+      "select_every_nth": 1,
+      "format": "None"
+    },
+    "class_type": "VHS_LoadVideoPath",
+    "_meta": {
+      "title": "Load Video (Path)"
+    }
+  },
+  "2": {
+    "inputs": {
+      "model_name": "General",
+      "device": "AUTO",
+      "dtype": "float32"
+    },
+    "class_type": "AutoDownloadBiRefNetModel",
+    "_meta": {
+      "title": "BiRefNet Model (auto-download, MIT)"
+    }
+  },
+  "3": {
+    "inputs": {
+      "model": ["2", 0],
+      "images": ["1", 0]
+    },
+    "class_type": "RembgByBiRefNet",
+    "_meta": {
+      "title": "Remove Background (BiRefNet)"
+    }
+  },
+  "4": {
+    "inputs": {
+      "mask": ["3", 1]
+    },
+    "class_type": "InvertMask",
+    "_meta": {
+      "title": "Invert Mask (JoinImageWithAlpha expects inverted)"
+    }
+  },
+  "5": {
+    "inputs": {
+      "image": ["3", 0],
+      "alpha": ["4", 0]
+    },
+    "class_type": "JoinImageWithAlpha",
+    "_meta": {
+      "title": "Join Image With Alpha"
+    }
+  },
+  "6": {
+    "inputs": {
+      "images": ["5", 0],
+      "filename_prefix": "aitools_alpha_AITOOLS_UNIQUE_ID",
+      "codec": "vp9",
+      "fps": 24,
+      "crf": 20
+    },
+    "class_type": "SaveWEBM",
+    "_meta": {
+      "title": "Save WebM (VP9 with alpha)"
+    }
+  }
+}

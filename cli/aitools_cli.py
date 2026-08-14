@@ -31,6 +31,7 @@ for _stream in (sys.stdout, sys.stderr):
 
 import re
 
+import alpha
 import auth
 import comfy_api
 import images
@@ -108,6 +109,23 @@ def build_argparser():
                    help="Declare reference clip N (1 or 2) silent: prune its "
                         "audio input so the server doesn't abort (used when "
                         "ffprobe isn't available to auto-detect)")
+    p.add_argument("--alpha-key", default=None, dest="alpha_key",
+                   metavar="COLOR[:SIM[:BLEND]]",
+                   help="After saving a video output, also write "
+                        "<output>_alpha.webm with this background color "
+                        "chroma-keyed to transparency (green, blue, or "
+                        "#RRGGBB; similarity default 0.30, blend 0.10)")
+    p.add_argument("--alpha-from-luma", action="store_true", dest="alpha_from_luma",
+                   help="After saving a video output, also write "
+                        "<output>_alpha.webm with alpha from luminance (for "
+                        "emissive VFX rendered on a pure black background)")
+    p.add_argument("--sprite-sheet", nargs="?", const=0, type=int, default=None,
+                   dest="sprite_sheet", metavar="COLS",
+                   help="Also write <output>_sheet.png, an RGBA flipbook atlas "
+                        "of every frame (COLS columns; omit the value for a "
+                        "near-square grid)")
+    p.add_argument("--sheet-fps", type=float, default=None, dest="sheet_fps",
+                   metavar="N", help="Resample the sprite sheet to N fps (fewer frames)")
     p.add_argument("-s", "--seed", type=int, default=None,
                    help="Seed (default: random)")
     p.add_argument("-c", "--config", default=str(DEFAULT_CONFIG),
@@ -445,6 +463,14 @@ def main():
     if args.preset and args.workflow:
         die("use one of -p/--preset or -w/--workflow, not both", 1)
 
+    # Validate transparency flags before any GPU time is spent.
+    if args.alpha_key and args.alpha_from_luma:
+        die("--alpha-key and --alpha-from-luma are mutually exclusive", 1)
+    if args.sheet_fps is not None and args.sprite_sheet is None:
+        die("--sheet-fps only makes sense with --sprite-sheet", 1)
+    if args.alpha_key:
+        alpha.parse_color_spec(args.alpha_key)
+
     cfg_path = Path(args.config)
     if args.dry_run and not cfg_path.exists():
         # Dry-run never contacts a server, so a missing config only matters
@@ -690,6 +716,9 @@ def main():
         target.write_text(json.dumps(api_workflow, indent=2), encoding="utf-8")
         if args.verbose:
             print(json.dumps(api_workflow, indent=2))
+        if args.alpha_key or args.alpha_from_luma or args.sprite_sheet is not None:
+            print("dry-run: alpha/sprite-sheet post-processing skipped "
+                  "(runs after a real render)")
         print(f"dry-run: wrote {target} ({len(api_workflow)} nodes); nothing submitted")
         return
 
@@ -748,6 +777,28 @@ def main():
     main_out = saved[0]
     extra = f"  + {len(saved) - 1} more" if len(saved) > 1 else ""
     print(f"Saved: {main_out}  ({main_out.stat().st_size:,} bytes){extra}")
+
+    # Transparency post-processing (--alpha-key / --alpha-from-luma /
+    # --sprite-sheet): local ffmpeg conversions of the first video output.
+    if args.alpha_key or args.alpha_from_luma or args.sprite_sheet is not None:
+        if main_out.suffix.lower() not in comfy_api.VIDEO_EXTS:
+            die(f"--alpha-key/--alpha-from-luma/--sprite-sheet need a video "
+                f"output, but this workflow produced {main_out.name} "
+                f"(the file is saved; only the conversion was skipped)", 1)
+        mode = "key" if args.alpha_key else ("luma" if args.alpha_from_luma else None)
+        if mode:
+            alpha.convert_to_alpha_webm(
+                main_out, main_out.with_name(main_out.stem + "_alpha.webm"),
+                mode, args.alpha_key, args.verbose)
+        if args.sprite_sheet is not None:
+            if mode is None and main_out.suffix.lower() != ".webm":
+                die("--sprite-sheet without --alpha-key/--alpha-from-luma needs "
+                    "a source that already carries alpha (e.g. a .webm from the "
+                    "\"Video Remove Background (BiRefNet)\" preset)", 1)
+            alpha.make_sprite_sheet(
+                main_out, main_out.with_name(main_out.stem + "_sheet.png"),
+                mode, args.alpha_key, args.sprite_sheet, args.sheet_fps,
+                args.verbose)
 
 
 if __name__ == "__main__":
