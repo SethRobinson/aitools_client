@@ -6,6 +6,9 @@ ResizeTool.cs:107-138 for the centered crop, ComfyUIFileUploader.cs:109-205
 for upload semantics)."""
 import io
 import mimetypes
+import shutil
+import subprocess
+import sys
 import uuid
 from pathlib import Path
 
@@ -15,7 +18,55 @@ from PIL import Image
 import auth
 from util import die
 
-UPLOAD_TIMEOUT = 60
+# Video uploads (reference clips) and long-running H3 renders need far more
+# headroom than the old 60s image default.
+UPLOAD_TIMEOUT = 300
+
+# The repo bundles ffprobe for the Unity app's video tooling; reuse it here
+# so silent-clip detection works out of the box on Windows.
+FFPROBE_BUNDLED = Path(__file__).resolve().parent.parent / "utils" / "ffmpeg" / "bin" / "ffprobe.exe"
+
+
+def find_ffprobe():
+    """Path to an ffprobe executable, or None. Prefers the repo's bundled
+    Windows binary, falls back to PATH (the Linux case)."""
+    if sys.platform == "win32" and FFPROBE_BUNDLED.exists():
+        return str(FFPROBE_BUNDLED)
+    return shutil.which("ffprobe")
+
+
+def video_has_audio(path: Path, verbose: bool = False):
+    """True/False if ffprobe could check the file for an audio stream,
+    None when ffprobe is unavailable or the probe failed."""
+    ffprobe = find_ffprobe()
+    if not ffprobe:
+        return None
+    try:
+        r = subprocess.run(
+            [ffprobe, "-v", "error", "-select_streams", "a",
+             "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(path)],
+            capture_output=True, text=True, timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        if verbose:
+            print(f"  ffprobe failed on {path.name}: {e}")
+        return None
+    if r.returncode != 0:
+        if verbose:
+            print(f"  ffprobe failed on {path.name}: {r.stderr.strip()[:200]}")
+        return None
+    return bool(r.stdout.strip())
+
+
+def read_image_size(path: Path):
+    """(width, height) from the image header without decoding pixel data."""
+    if not path.exists():
+        die(f"input image not found: {path}", 1)
+    try:
+        with Image.open(path) as img:
+            return img.size
+    except Exception as e:
+        die(f"could not read input image {path}: {e}", 1)
 
 
 def load_input_image(path: Path) -> Image.Image:

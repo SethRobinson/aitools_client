@@ -131,11 +131,25 @@ native stereo audio (dialog in 11 languages), no RIFE in the output path.
   (one-shot, rides the next workflow line like the dimension overrides).
 - Silent clips: the executor ffprobes each wired clip (`FfmpegTool.VideoInfo.HasAudio`)
   and appends `@prune_input|ref_video_audios.ref_video_audio_N|` for silent ones -
-  per-clip, automatic, no preset variants. A manual run (GUI preset on a silent
-  movie pic, or CLI) still hits the VHS abort.
-- CLI mirror: `cli/workflow.py prune_unfilled_inputs` + optional-aware
-  `cli/presets.py` / `aitools_cli.py`. Optional sources the CLI can't supply
-  (video2, image3+, temp slots) are skipped and pruned instead of dying.
+  per-clip, automatic, no preset variants. A manual GUI run (preset on a silent
+  movie pic) still hits the VHS abort. The CLI auto-detects too (bundled
+  `utils/ffmpeg/bin/ffprobe.exe` on Windows, PATH `ffprobe` on Linux) and prunes
+  with a message; `--no-clip-audio N` is the manual fallback when ffprobe is
+  missing.
+- CLI mirror (full H3 support since 2026-08-14, see `cli/README.md` "Generating
+  movies"): `cli/workflow.py prune_unfilled_inputs` + `prune_named_inputs`
+  (`@prune_input` directive + `--prune-input` flag), optional-aware
+  `cli/presets.py` / `aitools_cli.py`. Repeatable `-i` fills imageN slots in
+  declared order (all 9 photo refs reachable; `-i2`..`-i10` bind exact slots),
+  `--video`/`--video2` supply both clips. `--width`/`--height` (snap /32, clamp
+  256..2048, >1.03MP warning) and `--duration` (17k+5 grid, 124..362; refused on
+  the fixed 15s presets; synthetic length replace on the rv2v 5s preset) are
+  HARD errors if their @replace can't apply. Start-frame presets (image1 ->
+  input1 + "video" workflow) auto-fit the canvas to the -i image's aspect at
+  the preset's pixel budget (`--no-aspect-fit` disables). `AITOOLS_UNIQUE_ID`
+  is substituted per run (`cli_<timestamp>_<rand>`). `--dry-run` builds the
+  final API JSON offline (needs the cached API version on disk) and writes
+  `<output>.api.json`. Temp-slot sources remain unsupported.
 
 ## Presets (`Presets/`)
 
@@ -269,6 +283,9 @@ Ref2VA cannot run the turbo LoRA, see Model facts).
    out.mp4 -p "Reference Video To Video (MiniMax H3) 5s" --video clip.mp4 -i2
    photo.png -v` against hal - watch for "pruned unused loader node(s)" and check
    the regenerated `*_cached_api_version.json` has all autogrow inputs on node 7.
+   Offline variant (servers down): append `--dry-run` and inspect the emitted
+   `out.mp4.api.json` instead - same pruning/override pipeline, faked upload
+   paths, no network.
 2. Bridge: `/chat_import_video` + `/chat_import_image` to stage media, `/chat` to
    drive the action, then read `llm_aichat_log.json` (parsed action) and
    `comfyui_workflow_to_send_api.json` (pruned submitted graph).

@@ -11,6 +11,9 @@ import auth
 from util import die
 
 HTTP_TIMEOUT = 30
+# /view downloads can be a whole multi-minute H3 mp4 — allow far more than
+# the general request timeout.
+DOWNLOAD_TIMEOUT = 300
 HISTORY_POLL_INTERVAL = 0.5
 HISTORY_TIMEOUT = 120
 
@@ -70,6 +73,60 @@ def fetch_outputs(server_url, prompt_id):
     die("timed out waiting for outputs in /history", 2)
 
 
+def poll_history_until_done(server_url, prompt_id, label, verbose=False,
+                            poll_interval=3.0):
+    """Fallback when the WebSocket drops mid-render: poll /history/<id> until
+    the job finishes. Returns None on success or an error string. Matches the
+    WS watcher's no-job-deadline behavior (an H3 render can take many minutes),
+    but bails out if the job vanishes from both the queue and history."""
+    missing_checks = 0
+    polls = 0
+    while True:
+        try:
+            r = requests.get(f"{server_url}/history/{prompt_id}",
+                             headers=auth.headers_for(server_url), timeout=HTTP_TIMEOUT)
+        except requests.RequestException as e:
+            return f"history poll failed: {e}"
+        try:
+            entry = (r.json().get(prompt_id) or {}) if r.status_code == 200 else {}
+        except ValueError:
+            entry = {}
+        if entry:
+            status = entry.get("status") or {}
+            if status.get("status_str") == "error":
+                msgs = []
+                for m in status.get("messages") or []:
+                    if isinstance(m, list) and len(m) >= 2 and m[0] == "execution_error":
+                        msgs.append(str(m[1].get("exception_message", m[1])))
+                return f"generation reported error: {'; '.join(msgs) or 'unknown'}"
+            if entry.get("outputs"):
+                print(f"[{label}] done (via history poll)")
+                return None
+        polls += 1
+        if polls % 10 == 0:
+            # Job neither finished nor queued/running on two consecutive
+            # checks = it vanished (server restart, manual queue clear).
+            try:
+                q = requests.get(f"{server_url}/queue",
+                                 headers=auth.headers_for(server_url),
+                                 timeout=HTTP_TIMEOUT).json()
+                queued = [item for key in ("queue_running", "queue_pending")
+                          for item in (q.get(key) or [])]
+                in_queue = any(prompt_id in map(str, item) for item in queued
+                               if isinstance(item, (list, tuple)))
+            except Exception:
+                in_queue = True  # can't tell — keep waiting
+            if not entry and not in_queue:
+                missing_checks += 1
+                if missing_checks >= 2:
+                    return "job vanished from server queue and history"
+            else:
+                missing_checks = 0
+            if verbose:
+                print(f"[{label}] still waiting (history poll)...")
+        time.sleep(poll_interval)
+
+
 def download_image(server_url, image_ref):
     qs = urlencode({
         "filename": image_ref.get("filename", ""),
@@ -78,7 +135,7 @@ def download_image(server_url, image_ref):
     })
     try:
         r = requests.get(f"{server_url}/view?{qs}",
-                         headers=auth.headers_for(server_url), timeout=HTTP_TIMEOUT)
+                         headers=auth.headers_for(server_url), timeout=DOWNLOAD_TIMEOUT)
     except requests.RequestException as e:
         die(f"download failed: {e}", 2)
     if r.status_code != 200:

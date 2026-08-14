@@ -1,8 +1,10 @@
 # aitools_cli
 
 A command-line front-end (Windows + Linux) for the same ComfyUI servers used
-by Seth's AI Tools (the Unity app one directory up). Generates an image from a
-text prompt using a workflow JSON or one of the existing presets.
+by Seth's AI Tools (the Unity app one directory up). Generates images and
+movies from a text prompt (plus optional image/video references) using a
+workflow JSON or one of the existing presets. For video, see
+"Generating movies (MiniMax H3)" below.
 
 It mirrors what `PicTextToImage.cs` + `PresetManager.cs` do in the Unity app:
 load a workflow, ask the ComfyUI server to convert it to API format (cached on
@@ -136,6 +138,9 @@ aitools_cli.py "restyle this clip as a pencil animation" out.mp4 \
     --video clip.mp4
 ```
 
+Movie generation (text to video, animating a start frame, reference photos
+and clips) has its own section below: "Generating movies (MiniMax H3)".
+
 ### Flags
 
 | Flag | Purpose |
@@ -143,9 +148,16 @@ aitools_cli.py "restyle this clip as a pencil animation" out.mp4 \
 | `-p, --preset NAME` | Preset file from `../Presets/` (or absolute path) |
 | `-w, --workflow FILE` | Workflow JSON from `../ComfyUI/` (mutex with `-p`) |
 | `--set-var NAME=VALUE` | Override a preset `%var%` (repeatable; wins over joblist assignments) |
-| `-i, --input PATH` | Input image file (image1 — required for presets that `@upload image1`) |
-| `-i2, --input2 PATH` | Second input image file (image2 — required for two-input presets) |
-| `--video PATH` | Input video file (video/video1 — required for presets that `@upload video`) |
+| `-i, --input PATH` | Input image; REPEATABLE, fills the preset's declared image slots in order (`-i a.png -i b.png`) |
+| `-i2..-i10 PATH` | Image bound to that exact source slot (`-i2` = image2, etc.) |
+| `--video PATH` | Input video; repeatable (fills `video`, then `video2`) |
+| `--video2 PATH` | Video bound to the second reference clip slot |
+| `--width N`, `--height N` | Render-size override for size-controllable (video) presets; snapped to /32, clamped 256..2048 |
+| `--duration SECONDS` | Video length override (MiniMax H3 5s presets only; snapped to the 24fps 17k+5 frame grid, ~5.2..15.1s) |
+| `--no-aspect-fit` | Disable the automatic start-frame aspect fit (see the movies section) |
+| `--dry-run` | Build and validate the final API JSON with no server contact; writes `<output>.api.json` |
+| `--prune-input NAME` | Remove a named node input from the graph before submit (repeatable) |
+| `--no-clip-audio N` | Declare reference clip N (1 or 2) silent so its audio input is pruned (when ffprobe can't auto-detect) |
 | `-n, --negative TEXT` | Negative prompt (overrides preset default) |
 | `-s, --seed INT` | Seed (default: random in `0..2⁶³-1`) |
 | `-c, --config PATH` | Config file path (default: `./config.txt`) |
@@ -154,6 +166,120 @@ aitools_cli.py "restyle this clip as a pencil animation" out.mp4 \
 | `--no-cache` | Force workflow re-conversion (refresh `_cached_api_version.json`) |
 | `--keep-server-files` | Skip the `/history` clear cleanup call |
 | `-v, --verbose` | Verbose output |
+
+Passing more inputs than the preset declares, mixing several `-i` with
+numbered `-iN` flags, or targeting one slot twice is an error (the message
+lists the preset's available slots), so a mistyped command can't silently
+drop a reference.
+
+## Generating movies (MiniMax H3)
+
+MiniMax H3 is the app's default video model: 24fps mp4 with native stereo
+audio, including spoken dialog (11 languages). Clips are ~5s by default and
+can run up to ~15s. H3 has NO negative-prompt path (`-n` is ignored by these
+presets), fps is fixed at 24, and the model files currently live only on
+hal's ComfyUI instances. Output is written as `.mp4` (the CLI adjusts your
+output extension automatically).
+
+There are four ways to make a movie. All are single-step presets, so they
+work fully from the CLI:
+
+### 1. Text to video
+
+```
+aitools_cli.py "a golden retriever news anchor reads the evening news, deadpan" out.mp4 \
+    -p "Prompt To Video (MiniMax H3) 5s"
+```
+
+### 2. Animate a start frame (image to video)
+
+The `-i` image becomes the EXACT first frame of the movie:
+
+```
+aitools_cli.py "she looks up from the book and says 'finally, some quiet'" out.mp4 \
+    -p "Image To Video (MiniMax H3) 5s" -i portrait.png
+```
+
+H3 stretches the start frame to the render canvas, so by default the CLI
+refits the canvas to your image's aspect ratio at the preset's pixel budget
+(printed as `start-frame aspect fit: ...`). Pass explicit `--width`/`--height`
+or `--no-aspect-fit` to take manual control.
+
+### 3. Reference photos to video (subject does something new)
+
+Generates the SUBJECT of the photos doing something new; it does not animate
+the exact frame (use mode 2 for that). Up to 9 photos via repeated `-i`;
+refer to them in the prompt as `<Picture 1>`, `<Picture 2>`, ... in the order
+given:
+
+```
+aitools_cli.py "<Picture 1> and <Picture 2> ride a tandem bicycle through Tokyo" out.mp4 \
+    -p "Reference To Video (MiniMax H3) 5s" -i alice.png -i bob.png
+```
+
+### 4. Reference video (+ photos) to video
+
+A source clip drives motion/camera/voice while photos pin identity/setting.
+`--video` is the primary clip (`<Video 1>`, its soundtrack is `<Audio 1>`),
+`--video2` adds a second clip, and repeated `-i` adds up to 9 photos
+(`<Picture 1>`..). Give each reference ONE job in the prompt:
+
+```
+aitools_cli.py "<Picture 1> performs the dance from <Video 1>, keep <Audio 1> as the soundtrack" out.mp4 \
+    -p "Reference Video To Video (MiniMax H3) 5s" --video dance.mp4 -i face.png
+```
+
+Reference clips are consumed at 24fps, 2-15s. Silent clips would normally
+hard-abort the server's audio extraction; the CLI auto-detects a missing
+audio stream with ffprobe (the repo's bundled
+`../utils/ffmpeg/bin/ffprobe.exe` on Windows, `ffprobe` on PATH on Linux)
+and prunes that clip's audio input automatically, printing what it did. If
+ffprobe is unavailable, pass `--no-clip-audio 1` (or `2`) for silent clips.
+
+### Quality
+
+The default t2v/i2v presets run an 8-step turbo LoRA (~70s for a 5s clip on
+a fast GPU). For the full 20-step render (~2x slower, best quality), pick the
+`Quality` preset variants:
+
+- `Prompt To Video (MiniMax H3 Quality) 5s`
+- `Image To Video (MiniMax H3 Quality) 5s` / `15s`
+
+The reference presets (modes 3 and 4) are always 20-step (the turbo LoRA is
+incompatible with the reference checkpoint). Rough wall-clock for a 5s clip,
+uncontended: turbo t2v/i2v ~70s, Quality ~163s, single-clip reference video
+~4min; 15s clips cost several times the 5s figure.
+
+### Size and duration
+
+- Default canvas is 864x480 (or the aspect-fitted equivalent). `--width` /
+  `--height` override it (snapped to /32). The model is trained up to
+  ~1.03MP; the best large canvases are 1152x640 (landscape), 640x1152
+  (portrait), and 896x896 (square). Render cost scales with pixel count
+  (~2x at 1152x640).
+- `--duration SECONDS` works on any H3 `5s` preset and snaps to the model's
+  frame grid (~5.2s minimum, ~15.1s maximum), e.g. `--duration 8`. The `15s`
+  presets are fixed-length; the CLI will tell you to use the 5s preset with
+  `--duration` instead.
+- `-s SEED` makes renders reproducible, same as images.
+
+### Validating commands offline (--dry-run)
+
+`--dry-run` runs the whole pipeline (preset parsing, input validation,
+aspect fit, overrides, graph pruning) without contacting a server and writes
+the exact API JSON that would be submitted to `<output>.api.json`:
+
+```
+aitools_cli.py "test" out.mp4 -p "Image To Video (MiniMax H3) 5s" -i photo.png --dry-run
+```
+
+Useful for checking a command line (or letting an AI agent check its own)
+before spending minutes of GPU time. Inputs are still opened and validated;
+upload paths are faked as `temp/dryrun_*`.
+
+Concurrent renders are safe: each submission gets a unique output filename
+prefix, so several CLI runs (even against the same server) can't download
+each other's files.
 
 ## Preset support
 
@@ -172,12 +298,19 @@ Inside the preset's `joblist` block these are supported:
   and `%negative_prompt%`
 - Directives:
   - `@replace|find|with|` — string substitution on the workflow JSON
-  - `@upload|image1|inputN|` — uploads `-i` to ComfyUI's `/temp/` folder
-    and routes the path into `<AITOOLS_INPUT_N>` (N = 1..4). Source must
-    be `image1`, `image`, `image2`, or `video`. A preset may use both `image1` and
-    `image2` for two-input workflows (e.g. `Image To Image Klein Edit 2
-    Input` — pass `-i` and `-i2`). `temp1`/`temp2`/`temp3` aren't supported.
-    Video presets use `@upload|video|inputN|` and require `--video`.
+  - `@upload|<source>|inputN|[optional|]` — uploads a CLI-supplied file to
+    ComfyUI's `/temp/` folder and routes the path into `<AITOOLS_INPUT_N>`
+    (N = 1..11). Suppliable sources: `image1`..`image10` (repeatable `-i`
+    fills them in declared order; numbered `-i2`..`-i10` bind exact slots),
+    `video` and `video2` (repeatable `--video` / `--video2`). `image` is an
+    alias for `image1`, `video1` for `video`. A trailing `optional` flag
+    means a missing source is fine: that slot's loader node is pruned from
+    the graph at submit time instead of erroring (this is how the universal
+    H3 reference workflow serves every photo/clip combination).
+    `temp1`/`temp2`/`temp3` aren't supported.
+  - `@prune_input|name|` — remove that named input key from every node in
+    the API JSON before submit (same as the `--prune-input` flag; used for
+    per-clip audio pruning on H3 reference workflows).
   - `@resize|x|W|y|H|aspect_correct|0_or_1|` — resize the input image to
     `W×H` before upload. `aspect_correct|1` center-crops to the target
     aspect first; `aspect_correct|0` stretches.
@@ -188,10 +321,11 @@ Inside the preset's `joblist` block these are supported:
     want (e.g. you want to keep the background, not the subject). Any slot
     arg is ignored — it always acts on the saved output.
 
-In short: single-step presets work for text-to-image and for image-in
-workflows that need a single input image (img2img, mask, inpaint, etc.).
-Multi-step chains, LLM calls, and presets that pull from `temp1`/`temp2`/
-`temp3` slots still error out with a clear explanation.
+In short: single-step presets work for text-to-image, image-in workflows
+(img2img, mask, inpaint, etc.), and all four MiniMax H3 movie modes (up to
+9 reference photos + 2 reference clips). Multi-step chains, LLM calls, and
+presets that pull from `temp1`/`temp2`/`temp3` slots still error out with a
+clear explanation.
 
 ## Missing features (vs. the Unity app)
 
@@ -213,14 +347,16 @@ their presence in a preset is harmless:
 - Mid-job control flow: `@stopjob`, `@no_undo`, `@lock_gpu`
 
 ### Image / input-slot features
-Image-input presets work via `-i <path>` (and optionally `-i2 <path>`):
-- `@upload|image1|inputN|` — **supported** (`-i` input)
-- `@upload|image2|inputN|` — **supported** (`-i2` input). Two-input presets
-  (e.g. `Image To Image Klein Edit 2 Input`) require both flags.
-- `@upload|video|inputN|` / `@upload|video1|inputN|` — **supported**
-  (`--video` input).
+- `@upload|image1..image10|inputN|` — **supported** (repeatable `-i`, or
+  numbered `-i2`..`-i10` for exact slots). Two-input presets
+  (e.g. `Image To Image Klein Edit 2 Input`) take `-i` + `-i2`.
+- `@upload|video|inputN|` / `@upload|video2|inputN|` — **supported**
+  (repeatable `--video`, or `--video2` for the second clip).
+- `@upload|...|optional|` — **supported** (unfilled slots prune their loader
+  nodes from the graph).
+- `@prune_input|name|` — **supported** (also via `--prune-input`).
 - `@resize|...|` and `@resize_if_larger|...|` — **supported** (no-slot form;
-  always applied to `image1`. `image2` is uploaded as-is.)
+  always applied to `image1`. Other images upload as-is.)
 
 Still missing:
 - `@upload|temp1|...|`, `@upload|temp2|...|`, `@upload|temp3|...|` — multi-step

@@ -8,6 +8,10 @@ import auth
 
 WS_RECV_TIMEOUT = 120
 
+# Sentinel returned by watch_progress when the socket drops mid-render; the
+# caller falls back to polling /history instead of failing the whole job.
+WS_LOST = "__ws_lost__"
+
 
 class StatusLine:
     """Overwriteable single line via \\r. Pads with spaces to clear leftovers."""
@@ -50,7 +54,8 @@ def watch_progress(ws, prompt_id, node_titles, label, verbose=False):
         except websocket.WebSocketTimeoutException:
             continue
         except (websocket.WebSocketConnectionClosedException, ConnectionResetError):
-            return "websocket closed unexpectedly"
+            status.write("", final=True)
+            return WS_LOST
 
         if isinstance(msg, (bytes, bytearray)):
             continue

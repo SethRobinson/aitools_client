@@ -1,6 +1,8 @@
 """Load workflow JSON, convert to API format (with on-disk cache), apply
 @replace directives, substitute <AITOOLS_*> placeholders, override seeds."""
 import json
+import secrets
+import time
 from pathlib import Path
 
 import requests
@@ -23,8 +25,12 @@ def looks_like_full_workflow(data):
 
 
 def load_or_convert_workflow(workflow_dir: Path, workflow_name: str,
-                             server_url: str, force: bool, verbose: bool):
-    """Return (api_dict, source_path). Caches converted JSON next to source."""
+                             server_url: str, force: bool, verbose: bool,
+                             offline: bool = False):
+    """Return (api_dict, source_path). Caches converted JSON next to source.
+    With offline=True (--dry-run), never contacts a server: a UI-format
+    workflow needs an up-to-date cache on disk (stale caches are used with a
+    loud warning)."""
     src = workflow_dir / workflow_name
     if not src.exists():
         die(f"workflow not found: {src}", 1)
@@ -41,6 +47,18 @@ def load_or_convert_workflow(workflow_dir: Path, workflow_name: str,
         if verbose:
             print(f"using cached API workflow: {cache.name}")
         return json.loads(cache.read_text(encoding="utf-8"))
+
+    if offline:
+        if not force and cache.exists():
+            print(f"warning: {cache.name} is older than {src.name} — dry-run is "
+                  f"using the stale cache (run once against a server to refresh)")
+            return json.loads(cache.read_text(encoding="utf-8"))
+        die(
+            f"--dry-run needs {cache.name} to exist (workflow conversion "
+            f"requires a live server). Run once against a server first, drop "
+            f"--no-cache, or use an API-format workflow.",
+            1,
+        )
 
     if verbose:
         print(f"converting {src.name} -> API format via {server_url}")
@@ -68,20 +86,43 @@ def load_or_convert_workflow(workflow_dir: Path, workflow_name: str,
 
 
 def apply_replaces(api_workflow, replaces, verbose=False):
-    """Apply a list of (find, replace) substitutions to the workflow.
+    """Apply a list of presets.ReplaceOp substitutions to the workflow.
     Done on the JSON-as-string to mirror PicTextToImage.cs:584-594.
+    A find-miss is a warning, unless the op carries required_by (it came from
+    an explicit CLI flag like --width) — then it is a hard error, so explicit
+    overrides can't silently render at defaults.
     Returns the (possibly re-parsed) workflow dict."""
     if not replaces:
         return api_workflow
     text = json.dumps(api_workflow)
-    for find, repl in replaces:
-        if find not in text:
-            print(f"warning: @replace could not find '{find}' in workflow")
+    for op in replaces:
+        if op.find not in text:
+            if op.required_by:
+                die(
+                    f"{op.required_by} override could not be applied: pattern "
+                    f"{op.find!r} not found in the workflow JSON. The preset may "
+                    f"have already rewritten this value (fixed-size/duration "
+                    f"preset) or the workflow changed.",
+                    1,
+                )
+            print(f"warning: @replace could not find '{op.find}' in workflow")
             continue
-        text = text.replace(find, repl)
+        text = text.replace(op.find, op.repl)
         if verbose:
-            print(f"  @replace applied: {_short(find)} -> {_short(repl)}")
+            print(f"  @replace applied: {_short(op.find)} -> {_short(op.repl)}")
     return json.loads(text)
+
+
+def substitute_unique_id(api_workflow, verbose=False):
+    """Replace the literal AITOOLS_UNIQUE_ID token (used in save nodes'
+    filename_prefix) with a per-run tag, mirroring Unity's PicTextToImage
+    submit-time substitution — without it, concurrent renders sharing a
+    ComfyUI output folder can collide and download each other's file."""
+    ts = time.strftime("%Y%m%d_%H%M%S") + f"{int(time.time() * 1000) % 1000:03d}"
+    uid = f"cli_{ts}_{secrets.token_hex(2)}"
+    if verbose:
+        print(f"unique id: {uid}")
+    return replace_placeholders(api_workflow, {"AITOOLS_UNIQUE_ID": uid})
 
 
 def _short(s, n=60):
@@ -133,6 +174,39 @@ def prune_unfilled_inputs(api_workflow, verbose=False):
             _renumber_autogrow_inputs(inputs)
     if removed and verbose:
         print(f"pruned unused loader node(s): {', '.join(removed)}")
+    return api_workflow
+
+
+def prune_named_inputs(api_workflow, names, verbose=False):
+    """Remove input keys by name from every node, then renumber autogrow
+    groups on the nodes that changed. Mirrors Unity's @prune_input handling
+    in PicTextToImage.PruneWorkflowInputs. Note: pruning e.g.
+    ref_video_audios.ref_video_audio_0 while _1 survives renumbers _1 -> _0 —
+    this matches Unity exactly (and shifts <Audio N> prompt-tag numbering the
+    same way the app does); do not "fix" it."""
+    if not isinstance(api_workflow, dict) or not names:
+        return api_workflow
+    # Delete every named input first, renumber once at the end — renumbering
+    # between deletions would shift group indices out from under later names
+    # (pruning ..._0 would turn ..._1 into ..._0 before its own prune runs).
+    changed = []
+    for name in names:
+        hit = False
+        for node in api_workflow.values():
+            inputs = node.get("inputs") if isinstance(node, dict) else None
+            if not isinstance(inputs, dict) or name not in inputs:
+                continue
+            del inputs[name]
+            if not any(inputs is c for c in changed):
+                changed.append(inputs)
+            hit = True
+        if hit:
+            if verbose:
+                print(f"pruned input '{name}'")
+        else:
+            print(f"warning: @prune_input '{name}' matched no node input")
+    for inputs in changed:
+        _renumber_autogrow_inputs(inputs)
     return api_workflow
 
 

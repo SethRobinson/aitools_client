@@ -110,10 +110,12 @@ AI agents (Claude, Codex, etc.) can and should use this CLI themselves — on Wi
 ```bat
 cli\aitools_cli.bat "a cat" out.png -p "Prompt To Image (Z-Image)" -v
 cli\aitools_cli.bat "make the sky red" out.png -p "Image To Image Klein Edit 1 Input" -i input.png
-cli\aitools_cli.bat "restyle this clip" out.mp4 -p "Video To Video (Bernini)" --video input.mp4
+cli\aitools_cli.bat "she waves and says hi" out.mp4 -p "Image To Video (MiniMax H3) 5s" -i start.png --duration 8
+cli\aitools_cli.bat "<Picture 1> dances like <Video 1>" out.mp4 -p "Reference Video To Video (MiniMax H3) 5s" --video clip.mp4 -i face.png
+cli\aitools_cli.bat "test" out.mp4 -p "Prompt To Video (MiniMax H3) 5s" --width 1152 --height 640 --dry-run
 ```
 
-Text-to-image, single-step image-to-image presets (`-i` / `-i2` inputs), and single-step video-input presets (`--video`) work; `--video` and `-i`/`-i2` can combine in one preset (e.g. the H3 reference presets). `@upload|...|optional|` slots whose source the CLI can't supply (video2, image3+, temp slots) are skipped and their loader nodes pruned from the graph (`cli/workflow.py prune_unfilled_inputs`). Multi-step chains and LLM presets error out by design.
+Text-to-image, single-step image presets, and all four MiniMax H3 movie modes work (t2v / i2v start frame / reference photos / reference video+photos; see `cli/README.md` "Generating movies"). `-i` is repeatable and fills the preset's image slots in order (up to 9 photo refs); `--video`/`--video2` supply up to 2 clips; `--width`/`--height`/`--duration` control size and length (H3 grid-snapped, hard error if the override can't apply); start-frame presets auto-fit the canvas to the `-i` image's aspect (`--no-aspect-fit` disables); silent reference clips are ffprobe-detected and their audio inputs auto-pruned (`--no-clip-audio N` manual fallback); `AITOOLS_UNIQUE_ID` is substituted per run so concurrent renders can't collide. `@upload|...|optional|` slots with no source are skipped and their loader nodes pruned from the graph (`cli/workflow.py prune_unfilled_inputs`); `@prune_input` is supported. `--dry-run` builds and writes the final API JSON (`<output>.api.json`) with zero server contact - use it to validate commands and preset/workflow changes offline. Multi-step chains and LLM presets error out by design.
 
 ## Current Architecture
 
@@ -253,7 +255,7 @@ The `cli/` folder is a separate Python command-line front-end for ComfyUI genera
 - `workflow.py` - workflow load/convert/cache, replacements, placeholders, seed override
 - `servers.py`, `comfy_api.py`, `progress.py`, `images.py`, `util.py` - server probing, ComfyUI HTTP/WebSocket calls, image/video upload, image resizing, output save
 
-Do not assume every Unity job-script feature works in the CLI. Multi-step chains, temp slots, most LLM commands, and many Unity-only image operations deliberately error or are unsupported there.
+Do not assume every Unity job-script feature works in the CLI. Multi-step chains, temp slots, most LLM commands, and many Unity-only image operations deliberately error or are unsupported there. Movie generation (all four MiniMax H3 modes), repeatable `-i`/`--video` reference inputs, `--width`/`--height`/`--duration` overrides, start-frame aspect auto-fit, ffprobe silent-clip auto-pruning, per-run `AITOOLS_UNIQUE_ID` substitution, `--dry-run` offline validation, and a WS-drop `/history`-polling fallback for long renders are supported; `cli/README.md` "Generating movies (MiniMax H3)" is the reference.
 
 ## Directory Map
 

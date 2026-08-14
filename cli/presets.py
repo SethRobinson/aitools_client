@@ -7,8 +7,13 @@ Supports the subset relevant to single-step image generation:
   - COMMAND_START|default_pre_prompt
   - COMMAND_START|default_post_prompt
   - @replace|find|with|             (string substitution on the workflow JSON)
-  - @upload|image1|inputN|          (uploads CLI's -i image to <AITOOLS_INPUT_N>)
-  - @upload|video|inputN|           (uploads CLI's --video file to <AITOOLS_INPUT_N>)
+  - @upload|imageN|inputM|[optional|]  (routes a CLI image (-i, repeatable /
+                                        -iN) to <AITOOLS_INPUT_M>; N = 1..10)
+  - @upload|video|inputM|[optional|]   (CLI --video file; also 'video2' for
+                                        a second clip via --video2 / repeated
+                                        --video)
+  - @prune_input|name|              (remove that named input key from every
+                                     node in the API JSON before submit)
   - @resize|x|W|y|H|aspect_correct|N|        (always resize input image)
   - @resize_if_larger|x|W|y|H|aspect_correct|N|
 
@@ -73,9 +78,20 @@ class ResizeOp:
 @dataclass
 class UploadSpec:
     """An @upload directive: route a local media source to input slot N (0..10)."""
-    source: str        # 'image1', 'image2', or 'video' (others allowed when optional)
-    slot_idx: int      # 0..4 -> <AITOOLS_INPUT_(slot_idx+1)>
+    source: str        # 'image1'..'image10', 'video', or 'video2' (temp slots only when optional)
+    slot_idx: int      # 0..10 -> <AITOOLS_INPUT_(slot_idx+1)>
     optional: bool = False  # unfilled optional slots get their loader node pruned
+
+
+@dataclass
+class ReplaceOp:
+    """An expanded @replace: find/repl after %var% substitution. When
+    `required_by` names a CLI flag (e.g. '--width'), a find-miss is a hard
+    error instead of a warning — used so explicit overrides can't silently
+    render at defaults."""
+    find: str
+    repl: str
+    required_by: Optional[str] = None
 
 
 @dataclass
@@ -86,6 +102,7 @@ class PresetData:
     variables: Dict[str, str] = field(default_factory=dict)
     uploads: List[UploadSpec] = field(default_factory=list)     # in declaration order
     resizes: List[ResizeOpRaw] = field(default_factory=list)    # applied to image1 input, in order
+    prune_inputs: List[str] = field(default_factory=list)       # @prune_input names, in order
     invert_alpha: bool = False                                  # post-process output alpha
     default_prompt: Optional[str] = None
     default_negative_prompt: Optional[str] = None
@@ -254,6 +271,13 @@ def _handle_directive(directive: str, args: List[str], data: PresetData, path: P
     if d == "upload":
         _handle_upload(args, data, path)
         return
+    if d == "prune_input":
+        # Mirrors Unity's @prune_input|<input name>| (PicTextToImage.PruneWorkflowInputs):
+        # remove that named input key from every node in the API JSON before submit.
+        if len(args) != 1 or not args[0].strip():
+            die(f"preset {path.name}: @prune_input expects 1 arg (input name), got {args}", 1)
+        data.prune_inputs.append(args[0].strip())
+        return
     if d in ("resize", "resize_if_larger"):
         _handle_resize(d, args, data, path)
         return
@@ -277,6 +301,10 @@ for _i in range(1, 12):
     _INPUT_SLOTS[f"input{_i}"] = _i - 1
     _INPUT_SLOTS[str(_i)] = _i - 1
 
+# Sources the CLI can supply from the command line: image1..image10 (repeated
+# -i / numbered -iN flags) and video/video2 (repeated --video / --video2).
+SUPPLIABLE_SOURCE_RE = re.compile(r"^(image([1-9]|10)|video2?)$")
+
 
 def _handle_upload(args: List[str], data: PresetData, path: Path):
     if len(args) not in (2, 3):
@@ -294,14 +322,14 @@ def _handle_upload(args: List[str], data: PresetData, path: Path):
         source = "image1"
     if source == "video1":
         source = "video"
-    if source not in ("image1", "image2", "video") and not optional:
-        # Optional uploads with sources the CLI can't supply (video2, image3+,
-        # temp slots) are fine: the slot stays unfilled and its loader node is
-        # pruned from the graph before submission.
+    if not SUPPLIABLE_SOURCE_RE.match(source) and not optional:
+        # Optional uploads with sources the CLI can't supply (temp slots) are
+        # fine: the slot stays unfilled and its loader node is pruned from the
+        # graph before submission.
         die(
             f"preset {path.name}: @upload source '{source}' not supported — "
-            f"aitools_cli handles 'image1' (-i input), 'image2' (-i2 input), "
-            f"and 'video' (--video input). "
+            f"aitools_cli handles image1..image10 (repeatable -i / numbered -iN "
+            f"flags) and video/video2 (--video / --video2). "
             f"Sources like temp1/temp2/temp3 require multi-step workflows.",
             1,
         )
@@ -378,13 +406,39 @@ def substitute_variables(text: str, variables: Dict[str, str], verbose=False):
     return VAR_PATTERN.sub(repl, text)
 
 
-def expand_replaces(replaces, variables, verbose=False):
-    """Apply %var% substitution to both args of every @replace pair."""
-    return [
-        (substitute_variables(f, variables, verbose),
-         substitute_variables(w, variables, verbose))
-        for (f, w) in replaces
-    ]
+def expand_replaces(replaces, variables, verbose=False, critical_vars=None):
+    """Apply %var% substitution to both args of every @replace pair.
+
+    `critical_vars` maps var name -> CLI flag label (e.g. {"vid_width":
+    "--width"}). When the RAW replace text references one of those vars, the
+    resulting ReplaceOp is marked required_by=<flag>, and apply_replaces will
+    hard-error if its find-string is missing — so an explicit CLI override can
+    never silently render at defaults."""
+    critical_vars = critical_vars or {}
+    out = []
+    for (f, w) in replaces:
+        required_by = None
+        for m in VAR_PATTERN.finditer(f + "|" + w):
+            if m.group(1) in critical_vars:
+                required_by = critical_vars[m.group(1)]
+                break
+        out.append(ReplaceOp(
+            find=substitute_variables(f, variables, verbose),
+            repl=substitute_variables(w, variables, verbose),
+            required_by=required_by,
+        ))
+    return out
+
+
+def vars_used_in_replaces(replaces) -> set:
+    """Set of %var% names referenced anywhere in the raw @replace args.
+    Used to detect whether a preset actually exposes a width/height/length
+    knob before accepting a CLI override for it."""
+    used = set()
+    for (f, w) in replaces:
+        for m in VAR_PATTERN.finditer(f + "|" + w):
+            used.add(m.group(1))
+    return used
 
 
 def _short(s, n=80):
