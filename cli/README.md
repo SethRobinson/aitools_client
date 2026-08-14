@@ -285,6 +285,12 @@ Concurrent renders are safe: each submission gets a unique output filename
 prefix, so several CLI runs (even against the same server) can't download
 each other's files.
 
+If a video render dies INSTANTLY with a ComfyUI "CUDA error: invalid
+argument", that one server instance is in a wedged state (it needs a
+ComfyUI restart; it is not a model or GPU-type problem). Retry pinned to a
+different instance with `--server`, since automatic server selection can
+land on the wedged one.
+
 ## Transparent-background movies (VFX for games)
 
 H3 can't output an alpha channel directly, but three pipelines get you

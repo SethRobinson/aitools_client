@@ -277,6 +277,10 @@ Ref2VA cannot run the turbo LoRA, see Model facts).
   attribute span would end the action tag at the first inner `>` and mis-report
   "truncated tool call". Don't regress this when touching the parser.
 
+## Troubleshooting
+
+- **Instant "CUDA error: invalid argument" in `ComfyUI-MiniMax-H3-Turbo/__init__.py` (`_interp_egrid`)**: a wedged CUDA context on that ONE ComfyUI instance, not a GPU-class problem and not H3's fault. Verified 2026-08-14 on hal:7864: the instance's log (`~/ComfyUI/logs/comfy_<port>.log`, or `GET /internal/logs/raw`) showed the FIRST "invalid argument" hit during a BiRefNet weight load at 10:29; every later CUDA call in that process (including H3 turbo) then failed instantly with the same error, while Blackwells 7862/7863 and A100s 7860/7861 ran identical code fine. Diagnosis rule: find the FIRST CUDA error in that instance's log - whatever ran there is the trigger; everything after is collateral. Remedy: restart the wedged instance; meanwhile pin a healthy server (`--server http://hal:786X`) since queue-based auto-pick otherwise fails ~1-in-N randomly. Restart recipe (hal, as user `hal`): `kill <pid of main.py --port 786X>`, then `source ~/miniconda3/etc/profile.d/conda.sh && conda activate comfyui_env && bash ~/3_card_blackwell_runcomfyservers_dsv4.sh` (idempotent - relaunches only dead ports; A100 pair uses `~/2gpu_a100_runcomfyservers.sh`). The conda env MUST be `comfyui_env` (`~/ComfyUI/env.sh`); the trio script does not self-activate it. (A stale `~/ComfyUI/myenv` venv that caused failed relaunches was deleted 2026-08-14.) Do NOT conclude "turbo is broken on Blackwell" from this symptom (turbo measures ~70s/clip on these Blackwells).
+
 ## Verification checklist for changes here
 
 1. CLI smoke (fast, no editor): `python cli/aitools_cli.py "<prompt with tags>"
