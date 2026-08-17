@@ -1,10 +1,10 @@
 ---
 id: image_to_movie
-summary: Animate a STILL image into a short video. Default to MiniMax H3 Image To Video (native audio/dialog, 8-step turbo); use its 15s preset only for explicit long clips and duration="N" for ~5-15s. Explicit max-quality requests use the (MiniMax H3 Quality) presets; explicit spectrum/cache requests use Image To Video (MiniMax H3 Turbo Cache) 5s (~1.4x faster; shows 16 progress steps vs the default's 8; the default does NOT include the cache). Reference To Video presets REQUIRE a photo source and have NO Turbo/Cache/Quality variants - never invent preset names; a video with no source at all is generate_movie (direct t2v) territory. For a video starring reference photos without an exact start frame, use H3 Reference To Video with up to 9 photos. A Movie #N is not an image source by default: edit/reference an existing Movie with video_to_video. Only when the user explicitly wants to animate one current frame may image_to_movie target a Movie, and it must include movie_frame="true".
+summary: Animate a STILL image into a short video. Default to Image To Video (MiniMax H3 Turbo Cache) 5s (native audio/dialog, 8-step turbo + Spectrum cache; progress shows 16 steps - 8 real + 8 cheap replay ticks, that is normal); use the 15s preset only for explicit long clips and duration="N" for ~5-15s. "High quality"/max-quality requests use the 20-step (MiniMax H3 Quality) presets; plain Image To Video (MiniMax H3) 5s is the cache-free variant, used only when the user explicitly asks to skip the cache or blames it for artifacts/audio stutter. Reference To Video presets REQUIRE a photo source and have NO Turbo/Cache/Quality variants - never invent preset names; a video with no source at all is generate_movie (direct t2v) territory. For a video starring reference photos without an exact start frame, use H3 Reference To Video with up to 9 photos. A Movie #N is not an image source by default: edit/reference an existing Movie with video_to_video. Only when the user explicitly wants to animate one current frame may image_to_movie target a Movie, and it must include movie_frame="true".
 inputs: attachment
 autoload: true
 triggers: animate, animation, image to video, image-to-video, image to movie, image-to-movie, animate this, animate it, make this move, make it move, make a video, make a movie, make a clip, create a video, create a movie, generate a video, generate a movie, video starring, movie starring, video of, movie of, second video, second movie, reference to video, minimax, mini max, minmax, minimax h3, minmax h3, h3, hailuo, spectrum, turbo cache, spectrum cache
-template: <aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3) 5s.txt}}" prompt="motion + camera + one short quoted dialog line + ambient sound" chat_image="N"/>  # STILL sources only. attachment= works only in the very message the user pasted the image in; on later turns use chat_image="N" (the paste's bubble number). To use an explicit current frame from a Movie add movie_frame="true"; otherwise existing Movies require video_to_video.
+template: <aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" prompt="motion + camera + one short quoted dialog line + ambient sound" chat_image="N"/>  # STILL sources only. attachment= works only in the very message the user pasted the image in; on later turns use chat_image="N" (the paste's bubble number). To use an explicit current frame from a Movie add movie_frame="true"; otherwise existing Movies require video_to_video.
 ---
 # Image-to-movie
 
@@ -34,28 +34,29 @@ animate one single still/current frame from that Movie; add
 
 ## Available presets
 
-- `{{Image To Video (MiniMax H3) 5s.txt}}` - DEFAULT. ~5s, native stereo audio +
-  spoken dialog (11 languages), strong motion/identity. MiniMax H3 with the
-  fast 8-step turbo LoRA. For a specific duration between 5 and 15 seconds,
-  keep THIS preset and add `duration="10"` (seconds) - the host snaps it to
-  H3's frame grid (~10.1s).
+- `{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}` - DEFAULT. ~5s, native
+  stereo audio + spoken dialog (11 languages), strong motion/identity. The
+  fast 8-step turbo LoRA plus the Spectrum step-forecast cache. NOTE: its
+  progress shows "Step N/16" (8 real sampler steps + 8 cheap transformer-free
+  replay ticks from the cache's two-pass mode) - that is normal, not a longer
+  render. For a specific duration between 5 and 15 seconds, keep THIS preset
+  and add `duration="10"` (seconds) - the host snaps it to H3's frame grid
+  (~10.1s). Direct text-to-video with the cache is
+  `{{Prompt To Video (MiniMax H3 Turbo Cache) 5s.txt}}` via generate_movie;
+  there is no 15s or Quality cache variant.
+- `{{Image To Video (MiniMax H3) 5s.txt}}` - the same turbo pipeline WITHOUT
+  the Spectrum cache ("Step N/8", ~1.4x slower). Use ONLY when the user
+  explicitly asks to skip/disable the cache ("no cache", "plain turbo",
+  "without spectrum") or blames the cache for artifacts or audio stutter.
+  Supports `duration="N"` the same way.
 - `{{Image To Video (MiniMax H3) 15s.txt}}` - same model, ~15s single
-  generation. Only when the user explicitly asks for a long clip (~3x render
-  time). `duration` is ignored here - use the 5s preset for in-between lengths.
+  generation, plain turbo (there is no 15s cache variant). Only when the user
+  explicitly asks for a long clip (~4x the default render time). `duration`
+  is ignored here - use the default 5s preset for in-between lengths.
 - `{{Image To Video (MiniMax H3 Quality) 5s.txt}}` / `{{Image To Video (MiniMax H3 Quality) 15s.txt}}` -
-  the full 20-step render (~2x the default's render time, slightly finer
-  detail). Only when the user explicitly asks for maximum/highest quality or
-  complains about turbo output quality.
-- `{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}` - EXPERIMENTAL: the
-  default turbo pipeline plus the Spectrum step-forecast cache, ~1.4x faster
-  again. Use ONLY when the user explicitly asks for the spectrum / cache /
-  turbo-cache variant. NOTE: its progress shows "Step N/16" (8 real sampler
-  steps + 8 cheap transformer-free replay ticks from the cache's two-pass
-  mode) vs "Step N/8" on the plain default - that step count is how to tell
-  the cache actually ran. Supports `duration="N"`.
-  There is no Quality+cache or 15s cache variant; explicit direct text-to-video
-  with the cache uses `{{Prompt To Video (MiniMax H3 Turbo Cache) 5s.txt}}`
-  via generate_movie.
+  the full 20-step render (~3x the default's render time, slightly finer
+  detail). Use when the user asks for high/maximum/highest quality or
+  complains about turbo/cache output quality.
 - `{{Reference To Video (MiniMax H3) 5s.txt}}` - the SUBJECT of the source
   image doing something new; output does NOT start on the source frame. See
   "Reference-to-video" below. REQUIRES at least one photo source
@@ -71,7 +72,7 @@ DEFAULT - stack onto the image you JUST generated in this same reply (chain="tru
 Size BOTH actions to the video canvas (see "Sizing" below):
 ```
 <aitools_action skill="generate_image" preset="Prompt To Image (Z-Image).txt" prompt="<full Z-Image scene description>" width="864" height="480"/>
-<aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3) 5s.txt}}" prompt="<full H3 motion + dialog beat>" chain="true" width="864" height="480"/>
+<aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" prompt="<full H3 motion + dialog beat>" chain="true" width="864" height="480"/>
 ```
 This stacks the video onto the SAME Pic as the image you just made, so the
 chat shows ONE bubble that updates from still -> playing video. Do NOT also pass
@@ -82,12 +83,12 @@ action emitted earlier in the same reply. This is the right form for any
 
 Animate a freshly-pasted image (user dropped/pasted an image THIS turn):
 ```
-<aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3) 5s.txt}}" prompt="slow camera push-in, leaves rustling" attachment="1"/>
+<aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" prompt="slow camera push-in, leaves rustling" attachment="1"/>
 ```
 
 Animate an image already in the chat from earlier (numbered bubble):
 ```
-<aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3) 5s.txt}}" prompt="the wind picks up, hair flutters" chat_image="2"/>
+<aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" prompt="the wind picks up, hair flutters" chat_image="2"/>
 ```
 
 ## Writing good image-to-video prompts
@@ -100,7 +101,7 @@ person fully: apparent age, ethnicity/complexion, build, hair, face, wardrobe,
 and expression. Never animate "Mara", "Bob", "the heroine", or "the same
 person" by name only.
 
-### MiniMax H3 (`{{Image To Video (MiniMax H3) 5s.txt}}`) - DEFAULT
+### MiniMax H3 (`{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}`) - DEFAULT
 
 H3 generates video AND native stereo audio (speech, ambience, music cues) in
 one pass, and understands the source frame as `<Picture 1>`.
@@ -170,7 +171,7 @@ it, build the frame first, then animate it:
 
 1. `image_to_image` with `{{Image To Image Klein Edit 2 Input.txt}}` - insert
    the person (photo in slot 2) into the desired start frame.
-2. `image_to_movie` with `{{Image To Video (MiniMax H3) 5s.txt}}` and
+2. `image_to_movie` with `{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}` and
    `chain="true"` in the same reply - animates that exact composed frame.
 
 If the opening frame does NOT need to be exact, skip the two-stage recipe and
@@ -219,7 +220,7 @@ the still is made at exactly the video's canvas:
 
 ```
 <aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full still prompt>" width="864" height="480"/>
-<aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3) 5s.txt}}" prompt="<motion prompt>" chain="true" width="864" height="480"/>
+<aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" prompt="<motion prompt>" chain="true" width="864" height="480"/>
 ```
 
 **The user's request always wins.** If they name a size or format, use it on
@@ -280,8 +281,8 @@ and put the result on both actions:
   variant applied (e.g. reference generations ignore the spectrum cache).
 - Reference To Video / Reference Video To Video always need at least one
   photo/clip source. A brand-new video with NO source: default recipe is
-  Z-Image still + chained image_to_movie (cache requests -> chain onto
-  `{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}`); explicit direct
+  Z-Image still + chained image_to_movie onto the DEFAULT
+  `{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}`; explicit direct
   text-to-video -> generate_movie with a `Prompt To Video ...` preset.
 - Chained still -> movie: put the SAME `width`/`height` on BOTH actions
   (864x480 landscape, 480x864 portrait, 640x640 square). Animating an existing

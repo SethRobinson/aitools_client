@@ -21,8 +21,8 @@ resulting image via `/view`.
    ```
    ```
    default_workflow|text_to_img_zimage.json
-   add_server|http://hal:7860
-   add_server|http://hal:7861
+   add_server|http://gpu-box.lan:7860
+   add_server|http://gpu-box.lan:7861
    ```
    Unreachable servers are silently skipped; the lowest-queue one wins. If
    `config.txt` is missing, the CLI will tell you and point at the example.
@@ -50,7 +50,7 @@ resulting image via `/view`.
    on PATH (the `py` launcher or `python`).
 
    **Linux:** `pip install -r requirements.txt` into your environment of
-   choice (already present in the existing `comfyui_env`).
+   choice.
 
 4. (Optional, Linux) `chmod +x aitools_cli.py` and add `cli/` to your PATH or
    symlink the script.
@@ -84,7 +84,7 @@ aitools_cli.py "a cat" cat.png -p "Prompt To Image (Z-Image)"
 Override the preset's negative prompt and pin a server:
 ```
 aitools_cli.py "a cat" cat.png -p "Prompt To Image (Z-Image)" \
-    -n "ugly, blurry" --server http://hal:7861
+    -n "ugly, blurry" --server http://gpu-box.lan:7861
 ```
 
 Reproducible: same seed = same image:
@@ -181,8 +181,8 @@ drop a reference.
 MiniMax H3 is the app's default video model: 24fps mp4 with native stereo
 audio, including spoken dialog (11 languages). Clips are ~5s by default and
 can run up to ~15s. H3 has NO negative-prompt path (`-n` is ignored by these
-presets), fps is fixed at 24, and the model files currently live only on
-hal's ComfyUI instances. Output is written as `.mp4` (the CLI adjusts your
+presets), fps is fixed at 24, and the model files may only be installed on
+some of your ComfyUI servers. Output is written as `.mp4` (the CLI adjusts your
 output extension automatically).
 
 There are four ways to make a movie. All are single-step presets, so they

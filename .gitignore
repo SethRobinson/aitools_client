@@ -80,3 +80,4 @@ elevenlabs_tts_json_sent.json
 elevenlabs_tts_json_received.mp3
 Assets/Resources/
 Assets/Resources.meta
+agents_secret.md

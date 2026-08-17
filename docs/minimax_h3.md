@@ -35,7 +35,8 @@ native stereo audio (dialog in 11 languages), no RIFE in the output path.
   `frame_load_cap: 360` in the VHS loader).
 - Graphs include kjnodes' `MiniMaxH3MemoryEfficientSageAttentionPatch`, which needs
   the `sageattention` pip package on the server (bypass/delete to run without).
-- H3 model files currently exist only on hal's ComfyUI instances.
+- H3 model files may be installed on only some of the configured ComfyUI servers
+  (which ones locally: `agents_secret.md`).
 
 ### Turbo distill LoRA (the default FL2VA path since 2026-08-10)
 
@@ -47,21 +48,22 @@ native stereo audio (dialog in 11 languages), no RIFE in the output path.
 - Server needs the `Larryvrh/ComfyUI-MiniMax-H3-Turbo` custom nodes: a
   `MiniMaxH3TurboLoRA` loader (bypass mode default; `low_vram`=merge for OOM) and a
   `MiniMaxH3TurboSampler` (dual-clock Euler; replaces `KSamplerSelect` into
-  `SamplerCustomAdvanced`, fixes 4-step audio noise). Both installed on hal
-  (all 5 ComfyUI instances share `~/ComfyUI`); the LoRA is in
-  `~/minimax_h3_download.sh`.
+  `SamplerCustomAdvanced`, fixes 4-step audio noise). Local install
+  status and file locations: `agents_secret.md`.
 - **Ref2VA is NOT turbo-capable** (tested 2026-08-10): the node's time-conditioning
   reinjection for pruned bases (`__init__.py` forward, the `h3_silu_temb_grid`
   replay) assumes FL2VA's 2-stream latent packing and crashes on Ref2VA's 3-stream
   ("size of tensor a (3) must match b (2)"), in both bypass and merge modes.
   Reference presets stay 20-step; retest when the node/LoRA updates (lightx2v's
   separate 4-step LoRA is FL2V-only preview quality, its Ref2V distill is
-  "on the roadmap"; their file is also on hal in models/loras for manual play).
-- The `SpectrumApplyMiniMaxH3` cache node (xmarre/ComfyUI-Spectrum-MiniMax-H3,
-  installed on hal) stacks with turbo for ~1.4x more (50s vs 70s per 5s clip on a
-  Blackwell) with A/B-identical frames; shipped only as the experimental opt-in
-  `Image To Video (MiniMax H3 Turbo Cache) 5s` preset until dialog audio is
-  ear-verified (the node is not lossless and has an audio-stutter history).
+  "on the roadmap").
+- The `SpectrumApplyMiniMaxH3` cache node (xmarre/ComfyUI-Spectrum-MiniMax-H3;
+  must be installed on the server) stacks with turbo for ~1.4x more (50s vs 70s per 5s clip on a
+  Blackwell) with A/B-identical frames; shipped as the `(MiniMax H3 Turbo Cache)
+  5s` presets, which are AI Chat's DEFAULT i2v/direct-t2v route since 2026-08-17
+  ("high quality" -> the 20-step Quality presets; explicit no-cache requests ->
+  the plain turbo presets). The node is not lossless and has an audio-stutter
+  history - ear-test dialog when a clip sounds off.
   Kijai's `SolAttnPatch` sparse attention was also tested and was NOT faster than
   the sage patch on the RTX PRO 6000s (72s vs 70s, defaults); node left installed,
   not used by any workflow.
@@ -74,7 +76,7 @@ native stereo audio (dialog in 11 languages), no RIFE in the output path.
 - i2v/t2v 20-step (`Quality` presets): ~163s Blackwell (~2.5 min), ~1.8x that on
   an A100 (~4.5 min). t2v within ~5% of i2v; "slow i2v" = oversized canvas or
   slower GPU, not the task type.
-- i2v turbo 8-step + Spectrum cache (experimental preset): ~50s Blackwell.
+- i2v turbo 8-step + Spectrum cache (the AI Chat default): ~50s Blackwell.
 - Cold-start adders the first time a server touches H3: ~20 GB checkpoint stage
   (tens of seconds) + LoRA load a few more.
 - Single-clip rv2v 5s (20-step, no turbo - Ref2VA can't run the turbo LoRA):
@@ -93,7 +95,8 @@ native stereo audio (dialog in 11 languages), no RIFE in the output path.
   the literal `"length": 124` and all placeholders, so the AI Chat
   duration/dimension overrides work unchanged.
 - `img_to_video_minimax_h3_turbo_cache.json`, `text_to_video_minimax_h3_turbo_cache.json` -
-  turbo + `SpectrumApplyMiniMaxH3` (experimental opt-in presets only).
+  turbo + `SpectrumApplyMiniMaxH3`; run by the Turbo Cache presets, AI Chat's
+  default i2v/t2v route.
 - `img_to_video_minimax_h3.json`, `text_to_video_minimax_h3.json` - FL2VA,
   20-step; used by the `(MiniMax H3 Quality)` presets.
 - `ref_multi_to_video_minimax_h3.json` - **the universal Ref2VA graph** used by all
@@ -153,23 +156,25 @@ native stereo audio (dialog in 11 languages), no RIFE in the output path.
 
 ## Presets (`Presets/`)
 
-FL2VA presets (all keep their long-standing names, so AI Chat skills were mostly
-untouched by the turbo flip):
+FL2VA presets:
 
+- `Image To Video (MiniMax H3 Turbo Cache) 5s.txt` /
+  `Prompt To Video (MiniMax H3 Turbo Cache) 5s.txt` - turbo + Spectrum cache
+  (i2v and direct t2v); AI Chat's DEFAULT video route since 2026-08-17
+  (image_to_movie / generate_movie skills). Cache runs report 16 progress
+  steps (8 real sampler steps + 8 cheap transformer-free replay ticks from
+  Spectrum's default offline-smoothing two-pass mode) vs 8 on the plain turbo
+  presets - that step count is the quickest tell it ran; render time (~50s vs
+  ~70s per 5s clip on a Blackwell) and `SpectrumApplyMiniMaxH3` in
+  `comfyui_workflow_to_send_api.json` confirm.
 - `Image To Video (MiniMax H3) 5s.txt` / `15s.txt`, `Prompt To Video (MiniMax H3) 5s.txt` -
-  the DEFAULTS, now pointing at the `*_turbo.json` workflows (8-step turbo LoRA).
+  the plain `*_turbo.json` workflows (8-step turbo LoRA, no cache). AI Chat
+  routes here only on explicit no-cache requests; the 15s preset also serves
+  explicit long-clip requests (there is no 15s cache variant).
 - `Image To Video (MiniMax H3 Quality) 5s.txt` / `15s.txt`,
   `Prompt To Video (MiniMax H3 Quality) 5s.txt` - the full 20-step render (~2x
-  time); skills route "maximum/highest quality" requests here.
-- `Image To Video (MiniMax H3 Turbo Cache) 5s.txt` /
-  `Prompt To Video (MiniMax H3 Turbo Cache) 5s.txt` - EXPERIMENTAL turbo +
-  Spectrum cache (i2v and direct t2v); routed only on explicit
-  "spectrum"/"turbo cache" requests (image_to_movie / generate_movie skills).
-  Cache runs report 16 progress steps (8 real sampler steps + 8 cheap
-  transformer-free replay ticks from Spectrum's default offline-smoothing
-  two-pass mode) vs 8 on the plain turbo presets - that step count is the
-  quickest tell it ran; render time (~50s vs ~70s per 5s clip on a Blackwell)
-  and `SpectrumApplyMiniMaxH3` in `comfyui_workflow_to_send_api.json` confirm.
+  plain turbo, ~3x the cache default); skills route "high quality" /
+  "maximum quality" requests here.
 
 Three reference presets, all pointing at the universal workflow (all 20-step -
 Ref2VA cannot run the turbo LoRA, see Model facts). 
@@ -279,13 +284,13 @@ Ref2VA cannot run the turbo LoRA, see Model facts).
 
 ## Troubleshooting
 
-- **Instant "CUDA error: invalid argument" in `ComfyUI-MiniMax-H3-Turbo/__init__.py` (`_interp_egrid`)**: a wedged CUDA context on that ONE ComfyUI instance, not a GPU-class problem and not H3's fault. Verified 2026-08-14 on hal:7864: the instance's log (`~/ComfyUI/logs/comfy_<port>.log`, or `GET /internal/logs/raw`) showed the FIRST "invalid argument" hit during a BiRefNet weight load at 10:29; every later CUDA call in that process (including H3 turbo) then failed instantly with the same error, while Blackwells 7862/7863 and A100s 7860/7861 ran identical code fine. Diagnosis rule: find the FIRST CUDA error in that instance's log - whatever ran there is the trigger; everything after is collateral. Remedy: restart the wedged instance; meanwhile pin a healthy server (`--server http://hal:786X`) since queue-based auto-pick otherwise fails ~1-in-N randomly. Restart recipe (hal, as user `hal`): `kill <pid of main.py --port 786X>`, then `source ~/miniconda3/etc/profile.d/conda.sh && conda activate comfyui_env && bash ~/3_card_blackwell_runcomfyservers_dsv4.sh` (idempotent - relaunches only dead ports; A100 pair uses `~/2gpu_a100_runcomfyservers.sh`). The conda env MUST be `comfyui_env` (`~/ComfyUI/env.sh`); the trio script does not self-activate it. (A stale `~/ComfyUI/myenv` venv that caused failed relaunches was deleted 2026-08-14.) Do NOT conclude "turbo is broken on Blackwell" from this symptom (turbo measures ~70s/clip on these Blackwells).
+- **Instant "CUDA error: invalid argument" (`cudaErrorInvalidValue`) from H3 runs** - e.g. in `ComfyUI-MiniMax-H3-Turbo/__init__.py` (`_interp_egrid`), or even a plain tensor copy: a wedged CUDA context on that ONE ComfyUI instance, not a GPU-class problem and not H3's fault. Once a context wedges, EVERY later CUDA call in that process fails instantly with the same error while sibling instances run identical code fine. Diagnosis rule: find the FIRST CUDA error in that instance's log (`logs/comfy_<port>.log` beside the install, or `GET /internal/logs/raw`) - whatever ran there is the trigger; everything after is collateral. Both observed incidents (2026-08-14, 2026-08-17) hit the same instance and first-errored during a BiRefNet `state_dict` load (`bb.layers.*` weight copies); if it recurs, suspect that card/driver. Remedy: restart the wedged instance; meanwhile pin a healthy server (CLI `--server http://<host>:<port>`) - a wedged instance fails instantly, so it always looks idle and becomes a job magnet, making the failure rate look much worse than 1-in-N. Do NOT conclude "turbo is broken" from this symptom. Local hostnames, ports, log paths, and the restart recipe live in `agents_secret.md`.
 
 ## Verification checklist for changes here
 
 1. CLI smoke (fast, no editor): `python cli/aitools_cli.py "<prompt with tags>"
    out.mp4 -p "Reference Video To Video (MiniMax H3) 5s" --video clip.mp4 -i2
-   photo.png -v` against hal - watch for "pruned unused loader node(s)" and check
+   photo.png -v` against a server with the H3 models - watch for "pruned unused loader node(s)" and check
    the regenerated `*_cached_api_version.json` has all autogrow inputs on node 7.
    Offline variant (servers down): append `--dry-run` and inspect the emitted
    `out.mp4.api.json` instead - same pruning/override pipeline, faked upload

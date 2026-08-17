@@ -1,7 +1,8 @@
 COMMAND_START|joblist
 #Convert image to ~5-second video with native stereo audio using MiniMax H3.
-#DEFAULT path uses the turbo distill LoRA workflow (8 steps, ~2x faster); use the
-#"Image To Video (MiniMax H3 Quality) 5s" preset for the full 20-step render.
+#Turbo distill LoRA workflow (8 steps, no Spectrum cache). Since 2026-08-17 AI Chat
+#defaults to "Image To Video (MiniMax H3 Turbo Cache) 5s"; this is the no-cache fallback.
+#Use "Image To Video (MiniMax H3 Quality) 5s" for the full 20-step render.
 #Length is a 24fps frame count, snapped up to the model's 17k+5 grid (124 = ~5s, trained max 362 = ~15s)
 #Variable names are video-specific on purpose: a chained still preset (Z-Image) runs on the SAME
 #PicMain and shares its variable scope, so a plain %width% here would collide with the still's.

@@ -1010,7 +1010,7 @@
             "format": "video/h264-mp4",
             "frame_rate": 16,
             "workflow": "14bAnimateDiff_00347.png",
-            "fullpath": "/home/hal/ComfyUI/temp/14bAnimateDiff_00347.mp4"
+            "fullpath": ""
           }
         }
       }

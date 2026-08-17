@@ -1,9 +1,11 @@
 COMMAND_START|joblist
-#EXPERIMENTAL: direct text-to-video, turbo 8-step + Spectrum step-forecast cache (default
-#audio-protecting settings), ~1.4x faster than the default turbo preset. Progress shows
+#Direct text-to-video, turbo 8-step + Spectrum step-forecast cache (default
+#audio-protecting settings), ~1.4x faster than the plain turbo preset. Progress shows
 #16 steps (8 real + 8 cheap transformer-free replay ticks) vs the plain turbo preset's 8 -
-#that step count is the tell that the cache ran. EAR-TEST dialog for audio
-#stutter. Requires the ComfyUI-Spectrum-MiniMax-H3 custom node on the server.
+#that step count is the tell that the cache ran. AI Chat's default for explicit direct
+#text-to-video since 2026-08-17; explicit no-cache requests use "Prompt To Video
+#(MiniMax H3) 5s". EAR-TEST dialog if audio stutter is suspected (the cache is not
+#lossless). Requires the ComfyUI-Spectrum-MiniMax-H3 custom node on the server.
 %width%="864"
 %height%="480"
 %length%="124"

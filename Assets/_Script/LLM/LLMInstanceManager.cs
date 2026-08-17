@@ -871,7 +871,7 @@ public class LLMInstanceManager : MonoBehaviour
             
             string result = ub.Uri.AbsoluteUri;
             
-            // UriBuilder normalizes a host-only URL like "http://hal:8000" into "http://hal:8000/".
+            // UriBuilder normalizes a host-only URL like "http://myserver:8000" into "http://myserver:8000/".
             // Preserve the original presence/absence of a trailing slash on the host-only form.
             if (!endpoint.EndsWith("/"))
             {

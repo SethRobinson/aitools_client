@@ -89,8 +89,8 @@ CHEAT SHEET (read this first, the long version is below):
 - TEXT-ONLY NEW VIDEO DEFAULT -> use the pair pattern. For "generate/make a
   video/movie/clip of X" with no source image, emit `generate_image` with
   `Prompt To Image (Z-Image).txt` first, then `image_to_movie chain="true"`.
-  The second preset is `Image To Video (MiniMax H3) 5s.txt` (native audio +
-  dialog). Direct
+  The second preset is `Image To Video (MiniMax H3 Turbo Cache) 5s.txt`
+  (native audio + dialog). Direct
   `generate_movie` / text-to-video is ONLY for explicit requests like
   "text-to-video", "direct from text", "no still first", or a named
   `Prompt To Video ...` preset. Put the SAME width/height on BOTH actions of
@@ -228,9 +228,9 @@ chain="true" example - two stacked Z-Image+video pairs in one reply (rules are
 in the cheat sheet above). The chained step takes ONLY chain="true" plus
 preset+prompt - never attachment / chat_image / a guessed number:
     <aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full Z-Image scene 1>" width="864" height="480"/>
-    <aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3) 5s.txt}}" prompt="<full H3 motion 1>" chain="true" width="864" height="480"/>
+    <aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" prompt="<full H3 motion 1>" chain="true" width="864" height="480"/>
     <aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full Z-Image scene 2>" width="864" height="480"/>
-    <aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3) 5s.txt}}" prompt="<full H3 motion 2>" chain="true" width="864" height="480"/>
+    <aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" prompt="<full H3 motion 2>" chain="true" width="864" height="480"/>
 Each pair is independent. Z-Image wants ~250-380 words; H3 wants 4-8
 sentences with ONE quoted line of in-scene dialog.
 

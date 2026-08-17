@@ -1,10 +1,11 @@
 COMMAND_START|joblist
-#EXPERIMENTAL: turbo 8-step + Spectrum step-forecast cache (SpectrumApplyMiniMaxH3, default
-#audio-protecting settings). Measured ~1.4x faster than the default turbo preset (50s vs 70s
+#Turbo 8-step + Spectrum step-forecast cache (SpectrumApplyMiniMaxH3, default
+#audio-protecting settings). Measured ~1.4x faster than the plain turbo preset (50s vs 70s
 #for 5s @864x480 on a Blackwell). Progress shows 16 steps (8 real + 8 cheap replay ticks) vs
 #the plain turbo preset's 8 - that step count is the tell that the cache ran. Video quality
-#matched turbo in A/B frames; EAR-TEST dialog for audio stutter before trusting it for
-#speech-heavy clips. AI Chat routes here only on explicit spectrum/turbo-cache requests.
+#matched turbo in A/B frames; EAR-TEST dialog if audio stutter is suspected (the cache is
+#not lossless). AI Chat's DEFAULT image-to-video preset since 2026-08-17; explicit no-cache
+#requests use "Image To Video (MiniMax H3) 5s", "high quality" uses the Quality presets.
 #Requires the ComfyUI-Spectrum-MiniMax-H3 custom node on the server.
 %vid_width%="864"
 %vid_height%="480"
