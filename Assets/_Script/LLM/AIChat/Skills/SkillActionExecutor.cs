@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using SimpleJSON;
 using TMPro;
 using AITools.AIChat.Video;
+using AITools.AIChat.Web;
 using UnityEngine;
 
 namespace AITools.AIChat.Skills
@@ -131,6 +132,18 @@ namespace AITools.AIChat.Skills
         /// </summary>
         public void EnqueueAction(SkillAction action)
         {
+            // Tally at ENQUEUE time (not dispatch): a render queued behind a deferred web
+            // fetch has not dispatched yet when the reply finalizes, but it must still count
+            // as the follow-up that makes the safety-net continue unnecessary.
+            if (action != null)
+            {
+                string tallyId = NormalizeSkillId((action.SkillId ?? "").Trim().ToLowerInvariant());
+                if (tallyId != BuiltInSkillIds.Continue && tallyId != BuiltInSkillIds.ReadSkill && tallyId != BuiltInSkillIds.InspectImage)
+                {
+                    if (IsPreparatorySkill(tallyId)) _turnPreparatoryActions++;
+                    else _turnOtherActions++;
+                }
+            }
             _actionQueue.Enqueue(action);
             PumpQueue();
         }
@@ -186,6 +199,29 @@ namespace AITools.AIChat.Skills
         /// </summary>
         public bool IsIdle => _pumpState == PumpState.Idle && _actionQueue.Count == 0;
 
+        // Per-turn tally used by the host's "unfinished plan" safety net: a reply that only
+        // PREPARED media (fetched a web photo/clip, extracted a frame, cut a clip) but never
+        // emitted the render it announced gets one automatic continue turn.
+        private int _turnPreparatoryActions;
+        private int _turnOtherActions;
+        public bool TurnHadOnlyPreparatoryActions => _turnPreparatoryActions > 0 && _turnOtherActions == 0;
+
+        private static bool IsPreparatorySkill(string skillId)
+        {
+            switch (skillId)
+            {
+                case BuiltInSkillIds.WebImage:
+                case BuiltInSkillIds.WebVideo:
+                case BuiltInSkillIds.WebSearch:
+                case BuiltInSkillIds.WebPage:
+                case BuiltInSkillIds.ExtractStill:
+                case BuiltInSkillIds.ClipVideo:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
         /// <summary>
         /// Called by the deferred-action coroutine once its resource is ready
         /// (or it gave up). Drops the finished action from the head and resumes
@@ -219,6 +255,8 @@ namespace AITools.AIChat.Skills
             _draining = false;
             _lastActionDeferred = false;
             _blockingAction = null;
+            _turnPreparatoryActions = 0;
+            _turnOtherActions = 0;
             _lastLocalOpOutputChatImageIndex = -1;
             _lastLocalOpInputChatImageIndex = -1;
             _lastLocalOpOutputPic = null;
@@ -266,6 +304,12 @@ namespace AITools.AIChat.Skills
                 action.SkillId = normalizedId;
             }
 
+            // stitch_video takes a LIST of sources. A model that writes the list into
+            // chat_image="3,5,7" would otherwise die in the anchor rewrite below ("3,5,7"
+            // is not an anchor), so move list-shaped values to chat_images first.
+            if (action.SkillId == BuiltInSkillIds.StitchVideo)
+                NormalizeStitchListArgs(action);
+
             // Rewrite any chat_image="<name>" into chat_image="<number>" using the host's
             // character-anchor registry, BEFORE the slot logic below (which parses those
             // attributes as integers). Idempotent, so the deferred re-execution path is
@@ -303,6 +347,26 @@ namespace AITools.AIChat.Skills
 
                 case BuiltInSkillIds.ExtractStill:
                     ExecuteExtractStill(action);
+                    break;
+
+                case BuiltInSkillIds.StitchVideo:
+                    ExecuteStitchVideo(action);
+                    break;
+
+                case BuiltInSkillIds.WebSearch:
+                    ExecuteWebSearch(action);
+                    break;
+
+                case BuiltInSkillIds.WebImage:
+                    ExecuteWebImage(action);
+                    break;
+
+                case BuiltInSkillIds.WebVideo:
+                    ExecuteWebVideo(action);
+                    break;
+
+                case BuiltInSkillIds.WebPage:
+                    ExecuteWebPage(action);
                     break;
 
                 case BuiltInSkillIds.ReadSkill:
@@ -499,6 +563,513 @@ namespace AITools.AIChat.Skills
                 return;
             }
 
+            _lastActionDeferred = true;
+        }
+
+        // ---------- Local multi-clip stitch (stitch_video) ----------
+
+        // Attribute names the model may use for the ordered source list.
+        private static readonly string[] StitchListArgNames = { "chat_images", "clips", "videos", "movies", "sources", "inputs" };
+
+        /// <summary>
+        /// Move a list-shaped <c>chat_image</c> value ("3,5,7", "3-12", "3 5 7") into
+        /// <c>chat_images</c> so the generic anchor rewrite doesn't reject it. A single
+        /// number or a single anchor name stays where it is (slot form).
+        /// </summary>
+        private static void NormalizeStitchListArgs(SkillAction action)
+        {
+            if (action == null) return;
+            if (!action.Args.TryGetValue("chat_image", out string raw) || string.IsNullOrWhiteSpace(raw))
+                return;
+            string val = raw.Trim();
+            bool listShaped = val.IndexOf(',') >= 0 || val.IndexOf(';') >= 0 || val.IndexOf(' ') >= 0
+                || Regex.IsMatch(val, @"^\d+\s*-\s*\d+$") || string.Equals(val, "all", StringComparison.OrdinalIgnoreCase);
+            if (!listShaped) return;
+
+            bool hasList = false;
+            foreach (string name in StitchListArgNames)
+            {
+                if (action.Args.TryGetValue(name, out string existing) && !string.IsNullOrWhiteSpace(existing))
+                {
+                    hasList = true;
+                    break;
+                }
+            }
+            if (!hasList)
+                action.Args["chat_images"] = val;
+            action.Args.Remove("chat_image");
+        }
+
+        /// <summary>
+        /// Parse the stitch source list: comma/semicolon separated tokens, each a Movie
+        /// number ("7"), an inclusive range ("3-12"), an anchor name ("scene1"), or "all"
+        /// (every live Movie bubble in chat order). Appends slot numbers to
+        /// <paramref name="sources"/> in the order written; repeats are allowed.
+        /// </summary>
+        private bool ParseStitchSourceList(string list, List<int> sources, out string error)
+        {
+            error = null;
+            if (string.IsNullOrWhiteSpace(list)) return true;
+
+            string[] tokens = list.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (string rawToken in tokens)
+            {
+                string token = rawToken.Trim();
+                if (token.Length == 0) continue;
+                if (!TryAddStitchSourceToken(token, sources, out error))
+                {
+                    // "3 5 7" (space separated) - retry the token as several tokens.
+                    string[] parts = token.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length < 2) return false;
+                    foreach (string part in parts)
+                    {
+                        if (!TryAddStitchSourceToken(part, sources, out error))
+                            return false;
+                    }
+                    error = null;
+                }
+            }
+            return true;
+        }
+
+        private bool TryAddStitchSourceToken(string token, List<int> sources, out string error)
+        {
+            error = null;
+            token = token.Trim().TrimStart('#');
+            // Tolerate "movie 3" / "Movie #3" style tokens.
+            var m = Regex.Match(token, @"^(?:movie|clip|video)\s*#?\s*(\d+)$", RegexOptions.IgnoreCase);
+            if (m.Success) token = m.Groups[1].Value;
+
+            if (string.Equals(token, "all", StringComparison.OrdinalIgnoreCase))
+            {
+                int count = _host?.GetChatImageCount() ?? 0;
+                int added = 0;
+                for (int i = 1; i <= count; i++)
+                {
+                    if (_host.IsChatImageMovie(i))
+                    {
+                        sources.Add(i);
+                        added++;
+                    }
+                }
+                if (added == 0)
+                {
+                    error = "\"all\" matched no Movie bubbles - there are no movies in this chat yet.";
+                    return false;
+                }
+                return true;
+            }
+
+            var range = Regex.Match(token, @"^(\d+)\s*-\s*(\d+)$");
+            if (range.Success)
+            {
+                int a = int.Parse(range.Groups[1].Value);
+                int b = int.Parse(range.Groups[2].Value);
+                if (a > b) { int t = a; a = b; b = t; }
+                if (a <= 0)
+                {
+                    error = $"range \"{token}\" starts below 1.";
+                    return false;
+                }
+                if (b - a + 1 > FfmpegTool.MaxStitchClips)
+                {
+                    error = $"range \"{token}\" spans more than {FfmpegTool.MaxStitchClips} clips.";
+                    return false;
+                }
+                for (int i = a; i <= b; i++) sources.Add(i);
+                return true;
+            }
+
+            if (int.TryParse(token, out int n))
+            {
+                if (n <= 0)
+                {
+                    error = $"\"{token}\" is not a valid chat_image number.";
+                    return false;
+                }
+                sources.Add(n);
+                return true;
+            }
+
+            int resolved = _host?.ResolveAnchorToIndex(token) ?? 0;
+            if (resolved <= 0)
+            {
+                error = $"\"{token}\" is neither a Movie number nor a known anchor name (see the ANCHORS line of CURRENT STATE). " +
+                        "Same-reply clips need anchor=\"name\" on their image_to_movie action; earlier clips use their Movie #N number.";
+                return false;
+            }
+            sources.Add(resolved);
+            return true;
+        }
+
+        private void ExecuteStitchVideo(SkillAction action)
+        {
+            var sources = new List<int>();
+
+            // Slot form: chat_image + chat_image2..N (anchor names already rewritten to numbers).
+            if (action.ChatImageIndex.HasValue) sources.Add(action.ChatImageIndex.Value);
+            for (int slot = 2; slot <= SkillAction.MaxExtraInputSlot; slot++)
+            {
+                int? idx = action.GetExtraChatImageIndex(slot);
+                if (idx.HasValue) sources.Add(idx.Value);
+            }
+
+            // List form: chat_images="scene1,scene2,7-9" / "all".
+            string list = FirstArg(action, StitchListArgNames);
+            if (!string.IsNullOrEmpty(list) && !ParseStitchSourceList(list, sources, out string listError))
+            {
+                _host?.AddSystemInjectionAndBubble("stitch_video: " + listError);
+                return;
+            }
+
+            if (sources.Count < 2)
+            {
+                _host?.AddSystemInjectionAndBubble(
+                    "stitch_video needs at least TWO Movie bubbles, in playback order: " +
+                    "chat_images=\"3,5,7\" (numbers, 3-7 ranges, anchor names, or \"all\"). " +
+                    "For clips generated in this same reply, put anchor=\"sceneN\" on each image_to_movie " +
+                    "action and list those names.");
+                return;
+            }
+            if (sources.Count > FfmpegTool.MaxStitchClips)
+            {
+                _host?.AddSystemInjectionAndBubble(
+                    $"stitch_video joins at most {FfmpegTool.MaxStitchClips} clips per action ({sources.Count} were listed). " +
+                    "Stitch them in batches, then stitch the batch results.");
+                return;
+            }
+
+            // Every source must be a Movie slot. A movie whose render is still in flight
+            // is fine (the host waits for it); a still image or unknown slot is not.
+            var notMovies = new List<int>();
+            foreach (int idx in sources)
+            {
+                bool isMovie = _host?.IsChatImageMovie(idx) ?? false;
+                if (!isMovie && !notMovies.Contains(idx)) notMovies.Add(idx);
+            }
+            if (notMovies.Count > 0)
+            {
+                var sb = new StringBuilder();
+                foreach (int idx in notMovies)
+                {
+                    if (sb.Length > 0) sb.Append(", ");
+                    sb.Append('#').Append(idx);
+                }
+                _host?.AddSystemInjectionAndBubble(
+                    $"stitch_video only joins Movie bubbles, but {sb} {(notMovies.Count == 1 ? "is not a movie" : "are not movies")} " +
+                    "(a still image, or a slot that does not exist). Use Movie #N entries from CHAT IMAGES, " +
+                    "or animate the still first (image_to_movie) and stitch its anchor.");
+                return;
+            }
+
+            var req = new FfmpegTool.StitchRequest();
+            int width = ParseIntArg(action.GetArg("width"), 0);
+            int height = ParseIntArg(action.GetArg("height"), 0);
+            if (width > 0 && height > 0)
+            {
+                req.Width = width;
+                req.Height = height;
+            }
+            req.Fps = ParseFloat(FirstArg(action, "fps", "frame_rate", "framerate"), 0f);
+            req.IncludeAudio = ParseBool(action.GetArg("include_audio") ?? action.GetArg("audio"), true);
+            if (ParseBool(action.GetArg("no_audio"), false))
+                req.IncludeAudio = false;
+
+            float crossfade = ParseFloat(FirstArg(action, "crossfade", "crossfade_seconds", "dissolve", "fade"), 0f);
+            string transition = (FirstArg(action, "transition") ?? "").Trim().ToLowerInvariant();
+            if (crossfade <= 0f && (transition == "crossfade" || transition == "fade" || transition == "dissolve" || transition == "xfade"))
+                crossfade = 0.5f;
+            if (transition == "cut" || transition == "none" || transition == "hard")
+                crossfade = 0f;
+            req.CrossfadeSeconds = Mathf.Clamp(crossfade, 0f, 5f);
+
+            _host?.MarkChainTargetStale();
+            int epoch = _turnEpoch;
+            bool started = _host != null && _host.StartStitchVideoAction(action, sources, req, ok =>
+            {
+                // The host keeps waiting/stitching across later user turns (only Stop/Clear
+                // cancel it). Resume the pump only if this is still the turn that parked it;
+                // a newer turn has its own queue and may be parked on a different action.
+                if (_turnEpoch == epoch)
+                    ResumePumpAfterDeferredComplete(action);
+            });
+
+            if (!started)
+            {
+                _host?.AddSystemInjectionAndBubble("stitch_video could not start. The listed movies may have been deleted or unloaded.");
+                return;
+            }
+
+            _lastActionDeferred = true;
+        }
+
+        // ---------- Web media fetch (web_search / web_image / web_video) ----------
+
+        private static string FirstArg(SkillAction action, params string[] names)
+        {
+            for (int i = 0; i < names.Length; i++)
+            {
+                string v = action.GetArg(names[i]);
+                if (!string.IsNullOrWhiteSpace(v)) return v.Trim();
+            }
+            return null;
+        }
+
+        private static int ParseIntArg(string s, int fallback)
+        {
+            if (string.IsNullOrEmpty(s)) return fallback;
+            if (int.TryParse(s.Trim(), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out int v))
+                return v;
+            float f;
+            if (float.TryParse(s.Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out f))
+                return Mathf.RoundToInt(f);
+            return fallback;
+        }
+
+        /// <summary>
+        /// Shared pre-flight for the web skills: the Brave key must exist (the red Error
+        /// bubble is user-facing; the silent injection keeps the model from retrying), and
+        /// a model-supplied url= must be a public http/https address.
+        /// </summary>
+        private bool WebPreflight(SkillAction action, string skillId, string url, bool needsSearch)
+        {
+            // The AI Chat header "Web" toggle gates EVERY web action, direct url= included,
+            // before any request is made. The model already sees "WEB ACCESS: OFF" in CURRENT
+            // STATE; this is the hard stop for the case where it tries anyway.
+            if (_host != null && !_host.IsWebAccessEnabled())
+            {
+                _host.AddWebTraceNotice(skillId + "  " + DescribeWebSource(action) + "\nNot started: Web access is OFF (the \"Web\" checkbox in the AI Chat header).");
+                _host.AddSystemInjectionSilent(
+                    "(" + skillId + " is disabled: the user turned Web access off in the AI Chat header, so web_search / web_image / web_video / web_page " +
+                    "all fail and nothing was fetched. Do not emit them again until CURRENT STATE says WEB ACCESS: ON. Continue without online data " +
+                    "and, if the request needed it, tell the user web access is off and that the Web checkbox in the AI Chat header turns it on.)");
+                _host.RequestContinueTurn();
+                return false;
+            }
+            if (needsSearch && !BraveSearchClient.HasApiKey())
+            {
+                _host?.AddWebTraceNotice(skillId + "  " + DescribeWebSource(action) + "\nNot started: no Brave Search API key is configured.");
+                _host?.AddErrorBubble(
+                    skillId + " needs a Brave Search API key. Set it in Settings > Web (stored as set_brave_search_api_key in config.txt). " +
+                    "Keys come from https://brave.com/search/api/ (the Search plan includes free monthly credit).");
+                _host?.AddSystemInjectionSilent(
+                    "(" + skillId + " is unavailable: no Brave Search API key is configured. Tell the user to set one in Settings > Web. " +
+                    "Do not retry web_search/web_image/web_video/web_page query= until they say it is set; a direct url= still works for web_image/web_video/web_page.)");
+                // The streamed reply usually already promised the result; one bounded
+                // continue turn lets the assistant tell the user what actually happened.
+                _host?.RequestContinueTurn();
+                return false;
+            }
+            if (!string.IsNullOrEmpty(url))
+            {
+                string reason;
+                if (!WebMediaDownloader.IsAllowedPublicHttpUrl(url, out reason))
+                {
+                    _host?.AddWebTraceNotice(skillId + "  url=\"" + url + "\"\nRejected before any request: " + reason + ".");
+                    _host?.AddSystemInjectionSilent(
+                        "(" + skillId + " rejected url=\"" + url + "\": " + reason + ". Only public http/https URLs are allowed; never invent URLs - use query= to search instead.)");
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private static string DescribeWebSource(SkillAction action)
+        {
+            string u = FirstArg(action, "url", "link", "href", "src", "page");
+            if (!string.IsNullOrEmpty(u)) return "url=\"" + u + "\"";
+            string q = FirstArg(action, "query", "q", "search");
+            if (!string.IsNullOrEmpty(q)) return "query=\"" + q + "\"";
+            string r = FirstArg(action, "result", "pick");
+            if (!string.IsNullOrEmpty(r)) return "result=\"" + r + "\"";
+            return "";
+        }
+
+        private void ExecuteWebSearch(SkillAction action)
+        {
+            var req = new WebSearchRequest();
+            req.Query = FirstArg(action, "query", "q", "search", "text", "prompt");
+            if (string.IsNullOrEmpty(req.Query))
+            {
+                _host?.AddSystemInjectionAndBubble("web_search needs query=\"...\".");
+                return;
+            }
+            string kind = (FirstArg(action, "kind", "type", "mode") ?? "images").ToLowerInvariant();
+            if (kind.StartsWith("vid")) req.Kind = WebSearchKind.Videos;
+            else if (kind.StartsWith("web") || kind.StartsWith("page") || kind.StartsWith("text")) req.Kind = WebSearchKind.Web;
+            else req.Kind = WebSearchKind.Images;
+            req.Count = Mathf.Clamp(ParseIntArg(FirstArg(action, "count", "n", "max", "results"), 10), 1, WebRequestLimits.MaxSearchCount);
+            req.SafeSearch = WebRequestLimits.ParseSafeSearch(FirstArg(action, "safesearch", "safe_search", "safe"));
+
+            if (!WebPreflight(action, "web_search", null, needsSearch: true))
+                return;
+
+            // A list-only action is useless without a turn to act on it: auto-continue
+            // unless the model explicitly opted out with resume="false".
+            bool resume = ParseBool(action.GetArg("resume"), true);
+            if (resume)
+                _host?.RequestAutoResumeAfterWebFetch();
+
+            _host?.MarkChainTargetStale();
+            bool started = _host != null && _host.StartWebSearchAction(action, req, ok => ResumePumpAfterDeferredComplete(action));
+            if (!started)
+            {
+                _host?.AddSystemInjectionAndBubble("web_search could not start.");
+                return;
+            }
+            _lastActionDeferred = true;
+        }
+
+        private void ExecuteWebImage(SkillAction action)
+        {
+            var req = new WebImageRequest();
+            req.Query = FirstArg(action, "query", "q", "search");
+            req.Url = FirstArg(action, "url", "link", "src", "href");
+            req.ResultToken = FirstArg(action, "result", "pick", "from_result", "search_result");
+            int sources = (string.IsNullOrEmpty(req.Query) ? 0 : 1) + (string.IsNullOrEmpty(req.Url) ? 0 : 1) + (string.IsNullOrEmpty(req.ResultToken) ? 0 : 1);
+            if (sources == 0)
+            {
+                _host?.AddSystemInjectionAndBubble("web_image needs one of query=\"...\", url=\"https://...\", or result=\"S1:3\".");
+                return;
+            }
+            if (sources > 1)
+            {
+                // Prefer the most specific source; tell the model so it stops mixing them.
+                if (!string.IsNullOrEmpty(req.Url)) { req.Query = null; req.ResultToken = null; }
+                else req.Query = null;
+                _host?.AddSystemInjectionSilent("(web_image: use only ONE of query/url/result per action; the most specific one was used.)");
+            }
+            req.Count = Mathf.Clamp(ParseIntArg(FirstArg(action, "count", "n", "max", "images"), 1), 1, WebRequestLimits.MaxImageSuccesses);
+            req.MinWidth = Mathf.Clamp(ParseIntArg(FirstArg(action, "min_width", "minwidth", "min_size", "minsize"), 256), 16, 4096);
+            req.SafeSearch = WebRequestLimits.ParseSafeSearch(FirstArg(action, "safesearch", "safe_search", "safe"));
+            req.Anchor = string.IsNullOrWhiteSpace(action.AnchorName) ? null : action.AnchorName.Trim();
+            req.Verify = ParseBool(FirstArg(action, "verify", "check", "inspect"), true);
+            req.Criteria = FirstArg(action, "criteria", "want", "require", "requirements", "must");
+
+            // result= tokens never need a new Brave call: S-lists only exist if a key already
+            // worked, and P-lists (web_page image lists) are plain page URLs.
+            if (!WebPreflight(action, "web_image", req.Url, needsSearch: string.IsNullOrEmpty(req.Url) && string.IsNullOrEmpty(req.ResultToken)))
+                return;
+
+            if (action.Resume)
+                _host?.RequestAutoResumeAfterWebFetch();
+
+            _host?.MarkChainTargetStale();
+            bool started = _host != null && _host.StartWebImageAction(action, req, ok => ResumePumpAfterDeferredComplete(action));
+            if (!started)
+            {
+                _host?.AddSystemInjectionAndBubble("web_image could not start.");
+                return;
+            }
+            _lastActionDeferred = true;
+        }
+
+        /// <summary>
+        /// web_page: fetch ONE page (url=, a kind="web" search result, or the best hit of query=),
+        /// extract its readable text into the prompt and list candidate images as P&lt;n&gt;:&lt;i&gt;.
+        /// Deferred like the other web fetches; auto-continues by default so the model can use
+        /// the text without the user pressing Send.
+        /// </summary>
+        private void ExecuteWebPage(SkillAction action)
+        {
+            var req = new WebPageRequest();
+            req.Url = FirstArg(action, "url", "link", "href", "src", "page", "address");
+            req.ResultToken = FirstArg(action, "result", "pick", "from_result", "search_result");
+            req.Query = FirstArg(action, "query", "q", "search", "topic", "about");
+            int sources = (string.IsNullOrEmpty(req.Url) ? 0 : 1) + (string.IsNullOrEmpty(req.ResultToken) ? 0 : 1) + (string.IsNullOrEmpty(req.Query) ? 0 : 1);
+            if (sources == 0)
+            {
+                _host?.AddSystemInjectionAndBubble("web_page needs one of url=\"https://...\", result=\"S1:3\" (a web_search kind=\"web\" hit), or query=\"...\".");
+                return;
+            }
+            if (sources > 1)
+            {
+                if (!string.IsNullOrEmpty(req.Url)) { req.ResultToken = null; req.Query = null; }
+                else req.Query = null;
+                _host?.AddSystemInjectionSilent("(web_page: use only ONE of url/result/query per action; the most specific one was used.)");
+            }
+            if (!string.IsNullOrEmpty(req.Url) && req.Url.IndexOf("://", StringComparison.Ordinal) < 0)
+            {
+                // "atari 2600 history" typed into url= is really a query; "en.wikipedia.org/wiki/X" just lacks the scheme.
+                if (req.Url.IndexOf('.') < 0 || req.Url.IndexOf(' ') >= 0) { req.Query = req.Url; req.Url = null; }
+                else req.Url = "https://" + req.Url;
+            }
+            req.MaxChars = Mathf.Clamp(ParseIntArg(FirstArg(action, "max_chars", "chars", "length", "max_length", "limit"), WebRequestLimits.DefaultPageChars),
+                WebRequestLimits.MinPageChars, WebRequestLimits.MaxPageChars);
+            req.Images = ParseBool(FirstArg(action, "images", "list_images", "with_images", "image_list"), true);
+            req.MaxImages = Mathf.Clamp(ParseIntArg(FirstArg(action, "max_images", "image_count", "images_max"), WebRequestLimits.DefaultPageImages), 1, WebRequestLimits.MaxPageImages);
+            req.SafeSearch = WebRequestLimits.ParseSafeSearch(FirstArg(action, "safesearch", "safe_search", "safe"));
+            req.Resume = ParseBool(action.GetArg("resume"), true);
+
+            if (!WebPreflight(action, "web_page", req.Url, needsSearch: string.IsNullOrEmpty(req.Url) && string.IsNullOrEmpty(req.ResultToken)))
+                return;
+
+            if (req.Resume)
+                _host?.RequestAutoResumeAfterWebFetch();
+
+            _host?.MarkChainTargetStale();
+            bool started = _host != null && _host.StartWebPageAction(action, req, ok => ResumePumpAfterDeferredComplete(action));
+            if (!started)
+            {
+                _host?.AddSystemInjectionAndBubble("web_page could not start.");
+                return;
+            }
+            _lastActionDeferred = true;
+        }
+
+        private void ExecuteWebVideo(SkillAction action)
+        {
+            var req = new WebVideoRequest();
+            req.Query = FirstArg(action, "query", "q", "search");
+            req.Url = FirstArg(action, "url", "link", "src", "href");
+            req.ResultToken = FirstArg(action, "result", "pick", "from_result", "search_result");
+            int sources = (string.IsNullOrEmpty(req.Query) ? 0 : 1) + (string.IsNullOrEmpty(req.Url) ? 0 : 1) + (string.IsNullOrEmpty(req.ResultToken) ? 0 : 1);
+            if (sources == 0)
+            {
+                _host?.AddSystemInjectionAndBubble("web_video needs one of query=\"...\", url=\"https://...\", or result=\"S2:1\".");
+                return;
+            }
+            if (sources > 1)
+            {
+                if (!string.IsNullOrEmpty(req.Url)) { req.Query = null; req.ResultToken = null; }
+                else req.Query = null;
+                _host?.AddSystemInjectionSilent("(web_video: use only ONE of query/url/result per action; the most specific one was used.)");
+            }
+            req.StartSeconds = Mathf.Max(0f, ParseFloat(FirstArg(action, "start", "start_seconds", "time", "at", "offset"), 0f));
+            req.DurationSeconds = Mathf.Clamp(ParseFloat(FirstArg(action, "duration", "duration_seconds", "seconds", "length"), FfmpegTool.DefaultClipDurationSeconds),
+                WebRequestLimits.MinClipSeconds, WebRequestLimits.MaxClipSeconds);
+            req.MaxSourceMinutes = Mathf.Max(0f, ParseFloat(FirstArg(action, "max_source_minutes", "max_minutes", "max_source_duration"), 20f));
+            req.IncludeAudio = ParseBool(FirstArg(action, "include_audio", "audio"), true);
+            if (ParseBool(action.GetArg("no_audio"), false)) req.IncludeAudio = false;
+            req.SafeSearch = WebRequestLimits.ParseSafeSearch(FirstArg(action, "safesearch", "safe_search", "safe"));
+            req.Anchor = string.IsNullOrWhiteSpace(action.AnchorName) ? null : action.AnchorName.Trim();
+            req.Verify = ParseBool(FirstArg(action, "verify", "check", "inspect"), true);
+            req.Criteria = FirstArg(action, "criteria", "want", "require", "requirements", "must");
+            req.RequireSpeech = ParseBool(FirstArg(action, "speech", "dialog", "dialogue", "needs_speech", "voice", "talking"), false);
+            if (!req.RequireSpeech && !string.IsNullOrEmpty(req.Criteria))
+            {
+                string c = req.Criteria.ToLowerInvariant();
+                if (c.Contains("speak") || c.Contains("talk") || c.Contains("dialog") || c.Contains("voice") || c.Contains("says") || c.Contains("saying"))
+                    req.RequireSpeech = true;
+            }
+
+            if (!WebPreflight(action, "web_video", req.Url, needsSearch: string.IsNullOrEmpty(req.Url)))
+                return;
+
+            // A fetched clip is almost always a stepping stone (a reference for a render) and
+            // the model cannot know what a searched clip shows until its caption exists, so
+            // auto-continue by default; resume="false" opts out.
+            bool resume = ParseBool(action.GetArg("resume"), true);
+            if (resume)
+                _host?.RequestAutoResumeAfterWebFetch();
+
+            _host?.MarkChainTargetStale();
+            bool started = _host != null && _host.StartWebVideoAction(action, req, ok => ResumePumpAfterDeferredComplete(action));
+            if (!started)
+            {
+                _host?.AddSystemInjectionAndBubble("web_video could not start.");
+                return;
+            }
             _lastActionDeferred = true;
         }
 
@@ -1824,6 +2395,19 @@ namespace AITools.AIChat.Skills
                     errored = true;
                     return null;
                 }
+                // Clip slots never reach this resolver (chat_image is the primary clip and
+                // chat_image2 is skipped as the second clip on Reference Video To Video), so a
+                // Movie landing here is being coerced into a STILL: its current display
+                // frame becomes the photo reference. The Seinfeld test staged a third voice
+                // clip in chat_image3 this way. Say so, so the model can fix the slots.
+                if (_host?.IsChatImageMovie(chatN) ?? false)
+                {
+                    _host?.AddSystemInjectionAndBubble(
+                        $"NOTE: {chatKey}=\"{chatN}\" is a Movie, but this action takes a clip only in chat_image " +
+                        "(plus chat_image2 on Reference Video To Video - at most 2 clips per render). " +
+                        $"Its current display frame was used as the PHOTO reference for slot {slot} instead, so count it as a <Picture N>. " +
+                        "For a third speaker use their photo anchor only, or drop that slot.");
+                }
                 return bytes;
             }
 
@@ -3045,6 +3629,85 @@ namespace AITools.AIChat.Skills
                 case "stillframe":
                 case "frame_extract":
                     return BuiltInSkillIds.ExtractStill;
+
+                // stitch / concat / join / merge clips -> stitch_video
+                case "stitch":
+                case "stitchvideo":
+                case "stitch_videos":
+                case "stitch_clips":
+                case "stitch_movies":
+                case "concat":
+                case "concat_video":
+                case "concat_videos":
+                case "concatenate":
+                case "concatenate_videos":
+                case "join_videos":
+                case "join_clips":
+                case "join_movies":
+                case "combine_videos":
+                case "combine_clips":
+                case "combine_movies":
+                case "merge_videos":
+                case "merge_clips":
+                case "merge_movies":
+                case "sequence_videos":
+                case "sequence_clips":
+                    return BuiltInSkillIds.StitchVideo;
+
+                // web search / image / video fetch aliases
+                case "search_web":
+                case "websearch":
+                case "image_search":
+                case "video_search":
+                case "brave_search":
+                case "brave":
+                case "search_images":
+                case "search_videos":
+                    return BuiltInSkillIds.WebSearch;
+
+                case "webimage":
+                case "find_image":
+                case "fetch_image":
+                case "download_image":
+                case "get_image":
+                case "fetch_photo":
+                case "download_photo":
+                case "find_photo":
+                case "get_photo":
+                case "web_photo":
+                case "image_from_web":
+                    return BuiltInSkillIds.WebImage;
+
+                case "webvideo":
+                case "download_video":
+                case "fetch_video":
+                case "get_video":
+                case "find_video":
+                case "youtube":
+                case "web_clip":
+                case "download_clip":
+                case "fetch_clip":
+                case "video_from_web":
+                    return BuiltInSkillIds.WebVideo;
+
+                // web_page: read one page's text + image list. "web_fetch" moved here from
+                // web_image: fetching a URL is a page read now that the page action exists.
+                case "webpage":
+                case "read_page":
+                case "fetch_page":
+                case "open_page":
+                case "open_url":
+                case "read_url":
+                case "fetch_url":
+                case "get_page":
+                case "page_text":
+                case "read_website":
+                case "read_webpage":
+                case "web_read":
+                case "browse":
+                case "visit":
+                case "web_fetch":
+                    return BuiltInSkillIds.WebPage;
 
                 default:
                     return id;

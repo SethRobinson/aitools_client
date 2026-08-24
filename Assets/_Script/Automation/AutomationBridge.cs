@@ -81,6 +81,12 @@ public static class AutomationBridge
         return _driver != null && _driver.SendChat(text);
     }
 
+    /// <summary>Press AI Chat's Stop button. False if no driver or no chat panel exists.</summary>
+    public static bool StopChat()
+    {
+        return _driver != null && _driver.StopChat();
+    }
+
     /// <summary>Focus a TMP_InputField by hierarchy-path substring; see AutomationDriver.FocusInput.</summary>
     public static bool FocusInput(string nameSubstring, bool selectAll, out string error, out string matchedPath, out bool hasCaretGraphic)
     {
@@ -122,6 +128,13 @@ public static class AutomationBridge
     public static bool SetChatMainLLM(string nameOrDefault, out string applied, out string error)
     {
         return AIChatPanel.SetMainLLMOverrideByName(nameOrDefault, out applied, out error);
+    }
+
+    /// <summary>Read or set the AI Chat header "Web" toggle (null = report only). Persists
+    /// like the checkbox itself (PlayerPrefs), so tests should restore the prior value.</summary>
+    public static bool SetChatWebEnabled(bool? enabled, out bool current)
+    {
+        return AIChatPanel.AutomationSetWebEnabled(enabled, out current);
     }
 
     /// <summary>Run AI Chat's Compact feature (mode "summarize" or "truncate").</summary>

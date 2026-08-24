@@ -144,3 +144,9 @@ unless asked. See `image_to_movie` -> "Sizing" for details.
 - Default to 5s unless the user asks longer. A specific 6-14s duration ->
   the default 5s cache preset + `duration="N"` on the movie action; ~15s ->
   the H3 15s preset.
+- SEVERAL clips joined into one film ("make 10 videos telling a story, then
+  stitch them together"): emit every pair in ONE reply, give each MOVIE
+  action `anchor="sceneN"`, and end the reply with one
+  `stitch_video chat_images="scene1,...,sceneN"`. The host waits for all the
+  renders and posts the joined Movie; never wait a turn or guess Movie
+  numbers. Recipe: the `stitch_video` skill.

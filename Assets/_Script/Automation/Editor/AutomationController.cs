@@ -35,10 +35,12 @@ using UnityEngine;
 //   POST /focus_input -> body: name=<hierarchy-path substring>, optional selectall=<true|false>;
 //                        focus a TMP_InputField (returns matched path + whether a caret graphic exists)
 //   POST /chat        -> body = message text; open chat + send one turn (ok:false if a busy gate refused the send)
+//   POST /chat_stop   -> press AI Chat's Stop button (aborts the streaming turn, pending inspections/auto-resumes, web fetches)
 //   POST /chat_import_video -> body: path=<file>, optional start=<seconds>, duration=<seconds>, fps=<n>, audio=<true|false>; import clipped Movie bubble
 //   POST /chat_import_image -> body: path=<file>; import a local still image as a "#N (you)" bubble
 //   POST /chat_attach -> body: path=<file>; stage a still as a PENDING attachment for the next /chat send
 //   POST /chat_main_llm -> body: name=<instance-name substring|default>; select the footer Main LLM override
+//   POST /chat_web    -> body: enabled=<true|false> (optional; omitted = report only); the header "Web" checkbox (gates web_* skills)
 //   POST /chat_compact -> body: mode=<summarize|truncate> (default summarize), keep=<n> exchanges kept (default 2); runs AI Chat's Compact
 //   GET  /chat_images -> JSON array: index/w/h/busy/movie for each chat image
 //   POST /save        -> body: index=<n|latest>, path=<file>; save chat image PNG
@@ -223,6 +225,19 @@ public static class AutomationController
                     WriteJson(stream, 200, "{\"ok\":true,\"accepted\":\"open_chat\"}");
                     break;
 
+                case "/chat_stop":
+                {
+                    // Same as clicking AI Chat's Stop button: aborts the streaming turn,
+                    // pending inspections / auto-resumes, and in-flight web fetches.
+                    string result = RunOnMainAndWait(() =>
+                        AutomationBridge.StopChat()
+                            ? "{\"ok\":true,\"accepted\":\"chat_stop\"}"
+                            : "{\"ok\":false,\"error\":\"no chat panel\"}",
+                        "{\"ok\":false,\"error\":\"timed out\"}");
+                    WriteJson(stream, 200, result);
+                    break;
+                }
+
                 case "/settings":
                 {
                     var kv = ParseKeyValues(body);
@@ -341,6 +356,25 @@ public static class AutomationController
                         return ok
                             ? $"{{\"ok\":true,\"accepted\":\"chat_main_llm\",\"applied\":{JsonStr(applied)}}}"
                             : $"{{\"ok\":false,\"error\":{JsonStr(err)}}}";
+                    }, "{\"ok\":false,\"error\":\"timed out\"}");
+                    WriteJson(stream, 200, result);
+                    break;
+                }
+
+                case "/chat_web":
+                {
+                    // Body: enabled=<true|false>, optional (omitted = report the current value).
+                    // Flips the AI Chat header "Web" checkbox; persists like the checkbox itself,
+                    // so tests should restore the prior value when done.
+                    var kv = ParseKeyValues(body);
+                    bool? want = null;
+                    if (kv.ContainsKey("enabled")) want = ParseBool(kv, "enabled", true);
+                    string result = RunOnMainAndWait(() =>
+                    {
+                        bool ok = AutomationBridge.SetChatWebEnabled(want, out bool current);
+                        return ok
+                            ? $"{{\"ok\":true,\"accepted\":\"chat_web\",\"webEnabled\":{(current ? "true" : "false")}}}"
+                            : "{\"ok\":false,\"error\":\"no chat panel\"}";
                     }, "{\"ok\":false,\"error\":\"timed out\"}");
                     WriteJson(stream, 200, result);
                     break;

@@ -529,6 +529,14 @@ namespace AITools.AIChat.Skills
                 case BuiltInSkillIds.DrawShape:
                 case BuiltInSkillIds.InspectImage:
                 case BuiltInSkillIds.Continue:
+                case BuiltInSkillIds.ExtractStill:
+                case BuiltInSkillIds.StitchVideo:
+                // Web fetches render their own always-visible Web trace bubble, so a
+                // "[skill: web_image]" marker in the transcript would just be noise.
+                case BuiltInSkillIds.WebSearch:
+                case BuiltInSkillIds.WebImage:
+                case BuiltInSkillIds.WebVideo:
+                case BuiltInSkillIds.WebPage:
                     return RemovedMediaActionMarker;
                 default:
                     return $"\n[skill: {skill}]\n";

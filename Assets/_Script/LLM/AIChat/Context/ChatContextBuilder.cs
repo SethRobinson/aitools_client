@@ -68,7 +68,12 @@ namespace AITools.AIChat.Context
         /// <see cref="BuildCurrentStateBlock"/>, because a change this early in the
         /// request invalidates the server's prompt cache for the whole conversation.
         /// </summary>
-        public string Build(bool keepOldToolCallsInPrompt = true)
+        /// <param name="hiddenSkillIds">
+        /// Skill ids to leave out of the SKILLS block (e.g. the web_* skills while the AI Chat
+        /// "Web" toggle is off). Changing this set changes the stable prefix, so it should only
+        /// change when the user flips a toggle, never per turn.
+        /// </param>
+        public string Build(bool keepOldToolCallsInPrompt = true, ISet<string> hiddenSkillIds = null)
         {
             var sb = new StringBuilder();
 
@@ -91,7 +96,7 @@ namespace AITools.AIChat.Context
             // 3. Skill summaries.
             if (_skills != null)
             {
-                sb.Append(_skills.BuildSkillSummariesBlock());
+                sb.Append(_skills.BuildSkillSummariesBlock(hiddenSkillIds));
                 sb.AppendLine();
             }
 
@@ -156,10 +161,18 @@ namespace AITools.AIChat.Context
         /// history stays clean, while prior sent copies can remain byte-identical
         /// for server prompt caches.
         /// </summary>
-        public string BuildCurrentStateBlock(int chatImageSlotCount = 0, IReadOnlyList<ChatImageState> chatImages = null, string anchorsLine = null, int imageContextLimit = 40)
+        public string BuildCurrentStateBlock(int chatImageSlotCount = 0, IReadOnlyList<ChatImageState> chatImages = null, string anchorsLine = null, int imageContextLimit = 40, bool webEnabled = true)
         {
             var sb = new StringBuilder();
             sb.AppendLine("[CURRENT STATE - attached automatically to this user turn; the user did not type this. Use the newest CURRENT STATE block for live status; older copies are historical and may remain for prompt-cache reuse.]");
+
+            // The AI Chat header "Web" toggle. Lives in the volatile block (not the stable prefix)
+            // so flipping it mid-chat is seen on the very next turn; when OFF the web_* skills are
+            // also left out of the SKILLS block and any web action fails before it starts.
+            if (webEnabled)
+                sb.AppendLine("WEB ACCESS: ON (web_search / web_image / web_video / web_page are available).");
+            else
+                sb.AppendLine("WEB ACCESS: OFF - the user turned off the Web checkbox in the AI Chat header. web_search, web_image, web_video and web_page are disabled and will fail; do not emit them. Render real people, places and products from your own knowledge with descriptive prompts instead of fetching references; if the user asks for an online lookup, say web access is off and that the Web checkbox in the AI Chat header turns it on.");
 
             sb.Append(GpuSnapshot.BuildBlock());
             sb.AppendLine();

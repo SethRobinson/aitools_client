@@ -94,7 +94,7 @@ namespace AITools.AIChat.Video
             }
         }
 
-        private sealed class ProcessResult
+        internal sealed class ProcessResult
         {
             public bool Success;
             public int ExitCode;
@@ -476,6 +476,412 @@ namespace AITools.AIChat.Video
             onDone?.Invoke(result);
         }
 
+        /// <summary>
+        /// Extract a clip's audio as 16 kHz mono PCM WAV (what speech-to-text wants). Fails
+        /// when the source has no audio stream.
+        /// </summary>
+        // ---------- Stitching several clips into one video (AI Chat stitch_video) ----------
+
+        /// <summary>
+        /// Upper bound on clips per stitch. Every input adds a few hundred characters of
+        /// filter graph to the ffmpeg command line and Windows caps a command line at
+        /// 32K characters, so this stays well inside that.
+        /// </summary>
+        public const int MaxStitchClips = 60;
+
+        /// <summary>
+        /// Inputs and output settings for <see cref="StitchClips"/>. Unset canvas / fps
+        /// fields are filled from the inputs by <see cref="ResolveStitchDefaults"/>.
+        /// </summary>
+        public sealed class StitchRequest
+        {
+            /// <summary>Probed source clips, in playback order.</summary>
+            public System.Collections.Generic.List<VideoInfo> Inputs = new System.Collections.Generic.List<VideoInfo>();
+            /// <summary>Output canvas; 0 = the size most inputs share (first clip on ties). Every clip is fit inside it and letterboxed.</summary>
+            public int Width;
+            public int Height;
+            /// <summary>Output frame rate; 0 = the highest input fps so no clip drops frames.</summary>
+            public double Fps;
+            /// <summary>Keep audio. Silent clips get a synthesized silent track so the join stays in sync.</summary>
+            public bool IncludeAudio = true;
+            /// <summary>Seconds of dissolve between consecutive clips; 0 = hard cuts. Each junction shortens the film by this much.</summary>
+            public float CrossfadeSeconds;
+        }
+
+        public static string GetStitchOutputPath()
+        {
+            string root = GetAppRoot();
+            string dir = System.IO.Path.Combine(root, "tempCache", "aichat_video_clips");
+            Directory.CreateDirectory(dir);
+            return System.IO.Path.Combine(dir, "stitch_" + Guid.NewGuid().ToString("N") + ".mp4");
+        }
+
+        /// <summary>
+        /// Displayed (rotation-applied) size of a probed clip. ffmpeg auto-rotates on
+        /// decode, so the stitch canvas has to be chosen from these, not the raw stream size.
+        /// </summary>
+        public static void GetDisplayedSize(VideoInfo info, out int width, out int height)
+        {
+            width = info != null ? info.Width : 0;
+            height = info != null ? info.Height : 0;
+            int rot = info != null ? ((info.RotationDegrees % 360) + 360) % 360 : 0;
+            if (rot == 90 || rot == 270)
+            {
+                int t = width;
+                width = height;
+                height = t;
+            }
+        }
+
+        /// <summary>
+        /// Fill the unset canvas / fps of a stitch request from its inputs and clamp the
+        /// crossfade so it fits inside the shortest clip. Explicit values are kept
+        /// (snapped to even numbers, which yuv420p needs).
+        /// </summary>
+        public static void ResolveStitchDefaults(StitchRequest req)
+        {
+            if (req == null || req.Inputs == null) return;
+
+            if (req.Width <= 0 || req.Height <= 0)
+            {
+                // Majority size wins; a strict ">" keeps the FIRST clip's size on ties.
+                var counts = new System.Collections.Generic.Dictionary<long, int>();
+                long bestKey = 0;
+                int bestCount = 0;
+                foreach (var info in req.Inputs)
+                {
+                    GetDisplayedSize(info, out int w, out int h);
+                    if (w <= 0 || h <= 0) continue;
+                    long key = ((long)w << 32) | (uint)h;
+                    counts.TryGetValue(key, out int c);
+                    c++;
+                    counts[key] = c;
+                    if (c > bestCount)
+                    {
+                        bestCount = c;
+                        bestKey = key;
+                    }
+                }
+                if (bestCount > 0)
+                {
+                    req.Width = (int)(bestKey >> 32);
+                    req.Height = (int)(bestKey & 0xffffffff);
+                }
+                else
+                {
+                    req.Width = DefaultMaxWidth;
+                    req.Height = DefaultMaxHeight;
+                }
+            }
+            req.Width = Mathf.Max(2, req.Width / 2 * 2);
+            req.Height = Mathf.Max(2, req.Height / 2 * 2);
+
+            if (req.Fps <= 0 || double.IsNaN(req.Fps) || double.IsInfinity(req.Fps))
+            {
+                double maxFps = 0;
+                foreach (var info in req.Inputs)
+                    if (info != null && info.Fps > maxFps) maxFps = info.Fps;
+                req.Fps = maxFps > 0 ? maxFps : DefaultFps;
+            }
+            req.Fps = Math.Max(1, Math.Min(120, req.Fps));
+
+            if (req.CrossfadeSeconds > 0)
+            {
+                // xfade offsets are computed from every clip's duration, so an unknown
+                // duration anywhere means hard cuts; otherwise keep the fade inside half
+                // of the shortest clip so no clip dissolves away entirely.
+                double minDur = double.MaxValue;
+                bool unknown = false;
+                foreach (var info in req.Inputs)
+                {
+                    if (info == null || info.DurationSeconds <= 0)
+                    {
+                        unknown = true;
+                        break;
+                    }
+                    minDur = Math.Min(minDur, info.DurationSeconds);
+                }
+                if (unknown)
+                    req.CrossfadeSeconds = 0;
+                else
+                    req.CrossfadeSeconds = (float)Math.Min(req.CrossfadeSeconds, Math.Max(0, minDur / 2 - 0.05));
+                if (req.CrossfadeSeconds < 0.05f)
+                    req.CrossfadeSeconds = 0;
+            }
+        }
+
+        /// <summary>
+        /// Join <c>req.Inputs</c> back to back into one H.264/AAC MP4. Every clip is
+        /// scaled to fit the canvas and letterboxed, resampled to one fps, and given a
+        /// stereo 48k audio track (synthesized silence for silent clips), then joined
+        /// with the <c>concat</c> filter, or with <c>xfade</c>/<c>acrossfade</c> chains when
+        /// <c>CrossfadeSeconds</c> is set. Runs ffmpeg on a worker thread; yields until done.
+        /// </summary>
+        public static IEnumerator StitchClips(StitchRequest req, string outputPath, Action<ClipResult> onDone)
+        {
+            if (!TryGetToolPaths(out string ffmpegPath, out _, out string toolError))
+            {
+                onDone?.Invoke(new ClipResult { Success = false, OutputPath = outputPath, Error = toolError });
+                yield break;
+            }
+            if (req == null || req.Inputs == null || req.Inputs.Count < 2)
+            {
+                onDone?.Invoke(new ClipResult { Success = false, OutputPath = outputPath, Error = "Stitching needs at least two clips." });
+                yield break;
+            }
+            if (req.Inputs.Count > MaxStitchClips)
+            {
+                onDone?.Invoke(new ClipResult { Success = false, OutputPath = outputPath, Error = "Stitching supports at most " + MaxStitchClips + " clips per call." });
+                yield break;
+            }
+            for (int i = 0; i < req.Inputs.Count; i++)
+            {
+                var info = req.Inputs[i];
+                if (info == null || string.IsNullOrEmpty(info.Path) || !File.Exists(info.Path))
+                {
+                    onDone?.Invoke(new ClipResult { Success = false, OutputPath = outputPath, Error = "Stitch input " + (i + 1) + " is missing on disk." });
+                    yield break;
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(outputPath))
+                outputPath = GetStitchOutputPath();
+            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(outputPath));
+            ResolveStitchDefaults(req);
+
+            double totalSeconds = 0;
+            foreach (var info in req.Inputs)
+                totalSeconds += Math.Max(0, info.DurationSeconds);
+            int timeoutMs = (int)Math.Min(PreviewProxyTimeoutMs, Math.Max(ClipTimeoutMs, totalSeconds * 3000 + 60000));
+
+            string args = BuildStitchArgs(req, outputPath);
+            Task<ProcessResult> task = Task.Run(() => RunProcess(ffmpegPath, args, timeoutMs));
+            while (!task.IsCompleted)
+                yield return null;
+
+            ClipResult result = new ClipResult { OutputPath = outputPath };
+            if (task.IsFaulted)
+            {
+                result.Success = false;
+                result.Error = task.Exception != null ? task.Exception.GetBaseException().Message : "ffmpeg failed.";
+                onDone?.Invoke(result);
+                yield break;
+            }
+
+            ProcessResult pr = task.Result;
+            UnityEngine.Debug.Log("ffmpeg (stitch): " + pr.Command + "\n" + pr.Stderr);
+            result.Command = pr.Command;
+            result.Stdout = pr.Stdout;
+            result.Stderr = pr.Stderr;
+            result.ExitCode = pr.ExitCode;
+            result.Success = pr.Success && File.Exists(outputPath);
+            if (!result.Success)
+                result.Error = BuildProcessError("ffmpeg", pr);
+            onDone?.Invoke(result);
+        }
+
+        private static string BuildStitchArgs(StitchRequest req, string outputPath)
+        {
+            var ci = CultureInfo.InvariantCulture;
+            int n = req.Inputs.Count;
+            string fpsStr = req.Fps.ToString("0.###", ci);
+            // settb=AVTB: xfade refuses inputs whose time bases differ, and fps= leaves
+            // each clip on its own 1/fps base. Harmless for the concat path.
+            string videoNorm =
+                "scale=" + req.Width + ":" + req.Height + ":force_original_aspect_ratio=decrease:flags=bicubic," +
+                "pad=" + req.Width + ":" + req.Height + ":(ow-iw)/2:(oh-ih)/2:color=black," +
+                "setsar=1,fps=" + fpsStr + ",format=yuv420p,setpts=PTS-STARTPTS,settb=AVTB";
+            const string audioNorm = "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,asetpts=PTS-STARTPTS";
+            bool crossfade = req.CrossfadeSeconds > 0;
+            string fadeStr = req.CrossfadeSeconds.ToString("0.###", ci);
+
+            var inputs = new StringBuilder();
+            var graph = new StringBuilder();
+            for (int i = 0; i < n; i++)
+            {
+                inputs.Append(" -i ").Append(QuoteArg(req.Inputs[i].Path));
+                graph.Append('[').Append(i).Append(":v:0]").Append(videoNorm).Append("[v").Append(i).Append("];");
+                if (!req.IncludeAudio) continue;
+
+                if (req.Inputs[i].HasAudio)
+                {
+                    graph.Append('[').Append(i).Append(":a:0]").Append(audioNorm).Append("[a").Append(i).Append("];");
+                }
+                else
+                {
+                    // Silent clip: synthesize a matching silent track. For hard cuts keep
+                    // it a hair SHORTER than the video - concat pads short audio with
+                    // silence but never pads video, so the video must be the long stream.
+                    double d = req.Inputs[i].DurationSeconds;
+                    if (d <= 0) d = DefaultClipDurationSeconds;
+                    if (!crossfade) d = Math.Max(0.1, d - 0.05);
+                    graph.Append("anullsrc=channel_layout=stereo:sample_rate=48000:d=")
+                         .Append(d.ToString("0.###", ci)).Append("[a").Append(i).Append("];");
+                }
+            }
+
+            if (!crossfade)
+            {
+                for (int i = 0; i < n; i++)
+                {
+                    graph.Append("[v").Append(i).Append(']');
+                    if (req.IncludeAudio) graph.Append("[a").Append(i).Append(']');
+                }
+                graph.Append("concat=n=").Append(n).Append(":v=1:a=").Append(req.IncludeAudio ? 1 : 0).Append("[v]");
+                if (req.IncludeAudio) graph.Append("[a]");
+            }
+            else
+            {
+                // Each transition starts CrossfadeSeconds before the running end of the
+                // film so far: offset_k = sum(duration_0..k-1) - k * fade.
+                double offset = 0;
+                string prevV = "[v0]";
+                for (int i = 1; i < n; i++)
+                {
+                    offset += req.Inputs[i - 1].DurationSeconds - req.CrossfadeSeconds;
+                    string outV = i == n - 1 ? "[v]" : "[vx" + i + "]";
+                    graph.Append(prevV).Append("[v").Append(i).Append("]xfade=transition=fade:duration=").Append(fadeStr)
+                         .Append(":offset=").Append(Math.Max(0, offset).ToString("0.###", ci)).Append(outV).Append(';');
+                    prevV = outV;
+                }
+                if (req.IncludeAudio)
+                {
+                    string prevA = "[a0]";
+                    for (int i = 1; i < n; i++)
+                    {
+                        string outA = i == n - 1 ? "[a]" : "[ax" + i + "]";
+                        graph.Append(prevA).Append("[a").Append(i).Append("]acrossfade=d=").Append(fadeStr)
+                             .Append(":c1=tri:c2=tri").Append(outA).Append(';');
+                        prevA = outA;
+                    }
+                }
+                if (graph.Length > 0 && graph[graph.Length - 1] == ';')
+                    graph.Length--;
+            }
+
+            return "-hide_banner -y" + inputs
+                + " -filter_complex " + QuoteArg(graph.ToString())
+                + " -map \"[v]\"" + (req.IncludeAudio ? " -map \"[a]\"" : " -an")
+                + " -c:v libx264 -preset veryfast -crf 18"
+                + (req.IncludeAudio ? " -c:a aac -b:a 160k" : "")
+                + " -movflags +faststart "
+                + QuoteArg(outputPath);
+        }
+
+        public static IEnumerator ExtractAudioWav(string inputPath, string outputPath, Action<ClipResult> onDone)
+        {
+            if (!TryGetToolPaths(out string ffmpegPath, out _, out string toolError))
+            {
+                onDone?.Invoke(new ClipResult { Success = false, OutputPath = outputPath, Error = toolError });
+                yield break;
+            }
+            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(outputPath));
+            string args = "-hide_banner -y -i " + QuoteArg(inputPath) + " -vn -map 0:a:0 -ac 1 -ar 16000 -c:a pcm_s16le -f wav " + QuoteArg(outputPath);
+            Task<ProcessResult> task = Task.Run(() => RunProcess(ffmpegPath, args, 60000));
+            while (!task.IsCompleted)
+                yield return null;
+            var result = new ClipResult { OutputPath = outputPath };
+            if (task.IsFaulted)
+            {
+                result.Error = task.Exception != null ? task.Exception.GetBaseException().Message : "ffmpeg failed.";
+                onDone?.Invoke(result);
+                yield break;
+            }
+            ProcessResult pr = task.Result;
+            result.Command = pr.Command;
+            result.Stdout = pr.Stdout;
+            result.Stderr = pr.Stderr;
+            result.ExitCode = pr.ExitCode;
+            result.Success = pr.Success && File.Exists(outputPath);
+            if (!result.Success) result.Error = BuildProcessError("ffmpeg", pr);
+            onDone?.Invoke(result);
+        }
+
+        /// <summary>
+        /// Mean volume in dBFS via ffmpeg's volumedetect filter (float.NaN when it could not be
+        /// measured). Around -90 dB = digital silence; speech or music sit well above -40 dB.
+        /// </summary>
+        public static IEnumerator MeasureMeanVolume(string inputPath, Action<float> onDone)
+        {
+            float mean = float.NaN;
+            if (!TryGetToolPaths(out string ffmpegPath, out _, out _))
+            {
+                onDone?.Invoke(mean);
+                yield break;
+            }
+            string args = "-hide_banner -i " + QuoteArg(inputPath) + " -af volumedetect -vn -f null -";
+            Task<ProcessResult> task = Task.Run(() => RunProcess(ffmpegPath, args, 60000));
+            while (!task.IsCompleted)
+                yield return null;
+            if (!task.IsFaulted && task.Result != null)
+            {
+                string text = (task.Result.Stderr ?? "") + "\n" + (task.Result.Stdout ?? "");
+                int i = text.IndexOf("mean_volume:", StringComparison.Ordinal);
+                if (i >= 0)
+                {
+                    int end = text.IndexOf("dB", i, StringComparison.Ordinal);
+                    string num = end > i ? text.Substring(i + "mean_volume:".Length, end - i - "mean_volume:".Length).Trim() : "";
+                    float v;
+                    if (float.TryParse(num, NumberStyles.Float, CultureInfo.InvariantCulture, out v)) mean = v;
+                }
+            }
+            onDone?.Invoke(mean);
+        }
+
+        /// <summary>
+        /// Convert any ffmpeg-decodable still image (webp, gif frame 1, avif, bmp, tiff, odd
+        /// PNG/JPEG variants Unity refuses) to a PNG Unity's Texture2D.LoadImage can read,
+        /// downscaling so the longest side is at most <paramref name="maxSide"/> (0 = no limit).
+        /// Used by AI Chat web_image downloads.
+        /// </summary>
+        public static IEnumerator ConvertImageToPng(
+            string inputPath,
+            string outputPath,
+            int maxSide,
+            Action<ClipResult> onDone)
+        {
+            if (!TryGetToolPaths(out string ffmpegPath, out _, out string toolError))
+            {
+                onDone?.Invoke(new ClipResult { Success = false, OutputPath = outputPath, Error = toolError });
+                yield break;
+            }
+
+            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(outputPath));
+
+            string vf = maxSide > 0
+                ? " -vf " + QuoteArg("scale='min(" + maxSide + ",iw)':'min(" + maxSide + ",ih)':force_original_aspect_ratio=decrease")
+                : "";
+            string args = "-hide_banner -y"
+                + " -i " + QuoteArg(inputPath)
+                + " -an -frames:v 1"
+                + vf
+                + " -pix_fmt rgba "
+                + QuoteArg(outputPath);
+
+            Task<ProcessResult> task = Task.Run(() => RunProcess(ffmpegPath, args, 60000));
+            while (!task.IsCompleted)
+                yield return null;
+
+            ClipResult result = new ClipResult { OutputPath = outputPath };
+            if (task.IsFaulted)
+            {
+                result.Success = false;
+                result.Error = task.Exception != null ? task.Exception.GetBaseException().Message : "ffmpeg failed.";
+                onDone?.Invoke(result);
+                yield break;
+            }
+
+            ProcessResult pr = task.Result;
+            result.Command = pr.Command;
+            result.Stdout = pr.Stdout;
+            result.Stderr = pr.Stderr;
+            result.ExitCode = pr.ExitCode;
+            result.Success = pr.Success && File.Exists(outputPath);
+            if (!result.Success)
+                result.Error = BuildProcessError("ffmpeg", pr);
+            onDone?.Invoke(result);
+        }
+
         public static IEnumerator CreateCaptionContactSheet(
             string inputPath,
             double durationSeconds,
@@ -711,6 +1117,94 @@ namespace AITools.AIChat.Video
             return result;
         }
 
+        /// <summary>
+        /// Generic cancellable runner shared with other external helpers (yt-dlp): streams
+        /// stdout lines to <paramref name="onStdoutLine"/> from the reader thread (callers
+        /// must marshal to the main thread themselves, e.g. by buffering and polling), kills
+        /// the process on cancel or timeout. Blocking; run it inside Task.Run.
+        /// </summary>
+        internal static ProcessResult RunProcessCancellable(string exe, string args, int timeoutMs, CancelToken cancelToken, Action<string> onStdoutLine, Action<string> onStderrLine = null)
+        {
+            var result = new ProcessResult { Command = QuoteArg(exe) + " " + args };
+            var stdout = new StringBuilder();
+            var stderr = new StringBuilder();
+
+            try
+            {
+                var psi = new ProcessStartInfo(exe, args)
+                {
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    StandardOutputEncoding = Encoding.UTF8,
+                    StandardErrorEncoding = Encoding.UTF8
+                };
+
+                using (var process = new Process())
+                {
+                    process.StartInfo = psi;
+                    process.OutputDataReceived += (s, e) =>
+                    {
+                        if (e.Data == null) return;
+                        stdout.AppendLine(e.Data);
+                        try { onStdoutLine?.Invoke(e.Data); } catch { }
+                    };
+                    process.ErrorDataReceived += (s, e) =>
+                    {
+                        if (e.Data == null) return;
+                        stderr.AppendLine(e.Data);
+                        try { onStderrLine?.Invoke(e.Data); } catch { }
+                    };
+
+                    process.Start();
+                    process.BeginOutputReadLine();
+                    process.BeginErrorReadLine();
+
+                    var sw = Stopwatch.StartNew();
+                    bool exited = false;
+                    while (!(exited = process.WaitForExit(100)))
+                    {
+                        if (cancelToken != null && cancelToken.CancelRequested)
+                        {
+                            try { process.Kill(); } catch { }
+                            result.Success = false;
+                            result.ExitCode = -1;
+                            result.Error = "Cancelled.";
+                            break;
+                        }
+
+                        if (sw.ElapsedMilliseconds > timeoutMs)
+                        {
+                            try { process.Kill(); } catch { }
+                            result.Success = false;
+                            result.ExitCode = -1;
+                            result.Error = "Timed out after " + (timeoutMs / 1000) + " seconds.";
+                            break;
+                        }
+                    }
+
+                    if (exited)
+                    {
+                        // Let the async readers flush.
+                        process.WaitForExit();
+                        result.ExitCode = process.ExitCode;
+                        result.Success = process.ExitCode == 0;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                result.Success = false;
+                result.ExitCode = -1;
+                result.Error = ex.Message;
+            }
+
+            result.Stdout = stdout.ToString();
+            result.Stderr = stderr.ToString();
+            return result;
+        }
+
         private static ProcessResult RunProcessWithProgress(string exe, string args, int timeoutMs, double durationSeconds, ProgressState progress, CancelToken cancelToken)
         {
             var result = new ProcessResult { Command = QuoteArg(exe) + " " + args };
@@ -894,7 +1388,7 @@ namespace AITools.AIChat.Video
             return d;
         }
 
-        private static string BuildProcessError(string toolName, ProcessResult pr)
+        internal static string BuildProcessError(string toolName, ProcessResult pr)
         {
             var sb = new StringBuilder();
             sb.Append(toolName).Append(" failed");
@@ -914,18 +1408,18 @@ namespace AITools.AIChat.Video
             return sb.ToString();
         }
 
-        private static string GetAppRoot()
+        internal static string GetAppRoot()
         {
             return System.IO.Path.GetFullPath(System.IO.Path.Combine(Application.dataPath.Replace('/', '\\'), ".."));
         }
 
-        private static string QuoteArg(string s)
+        internal static string QuoteArg(string s)
         {
             if (s == null) return "\"\"";
             return "\"" + s.Replace("\"", "\\\"") + "\"";
         }
 
-        private static string SanitizeFileStem(string s)
+        internal static string SanitizeFileStem(string s)
         {
             var invalid = System.IO.Path.GetInvalidFileNameChars();
             var sb = new StringBuilder(s.Length);

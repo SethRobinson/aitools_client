@@ -13,6 +13,7 @@ public enum AppSettingsTab
     General,
     Configuration,
     Audio,
+    Web,
     LLM
 }
 
@@ -33,6 +34,13 @@ public class AppSettingsPanel : MonoBehaviour
     private TextMeshProUGUI _generalStatusText;
     private TextMeshProUGUI _configStatusText;
     private TextMeshProUGUI _audioStatusText;
+    private TextMeshProUGUI _webStatusText;
+    private TMP_InputField _braveApiKeyInput;
+    private Toggle _webSafeSearchToggle;
+    private TMP_InputField _ytDlpCookiesInput;
+    private TMP_InputField _sttEndpointInput;
+    private TMP_InputField _sttApiKeyInput;
+    private TMP_InputField _sttModelInput;
     private GameObject _forceReconnectDialogRoot;
     private TMP_InputField _imageEditorInput;
     private TMP_Dropdown _ttsProviderDropdown;
@@ -206,6 +214,7 @@ public class AppSettingsPanel : MonoBehaviour
         CreateTabButton(strip, AppSettingsTab.General, "General Settings", 185f);
         CreateTabButton(strip, AppSettingsTab.Configuration, "ComfyUI Settings", 190f);
         CreateTabButton(strip, AppSettingsTab.Audio, "Audio", 110f);
+        CreateTabButton(strip, AppSettingsTab.Web, "Web", 100f);
         // LLM is a launcher, not a content page: it opens the standalone advanced dialog
         // directly. It is intentionally NOT added to _tabButtons (never highlighted active),
         // and it keeps the inactive-tab color so it never looks like the selected page.
@@ -267,6 +276,8 @@ public class AppSettingsPanel : MonoBehaviour
             BuildConfigurationTab(content);
         else if (tab == AppSettingsTab.Audio)
             BuildAudioTab(content);
+        else if (tab == AppSettingsTab.Web)
+            BuildWebTab(content);
         else
             BuildGeneralTab(content);
 
@@ -724,6 +735,144 @@ public class AppSettingsPanel : MonoBehaviour
                 return i;
         }
         return ElevenLabsTextToSpeechManager.DefaultVoicePresets.Length;
+    }
+
+    // ---------- Web tab (AI Chat web_search / web_image / web_video) ----------
+
+    private void BuildWebTab(RectTransform content)
+    {
+        Config cfg = Config.Get();
+
+        CreateSectionHeader(content, "Web search (Brave Search API)");
+        var searchBox = CreateVerticalBox(content, "WebSearchBox", 132f);
+
+        var keyRow = CreateRow(searchBox, "BraveKeyRow", 36f);
+        CreateLabel(keyRow, "Brave API key", 150f);
+        _braveApiKeyInput = CreateInput(keyRow, cfg != null ? cfg.GetBraveSearchAPIKey() : "", 560f);
+        _braveApiKeyInput.contentType = TMP_InputField.ContentType.Password;
+        _braveApiKeyInput.ForceLabelUpdate();
+        _braveApiKeyInput.onEndEdit.AddListener(_ => SaveWebSettingsFromFields());
+
+        bool safeStrict = cfg == null || cfg.GetWebSearchSafeSearch() != "off";
+        _webSafeSearchToggle = CreateToggleRow(searchBox, "SafeSearch strict (off = allow adult results)", safeStrict,
+            _ => SaveWebSettingsFromFields());
+
+        var helpRow = CreateRow(searchBox, "BraveHelpRow", 30f);
+        var help = CreateText("Help", helpRow,
+            "Get a key at https://brave.com/search/api/ (the Search plan includes $5 of free monthly credit, about 1000 queries). " +
+            "AI Chat uses it for the web_search / web_image / web_video skills; every search and download is shown in a Web bubble.",
+            12f, TextMuted, TextAlignmentOptions.TopLeft);
+        help.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
+
+        CreateSectionHeader(content, "Video download (yt-dlp)");
+        var videoBox = CreateVerticalBox(content, "WebVideoBox", 100f);
+
+        var cookiesRow = CreateRow(videoBox, "YtDlpCookiesRow", 36f);
+        CreateLabel(cookiesRow, "Cookies from browser", 150f);
+        _ytDlpCookiesInput = CreateInput(cookiesRow, cfg != null ? cfg.GetYtDlpCookiesBrowser() : "", 560f);
+        SetInputPlaceholder(_ytDlpCookiesInput, "e.g. firefox, brave, chrome, edge - leave blank unless downloads fail with a sign-in / bot check");
+        _ytDlpCookiesInput.onEndEdit.AddListener(_ => SaveWebSettingsFromFields());
+
+        var cookiesHelpRow = CreateRow(videoBox, "YtDlpHelpRow", 30f);
+        var cookiesHelp = CreateText("Help", cookiesHelpRow,
+            "Passed to yt-dlp as --cookies-from-browser. Firefox is the most reliable; Chrome/Brave cookie extraction often fails on Windows because of app-bound cookie encryption.",
+            12f, TextMuted, TextAlignmentOptions.TopLeft);
+        cookiesHelp.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
+
+        CreateSectionHeader(content, "Speech-to-text (web_video speech checks)");
+        var sttBox = CreateVerticalBox(content, "WebSttBox", 160f);
+
+        var sttEndpointRow = CreateRow(sttBox, "SttEndpointRow", 36f);
+        CreateLabel(sttEndpointRow, "Whisper endpoint", 150f);
+        _sttEndpointInput = CreateInput(sttEndpointRow, cfg != null ? cfg.GetSttEndpoint() : "", 560f);
+        SetInputPlaceholder(_sttEndpointInput, "blank = api.openai.com with the LLM Settings OpenAI key; or http://gpu-box.lan:8000/v1/audio/transcriptions");
+        _sttEndpointInput.onEndEdit.AddListener(_ => SaveWebSettingsFromFields());
+
+        var sttKeyRow = CreateRow(sttBox, "SttKeyRow", 36f);
+        CreateLabel(sttKeyRow, "Endpoint API key", 150f);
+        _sttApiKeyInput = CreateInput(sttKeyRow, cfg != null ? cfg.GetSttAPIKey() : "", 560f);
+        _sttApiKeyInput.contentType = TMP_InputField.ContentType.Password;
+        _sttApiKeyInput.ForceLabelUpdate();
+        SetInputPlaceholder(_sttApiKeyInput, "optional for local servers");
+        _sttApiKeyInput.onEndEdit.AddListener(_ => SaveWebSettingsFromFields());
+
+        var sttModelRow = CreateRow(sttBox, "SttModelRow", 36f);
+        CreateLabel(sttModelRow, "Model", 150f);
+        _sttModelInput = CreateInput(sttModelRow, cfg != null ? cfg.GetSttModel() : "whisper-1", 300f);
+        _sttModelInput.onEndEdit.AddListener(_ => SaveWebSettingsFromFields());
+
+        var sttHelpRow = CreateRow(sttBox, "SttHelpRow", 30f);
+        var sttHelp = CreateText("Help", sttHelpRow,
+            "Used when web_video runs with speech=\"true\": the clip's audio is transcribed and music-only or silent cuts are rejected (the vision sidecar cannot hear). Any OpenAI-compatible /v1/audio/transcriptions server works (faster-whisper-server, Speaches, LocalAI, vLLM whisper).",
+            12f, TextMuted, TextAlignmentOptions.TopLeft);
+        sttHelp.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
+
+        var statusRow = CreateRow(content, "WebStatusRow", 130f);
+        _webStatusText = CreateText("WebStatus", statusRow, BuildWebStatusText(), 13f, TextDark, TextAlignmentOptions.TopLeft);
+        // Windows paths contain backslash-n / backslash-t sequences that TMP would otherwise turn into newlines/tabs.
+        _webStatusText.parseCtrlCharacters = false;
+        _webStatusText.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
+    }
+
+    private void SetInputPlaceholder(TMP_InputField input, string text)
+    {
+        if (input == null || input.placeholder == null) return;
+        var placeholderTmp = input.placeholder as TextMeshProUGUI;
+        if (placeholderTmp != null)
+        {
+            placeholderTmp.text = text;
+            placeholderTmp.fontSize = 12f;
+        }
+    }
+
+    private void SaveWebSettingsFromFields()
+    {
+        Config cfg = Config.Get();
+        if (cfg == null)
+        {
+            SetWebStatus("Config is not initialized.");
+            return;
+        }
+
+        string key = _braveApiKeyInput != null ? _braveApiKeyInput.text : cfg.GetBraveSearchAPIKey();
+        string safeSearch = _webSafeSearchToggle != null && !_webSafeSearchToggle.isOn ? "off" : "strict";
+        string cookies = _ytDlpCookiesInput != null ? _ytDlpCookiesInput.text : cfg.GetYtDlpCookiesBrowser();
+        string sttEndpoint = _sttEndpointInput != null ? _sttEndpointInput.text : cfg.GetSttEndpoint();
+        string sttKey = _sttApiKeyInput != null ? _sttApiKeyInput.text : cfg.GetSttAPIKey();
+        string sttModel = _sttModelInput != null ? _sttModelInput.text : cfg.GetSttModel();
+
+        cfg.SetWebSettings(key, safeSearch, cookies, sttEndpoint, sttKey, sttModel);
+        SetWebStatus(BuildWebStatusText());
+        SetFooterStatus("Saved Web settings to config.txt.");
+    }
+
+    private string BuildWebStatusText()
+    {
+        Config cfg = Config.Get();
+        var sb = new System.Text.StringBuilder();
+        bool hasKey = cfg != null && !string.IsNullOrWhiteSpace(cfg.GetBraveSearchAPIKey());
+        sb.AppendLine(hasKey ? "Brave Search: key set." : "Brave Search: NO KEY - web_search / web_image / web_video are unavailable until one is entered.");
+        sb.AppendLine("SafeSearch: " + (cfg != null ? cfg.GetWebSearchSafeSearch() : "strict"));
+
+        if (AITools.AIChat.Web.YtDlpTool.TryGetToolPath(out string ytDlpPath, out string ytDlpError))
+            sb.AppendLine("yt-dlp: found at " + ytDlpPath);
+        else
+            sb.AppendLine("yt-dlp: NOT FOUND - " + ytDlpError);
+        sb.AppendLine(AITools.AIChat.Web.YtDlpTool.DescribeJsRuntime());
+        sb.AppendLine(AITools.AIChat.Web.SpeechCheck.DescribeSpeechToText());
+
+        if (AITools.AIChat.Video.FfmpegTool.TryGetToolPaths(out string ffmpegPath, out _, out string ffmpegError))
+            sb.AppendLine("ffmpeg: ok (" + ffmpegPath + ")");
+        else
+            sb.AppendLine("ffmpeg: MISSING - " + ffmpegError);
+
+        return sb.ToString().TrimEnd();
+    }
+
+    private void SetWebStatus(string text)
+    {
+        if (_webStatusText != null)
+            _webStatusText.text = text ?? "";
     }
 
     private void SaveAudioSettingsFromFields()

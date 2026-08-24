@@ -114,6 +114,76 @@ namespace AITools.AIChat.Skills
         bool StartExtractStillAction(SkillAction action, int sourceChatImageIndex, float atSeconds, Action<bool> onDone);
 
         /// <summary>
+        /// Start a local FFmpeg stitch (stitch_video action): join the listed Movie
+        /// bubbles, in order, into one clip. The host first WAITS for any source whose
+        /// render is still in flight (Send stays enabled; this can take many minutes for
+        /// a multi-clip story), then encodes, appends the result as a new Movie bubble
+        /// (anchor-registered, chain target updated only if the turn is still current)
+        /// and invokes <paramref name="onDone"/>. The wait survives later user turns and
+        /// is cancelled only by Stop/Clear, so the executor must guard its resume with
+        /// its own turn epoch. Returns false if it could not start at all.
+        /// </summary>
+        bool StartStitchVideoAction(SkillAction action, List<int> sourceChatImageIndices, AITools.AIChat.Video.FfmpegTool.StitchRequest request, Action<bool> onDone);
+
+        /// <summary>
+        /// Append an ALWAYS-visible red Error bubble (not debug-gated, not sent to the
+        /// model). For user-facing configuration failures such as a missing API key.
+        /// </summary>
+        void AddErrorBubble(string text);
+
+        /// <summary>
+        /// Start a Brave web search (web_search action): the host shows the full result
+        /// list in an always-visible Web bubble, stores the results as a session "S<n>"
+        /// list for later result="S<n>:<i>" references, queues a compact copy for the
+        /// model, then invokes <paramref name="onDone"/>.
+        /// </summary>
+        bool StartWebSearchAction(SkillAction action, AITools.AIChat.Web.WebSearchRequest request, Action<bool> onDone);
+
+        /// <summary>
+        /// Start a web image fetch (web_image action): search and/or download, convert,
+        /// spawn assistant still bubble(s) with anchor + provenance, caption them, trace
+        /// every step in a Web bubble, then invoke <paramref name="onDone"/>.
+        /// </summary>
+        bool StartWebImageAction(SkillAction action, AITools.AIChat.Web.WebImageRequest request, Action<bool> onDone);
+
+        /// <summary>
+        /// Start a web video fetch (web_video action): search and/or yt-dlp / direct download
+        /// of a short section, normalize it with FFmpeg, append a Movie bubble, trace every
+        /// step, then invoke <paramref name="onDone"/>.
+        /// </summary>
+        bool StartWebVideoAction(SkillAction action, AITools.AIChat.Web.WebVideoRequest request, Action<bool> onDone);
+
+        /// <summary>
+        /// Start a web page read (web_page action): fetch ONE HTML/text page (url=, a
+        /// kind="web" search result, or the top-ranked hit of query=), extract readable text,
+        /// list candidate images as a "P&lt;n&gt;" session for later web_image result="P&lt;n&gt;:&lt;i&gt;",
+        /// deliver the text through the info-recap channel, trace in a Web bubble, then
+        /// invoke <paramref name="onDone"/>.
+        /// </summary>
+        bool StartWebPageAction(SkillAction action, AITools.AIChat.Web.WebPageRequest request, Action<bool> onDone);
+
+        /// <summary>
+        /// The AI Chat header "Web" toggle. When false every web_* action must fail before
+        /// any request is made (the model is told so in CURRENT STATE).
+        /// </summary>
+        bool IsWebAccessEnabled();
+
+        /// <summary>
+        /// Request one synthetic continue turn once every pending web fetch AND its caption
+        /// sidecar has finished (web_* resume="true"), so the continued turn's CHAT IMAGES
+        /// block already describes what was downloaded. Same scoped slot as inspect_image
+        /// resume; cancelled on Stop/Clear/new send.
+        /// </summary>
+        void RequestAutoResumeAfterWebFetch();
+
+        /// <summary>
+        /// One-off ALWAYS-visible "Web" bubble for a fetch that was refused before any request
+        /// was made (blocked URL, missing key), so the user sees every attempt in the same style
+        /// as real fetches. Not sent to the model.
+        /// </summary>
+        void AddWebTraceNotice(string text);
+
+        /// <summary>
         /// Record a follow-up action that modifies an existing chat Pic without spawning
         /// a new bubble, e.g. chain="true" image_to_movie or local composition.
         /// </summary>

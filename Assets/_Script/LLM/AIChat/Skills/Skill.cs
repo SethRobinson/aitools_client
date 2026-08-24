@@ -85,6 +85,10 @@ namespace AITools.AIChat.Skills
         public const string RifeVideo = "rife_video";
         public const string ClipVideo = "clip_video";
         public const string ExtractStill = "extract_still";
+        // Local FFmpeg concat of several Movie bubbles into one clip (no GPU). The host
+        // waits for still-rendering sources, so a "make N clips then stitch them" reply
+        // can end with one stitch_video that lands once every clip exists.
+        public const string StitchVideo = "stitch_video";
         public const string ReadSkill = "read_skill";
         public const string SummarizeWithSmallLlm = "summarize_with_small_llm";
         public const string DescribeImage = "describe_image";
@@ -110,11 +114,25 @@ namespace AITools.AIChat.Skills
         public const string CropResize = "crop_resize";
         public const string DrawShape = "draw_shape";
 
+        // Web media fetch (Brave Search API + plain HTTPS downloads + bundled yt-dlp).
+        // web_search lists results only; web_image / web_video download into normal
+        // image / Movie bubbles. Every step is shown in an always-visible Web bubble.
+        // See docs/web_media.md.
+        public const string WebSearch = "web_search";
+        public const string WebImage = "web_image";
+        public const string WebVideo = "web_video";
+        /// <summary>Fetch ONE page's readable text + image list (P&lt;n&gt; session) into the prompt.</summary>
+        public const string WebPage = "web_page";
+
+        /// <summary>Every skill that needs the AI Chat "Web" toggle to be on.</summary>
+        public static readonly HashSet<string> WebSkills = new HashSet<string> { WebSearch, WebImage, WebVideo, WebPage };
+
         public static readonly HashSet<string> All = new HashSet<string>
         {
             GenerateImage, GenerateMovie, ImageToImage, ImageToMovie, VideoToVideo, RifeVideo, ClipVideo,
-            ExtractStill, ReadSkill, SummarizeWithSmallLlm, DescribeImage, InspectImage, Continue,
-            DrawText, AddBorder, PasteImage, NewCanvas, CropResize, DrawShape
+            ExtractStill, StitchVideo, ReadSkill, SummarizeWithSmallLlm, DescribeImage, InspectImage, Continue,
+            DrawText, AddBorder, PasteImage, NewCanvas, CropResize, DrawShape,
+            WebSearch, WebImage, WebVideo, WebPage
         };
     }
 }

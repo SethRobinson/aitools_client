@@ -13,6 +13,7 @@ using AITools.AIChat.Mirroring;
 using AITools.AIChat.Skills;
 using AITools.AIChat.UI;
 using AITools.AIChat.Video;
+using AITools.AIChat.Web;
 
 /// <summary>
 /// Programmatic multi-turn AI chat popup. Mirrors the LLMSettingsPanel pattern
@@ -162,6 +163,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         public byte[] cleanBasePngBytes;
         public string cleanBaseDimensions;
         public readonly List<string> provenanceSteps = new List<string>();
+        // Caption is always described in CHAT IMAGES, even when generated-image
+        // auto-captioning is off: set for media whose whole point is that the model
+        // can see what arrived (web downloads, extracted identity frames).
+        public bool alwaysIncludeCaption;
     }
     private readonly List<ChatImageRecord> _chatImageRecords = new List<ChatImageRecord>();
 
@@ -257,6 +262,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private const string PREFS_KEEP_OLD_TOOL_CALLS_IN_PROMPT = "aichat_keep_old_tool_calls_in_prompt";
     private const string PREFS_AUTO_CAPTION_GENERATED_IMAGES = "aichat_auto_caption_generated_images";
     private const string PREFS_SHOW_DEBUG_STUFF = "aichat_show_debug_stuff";
+    // Header "Web" checkbox: gates every web_* skill (search / image / video / page). Default on.
+    private const string PREFS_WEB_ENABLED = "aichat_web_enabled";
     // Cap on the largest edge (in pixels) of dragged/pasted images. Anything
     // bigger gets bilinear-downscaled at attach time so that captioning,
     // image_to_image source bytes, and chat-history embedding all run against
@@ -294,6 +301,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private Button _speechStopButton;
     private Toggle _includeImageDataToggle;
     private Toggle _autoContinueToggle;
+    private Toggle _webToggle;
     private TMP_InputField _autoContinueCountInput;
     // Internal countdown for the auto-repeat burst. Seeded from the N field when
     // the toggle is checked; decremented as each repeat fires. Drained on
@@ -887,7 +895,31 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         settingsTxt.alignment = TextAlignmentOptions.Center;
         settingsTxt.raycastTarget = false;
 
+        // "Web" checkbox: allows / denies every web_* skill (search, image, video, page). Sits in
+        // the gap between the status pill (right edge at -200) and Settings (left edge at -124).
+        // Persisted in PlayerPrefs; the model sees the state in CURRENT STATE every turn and the
+        // executor's WebPreflight refuses web actions while it is off.
+        _webToggle = CreateFooterToggle(header.transform, "Web", Vector2.zero, new Vector2(60, 22), GetWebEnabled(), OnWebToggleChanged);
+        {
+            var wrt = _webToggle.GetComponent<RectTransform>();
+            wrt.anchorMin = new Vector2(1, 0.5f);
+            wrt.anchorMax = new Vector2(1, 0.5f);
+            wrt.pivot = new Vector2(1, 0.5f);
+            wrt.anchoredPosition = new Vector2(-130, 0);
+            var tt = _webToggle.gameObject.AddComponent<RTToolTip>();
+            tt._text =
+                "Allow AI Chat to search the web and fetch pages, images and clips\n" +
+                "(web_search / web_image / web_video / web_page; Brave key in Settings > Web).\n" +
+                "Off: the model is told web access is disabled and any web action fails.";
+        }
+
         RTWindowChrome.CreateCloseButton(rt, Hide);
+    }
+
+    private void OnWebToggleChanged(bool on)
+    {
+        SetWebEnabled(on);
+        AddSystemMessage("Web access " + (on ? "ON" : "OFF") + " (header Web checkbox). The model sees this in CURRENT STATE on the next turn.", includeInLLMRecap: false);
     }
 
     /// <summary>
@@ -2010,7 +2042,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         return CountPendingAttachmentCaptions() > 0
             || CountPendingInspectImageJobs() > 0
             || _videoImportCount > 0
-            || CountPendingVideoCaptions() > 0;
+            || CountPendingVideoCaptions() > 0
+            || HasPendingWebWork();
     }
 
     private void EnqueueInspectImage(byte[] png, string prompt, string sourceLabel, int? llmInstanceId, bool resumeOnResult)
@@ -2655,12 +2688,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         bool sidecarPending = HasPendingSidecarWork();
         _sendButton.interactable = !_isStreaming && !_waitingForForcedMainLLM && !sidecarPending;
         if (_stopButton != null)
-            _stopButton.interactable = _isStreaming || _waitingForForcedMainLLM || CountPendingInspectImageJobs() > 0 || HasSkillLoadAutoResumePendingForCurrentTurn() || HasGenericContinuePendingForCurrentTurn();
+            _stopButton.interactable = _isStreaming || _waitingForForcedMainLLM || CountPendingInspectImageJobs() > 0 || HasSkillLoadAutoResumePendingForCurrentTurn() || HasGenericContinuePendingForCurrentTurn() || HasPendingWebWork();
     }
 
     private void UpdateAttachmentCaptionStatus(bool force = false)
     {
-        if (_statusText == null || _isStreaming || _waitingForForcedMainLLM || _compactSummaryInFlight || CountPendingInspectImageJobs() > 0 || _videoImportCount > 0 || CountPendingVideoCaptions() > 0)
+        if (_statusText == null || _isStreaming || _waitingForForcedMainLLM || _compactSummaryInFlight || CountPendingInspectImageJobs() > 0 || _videoImportCount > 0 || CountPendingVideoCaptions() > 0 || HasPendingWebWork())
             return;
 
         int pending = CountPendingAttachmentCaptions();
@@ -2691,7 +2724,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     private void UpdateVideoImportStatus(bool force = false)
     {
-        if (_statusText == null || _isStreaming || _waitingForForcedMainLLM || _compactSummaryInFlight || CountPendingInspectImageJobs() > 0)
+        if (_statusText == null || _isStreaming || _waitingForForcedMainLLM || _compactSummaryInFlight || CountPendingInspectImageJobs() > 0 || _webFetchCount > 0)
             return;
 
         if (_videoImportCount > 0)
@@ -3807,6 +3840,14 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             UpdateVideoImportStatus(force: true);
             return;
         }
+        if (HasPendingWebWork())
+        {
+            AddSystemMessage(
+                _webFetchCount > 0 ? "Fetching from the web... waiting before send." : "Captioning web image... waiting before send.",
+                includeInLLMRecap: false);
+            UpdateWebFetchStatus(force: true);
+            return;
+        }
 
         // A user-driven send (typed message OR an auto-repeat fire) means the human is
         // back in control, so reset the model's runaway self-continue counter. Synthetic
@@ -4335,7 +4376,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         bool skillResumePending = HasSkillLoadAutoResumePendingForCurrentTurn();
         bool genericContinuePending = HasGenericContinuePendingForCurrentTurn();
         bool forcedWaitPending = _waitingForForcedMainLLM;
-        if (!_isStreaming && !inspectPending && !skillResumePending && !genericContinuePending && !forcedWaitPending) return;
+        bool webPending = HasPendingWebWork();
+        if (!_isStreaming && !inspectPending && !skillResumePending && !genericContinuePending && !forcedWaitPending && !webPending) return;
         // Stop fully ends auto-repeat: uncheck the box (its handler also zeroes the
         // counter) so it doesn't quietly resume on the next reply.
         _autoContinueRemaining = 0;
@@ -4350,9 +4392,15 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (forcedWaitPending)
             CancelForcedMainLLMWait(showBubble: true);
 
+        if (webPending)
+        {
+            CancelInspectAutoResume();
+            CancelAllWebFetches(showBubble: true);
+        }
+
         if (!_isStreaming)
         {
-            SetBusyUI(false, inspectPending ? "Stopped inspection" : (forcedWaitPending ? "Stopped waiting" : "Stopped"));
+            SetBusyUI(false, inspectPending ? "Stopped inspection" : (forcedWaitPending ? "Stopped waiting" : (webPending ? "Stopped web fetch" : "Stopped")));
             return;
         }
 
@@ -4366,6 +4414,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // Invalidate any parked pump / in-flight deferred coroutine so a
         // stopped book doesn't keep spawning pages after the user bailed.
         _actionExecutor?.ResetForNewTurn();
+        CancelAllWebFetches(showBubble: false);
     }
 
     /// <summary>
@@ -4418,6 +4467,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         CancelSkillLoadAutoResume();
         CancelGenericContinue();
         _consecutiveSelfContinues = 0;
+        CancelAllWebFetches(showBubble: false);
+        _webSearchSessions.Clear();
+        _nextWebSearchId = 1;
+        _webPageSessions.Clear();
+        _nextWebPageId = 1;
+        _webFetchedUrlToPic.Clear();
+        _forwardedDescriptions.Clear();
         _videoImportEpoch++;
         _videoImportCount = 0;
         _videoImportStartTime = 0f;
@@ -5938,7 +5994,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // defeat server-side prompt caching for the entire conversation.
         if (_contextBuilder != null && _promptManager != null)
         {
-            _promptManager.SetBaseSystemPrompt(_contextBuilder.Build(GetKeepOldToolCallsInPrompt()));
+            _promptManager.SetBaseSystemPrompt(_contextBuilder.Build(GetKeepOldToolCallsInPrompt(), HiddenSkillIdsForPrompt()));
         }
 
         _activeProviderInFlight = activeProvider;
@@ -6154,7 +6210,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (_skillManager == null || _promptManager == null || string.IsNullOrWhiteSpace(outgoingUserText))
             return;
 
-        var matched = _skillManager.GetAutoloadSkillsForMessage(outgoingUserText);
+        var matched = _skillManager.GetAutoloadSkillsForMessage(outgoingUserText, HiddenSkillIdsForPrompt());
         if (ShouldAutoloadVideoToVideoForMovieContext(outgoingUserText))
         {
             var videoSkill = _skillManager.GetById(BuiltInSkillIds.VideoToVideo);
@@ -6371,7 +6427,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         int imageContextLimit = GetImageContextLimit();
         var chatImages = BuildChatImageStatesForPrompt(imageContextLimit);
         string anchorsLine = BuildAnchorsStateLine();
-        string state = _contextBuilder.BuildCurrentStateBlock(chatImageSlots, chatImages, anchorsLine, imageContextLimit);
+        string state = _contextBuilder.BuildCurrentStateBlock(chatImageSlots, chatImages, anchorsLine, imageContextLimit, GetWebEnabled());
         if (string.IsNullOrEmpty(state)) return;
 
         lastUser._content = (lastUser._content ?? "") + "\n\n" + state;
@@ -6426,7 +6482,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 : null;
             bool reusable = pic != null && pic.gameObject != null;
             bool userAttachment = record != null && record.isUserAttachment;
-            string caption = (userAttachment || includeGeneratedCaptions)
+            bool alwaysCaption = record != null && record.alwaysIncludeCaption;
+            string caption = (userAttachment || alwaysCaption || includeGeneratedCaptions)
                 ? ((IChatHost)this).GetChatImageCaption(i + 1)
                 : "";
 
@@ -6818,6 +6875,24 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             _autoContinueRemaining = 0;
             CancelSkillLoadAutoResume();
             CancelGenericContinue();
+        }
+        else if (!explicitResumePendingForTurn && _actionExecutor != null && _actionExecutor.TurnHadOnlyPreparatoryActions)
+        {
+            // Unfinished-plan safety net: the reply fetched/extracted/cut media ("First, let me
+            // grab a frame, then generate the video...") and ended without the render it
+            // described and without asking for a continue. Models skip that rule often
+            // enough that the host grants one bounded continue itself; the generic scheduler
+            // waits for the fetch/extract (sidecar work) to finish first, and the runaway cap
+            // still applies. A reply that only wanted the clip costs one short "done" turn.
+            RegisterGenericContinueRequest(_chatTurnEpoch);
+            if (_genericContinuePending)
+            {
+                genericContinuePendingForTurn = true;
+                explicitResumePendingForTurn = true;
+                ((IChatHost)this).AddSystemInjectionSilent(
+                    "(Automatic continue: your previous reply only prepared media (web fetch / frame extract / clip) and ended without the follow-up it described. " +
+                    "If the user's request still needs a render or edit, emit that action NOW using the anchors / chat_image numbers in CHAT IMAGES; if the request is already complete, reply in one short sentence.)");
+            }
         }
         else if (repeatOn && !explicitResumePendingForTurn && _autoContinueRemaining > 0 && !HasPendingSidecarWork())
         {
@@ -7251,7 +7326,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     /// returns null instead of dispatching to an at-capacity vision route; callers
     /// should keep their item queued and retry later.
     /// </summary>
-    private CaptionJob TryCaptionBytes(byte[] png, Action<CaptionResult> onResult, bool requireFreeSlot = false, string promptOverride = null, string jobName = "ImageCaption", string debugFileName = "examine_image_sent.json")
+    private CaptionJob TryCaptionBytes(byte[] png, Action<CaptionResult> onResult, bool requireFreeSlot = false, string promptOverride = null, string jobName = "ImageCaption", string debugFileName = "examine_image_sent.json", Action<string> onRawText = null, Action<string> onFailureDetail = null)
     {
         var job = new CaptionJob();
         Action<CaptionResult> safeResult = (r) =>
@@ -7351,6 +7426,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                         $"{failureLabel} failed on LLM #{capturedTargetId}: {failureDetail}",
                         includeInLLMRecap: true);
                 }
+                if (string.IsNullOrEmpty(raw) && !string.IsNullOrEmpty(failureDetail))
+                {
+                    try { onFailureDetail?.Invoke("LLM #" + capturedTargetId + ": " + failureDetail); } catch { }
+                }
+                try { onRawText?.Invoke(raw); } catch { }
                 result = ParseCaptionResponse(raw);
             }
             finally { safeResult(result); }
@@ -7561,6 +7641,40 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             && _captionLabels.TryGetValue(capturedPic, out var entry)
             && entry.label != null)
             entry.label.text = entry.baseText + " " + labelSuffix;
+
+        if (!result.IsEmpty)
+            ForwardFullDescriptionOnce(capturedPic, longCaption);
+    }
+
+    // Per-Pic text of the last full description queued for the model, so a re-caption
+    // with identical text (stable-texture re-polls) is not sent twice, while a genuinely
+    // new description (the Pic changed) is.
+    private readonly Dictionary<PicMain, string> _forwardedDescriptions = new Dictionary<PicMain, string>();
+
+    /// <summary>
+    /// Send the FULL vision description of a chat image/movie to the model exactly once,
+    /// through the info-recap tail of the next outgoing message (cached history, so it is
+    /// paid for once). The repeated CHAT IMAGES list keeps only the SHORT caption: long
+    /// text there would be re-prefilled every turn. Pasted attachments already carry their
+    /// long caption in the paste message header and never reach this path.
+    /// </summary>
+    private void ForwardFullDescriptionOnce(PicMain pic, string longCaption)
+    {
+        if (pic == null || pic.gameObject == null || string.IsNullOrWhiteSpace(longCaption)) return;
+        int idx = _chatImagePics.IndexOf(pic);
+        if (idx < 0) return; // not a chat image (world-only Pic)
+        string text = longCaption.Trim();
+        string prev;
+        if (_forwardedDescriptions.TryGetValue(pic, out prev) && string.Equals(prev, text, StringComparison.Ordinal))
+            return;
+        _forwardedDescriptions[pic] = text;
+
+        var record = idx < _chatImageRecords.Count ? _chatImageRecords[idx] : null;
+        bool isMovie = (record != null && record.isMovie) || pic.IsMovie();
+        string label = (isMovie ? "Movie #" : "#") + (idx + 1);
+        if (record != null && !string.IsNullOrEmpty(record.kind) && record.kind != "movie") label += " (" + record.kind + ")";
+        if (record != null && !string.IsNullOrEmpty(record.anchorName)) label += " anchor=\"" + record.anchorName + "\"";
+        _infoMessages.Add(new InfoMessage("(Full description of " + label + " - describe it from this, not from outside knowledge: " + text + ")"));
     }
 
     private bool BeginVideoCaption(PicMain pic)
@@ -7584,6 +7698,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _videoCaptionInFlight.Remove(pic);
         RecomputeSendInteractable();
         UpdateVideoImportStatus(force: true);
+        PokeAutoResumeSchedulers();
     }
 
     private IEnumerator CaptionVideoClipBubble(PicMain pic, string clipPath)
@@ -8184,7 +8299,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         return info != null && info.Fps > 0 ? info.Fps : FfmpegTool.DefaultFps;
     }
 
-    private PicMain AppendVideoClipBubble(string clipPath, SkillAction action, bool isUserImport, string dimensions)
+    private PicMain AppendVideoClipBubble(string clipPath, SkillAction action, bool isUserImport, string dimensions, bool autoCaption = true, bool updateChainTarget = true)
     {
         var imageGen = ImageGenerator.Get();
         if (imageGen == null || string.IsNullOrEmpty(clipPath)) return null;
@@ -8201,7 +8316,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         RegisterChatImageRecord(pic, action, isUserAttachment: isUserImport, isMovie: true, dimensions: dimensions);
         string label = isUserImport ? $"Movie #{chatImageNumber} (you)" : $"Movie #{chatImageNumber}";
         AppendImageBubbleInternal(pic, label, isMovie: true);
-        StartCoroutine(CaptionVideoClipBubble(pic, clipPath));
+        if (autoCaption)
+            StartCoroutine(CaptionVideoClipBubble(pic, clipPath));
 
         if (action != null)
         {
@@ -8216,7 +8332,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 $"(Movie just spawned as #{chatImageNumber} in CHAT IMAGES. " +
                 $"Reference it on later turns via chat_image=\"{chatImageNumber}\". " +
                 "Same-reply follow-ups should use chain=\"true\".)"));
-            ((IChatHost)this).SetLastSpawnedPicForTurn(pic);
+            // A stitch that lands after the user moved on to a later turn must not hijack
+            // that turn's chain target.
+            if (updateChainTarget)
+                ((IChatHost)this).SetLastSpawnedPicForTurn(pic);
         }
 
         return pic;
@@ -8239,6 +8358,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _chatImagePics.Add(pic);
         int chatImageNumber = _chatImagePics.Count;
         RegisterChatImageRecord(pic, action, isUserAttachment: false, isMovie: false, dimensions: dimensions);
+        if (_chatImageRecords.Count > 0 && _chatImageRecords[_chatImageRecords.Count - 1].pic == pic)
+            _chatImageRecords[_chatImageRecords.Count - 1].alwaysIncludeCaption = true;
         AppendImageBubbleInternal(pic, $"#{chatImageNumber}", isMovie: false);
 
         string atText = atSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
@@ -8268,6 +8389,1921 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         StartCoroutine(WaitForPicAndCaption(pic));
     }
 
+    // =====================================================================
+    // Web media fetch (web_search / web_image / web_video). See docs/web_media.md.
+    //
+    // Every search and download is traced IN FULL into an always-visible "Web" bubble
+    // (not the debug-gated Info bubble) so a malfunction is obvious at a glance: the
+    // query + params, the complete numbered result list, each download attempt with
+    // URL / HTTP status / content-type / bytes / conversion, the resulting #N label,
+    // and for yt-dlp the exact command line plus its output tail. A compact copy goes
+    // to the model via the info recap. Fetches (and the captions of what they spawned)
+    // count as sidecar work, so Send/automation idle/auto-resume all wait for them.
+    // =====================================================================
+
+    private static readonly Color WebLabelColor = new Color(0.10f, 0.38f, 0.52f);
+    private static readonly Color WebBubbleBg = new Color(0.90f, 0.95f, 0.97f, 1f);
+
+    private int _webFetchCount = 0;
+    private int _webFetchEpoch = 0;
+    private float _webFetchStartTime = 0f;
+    private float _webFetchStatusNextRefresh = 0f;
+    private int _webFetchSpinnerStep = 0;
+    private float _webCaptionStartTime = 0f;
+    private readonly List<WebMediaDownloader.Handle> _webDownloadHandles = new List<WebMediaDownloader.Handle>();
+    private readonly List<FfmpegTool.CancelToken> _webProcessCancels = new List<FfmpegTool.CancelToken>();
+    private readonly List<WebTraceBubble> _activeWebTraces = new List<WebTraceBubble>();
+    private readonly HashSet<PicMain> _webCaptionInFlight = new HashSet<PicMain>();
+
+    private sealed class WebSearchSession
+    {
+        public string Id;
+        public WebSearchKind Kind;
+        public string Query;
+        public BraveSearchClient.SearchResponse Response;
+    }
+    private readonly Dictionary<string, WebSearchSession> _webSearchSessions = new Dictionary<string, WebSearchSession>(StringComparer.OrdinalIgnoreCase);
+    private int _nextWebSearchId = 1;
+    // URL -> the Pic it was already fetched into this session (dedupe; Pic reference
+    // because chat_image numbers shift when old bubbles are trimmed).
+    private readonly Dictionary<string, PicMain> _webFetchedUrlToPic = new Dictionary<string, PicMain>(StringComparer.OrdinalIgnoreCase);
+
+    private bool HasPendingWebWork() => _webFetchCount > 0 || _webCaptionInFlight.Count > 0;
+
+    private void BeginWebFetch()
+    {
+        if (_webFetchCount <= 0)
+            _webFetchStartTime = Time.unscaledTime;
+        _webFetchCount++;
+        RecomputeSendInteractable();
+        UpdateWebFetchStatus(force: true);
+    }
+
+    private void FinishWebFetch()
+    {
+        _webFetchCount = Mathf.Max(0, _webFetchCount - 1);
+        RecomputeSendInteractable();
+        // UpdateWebFetchStatus sees count == 0 with a live start time and writes the
+        // "done" text (or switches to the caption status) before clearing the timer.
+        UpdateWebFetchStatus(force: true);
+        PokeAutoResumeSchedulers();
+    }
+
+    // The auto-resume schedulers bail while sidecar work is pending and are otherwise only
+    // re-poked from inspect completion / FinalizeAssistantTurn, so a resume requested by
+    // a web action would hang until the next user send unless the finish path pokes them.
+    private void PokeAutoResumeSchedulers()
+    {
+        TryScheduleInspectAutoResume();
+        TryScheduleSkillLoadAutoResume();
+        TryScheduleGenericContinue();
+    }
+
+    private void CancelAllWebFetches(bool showBubble)
+    {
+        bool hadWork = HasPendingWebWork();
+        _webFetchEpoch++;
+        for (int i = 0; i < _webDownloadHandles.Count; i++)
+        {
+            try { _webDownloadHandles[i]?.Cancel(); } catch { }
+        }
+        _webDownloadHandles.Clear();
+        for (int i = 0; i < _webProcessCancels.Count; i++)
+        {
+            try { _webProcessCancels[i]?.Cancel(); } catch { }
+        }
+        _webProcessCancels.Clear();
+        for (int i = 0; i < _activeWebTraces.Count; i++)
+        {
+            var trace = _activeWebTraces[i];
+            if (trace != null && trace.IsAlive && hadWork)
+            {
+                trace.ClearStatus();
+                trace.AppendLine("Cancelled.");
+            }
+        }
+        _activeWebTraces.Clear();
+        _webCaptionInFlight.Clear();
+        _webFetchCount = 0;
+        _webFetchStartTime = 0f;
+        _webFetchStatusNextRefresh = 0f;
+        _webCaptionStartTime = 0f;
+        RecomputeSendInteractable();
+        if (showBubble && hadWork)
+            AddSystemMessage("Stopped web fetch.", includeInLLMRecap: false);
+    }
+
+    private void UpdateWebFetchStatus(bool force = false)
+    {
+        if (_statusText == null || _isStreaming || _waitingForForcedMainLLM || _compactSummaryInFlight || CountPendingInspectImageJobs() > 0)
+            return;
+
+        if (_webFetchCount > 0)
+        {
+            if (_webFetchStartTime <= 0f)
+                _webFetchStartTime = Time.unscaledTime;
+            if (!force && Time.unscaledTime < _webFetchStatusNextRefresh)
+                return;
+
+            _webFetchStatusNextRefresh = Time.unscaledTime + STREAM_STATUS_INTERVAL;
+            _webFetchSpinnerStep = (_webFetchSpinnerStep + 1) % StreamSpinnerFrames.Length;
+            float elapsed = Time.unscaledTime - _webFetchStartTime;
+            _statusText.text = $"{StreamSpinnerFrames[_webFetchSpinnerStep]} Fetching from web   {elapsed:F0}s";
+            return;
+        }
+
+        if (_webCaptionInFlight.Count > 0)
+        {
+            if (_webCaptionStartTime <= 0f)
+                _webCaptionStartTime = Time.unscaledTime;
+            if (!force && Time.unscaledTime < _webFetchStatusNextRefresh)
+                return;
+
+            _webFetchStatusNextRefresh = Time.unscaledTime + STREAM_STATUS_INTERVAL;
+            _webFetchSpinnerStep = (_webFetchSpinnerStep + 1) % StreamSpinnerFrames.Length;
+            float elapsed = Time.unscaledTime - _webCaptionStartTime;
+            _statusText.text = $"{StreamSpinnerFrames[_webFetchSpinnerStep]} Captioning web image{(_webCaptionInFlight.Count == 1 ? "" : "s")}   {elapsed:F0}s";
+            return;
+        }
+
+        if (_webFetchStartTime > 0f || _webCaptionStartTime > 0f)
+        {
+            _webFetchStartTime = 0f;
+            _webCaptionStartTime = 0f;
+            _webFetchStatusNextRefresh = 0f;
+            _statusText.text = "Web fetch done";
+        }
+    }
+
+    /// <summary>
+    /// Display-only escape for plain-text trace bubbles: ONLY the TMP angle-bracket
+    /// substitution from ConvertMarkdownToTMP, no markdown regexes (URLs carry '*',
+    /// '#', '_', '-' that the markdown pass would mangle).
+    /// </summary>
+    private static string EscapePlainTextForTMP(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+        return text.Replace('<', '＜').Replace('>', '＞');
+    }
+
+    private WebTraceBubble BeginWebTrace(string headerLine)
+    {
+        var field = AppendBubble("Web", WebLabelColor, "", WebBubbleBg);
+        // Command lines and file paths contain backslash-n / backslash-t sequences
+        // (C:/Program Files/nodejs, .../tempCache/...) that TMP would otherwise turn
+        // into newlines / tabs.
+        if (field != null && field.textComponent != null)
+            field.textComponent.parseCtrlCharacters = false;
+        var trace = new WebTraceBubble(field, EscapePlainTextForTMP,
+            () => IsScrollAtBottom(_chatScroll),
+            () => StartCoroutine(ScrollToBottomDeferred()));
+        _activeWebTraces.Add(trace);
+        if (!string.IsNullOrEmpty(headerLine))
+            trace.AppendLine(headerLine);
+        return trace;
+    }
+
+    private void EndWebTrace(WebTraceBubble trace)
+    {
+        if (trace == null) return;
+        _activeWebTraces.Remove(trace);
+        AIChatLog.Note("web_trace", trace.GetRawText());
+    }
+
+    private static string Q(string s) => "\"" + (s ?? "") + "\"";
+
+    private static string FormatSeconds(float seconds)
+    {
+        return seconds.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "s";
+    }
+
+    private static string ShortUrlForProvenance(string url, int max = 110)
+    {
+        if (string.IsNullOrEmpty(url)) return "";
+        try
+        {
+            var u = new Uri(url);
+            string s = u.Host + u.AbsolutePath;
+            return s.Length <= max ? s : s.Substring(0, max) + "...";
+        }
+        catch
+        {
+            return url.Length <= max ? url : url.Substring(0, max) + "...";
+        }
+    }
+
+    private string NextWebSearchId() => "S" + (_nextWebSearchId++).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    private WebSearchSession StoreWebSearchSession(WebSearchKind kind, string query, BraveSearchClient.SearchResponse resp)
+    {
+        var session = new WebSearchSession { Id = NextWebSearchId(), Kind = kind, Query = query, Response = resp };
+        _webSearchSessions[session.Id] = session;
+        return session;
+    }
+
+    /// <summary>Parse "S1:3" into the session + 1-based index it names.</summary>
+    private bool TryResolveWebSearchToken(string token, out WebSearchSession session, out int index, out string error)
+    {
+        session = null;
+        index = 0;
+        error = null;
+        if (string.IsNullOrWhiteSpace(token)) { error = "empty result token"; return false; }
+        string t = token.Trim();
+        int colon = t.IndexOf(':');
+        if (colon <= 0 || colon == t.Length - 1) { error = "result must look like \"S1:3\" (search id, colon, result number)"; return false; }
+        string id = t.Substring(0, colon).Trim();
+        string num = t.Substring(colon + 1).Trim();
+        if (!_webSearchSessions.TryGetValue(id, out session) || session == null || session.Response == null)
+        {
+            error = "unknown search id \"" + id + "\" (web_search lists expire on Clear)";
+            return false;
+        }
+        if (!int.TryParse(num, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out index) || index < 1)
+        {
+            error = "bad result number \"" + num + "\"";
+            return false;
+        }
+        int count = session.Response.ResultCount(session.Kind);
+        if (index > count)
+        {
+            error = id + " only has " + count + " results";
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// One line per search in the bubble: the terms actually sent and the hit count. The full
+    /// numbered result list is only shown in the bubble for the list-only web_search skill
+    /// (<paramref name="listResults"/>); web_image / web_video write it to the editor log instead,
+    /// since their per-download lines already name every URL that was actually tried.
+    /// </summary>
+    private string BuildWebSearchTraceLines(WebTraceBubble trace, WebSearchKind kind, string query, BraveSearchClient.SearchResponse resp, bool listResults)
+    {
+        string kindLabel = BraveSearchClient.KindLabel(kind);
+        if (resp == null || !resp.Success)
+        {
+            string line = "Searched Brave " + kindLabel + " for " + Q(query) + ": FAILED - " + (resp != null ? (resp.Error ?? "failed") : "no response");
+            if (resp != null && !string.IsNullOrEmpty(resp.BodyExcerpt))
+                line += "\n  body: " + resp.BodyExcerpt;
+            trace.AppendLine(line);
+            AIChatLog.Note("web_request", resp != null ? resp.RequestUrlForDisplay ?? "" : "");
+            return null;
+        }
+        int n = resp.ResultCount(kind);
+        string ok = "Searched Brave " + kindLabel + " for " + Q(query) + ": " + n + (n == 1 ? " hit" : " hits") + " (" + FormatSeconds(resp.ElapsedSeconds) + ")"
+            + (string.IsNullOrEmpty(resp.AlteredQuery) ? "" : "   [spellcheck changed it to " + Q(resp.AlteredQuery) + "]");
+        trace.AppendLine(ok);
+        var lines = BraveSearchClient.FormatResultLines(kind, resp);
+        if (listResults)
+        {
+            if (n == 0) trace.AppendLine("  (none)");
+            else trace.AppendLines(lines);
+        }
+        else
+        {
+            AIChatLog.Note("web_results", "GET " + (resp.RequestUrlForDisplay ?? "") + "\n" + string.Join("\n", lines));
+        }
+        return ok;
+    }
+
+    /// <summary>
+    /// A Brave call failed. Besides the trace line, make the CAUSE unmistakable to the user:
+    /// a rejected / missing key or an exhausted quota gets an always-visible red Error bubble
+    /// that says exactly where to fix it (Settings > Web), and the model is told to relay that
+    /// instead of retrying. Returns the recap text to queue for the model.
+    /// </summary>
+    private string ReportWebSearchFailure(string skillId, string query, BraveSearchClient.SearchResponse resp)
+    {
+        string error = resp != null ? (resp.Error ?? "failed") : "no response";
+        int status = resp != null ? resp.HttpStatus : 0;
+        string lowered = (error + " " + (resp != null ? resp.BodyExcerpt : "")).ToLowerInvariant();
+        bool keyProblem = status == 401 || status == 403
+            || lowered.Contains("subscription_token") || lowered.Contains("subscription token")
+            || lowered.Contains("api key") || lowered.Contains("unauthorized") || lowered.Contains("forbidden");
+        bool quotaProblem = status == 429 || lowered.Contains("quota") || lowered.Contains("rate limit") || lowered.Contains("rate_limited");
+        bool noKey = status == 0 && lowered.Contains("no brave search api key");
+
+        string userFix;
+        if (noKey || keyProblem)
+        {
+            userFix = (noKey
+                ? "Brave Search has no API key configured."
+                : "Brave Search rejected the API key (" + error + ").")
+                + "\nEnter a valid key in Settings > Web (it is stored as set_brave_search_api_key in config.txt). "
+                + "Keys come from https://brave.com/search/api/ - the Search plan includes free monthly credit. "
+                + "AI Chat's web_search / web_image / web_video cannot work until this is fixed.";
+        }
+        else if (quotaProblem)
+        {
+            userFix = "Brave Search refused the request (" + error + ").\nThe key's rate limit or monthly credit is exhausted; "
+                + "check usage at https://api-dashboard.search.brave.com/ or wait and retry. Settings > Web holds the key.";
+        }
+        else
+        {
+            userFix = skillId + " could not reach Brave Search (" + error + ").\nIf this keeps happening, check the key in Settings > Web and the network.";
+        }
+        AddErrorBubble(userFix);
+
+        // The assistant's streamed reply usually already promised the image ("Here's a
+        // photo of..."); give it one bounded continue turn so it can tell the user what
+        // actually happened instead of leaving a false promise on screen.
+        if (noKey || keyProblem || quotaProblem)
+            ((IChatHost)this).RequestContinueTurn();
+
+        string modelNote = noKey || keyProblem
+            ? "(" + skillId + " " + Q(query) + " failed: " + error + ". The Brave Search API key is missing or invalid - tell the user to enter a valid key in Settings > Web and STOP using web_search/web_image/web_video until they confirm it is fixed. Do not retry.)"
+            : quotaProblem
+                ? "(" + skillId + " " + Q(query) + " failed: " + error + ". The Brave key's rate limit or monthly credit is exhausted - tell the user plainly; do not retry this turn.)"
+                : "(" + skillId + " " + Q(query) + " failed: " + error + ". Do not retry the same query blindly; tell the user what failed.)";
+        return modelNote;
+    }
+
+    // ---------- web_search ----------
+
+    bool IChatHost.StartWebSearchAction(SkillAction action, WebSearchRequest request, Action<bool> onDone)
+    {
+        if (request == null) return false;
+        int epoch = _webFetchEpoch;
+        BeginWebFetch();
+        StartCoroutine(WebSearchCoroutine(action, request, epoch, onDone));
+        return true;
+    }
+
+    private IEnumerator WebSearchCoroutine(SkillAction action, WebSearchRequest req, int epoch, Action<bool> onDone)
+    {
+        string safe = req.SafeSearch ?? (Config.Get() != null ? Config.Get().GetWebSearchSafeSearch() : "strict");
+        var trace = BeginWebTrace("web_search  kind=" + BraveSearchClient.KindLabel(req.Kind) + "  query=" + Q(req.Query) + "  count=" + req.Count + "  safesearch=" + safe);
+
+        BraveSearchClient.SearchResponse resp = null;
+        yield return BraveSearchClient.Search(req.Kind, req.Query, req.Count, req.SafeSearch, r => resp = r);
+        if (epoch != _webFetchEpoch) { onDone?.Invoke(false); yield break; }
+
+        BuildWebSearchTraceLines(trace, req.Kind, req.Query, resp, listResults: true);
+        if (resp == null || !resp.Success)
+        {
+            _infoMessages.Add(new InfoMessage(ReportWebSearchFailure("web_search", req.Query, resp)));
+            EndWebTrace(trace);
+            FinishWebFetch();
+            onDone?.Invoke(true);
+            yield break;
+        }
+
+        var session = StoreWebSearchSession(req.Kind, req.Query, resp);
+        int n = resp.ResultCount(req.Kind);
+        trace.AppendLine("Stored as " + session.Id + ": use result=\"" + session.Id + ":N\" with web_image / web_video to download one.");
+
+        var recap = new StringBuilder();
+        recap.Append("[web_search ").Append(session.Id).Append(' ').Append(BraveSearchClient.KindLabel(req.Kind)).Append(' ').Append(Q(req.Query)).Append(" -> ").Append(n).Append(" results]");
+        foreach (string line in BraveSearchClient.FormatResultLines(req.Kind, resp, maxUrlChars: 200))
+            recap.Append('\n').Append(line);
+        if (req.Kind == WebSearchKind.Web)
+            recap.Append("\n(These are page results; quote facts from the descriptions only, the pages themselves were not fetched.)");
+        else
+            recap.Append("\n(Use ").Append(req.Kind == WebSearchKind.Videos ? "web_video" : "web_image").Append(" result=\"").Append(session.Id).Append(":N\" or url=\"...\" to download one. Lists expire on Clear.)");
+        _infoMessages.Add(new InfoMessage(recap.ToString()));
+
+        EndWebTrace(trace);
+        FinishWebFetch();
+        onDone?.Invoke(true);
+    }
+
+    // ---------- web_page ----------
+
+    /// <summary>
+    /// One fetched page: its candidate image list lives on as "P<n>" so the model can follow up
+    /// with web_image result="P<n>:<i>" (same shape as the S<n> search sessions). Cleared on Clear.
+    /// </summary>
+    private sealed class WebPageSession
+    {
+        public string Id;
+        public string Url;
+        public string Title;
+        public List<WebPageImage> Images;
+    }
+    private readonly Dictionary<string, WebPageSession> _webPageSessions = new Dictionary<string, WebPageSession>(StringComparer.OrdinalIgnoreCase);
+    private int _nextWebPageId = 1;
+
+    private string NextWebPageId() => "P" + (_nextWebPageId++).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    private static bool IsWebPageToken(string token)
+    {
+        string t = (token ?? "").Trim();
+        return t.Length > 1 && (t[0] == 'P' || t[0] == 'p') && char.IsDigit(t[1]);
+    }
+
+    /// <summary>Parse "P1:3" into the page session + 1-based image index it names.</summary>
+    private bool TryResolveWebPageToken(string token, out WebPageSession session, out int index, out string error)
+    {
+        session = null;
+        index = 0;
+        error = null;
+        if (string.IsNullOrWhiteSpace(token)) { error = "empty result token"; return false; }
+        string t = token.Trim();
+        int colon = t.IndexOf(':');
+        if (colon <= 0 || colon == t.Length - 1) { error = "page image refs look like \"P1:3\" (page id, colon, image number)"; return false; }
+        string id = t.Substring(0, colon).Trim();
+        string num = t.Substring(colon + 1).Trim();
+        if (!_webPageSessions.TryGetValue(id, out session) || session == null || session.Images == null)
+        {
+            error = "unknown page id \"" + id + "\" (web_page image lists expire on Clear)";
+            return false;
+        }
+        if (!int.TryParse(num, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out index) || index < 1)
+        {
+            error = "bad image number \"" + num + "\"";
+            return false;
+        }
+        if (index > session.Images.Count)
+        {
+            error = id + " only has " + session.Images.Count + " images";
+            return false;
+        }
+        return true;
+    }
+
+    bool IChatHost.StartWebPageAction(SkillAction action, WebPageRequest request, Action<bool> onDone)
+    {
+        if (request == null) return false;
+        int epoch = _webFetchEpoch;
+        BeginWebFetch();
+        StartCoroutine(WebPageCoroutine(action, request, epoch, onDone));
+        return true;
+    }
+
+    // Reading pages (not images): forums / social feeds are noisy, shops sell, PDFs can't be parsed.
+    private static readonly string[] WebPageJunkHosts =
+    {
+        "reddit.com", "quora.com", "pinterest.", "facebook.com", "x.com", "twitter.com", "instagram.com", "tiktok.com",
+        "youtube.com", "youtu.be", "linkedin.com", "tumblr.com", "threads.net"
+    };
+    private static readonly string[] WebPageShopHosts = { "amazon.", "ebay.", "etsy.com", "aliexpress.", "walmart.com", "bestbuy.com" };
+    private static readonly string[] WebPageJunkTitleWords = { "top 10", "top ten", "best ", "review", "buy ", "cheap", "coupon", "deal", "price", " vs ", "vs.", "for sale" };
+
+    /// <summary>
+    /// Rank kind="web" hits for READING: reference sites up (Wikipedia, .edu/.gov, Britannica,
+    /// archive.org), forums / social / shops / PDFs / SEO-style titles down, +1 when every query
+    /// word appears in the title or snippet. Stable: ties keep Brave order.
+    /// </summary>
+    private static List<KeyValuePair<int, int>> RankWebPageResults(List<BraveSearchClient.WebResult> results, string query)
+    {
+        var scored = new List<KeyValuePair<int, int>>();
+        var words = new List<string>();
+        foreach (string w in (query ?? "").ToLowerInvariant().Split(new[] { ' ', ',', '.', '"', '\'', '?', '!', ':', ';', '(', ')' }, StringSplitOptions.RemoveEmptyEntries))
+            if (w.Length >= 3) words.Add(w);
+        for (int i = 0; i < results.Count; i++)
+        {
+            var r = results[i];
+            string host = (string.IsNullOrEmpty(r.Host) ? SafeHost(r.Url) : r.Host).ToLowerInvariant();
+            string url = (r.Url ?? "").ToLowerInvariant();
+            string title = (r.Title ?? "").ToLowerInvariant();
+            string text = title + " " + (r.Description ?? "").ToLowerInvariant();
+            int score = 0;
+            if (host.Contains("wikipedia.org") || host.Contains("wikimedia.org")) score += 5;
+            else if (host.EndsWith(".edu") || host.EndsWith(".gov") || host.Contains("britannica.com") || host.Contains("archive.org")) score += 3;
+            foreach (string h in WebPageJunkHosts) if (host.Contains(h)) { score -= 4; break; }
+            foreach (string h in WebPageShopHosts) if (host.Contains(h)) { score -= 3; break; }
+            string path = url;
+            int q = path.IndexOf('?');
+            if (q >= 0) path = path.Substring(0, q);
+            if (path.EndsWith(".pdf")) score -= 5;
+            foreach (string w in WebPageJunkTitleWords) if (title.Contains(w)) { score -= 2; break; }
+            if (words.Count > 0)
+            {
+                bool all = true;
+                foreach (string w in words) if (!text.Contains(w)) { all = false; break; }
+                if (all) score += 1;
+            }
+            scored.Add(new KeyValuePair<int, int>(i, score));
+        }
+        // Stable insertion sort, score descending.
+        for (int i = 1; i < scored.Count; i++)
+        {
+            var item = scored[i];
+            int j = i - 1;
+            while (j >= 0 && scored[j].Value < item.Value) { scored[j + 1] = scored[j]; j--; }
+            scored[j + 1] = item;
+        }
+        return scored;
+    }
+
+    private IEnumerator WebPageCoroutine(SkillAction action, WebPageRequest req, int epoch, Action<bool> onDone)
+    {
+        string sourceText = !string.IsNullOrEmpty(req.Url) ? "url=" + Q(req.Url)
+            : !string.IsNullOrEmpty(req.ResultToken) ? "result=" + Q(req.ResultToken)
+            : "query=" + Q(req.Query);
+        var trace = BeginWebTrace("web_page  " + sourceText + "  max_chars=" + req.MaxChars + "  images=" + (req.Images ? "true" : "false")
+            + (req.Images ? "  max_images=" + req.MaxImages : ""));
+        float started = Time.realtimeSinceStartup;
+        bool queryMode = string.IsNullOrEmpty(req.Url) && string.IsNullOrEmpty(req.ResultToken);
+
+        // Every non-cancel exit funnels through here (coroutines cannot wrap yields in finally).
+        // Cancel exits (epoch mismatch after a yield) skip it on purpose: CancelAllWebFetches has
+        // already zeroed the counters and written "Cancelled." into the bubble.
+        void Fail(string traceLine, string modelNote)
+        {
+            if (!string.IsNullOrEmpty(traceLine)) trace.AppendLine(traceLine);
+            if (!string.IsNullOrEmpty(modelNote)) _infoMessages.Add(new InfoMessage(modelNote));
+            // The streamed reply usually already promised the page; without the auto-resume
+            // slot one bounded continue lets the model tell the user what actually happened.
+            if (!req.Resume) ((IChatHost)this).RequestContinueTurn();
+            EndWebTrace(trace);
+            FinishWebFetch();
+            onDone?.Invoke(true);
+        }
+
+        // 1. Candidate URLs: exactly one for url= / result=, up to MaxPageSearchAttempts ranked hits for query=.
+        var urls = new List<string>();
+        var labels = new List<string>();
+        if (!string.IsNullOrEmpty(req.Url))
+        {
+            urls.Add(req.Url.Trim());
+            labels.Add(null);
+        }
+        else if (!string.IsNullOrEmpty(req.ResultToken))
+        {
+            WebSearchSession session; int index; string err;
+            if (!TryResolveWebSearchToken(req.ResultToken, out session, out index, out err))
+            {
+                Fail("Result lookup failed: " + err, "(web_page result=" + Q(req.ResultToken) + " failed: " + err + ".)");
+                yield break;
+            }
+            if (session.Kind != WebSearchKind.Web)
+            {
+                string kindLabel = BraveSearchClient.KindLabel(session.Kind);
+                Fail("Result " + req.ResultToken + " is a " + kindLabel + " result, not a page. Use web_search kind=\"web\" or pass url=.",
+                    "(web_page result=" + Q(req.ResultToken) + " is a " + kindLabel + " result, not a page; only web_search kind=\"web\" results can be read. Use url= or web_search kind=\"web\".)");
+                yield break;
+            }
+            var r = session.Response.Web[index - 1];
+            urls.Add(r.Url);
+            labels.Add(r.Title);
+            trace.AppendLine("Using " + session.Id + " result " + index + ": " + (r.Title ?? "") + " | " + r.Url);
+        }
+        else
+        {
+            BraveSearchClient.SearchResponse resp = null;
+            yield return BraveSearchClient.Search(WebSearchKind.Web, req.Query, 10, req.SafeSearch, x => resp = x);
+            if (epoch != _webFetchEpoch) { onDone?.Invoke(false); yield break; }
+            BuildWebSearchTraceLines(trace, WebSearchKind.Web, req.Query, resp, listResults: false);
+            if (resp == null || !resp.Success)
+            {
+                // Adds the red Error bubble and requests a continue for key / quota problems itself.
+                _infoMessages.Add(new InfoMessage(ReportWebSearchFailure("web_page", req.Query, resp)));
+                EndWebTrace(trace);
+                FinishWebFetch();
+                onDone?.Invoke(true);
+                yield break;
+            }
+            var session = StoreWebSearchSession(WebSearchKind.Web, req.Query, resp);
+            if (resp.Web == null || resp.Web.Count == 0)
+            {
+                Fail("No web results.", "(web_page " + Q(req.Query) + ": Brave returned no web results. Try different words or a direct url=.)");
+                yield break;
+            }
+            trace.AppendLine("Stored as " + session.Id + " (web_page result=\"" + session.Id + ":N\" reads a different hit).");
+            var ranked = RankWebPageResults(resp.Web, req.Query);
+            var order = new StringBuilder();
+            for (int i = 0; i < ranked.Count; i++)
+            {
+                if (i > 0) order.Append(", ");
+                order.Append(ranked[i].Key + 1).Append(" (").Append(ranked[i].Value >= 0 ? "+" : "").Append(ranked[i].Value).Append(')');
+                if (urls.Count < WebRequestLimits.MaxPageSearchAttempts)
+                {
+                    urls.Add(resp.Web[ranked[i].Key].Url);
+                    labels.Add(resp.Web[ranked[i].Key].Title);
+                }
+            }
+            trace.AppendLine("Fetch order by source quality: " + order);
+            AIChatLog.Note("web_page_ranking", "Fetch order by source quality: " + order);
+        }
+
+        // 2. Fetch. Only SEARCH fallbacks are tried (the next ranked hit when a fetch fails or is
+        //    not a page); links inside a fetched page are never followed.
+        WebMediaDownloader.DownloadResult dl = null;
+        string usedUrl = null;
+        string lastFailure = null;
+        for (int i = 0; i < urls.Count; i++)
+        {
+            string url = urls[i];
+            string reason;
+            if (!WebMediaDownloader.IsAllowedPublicHttpUrl(url, out reason))
+            {
+                trace.AppendLine("Skip " + url + ": " + reason);
+                lastFailure = reason;
+                continue;
+            }
+            trace.AppendLine("GET " + url + (string.IsNullOrEmpty(labels[i]) ? "" : "  (" + labels[i] + ")"));
+            WebMediaDownloader.DownloadResult r = null;
+            yield return DownloadPageWithTrace(url, trace, x => r = x);
+            if (epoch != _webFetchEpoch) { onDone?.Invoke(false); yield break; }
+            if (r == null || !r.Success)
+            {
+                lastFailure = r != null ? r.Error : "no response";
+                trace.AppendLine("  -> " + lastFailure + (queryMode && i + 1 < urls.Count ? "; trying the next result" : ""));
+                continue;
+            }
+            string ct = r.ContentType ?? "";
+            bool isMedia = WebMediaDownloader.IsImageKind(r.Kind) || WebMediaDownloader.IsVideoKind(r.Kind);
+            bool textLike = !isMedia && (ct == "text/html" || ct == "application/xhtml+xml" || ct == "text/plain" || ct == "text/xml"
+                || ct == "application/xml" || ct == "application/json"
+                || ((ct.Length == 0 || ct == "application/octet-stream") && r.Kind == WebMediaDownloader.MediaKind.Html));
+            if (!textLike)
+            {
+                string what = isMedia ? WebMediaDownloader.KindLabel(r.Kind) : (ct.Length == 0 ? "an unknown binary type" : ct);
+                string hint = WebMediaDownloader.IsImageKind(r.Kind) ? "use web_image url=\"...\" for it"
+                    : WebMediaDownloader.IsVideoKind(r.Kind) ? "use web_video url=\"...\" for it"
+                    : ct == "application/pdf" ? "PDFs cannot be read" : "only HTML / plain-text pages can be read";
+                trace.AppendLine("  -> HTTP " + r.HttpStatus + " " + what + " " + r.Bytes.ToString("N0", System.Globalization.CultureInfo.InvariantCulture) + " bytes: not a readable page; " + hint);
+                lastFailure = "that URL is " + what + "; " + hint;
+                if (queryMode && i + 1 < urls.Count) { trace.AppendLine("  trying the next result"); continue; }
+                Fail(null, "(web_page " + sourceText + ": that URL is " + what + "; " + hint + ".)");
+                yield break;
+            }
+            dl = r;
+            usedUrl = url;
+            break;
+        }
+        if (dl == null)
+        {
+            Fail("Failed in " + FormatSeconds(Time.realtimeSinceStartup - started) + ".",
+                "(web_page " + sourceText + " failed: " + (lastFailure ?? "no readable result") + ". Do not retry the same URL blindly; try another url= or a different query.)");
+            yield break;
+        }
+
+        // 3. Decode + extract off the main thread (pure C#; touches no Unity objects).
+        bool plain = dl.ContentType == "text/plain" || dl.ContentType == "application/json";
+        string charsetUsed = null;
+        WebPageExtraction ex = null;
+        string extractError = null;
+        int maxChars = req.MaxChars;
+        int maxImages = req.Images ? req.MaxImages : 0;
+        bool wantImages = req.Images;
+        byte[] data = dl.Data;
+        string httpCharset = dl.Charset;
+        string pageUrl = usedUrl;
+        var task = System.Threading.Tasks.Task.Run(() =>
+        {
+            try
+            {
+                string cs;
+                string html = WebPageReader.DecodeHtml(data, httpCharset, out cs);
+                charsetUsed = cs;
+                WebPageExtraction e;
+                if (plain)
+                {
+                    int cut;
+                    string body = html.Trim();
+                    e = new WebPageExtraction { Scope = "text", Title = pageUrl, TotalChars = body.Length };
+                    e.Text = WebPageReader.StripActionTags(WebPageReader.TruncateAtBoundary(body, maxChars, out cut));
+                    e.Truncated = cut > 0;
+                    e.TruncatedChars = cut;
+                }
+                else e = WebPageReader.Extract(html, new Uri(pageUrl), maxChars, maxImages, wantImages);
+                e.Charset = cs;
+                ex = e;
+            }
+            catch (Exception e) { extractError = e.GetType().Name + ": " + e.Message; }
+        });
+        trace.SetStatus("  extracting text...");
+        while (!task.IsCompleted) yield return null;
+        trace.ClearStatus();
+        if (epoch != _webFetchEpoch) { onDone?.Invoke(false); yield break; }
+        trace.AppendLine("  -> HTTP " + dl.HttpStatus + " " + dl.ContentType + " " + dl.Bytes.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
+            + " bytes in " + FormatSeconds(dl.ElapsedSeconds) + " (" + (charsetUsed ?? "?") + ")");
+        if (ex == null)
+        {
+            Fail("  -> extraction failed: " + extractError, "(web_page " + sourceText + ": could not extract text (" + extractError + ").)");
+            yield break;
+        }
+        if (string.IsNullOrWhiteSpace(ex.Text) || ex.TotalChars < 40)
+        {
+            Fail("  -> no readable text (" + ex.TotalChars + " chars; the page is probably rendered by JavaScript or is an anti-bot page).",
+                "(web_page " + sourceText + ": the page had no readable text - likely rendered by JavaScript or an anti-bot page. Try another source or a direct url= to a plain article.)");
+            yield break;
+        }
+
+        // 4. Page session + trace (URL, status, bytes, char counts, image list; the text itself goes to the log).
+        string host = SafeHost(usedUrl);
+        var page = new WebPageSession
+        {
+            Id = NextWebPageId(),
+            Url = usedUrl,
+            Title = string.IsNullOrEmpty(ex.Title) ? usedUrl : ex.Title,
+            Images = ex.Images ?? new List<WebPageImage>()
+        };
+        _webPageSessions[page.Id] = page;
+        trace.AppendLine("Title: " + page.Title);
+        trace.AppendLine("Extracted " + ex.TotalChars.ToString("N0", System.Globalization.CultureInfo.InvariantCulture) + " chars from <" + ex.Scope + ">; sending "
+            + ex.Text.Length.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
+            + (ex.Truncated ? " (truncated, " + ex.TruncatedChars.ToString("N0", System.Globalization.CultureInfo.InvariantCulture) + " more)" : ""));
+        if (req.Images)
+        {
+            if (page.Images.Count == 0)
+                trace.AppendLine("Images: none usable (" + ex.ImageTagsSeen + " img tags seen).");
+            else
+            {
+                trace.AppendLine("Images (" + page.Images.Count + " of " + ex.ImageCandidatesTotal + " candidates; fetch one with web_image result=\"" + page.Id + ":N\"):");
+                for (int i = 0; i < page.Images.Count; i++)
+                    trace.AppendLine("  " + WebPageReader.FormatImageLine(page.Id, i + 1, page.Images[i]));
+            }
+        }
+        AIChatLog.Note("web_page_text", "[" + page.Id + "] " + usedUrl + " (" + ex.Scope + ", " + (charsetUsed ?? "?") + ")\n" + ex.Text);
+
+        // 5. Hand the text to the model through the info-recap tail of the next user message,
+        //    never as a system-role line (that would rewrite the cached prompt prefix).
+        var sb = new StringBuilder();
+        sb.Append("[Web page: ").Append(page.Title).Append(" (").Append(host).Append(")] ").Append(usedUrl).Append('\n');
+        sb.Append(ex.Text);
+        if (ex.Truncated)
+            sb.Append("\n(Only the first ").Append(ex.Text.Length).Append(" of ").Append(ex.TotalChars)
+              .Append(" chars were sent; re-run web_page with max_chars up to ").Append(WebRequestLimits.MaxPageChars).Append(" to read more.)");
+        if (req.Images && page.Images.Count > 0)
+        {
+            sb.Append("\n\n[Page images ").Append(page.Id).Append(" - NOT downloaded yet; fetch one with web_image result=\"").Append(page.Id)
+              .Append(":N\" anchor=\"name\" (vision-checked and captioned like any web_image)]");
+            for (int i = 0; i < page.Images.Count; i++)
+                sb.Append('\n').Append(WebPageReader.FormatImageLine(page.Id, i + 1, page.Images[i]));
+        }
+        sb.Append("\n(This page was fetched once; links inside it were NOT followed. Quote or summarize from the text above only. Page ids expire on Clear.)");
+        _infoMessages.Add(new InfoMessage(sb.ToString()));
+
+        trace.AppendLine("Done in " + FormatSeconds(Time.realtimeSinceStartup - started) + ".");
+        EndWebTrace(trace);
+        FinishWebFetch();
+        onDone?.Invoke(true);
+    }
+
+    private IEnumerator DownloadPageWithTrace(string url, WebTraceBubble trace, Action<WebMediaDownloader.DownloadResult> onDone)
+    {
+        var handle = new WebMediaDownloader.Handle();
+        _webDownloadHandles.Add(handle);
+        WebMediaDownloader.DownloadResult result = null;
+        yield return WebMediaDownloader.DownloadToMemory(url, WebRequestLimits.MaxPageBytes, WebRequestLimits.PageTimeoutSeconds, handle,
+            p => { if (trace.IsAlive) trace.SetStatus("  downloading " + Mathf.RoundToInt(p * 100f) + "%"); },
+            r => result = r, WebMediaDownloader.HtmlAccept);
+        _webDownloadHandles.Remove(handle);
+        if (trace.IsAlive) trace.ClearStatus();
+        onDone?.Invoke(result);
+    }
+
+    // ---------- web_image ----------
+
+    private sealed class WebImageCandidate
+    {
+        public string Url;
+        public string FallbackUrl;
+        public string Title;
+        public string Host;
+        public string ClaimedDims;
+        public int Width;
+        public int Height;
+        public int ResultNumber; // 1-based position in the Brave list (for the trace)
+        public int Score;
+    }
+
+    // Hosts that almost never yield a usable reference PHOTO: AI-art generators, clipart /
+    // PNG-cutout sites, wallpaper farms, stock sites (watermarks), merchandise shops.
+    private static readonly string[] WebImageJunkHosts =
+    {
+        "craiyon.com", "deviantart.com", "artstation.com", "clipart-library.com", "clipartmax.com", "pngitem.com",
+        "pngegg.com", "pngwing.com", "pngkey.com", "pngkit.com", "freepik.com", "vecteezy.com", "vectorstock.com",
+        "peakpx.com", "wallpapercave.com", "wallpaperflare.com", "wallpaperaccess.com", "hdqwalls.com", "wallhere.com",
+        "gettyimages.com", "shutterstock.com", "alamy.com", "dreamstime.com", "istockphoto.com", "123rf.com", "depositphotos.com",
+        "redbubble.com", "etsy.com", "amazon.com", "ebay.com", "walmart.com", "aliexpress.com", "teepublic.com", "zazzle.com",
+        "pinterest.com", "pinimg.com", "tenor.com", "giphy.com", "imgflip.com", "knowyourmeme.com", "lexica.art", "openart.ai",
+        "midjourney.com", "civitai.com", "playground.com", "nightcafe.studio", "fandom.com"
+    };
+    private static readonly string[] WebImageJunkTitleWords =
+    {
+        "clipart", "clip art", "cartoon", "caricature", "drawing", "illustration", "vector", "transparent background", "png",
+        "meme", "wallpaper", "poster", "print", "t-shirt", "tshirt", "mug", "sticker", "ai generated", "ai-generated", "ai art",
+        "craiyon", "midjourney", "stable diffusion", "dall-e", "fan art", "fanart", "cosplay", "costume", "funko", "lego",
+        "statue", "wax figure", "figurine", "action figure", "doll", "mask", "coloring", "sketch", "painting", "anime",
+        "comment image", "thumbnail"
+    };
+    private static readonly string[] WebImageGoodTitleWords =
+    {
+        "official portrait", "official photo", "headshot", "press photo", "photograph", "photo of", "portrait of", "pictured", "attends", "arrives"
+    };
+
+    /// <summary>
+    /// Cheap pre-ranking from metadata only, so the expensive download + vision check runs on
+    /// the most promising results first: Wikimedia / official sources up, AI-art / clipart /
+    /// wallpaper / stock / merch hosts and tell-tale title words down. Stable: ties keep
+    /// Brave's order.
+    /// </summary>
+    private static void RankWebImageCandidates(List<WebImageCandidate> candidates)
+    {
+        for (int i = 0; i < candidates.Count; i++)
+        {
+            var c = candidates[i];
+            int score = 0;
+            string host = (c.Host ?? "").ToLowerInvariant();
+            string url = (c.Url ?? "").ToLowerInvariant();
+            string title = (c.Title ?? "").ToLowerInvariant();
+
+            if (host.Contains("wikimedia.org") || host.Contains("wikipedia.org") || url.Contains("upload.wikimedia.org")) score += 5;
+            else if (host.EndsWith(".gov") || host.EndsWith(".edu") || host.EndsWith(".mil") || host.Contains("britannica.com") || host.Contains("biography.com")) score += 3;
+            else if (host.Contains("imdb.com") || host.Contains("media-amazon.com") && url.Contains("/images/m/")) score += 1;
+
+            foreach (string junk in WebImageJunkHosts)
+            {
+                if (host.EndsWith(junk) || host.Contains(junk) || url.Contains(junk)) { score -= 4; break; }
+            }
+            foreach (string word in WebImageJunkTitleWords)
+            {
+                if (title.Contains(word) || url.Contains(word.Replace(' ', '-'))) { score -= 3; break; }
+            }
+            foreach (string word in WebImageGoodTitleWords)
+            {
+                if (title.Contains(word)) { score += 1; break; }
+            }
+            if (url.EndsWith(".png") && !host.Contains("wikimedia")) score -= 1; // cutouts / graphics more often than photos
+            if (c.Width >= 600 && c.Height >= 600) score += 1;
+            else if (c.Width > 0 && (c.Width < 300 || c.Height < 300)) score -= 1;
+            if (c.Width > 0 && c.Height > 0)
+            {
+                float aspect = (float)c.Width / c.Height;
+                if (aspect > 2.6f || aspect < 0.35f) score -= 2; // banners / strips
+            }
+            c.Score = score;
+        }
+        // Stable sort by score descending.
+        var ordered = new List<WebImageCandidate>(candidates);
+        ordered.Sort((a, b) =>
+        {
+            int cmp = b.Score.CompareTo(a.Score);
+            return cmp != 0 ? cmp : a.ResultNumber.CompareTo(b.ResultNumber);
+        });
+        candidates.Clear();
+        candidates.AddRange(ordered);
+    }
+
+    private static bool HasVisionLLM()
+    {
+        var mgr = LLMInstanceManager.Get();
+        return mgr != null && mgr.GetInstanceCount() > 0 && mgr.GetLeastBusyLLM(isSmallJob: false, isVisionJob: true) >= 0;
+    }
+
+    /// <summary>
+    /// One vision call that both screens a downloaded web image for suitability as a
+    /// reference and produces the normal SHORT/LONG caption (so an accepted image needs no
+    /// second caption call). The VERDICT/REASON lines precede SHORT/LONG so the existing
+    /// caption parser ignores them.
+    /// </summary>
+    private string BuildWebImageVerifyPrompt(string query, string criteria)
+    {
+        string captionPrompt = _skillManager != null && !string.IsNullOrWhiteSpace(_skillManager.CaptionPrompt)
+            ? _skillManager.CaptionPrompt
+            : DefaultCaptionPrompt;
+        var sb = new StringBuilder();
+        sb.Append("You are screening an image that was downloaded from a web image search for the query ").Append(Q(query ?? "")).Append('.');
+        if (!string.IsNullOrWhiteSpace(criteria))
+            sb.Append(" Additional requirements from the requester: ").Append(criteria.Trim()).Append('.');
+        sb.AppendLine();
+        sb.AppendLine("Decide whether it is a USABLE REFERENCE PHOTO of that subject for an image/video generator, then describe it.");
+        sb.AppendLine("USABLE means: a real photograph in which the queried subject is the clear main subject, reasonably large in frame, in focus, with nothing covering it; for a person the face must be clearly visible. A film/TV scene still, a publicity still, an event or press photo, or an official portrait photo all COUNT as usable when the subject is the clear main subject - other objects, props, or a second person in the background are fine.");
+        sb.AppendLine("REJECT (UNSUITABLE) when any of these apply: the subject is wrong or absent; the image itself is AI-generated art, a caricature, cartoon, drawing, painting, sculpture, clipart, vector, meme, poster, product mockup or merchandise (a real photo that merely CONTAINS a painting or poster elsewhere in frame is fine if the real subject is still the clear main subject); it is a photo OF a framed picture, screen, TV, phone, newspaper, magazine or wall display where the subject only appears inside that reproduction; the subject is small, heavily cropped, turned away, blurred, or just one face in a crowd; heavy text, logos or watermarks cover the subject; the expression, costume or edit is extreme or comedic unless the query asked for that.");
+        sb.AppendLine("When in doubt about reproductions, art, or the wrong person, answer UNSUITABLE; do not reject a clear real photo of the right subject just because the scene is busy.");
+        sb.AppendLine("Naming rule for the caption: describe people by what is VISIBLE (age, build, hair, face, clothing). The only name you may use is the subject named in the query, and only for the person who visibly matches it; never assign other real names or character names from general knowledge of the show, film, or person, and never contradict your own VERDICT/REASON in the caption.");
+        sb.AppendLine();
+        sb.AppendLine("Return exactly these lines, in this order, with these labels:");
+        sb.AppendLine("VERDICT: SUITABLE or UNSUITABLE");
+        sb.AppendLine("REASON: <one sentence saying why>");
+        sb.AppendLine("Then the two caption lines described next.");
+        sb.AppendLine();
+        sb.Append(captionPrompt.Trim());
+        return sb.ToString();
+    }
+
+    private static bool TryParseWebImageVerdict(string raw, out bool suitable, out string reason)
+    {
+        suitable = false;
+        reason = "";
+        if (string.IsNullOrWhiteSpace(raw)) return false;
+        var m = Regex.Match(raw, @"VERDICT\s*\**\s*:\s*\**\s*(UN)?SUITABLE", RegexOptions.IgnoreCase);
+        if (!m.Success)
+        {
+            // Tolerate a bare first word.
+            var first = Regex.Match(raw.TrimStart(), @"^\**\s*(UN)?SUITABLE\b", RegexOptions.IgnoreCase);
+            if (!first.Success) return false;
+            suitable = !first.Groups[1].Success;
+        }
+        else
+        {
+            suitable = !m.Groups[1].Success;
+        }
+        var r = Regex.Match(raw, @"REASON\s*\**\s*:\s*\**\s*(.+)", RegexOptions.IgnoreCase);
+        if (r.Success)
+        {
+            reason = r.Groups[1].Value.Trim();
+            int nl = reason.IndexOf('\n');
+            if (nl >= 0) reason = reason.Substring(0, nl).Trim();
+            reason = reason.TrimEnd('*').Trim();
+        }
+        return true;
+    }
+
+    private sealed class WebImageVerifyResult
+    {
+        public bool Completed;
+        public bool Verified;      // a verdict was parsed
+        public bool Suitable;
+        public string Reason;
+        public CaptionResult Caption;
+        public string FailureDetail; // backend error when the vision call failed outright
+        public string NoVerdictText => string.IsNullOrEmpty(FailureDetail)
+            ? "vision check returned no verdict (accepting unverified)"
+            : "vision check FAILED: " + FailureDetail + " (accepting unverified; fix the vision instance in LLM Settings)";
+    }
+
+    /// <summary>Run the combined verify+caption vision call; waits for a free vision slot.</summary>
+    private IEnumerator VerifyWebImageCoroutine(byte[] png, string query, string criteria, WebImageVerifyResult outResult)
+    {
+        string prompt = BuildWebImageVerifyPrompt(query, criteria);
+        string rawText = null;
+        CaptionJob job = null;
+        // Same capacity gate as WaitForPicAndCaption: don't over-subscribe a single local vision model.
+        float waitStart = Time.realtimeSinceStartup;
+        while (true)
+        {
+            var mgr = LLMInstanceManager.Get();
+            bool visionBusy = mgr != null
+                && !mgr.IsAnyLLMFree(isSmallJob: false, isVisionJob: true)
+                && mgr.GetLeastBusyLLM(isSmallJob: false, isVisionJob: true) >= 0;
+            if (!visionBusy || Time.realtimeSinceStartup - waitStart > 300f) break;
+            yield return new WaitForSeconds(0.5f);
+        }
+        job = TryCaptionBytes(png, r => { outResult.Caption = r; outResult.Completed = true; },
+            requireFreeSlot: false, promptOverride: prompt, jobName: "WebImageVerify", debugFileName: "web_image_verify_sent.json",
+            onRawText: t => rawText = t,
+            onFailureDetail: d => outResult.FailureDetail = d);
+        while (!outResult.Completed)
+            yield return null;
+        bool suitable; string reason;
+        if (TryParseWebImageVerdict(rawText, out suitable, out reason))
+        {
+            outResult.Verified = true;
+            outResult.Suitable = suitable;
+            outResult.Reason = reason;
+        }
+    }
+
+    bool IChatHost.StartWebImageAction(SkillAction action, WebImageRequest request, Action<bool> onDone)
+    {
+        if (request == null) return false;
+        int epoch = _webFetchEpoch;
+        BeginWebFetch();
+        StartCoroutine(WebImageCoroutine(action, request, epoch, onDone));
+        return true;
+    }
+
+    private IEnumerator WebImageCoroutine(SkillAction action, WebImageRequest req, int epoch, Action<bool> onDone)
+    {
+        string safe = req.SafeSearch ?? (Config.Get() != null ? Config.Get().GetWebSearchSafeSearch() : "strict");
+        string sourceText = !string.IsNullOrEmpty(req.Url) ? "url=" + Q(req.Url)
+            : !string.IsNullOrEmpty(req.ResultToken) ? "result=" + Q(req.ResultToken)
+            : "query=" + Q(req.Query);
+        var trace = BeginWebTrace("web_image  " + sourceText + "  count=" + req.Count + "  min_width=" + req.MinWidth + "  safesearch=" + safe
+            + (string.IsNullOrEmpty(req.Anchor) ? "" : "  anchor=" + Q(req.Anchor)));
+        float started = Time.realtimeSinceStartup;
+        string queryForProvenance = req.Query;
+
+        // 1. Build the candidate list.
+        var candidates = new List<WebImageCandidate>();
+        if (!string.IsNullOrEmpty(req.Url))
+        {
+            candidates.Add(new WebImageCandidate { Url = req.Url.Trim(), Host = SafeHost(req.Url) });
+        }
+        else if (!string.IsNullOrEmpty(req.ResultToken) && IsWebPageToken(req.ResultToken))
+        {
+            // "P1:3": an image listed by web_page. Same download / vision-verify / caption /
+            // anchor path as any other candidate; the verify prompt's subject is the page
+            // title plus the image's alt or caption.
+            WebPageSession page; int pIndex; string pError;
+            if (!TryResolveWebPageToken(req.ResultToken, out page, out pIndex, out pError))
+            {
+                trace.AppendLine("Result lookup failed: " + pError);
+                _infoMessages.Add(new InfoMessage("(web_image result=" + Q(req.ResultToken) + " failed: " + pError + ".)"));
+                EndWebTrace(trace); FinishWebFetch(); onDone?.Invoke(true); yield break;
+            }
+            var pimg = page.Images[pIndex - 1];
+            queryForProvenance = ((page.Title ?? "") + (string.IsNullOrEmpty(pimg.Alt) ? "" : " - " + pimg.Alt)).Trim();
+            if (queryForProvenance.Length == 0) queryForProvenance = page.Url;
+            // Width stays 0 on purpose: a declared <img width> is the DISPLAY size (Wikipedia
+            // thumbs say 250) and the claimed-width pre-skip below would reject a 5850 px original.
+            candidates.Add(new WebImageCandidate
+            {
+                Url = pimg.Url,
+                Title = string.IsNullOrEmpty(pimg.Alt) ? page.Title : pimg.Alt,
+                Host = SafeHost(pimg.Url),
+                ClaimedDims = pimg.Width > 0 && pimg.Height > 0 ? pimg.Width + "x" + pimg.Height : null,
+                ResultNumber = pIndex
+            });
+            trace.AppendLine("Using page " + page.Id + " image " + pIndex + ": " + (pimg.Alt ?? "") + " | " + pimg.Url
+                + (string.IsNullOrEmpty(pimg.Note) ? "" : "  (" + pimg.Note + ")"));
+        }
+        else if (!string.IsNullOrEmpty(req.ResultToken))
+        {
+            WebSearchSession session; int index; string tokenError;
+            if (!TryResolveWebSearchToken(req.ResultToken, out session, out index, out tokenError))
+            {
+                trace.AppendLine("Result lookup failed: " + tokenError);
+                _infoMessages.Add(new InfoMessage("(web_image result=" + Q(req.ResultToken) + " failed: " + tokenError + ".)"));
+                EndWebTrace(trace); FinishWebFetch(); onDone?.Invoke(true); yield break;
+            }
+            queryForProvenance = session.Query;
+            if (session.Kind == WebSearchKind.Images)
+            {
+                var r = session.Response.Images[index - 1];
+                candidates.Add(new WebImageCandidate { Url = string.IsNullOrEmpty(r.ImageUrl) ? r.ThumbnailUrl : r.ImageUrl, FallbackUrl = r.ThumbnailUrl, Title = r.Title, Host = r.Host, ClaimedDims = r.DimsText });
+            }
+            else if (session.Kind == WebSearchKind.Videos)
+            {
+                var r = session.Response.Videos[index - 1];
+                candidates.Add(new WebImageCandidate { Url = r.ThumbnailUrl, Title = r.Title + " (video thumbnail)", Host = r.Host });
+            }
+            else
+            {
+                trace.AppendLine("Result " + req.ResultToken + " is a web page, not an image. Read it with web_page result=\"" + req.ResultToken + "\" and pick one of its P-images, or use web_search kind=\"images\".");
+                _infoMessages.Add(new InfoMessage("(web_image result=" + Q(req.ResultToken) + " is a page result, not an image. Use web_page result=\"" + req.ResultToken + "\" first, then web_image result=\"P<n>:<i>\" from its image list.)"));
+                EndWebTrace(trace); FinishWebFetch(); onDone?.Invoke(true); yield break;
+            }
+            trace.AppendLine("Using " + session.Id + " result " + index + ": " + (candidates[0].Title ?? "") + " | " + candidates[0].Url);
+        }
+        else
+        {
+            // One request costs the same regardless of count; a deeper list gives the ranker and
+            // the vision check more to choose from when the top hits are junk.
+            int searchCount = WebRequestLimits.MaxSearchCount;
+            BraveSearchClient.SearchResponse resp = null;
+            yield return BraveSearchClient.Search(WebSearchKind.Images, req.Query, searchCount, req.SafeSearch, r => resp = r);
+            if (epoch != _webFetchEpoch) { onDone?.Invoke(false); yield break; }
+
+            BuildWebSearchTraceLines(trace, WebSearchKind.Images, req.Query, resp, listResults: false);
+            if (resp == null || !resp.Success)
+            {
+                _infoMessages.Add(new InfoMessage(ReportWebSearchFailure("web_image", req.Query, resp)));
+                EndWebTrace(trace); FinishWebFetch(); onDone?.Invoke(true); yield break;
+            }
+            StoreWebSearchSession(WebSearchKind.Images, req.Query, resp);
+            for (int i = 0; i < resp.Images.Count; i++)
+            {
+                var r = resp.Images[i];
+                candidates.Add(new WebImageCandidate
+                {
+                    Url = string.IsNullOrEmpty(r.ImageUrl) ? r.ThumbnailUrl : r.ImageUrl,
+                    FallbackUrl = r.ThumbnailUrl,
+                    Title = r.Title,
+                    Host = r.Host,
+                    ClaimedDims = r.DimsText,
+                    Width = r.Width,
+                    Height = r.Height,
+                    ResultNumber = i + 1
+                });
+            }
+            RankWebImageCandidates(candidates);
+            var order = new StringBuilder("Download order by source quality: ");
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                if (i > 0) order.Append(", ");
+                order.Append(candidates[i].ResultNumber).Append(" (").Append(candidates[i].Score >= 0 ? "+" : "").Append(candidates[i].Score).Append(')');
+            }
+            AIChatLog.Note("web_ranking", order.ToString());
+        }
+
+        bool verify = req.Verify && HasVisionLLM();
+        if (req.Verify && !verify)
+            trace.AppendLine("No vision-capable LLM is active: downloads will NOT be checked for suitability.");
+        else if (verify)
+            trace.AppendLine("Each download is checked by the vision LLM for suitability" + (string.IsNullOrWhiteSpace(req.Criteria) ? "" : " (criteria: " + req.Criteria.Trim() + ")") + "; unsuitable ones are skipped.");
+
+        if (candidates.Count == 0)
+        {
+            trace.AppendLine("No image results.");
+            _infoMessages.Add(new InfoMessage("(web_image " + Q(req.Query) + ": no results. Try a different query or a direct url=.)"));
+            EndWebTrace(trace); FinishWebFetch(); onDone?.Invoke(true); yield break;
+        }
+
+        // 2. Try candidates in order until `count` usable images were added.
+        var added = new List<int>();
+        var addedPics = new List<PicMain>();
+        int attempts = 0;
+        int failHttp = 0, failNotImage = 0, failSmall = 0, failOther = 0, failUnsuitable = 0;
+        int maxAttempts = Mathf.Min(candidates.Count, Mathf.Max(req.Count, WebRequestLimits.MaxImageCandidates));
+
+        for (int ci = 0; ci < candidates.Count && added.Count < req.Count && attempts < maxAttempts; ci++)
+        {
+            var cand = candidates[ci];
+            if (string.IsNullOrEmpty(cand.Url)) continue;
+            // Brave reports the size for most results; a claimed width already under min_width
+            // is not worth a download + vision call (thumbnail-only shops, 140 px eBay tiles).
+            if (cand.Width > 0 && cand.Width < req.MinWidth && string.IsNullOrEmpty(req.Url))
+            {
+                trace.AppendLine("Skip " + cand.Url + ": claimed " + cand.ClaimedDims + " is narrower than min_width " + req.MinWidth + " (not downloaded)");
+                failSmall++;
+                continue;
+            }
+            attempts++;
+            string anchorName = string.IsNullOrEmpty(req.Anchor) ? null : (added.Count == 0 ? req.Anchor : req.Anchor + "_" + (added.Count + 1));
+
+            // Dedupe: the same URL already lives in chat this session.
+            PicMain existing;
+            if (_webFetchedUrlToPic.TryGetValue(cand.Url, out existing) && existing != null && existing.gameObject != null && _chatImagePics.Contains(existing))
+            {
+                int existingIdx = _chatImagePics.IndexOf(existing) + 1;
+                trace.AppendLine("Download " + attempts + "/" + candidates.Count + ": " + cand.Url);
+                trace.AppendLine("  -> already fetched this session as #" + existingIdx + ", reusing it" + (anchorName != null ? " (anchor " + Q(anchorName) + ")" : ""));
+                if (anchorName != null) _anchors[anchorName] = existing;
+                added.Add(existingIdx);
+                addedPics.Add(existing);
+                ((IChatHost)this).SetLastSpawnedPicForTurn(existing);
+                continue;
+            }
+
+            trace.AppendLine("Download " + attempts + "/" + candidates.Count + ": " + cand.Url
+                + (string.IsNullOrEmpty(cand.ClaimedDims) || cand.ClaimedDims == "?x?" ? "" : "  (claimed " + cand.ClaimedDims + ")"));
+
+            WebMediaDownloader.DownloadResult dl = null;
+            string usedUrl = cand.Url;
+            yield return DownloadImageWithTrace(cand.Url, trace, epoch, r => dl = r);
+            if (epoch != _webFetchEpoch) { onDone?.Invoke(false); yield break; }
+
+            bool usable = dl != null && dl.Success && WebMediaDownloader.IsImageKind(dl.Kind);
+            if (!usable && !string.IsNullOrEmpty(cand.FallbackUrl) && !string.Equals(cand.FallbackUrl, cand.Url, StringComparison.OrdinalIgnoreCase))
+            {
+                trace.AppendLine("  -> " + DescribeDownloadFailure(dl) + "; retry via Brave thumbnail " + cand.FallbackUrl);
+                usedUrl = cand.FallbackUrl;
+                yield return DownloadImageWithTrace(cand.FallbackUrl, trace, epoch, r => dl = r);
+                if (epoch != _webFetchEpoch) { onDone?.Invoke(false); yield break; }
+                usable = dl != null && dl.Success && WebMediaDownloader.IsImageKind(dl.Kind);
+            }
+
+            if (!usable)
+            {
+                trace.AppendLine("  -> " + DescribeDownloadFailure(dl) + ", skipped");
+                if (dl != null && dl.Success) failNotImage++; else failHttp++;
+                continue;
+            }
+
+            trace.SetStatus("  converting...");
+            WebImageConverter.Result conv = null;
+            yield return WebImageConverter.NormalizeToLoadableImage(dl.Data, dl.Kind, WebRequestLimits.MaxImageSide, r => conv = r);
+            trace.ClearStatus();
+            if (epoch != _webFetchEpoch) { onDone?.Invoke(false); yield break; }
+
+            string httpLine = "  -> HTTP " + dl.HttpStatus + " " + (string.IsNullOrEmpty(dl.ContentType) ? "" : dl.ContentType + " ") + dl.Bytes.ToString("N0", System.Globalization.CultureInfo.InvariantCulture) + " bytes in " + FormatSeconds(dl.ElapsedSeconds);
+            if (conv == null || !conv.Success)
+            {
+                trace.AppendLine(httpLine + ", " + WebMediaDownloader.KindLabel(dl.Kind) + " -> " + (conv != null ? conv.Error : "conversion failed") + ", skipped");
+                failOther++;
+                continue;
+            }
+            if (conv.Width < req.MinWidth)
+            {
+                trace.AppendLine(httpLine + ", " + conv.Note + " is narrower than min_width " + req.MinWidth + ", skipped");
+                try { System.IO.File.Delete(conv.Path); } catch { }
+                failSmall++;
+                continue;
+            }
+
+            // Vision suitability check (also yields the caption) BEFORE the image enters chat,
+            // so a wall of framed portraits, a photo of a screen, or an AI caricature never
+            // becomes a reference. Unverifiable (no verdict / timeout) falls through as accepted.
+            WebImageVerifyResult verdict = null;
+            if (verify && conv.PngBytes != null && conv.PngBytes.Length > 0)
+            {
+                trace.AppendLine(httpLine + ", " + conv.Note);
+                trace.SetStatus("  checking suitability with the vision LLM...");
+                verdict = new WebImageVerifyResult();
+                yield return VerifyWebImageCoroutine(conv.PngBytes, string.IsNullOrEmpty(queryForProvenance) ? (cand.Title ?? "") : queryForProvenance, req.Criteria, verdict);
+                trace.ClearStatus();
+                if (epoch != _webFetchEpoch) { onDone?.Invoke(false); yield break; }
+
+                if (verdict.Verified && !verdict.Suitable)
+                {
+                    trace.AppendLine("  -> vision check: UNSUITABLE" + (string.IsNullOrEmpty(verdict.Reason) ? "" : " - " + verdict.Reason) + ", skipped");
+                    try { System.IO.File.Delete(conv.Path); } catch { }
+                    failUnsuitable++;
+                    continue;
+                }
+                if (verdict.Verified)
+                    trace.AppendLine("  -> vision check: SUITABLE" + (string.IsNullOrEmpty(verdict.Reason) ? "" : " - " + verdict.Reason));
+                else
+                    trace.AppendLine("  -> " + verdict.NoVerdictText);
+                httpLine = "  saved " + System.IO.Path.GetFileName(conv.Path);
+            }
+
+            var imageGen = ImageGenerator.Get();
+            GameObject go = imageGen != null ? imageGen.AddImageByFileName(conv.Path) : null;
+            PicMain pic = go != null ? go.GetComponent<PicMain>() : null;
+            if (pic == null)
+            {
+                trace.AppendLine(httpLine + ", " + conv.Note + ", but the image could not be loaded into a Pic, skipped");
+                failOther++;
+                continue;
+            }
+
+            string provenance = string.IsNullOrEmpty(queryForProvenance)
+                ? "web image: " + ShortUrlForProvenance(usedUrl)
+                : "web image: " + Q(queryForProvenance) + " -> " + ShortUrlForProvenance(usedUrl);
+            string dims = conv.Width + "x" + conv.Height;
+            int idx = AppendWebStillBubble(pic, action, dims, provenance, anchorName);
+            _webFetchedUrlToPic[cand.Url] = pic;
+            if (!string.Equals(usedUrl, cand.Url, StringComparison.OrdinalIgnoreCase)) _webFetchedUrlToPic[usedUrl] = pic;
+            added.Add(idx);
+            addedPics.Add(pic);
+
+            bool captionFromVerdict = verdict != null && verdict.Completed && !verdict.Caption.IsEmpty;
+            if (verdict != null)
+                trace.AppendLine(httpLine + (captionFromVerdict ? "" : ", captioning..."));
+            else
+                trace.AppendLine(httpLine + ", " + conv.Note + ", saved " + System.IO.Path.GetFileName(conv.Path));
+            trace.AppendLine("  -> added as #" + idx + (anchorName != null ? " (anchor " + Q(anchorName) + ")" : "") + (captionFromVerdict ? "" : ", captioning..."));
+
+            string verifiedNote = verdict != null && verdict.Verified && verdict.Suitable
+                ? " The vision check judged it a suitable reference" + (string.IsNullOrEmpty(verdict.Reason) ? "." : ": " + verdict.Reason)
+                : (verdict != null && !string.IsNullOrEmpty(verdict.FailureDetail)
+                    ? " WARNING: the vision check FAILED (" + verdict.FailureDetail + "), so this image is UNVERIFIED and has no caption; tell the user the vision LLM instance needs fixing in LLM Settings."
+                    : " Its caption is in CHAT IMAGES - verify it shows the intended subject before using it as a <Picture N> reference.");
+            // The recap names the bubble; the FULL description follows separately through
+            // ApplyCaptionResultToPic -> ForwardFullDescriptionOnce (one time, cached history).
+            // A Seinfeld test showed the model fetching four anchored cast photos and then
+            // rendering Z-Image lookalike stills of "a man in his 40s with wavy hair" - the
+            // references sat unused. Repeat the routing rule right where the anchor lands.
+            string usageNote = anchorName != null
+                ? " Use it as a REFERENCE SLOT (chat_image=" + Q(anchorName) + " / chat_image2.. on image_to_movie with Reference To Video (MiniMax H3) 5s.txt, video_to_video with Reference Video To Video, or a Klein edit) - never generate_image a lookalike from text."
+                : "";
+            string recap = "(web_image " + (string.IsNullOrEmpty(queryForProvenance) ? Q(usedUrl) : Q(queryForProvenance)) + " added #" + idx
+                + " (" + dims + ", " + (string.IsNullOrEmpty(cand.Host) ? SafeHost(usedUrl) : cand.Host)
+                + (anchorName != null ? ", anchor " + Q(anchorName) : "") + ")." + verifiedNote + usageNote + ")";
+            _infoMessages.Add(new InfoMessage(recap));
+            if (captionFromVerdict)
+            {
+                // The verify call already produced the SHORT/LONG caption; no second vision call.
+                ApplyCaptionResultToPic(pic, verdict.Caption, "caption unavailable");
+                string capShort = !string.IsNullOrWhiteSpace(verdict.Caption.shortCaption) ? verdict.Caption.shortCaption : verdict.Caption.longCaption;
+                trace.AppendLine("#" + idx + " caption: " + Q((capShort ?? "").Trim()));
+                if (!string.IsNullOrWhiteSpace(verdict.Caption.longCaption))
+                    trace.AppendLine("#" + idx + " full description (sent to the AI with its next message): " + Q(verdict.Caption.longCaption.Trim()));
+            }
+            else
+            {
+                StartCoroutine(CaptionWebStillBubble(pic, trace, idx));
+            }
+        }
+
+        // 3. Summary.
+        float elapsed = Time.realtimeSinceStartup - started;
+        if (added.Count > 0)
+        {
+            var sb = new StringBuilder();
+            sb.Append("Done: ").Append(added.Count).Append(" of ").Append(req.Count).Append(added.Count == 1 ? " image" : " images").Append(" added (");
+            for (int i = 0; i < added.Count; i++) { if (i > 0) sb.Append(", "); sb.Append('#').Append(added[i]); }
+            sb.Append(") in ").Append(FormatSeconds(elapsed)).Append('.');
+            trace.AppendLine(sb.ToString());
+            if (added.Count < req.Count)
+                _infoMessages.Add(new InfoMessage("(web_image only found " + added.Count + " usable of the " + req.Count + " requested.)"));
+        }
+        else
+        {
+            string why = "(" + (failUnsuitable > 0 ? "rejected by vision check x" + failUnsuitable + " " : "") + (failHttp > 0 ? "download failed x" + failHttp + " " : "") + (failNotImage > 0 ? "not an image x" + failNotImage + " " : "")
+                + (failSmall > 0 ? "too small x" + failSmall + " " : "") + (failOther > 0 ? "other x" + failOther + " " : "") + ")";
+            trace.AppendLine("No usable image in " + attempts + " attempt" + (attempts == 1 ? "" : "s") + " " + why + " in " + FormatSeconds(elapsed) + ".");
+            _infoMessages.Add(new InfoMessage("(web_image " + (string.IsNullOrEmpty(req.Query) ? sourceText : Q(req.Query)) + ": no usable image in " + attempts + " attempts " + why + ". Try a more specific query (add the person's full name, 'official portrait', the show/film name), a lower min_width, or a direct url=.)"));
+        }
+
+        EndWebTrace(trace);
+        FinishWebFetch();
+        onDone?.Invoke(true);
+    }
+
+    private static string SafeHost(string url)
+    {
+        try { return new Uri(url).Host; } catch { return ""; }
+    }
+
+    private static string DescribeDownloadFailure(WebMediaDownloader.DownloadResult dl)
+    {
+        if (dl == null) return "no response";
+        if (dl.Success && !WebMediaDownloader.IsImageKind(dl.Kind))
+            return "HTTP " + dl.HttpStatus + " " + (string.IsNullOrEmpty(dl.ContentType) ? "" : dl.ContentType + " ") + "(" + (dl.Kind == WebMediaDownloader.MediaKind.Html ? "a web page, not an image" : "not an image: " + WebMediaDownloader.KindLabel(dl.Kind)) + ")";
+        return dl.Error ?? "failed";
+    }
+
+    private IEnumerator DownloadImageWithTrace(string url, WebTraceBubble trace, int epoch, Action<WebMediaDownloader.DownloadResult> onDone)
+    {
+        var handle = new WebMediaDownloader.Handle();
+        _webDownloadHandles.Add(handle);
+        WebMediaDownloader.DownloadResult result = null;
+        yield return WebMediaDownloader.DownloadToMemory(url, WebRequestLimits.MaxImageBytes, WebRequestLimits.DownloadTimeoutSeconds, handle,
+            p => { if (trace.IsAlive) trace.SetStatus("  downloading " + Mathf.RoundToInt(p * 100f) + "%"); },
+            r => result = r);
+        _webDownloadHandles.Remove(handle);
+        if (trace.IsAlive) trace.ClearStatus();
+        onDone?.Invoke(result);
+    }
+
+    /// <summary>
+    /// Append a web-fetched image as an ASSISTANT still bubble: plain "#N" label,
+    /// "web image" kind + URL provenance so CHAT IMAGES shows where it came from, anchor
+    /// bound (an explicit name, so count>1 can bind name_2...), chain target updated,
+    /// and its caption ALWAYS included in CHAT IMAGES (the model must be able to see what
+    /// it downloaded even when generated-image auto-captioning is off).
+    /// </summary>
+    private int AppendWebStillBubble(PicMain pic, SkillAction action, string dimensions, string provenanceStep, string anchorName)
+    {
+        _chatImagePics.Add(pic);
+        int chatImageNumber = _chatImagePics.Count;
+        RegisterChatImageRecord(pic, action, isUserAttachment: false, isMovie: false, dimensions: dimensions);
+        var record = _chatImageRecords.Count > 0 ? _chatImageRecords[_chatImageRecords.Count - 1] : null;
+        if (record != null && record.pic == pic)
+        {
+            record.kind = "web image";
+            record.anchorName = anchorName;
+            record.alwaysIncludeCaption = true;
+            record.provenanceSteps.Clear();
+            if (!string.IsNullOrEmpty(provenanceStep))
+                record.provenanceSteps.Add(provenanceStep);
+        }
+        AppendImageBubbleInternal(pic, $"#{chatImageNumber}", isMovie: false);
+
+        if (!string.IsNullOrEmpty(anchorName))
+        {
+            _anchors[anchorName] = pic;
+            Debug.Log($"AIChatPanel: anchor '{anchorName}' -> Image #{chatImageNumber} (web)");
+        }
+        MarkLatestAssistantMediaCheckpoint();
+        ((IChatHost)this).SetLastSpawnedPicForTurn(pic);
+        return chatImageNumber;
+    }
+
+    private IEnumerator CaptionWebStillBubble(PicMain pic, WebTraceBubble trace, int chatIndex)
+    {
+        if (pic == null || pic.gameObject == null) yield break;
+        _webCaptionInFlight.Add(pic);
+        RecomputeSendInteractable();
+        UpdateWebFetchStatus(force: true);
+
+        yield return WaitForPicAndCaption(pic);
+
+        _webCaptionInFlight.Remove(pic);
+        if (trace != null && trace.IsAlive)
+        {
+            bool alive = pic != null && pic.gameObject != null;
+            string cap = alive ? (!string.IsNullOrWhiteSpace(pic.CaptionShort) ? pic.CaptionShort : pic.Caption) : null;
+            trace.AppendLine("#" + chatIndex + " caption: " + (string.IsNullOrWhiteSpace(cap) ? "(none)" : Q(cap.Trim())));
+            string longCap = alive ? pic.Caption : null;
+            if (!string.IsNullOrWhiteSpace(longCap) && !string.Equals(longCap.Trim(), (cap ?? "").Trim(), StringComparison.Ordinal))
+                trace.AppendLine("#" + chatIndex + " full description (sent to the AI with its next message): " + Q(longCap.Trim()));
+        }
+        RecomputeSendInteractable();
+        UpdateWebFetchStatus(force: true);
+        PokeAutoResumeSchedulers();
+    }
+
+    // ---------- web_video ----------
+
+    private sealed class WebVideoCandidate
+    {
+        public string Url;
+        public string Title;
+        public string Host;
+        public string DurationText;
+        public double DurationSeconds;
+        public int ResultNumber;
+        public int Score;
+    }
+
+    // Titles that mean "people talking ABOUT the subject", not footage OF it.
+    private static readonly string[] WebVideoJunkTitleWords =
+    {
+        "interview", "talks ", "talk show", "reveals", "secrets", "behind the scenes", "behind-the-scenes", "podcast", "reacts",
+        "reaction", "explained", "theory", "ranked", "review", "breakdown", "cast reunion", "reunion", "rant", "apology",
+        "apologizes", "documentary", "tribute", "remembering", "fan made", "fan-made", "ai generated", "ai-generated", "parody",
+        "trailer", "news", "shares", "opens up", "discusses", "live stream", "livestream", "gameplay", "unboxing", "what happened to"
+    };
+    private static readonly string[] WebVideoGoodTitleWords =
+    {
+        "scene", "scenes", "clip", "clips", "best of", "moments", "compilation", "full episode", "entrance", "entrances",
+        "highlights", "funniest", "official", "hd"
+    };
+
+    /// <summary>
+    /// Cheap pre-ranking of video search results: footage OF the subject (scenes, clips, best-of
+    /// compilations, official uploads) up; interviews / podcasts / reaction / explainer videos
+    /// down; sources longer than the cap or shorter than the wanted clip excluded upstream.
+    /// </summary>
+    private static void RankWebVideoCandidates(List<WebVideoCandidate> candidates, string query, float wantedSeconds)
+    {
+        string[] queryWords = (query ?? "").ToLowerInvariant().Split(new[] { ' ', ',', '.', '-' }, StringSplitOptions.RemoveEmptyEntries);
+        for (int i = 0; i < candidates.Count; i++)
+        {
+            var c = candidates[i];
+            string title = (c.Title ?? "").ToLowerInvariant();
+            string host = (c.Host ?? "").ToLowerInvariant();
+            int score = 0;
+            foreach (string w in WebVideoJunkTitleWords) { if (title.Contains(w)) { score -= 3; break; } }
+            foreach (string w in WebVideoGoodTitleWords) { if (title.Contains(w)) { score += 1; break; } }
+            int hits = 0;
+            foreach (string w in queryWords) { if (w.Length >= 3 && title.Contains(w)) hits++; }
+            score += Mathf.Min(3, hits);
+            if (c.DurationSeconds > 0)
+            {
+                if (c.DurationSeconds < wantedSeconds + 1) score -= 5;              // too short to cut from
+                else if (c.DurationSeconds <= 15 * 60) score += 1;                  // quick to download
+            }
+            if (host.Contains("tiktok.com")) score -= 1;
+            c.Score = score;
+        }
+        var ordered = new List<WebVideoCandidate>(candidates);
+        ordered.Sort((a, b) =>
+        {
+            int cmp = b.Score.CompareTo(a.Score);
+            return cmp != 0 ? cmp : a.ResultNumber.CompareTo(b.ResultNumber);
+        });
+        candidates.Clear();
+        candidates.AddRange(ordered);
+    }
+
+    /// <summary>
+    /// Combined verdict + caption prompt for a cut clip (the vision LLM sees a contact sheet of
+    /// sampled frames). Same VERDICT/REASON-then-SHORT/LONG shape as the image check.
+    /// </summary>
+    private static string BuildWebVideoVerifyPrompt(string query, string criteria)
+    {
+        var sb = new StringBuilder();
+        sb.Append("You are screening a short video clip that was cut from a web video found for the search query ").Append(Q(query ?? "")).Append('.');
+        if (!string.IsNullOrWhiteSpace(criteria))
+            sb.Append(" Additional requirements from the requester: ").Append(criteria.Trim()).Append('.');
+        sb.AppendLine();
+        sb.AppendLine("You see a chronological contact sheet of sampled frames (left-to-right, top-to-bottom). Decide whether this clip is USABLE FOOTAGE OF that subject for a video generator to use as a motion / appearance reference, then describe it.");
+        sb.AppendLine("USABLE means: the frames show the queried subject itself (the scene, the character, the action) clearly, as the main content, in real footage.");
+        sb.AppendLine("REJECT (UNSUITABLE) when: the frames show someone else or people merely TALKING ABOUT the subject (talk show, interview, podcast, reaction, commentary, news desk); a title card, intro, logo, menu, credits or a mostly static frame; a slideshow of stills or text; the subject is absent, tiny, or only on a screen within the frame; it is animation, AI-generated or a parody when real footage was asked for.");
+        sb.AppendLine("When in doubt about interviews, intros, or the wrong subject, answer UNSUITABLE.");
+        sb.AppendLine("Naming rule for the caption: describe people by what is VISIBLE (age, build, hair, face, clothing, who is speaking). The only name you may use is the subject named in the query, and only for the person who visibly matches it; never assign other real names or character names from general knowledge of the show, film, or person, and never contradict your own VERDICT/REASON in the caption.");
+        sb.AppendLine();
+        sb.AppendLine("Return exactly these lines, in this order, with these labels:");
+        sb.AppendLine("VERDICT: SUITABLE or UNSUITABLE");
+        sb.AppendLine("REASON: <one sentence saying why>");
+        sb.AppendLine("Then the two caption lines described next.");
+        sb.AppendLine();
+        sb.Append(DefaultVideoCaptionPrompt);
+        return sb.ToString();
+    }
+
+    /// <summary>Contact-sheet the clip and run the combined verify + caption vision call.</summary>
+    private IEnumerator VerifyWebVideoClipCoroutine(string clipPath, double durationSeconds, string query, string criteria, WebImageVerifyResult outResult)
+    {
+        FfmpegTool.ContactSheetResult sheet = null;
+        yield return FfmpegTool.CreateCaptionContactSheet(clipPath, durationSeconds > 0 ? durationSeconds : FfmpegTool.DefaultClipDurationSeconds, r => sheet = r);
+        byte[] png = null;
+        if (sheet != null && sheet.Success && !string.IsNullOrEmpty(sheet.OutputPath) && System.IO.File.Exists(sheet.OutputPath))
+        {
+            try { png = System.IO.File.ReadAllBytes(sheet.OutputPath); } catch { png = null; }
+            try { System.IO.File.Delete(sheet.OutputPath); } catch { }
+        }
+        if (png == null || png.Length == 0)
+        {
+            outResult.Completed = true; // no sheet: accept unverified, normal caption path
+            yield break;
+        }
+
+        float waitStart = Time.realtimeSinceStartup;
+        while (true)
+        {
+            var mgr = LLMInstanceManager.Get();
+            bool visionBusy = mgr != null
+                && !mgr.IsAnyLLMFree(isSmallJob: false, isVisionJob: true)
+                && mgr.GetLeastBusyLLM(isSmallJob: false, isVisionJob: true) >= 0;
+            if (!visionBusy || Time.realtimeSinceStartup - waitStart > 300f) break;
+            yield return new WaitForSeconds(0.5f);
+        }
+        string rawText = null;
+        TryCaptionBytes(png, r => { outResult.Caption = r; outResult.Completed = true; },
+            requireFreeSlot: false, promptOverride: BuildWebVideoVerifyPrompt(query, criteria), jobName: "WebVideoVerify", debugFileName: "web_video_verify_sent.json",
+            onRawText: t => rawText = t,
+            onFailureDetail: d => outResult.FailureDetail = d);
+        while (!outResult.Completed)
+            yield return null;
+        bool suitable; string reason;
+        if (TryParseWebImageVerdict(rawText, out suitable, out reason))
+        {
+            outResult.Verified = true;
+            outResult.Suitable = suitable;
+            outResult.Reason = reason;
+        }
+    }
+
+    bool IChatHost.StartWebVideoAction(SkillAction action, WebVideoRequest request, Action<bool> onDone)
+    {
+        if (request == null) return false;
+        int epoch = _webFetchEpoch;
+        BeginWebFetch();
+        StartCoroutine(WebVideoCoroutine(action, request, epoch, onDone));
+        return true;
+    }
+
+    private IEnumerator WebVideoCoroutine(SkillAction action, WebVideoRequest req, int epoch, Action<bool> onDone)
+    {
+        string sourceText = !string.IsNullOrEmpty(req.Url) ? "url=" + Q(req.Url)
+            : !string.IsNullOrEmpty(req.ResultToken) ? "result=" + Q(req.ResultToken)
+            : "query=" + Q(req.Query);
+        string startText = req.StartSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+        string durText = req.DurationSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+        var trace = BeginWebTrace("web_video  " + sourceText + "  start=" + startText + "  duration=" + durText + "  audio=" + (req.IncludeAudio ? "true" : "false")
+            + (req.RequireSpeech ? "  speech=true" : "")
+            + (string.IsNullOrEmpty(req.Anchor) ? "" : "  anchor=" + Q(req.Anchor)));
+        float started = Time.realtimeSinceStartup;
+        string queryForProvenance = req.Query;
+
+        var candidates = new List<WebVideoCandidate>();
+        if (!string.IsNullOrEmpty(req.Url))
+        {
+            candidates.Add(new WebVideoCandidate { Url = req.Url.Trim(), Host = SafeHost(req.Url) });
+        }
+        else if (!string.IsNullOrEmpty(req.ResultToken))
+        {
+            WebSearchSession session; int index; string tokenError;
+            if (!TryResolveWebSearchToken(req.ResultToken, out session, out index, out tokenError))
+            {
+                trace.AppendLine("Result lookup failed: " + tokenError);
+                _infoMessages.Add(new InfoMessage("(web_video result=" + Q(req.ResultToken) + " failed: " + tokenError + ".)"));
+                EndWebTrace(trace); FinishWebFetch(); onDone?.Invoke(true); yield break;
+            }
+            queryForProvenance = session.Query;
+            if (session.Kind == WebSearchKind.Videos)
+            {
+                var r = session.Response.Videos[index - 1];
+                candidates.Add(new WebVideoCandidate { Url = r.PageUrl, Title = r.Title, Host = r.Host, DurationText = r.DurationText, DurationSeconds = r.DurationSeconds });
+            }
+            else if (session.Kind == WebSearchKind.Web)
+            {
+                var r = session.Response.Web[index - 1];
+                candidates.Add(new WebVideoCandidate { Url = r.Url, Title = r.Title, Host = r.Host });
+            }
+            else
+            {
+                trace.AppendLine("Result " + req.ResultToken + " is an image result, not a video.");
+                _infoMessages.Add(new InfoMessage("(web_video result=" + Q(req.ResultToken) + " is an image result, not a video.)"));
+                EndWebTrace(trace); FinishWebFetch(); onDone?.Invoke(true); yield break;
+            }
+            trace.AppendLine("Using " + session.Id + " result " + index + ": " + (candidates[0].Title ?? "") + " | " + candidates[0].Url);
+        }
+        else
+        {
+            BraveSearchClient.SearchResponse resp = null;
+            yield return BraveSearchClient.Search(WebSearchKind.Videos, req.Query, 10, req.SafeSearch, r => resp = r);
+            if (epoch != _webFetchEpoch) { onDone?.Invoke(false); yield break; }
+
+            BuildWebSearchTraceLines(trace, WebSearchKind.Videos, req.Query, resp, listResults: false);
+            if (resp == null || !resp.Success)
+            {
+                _infoMessages.Add(new InfoMessage(ReportWebSearchFailure("web_video", req.Query, resp)));
+                EndWebTrace(trace); FinishWebFetch(); onDone?.Invoke(true); yield break;
+            }
+            StoreWebSearchSession(WebSearchKind.Videos, req.Query, resp);
+            for (int i = 0; i < resp.Videos.Count; i++)
+            {
+                var r = resp.Videos[i];
+                candidates.Add(new WebVideoCandidate { Url = r.PageUrl, Title = r.Title, Host = r.Host, DurationText = r.DurationText, DurationSeconds = r.DurationSeconds, ResultNumber = i + 1 });
+            }
+            RankWebVideoCandidates(candidates, req.Query, req.StartSeconds + req.DurationSeconds);
+            var order = new StringBuilder("Download order by title quality: ");
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                if (i > 0) order.Append(", ");
+                order.Append(candidates[i].ResultNumber).Append(" (").Append(candidates[i].Score >= 0 ? "+" : "").Append(candidates[i].Score).Append(')');
+            }
+            AIChatLog.Note("web_ranking", order.ToString());
+        }
+
+        bool verifyClips = req.Verify && HasVisionLLM();
+        if (req.Verify && !verifyClips)
+            trace.AppendLine("No vision-capable LLM is active: clips will NOT be checked for suitability.");
+        else if (verifyClips)
+            trace.AppendLine("Each cut clip is checked by the vision LLM for suitability" + (string.IsNullOrWhiteSpace(req.Criteria) ? "" : " (criteria: " + req.Criteria.Trim() + ")") + "; unsuitable cuts try a later offset, then the next result.");
+        bool speechToolAvailable = false;
+        if (req.RequireSpeech)
+        {
+            string sttReason;
+            speechToolAvailable = SpeechCheck.HasSpeechToText(out sttReason);
+            trace.AppendLine(speechToolAvailable
+                ? "The clip must contain the subject speaking: each cut's audio is checked with ffmpeg + Whisper; music-only or silent cuts are rejected."
+                : "The clip should contain speech, but the speech check is unavailable (" + sttReason + "): only silent cuts can be rejected.");
+        }
+        // Speech checks can retry offsets even without vision verification.
+        bool retryOffsets = (verifyClips || req.RequireSpeech) && string.IsNullOrEmpty(req.Url);
+
+        if (candidates.Count == 0)
+        {
+            trace.AppendLine("No video results.");
+            _infoMessages.Add(new InfoMessage("(web_video " + Q(req.Query) + ": no results. Try a different query or a direct url=.)"));
+            EndWebTrace(trace); FinishWebFetch(); onDone?.Invoke(true); yield break;
+        }
+
+        int attempts = 0;
+        int addedIndex = -1;
+        string addedTitle = null;
+        string addedUrl = null;
+        string addedSpeechNote = "";
+        float maxSourceSeconds = req.MaxSourceMinutes > 0 ? req.MaxSourceMinutes * 60f : 0f;
+
+        for (int ci = 0; ci < candidates.Count && addedIndex < 0 && attempts < WebRequestLimits.MaxVideoAttempts; ci++)
+        {
+            var cand = candidates[ci];
+            if (string.IsNullOrEmpty(cand.Url)) continue;
+            string reason;
+            if (!WebMediaDownloader.IsAllowedPublicHttpUrl(cand.Url, out reason))
+            {
+                trace.AppendLine("Skip " + cand.Url + ": " + reason);
+                continue;
+            }
+            if (maxSourceSeconds > 0 && cand.DurationSeconds > maxSourceSeconds)
+            {
+                trace.AppendLine("Skip " + (ci + 1) + ". " + (cand.Title ?? "") + " (" + cand.DurationText + " is longer than max_source_minutes " + req.MaxSourceMinutes.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + ")");
+                continue;
+            }
+            attempts++;
+            trace.AppendLine("Source " + attempts + ": " + (string.IsNullOrEmpty(cand.Title) ? "" : Q(BraveSearchClient.Clip(cand.Title, 90)) + " ") + (string.IsNullOrEmpty(cand.DurationText) ? "" : cand.DurationText + " ") + cand.Url);
+
+            string sourcePath = null;
+            float clipStart;
+            bool sourceIsTemp = false;
+
+            if (YtDlpTool.LooksLikeDirectMediaUrl(cand.Url))
+            {
+                string ext = System.IO.Path.GetExtension(new Uri(cand.Url).AbsolutePath);
+                string target = System.IO.Path.Combine(YtDlpTool.GetOutputDir(), "direct_" + Guid.NewGuid().ToString("N").Substring(0, 8) + (string.IsNullOrEmpty(ext) ? ".bin" : ext.ToLowerInvariant()));
+                trace.AppendLine("Download (direct media): " + cand.Url);
+                var handle = new WebMediaDownloader.Handle();
+                _webDownloadHandles.Add(handle);
+                WebMediaDownloader.DownloadResult dl = null;
+                yield return WebMediaDownloader.DownloadToFile(cand.Url, target, WebRequestLimits.MaxVideoBytes, 120f, handle,
+                    p => { if (trace.IsAlive) trace.SetStatus("  downloading " + Mathf.RoundToInt(p * 100f) + "%"); },
+                    r => dl = r);
+                _webDownloadHandles.Remove(handle);
+                trace.ClearStatus();
+                if (epoch != _webFetchEpoch) { onDone?.Invoke(false); yield break; }
+
+                if (dl == null || !dl.Success)
+                {
+                    trace.AppendLine("  -> " + (dl != null ? dl.Error : "no response") + ", skipped");
+                    continue;
+                }
+                if (!WebMediaDownloader.IsVideoKind(dl.Kind))
+                {
+                    trace.AppendLine("  -> HTTP " + dl.HttpStatus + " " + dl.ContentType + " " + WebMediaDownloader.FormatBytes(dl.Bytes) + " (" + (dl.Kind == WebMediaDownloader.MediaKind.Html ? "a web page, not a media file" : "not a video: " + WebMediaDownloader.KindLabel(dl.Kind)) + "), skipped");
+                    try { System.IO.File.Delete(target); } catch { }
+                    continue;
+                }
+                trace.AppendLine("  -> HTTP " + dl.HttpStatus + " " + dl.ContentType + " " + WebMediaDownloader.FormatBytes(dl.Bytes) + " in " + FormatSeconds(dl.ElapsedSeconds) + ", " + WebMediaDownloader.KindLabel(dl.Kind));
+                sourcePath = dl.FilePath;
+                clipStart = req.StartSeconds;
+                sourceIsTemp = true;
+            }
+            else
+            {
+                string exe, toolError;
+                if (!YtDlpTool.TryGetToolPath(out exe, out toolError))
+                {
+                    trace.AppendLine("yt-dlp: " + toolError);
+                    _infoMessages.Add(new InfoMessage("(web_video cannot download page-hosted videos: " + toolError + " Tell the user; do not retry.)"));
+                    EndWebTrace(trace); FinishWebFetch(); onDone?.Invoke(true); yield break;
+                }
+
+                // Whole video at <=480p (yt-dlp's own downloader is fast; its ffmpeg-based
+                // --download-sections is throttled to KiB/s by YouTube), then the section is
+                // cut locally below. Duration / size caps are enforced by yt-dlp itself.
+                var cancel = new FfmpegTool.CancelToken();
+                _webProcessCancels.Add(cancel);
+                YtDlpTool.Result yt = null;
+                int progressLines = 0;
+                yield return YtDlpTool.DownloadVideo(cand.Url, maxSourceSeconds, WebRequestLimits.MaxVideoBytes, cancel,
+                    cmd => trace.AppendLine("yt-dlp: " + cmd),
+                    line =>
+                    {
+                        if (!trace.IsAlive) return;
+                        if (line.StartsWith("[download]", StringComparison.Ordinal) && line.IndexOf('%') >= 0)
+                            trace.SetStatus("  " + line.Trim());
+                        else if (progressLines++ < 40)
+                            trace.AppendLine("  " + line.Trim());
+                    },
+                    r => yt = r);
+                _webProcessCancels.Remove(cancel);
+                if (epoch != _webFetchEpoch) { onDone?.Invoke(false); yield break; }
+                trace.CommitStatus();
+
+                if (yt == null || !yt.Success)
+                {
+                    string err = yt != null ? yt.Error : "no result";
+                    trace.AppendLine("  exit " + (yt != null ? yt.ExitCode : -1) + " in " + FormatSeconds(yt != null ? yt.ElapsedSeconds : 0f) + ": " + err);
+                    var tail = YtDlpTool.OutputTail(yt, 15);
+                    if (tail.Count > 0)
+                    {
+                        trace.AppendLine("  output tail:");
+                        foreach (string t in tail) trace.AppendLine("    " + t);
+                    }
+                    continue;
+                }
+
+                long size = 0;
+                try { size = new System.IO.FileInfo(yt.OutputPath).Length; } catch { }
+                trace.AppendLine("  exit 0 in " + FormatSeconds(yt.ElapsedSeconds) + " -> " + System.IO.Path.GetFileName(yt.OutputPath) + " (" + WebMediaDownloader.FormatBytes(size) + ")");
+                sourcePath = yt.OutputPath;
+                clipStart = req.StartSeconds; // whole video downloaded; cut the section locally
+                sourceIsTemp = true;
+            }
+
+            // Probe + normalize through the same FFmpeg path the drag-drop import uses.
+            FfmpegTool.VideoInfo info = null;
+            string probeError = null;
+            yield return FfmpegTool.ProbeVideo(sourcePath, (i, e) => { info = i; probeError = e; });
+            if (epoch != _webFetchEpoch) { onDone?.Invoke(false); yield break; }
+            if (info == null || !string.IsNullOrWhiteSpace(probeError))
+            {
+                trace.AppendLine("  ffprobe failed: " + (probeError ?? "unknown") + ", skipped");
+                if (sourceIsTemp) { try { System.IO.File.Delete(sourcePath); } catch { } }
+                continue;
+            }
+            trace.AppendLine("  source: " + info.Width + "x" + info.Height + " @" + info.Fps.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "fps "
+                + info.DurationSeconds.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "s " + (info.CodecName ?? "") + (info.HasAudio ? " +audio" : " (silent)"));
+
+            float available = info.DurationSeconds > 0 ? (float)info.DurationSeconds : req.DurationSeconds;
+            if (clipStart >= available)
+            {
+                trace.AppendLine("  start " + startText + "s is past the end of this " + available.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + "s source, skipped");
+                if (sourceIsTemp) { try { System.IO.File.Delete(sourcePath); } catch { } }
+                continue;
+            }
+
+            // Cut offsets to try in THIS source: the requested start, then (searched sources
+            // only, when verifying) a couple of later points, because the model cannot know
+            // timestamps and the first seconds of a web video are often a title card / intro.
+            var offsets = new List<float> { clipStart };
+            if (retryOffsets)
+            {
+                foreach (float extra in WebRequestLimits.VideoRetryOffsets)
+                {
+                    float o = clipStart + extra;
+                    if (o + req.DurationSeconds <= available) offsets.Add(o);
+                }
+            }
+
+            for (int oi = 0; oi < offsets.Count && addedIndex < 0; oi++)
+            {
+                float cutStart = offsets[oi];
+                float clipDuration = Mathf.Clamp(req.DurationSeconds, 0.1f, Mathf.Max(0.1f, available - cutStart));
+                string rangeText = cutStart.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + "-" + (cutStart + clipDuration).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + "s";
+
+                string clipPath = FfmpegTool.GetClipOutputPath(sourcePath);
+                FfmpegTool.ClipResult clip = null;
+                trace.SetStatus("  ffmpeg cutting " + rangeText + "...");
+                yield return FfmpegTool.CreateClip(sourcePath, cutStart, clipDuration, clipPath, r => clip = r,
+                    fps: GetDefaultClipFps(info),
+                    includeAudio: req.IncludeAudio && info.HasAudio);
+                trace.ClearStatus();
+                if (epoch != _webFetchEpoch) { onDone?.Invoke(false); yield break; }
+
+                if (clip == null || !clip.Success)
+                {
+                    trace.AppendLine("  ffmpeg cut " + rangeText + " failed: " + (clip != null ? clip.Error : "unknown") + ", skipped");
+                    break;
+                }
+
+                FfmpegTool.VideoInfo outInfo = null;
+                yield return FfmpegTool.ProbeVideo(clip.OutputPath, (i, e) => { outInfo = i; });
+                if (epoch != _webFetchEpoch) { onDone?.Invoke(false); yield break; }
+                long clipSize = 0;
+                try { clipSize = new System.IO.FileInfo(clip.OutputPath).Length; } catch { }
+                string dims = BuildVideoDimensionsText(outInfo ?? info);
+                trace.AppendLine("  cut " + rangeText + " of source: " + (dims ?? "?") + (req.IncludeAudio && info.HasAudio ? ", audio" : ", silent") + " (" + WebMediaDownloader.FormatBytes(clipSize) + ")");
+
+                WebImageVerifyResult verdict = null;
+                if (verifyClips)
+                {
+                    trace.SetStatus("  checking the clip with the vision LLM...");
+                    verdict = new WebImageVerifyResult();
+                    double clipSeconds = outInfo != null && outInfo.DurationSeconds > 0 ? outInfo.DurationSeconds : clipDuration;
+                    yield return VerifyWebVideoClipCoroutine(clip.OutputPath, clipSeconds, string.IsNullOrEmpty(queryForProvenance) ? (cand.Title ?? "") : queryForProvenance, req.Criteria, verdict);
+                    trace.ClearStatus();
+                    if (epoch != _webFetchEpoch) { onDone?.Invoke(false); yield break; }
+
+                    if (verdict.Verified && !verdict.Suitable)
+                    {
+                        trace.AppendLine("  -> vision check: UNSUITABLE" + (string.IsNullOrEmpty(verdict.Reason) ? "" : " - " + verdict.Reason)
+                            + (oi + 1 < offsets.Count ? ", trying a later part of this source" : ", skipped"));
+                        try { System.IO.File.Delete(clip.OutputPath); } catch { }
+                        continue;
+                    }
+                    if (verdict.Verified)
+                        trace.AppendLine("  -> vision check: SUITABLE" + (string.IsNullOrEmpty(verdict.Reason) ? "" : " - " + verdict.Reason));
+                    else
+                        trace.AppendLine("  -> " + verdict.NoVerdictText);
+                }
+
+                SpeechCheck.Result speech = null;
+                if (req.RequireSpeech)
+                {
+                    trace.SetStatus("  checking the audio for speech...");
+                    speech = new SpeechCheck.Result();
+                    bool clipHasAudio = outInfo != null ? outInfo.HasAudio : info.HasAudio;
+                    yield return SpeechCheck.Run(clip.OutputPath, clipHasAudio && req.IncludeAudio, speech);
+                    trace.ClearStatus();
+                    if (epoch != _webFetchEpoch) { onDone?.Invoke(false); yield break; }
+
+                    bool definiteNoSpeech = !speech.HasAudioStream || speech.Silent || (speech.Transcribed && !speech.HasSpeech);
+                    if (definiteNoSpeech)
+                    {
+                        trace.AppendLine("  -> audio check: " + speech.Summary() + (oi + 1 < offsets.Count ? ", trying a later part of this source" : ", skipped"));
+                        try { System.IO.File.Delete(clip.OutputPath); } catch { }
+                        continue;
+                    }
+                    trace.AppendLine("  -> audio check: " + speech.Summary());
+                }
+
+                bool captionFromVerdict = verdict != null && verdict.Completed && !verdict.Caption.IsEmpty;
+                PicMain pic = AppendVideoClipBubble(clip.OutputPath, action, isUserImport: false, dimensions: dims, autoCaption: !captionFromVerdict);
+                if (pic == null)
+                {
+                    trace.AppendLine("  could not load the clip into a Movie bubble, skipped");
+                    break;
+                }
+                addedIndex = _chatImagePics.Count;
+                addedTitle = cand.Title;
+                addedUrl = cand.Url;
+                var record = _chatImageRecords.Count > 0 ? _chatImageRecords[_chatImageRecords.Count - 1] : null;
+                if (record != null && record.pic == pic)
+                {
+                    record.kind = "web video";
+                    record.alwaysIncludeCaption = true;
+                    record.provenanceSteps.Clear();
+                    record.provenanceSteps.Add("web video: " + (string.IsNullOrEmpty(cand.Title) ? "" : Q(BraveSearchClient.Clip(cand.Title, 60)) + " ") + ShortUrlForProvenance(cand.Url) + " " + rangeText);
+                }
+                _webFetchedUrlToPic[cand.Url] = pic;
+                trace.AppendLine("Added as Movie #" + addedIndex + (string.IsNullOrEmpty(action?.AnchorName) ? "" : " (anchor " + Q(action.AnchorName) + ")") + (captionFromVerdict ? "" : ", captioning..."));
+                if (captionFromVerdict)
+                {
+                    var cap = verdict.Caption;
+                    if (speech != null && speech.Transcribed && speech.HasSpeech && !string.IsNullOrEmpty(speech.Transcript))
+                        cap.longCaption = (cap.longCaption ?? "").TrimEnd() + " Audio transcript: \"" + speech.Transcript + "\"";
+                    ApplyCaptionResultToPic(pic, cap, "video caption unavailable");
+                    string capShort = !string.IsNullOrWhiteSpace(cap.shortCaption) ? cap.shortCaption : cap.longCaption;
+                    trace.AppendLine("Movie #" + addedIndex + " caption: " + Q((capShort ?? "").Trim()));
+                    if (!string.IsNullOrWhiteSpace(cap.longCaption))
+                        trace.AppendLine("Movie #" + addedIndex + " full description (sent to the AI with its next message): " + Q(cap.longCaption.Trim()));
+                }
+                if (speech != null)
+                {
+                    addedSpeechNote = speech.Transcribed && speech.HasSpeech
+                        ? " The audio contains speech (the transcript is in its full description), so it is usable as a voice reference."
+                        : " WARNING: the audio could not be confirmed to contain speech (" + speech.Summary() + "); as a VOICE reference it may produce a wrong voice - tell the user, or fetch a different clip once speech-to-text is configured in Settings > Web.";
+                }
+                startText = cutStart.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+            }
+
+            if (sourceIsTemp) { try { System.IO.File.Delete(sourcePath); } catch { } }
+        }
+
+        float elapsed = Time.realtimeSinceStartup - started;
+        if (addedIndex > 0)
+        {
+            trace.AppendLine("Done in " + FormatSeconds(elapsed) + ".");
+            _infoMessages.Add(new InfoMessage("(web_video added Movie #" + addedIndex + ": " + (string.IsNullOrEmpty(addedTitle) ? "" : Q(BraveSearchClient.Clip(addedTitle, 80)) + " ") + SafeHost(addedUrl)
+                + " from " + startText + "s for " + durText + "s" + (verifyClips ? ", vision-checked as footage of the requested subject" : "") + "." + addedSpeechNote
+                + " Reference it via chat_image=\"" + addedIndex + "\"" + (string.IsNullOrEmpty(action?.AnchorName) ? "" : " or its anchor " + Q(action.AnchorName)) + "; its full description follows separately - describe the people in your render prompt from that (appearance), not from outside knowledge. If you were fetching it to make a video, emit that render action NOW.)"));
+        }
+        else
+        {
+            trace.AppendLine("No usable video in " + attempts + " attempt" + (attempts == 1 ? "" : "s") + " in " + FormatSeconds(elapsed) + ".");
+            _infoMessages.Add(new InfoMessage("(web_video " + (string.IsNullOrEmpty(req.Query) ? sourceText : Q(req.Query)) + ": no usable clip in " + attempts + " sources; the Web bubble shows each failure" + (verifyClips ? " (cuts judged not to show the subject are rejected" + (req.RequireSpeech ? ", and cuts without speech too" : "") + ")" : "") + ". Try a more specific query naming the scene or episode" + (req.RequireSpeech ? " with dialogue (\"interview\" is fine for a voice reference if the face matches)" : "") + ", a different url=, or tell the user if yt-dlp reported a sign-in / bot check.)"));
+        }
+
+        EndWebTrace(trace);
+        FinishWebFetch();
+        onDone?.Invoke(true);
+    }
+
+    void IChatHost.AddErrorBubble(string text) => AddErrorBubble(text);
+
+    void IChatHost.AddWebTraceNotice(string text)
+    {
+        var trace = BeginWebTrace(text);
+        EndWebTrace(trace);
+    }
+
+    bool IChatHost.IsWebAccessEnabled() => GetWebEnabled();
+
+    void IChatHost.RequestAutoResumeAfterWebFetch()
+    {
+        // Same scoped slot as inspect_image resume="true": uncapped, gated on
+        // HasPendingSidecarWork (which now includes web fetches AND their captions), and
+        // cancelled by Stop/Clear/new send.
+        RegisterInspectAutoResumeRequest(_chatTurnEpoch);
+        TryScheduleInspectAutoResume();
+    }
+
     private void BeginVideoImport()
     {
         if (_videoImportCount <= 0)
@@ -8287,6 +10323,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         }
         RecomputeSendInteractable();
         UpdateVideoImportStatus(force: true);
+        // A pending inspect/skill/continue resume was blocked on this sidecar work.
+        PokeAutoResumeSchedulers();
     }
 
     private static string BuildVideoDimensionsText(FfmpegTool.VideoInfo info)
@@ -8402,6 +10440,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 return "edited image";
             case BuiltInSkillIds.ExtractStill:
                 return "extracted still";
+            case BuiltInSkillIds.WebImage:
+                return "web image";
             case BuiltInSkillIds.NewCanvas:
                 return "canvas";
             case BuiltInSkillIds.AddBorder:
@@ -8999,6 +11039,14 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     }
 
     /// <summary>Static accessor: send a chat message via the live panel. False if none.</summary>
+    /// <summary>Static accessor: click Stop on the live panel. False if no panel exists.</summary>
+    public static bool AutomationStop()
+    {
+        if (_instance == null) return false;
+        _instance.OnStopClicked();
+        return true;
+    }
+
     public static bool AutomationSend(string text)
     {
         if (_instance == null) return false;
@@ -9354,6 +11402,41 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         PlayerPrefs.Save();
     }
 
+    /// <summary>The header "Web" checkbox: may AI Chat search the web / fetch pages, images, clips? Default on.</summary>
+    public static bool GetWebEnabled()
+    {
+        return PlayerPrefs.GetInt(PREFS_WEB_ENABLED, 1) != 0;
+    }
+
+    public static void SetWebEnabled(bool v)
+    {
+        PlayerPrefs.SetInt(PREFS_WEB_ENABLED, v ? 1 : 0);
+        PlayerPrefs.Save();
+    }
+
+    /// <summary>
+    /// Skill ids left out of the stable SKILLS block and keyword autoload: the web_* skills
+    /// while the Web toggle is off (null = hide nothing). Only changes when the user flips the
+    /// toggle, so the prompt prefix stays byte-stable between flips.
+    /// </summary>
+    private static ISet<string> HiddenSkillIdsForPrompt()
+    {
+        return GetWebEnabled() ? null : BuiltInSkillIds.WebSkills;
+    }
+
+    /// <summary>Automation: read or set the header Web checkbox (null = report only).</summary>
+    public static bool AutomationSetWebEnabled(bool? enabled, out bool current)
+    {
+        if (enabled.HasValue)
+        {
+            SetWebEnabled(enabled.Value);
+            if (_instance != null && _instance._webToggle != null)
+                _instance._webToggle.SetIsOnWithoutNotify(enabled.Value);
+        }
+        current = GetWebEnabled();
+        return true;
+    }
+
     /// <summary>
     /// Largest edge (in pixels) any dragged/pasted attachment is allowed to
     /// have. The attachment zone reads this at attach time and bilinear-scales
@@ -9632,6 +11715,278 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         AppendExtractedStillBubble(framePic, action, BuildStillDimensionsText(info), sourceChatImageIndex, atSeconds);
         FinishVideoImport();
         onDone?.Invoke(true);
+    }
+
+    // ---------- stitch_video: join several Movie bubbles into one clip ----------
+
+    private const float StitchWaitPollSeconds = 0.5f;
+    // A "10 clips then stitch them" reply on one GPU can legitimately take a long time.
+    private const float StitchWaitAbsoluteCapSeconds = 2f * 60f * 60f;
+    // A source Pic that stopped being busy but never produced a movie file (the render
+    // failed, or the clip is still landing) gets this long before the stitch gives up.
+    private const float StitchNoClipGraceSeconds = 30f;
+    private int _stitchWaitCount = 0;
+    private float _stitchWaitStartTime = 0f;
+    private int _stitchSpinnerStep = 0;
+    private string _lastStitchStatusText;
+
+    bool IChatHost.StartStitchVideoAction(SkillAction action, List<int> sourceChatImageIndices, FfmpegTool.StitchRequest request, Action<bool> onDone)
+    {
+        if (sourceChatImageIndices == null || sourceChatImageIndices.Count < 2 || request == null)
+            return false;
+        StartCoroutine(StitchVideoActionCoroutine(action, new List<int>(sourceChatImageIndices), request, _videoImportEpoch, _chatTurnEpoch, onDone));
+        return true;
+    }
+
+    /// <summary>
+    /// Phase 1 waits until every source clip exists on disk. This is deliberately NOT a
+    /// video import: the sources may be minutes of GPU work away (the whole point of
+    /// "make N clips, then stitch them") and the user must stay able to chat meanwhile.
+    /// Only Stop/Clear (the import epoch) cancel the wait; a new user turn does not.
+    /// Phase 2 (probe + ffmpeg concat + append) is a normal short video import.
+    /// </summary>
+    private IEnumerator StitchVideoActionCoroutine(SkillAction action, List<int> sources, FfmpegTool.StitchRequest request, int importEpoch, int turnEpoch, Action<bool> onDone)
+    {
+        var host = (IChatHost)this;
+
+        var pending = new List<int>();
+        string failure = CollectStitchSourceState(sources, pending, out _, out bool readyNow);
+        if (failure == null && !readyNow && pending.Count > 0)
+        {
+            AddSystemMessage($"stitch_video: waiting for {DescribeMovieList(pending)} to finish rendering, then stitching {sources.Count} clips.");
+            AIChatLog.Note("stitch_video", "waiting for " + DescribeMovieList(pending));
+        }
+
+        BeginStitchWait();
+        float waitStart = Time.realtimeSinceStartup;
+        float notBusySince = -1f;
+        while (failure == null)
+        {
+            if (importEpoch != _videoImportEpoch)
+            {
+                EndStitchWait();
+                onDone?.Invoke(false);
+                yield break;
+            }
+
+            pending.Clear();
+            failure = CollectStitchSourceState(sources, pending, out bool anyBusy, out bool allReady);
+            if (failure != null || allReady)
+                break;
+
+            float elapsed = Time.realtimeSinceStartup - waitStart;
+            if (elapsed >= StitchWaitAbsoluteCapSeconds)
+            {
+                failure = $"gave up waiting for {DescribeMovieList(pending)} after {Mathf.RoundToInt(elapsed / 60f)} minutes.";
+                break;
+            }
+            if (anyBusy)
+            {
+                notBusySince = -1f;
+            }
+            else
+            {
+                if (notBusySince < 0f)
+                    notBusySince = Time.realtimeSinceStartup;
+                else if (Time.realtimeSinceStartup - notBusySince >= StitchNoClipGraceSeconds)
+                {
+                    failure = $"{DescribeMovieList(pending)} finished without producing a video file (the render probably failed).";
+                    break;
+                }
+            }
+
+            UpdateStitchWaitStatus(pending.Count);
+            yield return new WaitForSeconds(StitchWaitPollSeconds);
+        }
+        EndStitchWait();
+
+        if (failure != null)
+        {
+            AIChatLog.Note("stitch_video", "failed: " + failure);
+            host.AddSystemInjectionAndBubble("stitch_video could not run: " + failure);
+            host.RequestContinueTurn();
+            onDone?.Invoke(false);
+            yield break;
+        }
+
+        // ---- Phase 2: probe + encode, gated like clip_video (Send blocked briefly,
+        // footer shows "Importing video").
+        BeginVideoImport();
+        request.Inputs.Clear();
+        double totalSeconds = 0;
+        foreach (int idx in sources)
+        {
+            string path = GetStitchSourcePath(idx);
+            FfmpegTool.VideoInfo info = null;
+            string error = null;
+            yield return FfmpegTool.ProbeVideo(path, (i, e) => { info = i; error = e; });
+
+            if (importEpoch != _videoImportEpoch)
+            {
+                onDone?.Invoke(false);
+                yield break;
+            }
+            if (info == null || !info.HasVideo)
+            {
+                FinishVideoImport();
+                host.AddSystemInjectionAndBubble($"stitch_video could not inspect Movie #{idx}: {error ?? "no video stream"}");
+                host.RequestContinueTurn();
+                onDone?.Invoke(false);
+                yield break;
+            }
+            request.Inputs.Add(info);
+            totalSeconds += Math.Max(0, info.DurationSeconds);
+        }
+
+        string outputPath = FfmpegTool.GetStitchOutputPath();
+        FfmpegTool.ClipResult result = null;
+        yield return FfmpegTool.StitchClips(request, outputPath, r => result = r);
+
+        if (importEpoch != _videoImportEpoch)
+        {
+            onDone?.Invoke(false);
+            yield break;
+        }
+        if (result == null || !result.Success)
+        {
+            FinishVideoImport();
+            string err = result != null ? result.Error : "unknown error";
+            AIChatLog.Note("stitch_video", "ffmpeg failed: " + err);
+            host.AddSystemInjectionAndBubble($"stitch_video failed while joining {DescribeMovieList(sources)}: {err}");
+            host.RequestContinueTurn();
+            onDone?.Invoke(false);
+            yield break;
+        }
+
+        FfmpegTool.VideoInfo outputInfo = null;
+        yield return FfmpegTool.ProbeVideo(result.OutputPath, (i, e) => { outputInfo = i; });
+
+        if (importEpoch != _videoImportEpoch)
+        {
+            onDone?.Invoke(false);
+            yield break;
+        }
+
+        string dims = BuildVideoDimensionsText(outputInfo);
+        PicMain pic = AppendVideoClipBubble(result.OutputPath, action, isUserImport: false, dimensions: dims,
+            autoCaption: true, updateChainTarget: turnEpoch == _chatTurnEpoch);
+        if (pic == null)
+        {
+            FinishVideoImport();
+            host.AddSystemInjectionAndBubble("stitch_video could not load the stitched video into a Movie bubble.");
+            onDone?.Invoke(false);
+            yield break;
+        }
+
+        int newIndex = _chatImagePics.Count;
+        double outSeconds = outputInfo != null && outputInfo.DurationSeconds > 0 ? outputInfo.DurationSeconds : totalSeconds;
+        string fadeNote = request.CrossfadeSeconds > 0 ? $", {request.CrossfadeSeconds:0.##}s crossfades" : "";
+        string summary = $"Stitched {sources.Count} clips ({DescribeMovieList(sources)}) into Movie #{newIndex}: " +
+                         $"{outSeconds:0.#}s, {request.Width}x{request.Height} @{request.Fps:0.##}fps{fadeNote}.";
+        // Recap-eligible so the model knows which clips make up the new Movie.
+        AddSystemMessage(summary);
+        AIChatLog.Note("stitch_video", summary + "\n" + (result.Command ?? ""));
+        if (action != null && action.Resume)
+            host.RequestContinueTurn();
+        FinishVideoImport();
+        onDone?.Invoke(true);
+    }
+
+    /// <summary>
+    /// One poll of the stitch sources. Fills <paramref name="pending"/> with the slots
+    /// that have no clip file yet and returns a failure message when a source can never
+    /// become ready (its Pic is gone).
+    /// </summary>
+    private string CollectStitchSourceState(List<int> sources, List<int> pending, out bool anyBusy, out bool allReady)
+    {
+        var host = (IChatHost)this;
+        anyBusy = false;
+        allReady = true;
+        foreach (int idx in sources)
+        {
+            var pic = GetChatImagePic(idx);
+            if (pic == null)
+                return $"Movie #{idx} no longer exists (deleted, trimmed, or never spawned).";
+            if (pic.IsBusy())
+            {
+                anyBusy = true;
+                allReady = false;
+                if (!pending.Contains(idx)) pending.Add(idx);
+                continue;
+            }
+            string path = GetStitchSourcePath(idx);
+            if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path))
+            {
+                allReady = false;
+                if (!pending.Contains(idx)) pending.Add(idx);
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Clip file for a stitch source. Falls back to the Pic's own movie file name when
+    /// the movie is UNLOADED (the "\" unload-all hotkey deactivates the movie object, so
+    /// <c>PicMain.IsMovie()</c> and therefore <c>GetChatImageMovieFilePath</c> report
+    /// nothing even though the file is still on disk).
+    /// </summary>
+    private string GetStitchSourcePath(int idx)
+    {
+        string path = ((IChatHost)this).GetChatImageMovieFilePath(idx);
+        if (!string.IsNullOrEmpty(path)) return path;
+        var pic = GetChatImagePic(idx);
+        var record = GetChatImageRecord(idx);
+        if (pic != null && pic.m_picMovie != null && record != null && record.isMovie)
+        {
+            path = pic.m_picMovie.GetProcessingFileName();
+            if (!string.IsNullOrEmpty(path)) return path;
+        }
+        return null;
+    }
+
+    private void BeginStitchWait()
+    {
+        if (_stitchWaitCount <= 0)
+            _stitchWaitStartTime = Time.unscaledTime;
+        _stitchWaitCount++;
+    }
+
+    private void EndStitchWait()
+    {
+        _stitchWaitCount = Mathf.Max(0, _stitchWaitCount - 1);
+        if (_stitchWaitCount == 0)
+        {
+            _stitchWaitStartTime = 0f;
+            if (_statusText != null && _lastStitchStatusText != null && _statusText.text == _lastStitchStatusText)
+                _statusText.text = "";
+            _lastStitchStatusText = null;
+        }
+    }
+
+    // Footer hint while a stitch waits for its clips. Lowest priority: every other
+    // status (streaming, captions, imports, web fetches) overwrites it.
+    private void UpdateStitchWaitStatus(int pendingClips)
+    {
+        if (_statusText == null || _isStreaming || _waitingForForcedMainLLM || _compactSummaryInFlight
+            || CountPendingInspectImageJobs() > 0 || _webFetchCount > 0 || _videoImportCount > 0
+            || CountPendingVideoCaptions() > 0 || CountPendingAttachmentCaptions() > 0)
+            return;
+        _stitchSpinnerStep = (_stitchSpinnerStep + 1) % StreamSpinnerFrames.Length;
+        float elapsed = Time.unscaledTime - _stitchWaitStartTime;
+        _lastStitchStatusText = $"{StreamSpinnerFrames[_stitchSpinnerStep]} Stitch: waiting for {pendingClips} clip{(pendingClips == 1 ? "" : "s")} to render   {elapsed:F0}s";
+        _statusText.text = _lastStitchStatusText;
+    }
+
+    private static string DescribeMovieList(List<int> indices)
+    {
+        if (indices == null || indices.Count == 0) return "no movies";
+        var sb = new StringBuilder();
+        for (int i = 0; i < indices.Count; i++)
+        {
+            if (i > 0) sb.Append(i == indices.Count - 1 ? " and " : ", ");
+            sb.Append(i == 0 ? "Movie #" : "#").Append(indices[i]);
+        }
+        return sb.ToString();
     }
 
     void IChatHost.RecordChatImageProvenance(PicMain pic, SkillAction action)
@@ -10272,6 +12627,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (!_isStreaming && !_waitingForForcedMainLLM && !_compactSummaryInFlight)
         {
             UpdateInspectImageStatus();
+            UpdateWebFetchStatus();
             UpdateVideoImportStatus();
             UpdateAttachmentCaptionStatus();
         }

@@ -334,7 +334,8 @@ namespace AITools.AIChat.Skills
         /// syntax (with required attributes already in place) without having to call
         /// read_skill first. Bodies are still loaded on demand via the read_skill action.
         /// </summary>
-        public string BuildSkillSummariesBlock()
+        /// <param name="excludeIds">Skill ids to leave out (e.g. the web_* skills while the Web toggle is off).</param>
+        public string BuildSkillSummariesBlock(ISet<string> excludeIds = null)
         {
             if (_skills.Count == 0)
                 return "SKILLS: (none loaded)\n";
@@ -343,6 +344,8 @@ namespace AITools.AIChat.Skills
             sb.AppendLine("SKILLS (copy the Template line exactly, change the prompt etc; call read_skill for more detail; read_skill auto-continues after loading):");
             foreach (var s in _skills)
             {
+                if (excludeIds != null && !string.IsNullOrEmpty(s.Id) && excludeIds.Contains(s.Id))
+                    continue;
                 sb.Append("- ").Append(s.Id).Append(": ").AppendLine(s.Summary);
                 if (!string.IsNullOrEmpty(s.Template))
                     sb.Append("    Template: ").AppendLine(s.Template);
@@ -350,7 +353,8 @@ namespace AITools.AIChat.Skills
             return sb.ToString();
         }
 
-        public List<Skill> GetAutoloadSkillsForMessage(string latestUserMessage)
+        /// <param name="excludeIds">Skill ids that must not autoload (e.g. the web_* skills while the Web toggle is off).</param>
+        public List<Skill> GetAutoloadSkillsForMessage(string latestUserMessage, ISet<string> excludeIds = null)
         {
             var result = new List<Skill>();
             if (string.IsNullOrWhiteSpace(latestUserMessage))
@@ -359,6 +363,8 @@ namespace AITools.AIChat.Skills
             foreach (var skill in _skills)
             {
                 if (skill == null || !skill.Autoload || skill.Triggers == null || skill.Triggers.Count == 0)
+                    continue;
+                if (excludeIds != null && !string.IsNullOrEmpty(skill.Id) && excludeIds.Contains(skill.Id))
                     continue;
 
                 bool excluded = false;

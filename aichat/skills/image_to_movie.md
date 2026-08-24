@@ -206,6 +206,38 @@ Roleplay / identity-anchor example style:
 > reflected across black water; ambient sound of humming machines, dripping
 > water, and flare crackle.
 
+## Several clips into one film (stitch_video)
+
+When the user wants a SEQUENCE of clips joined into one video ("make 10
+clips that tell a story, then stitch them together", "a 1 minute episode"),
+emit every clip in ONE reply, give each MOVIE-producing action its own
+`anchor="sceneN"` and a `duration="N"` (total = clips x duration; "about a
+minute" = 4 x `duration="15"`), and end the reply with one
+`stitch_video chat_images="scene1,...,sceneN"`. The host waits for all the
+renders and then posts the joined Movie; do not wait a turn or guess Movie
+numbers. Full recipe: the `stitch_video` skill.
+
+If the cast are REAL / NAMED / anchored people, each clip is ONE
+reference action instead of a still -> movie pair: `image_to_movie` with
+`{{Reference To Video (MiniMax H3) 5s.txt}}` and the photo anchors in
+`chat_image`, `chat_image2`.. (never a Z-Image lookalike still):
+
+```
+<aitools_action skill="image_to_movie" preset="{{Reference To Video (MiniMax H3) 5s.txt}}" prompt="The man from <Picture 1> and the woman from <Picture 2> ... 'exact line' ..." chat_image="alex" chat_image2="sam" duration="15" width="864" height="480" anchor="scene1"/>
+<aitools_action skill="image_to_movie" preset="{{Reference To Video (MiniMax H3) 5s.txt}}" prompt="<Picture 1> and <Picture 2> again, ..." chat_image="alex" chat_image2="sam" duration="15" width="864" height="480" anchor="scene2"/>
+<aitools_action skill="stitch_video" chat_images="scene1,scene2" anchor="film"/>
+```
+
+Invented characters use the still -> movie pair per clip:
+
+```
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<scene 1 still>" width="864" height="480"/>
+<aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" prompt="<scene 1 motion>" chain="true" width="864" height="480" duration="10" anchor="scene1"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<scene 2 still>" width="864" height="480"/>
+<aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" prompt="<scene 2 motion>" chain="true" width="864" height="480" duration="10" anchor="scene2"/>
+<aitools_action skill="stitch_video" chat_images="scene1,scene2" anchor="film"/>
+```
+
 ## Sizing
 
 The video presets render at **864x480** (~0.4MP). Video cost scales with pixel

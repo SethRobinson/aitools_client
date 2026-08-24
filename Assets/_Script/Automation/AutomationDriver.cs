@@ -85,6 +85,8 @@ public class AutomationDriver : MonoBehaviour
             tab = AppSettingsTab.Configuration;
         else if (key == "audio" || key == "tts" || key == "speech")
             tab = AppSettingsTab.Audio;
+        else if (key == "web" || key == "brave" || key == "ytdlp" || key == "yt-dlp")
+            tab = AppSettingsTab.Web;
         else if (key == "llm" || key == "llms")
             tab = AppSettingsTab.LLM;
 
@@ -181,6 +183,12 @@ public class AutomationDriver : MonoBehaviour
     public bool SendChat(string text)
     {
         return AIChatPanel.AutomationSend(text);
+    }
+
+    /// <summary>Press AI Chat's Stop button (streaming turn, sidecars, web fetches).</summary>
+    public bool StopChat()
+    {
+        return AIChatPanel.AutomationStop();
     }
 
     /// <summary>Import a local video file into AI Chat as a clipped Movie bubble.</summary>

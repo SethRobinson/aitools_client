@@ -160,6 +160,16 @@ public class Config : MonoBehaviour
     TextToSpeechProvider _textToSpeechProvider;
     string _elevenLabs_APIKey ;
     string _elevenLabs_voiceID;
+    // AI Chat web media fetch (Brave Search API + yt-dlp). See docs/web_media.md.
+    string _braveSearchAPIKey;
+    string _webSearchSafeSearch;   // "strict" or "off"
+    string _ytDlpCookiesBrowser;   // blank = no --cookies-from-browser
+    // Speech-to-text for web_video speech checks: an OpenAI-compatible /v1/audio/transcriptions
+    // endpoint (local Whisper server etc.). Blank endpoint = use api.openai.com with the LLM
+    // Settings OpenAI key.
+    string _sttEndpoint;
+    string _sttAPIKey;
+    string _sttModel;
     int _jpgSaveQuality;
   
     string _defaultAudioPrompt;
@@ -235,6 +245,18 @@ public class Config : MonoBehaviour
     public int GetCrazyCamRequestedFPS() { return _crazyCamRequestedFPS; }
 
     public string GetElevenLabs_voiceID() { return _elevenLabs_voiceID; }
+    public string GetBraveSearchAPIKey() { return _braveSearchAPIKey ?? ""; }
+    /// <summary>"strict" (default) or "off". Anything else normalizes to strict.</summary>
+    public string GetWebSearchSafeSearch() { return NormalizeSafeSearch(_webSearchSafeSearch); }
+    public string GetYtDlpCookiesBrowser() { return _ytDlpCookiesBrowser ?? ""; }
+    public string GetSttEndpoint() { return _sttEndpoint ?? ""; }
+    public string GetSttAPIKey() { return _sttAPIKey ?? ""; }
+    public string GetSttModel() { return string.IsNullOrWhiteSpace(_sttModel) ? "whisper-1" : _sttModel; }
+
+    public static string NormalizeSafeSearch(string value)
+    {
+        return string.Equals((value ?? "").Trim(), "off", StringComparison.OrdinalIgnoreCase) ? "off" : "strict";
+    }
     public List<LLMParm> GetLLMParms() 
     { 
         var mgr = LLMSettingsManager.Get();
@@ -280,6 +302,12 @@ public class Config : MonoBehaviour
         _textToSpeechProvider = TextToSpeechProvider.None;
         _elevenLabs_APIKey = "";
      _elevenLabs_voiceID = "21m00Tcm4TlvDq8ikWAM";
+     _braveSearchAPIKey = "";
+     _webSearchSafeSearch = "strict";
+     _ytDlpCookiesBrowser = "";
+     _sttEndpoint = "";
+     _sttAPIKey = "";
+     _sttModel = "whisper-1";
      _jpgSaveQuality = 80;
      _texgen_webui_APIKey = "none";
      _genericLLMMode = "chat-instruct";
@@ -325,6 +353,27 @@ public class Config : MonoBehaviour
         _textToSpeechProvider = provider;
         _elevenLabs_APIKey = CleanConfigField(elevenLabsAPIKey);
         _elevenLabs_voiceID = CleanConfigField(elevenLabsVoiceID);
+
+        if (saveToFile)
+        {
+            m_configText = BuildModernConfigText(GetModernComfyServerConfigs());
+            SaveConfigToFile();
+        }
+    }
+
+    public void SetWebSettings(string braveSearchAPIKey, string safeSearch, string ytDlpCookiesBrowser, bool saveToFile = true)
+    {
+        SetWebSettings(braveSearchAPIKey, safeSearch, ytDlpCookiesBrowser, _sttEndpoint, _sttAPIKey, _sttModel, saveToFile);
+    }
+
+    public void SetWebSettings(string braveSearchAPIKey, string safeSearch, string ytDlpCookiesBrowser, string sttEndpoint, string sttAPIKey, string sttModel, bool saveToFile = true)
+    {
+        _braveSearchAPIKey = CleanConfigField(braveSearchAPIKey);
+        _webSearchSafeSearch = NormalizeSafeSearch(safeSearch);
+        _ytDlpCookiesBrowser = CleanConfigField(ytDlpCookiesBrowser);
+        _sttEndpoint = CleanConfigField(sttEndpoint);
+        _sttAPIKey = CleanConfigField(sttAPIKey);
+        _sttModel = CleanConfigField(sttModel);
 
         if (saveToFile)
         {
@@ -487,6 +536,21 @@ public class Config : MonoBehaviour
             sb.Append("set_elevenlabs_api_key|").Append(CleanConfigField(_elevenLabs_APIKey)).AppendLine("|");
         if (!string.IsNullOrEmpty(_elevenLabs_voiceID))
             sb.Append("set_elevenlabs_voice_id|").Append(CleanConfigField(_elevenLabs_voiceID)).AppendLine("|");
+
+        // Web media fetch (AI Chat web_search / web_image / web_video). Every parsed key MUST be
+        // re-emitted here or Settings Apply silently wipes it (the file is regenerated wholesale).
+        sb.AppendLine();
+        sb.Append("set_web_search_safesearch|").Append(NormalizeSafeSearch(_webSearchSafeSearch)).AppendLine("|");
+        if (!string.IsNullOrEmpty(_braveSearchAPIKey))
+            sb.Append("set_brave_search_api_key|").Append(CleanConfigField(_braveSearchAPIKey)).AppendLine("|");
+        if (!string.IsNullOrEmpty(_ytDlpCookiesBrowser))
+            sb.Append("set_ytdlp_cookies_browser|").Append(CleanConfigField(_ytDlpCookiesBrowser)).AppendLine("|");
+        if (!string.IsNullOrEmpty(_sttEndpoint))
+            sb.Append("set_stt_endpoint|").Append(CleanConfigField(_sttEndpoint)).AppendLine("|");
+        if (!string.IsNullOrEmpty(_sttAPIKey))
+            sb.Append("set_stt_api_key|").Append(CleanConfigField(_sttAPIKey)).AppendLine("|");
+        if (!string.IsNullOrEmpty(_sttModel) && _sttModel != "whisper-1")
+            sb.Append("set_stt_model|").Append(CleanConfigField(_sttModel)).AppendLine("|");
 
         return sb.ToString();
     }
@@ -1501,6 +1565,30 @@ set_default_audio_negative_prompt|music|
                          words[0] == "set_elevenlabs_voice" || words[0] == "set_eleven_labs_voice")
                 {
                     _elevenLabs_voiceID = words.Length > 1 ? words[1] : "";
+                }
+                else if (words[0] == "set_brave_search_api_key" || words[0] == "set_brave_api_key")
+                {
+                    _braveSearchAPIKey = words.Length > 1 ? words[1].Trim() : "";
+                }
+                else if (words[0] == "set_web_search_safesearch" || words[0] == "set_web_search_safe_search")
+                {
+                    _webSearchSafeSearch = words.Length > 1 ? NormalizeSafeSearch(words[1]) : "strict";
+                }
+                else if (words[0] == "set_ytdlp_cookies_browser" || words[0] == "set_yt_dlp_cookies_browser")
+                {
+                    _ytDlpCookiesBrowser = words.Length > 1 ? words[1].Trim() : "";
+                }
+                else if (words[0] == "set_stt_endpoint" || words[0] == "set_speech_to_text_endpoint")
+                {
+                    _sttEndpoint = words.Length > 1 ? words[1].Trim() : "";
+                }
+                else if (words[0] == "set_stt_api_key" || words[0] == "set_speech_to_text_api_key")
+                {
+                    _sttAPIKey = words.Length > 1 ? words[1].Trim() : "";
+                }
+                else if (words[0] == "set_stt_model" || words[0] == "set_speech_to_text_model")
+                {
+                    _sttModel = words.Length > 1 ? words[1].Trim() : "whisper-1";
                 }
                 else
                 {

@@ -10,6 +10,7 @@ Download the latest: V3.05 (Jul 13th, 2026) [AI Tools Client (Windows, 132 MB)](
 
 - It's not a web app, it's a native locally run Windows .exe (Unity with C#)
 - AI Chat mode is kind of like chatgpt/nanobanana, can just "ask" it to make images, posters, intelligently use anchor images, etc
+- AI Chat can search the web (Brave Search API key needed, see Settings > Web) for reference photos and short video clips (bundled yt-dlp) and feed them to the image/video models, so "make a Seinfeld episode where they play retro games" can pull real likenesses; every search and download is shown in full in the chat. It can also read whole web pages (Wikipedia articles and the like) to research a topic and pull the pictures from a specific article as references, and a "Web" checkbox in the AI Chat header turns every online feature on or off
 - Built-in image processing like cropping and resizing, mask painting
 - Pan/zoom with thousands of images on the screen
 - Built to utilize many ComfyUI servers and LLMs at once
@@ -93,6 +94,8 @@ add_server|http://secured-box.lan:8188|token=$2b$12$qUfJfV942n...
 ```
 
 This is optional; leave `|token=...` off for normal open ComfyUI servers. For ComfyUI-Login, use the token it prints for direct API calls, not your web UI password. AITools sends it as an `Authorization: Bearer` header for ComfyUI HTTP and WebSocket requests.
+
+To let AI Chat search the web for images and video clips, get a Brave Search API key at https://brave.com/search/api/ (the Search plan includes free monthly credit, roughly 1000 queries) and paste it into Settings > Web. YouTube and other page-hosted videos are downloaded with the bundled `utils/yt-dlp/yt-dlp.exe` (at up to 480p, then the requested seconds are cut out locally). YouTube needs a JavaScript runtime for its download challenge: install Deno (`winget install DenoLand.Deno`) or Node.js and the app picks it up automatically (Settings > Web shows what it found). If a site demands a sign-in, the same tab has a "cookies from browser" option (Firefox works most reliably). When a fetched clip will be used as a voice reference (the generated character talks), the app checks that the clip actually contains speech by transcribing its audio: point the tab's speech-to-text endpoint at any OpenAI-compatible Whisper server, or it uses your OpenAI key.
 
 # Setting up with ComfyUI
 

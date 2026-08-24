@@ -27,6 +27,7 @@ Keep the first help answer brief and easy to scan:
    - `Create an amazing image of robots fighting.`
    - `Create an amazing image of robots fighting using zimage.`
    - `Make this image into a short movie.`
+   - `Make 5 clips that tell a story, then stitch them into one video.`
    - `Restyle movie 1 to look like winter.` (edit/restyle an existing clip)
    - `Edit image 2 so it is raining at night.`
    - `Edit image 2 with bernini so it is raining at night.` (alternative edit model)
@@ -35,6 +36,7 @@ Keep the first help answer brief and easy to scan:
    - `Remove the background from this image.`
    - `Make a seamless tileable stone texture.`
    - `Check this image and tell me if anything looks wrong.`
+   - `Research real 1980s game consoles on the web, then generate images of them.` (only when the Web checkbox in the AI Chat header is on)
 3. Mention optional render hints only at the user level:
    images: `zimage`, `krea`, `ideogram`;
    image editing: `bernini` (alternative to the default edit model);
@@ -50,6 +52,8 @@ Keep the first help answer brief and easy to scan:
    - background removal, tiling, crop/resize, text/borders/shapes
    - image inspection/checking
    - storytelling/roleplay
+   - web research and reference photos / clips from the web (list it only if the
+     web_* skills are in the loaded SKILLS list, i.e. the Web checkbox is on)
 
 ## Follow-up questions
 

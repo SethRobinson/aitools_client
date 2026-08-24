@@ -87,6 +87,12 @@ historical - ignore them):
 - With the default two visuals per turn: 2+ IDLE -> two movie beats;
   1 IDLE -> one movie beat + one still; 0 IDLE -> two stills.
 
+An explicit multi-clip film request ("make 10 clips that tell a story, then
+stitch them together") is an explicit count: emit ALL the movie pairs in that
+one reply regardless of idle GPUs, give each movie action `anchor="sceneN"`,
+and end the reply with one `stitch_video chat_images="scene1,...,sceneN"`
+(the host waits for the renders; see the `stitch_video` skill).
+
 Do not mention GPUs, queues, or render speed in the story - silently pick
 the mix. Do not pin `gpu="N"` on the actions; just count IDLE entries and
 let the scheduler place the work. Explicit user instructions override this
