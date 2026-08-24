@@ -74,6 +74,8 @@ public class ChatImageAttachmentZone : MonoBehaviour
     public event Action<AttachmentInfo> OnAttachmentAdded;
     /// <summary>Fires when a video file is dropped over this chat zone. Videos are imported as Movie bubbles, not PNG attachments.</summary>
     public event Action<string> OnVideoFileDropped;
+    /// <summary>A dropped sound file (.wav/.mp3/.flac/...): AI Chat imports it as an "Audio #N" bubble.</summary>
+    public event Action<string> OnAudioFileDropped;
     /// <summary>
     /// Fires when an attachment is removed (typically: user clicked the X) while its
     /// caption was still in flight. The id matches <see cref="AttachmentInfo.id"/> from
@@ -694,7 +696,8 @@ public class ChatImageAttachmentZone : MonoBehaviour
 
             bool isImage = ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp";
             bool isVideo = FfmpegTool.IsSupportedVideoExtension(ext);
-            if (!isImage && !isVideo)
+            bool isAudio = FfmpegTool.IsSupportedAudioExtension(ext);
+            if (!isImage && !isVideo && !isAudio)
                 continue;
             if (!File.Exists(f)) continue;
 
@@ -703,6 +706,13 @@ public class ChatImageAttachmentZone : MonoBehaviour
                 handledVideo = true;
                 try { OnVideoFileDropped?.Invoke(f); }
                 catch (Exception ex) { Debug.LogError("ChatImageAttachmentZone: video drop handler failed for " + f + ": " + ex); }
+                continue;
+            }
+            if (isAudio)
+            {
+                handledVideo = true;
+                try { OnAudioFileDropped?.Invoke(f); }
+                catch (Exception ex) { Debug.LogError("ChatImageAttachmentZone: audio drop handler failed for " + f + ": " + ex); }
                 continue;
             }
 

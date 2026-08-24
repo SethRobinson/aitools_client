@@ -127,12 +127,25 @@ namespace AITools.AIChat.Skills
         /// <summary>Every skill that needs the AI Chat "Web" toggle to be on.</summary>
         public static readonly HashSet<string> WebSkills = new HashSet<string> { WebSearch, WebImage, WebVideo, WebPage };
 
+        // Audio generation through the configurable gateway (Settings > Audio > Audio
+        // generation): music, sound effects, speech -> "Audio #N" bubbles. Hidden from the
+        // prompt while no gateway is configured. set_video_audio is local FFmpeg (mix /
+        // replace a Movie's soundtrack with an Audio bubble) and is always available.
+        // See docs/audio_generation.md.
+        public const string GenerateMusic = "generate_music";
+        public const string GenerateSfx = "generate_sfx";
+        public const string GenerateSpeech = "generate_speech";
+        public const string SetVideoAudio = "set_video_audio";
+
+        public static readonly HashSet<string> AudioGenSkills = new HashSet<string> { GenerateMusic, GenerateSfx, GenerateSpeech };
+
         public static readonly HashSet<string> All = new HashSet<string>
         {
             GenerateImage, GenerateMovie, ImageToImage, ImageToMovie, VideoToVideo, RifeVideo, ClipVideo,
             ExtractStill, StitchVideo, ReadSkill, SummarizeWithSmallLlm, DescribeImage, InspectImage, Continue,
             DrawText, AddBorder, PasteImage, NewCanvas, CropResize, DrawShape,
-            WebSearch, WebImage, WebVideo, WebPage
+            WebSearch, WebImage, WebVideo, WebPage,
+            GenerateMusic, GenerateSfx, GenerateSpeech, SetVideoAudio
         };
     }
 }

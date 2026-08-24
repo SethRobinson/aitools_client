@@ -3420,7 +3420,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: edd328fb144e819498d395172c8823a0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _text: Saves this image out as bmp
+  _text: Saves this image, movie, or audio to the output dir (images as bmp with the mask as alpha)
 --- !u!1 &3249711438285866621
 GameObject:
   m_ObjectHideFlags: 0
@@ -5013,8 +5013,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: edd328fb144e819498d395172c8823a0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _text: Saves this image or movie to the output dir.  (if image will save as .bmp
-    and include the mask as an alpha channel)
+  _text: Saves this image, movie, or audio to the output dir.  (images save as .bmp
+    with the mask as an alpha channel; movies copy the video file; audio bubbles copy
+    the original sound file alongside their waveform preview)
 --- !u!1 &5452831084607668466
 GameObject:
   m_ObjectHideFlags: 0

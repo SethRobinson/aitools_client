@@ -60,6 +60,12 @@ public class DragAndDropHandler : MonoBehaviour
             {
                 validFiles.Add(f);
             }
+            else if (AITools.AIChat.Video.FfmpegTool.IsSupportedAudioExtension(ext))
+            {
+                // Sound files only make sense inside AI Chat (an "Audio #N" bubble); the
+                // workspace has no audio pic type.
+                RTQuickMessageManager.Get().ShowMessage("Drop audio files onto the AI Chat window: " + fi.Name);
+            }
             else
             {
                 RTQuickMessageManager.Get().ShowMessage("Unknown image format: " + fi.Name);

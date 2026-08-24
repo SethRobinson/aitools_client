@@ -12,6 +12,7 @@ using AITools.AIChat.Context;
 using AITools.AIChat.Mirroring;
 using AITools.AIChat.Skills;
 using AITools.AIChat.UI;
+using AITools.AIChat.Audio;
 using AITools.AIChat.Video;
 using AITools.AIChat.Web;
 
@@ -167,6 +168,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // auto-captioning is off: set for media whose whole point is that the model
         // can see what arrived (web downloads, extracted identity frames).
         public bool alwaysIncludeCaption;
+        // "Audio #N" bubbles: a sound file (generated music / sfx / speech, or a dropped-in
+        // audio file) displayed through a waveform preview MOVIE, so isMovie is true too and
+        // every Movie-based path (playback, save, clip, stitch) works unchanged. audioPath is
+        // the original sound file (what set_video_audio mixes and generate_speech clones).
+        public bool isAudio;
+        public string audioPath;
+        public double durationSeconds;
     }
     private readonly List<ChatImageRecord> _chatImageRecords = new List<ChatImageRecord>();
 
@@ -339,6 +347,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private float _videoImportStartTime = 0f;
     private float _videoImportStatusNextRefresh = 0f;
     private int _videoImportSpinnerStep = 0;
+    // Footer wording for the shared import gate ("Importing video" / "Generating music" /
+    // "Mixing audio"): audio generation and set_video_audio reuse BeginVideoImport so Send
+    // stays blocked exactly like a clip import.
+    private string _videoImportStatusLabel = "Importing video";
     private float _videoCaptionStartTime = 0f;
     private float _videoCaptionStatusNextRefresh = 0f;
     private int _videoCaptionSpinnerStep = 0;
@@ -1419,6 +1431,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _attachmentZone.OnAttachmentAdded += OnAttachmentAdded;
         _attachmentZone.OnCaptionCancelled += OnCaptionCancelled;
         _attachmentZone.OnVideoFileDropped += OnVideoFileDropped;
+        _attachmentZone.OnAudioFileDropped += OnAudioFileDropped;
 
         CreateFooterDragBar(footer.transform);
     }
@@ -2737,7 +2750,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             _videoImportStatusNextRefresh = Time.unscaledTime + STREAM_STATUS_INTERVAL;
             _videoImportSpinnerStep = (_videoImportSpinnerStep + 1) % StreamSpinnerFrames.Length;
             float elapsed = Time.unscaledTime - _videoImportStartTime;
-            _statusText.text = $"{StreamSpinnerFrames[_videoImportSpinnerStep]} Importing video   {elapsed:F0}s";
+            _statusText.text = $"{StreamSpinnerFrames[_videoImportSpinnerStep]} {_videoImportStatusLabel}   {elapsed:F0}s";
             return;
         }
 
@@ -3071,6 +3084,95 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (shouldAutoScroll)
             StartCoroutine(ScrollToBottomDeferred());
         return input;
+    }
+
+    // ---------- "[skill: X]" click-to-expand: what was sent to the tool ----------
+
+    /// <summary>
+    /// Toggle the details of the <paramref name="linkIndex"/>-th tool-call marker in an
+    /// assistant bubble. The marker ordinal maps onto the reply's actions that show a
+    /// marker (media actions leave none; see SkillActionParser.ShowsTranscriptMarker),
+    /// re-parsed from the stored RAW reply so the full prompt / lyrics / voice / scene
+    /// text is available without keeping it in the (editable) bubble text.
+    /// </summary>
+    private void ToggleActionDetails(TMP_InputField field, GTPChatLine interaction, int linkIndex)
+    {
+        if (field == null || linkIndex < 0) return;
+        string raw = interaction != null ? interaction._content : null;
+        if (string.IsNullOrEmpty(raw) && ReferenceEquals(field, _streamingAssistantField))
+            raw = _streamBuffer.ToString();   // still streaming: the reply is not in history yet
+        if (string.IsNullOrEmpty(raw)) return;
+
+        var bubble = field.transform.parent;
+        if (bubble == null) return;
+        var panel = bubble.GetComponent<ActionDetailsPanel>();
+        if (panel == null) panel = bubble.gameObject.AddComponent<ActionDetailsPanel>();
+        bool wasAtBottom = IsScrollAtBottom(_chatScroll);
+        if (!panel.Expanded.Remove(linkIndex))
+            panel.Expanded.Add(linkIndex);
+        RenderActionDetails(panel, bubble, raw);
+        // The newest reply sits at the bottom; keep the freshly expanded details in view.
+        if (wasAtBottom)
+            StartCoroutine(ScrollToBottomDeferred());
+    }
+
+    private void RenderActionDetails(ActionDetailsPanel panel, Transform bubble, string raw)
+    {
+        var markerActions = new List<SkillAction>();
+        foreach (var a in SkillActionParser.ExtractActions(raw))
+        {
+            if (SkillActionParser.ShowsTranscriptMarker(a.SkillId))
+                markerActions.Add(a);
+        }
+
+        var sb = new StringBuilder();
+        var ordered = new List<int>(panel.Expanded);
+        ordered.Sort();
+        foreach (int idx in ordered)
+        {
+            if (idx >= markerActions.Count) continue;
+            var a = markerActions[idx];
+            if (sb.Length > 0) sb.Append("\n\n");
+            sb.Append("<b>").Append(EscapePlainTextForTMP(a.SkillId)).Append("</b> (sent to the tool; click the marker again to hide)");
+            foreach (var kv in a.Args)
+            {
+                if (string.Equals(kv.Key, "skill", StringComparison.OrdinalIgnoreCase)) continue;
+                string v = (kv.Value ?? "").Replace("\\n", "\n").Trim();
+                sb.Append('\n').Append("<b>").Append(EscapePlainTextForTMP(kv.Key)).Append(":</b> ");
+                if (v.IndexOf('\n') >= 0) sb.Append('\n');
+                sb.Append(EscapePlainTextForTMP(v));
+            }
+        }
+
+        if (sb.Length == 0)
+        {
+            if (panel.Text != null) panel.Text.gameObject.SetActive(false);
+            return;
+        }
+
+        if (panel.Text == null)
+        {
+            var go = new GameObject("ActionDetails");
+            go.transform.SetParent(bubble, false);
+            var le = go.AddComponent<LayoutElement>();
+            le.minHeight = 14f;
+            le.preferredHeight = -1f;   // natural TMP height
+            le.flexibleHeight = -1f;
+            var tmp = go.AddComponent<TextMeshProUGUI>();
+            tmp.font = _font;
+            tmp.fontSize = Mathf.Max(9f, (BaseFontSize - 2f) * _fontSizeMultiplier);
+            tmp.color = new Color(0.28f, 0.30f, 0.36f);
+            tmp.richText = true;
+            tmp.textWrappingMode = TextWrappingModes.Normal;
+            tmp.alignment = TextAlignmentOptions.TopLeft;
+            tmp.raycastTarget = false;
+            tmp.parseCtrlCharacters = false;   // Windows paths / "\t" in prompts stay literal
+            panel.Text = tmp;
+        }
+        panel.Text.gameObject.SetActive(true);
+        panel.Text.transform.SetAsLastSibling();
+        panel.Text.text = sb.ToString();
+        LayoutRebuilder.MarkLayoutForRebuild(bubble as RectTransform);
     }
 
     private void AddWelcomeMessage()
@@ -3569,6 +3671,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             text = Regex.Replace(text, @"(?m)^#\s+(.+)$", m => "<size=130%>" + ApplyReadableBold(m.Groups[1].Value) + "</size>");
             // Simple bullet lists: lines starting with "- " or "* " -> bullet char
             text = Regex.Replace(text, @"(?m)^\s*[-*]\s+(.+)$", "  \u2022 $1");
+            // "[skill: X]" tool-call markers become clickable links: a left click on one
+            // expands the attributes that were sent to the tool (prompt, lyrics, voice...)
+            // below the bubble text. The visible characters stay EXACTLY "[skill: X]" and
+            // the wrapping tags are stripped by RemoveTMPTagsFromString, so an edit /
+            // focus-loss write-back compares equal to the stored display text.
+            text = Regex.Replace(text, @"\[skill: ([A-Za-z0-9_]+)\]", "<link=\"skill\"><color=#2B5FA6><u>[skill: $1]</u></color></link>");
         }
         catch
         {
@@ -4377,7 +4485,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         bool genericContinuePending = HasGenericContinuePendingForCurrentTurn();
         bool forcedWaitPending = _waitingForForcedMainLLM;
         bool webPending = HasPendingWebWork();
-        if (!_isStreaming && !inspectPending && !skillResumePending && !genericContinuePending && !forcedWaitPending && !webPending) return;
+        bool audioPending = HasPendingAudioGeneration();
+        if (!_isStreaming && !inspectPending && !skillResumePending && !genericContinuePending && !forcedWaitPending && !webPending && !audioPending) return;
         // Stop fully ends auto-repeat: uncheck the box (its handler also zeroes the
         // counter) so it doesn't quietly resume on the next reply.
         _autoContinueRemaining = 0;
@@ -4398,9 +4507,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             CancelAllWebFetches(showBubble: true);
         }
 
+        if (audioPending)
+            CancelAllAudioGeneration(showBubble: true);
+
         if (!_isStreaming)
         {
-            SetBusyUI(false, inspectPending ? "Stopped inspection" : (forcedWaitPending ? "Stopped waiting" : (webPending ? "Stopped web fetch" : "Stopped")));
+            SetBusyUI(false, inspectPending ? "Stopped inspection" : (forcedWaitPending ? "Stopped waiting" : (webPending ? "Stopped web fetch" : (audioPending ? "Stopped audio generation" : "Stopped"))));
             return;
         }
 
@@ -4415,6 +4527,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // stopped book doesn't keep spawning pages after the user bailed.
         _actionExecutor?.ResetForNewTurn();
         CancelAllWebFetches(showBubble: false);
+        CancelAllAudioGeneration(showBubble: false);
     }
 
     /// <summary>
@@ -4468,6 +4581,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         CancelGenericContinue();
         _consecutiveSelfContinues = 0;
         CancelAllWebFetches(showBubble: false);
+        CancelAllAudioGeneration(showBubble: false);
         _webSearchSessions.Clear();
         _nextWebSearchId = 1;
         _webPageSessions.Clear();
@@ -6503,9 +6617,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 Index = i + 1,
                 IsUserAttachment = userAttachment,
                 IsMovie = isMovie,
+                IsAudio = record != null && record.isAudio,
                 IsReusable = reusable,
                 IncludeCaption = !string.IsNullOrEmpty(caption),
-                Kind = isMovie
+                Kind = (record != null && record.isAudio && !string.IsNullOrEmpty(record.kind))
+                    ? record.kind
+                    : isMovie
                     ? "movie"
                     : (record != null && !string.IsNullOrEmpty(record.kind)
                         ? record.kind
@@ -7671,7 +7788,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         var record = idx < _chatImageRecords.Count ? _chatImageRecords[idx] : null;
         bool isMovie = (record != null && record.isMovie) || pic.IsMovie();
-        string label = (isMovie ? "Movie #" : "#") + (idx + 1);
+        bool isAudio = record != null && record.isAudio;
+        string label = (isAudio ? "Audio #" : (isMovie ? "Movie #" : "#")) + (idx + 1);
         if (record != null && !string.IsNullOrEmpty(record.kind) && record.kind != "movie") label += " (" + record.kind + ")";
         if (record != null && !string.IsNullOrEmpty(record.anchorName)) label += " anchor=\"" + record.anchorName + "\"";
         _infoMessages.Add(new InfoMessage("(Full description of " + label + " - describe it from this, not from outside knowledge: " + text + ")"));
@@ -7899,12 +8017,16 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         int idx0 = _chatImagePics.IndexOf(pic);
         var record = FindChatImageRecord(pic);
         bool isMovie = (record != null && record.isMovie) || (pic != null && pic.IsMovie());
-        string header = idx0 >= 0
-            ? (isMovie ? $"Movie #{idx0 + 1}" : $"Image #{idx0 + 1}")
-            : (isMovie ? "Movie" : "Image");
+        bool isAudio = record != null && record.isAudio;
+        string mediaWord = isAudio ? "Audio" : (isMovie ? "Movie" : "Image");
+        string header = idx0 >= 0 ? $"{mediaWord} #{idx0 + 1}" : mediaWord;
         if (string.IsNullOrEmpty(caption))
         {
-            if (isMovie)
+            if (isAudio)
+            {
+                caption = "(sound file; no description available)";
+            }
+            else if (isMovie)
             {
                 caption = _videoCaptionInFlight.Contains(pic)
                     ? "(video captioning...)"
@@ -7997,6 +8119,64 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     {
         if (string.IsNullOrWhiteSpace(path)) return;
         StartCoroutine(HandleDroppedVideoFile(path, _videoImportEpoch));
+    }
+
+    private void OnAudioFileDropped(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return;
+        StartCoroutine(HandleDroppedAudioFile(path, _videoImportEpoch));
+    }
+
+    /// <summary>
+    /// A dropped .wav/.mp3/.flac/... becomes an "Audio #N (you)" bubble: the file is copied
+    /// into tempCache/aichat_audio (the chat owns its copy), probed, rendered to a waveform
+    /// preview movie, and appended like a generated sound. No transcription / captioning.
+    /// </summary>
+    private IEnumerator HandleDroppedAudioFile(string path, int epoch)
+    {
+        BeginVideoImport("Importing audio");
+        string copyPath = FfmpegTool.GetImportedAudioPath(path);
+        try
+        {
+            System.IO.File.Copy(path, copyPath, true);
+        }
+        catch (Exception ex)
+        {
+            FinishVideoImport();
+            AddSystemMessage("Could not import audio file: " + ex.Message, includeInLLMRecap: false);
+            yield break;
+        }
+
+        FfmpegTool.AudioInfo info = null;
+        string error = null;
+        yield return FfmpegTool.ProbeAudio(copyPath, (i, e) => { info = i; error = e; });
+        if (epoch != _videoImportEpoch) yield break;
+        if (info == null || !info.HasAudio)
+        {
+            FinishVideoImport();
+            AddSystemMessage("Could not import audio file: " + (error ?? "no audio stream"), includeInLLMRecap: false);
+            yield break;
+        }
+
+        string previewPath = FfmpegTool.GetAudioPreviewOutputPath(copyPath);
+        FfmpegTool.ClipResult preview = null;
+        yield return FfmpegTool.CreateAudioWaveformPreview(copyPath, previewPath, FfmpegTool.AudioColorUser, r => preview = r);
+        if (epoch != _videoImportEpoch) yield break;
+        if (preview == null || !preview.Success)
+        {
+            FinishVideoImport();
+            AddSystemMessage("Could not render the audio preview: " + (preview != null ? preview.Error : "unknown error"), includeInLLMRecap: false);
+            yield break;
+        }
+
+        string name = System.IO.Path.GetFileName(path);
+        string dur = AudioGenClient.FormatSeconds(info.DurationSeconds);
+        PicMain pic = AppendAudioBubble(preview.OutputPath, copyPath, null, "user audio", info.DurationSeconds, isUserImport: true,
+            captionShort: "audio file: " + name,
+            captionLong: $"User-imported audio file \"{name}\" ({dur}, {info.CodecName}, {info.SampleRate} Hz, {info.Channels} ch). Its content was not transcribed; ask the user what it contains if that matters.");
+        if (pic != null)
+            AddSystemMessage($"Imported {dur} audio file \"{name}\" as Audio #{_chatImagePics.Count}.", includeInLLMRecap: false);
+        FinishVideoImport();
     }
 
     private IEnumerator HandleDroppedVideoFile(string path, int epoch)
@@ -8387,6 +8567,496 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         AddSystemMessage($"Extracted still frame at {atText}s of Movie #{sourceChatImageIndex} as #{chatImageNumber}.", includeInLLMRecap: false);
 
         StartCoroutine(WaitForPicAndCaption(pic));
+    }
+
+    /// <summary>
+    /// Append a sound file as an "Audio #N" bubble. The bubble's Pic plays
+    /// <paramref name="previewPath"/> (a waveform MP4 carrying the audio, see
+    /// <see cref="FfmpegTool.CreateAudioWaveformPreview"/>), so it IS a Movie bubble to every
+    /// existing code path; the record additionally remembers the original sound file. The
+    /// caption is synthesized from what we know (prompt / voice / file name), never a vision
+    /// call: a waveform tells the vision model nothing.
+    /// </summary>
+    private PicMain AppendAudioBubble(string previewPath, string audioPath, SkillAction action, string kind, double durationSeconds,
+        bool isUserImport, string captionShort, string captionLong, bool updateChainTarget = true)
+    {
+        var imageGen = ImageGenerator.Get();
+        if (imageGen == null || string.IsNullOrEmpty(previewPath)) return null;
+        var go = imageGen.AddImageByFileName(previewPath);
+        if (go == null) return null;
+        var pic = go.GetComponent<PicMain>();
+        if (pic == null) return null;
+
+        if (pic.m_picMovie != null)
+        {
+            pic.m_picMovie.SetAutoDeleteFileWhenDone(true);
+            // The pic's S button saves the preview movie; hand it the real sound file so
+            // that lands next to it as <stem>.wav (or whatever the gateway returned).
+            pic.m_picMovie.SetCompanionAudioFile(audioPath);
+        }
+
+        _chatImagePics.Add(pic);
+        int chatImageNumber = _chatImagePics.Count;
+        RegisterChatImageRecord(pic, action, isUserAttachment: isUserImport, isMovie: true, dimensions: AudioGenClient.FormatSeconds(durationSeconds));
+        var record = _chatImageRecords.Count > 0 ? _chatImageRecords[_chatImageRecords.Count - 1] : null;
+        if (record != null && record.pic == pic)
+        {
+            record.isAudio = true;
+            record.audioPath = audioPath;
+            record.durationSeconds = durationSeconds;
+            record.kind = string.IsNullOrEmpty(kind) ? "audio" : kind;
+            record.alwaysIncludeCaption = true;
+            if (isUserImport && record.provenanceSteps.Count > 0)
+                record.provenanceSteps[0] = "user audio file";
+        }
+        string label = isUserImport ? $"Audio #{chatImageNumber} (you)" : $"Audio #{chatImageNumber}";
+        AppendImageBubbleInternal(pic, label, isMovie: true);
+        SetSynthesizedCaption(pic, captionShort, captionLong);
+
+        if (action != null)
+        {
+            string anchorHint = "";
+            if (!string.IsNullOrEmpty(action.AnchorName))
+            {
+                _anchors[action.AnchorName] = pic;
+                anchorHint = $" (anchor \"{action.AnchorName}\")";
+                Debug.Log($"AIChatPanel: anchor '{action.AnchorName}' -> Audio #{chatImageNumber}");
+            }
+            MarkLatestAssistantMediaCheckpoint();
+            _infoMessages.Add(new InfoMessage(
+                $"(Audio just spawned as #{chatImageNumber} in CHAT IMAGES{anchorHint}. " +
+                $"Put it on a video with set_video_audio chat_image=\"<movie>\" audio=\"{chatImageNumber}\"; " +
+                "the user can play it from its bubble. It is a sound, not a picture: never use image skills on it.)"));
+            if (updateChainTarget)
+                ((IChatHost)this).SetLastSpawnedPicForTurn(pic);
+        }
+
+        return pic;
+    }
+
+    /// <summary>Set a caption we composed ourselves (no vision sidecar) and refresh the bubble label.</summary>
+    private void SetSynthesizedCaption(PicMain pic, string shortCaption, string longCaption)
+    {
+        if (pic == null || pic.gameObject == null) return;
+        pic.Caption = longCaption ?? "";
+        pic.CaptionShort = shortCaption ?? "";
+        string suffix = !string.IsNullOrEmpty(shortCaption) ? shortCaption : longCaption;
+        if (!string.IsNullOrEmpty(suffix)
+            && _captionLabels.TryGetValue(pic, out var entry)
+            && entry.label != null)
+            entry.label.text = entry.baseText + " " + suffix;
+    }
+
+    // =====================================================================
+    // Audio generation (generate_music / generate_sfx / generate_speech through the
+    // gateway in Settings > Audio) and set_video_audio (local FFmpeg mix / replace).
+    // See docs/audio_generation.md.
+    //
+    // Generation reuses the video-import gate (Send blocked, footer "Generating music 42s")
+    // because the reply's later actions usually depend on the sound (set_video_audio
+    // audio="song"); Stop aborts the HTTP request. set_video_audio first WAITS for a
+    // still-rendering source Movie exactly like stitch_video (chat stays usable), then
+    // runs the short ffmpeg mux under the import gate.
+    // =====================================================================
+
+    private readonly List<AudioGenClient.Handle> _audioGenHandles = new List<AudioGenClient.Handle>();
+
+    private bool HasPendingAudioGeneration() => _audioGenHandles.Count > 0;
+
+    private void CancelAllAudioGeneration(bool showBubble)
+    {
+        if (_audioGenHandles.Count == 0) return;
+        for (int i = 0; i < _audioGenHandles.Count; i++)
+        {
+            try { _audioGenHandles[i]?.Cancel(); } catch { }
+        }
+        _audioGenHandles.Clear();
+        if (showBubble)
+            AddSystemMessage("Stopped audio generation.", includeInLLMRecap: false);
+    }
+
+    bool IChatHost.IsChatImageAudio(int oneBasedIndex)
+    {
+        var record = GetChatImageRecord(oneBasedIndex);
+        return record != null && record.isAudio;
+    }
+
+    string IChatHost.GetChatImageAudioFilePath(int oneBasedIndex)
+    {
+        var record = GetChatImageRecord(oneBasedIndex);
+        if (record == null || !record.isAudio || string.IsNullOrEmpty(record.audioPath)) return null;
+        return System.IO.File.Exists(record.audioPath) ? record.audioPath : null;
+    }
+
+    bool IChatHost.StartGenerateAudioAction(SkillAction action, AudioGenRequest request, Action<bool> onDone)
+    {
+        if (request == null) return false;
+        int epoch = _videoImportEpoch;
+        BeginVideoImport("Generating " + request.KindNoun);
+        StartCoroutine(GenerateAudioActionCoroutine(action, request, epoch, _chatTurnEpoch, onDone));
+        return true;
+    }
+
+    private static string AudioColorForKind(AudioGenKind kind)
+    {
+        switch (kind)
+        {
+            case AudioGenKind.Music: return FfmpegTool.AudioColorMusic;
+            case AudioGenKind.Sfx: return FfmpegTool.AudioColorSfx;
+            default: return FfmpegTool.AudioColorSpeech;
+        }
+    }
+
+    private static string DescribeAudioFields(AudioGenRequest request)
+    {
+        var sb = new StringBuilder();
+        foreach (var kv in request.Fields)
+        {
+            if (sb.Length > 0) sb.Append(", ");
+            string v = kv.Value ?? "";
+            if (v.Length > 300) v = v.Substring(0, 300) + "...";
+            sb.Append(kv.Key).Append('=').Append(v.Replace("\n", "\\n"));
+        }
+        if (request.RefVoiceChatImageIndex > 0)
+            sb.Append(", ref_voice=#").Append(request.RefVoiceChatImageIndex);
+        return sb.ToString();
+    }
+
+    private void BuildAudioCaptions(AudioGenRequest request, double durationSeconds, out string shortCaption, out string longCaption)
+    {
+        string dur = AudioGenClient.FormatSeconds(durationSeconds);
+        string prompt = request.Fields.TryGetValue("prompt", out string p) ? p : "";
+        switch (request.Kind)
+        {
+            case AudioGenKind.Music:
+            {
+                bool vocals = request.Fields.ContainsKey("vocals");
+                bool lyrics = request.Fields.ContainsKey("lyrics");
+                shortCaption = "music: " + request.Label;
+                longCaption = $"Generated music, {dur}, {(vocals ? "with vocals" : "instrumental")}{(lyrics ? ", lyrics supplied" : "")}. Caption: \"{prompt}\"";
+                break;
+            }
+            case AudioGenKind.Sfx:
+                shortCaption = "sound effect: " + request.Label;
+                longCaption = $"Generated sound effect, {dur}: \"{prompt}\"";
+                break;
+            default:
+            {
+                string text = request.Fields.TryGetValue("text", out string t) ? t : "";
+                string voice = request.RefVoiceChatImageIndex > 0
+                    ? $"voice cloned from #{request.RefVoiceChatImageIndex}"
+                    : (request.Fields.TryGetValue("voice", out string v) ? "voice \"" + v + "\"" : "default voice");
+                string scene = request.Fields.TryGetValue("scene", out string s) ? $", delivery \"{s}\"" : "";
+                shortCaption = "speech: \"" + request.Label + "\"";
+                longCaption = $"Generated speech, {dur}, {voice}{scene}. Spoken text: \"{text}\"";
+                break;
+            }
+        }
+    }
+
+    private IEnumerator GenerateAudioActionCoroutine(SkillAction action, AudioGenRequest request, int epoch, int turnEpoch, Action<bool> onDone)
+    {
+        var host = (IChatHost)this;
+        string skill = request.SkillName;
+
+        // Voice cloning sample: cut a mono WAV out of the referenced Audio / Movie bubble.
+        byte[] refVoice = null;
+        if (request.RefVoiceChatImageIndex > 0)
+        {
+            int refIdx = request.RefVoiceChatImageIndex;
+            string refSource = host.GetChatImageAudioFilePath(refIdx) ?? GetStitchSourcePath(refIdx);
+            if (string.IsNullOrEmpty(refSource) || !System.IO.File.Exists(refSource))
+            {
+                FinishVideoImport();
+                host.AddSystemInjectionAndBubble($"{skill}: ref_voice #{refIdx} has no sound file to clone from (use an Audio #N or a Movie with audio).");
+                host.RequestContinueTurn();
+                onDone?.Invoke(false);
+                yield break;
+            }
+            string wavPath = FfmpegTool.GetVoiceSamplePath();
+            FfmpegTool.ClipResult cut = null;
+            yield return FfmpegTool.ExtractAudioSection(refSource, request.RefVoiceStartSeconds, request.RefVoiceDurationSeconds, wavPath, r => cut = r);
+            if (epoch != _videoImportEpoch) { onDone?.Invoke(false); yield break; }
+            if (cut == null || !cut.Success)
+            {
+                FinishVideoImport();
+                host.AddSystemInjectionAndBubble($"{skill}: could not extract the voice sample from #{refIdx}: {(cut != null ? cut.Error : "unknown error")}");
+                host.RequestContinueTurn();
+                onDone?.Invoke(false);
+                yield break;
+            }
+            try { refVoice = System.IO.File.ReadAllBytes(wavPath); }
+            catch (Exception ex) { Debug.LogWarning("generate_speech: could not read voice sample: " + ex.Message); }
+            try { System.IO.File.Delete(wavPath); } catch { }
+            if (refVoice == null || refVoice.Length == 0)
+            {
+                FinishVideoImport();
+                host.AddSystemInjectionAndBubble($"{skill}: the voice sample from #{refIdx} came out empty.");
+                host.RequestContinueTurn();
+                onDone?.Invoke(false);
+                yield break;
+            }
+        }
+
+        var handle = new AudioGenClient.Handle();
+        _audioGenHandles.Add(handle);
+        AudioGenClient.TryGetBaseUrl(out string baseUrl, out _, out _);
+        AIChatLog.Note(skill, "POST " + AudioGenClient.GetEndpointUrl(baseUrl, request.Kind) + " " + DescribeAudioFields(request));
+        AudioGenResult result = null;
+        yield return AudioGenClient.Generate(request, refVoice, handle, r => result = r);
+        _audioGenHandles.Remove(handle);
+
+        if (handle.Cancelled || epoch != _videoImportEpoch)
+        {
+            if (epoch == _videoImportEpoch) FinishVideoImport();
+            onDone?.Invoke(false);
+            yield break;
+        }
+        if (result == null || !result.Success)
+        {
+            FinishVideoImport();
+            string err = result != null ? result.Error : "unknown error";
+            AIChatLog.Note(skill, "failed: " + err);
+            host.AddSystemInjectionAndBubble($"{skill} failed: {err}");
+            host.RequestContinueTurn();
+            onDone?.Invoke(false);
+            yield break;
+        }
+
+        FfmpegTool.AudioInfo info = null;
+        string probeError = null;
+        yield return FfmpegTool.ProbeAudio(result.OutputPath, (i, e) => { info = i; probeError = e; });
+        if (epoch != _videoImportEpoch) { onDone?.Invoke(false); yield break; }
+        if (info == null || !info.HasAudio)
+        {
+            FinishVideoImport();
+            host.AddSystemInjectionAndBubble($"{skill}: the gateway's file could not be read as audio: {probeError ?? "no audio stream"} ({result.OutputPath})");
+            host.RequestContinueTurn();
+            onDone?.Invoke(false);
+            yield break;
+        }
+
+        string previewPath = FfmpegTool.GetAudioPreviewOutputPath(result.OutputPath);
+        FfmpegTool.ClipResult preview = null;
+        yield return FfmpegTool.CreateAudioWaveformPreview(result.OutputPath, previewPath, AudioColorForKind(request.Kind), r => preview = r);
+        if (epoch != _videoImportEpoch) { onDone?.Invoke(false); yield break; }
+        if (preview == null || !preview.Success)
+        {
+            FinishVideoImport();
+            host.AddSystemInjectionAndBubble($"{skill}: could not render the waveform preview: {(preview != null ? preview.Error : "unknown error")}");
+            onDone?.Invoke(false);
+            yield break;
+        }
+
+        string kindLabel = request.Kind == AudioGenKind.Music ? "generated music"
+            : (request.Kind == AudioGenKind.Sfx ? "generated sound effect" : "generated speech");
+        BuildAudioCaptions(request, info.DurationSeconds, out string shortCaption, out string longCaption);
+        PicMain pic = AppendAudioBubble(preview.OutputPath, result.OutputPath, action, kindLabel, info.DurationSeconds, isUserImport: false,
+            shortCaption, longCaption, updateChainTarget: turnEpoch == _chatTurnEpoch);
+        if (pic == null)
+        {
+            FinishVideoImport();
+            host.AddSystemInjectionAndBubble($"{skill}: could not load the audio preview into a chat bubble.");
+            onDone?.Invoke(false);
+            yield break;
+        }
+
+        int idx = _chatImagePics.Count;
+        string anchorText = action != null && !string.IsNullOrEmpty(action.AnchorName) ? $" (anchor \"{action.AnchorName}\")" : "";
+        string summary = $"{skill}: {AudioGenClient.FormatSeconds(info.DurationSeconds)} of {request.KindNoun} generated in {result.ElapsedSeconds:0}s as Audio #{idx}{anchorText}. File: {result.OutputPath}";
+        AddSystemMessage(summary);
+        AIChatLog.Note(skill, summary);
+        if (action != null && action.Resume)
+            host.RequestContinueTurn();
+        FinishVideoImport();
+        onDone?.Invoke(true);
+    }
+
+    bool IChatHost.StartSetVideoAudioAction(SkillAction action, int videoChatImageIndex, int audioChatImageIndex, FfmpegTool.MuxAudioRequest request, Action<bool> onDone)
+    {
+        if (request == null || videoChatImageIndex <= 0 || audioChatImageIndex <= 0) return false;
+        StartCoroutine(SetVideoAudioActionCoroutine(action, videoChatImageIndex, audioChatImageIndex, request, _videoImportEpoch, _chatTurnEpoch, onDone));
+        return true;
+    }
+
+    private IEnumerator SetVideoAudioActionCoroutine(SkillAction action, int videoIdx, int audioIdx, FfmpegTool.MuxAudioRequest request, int importEpoch, int turnEpoch, Action<bool> onDone)
+    {
+        var host = (IChatHost)this;
+
+        // ---- Phase 1: wait for the sources (a same-reply "make a video AND a song, then
+        // combine" lands here while the H3 render is still minutes away). Same rules as
+        // stitch_video: only Stop/Clear cancel the wait.
+        var sources = new List<int> { videoIdx, audioIdx };
+        var pending = new List<int>();
+        string failure = CollectStitchSourceState(sources, pending, out _, out bool readyNow);
+        if (failure == null && !readyNow && pending.Count > 0)
+        {
+            AddSystemMessage($"set_video_audio: waiting for {DescribeMovieList(pending)} to finish rendering, then adding the audio.");
+            AIChatLog.Note("set_video_audio", "waiting for " + DescribeMovieList(pending));
+        }
+
+        BeginStitchWait();
+        float waitStart = Time.realtimeSinceStartup;
+        float notBusySince = -1f;
+        while (failure == null)
+        {
+            if (importEpoch != _videoImportEpoch)
+            {
+                EndStitchWait();
+                onDone?.Invoke(false);
+                yield break;
+            }
+
+            pending.Clear();
+            failure = CollectStitchSourceState(sources, pending, out bool anyBusy, out bool allReady);
+            if (failure != null || allReady)
+                break;
+
+            float elapsed = Time.realtimeSinceStartup - waitStart;
+            if (elapsed >= StitchWaitAbsoluteCapSeconds)
+            {
+                failure = $"gave up waiting for {DescribeMovieList(pending)} after {Mathf.RoundToInt(elapsed / 60f)} minutes.";
+                break;
+            }
+            if (anyBusy)
+            {
+                notBusySince = -1f;
+            }
+            else
+            {
+                if (notBusySince < 0f)
+                    notBusySince = Time.realtimeSinceStartup;
+                else if (Time.realtimeSinceStartup - notBusySince >= StitchNoClipGraceSeconds)
+                {
+                    failure = $"{DescribeMovieList(pending)} finished without producing a video file (the render probably failed).";
+                    break;
+                }
+            }
+
+            UpdateStitchWaitStatus(pending.Count, "set_video_audio");
+            yield return new WaitForSeconds(StitchWaitPollSeconds);
+        }
+        EndStitchWait();
+
+        if (failure != null)
+        {
+            AIChatLog.Note("set_video_audio", "failed: " + failure);
+            host.AddSystemInjectionAndBubble("set_video_audio could not run: " + failure);
+            host.RequestContinueTurn();
+            onDone?.Invoke(false);
+            yield break;
+        }
+
+        // ---- Phase 2: probe + mux under the import gate.
+        BeginVideoImport("Mixing audio");
+        string videoPath = GetStitchSourcePath(videoIdx);
+        string audioPath = host.GetChatImageAudioFilePath(audioIdx);
+        if (string.IsNullOrEmpty(audioPath))
+            audioPath = GetStitchSourcePath(audioIdx);   // a Movie's own soundtrack
+        if (string.IsNullOrEmpty(videoPath) || string.IsNullOrEmpty(audioPath))
+        {
+            FinishVideoImport();
+            host.AddSystemInjectionAndBubble($"set_video_audio: could not find the files behind Movie #{videoIdx} / #{audioIdx}.");
+            host.RequestContinueTurn();
+            onDone?.Invoke(false);
+            yield break;
+        }
+
+        FfmpegTool.VideoInfo videoInfo = null;
+        string videoError = null;
+        yield return FfmpegTool.ProbeVideo(videoPath, (i, e) => { videoInfo = i; videoError = e; });
+        if (importEpoch != _videoImportEpoch) { onDone?.Invoke(false); yield break; }
+        if (videoInfo == null || !videoInfo.HasVideo)
+        {
+            FinishVideoImport();
+            host.AddSystemInjectionAndBubble($"set_video_audio could not inspect Movie #{videoIdx}: {videoError ?? "no video stream"}");
+            host.RequestContinueTurn();
+            onDone?.Invoke(false);
+            yield break;
+        }
+
+        FfmpegTool.AudioInfo audioInfo = null;
+        string audioError = null;
+        yield return FfmpegTool.ProbeAudio(audioPath, (i, e) => { audioInfo = i; audioError = e; });
+        if (importEpoch != _videoImportEpoch) { onDone?.Invoke(false); yield break; }
+        if (audioInfo == null || !audioInfo.HasAudio)
+        {
+            FinishVideoImport();
+            host.AddSystemInjectionAndBubble($"set_video_audio: #{audioIdx} has no audio stream ({audioError ?? "silent"}).");
+            host.RequestContinueTurn();
+            onDone?.Invoke(false);
+            yield break;
+        }
+
+        request.VideoPath = videoPath;
+        request.AudioPath = audioPath;
+        request.VideoDurationSeconds = videoInfo.DurationSeconds;
+        request.VideoHasAudio = videoInfo.HasAudio;
+        request.AudioDurationSeconds = audioInfo.DurationSeconds;
+
+        string outputPath = FfmpegTool.GetClipOutputPath(videoPath);
+        FfmpegTool.ClipResult result = null;
+        yield return FfmpegTool.MuxAudioIntoVideo(request, outputPath, r => result = r);
+        if (importEpoch != _videoImportEpoch) { onDone?.Invoke(false); yield break; }
+        if (result == null || !result.Success)
+        {
+            FinishVideoImport();
+            string err = result != null ? result.Error : "unknown error";
+            AIChatLog.Note("set_video_audio", "ffmpeg failed: " + err);
+            host.AddSystemInjectionAndBubble($"set_video_audio failed on Movie #{videoIdx}: {err}");
+            host.RequestContinueTurn();
+            onDone?.Invoke(false);
+            yield break;
+        }
+
+        FfmpegTool.VideoInfo outputInfo = null;
+        yield return FfmpegTool.ProbeVideo(result.OutputPath, (i, e) => { outputInfo = i; });
+        if (importEpoch != _videoImportEpoch) { onDone?.Invoke(false); yield break; }
+
+        string dims = BuildVideoDimensionsText(outputInfo ?? videoInfo);
+        PicMain pic = AppendVideoClipBubble(result.OutputPath, action, isUserImport: false, dimensions: dims,
+            autoCaption: false, updateChainTarget: turnEpoch == _chatTurnEpoch);
+        if (pic == null)
+        {
+            FinishVideoImport();
+            host.AddSystemInjectionAndBubble("set_video_audio could not load the result into a Movie bubble.");
+            onDone?.Invoke(false);
+            yield break;
+        }
+
+        // The picture is the source clip's picture: reuse its description instead of a
+        // vision re-caption, and note the new soundtrack.
+        int newIdx = _chatImagePics.Count;
+        var srcPic = GetChatImagePic(videoIdx);
+        var audioPic = GetChatImagePic(audioIdx);
+        string srcLong = srcPic != null ? (srcPic.Caption ?? "").Trim() : "";
+        string srcShort = srcPic != null ? (srcPic.CaptionShort ?? "").Trim() : "";
+        string audioDesc = audioPic != null && !string.IsNullOrWhiteSpace(audioPic.CaptionShort) ? audioPic.CaptionShort.Trim() : $"#{audioIdx}";
+        bool mixed = request.EffectiveMix;
+        string modeText = mixed
+            ? $"mixed over the original soundtrack (original at {request.OriginalVolume:0.##}x, new audio at {request.AudioVolume:0.##}x)"
+            : (request.Mode == FfmpegTool.AudioMuxMode.Mix ? "as its only soundtrack (the source clip was silent)" : "as its only soundtrack (original audio removed)");
+        string extras = (request.StartSeconds > 0.001f ? $", starting at {request.StartSeconds:0.##}s" : "")
+            + (request.Loop ? ", looped" : "")
+            + (request.EffectiveFadeOutSeconds > 0.001f ? $", {request.EffectiveFadeOutSeconds:0.#}s fade-out" : "");
+        SetSynthesizedCaption(pic,
+            (string.IsNullOrEmpty(srcShort) ? $"Movie #{videoIdx}" : srcShort) + $" + audio #{audioIdx}",
+            (string.IsNullOrEmpty(srcLong) ? $"Same picture as Movie #{videoIdx}." : srcLong) + $" Soundtrack: Audio #{audioIdx} ({audioDesc}) {modeText}{extras}.");
+        var newRecord = FindChatImageRecord(pic);
+        if (newRecord != null)
+        {
+            newRecord.alwaysIncludeCaption = true;
+            newRecord.durationSeconds = outputInfo != null ? outputInfo.DurationSeconds : videoInfo.DurationSeconds;
+        }
+
+        string summary = $"set_video_audio: Movie #{videoIdx} + Audio #{audioIdx} -> Movie #{newIdx} " +
+                         $"({AudioGenClient.FormatSeconds(newRecord != null ? newRecord.durationSeconds : videoInfo.DurationSeconds)}, {(mixed ? "mixed" : "replaced")}{extras}).";
+        AddSystemMessage(summary);
+        AIChatLog.Note("set_video_audio", summary + "\n" + (result.Command ?? ""));
+        if (action != null && action.Resume)
+            host.RequestContinueTurn();
+        FinishVideoImport();
+        onDone?.Invoke(true);
     }
 
     // =====================================================================
@@ -10304,10 +10974,15 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         TryScheduleInspectAutoResume();
     }
 
-    private void BeginVideoImport()
+    private void BeginVideoImport(string statusLabel = null)
     {
         if (_videoImportCount <= 0)
+        {
             _videoImportStartTime = Time.unscaledTime;
+            _videoImportStatusLabel = "Importing video";
+        }
+        if (!string.IsNullOrEmpty(statusLabel))
+            _videoImportStatusLabel = statusLabel;
         _videoImportCount++;
         RecomputeSendInteractable();
         UpdateVideoImportStatus(force: true);
@@ -10320,6 +10995,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         {
             _videoImportStartTime = 0f;
             _videoImportStatusNextRefresh = 0f;
+            _videoImportStatusLabel = "Importing video";
         }
         RecomputeSendInteractable();
         UpdateVideoImportStatus(force: true);
@@ -10333,6 +11009,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         string dims = $"{info.Width}x{info.Height}";
         if (info.Fps > 0)
             dims += $" @{info.Fps:0.##}fps";
+        // The clip length lets the model size a generate_music duration to the video it
+        // will be mixed onto (set_video_audio) without a probe round-trip.
+        if (info.DurationSeconds > 0)
+            dims += $", {info.DurationSeconds.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)}s";
         return dims;
     }
 
@@ -11421,7 +12101,16 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     /// </summary>
     private static ISet<string> HiddenSkillIdsForPrompt()
     {
-        return GetWebEnabled() ? null : BuiltInSkillIds.WebSkills;
+        // The audio generation skills are hidden until a gateway URL exists (Settings >
+        // Audio); their skill files may not even exist on machines without one. Config
+        // changes are rare, so the prefix stays stable in practice.
+        bool hideWeb = !GetWebEnabled();
+        bool hideAudio = !AudioGenClient.IsConfigured();
+        if (!hideWeb && !hideAudio) return null;
+        var hidden = new HashSet<string>();
+        if (hideWeb) hidden.UnionWith(BuiltInSkillIds.WebSkills);
+        if (hideAudio) hidden.UnionWith(BuiltInSkillIds.AudioGenSkills);
+        return hidden;
     }
 
     /// <summary>Automation: read or set the header Web checkbox (null = report only).</summary>
@@ -11965,7 +12654,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     // Footer hint while a stitch waits for its clips. Lowest priority: every other
     // status (streaming, captions, imports, web fetches) overwrites it.
-    private void UpdateStitchWaitStatus(int pendingClips)
+    private void UpdateStitchWaitStatus(int pendingClips, string label = "Stitch")
     {
         if (_statusText == null || _isStreaming || _waitingForForcedMainLLM || _compactSummaryInFlight
             || CountPendingInspectImageJobs() > 0 || _webFetchCount > 0 || _videoImportCount > 0
@@ -11973,7 +12662,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             return;
         _stitchSpinnerStep = (_stitchSpinnerStep + 1) % StreamSpinnerFrames.Length;
         float elapsed = Time.unscaledTime - _stitchWaitStartTime;
-        _lastStitchStatusText = $"{StreamSpinnerFrames[_stitchSpinnerStep]} Stitch: waiting for {pendingClips} clip{(pendingClips == 1 ? "" : "s")} to render   {elapsed:F0}s";
+        _lastStitchStatusText = $"{StreamSpinnerFrames[_stitchSpinnerStep]} {label}: waiting for {pendingClips} clip{(pendingClips == 1 ? "" : "s")} to render   {elapsed:F0}s";
         _statusText.text = _lastStitchStatusText;
     }
 
@@ -12761,13 +13450,38 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         public void OnPointerClick(PointerEventData eventData)
         {
-            if (eventData == null || eventData.button != PointerEventData.InputButton.Right)
+            if (eventData == null) return;
+            if (eventData.button == PointerEventData.InputButton.Left)
+            {
+                // A left click on a "[skill: X]" link toggles the tool-call details panel.
+                if (_isEntryInput || _panel == null || _field == null || _field.textComponent == null)
+                    return;
+                int linkIndex = TMP_TextUtilities.FindIntersectingLink(_field.textComponent, eventData.position, eventData.pressEventCamera);
+                if (linkIndex < 0) return;
+                var linkInfo = _field.textComponent.textInfo.linkInfo;
+                if (linkInfo == null || linkIndex >= linkInfo.Length) return;
+                if (linkInfo[linkIndex].GetLinkID() != "skill") return;
+                _panel.ToggleActionDetails(_field, _interaction, linkIndex);
+                return;
+            }
+            if (eventData.button != PointerEventData.InputButton.Right)
                 return;
             if (_isEntryInput)
                 _panel?.OnEntryInputRightClicked(_field, eventData.position, eventData.pressEventCamera);
             else
                 _panel?.OnBubbleRightClicked(_field, _interaction, eventData.position, eventData.pressEventCamera);
         }
+    }
+
+    /// <summary>
+    /// Per-bubble state for the click-to-expand tool-call details: which "[skill: X]"
+    /// markers (by link ordinal) are open, and the read-only TMP text under the bubble
+    /// that lists their attributes. Lives on the bubble root next to its layout group.
+    /// </summary>
+    private class ActionDetailsPanel : MonoBehaviour
+    {
+        public readonly HashSet<int> Expanded = new HashSet<int>();
+        public TextMeshProUGUI Text;
     }
 }
 

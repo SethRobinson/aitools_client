@@ -14,7 +14,7 @@ namespace AITools.AIChat.Video
     /// Windows-only FFmpeg/ffprobe wrapper for AI Chat video import. FFmpeg stays an
     /// external helper under utils/ffmpeg/bin so Unity never links against it.
     /// </summary>
-    public static class FfmpegTool
+    public static partial class FfmpegTool
     {
         public const float DefaultClipDurationSeconds = 5f;
         public const int DefaultFps = 16;

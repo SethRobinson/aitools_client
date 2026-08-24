@@ -211,6 +211,12 @@ public class OpenAITextCompletionManager : MonoBehaviour
             
             // Strip italic tags: <i>, </i>
             line = Regex.Replace(line, @"</?i>", "", RegexOptions.IgnoreCase);
+
+            // Strip display-only link / underline tags (AI Chat wraps "[skill: X]" markers
+            // in <link><u> so they are clickable; they must never reach the LLM history).
+            line = Regex.Replace(line, @"<link=[^>]*>", "", RegexOptions.IgnoreCase);
+            line = Regex.Replace(line, @"</link>", "", RegexOptions.IgnoreCase);
+            line = Regex.Replace(line, @"</?u>", "", RegexOptions.IgnoreCase);
         }
         catch
         {

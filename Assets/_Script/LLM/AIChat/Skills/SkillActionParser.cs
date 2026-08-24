@@ -505,13 +505,36 @@ namespace AITools.AIChat.Skills
         private static string MakeSentinel(string attrBlob, int n)
         {
             string skill = ParseAttributes(attrBlob)?.SkillId ?? "";
-            // Skills with VISUAL side-effects (spawn a Pic bubble or stack onto one)
-            // already have a visible result in the Media panel; don't also spam the
-            // text transcript with "[skill: X]" markers. Includes media generators
-            // AND the composition primitives, which all either create new bubbles
-            // (new_canvas) or modify an existing/chained Pic (draw_text, add_border,
-            // paste_image, draw_shape, crop_resize). Users want to see the resulting
-            // poster, not 4 [skill: X] markers per poster.
+            return ShowsTranscriptMarker(skill) ? $"\n[skill: {skill}]\n" : RemovedMediaActionMarker;
+        }
+
+        /// <summary>
+        /// Parse every complete action tag out of a stored reply (no side effects). Used
+        /// by the chat's "[skill: X]" click-to-expand, which shows the attributes that
+        /// were sent to the tool. Same regexes and order as the streaming path.
+        /// </summary>
+        public static List<SkillAction> ExtractActions(string rawText)
+        {
+            var list = new List<SkillAction>();
+            if (string.IsNullOrEmpty(rawText)) return list;
+            var p = new SkillActionParser();
+            p.OnActionParsed += a => { if (a != null) list.Add(a); };
+            p.Feed(rawText);
+            p.Flush();
+            return list;
+        }
+
+        /// <summary>
+        /// True when an executed action of this skill leaves a "[skill: X]" marker in the
+        /// transcript. Skills with VISUAL side-effects (spawn a Pic bubble or stack onto
+        /// one) already have a visible result in the Media panel; don't also spam the
+        /// text transcript with markers. Includes media generators AND the composition
+        /// primitives, which all either create new bubbles (new_canvas) or modify an
+        /// existing/chained Pic (draw_text, add_border, paste_image, draw_shape,
+        /// crop_resize). Users want to see the resulting poster, not 4 markers per poster.
+        /// </summary>
+        public static bool ShowsTranscriptMarker(string skill)
+        {
             switch ((skill ?? "").ToLowerInvariant())
             {
                 case BuiltInSkillIds.GenerateImage:
@@ -537,9 +560,9 @@ namespace AITools.AIChat.Skills
                 case BuiltInSkillIds.WebImage:
                 case BuiltInSkillIds.WebVideo:
                 case BuiltInSkillIds.WebPage:
-                    return RemovedMediaActionMarker;
+                    return false;
                 default:
-                    return $"\n[skill: {skill}]\n";
+                    return true;
             }
         }
 

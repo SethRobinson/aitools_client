@@ -156,6 +156,59 @@ public class AutomationDriver : MonoBehaviour
         return true;
     }
 
+    /// <summary>
+    /// Synthesize a UI pointer click at top-left game-view pixel (x, y) - the same
+    /// coordinate frame /screenshot uses, so a point measured on a screenshot can be
+    /// clicked directly. Raycasts through the EventSystem, then dispatches pointerDown /
+    /// pointerUp / pointerClick to the hit hierarchy exactly like a real mouse click, so
+    /// TMP link clicks, buttons, and the chat bubble handlers all fire.
+    /// </summary>
+    public bool ClickAt(int x, int y, bool rightButton, out string error, out string hitPath)
+    {
+        error = "";
+        hitPath = "";
+        var eventSystem = UnityEngine.EventSystems.EventSystem.current;
+        if (eventSystem == null)
+        {
+            error = "no EventSystem";
+            return false;
+        }
+
+        var pos = new Vector2(x, Screen.height - y);   // top-left -> Unity's bottom-left origin
+        var ped = new UnityEngine.EventSystems.PointerEventData(eventSystem)
+        {
+            position = pos,
+            pressPosition = pos,
+            button = rightButton ? UnityEngine.EventSystems.PointerEventData.InputButton.Right : UnityEngine.EventSystems.PointerEventData.InputButton.Left,
+            clickCount = 1,
+            clickTime = Time.unscaledTime,
+            eligibleForClick = true
+        };
+        var results = new System.Collections.Generic.List<UnityEngine.EventSystems.RaycastResult>();
+        eventSystem.RaycastAll(ped, results);
+        if (results.Count == 0)
+        {
+            error = $"nothing raycastable under ({x},{y})";
+            return false;
+        }
+
+        var hit = results[0];
+        ped.pointerCurrentRaycast = hit;
+        ped.pointerPressRaycast = hit;
+        hitPath = GetTransformPath(hit.gameObject.transform);
+
+        var pressed = UnityEngine.EventSystems.ExecuteEvents.ExecuteHierarchy(hit.gameObject, ped, UnityEngine.EventSystems.ExecuteEvents.pointerDownHandler);
+        ped.pointerPress = pressed;
+        ped.rawPointerPress = hit.gameObject;
+        if (pressed != null)
+            UnityEngine.EventSystems.ExecuteEvents.Execute(pressed, ped, UnityEngine.EventSystems.ExecuteEvents.pointerUpHandler);
+        var clickTarget = UnityEngine.EventSystems.ExecuteEvents.GetEventHandler<UnityEngine.EventSystems.IPointerClickHandler>(hit.gameObject);
+        if (clickTarget != null)
+            UnityEngine.EventSystems.ExecuteEvents.Execute(clickTarget, ped, UnityEngine.EventSystems.ExecuteEvents.pointerClickHandler);
+        ped.pointerPress = null;
+        return true;
+    }
+
     static string GetTransformPath(Transform t)
     {
         string path = t.name;

@@ -159,6 +159,15 @@ public static class AutomationBridge
         return _driver.Save(index, path, out error);
     }
 
+    /// <summary>Synthesize a pointer click on the UI under top-left game-view pixel (x, y); see AutomationDriver.ClickAt.</summary>
+    public static bool Click(int x, int y, bool rightButton, out string error, out string hitPath)
+    {
+        error = "no driver";
+        hitPath = "";
+        if (_driver == null) return false;
+        return _driver.ClickAt(x, y, rightButton, out error, out hitPath);
+    }
+
     /// <summary>Capture the game view (full screen if w/h non-positive) to a PNG.</summary>
     public static bool Screenshot(string path, int x, int y, int w, int h)
     {

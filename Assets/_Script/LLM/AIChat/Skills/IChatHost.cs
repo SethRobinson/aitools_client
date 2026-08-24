@@ -169,6 +169,27 @@ namespace AITools.AIChat.Skills
         bool IsWebAccessEnabled();
 
         /// <summary>
+        /// Generate music / a sound effect / speech through the audio gateway and append
+        /// the result as an "Audio #N" bubble. Deferred like clip_video: the pump parks
+        /// until <paramref name="onDone"/> fires, so a same-reply set_video_audio can use
+        /// the new bubble's anchor.
+        /// </summary>
+        bool StartGenerateAudioAction(SkillAction action, AITools.AIChat.Audio.AudioGenRequest request, Action<bool> onDone);
+
+        /// <summary>
+        /// Mix or replace a Movie bubble's soundtrack with an Audio bubble (or another
+        /// Movie's track) via local FFmpeg, producing a new Movie bubble. Waits for a
+        /// still-rendering source Movie like stitch_video does.
+        /// </summary>
+        bool StartSetVideoAudioAction(SkillAction action, int videoChatImageIndex, int audioChatImageIndex, AITools.AIChat.Video.FfmpegTool.MuxAudioRequest request, Action<bool> onDone);
+
+        /// <summary>True for "Audio #N" bubbles (a sound file shown through a waveform preview movie).</summary>
+        bool IsChatImageAudio(int oneBasedIndex);
+
+        /// <summary>The original sound file behind an Audio bubble (null for images / real movies).</summary>
+        string GetChatImageAudioFilePath(int oneBasedIndex);
+
+        /// <summary>
         /// Request one synthetic continue turn once every pending web fetch AND its caption
         /// sidecar has finished (web_* resume="true"), so the continued turn's CHAT IMAGES
         /// block already describes what was downloaded. Same scoped slot as inspect_image

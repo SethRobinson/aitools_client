@@ -441,6 +441,31 @@ public static class AutomationController
                     break;
                 }
 
+                case "/click":
+                {
+                    // Body: x=<px>, y=<px> (top-left game-view pixels, the same frame as
+                    // /screenshot), optional button=<left|right>. Raycasts the UI under the
+                    // point and dispatches pointer down / up / click to what it hits, so
+                    // click-driven UI (links in chat bubbles, buttons) can be exercised.
+                    var kv = ParseKeyValues(body);
+                    int cx = ParseInt(kv, "x", -1), cy = ParseInt(kv, "y", -1);
+                    bool right = kv.TryGetValue("button", out var btn) && string.Equals(btn.Trim(), "right", StringComparison.OrdinalIgnoreCase);
+                    if (cx < 0 || cy < 0)
+                    {
+                        WriteJson(stream, 200, "{\"ok\":false,\"error\":\"x and y are required\"}");
+                        break;
+                    }
+                    string result = RunOnMainAndWait(() =>
+                    {
+                        bool ok = AutomationBridge.Click(cx, cy, right, out string err, out string hitPath);
+                        return ok
+                            ? $"{{\"ok\":true,\"hit\":{JsonStr(hitPath)}}}"
+                            : $"{{\"ok\":false,\"error\":{JsonStr(err)}}}";
+                    }, "{\"ok\":false,\"error\":\"timed out\"}");
+                    WriteJson(stream, 200, result);
+                    break;
+                }
+
                 case "/screenshot":
                 {
                     // Body: path=<file>; optional x,y,w,h (top-left pixel region; omit for full).

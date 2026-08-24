@@ -170,6 +170,10 @@ public class Config : MonoBehaviour
     string _sttEndpoint;
     string _sttAPIKey;
     string _sttModel;
+    // AI Chat audio generation gateway (generate_music / generate_sfx / generate_speech):
+    // base URL of a server exposing POST /audio and POST /tts. See docs/audio_generation.md.
+    string _audioGenEndpoint;
+    string _audioGenAPIKey;
     int _jpgSaveQuality;
   
     string _defaultAudioPrompt;
@@ -252,6 +256,20 @@ public class Config : MonoBehaviour
     public string GetSttEndpoint() { return _sttEndpoint ?? ""; }
     public string GetSttAPIKey() { return _sttAPIKey ?? ""; }
     public string GetSttModel() { return string.IsNullOrWhiteSpace(_sttModel) ? "whisper-1" : _sttModel; }
+    public string GetAudioGenEndpoint() { return _audioGenEndpoint ?? ""; }
+    public string GetAudioGenAPIKey() { return _audioGenAPIKey ?? ""; }
+
+    public void SetAudioGenerationSettings(string endpoint, string apiKey, bool saveToFile = true)
+    {
+        _audioGenEndpoint = CleanConfigField(endpoint);
+        _audioGenAPIKey = CleanConfigField(apiKey);
+
+        if (saveToFile)
+        {
+            m_configText = BuildModernConfigText(GetModernComfyServerConfigs());
+            SaveConfigToFile();
+        }
+    }
 
     public static string NormalizeSafeSearch(string value)
     {
@@ -308,6 +326,8 @@ public class Config : MonoBehaviour
      _sttEndpoint = "";
      _sttAPIKey = "";
      _sttModel = "whisper-1";
+     _audioGenEndpoint = "";
+     _audioGenAPIKey = "";
      _jpgSaveQuality = 80;
      _texgen_webui_APIKey = "none";
      _genericLLMMode = "chat-instruct";
@@ -551,6 +571,12 @@ public class Config : MonoBehaviour
             sb.Append("set_stt_api_key|").Append(CleanConfigField(_sttAPIKey)).AppendLine("|");
         if (!string.IsNullOrEmpty(_sttModel) && _sttModel != "whisper-1")
             sb.Append("set_stt_model|").Append(CleanConfigField(_sttModel)).AppendLine("|");
+
+        // AI Chat audio generation gateway (generate_music / generate_sfx / generate_speech).
+        if (!string.IsNullOrEmpty(_audioGenEndpoint))
+            sb.Append("set_audio_gen_endpoint|").Append(CleanConfigField(_audioGenEndpoint)).AppendLine("|");
+        if (!string.IsNullOrEmpty(_audioGenAPIKey))
+            sb.Append("set_audio_gen_api_key|").Append(CleanConfigField(_audioGenAPIKey)).AppendLine("|");
 
         return sb.ToString();
     }
@@ -1589,6 +1615,14 @@ set_default_audio_negative_prompt|music|
                 else if (words[0] == "set_stt_model" || words[0] == "set_speech_to_text_model")
                 {
                     _sttModel = words.Length > 1 ? words[1].Trim() : "whisper-1";
+                }
+                else if (words[0] == "set_audio_gen_endpoint" || words[0] == "set_audio_generation_endpoint")
+                {
+                    _audioGenEndpoint = words.Length > 1 ? words[1].Trim() : "";
+                }
+                else if (words[0] == "set_audio_gen_api_key" || words[0] == "set_audio_generation_api_key")
+                {
+                    _audioGenAPIKey = words.Length > 1 ? words[1].Trim() : "";
                 }
                 else
                 {

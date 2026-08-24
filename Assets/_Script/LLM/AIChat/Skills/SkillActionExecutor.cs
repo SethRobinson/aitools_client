@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using SimpleJSON;
 using TMPro;
+using AITools.AIChat.Audio;
 using AITools.AIChat.Video;
 using AITools.AIChat.Web;
 using UnityEngine;
@@ -367,6 +368,22 @@ namespace AITools.AIChat.Skills
 
                 case BuiltInSkillIds.WebPage:
                     ExecuteWebPage(action);
+                    break;
+
+                case BuiltInSkillIds.GenerateMusic:
+                    ExecuteGenerateAudio(action, AudioGenKind.Music);
+                    break;
+
+                case BuiltInSkillIds.GenerateSfx:
+                    ExecuteGenerateAudio(action, AudioGenKind.Sfx);
+                    break;
+
+                case BuiltInSkillIds.GenerateSpeech:
+                    ExecuteGenerateAudio(action, AudioGenKind.Speech);
+                    break;
+
+                case BuiltInSkillIds.SetVideoAudio:
+                    ExecuteSetVideoAudio(action);
                     break;
 
                 case BuiltInSkillIds.ReadSkill:
@@ -1068,6 +1085,298 @@ namespace AITools.AIChat.Skills
             if (!started)
             {
                 _host?.AddSystemInjectionAndBubble("web_video could not start.");
+                return;
+            }
+            _lastActionDeferred = true;
+        }
+
+        // ---------- Audio generation (music / sfx / speech via the audio gateway) ----------
+
+        // The music model refuses anything under 10 s (HTTP 422); the mix step cuts the
+        // track to the video anyway, so a "7 s song for a 5 s clip" is silently raised.
+        private const float MusicMinSeconds = 10f;
+        private const float MusicMaxSeconds = 360f;
+        private const float SfxMaxSeconds = 11f;
+
+        /// <summary>
+        /// generate_music / generate_sfx / generate_speech: validate the attributes the model
+        /// wrote, translate them into gateway form fields, and hand the request to the host,
+        /// which does the HTTP call, the waveform preview, and the "Audio #N" bubble. The
+        /// action is deferred (pump parked) so a same-reply set_video_audio audio="anchor"
+        /// finds the new bubble.
+        /// </summary>
+        private void ExecuteGenerateAudio(SkillAction action, AudioGenKind kind)
+        {
+            var req = new AudioGenRequest { Kind = kind };
+            string skill = req.SkillName;
+
+            if (!AudioGenClient.TryGetBaseUrl(out _, out _, out string why))
+            {
+                _host?.AddSystemInjectionAndBubble(
+                    $"{skill} is unavailable: {why}. Tell the user to enter the gateway URL under Settings > Audio > Audio generation, then stop.");
+                return;
+            }
+
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            switch (kind)
+            {
+                case AudioGenKind.Music:
+                {
+                    string prompt = FirstArg(action, "prompt", "caption", "description", "text");
+                    if (string.IsNullOrWhiteSpace(prompt))
+                    {
+                        _host?.AddSystemInjectionAndBubble("generate_music needs prompt=\"...\" (a structured caption describing the track).");
+                        return;
+                    }
+                    float duration = ParseFloat(FirstArg(action, "duration", "seconds", "length", "duration_seconds"), 30f);
+                    if (duration > MusicMaxSeconds)
+                    {
+                        _host?.AddSystemInjectionSilent($"(generate_music: duration {duration:0} s exceeds the {MusicMaxSeconds:0} s maximum; clamped.)");
+                        duration = MusicMaxSeconds;
+                    }
+                    if (duration < MusicMinSeconds)
+                    {
+                        _host?.AddSystemInjectionSilent($"(generate_music: the music model needs duration >= {MusicMinSeconds:0} s; {duration:0.#} s was raised to {MusicMinSeconds:0}. set_video_audio cuts it to the clip.)");
+                        duration = MusicMinSeconds;
+                    }
+                    duration = Mathf.Clamp(duration, MusicMinSeconds, MusicMaxSeconds);
+                    req.Fields["prompt"] = prompt;
+                    req.Fields["duration"] = duration.ToString("0.##", ci);
+                    // Short jingles would otherwise auto-route to the sound-effect model.
+                    req.Fields["mode"] = "music";
+                    req.Fields["format"] = "wav";
+
+                    string lyrics = FirstArg(action, "lyrics", "lyric", "words", "verse");
+                    bool lyricsHaveWords = false;
+                    if (!string.IsNullOrWhiteSpace(lyrics))
+                    {
+                        lyrics = lyrics.Replace("\\n", "\n").Trim();
+                        req.Fields["lyrics"] = lyrics;
+                        foreach (string line in lyrics.Split('\n'))
+                        {
+                            string t = line.Trim();
+                            if (t.Length > 0 && !t.StartsWith("[")) { lyricsHaveWords = true; break; }
+                        }
+                    }
+                    string vocalsArg = FirstArg(action, "vocals", "vocal", "singing", "sing", "sung");
+                    bool vocals = ParseBool(vocalsArg, lyricsHaveWords);
+                    if (vocals) req.Fields["vocals"] = "true";
+                    CopyArgIfPresent(action, req, "seed");
+                    CopyArgIfPresent(action, req, "bpm");
+                    CopyArgIfPresent(action, req, "steps");
+                    req.Label = CompactLabel(FirstArg(action, "title", "name") ?? prompt, 90);
+                    break;
+                }
+                case AudioGenKind.Sfx:
+                {
+                    string prompt = FirstArg(action, "prompt", "description", "sound", "effect", "text");
+                    if (string.IsNullOrWhiteSpace(prompt))
+                    {
+                        _host?.AddSystemInjectionAndBubble("generate_sfx needs prompt=\"...\" (a foley-style description of the sound).");
+                        return;
+                    }
+                    float duration = ParseFloat(FirstArg(action, "duration", "seconds", "length", "duration_seconds"), 2f);
+                    if (duration > SfxMaxSeconds)
+                    {
+                        _host?.AddSystemInjectionSilent($"(generate_sfx: sound effects are at most {SfxMaxSeconds:0} s; duration clamped. Longer material is generate_music territory.)");
+                        duration = SfxMaxSeconds;
+                    }
+                    duration = Mathf.Clamp(duration, 0.1f, SfxMaxSeconds);
+                    req.Fields["prompt"] = prompt;
+                    req.Fields["duration"] = duration.ToString("0.##", ci);
+                    req.Fields["format"] = "wav";
+                    CopyArgIfPresent(action, req, "seed");
+                    CopyArgIfPresent(action, req, "steps");
+                    req.Label = CompactLabel(prompt, 90);
+                    break;
+                }
+                default:
+                {
+                    string text = FirstArg(action, "text", "prompt", "line", "say", "says", "dialog", "dialogue", "speech");
+                    if (string.IsNullOrWhiteSpace(text))
+                    {
+                        _host?.AddSystemInjectionAndBubble("generate_speech needs text=\"...\" (the exact words to speak).");
+                        return;
+                    }
+                    req.Fields["text"] = text;
+                    string scene = FirstArg(action, "scene", "direction", "delivery", "emotion", "style", "mood", "tone");
+                    if (!string.IsNullOrWhiteSpace(scene)) req.Fields["scene"] = scene;
+                    CopyArgIfPresent(action, req, "language");
+                    CopyArgIfPresent(action, req, "engine");
+                    CopyArgIfPresent(action, req, "temperature");
+                    CopyArgIfPresent(action, req, "seed");
+
+                    // Voice cloning: ref_voice points at a chat bubble (Audio or Movie) whose
+                    // sound is uploaded as the sample; a library voice name is used otherwise.
+                    string voice = FirstArg(action, "voice", "voice_name", "speaker", "voice_id");
+                    string refRaw = FirstArg(action, "ref_voice", "voice_ref", "clone", "clone_voice", "voice_from", "ref_audio", "reference_voice");
+                    if (!string.IsNullOrWhiteSpace(refRaw))
+                    {
+                        int refIdx = ResolveChatMediaRef(refRaw);
+                        if (refIdx > 0)
+                        {
+                            req.RefVoiceChatImageIndex = refIdx;
+                            req.RefVoiceStartSeconds = Mathf.Max(0f, ParseFloat(FirstArg(action, "ref_start", "ref_voice_start"), 0f));
+                            req.RefVoiceDurationSeconds = Mathf.Clamp(ParseFloat(FirstArg(action, "ref_duration", "ref_voice_duration"), 25f), 3f, 30f);
+                            voice = null;
+                        }
+                        else if (string.IsNullOrWhiteSpace(voice))
+                        {
+                            // Probably a library voice name written into the wrong attribute.
+                            voice = refRaw;
+                            _host?.AddSystemInjectionSilent($"(generate_speech: ref_voice=\"{refRaw}\" is not a chat bubble; used it as voice=\"{refRaw}\".)");
+                        }
+                        else
+                        {
+                            _host?.AddSystemInjectionSilent($"(generate_speech: ref_voice=\"{refRaw}\" matched no Audio/Movie bubble or anchor; using voice=\"{voice}\".)");
+                        }
+                    }
+                    if (!string.IsNullOrWhiteSpace(voice)) req.Fields["voice"] = voice;
+                    req.Label = CompactLabel(text, 90);
+                    break;
+                }
+            }
+
+            _host?.MarkChainTargetStale();
+            bool started = _host != null && _host.StartGenerateAudioAction(action, req, ok => ResumePumpAfterDeferredComplete(action));
+            if (!started)
+            {
+                _host?.AddSystemInjectionAndBubble($"{skill} could not start (the chat host refused the request).");
+                return;
+            }
+            _lastActionDeferred = true;
+        }
+
+        private static void CopyArgIfPresent(SkillAction action, AudioGenRequest req, string name)
+        {
+            string v = action.GetArg(name);
+            if (!string.IsNullOrWhiteSpace(v)) req.Fields[name] = v.Trim();
+        }
+
+        private static string CompactLabel(string s, int max)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            s = Regex.Replace(s, @"\s+", " ").Trim();
+            return s.Length > max ? s.Substring(0, max).TrimEnd() + "..." : s;
+        }
+
+        /// <summary>
+        /// "7", "#7", "Audio #7", "Movie 3", or an anchor name -> chat image index (0 = none).
+        /// </summary>
+        private int ResolveChatMediaRef(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw) || _host == null) return 0;
+            string token = raw.Trim().TrimStart('#');
+            var m = Regex.Match(token, @"^(?:audio|movie|clip|video|sound|song|image)\s*#?\s*(\d+)$", RegexOptions.IgnoreCase);
+            if (m.Success) token = m.Groups[1].Value;
+            if (int.TryParse(token, out int n))
+                return n > 0 && n <= _host.GetChatImageCount() ? n : 0;
+            return Mathf.Max(0, _host.ResolveAnchorToIndex(token));
+        }
+
+        private int FindLatestChatMedia(bool wantAudio)
+        {
+            if (_host == null) return 0;
+            for (int i = _host.GetChatImageCount(); i >= 1; i--)
+            {
+                bool isAudio = _host.IsChatImageAudio(i);
+                if (wantAudio ? isAudio : (_host.IsChatImageMovie(i) && !isAudio))
+                    return i;
+            }
+            return 0;
+        }
+
+        // ---------- set_video_audio (local FFmpeg: mix / replace a Movie's soundtrack) ----------
+
+        private void ExecuteSetVideoAudio(SkillAction action)
+        {
+            // Video source: chat_image (anchor already rewritten to a number), or video=/movie=,
+            // else the newest real Movie bubble.
+            int videoIdx = action.ChatImageIndex ?? 0;
+            if (videoIdx <= 0)
+            {
+                string v = FirstArg(action, "video", "movie", "clip", "video_chat_image", "target");
+                if (!string.IsNullOrWhiteSpace(v)) videoIdx = ResolveChatMediaRef(v);
+            }
+            if (videoIdx <= 0) videoIdx = FindLatestChatMedia(wantAudio: false);
+            if (videoIdx <= 0)
+            {
+                _host?.AddSystemInjectionAndBubble("set_video_audio needs chat_image=\"N\" pointing at an existing Movie bubble (there is no Movie in this chat yet).");
+                return;
+            }
+            if (!_host.IsChatImageMovie(videoIdx) || _host.IsChatImageAudio(videoIdx))
+            {
+                _host?.AddSystemInjectionAndBubble(
+                    $"set_video_audio: chat_image=\"{videoIdx}\" is not a Movie bubble. chat_image must be the VIDEO (a Movie #N entry); put the sound in audio=\"...\".");
+                return;
+            }
+
+            // Audio source: audio=/sound=/music=/song= (number or anchor), or chat_image2, else
+            // the newest Audio bubble. A Movie is accepted too (its soundtrack is used).
+            int audioIdx = 0;
+            string a = FirstArg(action, "audio", "sound", "music", "song", "track", "audio_chat_image", "voice", "speech", "source_audio");
+            if (!string.IsNullOrWhiteSpace(a))
+            {
+                audioIdx = ResolveChatMediaRef(a);
+                if (audioIdx <= 0)
+                {
+                    _host?.AddSystemInjectionAndBubble(
+                        $"set_video_audio: audio=\"{a}\" is neither an Audio/Movie number nor a known anchor. Use the Audio #N number from CHAT IMAGES, " +
+                        "or the anchor=\"name\" you gave the same-reply generate_music / generate_sfx / generate_speech action.");
+                    return;
+                }
+            }
+            if (audioIdx <= 0) audioIdx = action.ChatImageIndex2 ?? 0;
+            if (audioIdx <= 0) audioIdx = FindLatestChatMedia(wantAudio: true);
+            if (audioIdx <= 0)
+            {
+                _host?.AddSystemInjectionAndBubble(
+                    "set_video_audio needs audio=\"N\" pointing at an Audio bubble (generate_music / generate_sfx / generate_speech first, or drop an audio file into the chat).");
+                return;
+            }
+            if (!_host.IsChatImageMovie(audioIdx))
+            {
+                _host?.AddSystemInjectionAndBubble($"set_video_audio: audio=\"{audioIdx}\" is a still image, not a sound. Use an Audio #N (or a Movie whose soundtrack you want).");
+                return;
+            }
+            if (audioIdx == videoIdx)
+            {
+                _host?.AddSystemInjectionAndBubble("set_video_audio: audio and chat_image point at the same bubble.");
+                return;
+            }
+
+            var req = new FfmpegTool.MuxAudioRequest();
+            string modeRaw = (FirstArg(action, "mode", "how", "blend") ?? "mix").Trim().ToLowerInvariant();
+            switch (modeRaw)
+            {
+                case "replace":
+                case "swap":
+                case "only":
+                case "new":
+                case "instead":
+                case "mute":
+                    req.Mode = FfmpegTool.AudioMuxMode.Replace;
+                    break;
+                default:
+                    req.Mode = FfmpegTool.AudioMuxMode.Mix;
+                    break;
+            }
+            if (ParseBool(FirstArg(action, "replace", "replace_audio"), false)) req.Mode = FfmpegTool.AudioMuxMode.Replace;
+            if (ParseBool(FirstArg(action, "keep_original", "keep_audio", "mix"), false)) req.Mode = FfmpegTool.AudioMuxMode.Mix;
+
+            req.AudioVolume = Mathf.Clamp(ParseFloat(FirstArg(action, "volume", "audio_volume", "gain", "level", "music_volume"), 1f), 0f, 4f);
+            req.OriginalVolume = Mathf.Clamp(ParseFloat(FirstArg(action, "original_volume", "video_volume", "existing_volume", "duck", "background_volume"), 1f), 0f, 4f);
+            req.StartSeconds = Mathf.Max(0f, ParseFloat(FirstArg(action, "start", "offset", "at", "start_seconds"), 0f));
+            req.Loop = ParseBool(FirstArg(action, "loop", "repeat"), false);
+            req.FadeInSeconds = Mathf.Max(0f, ParseFloat(FirstArg(action, "fade_in", "fadein"), 0f));
+            string fadeOut = FirstArg(action, "fade_out", "fadeout", "fade");
+            req.FadeOutSeconds = string.IsNullOrWhiteSpace(fadeOut) ? -1f : Mathf.Max(0f, ParseFloat(fadeOut, 1f));
+
+            _host?.MarkChainTargetStale();
+            bool started = _host != null && _host.StartSetVideoAudioAction(action, videoIdx, audioIdx, req, ok => ResumePumpAfterDeferredComplete(action));
+            if (!started)
+            {
+                _host?.AddSystemInjectionAndBubble($"set_video_audio could not start for Movie #{videoIdx} / audio #{audioIdx}.");
                 return;
             }
             _lastActionDeferred = true;
@@ -3587,6 +3896,73 @@ namespace AITools.AIChat.Skills
                 case "imagetomovie":
                 case "image_to_video":
                     return BuiltInSkillIds.ImageToMovie;
+
+                // music / song / compose -> generate_music
+                case "music":
+                case "song":
+                case "generate_song":
+                case "make_song":
+                case "make_music":
+                case "compose":
+                case "compose_music":
+                case "generatemusic":
+                case "soundtrack":
+                case "jingle":
+                    return BuiltInSkillIds.GenerateMusic;
+
+                // sfx / sound_effect / foley -> generate_sfx
+                case "sfx":
+                case "sound":
+                case "sound_effect":
+                case "soundeffect":
+                case "sound_fx":
+                case "generate_sound":
+                case "generate_sound_effect":
+                case "generatesfx":
+                case "make_sound":
+                case "foley":
+                    return BuiltInSkillIds.GenerateSfx;
+
+                // speech / tts / voice / narrate -> generate_speech
+                case "speech":
+                case "tts":
+                case "text_to_speech":
+                case "texttospeech":
+                case "speak":
+                case "say":
+                case "voice":
+                case "voiceover":
+                case "voice_over":
+                case "narrate":
+                case "narration":
+                case "generate_voice":
+                case "generate_tts":
+                case "generatespeech":
+                    return BuiltInSkillIds.GenerateSpeech;
+
+                // add_audio / replace_audio / mux -> set_video_audio
+                case "add_audio":
+                case "add_music":
+                case "add_song":
+                case "add_sound":
+                case "add_soundtrack":
+                case "replace_audio":
+                case "replace_music":
+                case "replace_sound":
+                case "replace_soundtrack":
+                case "swap_audio":
+                case "mux_audio":
+                case "mux":
+                case "video_audio":
+                case "set_audio":
+                case "attach_audio":
+                case "mix_audio":
+                case "audio_to_video":
+                case "add_audio_to_video":
+                case "setvideoaudio":
+                case "dub":
+                case "score_video":
+                    return BuiltInSkillIds.SetVideoAudio;
 
                 // video_to_video / v2v / restyle a clip -> video_to_video
                 case "v2v":

@@ -194,12 +194,27 @@ public class PicMovie : MonoBehaviour
         return System.IO.Path.GetExtension(m_fileName);
     }
 
+    // AI Chat "Audio #N" bubbles play a waveform preview movie; this is the ORIGINAL
+    // sound file behind it (wav/flac/mp3), so saving the pic also delivers the real audio.
+    string m_companionAudioFile;
+
+    public void SetCompanionAudioFile(string path)
+    {
+        m_companionAudioFile = path;
+    }
+
+    public string GetCompanionAudioFile()
+    {
+        return m_companionAudioFile;
+    }
+
     public void SaveMovie(string path)
     {
+        string newFileName;
         if (string.IsNullOrEmpty(path))
         {
             // Original behavior - just remove temp_ prefix
-            string newFileName = m_fileName.Replace("temp_", "");
+            newFileName = m_fileName.Replace("temp_", "");
             RTUtil.CopyFile(m_fileName, newFileName);
         }
         else
@@ -211,9 +226,28 @@ public class PicMovie : MonoBehaviour
             fileName = fileName.Replace("temp_", "");
 
             // Combine the provided path with the filename
-            string newFilePath = System.IO.Path.Combine(Config.Get().GetBaseFileDir(path) + "/", fileName);
+            newFileName = System.IO.Path.Combine(Config.Get().GetBaseFileDir(path) + "/", fileName);
 
-            RTUtil.CopyFile(m_fileName, newFilePath);
+            RTUtil.CopyFile(m_fileName, newFileName);
+        }
+        SaveCompanionAudioNextTo(newFileName);
+    }
+
+    // Copies the original sound file (audio bubbles) next to the saved preview movie,
+    // same stem, its own extension: "sfx_..._preview.mp4" + "sfx_..._preview.wav".
+    void SaveCompanionAudioNextTo(string savedMoviePath)
+    {
+        if (string.IsNullOrEmpty(m_companionAudioFile) || string.IsNullOrEmpty(savedMoviePath)) return;
+        try
+        {
+            if (!System.IO.File.Exists(m_companionAudioFile)) return;
+            string audioPath = System.IO.Path.ChangeExtension(savedMoviePath, System.IO.Path.GetExtension(m_companionAudioFile));
+            RTUtil.CopyFile(m_companionAudioFile, audioPath);
+            RTQuickMessageManager.Get().ShowMessage("Saved audio as " + System.IO.Path.GetFileName(audioPath));
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning("PicMovie: could not save companion audio: " + e.Message);
         }
     }
 
@@ -230,7 +264,7 @@ public class PicMovie : MonoBehaviour
         string fileName = System.IO.Path.GetFileName(m_fileName);
 
         RTUtil.CopyFile(m_fileName, path);
-
+        SaveCompanionAudioNextTo(path);
     }
 
 

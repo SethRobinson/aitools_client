@@ -34,6 +34,8 @@ public class AppSettingsPanel : MonoBehaviour
     private TextMeshProUGUI _generalStatusText;
     private TextMeshProUGUI _configStatusText;
     private TextMeshProUGUI _audioStatusText;
+    private TMP_InputField _audioGenEndpointInput;
+    private TMP_InputField _audioGenApiKeyInput;
     private TextMeshProUGUI _webStatusText;
     private TMP_InputField _braveApiKeyInput;
     private Toggle _webSafeSearchToggle;
@@ -706,6 +708,31 @@ public class AppSettingsPanel : MonoBehaviour
         CreateLabel(actionRow, "", 150f);
         CreateButton(actionRow, "TestTTS", "Test", 90f, OnTestTextToSpeech);
 
+        // AI Chat audio generation gateway: generate_music / generate_sfx / generate_speech.
+        CreateSectionHeader(content, "Audio generation (AI Chat music, sound effects, speech)");
+        var genBox = CreateVerticalBox(content, "AudioGenBox", 128f);
+
+        var genUrlRow = CreateRow(genBox, "AudioGenUrlRow", 36f);
+        CreateLabel(genUrlRow, "Gateway URL", 150f);
+        _audioGenEndpointInput = CreateInput(genUrlRow, cfg != null ? cfg.GetAudioGenEndpoint() : "", 560f);
+        SetInputPlaceholder(_audioGenEndpointInput, "blank = audio skills hidden; e.g. http://gpu-box.lan:8000 (a server with POST /audio and POST /tts)");
+        _audioGenEndpointInput.onEndEdit.AddListener(_ => SaveAudioGenSettingsFromFields());
+
+        var genKeyRow = CreateRow(genBox, "AudioGenKeyRow", 36f);
+        CreateLabel(genKeyRow, "API key", 150f);
+        _audioGenApiKeyInput = CreateInput(genKeyRow, cfg != null ? cfg.GetAudioGenAPIKey() : "", 560f);
+        _audioGenApiKeyInput.contentType = TMP_InputField.ContentType.Password;
+        _audioGenApiKeyInput.ForceLabelUpdate();
+        SetInputPlaceholder(_audioGenApiKeyInput, "optional (sent as Authorization: Bearer)");
+        _audioGenApiKeyInput.onEndEdit.AddListener(_ => SaveAudioGenSettingsFromFields());
+
+        var genHelpRow = CreateRow(genBox, "AudioGenHelpRow", 44f);
+        var genHelp = CreateText("Help", genHelpRow,
+            "Lets AI Chat generate music, sound effects, and spoken lines as Audio #N bubbles and mix them onto videos (set_video_audio). " +
+            "The gateway contract (multipart POST /audio: prompt, duration, lyrics, seed...; POST /tts: text, voice, scene, ref_voice...) is described in docs/audio_generation.md.",
+            12f, TextMuted, TextAlignmentOptions.TopLeft);
+        genHelp.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
+
         var statusRow = CreateRow(content, "AudioStatusRow", 70f);
         _audioStatusText = CreateText("AudioStatus", statusRow, BuildAudioStatusText(), 13f, TextDark, TextAlignmentOptions.TopLeft);
         _audioStatusText.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
@@ -900,6 +927,21 @@ public class AppSettingsPanel : MonoBehaviour
         SetFooterStatus("Saved Text To Speech settings to config.txt.");
     }
 
+    private void SaveAudioGenSettingsFromFields()
+    {
+        Config cfg = Config.Get();
+        if (cfg == null)
+        {
+            SetAudioStatus("Config is not initialized.");
+            return;
+        }
+        string endpoint = _audioGenEndpointInput != null ? _audioGenEndpointInput.text : cfg.GetAudioGenEndpoint();
+        string key = _audioGenApiKeyInput != null ? _audioGenApiKeyInput.text : cfg.GetAudioGenAPIKey();
+        cfg.SetAudioGenerationSettings(endpoint, key);
+        SetAudioStatus(BuildAudioStatusText());
+        SetFooterStatus("Saved audio generation settings to config.txt.");
+    }
+
     private void UpdateAudioControlInteractability()
     {
         if (_elevenLabsApiKeyInput != null) _elevenLabsApiKeyInput.interactable = true;
@@ -913,14 +955,15 @@ public class AppSettingsPanel : MonoBehaviour
         Config cfg = Config.Get();
         if (cfg == null) return "Audio settings are not initialized.";
 
+        string genStatus = AITools.AIChat.Audio.AudioGenClient.Describe();
         if (cfg.GetTextToSpeechProvider() == TextToSpeechProvider.None)
-            return "Text To Speech provider: None.";
+            return "Text To Speech provider: None.\n" + genStatus;
 
         string voiceID = cfg.GetElevenLabs_voiceID();
         string voiceLabel = GetElevenLabsVoiceLabel(voiceID);
         string keyStatus = string.IsNullOrWhiteSpace(cfg.GetElevenLabs_APIKey()) ? "API key missing" : "API key saved";
         return "Text To Speech provider: ElevenLabs.\n" +
-            keyStatus + ". Voice: " + voiceLabel + ".";
+            keyStatus + ". Voice: " + voiceLabel + ".\n" + genStatus;
     }
 
     private string GetElevenLabsVoiceLabel(string voiceID)

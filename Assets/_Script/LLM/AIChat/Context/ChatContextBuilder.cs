@@ -9,6 +9,9 @@ namespace AITools.AIChat.Context
         public int Index;
         public bool IsUserAttachment;
         public bool IsMovie;
+        // "Audio #N": a sound file shown through a waveform preview movie (IsMovie is true
+        // as well). Listed with its own kind ("generated music", "user audio"...).
+        public bool IsAudio;
         public bool IsReusable = true;
         public bool IncludeCaption;
         public string Kind;
@@ -111,7 +114,7 @@ namespace AITools.AIChat.Context
             sb.AppendLine("  - gpu=\"N\" : pin generation to a specific GPU id (see the GPUS list in");
             sb.AppendLine("    the CURRENT STATE block attached to the latest message).");
             sb.AppendLine("- chat_image=\"N\" references the Nth image bubble already in the chat");
-            sb.AppendLine("  (matches the \"Image #N\" / \"Movie #N\" labels). attachment=\"N\"");
+            sb.AppendLine("  (matches the \"Image #N\" / \"Movie #N\" / \"Audio #N\" labels). attachment=\"N\"");
             sb.AppendLine("  references the Nth image the user pasted THIS turn.");
             sb.AppendLine("- Each action goes on its own line, self-closing, never inside a code fence.");
             if (keepOldToolCallsInPrompt)
@@ -230,10 +233,17 @@ namespace AITools.AIChat.Context
 
                 sb.AppendLine("If a composed image has clean_base=available and you need to redo/change text, labels, borders, or speech bubbles, use chat_image=\"N\" clean_base=\"true\" on the FIRST replacement draw_shape/draw_text/add_border step so you do not draw over baked-in old overlays.");
                 bool anyMovieListed = false;
+                bool anyAudioListed = false;
                 for (int i = 0; i < listedCount; i++)
                 {
                     ChatImageState s = (chatImages != null && i < chatImages.Count) ? chatImages[i] : null;
-                    if (s != null && s.IsMovie) { anyMovieListed = true; break; }
+                    if (s == null) continue;
+                    if (s.IsAudio) anyAudioListed = true;
+                    else if (s.IsMovie) anyMovieListed = true;
+                }
+                if (anyAudioListed)
+                {
+                    sb.AppendLine("\"generated music\" / \"generated sound effect\" / \"generated speech\" / \"user audio\" entries are Audio #N SOUND files (shown as a waveform), not pictures. Put one onto a video with set_video_audio chat_image=\"<movie>\" audio=\"<audio N>\" (mode=\"mix\" keeps the clip's own track, mode=\"replace\" drops it); a Movie's soundtrack can also be an audio= source. Never use image or video skills on an Audio entry.");
                 }
                 if (anyMovieListed)
                 {

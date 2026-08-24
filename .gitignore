@@ -81,3 +81,6 @@ elevenlabs_tts_json_received.mp3
 Assets/Resources/
 Assets/Resources.meta
 agents_secret.md
+
+# AI Chat skills that describe machine-local generation servers (see docs/audio_generation.md)
+aichat/skills/local_*.md
