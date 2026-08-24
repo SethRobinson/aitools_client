@@ -152,6 +152,11 @@ public static class AutomationBridge
     }
 
     /// <summary>Save a chat image to disk as PNG. index &lt;= 0 means latest.</summary>
+    public static string MovieStateJson(int index)
+    {
+        return AIChatPanel.AutomationMovieState(index);
+    }
+
     public static bool Save(int index, string path, out string error)
     {
         error = "no driver";

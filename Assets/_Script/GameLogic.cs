@@ -2365,7 +2365,7 @@ public string GetPrompt() { return m_prompt; }
 
                 if (Input.GetKeyDown(KeyCode.P))
                 {
-                        picMovieScript.TogglePlay();
+                        picMovieScript.TogglePlay(showMessage: true);
                   
                 }
 

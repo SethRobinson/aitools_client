@@ -39,6 +39,58 @@ public class PicMovie : MonoBehaviour
     FfmpegTool.CancelToken _playbackProxyCancelToken;
     const float PROGRESS_BAR_HEIGHT = 8f;
 
+    // Play/seek intent model. Unity 6 + Media Foundation is unreliable around seeks:
+    // it halts an audio-clocked player while a seek resolves, reports stale/zero
+    // times for a few frames afterwards, and sometimes swallows a Play() issued from
+    // the seekCompleted callback while still claiming isPlaying == true. So instead
+    // of trusting one-shot Play()/Pause() calls, we track what the USER wants
+    // (_wantPlaying) and ReconcilePlayState() nudges the player toward it every tick,
+    // including a Pause+Play kick when the pipeline froze right after a seek. The
+    // scrub/seek fields hold the target position so the bar displays intent, not the
+    // player's transient values (which made the bar flicker old/new on a click).
+    bool _wantPlaying = false;               // user intent; every load path auto-plays, so PlayMovieDirect sets it true
+    bool _isScrubbing = false;               // pointer held down on the seek bar
+    double _scrubSeconds = 0;                // displayed position while scrubbing
+    bool _seekPending = false;               // seek issued, waiting on seekCompleted/timeout
+    double _seekTargetSeconds = 0;
+    float _seekStartedTime = 0f;
+    const float SEEK_TIMEOUT_SECONDS = 1.5f; // treat the seek as done if seekCompleted never fires
+
+    // Seeks are SERIALIZED: Media Foundation wedges hard when a new time= lands
+    // while it is still resolving the previous seek (reproduced with rapid re-clicks
+    // on the bar), so a seek requested during a pending one queues the target and
+    // FinishSeek issues it once the pipeline settles.
+    bool _hasQueuedSeek = false;
+    double _queuedSeekSeconds = 0;
+
+    // Rapid seeks must also not bounce play/pause per click: resuming playback
+    // BETWEEN the seeks of a burst is what actually wedges Media Foundation (five
+    // spaced clicks froze the clock for seconds even with seeks serialized). A seek
+    // issued within SEEK_BURST_WINDOW of the previous one keeps the player paused
+    // and arms a debounced resume; the tick resumes once the burst goes quiet -
+    // the same shape as a scrub drag: pause once, seek N times, resume once.
+    float _lastSeekIssuedTime = -999f;
+    bool _currentSeekIsBurst = false;
+    float _pendingResumeAtTime = 0f; // >0 = resume armed for this Time.time
+    const float SEEK_BURST_WINDOW_SECONDS = 0.4f;
+
+    // Post-seek display hold: distrust live player time briefly after a seek settles.
+    // HOLD < TOLERANCE so normal 1x playback can't legitimately drift beyond the
+    // tolerance inside the hold window (i.e. no snap-back on real progress).
+    double _postSeekHoldSeconds = 0;
+    float _postSeekHoldUntilTime = 0f;
+    const float POST_SEEK_HOLD_SECONDS = 0.45f;
+    const float POST_SEEK_HOLD_TOLERANCE = 0.5f;
+
+    // Post-seek frozen-pipeline watch: while armed, "isPlaying but the clock is not
+    // moving" across a few ticks earns a Pause+Play kick (capped per seek).
+    float _postSeekKickUntilTime = 0f;
+    int _postSeekKicks = 0;
+    int _frozenTicks = 0;
+    double _lastReconcileTime = -1;
+    const float POST_SEEK_KICK_WINDOW_SECONDS = 3f;
+    const int POST_SEEK_KICK_MAX = 3;
+
     // Audio is routed through an AudioSource (not VideoAudioOutputMode.Direct) because
     // Direct mode desyncs the audio track from the video pipeline on the first play
     // of every new clip (visible as a frozen first frame + chipmunk-speed audio,
@@ -129,14 +181,39 @@ public class PicMovie : MonoBehaviour
 
     public Vector2Int GetMovieSize() { return m_movieSize; }
 
+    // The position the user sees: the scrub/seek target while one is in flight, and
+    // (briefly) still the target right after the seek settles — the player reports
+    // stale/zero times for a few frames there, and returning those made the bar
+    // flicker between the old and new position on a click.
     public double GetCurrentPlaybackTimeSeconds()
     {
+        if (_isScrubbing) return _scrubSeconds;
+        if (_hasQueuedSeek) return _queuedSeekSeconds;
+        if (_seekPending) return _seekTargetSeconds;
         if (_videoPlayer == null) return 0;
-        try { return Mathf.Max(0f, (float)_videoPlayer.time); }
+
+        double live;
+        try { live = System.Math.Max(0, _videoPlayer.time); }
         catch { return 0; }
+
+        if (Time.time < _postSeekHoldUntilTime
+            && System.Math.Abs(live - _postSeekHoldSeconds) > POST_SEEK_HOLD_TOLERANCE)
+        {
+            return _postSeekHoldSeconds;
+        }
+        return live;
     }
 
-    public void TogglePlay()
+    // "Playing" from the user's point of view (drives the button glyph): the player
+    // itself may be deliberately paused mid-scrub/seek, or transiently wedged.
+    public bool IsPlayingOrWillResume()
+    {
+        return IsMovie() && _wantPlaying;
+    }
+
+    // showMessage: the P hotkey toasts the new state; the on-screen button doesn't
+    // need to since its icon flips.
+    public void TogglePlay(bool showMessage = false)
     {
         if (_showingConversionProgress || _playbackProxyConversionInFlight)
             return;
@@ -147,20 +224,34 @@ public class PicMovie : MonoBehaviour
             RTQuickMessageManager.Get().ShowMessage("No movie loaded");
             return;
         }
-        if (_videoPlayer.isPlaying)
+
+        _wantPlaying = !_wantPlaying;
+        _frozenTicks = 0;
+        if (showMessage)
+            RTQuickMessageManager.Get().ShowMessage(_wantPlaying ? "Playing movie" : "Pausing movie");
+
+        // While a scrub/seek is in flight the player stays paused; FinishSeek and
+        // ReconcilePlayState apply the new intent once it settles.
+        if (!_isScrubbing && !_seekPending && _videoPlayer != null)
         {
-            RTQuickMessageManager.Get().ShowMessage("Pausing movie");
-            _videoPlayer.Pause();
+            if (_wantPlaying)
+            {
+                _videoPlayer.waitForFirstFrame = false; // warm resume; see ResumeAfterSeekNow
+                _videoPlayer.Play();
+            }
+            else
+            {
+                _videoPlayer.Pause();
+            }
         }
-        else
-        {
-            RTQuickMessageManager.Get().ShowMessage("Playing movie");
-            _videoPlayer.Play();
-        }
+
+        UpdateProgressBar();
     }
 
     public void PauseIfPlaying()
     {
+        _wantPlaying = false;
+        _pendingResumeAtTime = 0f;
         if (_videoPlayer != null && _videoPlayer.isPlaying)
         {
             _videoPlayer.Pause();
@@ -307,8 +398,11 @@ public class PicMovie : MonoBehaviour
         }
 
         // Keep non-input maintenance running while the focused app merely has its
-        // pointer outside, but retain the old early-out when focus is lost.
-        if (!Application.isFocused)
+        // pointer outside, but retain the old early-out when focus is lost - except
+        // when the automation bridge is driving us: bridge tests run with the editor
+        // unfocused (an external agent poking HTTP endpoints), and the old early-out
+        // left every movie black/unloadable for them. Audio stays muted above.
+        if (!AppFocusedForPlayback())
             return;
 
         if (_bIsHidden)
@@ -348,7 +442,7 @@ public class PicMovie : MonoBehaviour
                 // _bExternalAudioPermit lets a chat-side mirror grant unmute permission
                 // for cases where the world Pic is covered by the chat panel itself.
                 bool worldHover = (go == gameObject && !IsMouseObscuredByOtherUI());
-                if (pointerInsideAppWindow && (worldHover || _bExternalAudioPermit))
+                if (Application.isFocused && pointerInsideAppWindow && (worldHover || _bExternalAudioPermit))
                 {
                     _audioSource.mute = GameLogic.Get().GetGlobalMute();
                 }
@@ -358,6 +452,7 @@ public class PicMovie : MonoBehaviour
                 }
             }
 
+            ReconcilePlayState();
             UpdateProgressBar();
         }
 
@@ -368,6 +463,14 @@ public class PicMovie : MonoBehaviour
         Vector3 pointer = Input.mousePosition;
         return pointer.x >= 0f && pointer.y >= 0f
             && pointer.x < Screen.width && pointer.y < Screen.height;
+    }
+
+    // Playback logic treats "automation driver attached" as focus-equivalent so
+    // bridge-driven tests can load/play/seek movies while the editor sits in the
+    // background. Real OS focus still exclusively controls audio unmuting.
+    private static bool AppFocusedForPlayback()
+    {
+        return Application.isFocused || AutomationBridge.IsDriverReady;
     }
 
     // One lazy reload may start per RELOAD_STAGGER_SECONDS across ALL movie pics, so
@@ -456,7 +559,7 @@ public class PicMovie : MonoBehaviour
         cb.highlightedColor = new Color(0.3f, 0.3f, 0.3f, 0.8f);
         cb.pressedColor = new Color(0.4f, 0.4f, 0.4f, 0.9f);
         btn.colors = cb;
-        btn.onClick.AddListener(TogglePlay);
+        btn.onClick.AddListener(() => TogglePlay());
 
         GameObject btnTextObj = new GameObject("BtnText");
         btnTextObj.layer = layer;
@@ -500,16 +603,13 @@ public class PicMovie : MonoBehaviour
         bgRect.sizeDelta = Vector2.zero;
         bgRect.anchoredPosition = Vector2.zero;
 
+        // Press = start scrubbing, drag = move the scrub position, release = seek once.
+        // Drag/PointerUp are delivered to the pressed object even after the pointer
+        // leaves the bar, so releasing outside still finishes the scrub.
         EventTrigger trigger = bgObj.AddComponent<EventTrigger>();
-        EventTrigger.Entry pointerDown = new EventTrigger.Entry();
-        pointerDown.eventID = EventTriggerType.PointerDown;
-        pointerDown.callback.AddListener((data) => OnProgressBarClicked((PointerEventData)data, bgRect));
-        trigger.triggers.Add(pointerDown);
-
-        EventTrigger.Entry drag = new EventTrigger.Entry();
-        drag.eventID = EventTriggerType.Drag;
-        drag.callback.AddListener((data) => OnProgressBarClicked((PointerEventData)data, bgRect));
-        trigger.triggers.Add(drag);
+        AddTrigger(trigger, EventTriggerType.PointerDown, data => OnSeekBarPointerDown(data, bgRect));
+        AddTrigger(trigger, EventTriggerType.Drag, data => OnSeekBarDrag(data, bgRect));
+        AddTrigger(trigger, EventTriggerType.PointerUp, data => OnSeekBarPointerUp(data, bgRect));
 
         // Fill
         GameObject fillObj = new GameObject("ProgressFill");
@@ -547,30 +647,301 @@ public class PicMovie : MonoBehaviour
         _progressBarContainer.SetActive(false);
     }
 
-    void OnProgressBarClicked(PointerEventData eventData, RectTransform barRect)
+    static void AddTrigger(EventTrigger trigger, EventTriggerType type, System.Action<PointerEventData> handler)
     {
-        if (_showingConversionProgress || _playbackProxyConversionInFlight) return;
-        if (_videoPlayer == null || _videoPlayer.length <= 0) return;
+        var entry = new EventTrigger.Entry { eventID = type };
+        entry.callback.AddListener(data => handler((PointerEventData)data));
+        trigger.triggers.Add(entry);
+    }
 
+    // Seeking only makes sense on a fully prepared clip: the two-stage prepare hasn't
+    // bound the decoder yet before _renderTexture exists / the second prepare fires.
+    bool CanSeek()
+    {
+        return IsMovie() && !_showingConversionProgress && !_playbackProxyConversionInFlight
+            && _videoPlayer != null && _videoPlayer.length > 0
+            && _renderTexture != null && !_waitingForSecondPrepare;
+    }
+
+    double SeekBarPointerToSeconds(PointerEventData eventData, RectTransform barRect)
+    {
         Camera cam = _picMainScript.GetCamera();
         if (cam == null) cam = Camera.main;
 
         Vector2 localPoint;
         if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(barRect, eventData.position, cam, out localPoint))
-            return;
+            return GetCurrentPlaybackTimeSeconds();
 
         float normalized = Mathf.Clamp01((localPoint.x + barRect.rect.width * barRect.pivot.x) / barRect.rect.width);
+        return normalized * _videoPlayer.length;
+    }
 
-        // Capture-then-restore the play state: with waitForFirstFrame=true and
-        // skipOnDrop=false (set in Start() to fix the Unity 6 first-play glitch),
-        // assigning _videoPlayer.time halts playback while the seek resolves. If we
-        // don't kick Play() back ourselves the movie stays paused after a seek,
-        // which feels like an unintended pause to the user. Respect a deliberate
-        // pause by only resuming if it was already playing.
-        bool wasPlaying = _videoPlayer.isPlaying;
-        _videoPlayer.time = normalized * _videoPlayer.length;
-        if (wasPlaying)
+    void OnSeekBarPointerDown(PointerEventData eventData, RectTransform barRect)
+    {
+        if (eventData.button != PointerEventData.InputButton.Left || !CanSeek()) return;
+
+        // Any queued (not yet issued) seek is superseded by this scrub. An IN-FLIGHT
+        // seek deliberately stays pending: seeks must never overlap, so PointerUp
+        // queues behind it if it still hasn't settled by then.
+        _hasQueuedSeek = false;
+        _pendingResumeAtTime = 0f; // resume decision restarts after this scrub
+        _isScrubbing = true;
+        _scrubSeconds = SeekBarPointerToSeconds(eventData, barRect);
+        // Deliberately NOT pausing here: a plain click seeks while the player keeps
+        // running (the clip chooser's slider pattern, the most reliable seek path
+        // in the app). A real drag pauses on its first Drag event instead.
+        UpdateProgressBar();
+    }
+
+    void OnSeekBarDrag(PointerEventData eventData, RectTransform barRect)
+    {
+        if (!_isScrubbing) return;
+        // First drag movement turns the press into a real scrub: hold the player
+        // paused for its duration (pause once, seek once on release, resume once).
+        if (_videoPlayer != null && _videoPlayer.isPlaying)
+            _videoPlayer.Pause();
+        _scrubSeconds = SeekBarPointerToSeconds(eventData, barRect);
+        UpdateProgressBar();
+    }
+
+    void OnSeekBarPointerUp(PointerEventData eventData, RectTransform barRect)
+    {
+        if (!_isScrubbing) return;
+        _isScrubbing = false;
+        SeekTo(CanSeek() ? SeekBarPointerToSeconds(eventData, barRect) : _scrubSeconds);
+    }
+
+    void SeekTo(double seconds, bool fromKick = false)
+    {
+        if (!CanSeek()) return;
+        seconds = System.Math.Max(0, System.Math.Min(seconds, _videoPlayer.length));
+        if (!fromKick)
+            _postSeekKicks = 0; // a fresh user seek gets a fresh kick budget
+        if (_seekPending)
+        {
+            // Never overlap seeks (see the queued-seek fields comment): remember the
+            // newest target; FinishSeek issues it when the current seek settles.
+            _hasQueuedSeek = true;
+            _queuedSeekSeconds = seconds;
+            UpdateProgressBar();
+            return;
+        }
+        _hasQueuedSeek = false;
+        _currentSeekIsBurst = !fromKick && Time.time - _lastSeekIssuedTime < SEEK_BURST_WINDOW_SECONDS;
+        _lastSeekIssuedTime = Time.time;
+        _pendingResumeAtTime = 0f;
+        // A burst pauses the player across its seeks (pause once, seek many, resume
+        // once - the scrub-drag shape). An isolated click-seek rides through while
+        // playing: pausing every click added a resume step MF sometimes fumbled.
+        if (_currentSeekIsBurst && _videoPlayer.isPlaying)
+            _videoPlayer.Pause();
+        _seekPending = true;
+        _seekTargetSeconds = seconds;
+        _seekStartedTime = Time.time;
+        try
+        {
+            _videoPlayer.time = seconds;
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning("PicMovie: seek failed: " + e.Message);
+            FinishSeek();
+        }
+        UpdateProgressBar();
+    }
+
+    void OnSeekCompleted(VideoPlayer source)
+    {
+        if (source == _videoPlayer)
+            FinishSeek();
+    }
+
+    // Called from seekCompleted, or from the tick if that never fires (Media
+    // Foundation can skip it, e.g. seeking onto the current frame). Seeks are
+    // serialized, so at most one is ever in flight and a completion always belongs
+    // to it; if a queued target is waiting, this issues it instead of resuming.
+    void FinishSeek()
+    {
+        if (!_seekPending) return;
+        _seekPending = false;
+
+        // Distrust live player time briefly.
+        _postSeekHoldSeconds = _seekTargetSeconds;
+        _postSeekHoldUntilTime = Time.time + POST_SEEK_HOLD_SECONDS;
+
+        if (_isScrubbing)
+            return; // the user grabbed the bar again; stay paused until release
+
+        if (_hasQueuedSeek)
+        {
+            // The pipeline just settled; now it is safe to issue the newest target.
+            _hasQueuedSeek = false;
+            SeekTo(_queuedSeekSeconds);
+            return;
+        }
+
+        if (_wantPlaying && _videoPlayer != null)
+        {
+            // Watch for a frozen clock either way: even a seek issued while playing
+            // can stall the pipeline (isPlaying stays true, clock parked).
+            ArmFrozenWatch();
+            if (!_videoPlayer.isPlaying)
+            {
+                // Resume from the tick, NEVER from inside the seekCompleted
+                // callstack: a synchronous Play() here sometimes leaves Media
+                // Foundation with a frozen clock while isPlaying lies true. An
+                // isolated seek resumes on the next tick (<=0.1s); a burst waits
+                // until no new seek has arrived for a full window.
+                _pendingResumeAtTime = Time.time + (_currentSeekIsBurst ? SEEK_BURST_WINDOW_SECONDS : 0.01f);
+            }
+        }
+        UpdateProgressBar();
+    }
+
+    void ArmFrozenWatch()
+    {
+        _postSeekKickUntilTime = Time.time + POST_SEEK_KICK_WINDOW_SECONDS;
+        _frozenTicks = 0;
+        _lastReconcileTime = -1;
+    }
+
+    // The one place playback restarts after a seek: arms the frozen-pipeline watch
+    // at the moment we actually ask Media Foundation to run again.
+    void ResumeAfterSeekNow()
+    {
+        _pendingResumeAtTime = 0f;
+        ArmFrozenWatch(); // the kick budget is NOT reset here - only a user seek does
+        if (_videoPlayer != null && !_videoPlayer.isPlaying)
+        {
+            // waitForFirstFrame=true is only needed for the FIRST play of a fresh
+            // clip (the Unity 6 first-play glitch; PlayMovieDirect re-asserts it).
+            // On a post-seek resume it makes Play() block on a "first frame" that
+            // Media Foundation may have already delivered during the paused seek -
+            // the player then reports isPlaying with a frozen clock forever, which
+            // is the "seek left it paused/stuck" bug.
+            _videoPlayer.waitForFirstFrame = false;
             _videoPlayer.Play();
+        }
+    }
+
+    void ResetSeekState()
+    {
+        _isScrubbing = false;
+        _seekPending = false;
+        _hasQueuedSeek = false;
+        _currentSeekIsBurst = false;
+        _pendingResumeAtTime = 0f;
+        _lastSeekIssuedTime = -999f;
+        _postSeekHoldUntilTime = 0f;
+        _postSeekKickUntilTime = 0f;
+        _postSeekKicks = 0;
+        _frozenTicks = 0;
+        _lastReconcileTime = -1;
+    }
+
+    // Runs on the 0.1s tick: nudge the player toward what the user wants instead of
+    // trusting any single Play()/Pause() call. Media Foundation sometimes swallows a
+    // resume issued around a seek while still reporting isPlaying==true with a frozen
+    // clock; while the post-seek watch is armed, that state earns a Pause+Play kick.
+    void ReconcilePlayState()
+    {
+        if (_videoPlayer == null || !IsMovie() || _renderTexture == null || _waitingForSecondPrepare)
+            return;
+        if (_isScrubbing || _seekPending)
+            return; // paused on purpose until the scrub/seek settles
+
+        if (!_wantPlaying)
+        {
+            _pendingResumeAtTime = 0f;
+            if (_videoPlayer.isPlaying)
+                _videoPlayer.Pause();
+            _frozenTicks = 0;
+            return;
+        }
+
+        if (_pendingResumeAtTime > 0f)
+        {
+            if (Time.time < _pendingResumeAtTime)
+                return; // deliberately paused until the seek burst quiets down
+            ResumeAfterSeekNow();
+            return;
+        }
+
+        if (!_videoPlayer.isPlaying)
+        {
+            _videoPlayer.waitForFirstFrame = false; // warm resume; see ResumeAfterSeekNow
+            _videoPlayer.Play();
+            _frozenTicks = 0;
+            return;
+        }
+
+        if (Time.time >= _postSeekKickUntilTime)
+            return;
+
+        double t;
+        try { t = _videoPlayer.time; } catch { return; }
+        bool frozen = _lastReconcileTime >= 0 && System.Math.Abs(t - _lastReconcileTime) < 0.0001;
+        _lastReconcileTime = t;
+        if (!frozen)
+        {
+            _frozenTicks = 0;
+            return;
+        }
+
+        if (++_frozenTicks >= 3 && _postSeekKicks < POST_SEEK_KICK_MAX)
+        {
+            _postSeekKicks++;
+            _frozenTicks = 0;
+            // Unfreeze by RE-SEEKING: a frozen MF pipeline responds to seeks, not
+            // to Pause/Play (this is exactly what the old manual workaround of
+            // clicking the bar a second time did). Nudge the target a hair so MF
+            // cannot dismiss it as a same-position no-op; pause first so the
+            // resume runs through the normal deferred-resume path on settle.
+            double target = _seekTargetSeconds + 0.05 * _postSeekKicks;
+            if (target > _videoPlayer.length)
+                target = _seekTargetSeconds;
+            _videoPlayer.Pause();
+            SeekTo(target, fromKick: true);
+        }
+    }
+
+    // Bridge/test telemetry: the live playback state as one JSON object, served by
+    // the automation /movie_state endpoint. Keep every field cheap to read.
+    public string GetPlaybackDebugJson()
+    {
+        bool isPlaying = false, isPrepared = false;
+        double time = 0, length = 0;
+        try
+        {
+            if (_videoPlayer != null)
+            {
+                isPlaying = _videoPlayer.isPlaying;
+                isPrepared = _videoPlayer.isPrepared;
+                time = _videoPlayer.time;
+                length = _videoPlayer.length;
+            }
+        }
+        catch { }
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        return "{"
+            + "\"wantPlaying\":" + (_wantPlaying ? "true" : "false")
+            + ",\"isPlaying\":" + (isPlaying ? "true" : "false")
+            + ",\"isPrepared\":" + (isPrepared ? "true" : "false")
+            + ",\"time\":" + time.ToString("0.###", inv)
+            + ",\"length\":" + length.ToString("0.###", inv)
+            + ",\"displayTime\":" + GetCurrentPlaybackTimeSeconds().ToString("0.###", inv)
+            + ",\"isScrubbing\":" + (_isScrubbing ? "true" : "false")
+            + ",\"seekPending\":" + (_seekPending ? "true" : "false")
+            + ",\"seekTarget\":" + _seekTargetSeconds.ToString("0.###", inv)
+            + ",\"queuedSeek\":" + (_hasQueuedSeek ? _queuedSeekSeconds.ToString("0.###", inv) : "null")
+            + ",\"resumeDebounceActive\":" + (_pendingResumeAtTime > 0f ? "true" : "false")
+            + ",\"postSeekHoldActive\":" + (Time.time < _postSeekHoldUntilTime ? "true" : "false")
+            + ",\"kickWindowActive\":" + (Time.time < _postSeekKickUntilTime ? "true" : "false")
+            + ",\"postSeekKicks\":" + _postSeekKicks
+            + ",\"frozenTicks\":" + _frozenTicks
+            + ",\"waitingForSecondPrepare\":" + (_waitingForSecondPrepare ? "true" : "false")
+            + ",\"hasRenderTexture\":" + (_renderTexture != null ? "true" : "false")
+            + "}";
     }
 
     void UpdateProgressBar()
@@ -587,15 +958,18 @@ public class PicMovie : MonoBehaviour
             return;
         }
 
-        bool shouldShow = IsMovie() && _videoPlayer.length > 0;
+        bool shouldShow = IsMovie() && _videoPlayer != null && _videoPlayer.length > 0;
         if (_progressBarContainer.activeSelf != shouldShow)
             _progressBarContainer.SetActive(shouldShow);
 
         if (!shouldShow) return;
 
+        if (_seekPending && Time.time - _seekStartedTime > SEEK_TIMEOUT_SECONDS)
+            FinishSeek();
+
         PositionProgressBar();
 
-        double currentTime = _videoPlayer.time;
+        double currentTime = GetCurrentPlaybackTimeSeconds();
         double totalTime = _videoPlayer.length;
         float progress = Mathf.Clamp01((float)(currentTime / totalTime));
 
@@ -603,7 +977,7 @@ public class PicMovie : MonoBehaviour
         _progressBarTimeText.text = $"{currentTime:F1}s / {totalTime:F1}s";
 
         if (_playPauseButtonText != null)
-            _playPauseButtonText.text = _videoPlayer.isPlaying ? "\u2590\u2590" : "\u25B6";
+            _playPauseButtonText.text = IsPlayingOrWillResume() ? "\u2590\u2590" : "\u25B6";
     }
 
     void PositionProgressBar()
@@ -655,6 +1029,7 @@ public class PicMovie : MonoBehaviour
         _playGeneration++;
         _waitingForSecondPrepare = false;
         _bExternalAudioPermit = false;
+        ResetSeekState();
         if (_videoPlayer != null)
         {
             // Stop() unconditionally: it also cancels an in-flight Prepare(). A player
@@ -689,7 +1064,9 @@ public class PicMovie : MonoBehaviour
         // Check memory before starting next loop
         if (RTUtil.IsMemoryLow())
         {
-            // Pause playback and show warning
+            // Pause playback and show warning. Update the intent too, or
+            // ReconcilePlayState would immediately restart it.
+            _wantPlaying = false;
             source.Pause();
             RTQuickMessageManager.Get().ShowMessage("Playback paused - low memory");
 
@@ -746,7 +1123,7 @@ public class PicMovie : MonoBehaviour
         if (string.IsNullOrWhiteSpace(filename))
             return;
 
-        if (!forceLoad && (!Application.isFocused || !_picMainScript.IsVisible()))
+        if (!forceLoad && (!AppFocusedForPlayback() || !_picMainScript.IsVisible()))
         {
             m_fileName = filename;
             m_playbackFileName = filename;
@@ -924,6 +1301,7 @@ public class PicMovie : MonoBehaviour
             m_playbackFileName = playbackFilename;
             _bDidCleanupSoAllowReload = false;
             _movieObject.SetActive(true);
+            _wantPlaying = true; // every load path auto-plays
 
             _videoPlayer.source = VideoSource.Url;
             _videoPlayer.url = playbackFilename;
@@ -942,6 +1320,8 @@ public class PicMovie : MonoBehaviour
             _videoPlayer.errorReceived += OnVideoError;
             _videoPlayer.loopPointReached -= OnVideoLoop;
             _videoPlayer.loopPointReached += OnVideoLoop;
+            _videoPlayer.seekCompleted -= OnSeekCompleted;
+            _videoPlayer.seekCompleted += OnSeekCompleted;
             _videoPlayer.controlledAudioTrackCount = 1;
             _videoPlayer.EnableAudioTrack(0, true);
             // Re-bind the AudioSource each play — controlledAudioTrackCount is a

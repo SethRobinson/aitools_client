@@ -43,6 +43,7 @@ using UnityEngine;
 //   POST /chat_web    -> body: enabled=<true|false> (optional; omitted = report only); the header "Web" checkbox (gates web_* skills)
 //   POST /chat_compact -> body: mode=<summarize|truncate> (default summarize), keep=<n> exchanges kept (default 2); runs AI Chat's Compact
 //   GET  /chat_images -> JSON array: index/w/h/busy/movie for each chat image
+//   POST /movie_state -> body: index=<n|latest>; PicMovie playback telemetry for a Movie bubble
 //   POST /save        -> body: index=<n|latest>, path=<file>; save chat image PNG
 //   POST /screenshot  -> body: path=<file> [x,y,w,h top-left region]; capture game view
 //
@@ -78,7 +79,7 @@ public static class AutomationController
     // Cached status snapshot, refreshed each editor tick on the main thread and read by
     // the listener thread. Guarded by _snapLock.
     static readonly object _snapLock = new object();
-    static bool _snapPlaying, _snapCompiling, _snapDriverReady, _snapIdle, _snapChatActive;
+    static bool _snapPlaying, _snapCompiling, _snapDriverReady, _snapIdle, _snapChatActive, _snapFocused;
     static string _snapStage = kStageNone;
 
     static AutomationController()
@@ -424,6 +425,19 @@ public static class AutomationController
                     WriteJson(stream, 200, RunOnMainAndWait(AutomationBridge.ChatImagesJson, "[]"));
                     break;
 
+                case "/movie_state":
+                {
+                    // Body: index=<n|latest> (default latest). PicMovie playback telemetry
+                    // for that chat Movie bubble (PicMovie.GetPlaybackDebugJson) so tests
+                    // can verify play/seek behavior without screenshot archaeology.
+                    var kv = ParseKeyValues(body);
+                    int msIndex = ParseIndex(kv);
+                    string result = RunOnMainAndWait(() => AutomationBridge.MovieStateJson(msIndex),
+                        "{\"ok\":false,\"error\":\"timed out\"}");
+                    WriteJson(stream, 200, result);
+                    break;
+                }
+
                 case "/save":
                 {
                     // Body: key=value lines. index=<n|latest> (default latest), path=<file>.
@@ -507,13 +521,13 @@ public static class AutomationController
 
     static string StatusJson()
     {
-        bool playing, compiling, driverReady, idle, chatActive;
+        bool playing, compiling, driverReady, idle, chatActive, focused;
         string stage;
         lock (_snapLock)
         {
             playing = _snapPlaying; compiling = _snapCompiling;
             driverReady = _snapDriverReady; idle = _snapIdle; stage = _snapStage;
-            chatActive = _snapChatActive;
+            chatActive = _snapChatActive; focused = _snapFocused;
         }
         bool busy = stage != kStageNone;
         // "ready" = settled and drivable: playing, compiled, driver registered, not mid-rebuild.
@@ -523,6 +537,7 @@ public static class AutomationController
         sb.Append("\"ok\":true,");
         sb.Append("\"enabled\":true,");
         sb.Append("\"playing\":").Append(playing ? "true" : "false").Append(",");
+        sb.Append("\"focused\":").Append(focused ? "true" : "false").Append(",");
         sb.Append("\"compiling\":").Append(compiling ? "true" : "false").Append(",");
         sb.Append("\"driverReady\":").Append(driverReady ? "true" : "false").Append(",");
         sb.Append("\"idle\":").Append(idle ? "true" : "false").Append(",");
@@ -689,6 +704,10 @@ public static class AutomationController
             _snapDriverReady = AutomationBridge.IsDriverReady;
             _snapIdle = AutomationBridge.IsIdle();
             _snapChatActive = AutomationBridge.IsChatActive;
+            // Application.isFocused as the runtime sees it: several runtime systems
+            // (PicMovie playback/lazy reload among them) gate on this, so tests need
+            // to see it to know whether those systems are actually ticking.
+            _snapFocused = UnityEngine.Application.isFocused;
             _snapStage = SessionState.GetString(kStageKey, kStageNone);
         }
     }

@@ -11971,6 +11971,32 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         return true;
     }
 
+    // Bridge: PicMovie playback telemetry for one chat Movie bubble (see the
+    // automation /movie_state endpoint). index <= 0 means latest.
+    public string AutomationGetMovieStateJson(int index)
+    {
+        if (_chatImagePics == null || _chatImagePics.Count == 0)
+            return "{\"ok\":false,\"error\":\"no chat images\"}";
+        int idx = index <= 0 ? _chatImagePics.Count - 1 : index - 1;
+        if (idx < 0 || idx >= _chatImagePics.Count)
+            return "{\"ok\":false,\"error\":\"index " + index + " out of range (1.." + _chatImagePics.Count + ")\"}";
+        var pic = _chatImagePics[idx];
+        if (pic == null)
+            return "{\"ok\":false,\"error\":\"chat image pic was destroyed\"}";
+        var movie = pic.GetComponent<PicMovie>();
+        if (movie == null)
+            return "{\"ok\":false,\"error\":\"not a movie pic\"}";
+        return "{\"ok\":true,\"index\":" + (idx + 1) + ",\"state\":" + movie.GetPlaybackDebugJson() + "}";
+    }
+
+    /// <summary>Static accessor: movie playback telemetry. Error JSON if no panel.</summary>
+    public static string AutomationMovieState(int index)
+    {
+        return _instance != null
+            ? _instance.AutomationGetMovieStateJson(index)
+            : "{\"ok\":false,\"error\":\"no chat panel\"}";
+    }
+
     /// <summary>Static accessor: chat images JSON. "[]" if no panel.</summary>
     public static string AutomationChatImagesJson()
     {
