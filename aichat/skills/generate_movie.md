@@ -1,11 +1,11 @@
 ---
 id: generate_movie
-summary: Make a new video from a text description. DEFAULT recipe is two actions: generate a Z-Image still, then animate it with image_to_movie chain="true" using `Image To Video (MiniMax H3 Turbo Cache) 5s.txt`. Use direct text-to-video (`skill="generate_movie"`) only when the user explicitly asks for direct/text-to-video or no still-image base.
+summary: Make a new video from a text description. DEFAULT recipe is two actions: generate a Z-Image still, then animate it with image_to_movie chain="true" using `Image To Video (MiniMax H3 Turbo Cache) 5s.txt`. Use direct text-to-video (`skill="generate_movie"`) only when the user explicitly asks for direct/text-to-video or no still-image base. Every H3 movie prompt must include an explicit AUDIO spec - who speaks and their EXACT quoted words (or state that nobody speaks), ambient sound, and music or "no music": unstated audio is invented and on-screen people mouth gibberish.
 inputs: none
 autoload: true
 triggers: generate a video, generate video, make a video, create a video, create video, generate a movie, make a movie, create a movie, generate a clip, make a clip, minimax video, minimax movie, minmax video, h3 video, prompt to video, text to video, text-to-video, direct video
 exclude_triggers: edit this video, restyle this video, video to video, video-to-video, animate this image, animate this, animate it, image to video, image-to-video
-template: <aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="full self-contained still-image scene prompt"/><aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" prompt="motion + one camera move + one short quoted dialog line if plausible, then ambient sound" chain="true"/>
+template: <aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="full self-contained still-image scene prompt"/><aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" prompt="motion + one camera move + AUDIO: exact quoted dialog line (or: No dialog) + ambient sound + music or no music" chain="true"/>
 ---
 # Generate a movie
 
@@ -28,7 +28,7 @@ exactly the video's canvas instead of a needlessly large 1024x1024 frame (see
 "Sizing" below):
 ```
 <aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full Z-Image still prompt: subject, wardrobe, pose, setting, lighting, camera, style>" width="864" height="480"/>
-<aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" prompt="<H3 motion prompt with one camera move, one short quoted dialog line if plausible, and ambient sound>" chain="true" width="864" height="480"/>
+<aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" prompt="<H3 motion prompt with one camera move, plus the audio spec: exact quoted dialog (or an explicit no-dialog), ambient sound, music or no music>" chain="true" width="864" height="480"/>
 ```
 
 The chained movie action carries ONLY `chain="true"` plus its preset/prompt.
@@ -107,9 +107,12 @@ passing that phrase unchanged.
 ### MiniMax H3 Image-To-Video (default)
 
 Single-scene: 4-8 sentences, one paragraph, subject restatement, concrete
-motion, ONE short quoted dialog line (language + accent) if there is a
-plausible speaker, one camera move, mood/lighting, ambient sound. Avoid jump
-cuts ("suddenly", "cuts to") and vague motion words ("dynamic", "epic"). H3
+motion, one camera move, mood/lighting, then the MANDATORY audio spec: WHO
+speaks and their EXACT words in double quotes with language + accent (or an
+explicit `No dialog; nobody speaks.`), a named ambient sound, and music or
+`no music`. H3 always generates a soundtrack - unstated speech comes out as
+gibberish mumbling, so never leave audio unspecified. Avoid jump cuts
+("suddenly", "cuts to") and vague motion words ("dynamic", "epic"). H3
 also supports explicit multi-shot structure (`SHOT 1: ... SHOT 2: cut to ...`)
 - 1-2 shots at 5s. No negative prompts for H3. See `image_to_movie` ->
 "MiniMax H3" for full guidance.
@@ -134,6 +137,9 @@ unless asked. See `image_to_movie` -> "Sizing" for details.
 ## Rules
 
 - User asked for a new video -> spawn it, no confirmation.
+- EVERY H3 movie prompt carries the explicit audio spec: exact quoted dialog
+  per speaker (or `No dialog; nobody speaks.`), named ambient sound, and
+  music or `no music`.
 - Default is Z-Image still -> `image_to_movie chain="true"` with
   `{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}`.
 - ALWAYS put the same `width`/`height` on both actions. Use the size the user

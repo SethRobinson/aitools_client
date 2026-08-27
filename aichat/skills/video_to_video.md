@@ -1,6 +1,6 @@
 ---
 id: video_to_video
-summary: Operate on an EXISTING "Movie #N" clip. Two modes - (1) VISUAL-ONLY RESTYLE/EDIT it with Bernini-R, keeping its motion but producing silent output; (2) REFERENCE-generate a brand-NEW MiniMax H3 clip that carries the source's subject/motion/style into a new scene, or creates/replaces dialogue, voice, music, audio, or sound effects. H3 preset: `Reference Video To Video (MiniMax H3) 5s.txt` (already turbo; "high quality" -> the 20-step `Reference Video To Video (MiniMax H3 Quality)` variants; no Cache variant exists); its prompt refers to the source as <Video 1>. For explicit LONG ~15s use the 15s preset; for other lengths use duration="N" (~5-15s). H3 also accepts up to 9 reference photos and/or a second clip. When the result must keep the SAME people as the source, first extract_still a close-up frame per person (anchored) and stage the stills via chat_image2+ (they become <Picture 1>..); describe people ONLY as they appear in the clip/caption, never from film or actor knowledge. H3 reference prompts must USE every staged reference by its exact tag (<Video 1>, <Video 2>, <Picture 1>.. in slot order) - the host refuses reference actions whose prompts skip a staged reference's tag. Never use image_to_image on a Movie unless the user explicitly requests one still/current frame and the action has movie_frame="true". For smoothing/FPS use rife_video; for animating a STILL use image_to_movie.
+summary: Operate on an EXISTING "Movie #N" clip. Two modes - (1) VISUAL-ONLY RESTYLE/EDIT it with Bernini-R, keeping its motion but producing silent output; (2) REFERENCE-generate a brand-NEW MiniMax H3 clip that carries the source's subject/motion/style into a new scene, or creates/replaces dialogue, voice, music, audio, or sound effects. H3 preset: `Reference Video To Video (MiniMax H3) 5s.txt` (already turbo; "high quality" -> the 20-step `Reference Video To Video (MiniMax H3 Quality)` variants; no Cache variant exists); its prompt refers to the source as <Video 1>. For explicit LONG ~15s use the 15s preset; for other lengths use duration="N" (~5-15s). H3 also accepts up to 9 reference photos and/or a second clip. When the result must keep the SAME people as the source, first extract_still a close-up frame per person (anchored) and stage the stills via chat_image2+ (they become <Picture 1>..); describe people ONLY as they appear in the clip/caption, never from film or actor knowledge. H3 reference prompts must USE every staged reference by its exact tag (<Video 1>, <Video 2>, <Picture 1>.. in slot order) - the host refuses reference actions whose prompts skip a staged reference's tag. H3 prompts must also spell out the audio: exact quoted words per speaker (or state that nobody speaks), ambient sound, and music or "no music" (or defer a layer to <Audio N>) - unstated audio is invented and people mouth gibberish. Never use image_to_image on a Movie unless the user explicitly requests one still/current frame and the action has movie_frame="true". For smoothing/FPS use rife_video; for animating a STILL use image_to_movie.
 inputs: attachment
 autoload: true
 triggers: video to video, restyle the video, restyle this clip, edit the video, edit the clip, change the video, change the clip, redo the video, redo the clip, make the video, make the clip, the video but, the clip but, same video but, restyle the clip, turn the video, turn the clip, video into, clip into, re-render the video, regenerate the video, based on this video, based on that video, based on the clip, based on this clip, like this video, like the video, like this clip, same character as the video, from this video, from the clip, restyle the movie, edit the movie, change the movie, redo the movie, make the movie, the movie but, same movie but, turn the movie, movie into, re-render the movie, regenerate the movie, based on this movie, based on that movie, based on the movie, like this movie, like the movie, same character as the movie, from this movie, from the movie, use movie, use the movie, use this movie, use that movie, as reference, as a reference, reference video, reference clip, reference movie
@@ -199,9 +199,14 @@ where the cat plays in snow"):
 ```
 <aitools_action skill="video_to_video" preset="{{Reference Video To Video (MiniMax H3) 5s.txt}}" prompt="The fluffy orange tabby cat from <Video 1>, now in a snowy garden at dusk, pounces at drifting snowflakes and shakes the snow off its fur. One low lateral tracking move at cat height. Cool blue twilight; ambient sound of soft wind and an excited chirping meow." chat_image="1"/>
 ```
-The H3 reference prompt follows normal H3 style (motion, ONE camera move,
-quoted dialog when there is a plausible speaker, ambient sound) and must
-name the source as `<Video 1>`, restating its key visible traits once.
+The H3 reference prompt follows normal H3 style (motion, ONE camera move)
+and must name the source as `<Video 1>`, restating its key visible traits
+once. The MANDATORY H3 audio spec applies here too: H3 always generates a
+soundtrack, and an on-screen person with no specified line mouths gibberish -
+so every prompt states WHO speaks and their EXACT quoted words (or an
+explicit `No dialog; nobody speaks.`), names the ambient sound, and names
+the music or says `no music` (or defers those layers to `<Audio N>` when a
+reference clip's soundtrack should carry them, as in the examples below).
 
 Put a specific person (from a photo) into a new clip guided by the source
 ("make a video like movie 1 but starring the person in image 3"):
@@ -240,6 +245,10 @@ first, then regenerate with them):
   and describe each person only as seen in the clip/caption - never from
   knowledge of the film or actor. Unfaithful text beats the reference and
   changes the person.
+- Every H3 reference prompt carries the explicit audio spec: exact quoted
+  dialog per speaker (or `No dialog; nobody speaks.`), named ambient sound,
+  and music or `no music` - or an `<Audio N>` reference for the layers a
+  source clip's soundtrack should supply.
 - Pick exactly ONE source MOVIE; `chain="true"` must not be combined with `chat_image`.
 - `chat_image="N"` must reference a Movie bubble. If you point it at a still image
   the action will report that it needs a video source.

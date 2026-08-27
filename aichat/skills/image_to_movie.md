@@ -1,10 +1,10 @@
 ---
 id: image_to_movie
-summary: Animate a STILL image into a short video. Default to Image To Video (MiniMax H3 Turbo Cache) 5s (native audio/dialog, 8-step turbo + Spectrum cache; progress shows 16 steps - 8 real + 8 cheap replay ticks, that is normal); use the 15s preset only for explicit long clips and duration="N" for ~5-15s. "High quality"/max-quality requests use the 20-step (MiniMax H3 Quality) presets; plain Image To Video (MiniMax H3) 5s is the cache-free variant, used only when the user explicitly asks to skip the cache or blames it for artifacts/audio stutter. Reference To Video presets REQUIRE a photo source; the plain name is already turbo (8-step Ref2V distill), "high quality" uses Reference To Video (MiniMax H3 Quality) 5s (20-step), and there is NO Cache variant - never invent other preset names; a video with no source at all is generate_movie (direct t2v) territory. For a video starring reference photos without an exact start frame, use H3 Reference To Video with up to 9 photos; the prompt MUST use each staged photo via its tag, <Picture 1>..<Picture N> in slot order ("the woman from <Picture 1>") - prose alone ("the blond woman") does not bind to a photo, and the host refuses reference actions whose prompts skip a staged photo's tag. A Movie #N is not an image source by default: edit/reference an existing Movie with video_to_video. Only when the user explicitly wants to animate one current frame may image_to_movie target a Movie, and it must include movie_frame="true".
+summary: Animate a STILL image into a short video. Default to Image To Video (MiniMax H3 Turbo Cache) 5s (native audio/dialog, 8-step turbo + Spectrum cache; progress shows 16 steps - 8 real + 8 cheap replay ticks, that is normal); use the 15s preset only for explicit long clips and duration="N" for ~5-15s. "High quality"/max-quality requests use the 20-step (MiniMax H3 Quality) presets; plain Image To Video (MiniMax H3) 5s is the cache-free variant, used only when the user explicitly asks to skip the cache or blames it for artifacts/audio stutter. Reference To Video presets REQUIRE a photo source; the plain name is already turbo (8-step Ref2V distill), "high quality" uses Reference To Video (MiniMax H3 Quality) 5s (20-step), and there is NO Cache variant - never invent other preset names; a video with no source at all is generate_movie (direct t2v) territory. For a video starring reference photos without an exact start frame, use H3 Reference To Video with up to 9 photos; the prompt MUST use each staged photo via its tag, <Picture 1>..<Picture N> in slot order ("the woman from <Picture 1>") - prose alone ("the blond woman") does not bind to a photo, and the host refuses reference actions whose prompts skip a staged photo's tag. A Movie #N is not an image source by default: edit/reference an existing Movie with video_to_video. Only when the user explicitly wants to animate one current frame may image_to_movie target a Movie, and it must include movie_frame="true". Every H3 prompt must END with an explicit AUDIO spec - who speaks and their EXACT quoted words (or state that nobody speaks), the ambient sound, and music or "no music": H3 always generates a soundtrack, and a person on screen with no specified line mouths gibberish.
 inputs: attachment
 autoload: true
 triggers: animate, animation, image to video, image-to-video, image to movie, image-to-movie, animate this, animate it, make this move, make it move, make a video, make a movie, make a clip, create a video, create a movie, generate a video, generate a movie, video starring, movie starring, video of, movie of, second video, second movie, reference to video, minimax, mini max, minmax, minimax h3, minmax h3, h3, hailuo, spectrum, turbo cache, spectrum cache
-template: <aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" prompt="motion + camera + one short quoted dialog line + ambient sound" chat_image="N"/>  # STILL sources only. attachment= works only in the very message the user pasted the image in; on later turns use chat_image="N" (the paste's bubble number). To use an explicit current frame from a Movie add movie_frame="true"; otherwise existing Movies require video_to_video.
+template: <aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" prompt="motion + camera + AUDIO: exact quoted dialog line (or: No dialog) + ambient sound + music or no music" chat_image="N"/>  # STILL sources only. attachment= works only in the very message the user pasted the image in; on later turns use chat_image="N" (the paste's bubble number). To use an explicit current frame from a Movie add movie_frame="true"; otherwise existing Movies require video_to_video.
 ---
 # Image-to-movie
 
@@ -109,12 +109,23 @@ one pass, and understands the source frame as `<Picture 1>`.
 
 - For a single continuous scene, use 4-8 sentences, one paragraph - subject
   restatement -> motion + ONE short quoted dialog line -> one camera move ->
-  mood/lighting -> ambient-sound tag.
-- **Dialog is DEFAULT ON.** Give any plausible speaker a short line (~3-12
-  words) in double quotes with language + accent, e.g. `she murmurs "I told
-  him I was done" in English with a soft New York accent`. Write EXACT words,
-  never "she says something". Skip ONLY when there is no plausible speaker
-  (empty landscape, face hidden, user said "silent").
+  mood/lighting -> the AUDIO spec (speech, ambience, music).
+- **AUDIO is MANDATORY in every H3 prompt.** H3 always generates a full
+  soundtrack; whatever the prompt leaves unstated the model invents, and a
+  person on screen with no specified line mouths GIBBERISH. Every prompt must
+  explicitly cover all three layers (dialog usually mid-prompt, ambience +
+  music at the end):
+  1. **Speech** - WHO speaks and their EXACT words (~3-12 per line) in double
+     quotes with language + accent, e.g. `she murmurs "I told him I was done"
+     in English with a soft New York accent`. Never "she says something".
+     With several people, give EACH speaker their own line or state who stays
+     silent. If nobody should talk, SAY SO: `No dialog; nobody speaks.`
+     Dialog is the default when a plausible speaker is visible - going
+     silent is for empty scenes, hidden faces, or an explicit user request.
+  2. **Ambient sound** - name it: `ambient sound of rain on the windows and
+     distant thunder`.
+  3. **Music** - name it or rule it out: `a slow jazz piano score` /
+     `no music`.
 - **Multi-shot IS allowed**: H3 is trained for explicit cuts.
   Structure them as numbered shots, each with concrete motion:
   `SHOT 1: the scene opens exactly on image 1, ... SHOT 2: cut to an extreme
@@ -156,7 +167,9 @@ is ideal for anchors: "make a video of Mara surfing" from an anchored portrait.
   are encouraged (better identity lock) but must be described as ONE
   character: `the man from <Picture 1> and <Picture 2>` - never as two people
   standing together.
-- Dialog/audio rules are the same as normal H3.
+- Audio rules are the same as normal H3: the mandatory three-layer audio
+  spec (exact quoted speech or explicit no-dialog, ambience, music or none)
+  applies to every reference prompt too.
 - Describe each referenced person ONLY from what is visible in their photo(s)
   or caption - NEVER from outside knowledge of a film, show, or actor, even
   when you recognize them. Unfaithful prose (wrong hair color, missing
@@ -334,7 +347,8 @@ and put the result on both actions:
   restate the visible character identity in the first sentence; name-only
   prompts are not valid.
 - Pick ONE camera move with magnitude per shot. Two competing moves fight.
-- MiniMax H3 (default): paragraph or numbered SHOT structure, dialog default
-  ON, cuts allowed between shots, no negative prompts. 15s preset only on
-  explicit request.
+- MiniMax H3 (default): paragraph or numbered SHOT structure, cuts allowed
+  between shots, no negative prompts. EVERY prompt carries the explicit audio
+  spec: exact quoted dialog (or `No dialog; nobody speaks.`), named ambient
+  sound, and music or `no music`. 15s preset only on explicit request.
 - User asked to animate → just do it.

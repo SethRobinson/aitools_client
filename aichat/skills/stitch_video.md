@@ -137,7 +137,7 @@ keeper, then stitch them together into one video."
 ```
 Scene 1 - <one line of story text for the user>
 <aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full self-contained Z-Image scene 1>" width="864" height="480"/>
-<aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" prompt="<H3 motion + one camera move + one short quoted line + ambient sound>" chain="true" width="864" height="480" duration="10" anchor="scene1"/>
+<aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" prompt="<H3 motion + one camera move + audio spec: one short quoted line (or an explicit no-dialog) + ambient sound + music or no music>" chain="true" width="864" height="480" duration="10" anchor="scene1"/>
 
 ... scenes 2-5 the same way ...
 
@@ -155,8 +155,11 @@ Why this shape works:
   every prompt; for invented characters restate their full appearance in
   EVERY prompt (the models have no memory between clips). Vary the camera
   and the beat, not the look.
-- Give each clip ONE or two short lines of dialog or a clear sound cue; the
-  stitched film keeps all audio in order.
+- Every clip prompt carries the full H3 audio spec: one or two short quoted
+  dialog lines per speaker (or an explicit `No dialog; nobody speaks.`), a
+  named ambient sound, and music or `no music` - kept consistent across
+  scenes so the stitched film's soundtrack doesn't lurch. Unstated audio is
+  invented and people mouth gibberish.
 
 Say in the chat text that the finished film will appear as a new Movie once
 all clips are rendered; the host posts the stitched Movie bubble by itself.

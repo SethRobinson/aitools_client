@@ -326,6 +326,15 @@ Six reference presets, split across the universal workflow pair (since
   knowledge - H3 has no negative prompt and unfaithful prose beats the visual
   reference (the "auburn hair on a blonde actress" failure). Defer identity to
   `<Picture N>` tags and keep prose traits minimal.
+- Audio prompting rule (2026-08-27): H3 ALWAYS generates a soundtrack, and an
+  on-screen person whose line the prompt never specifies mouths GIBBERISH. The
+  movie skills (image_to_movie, generate_movie, video_to_video, storytelling,
+  stitch) therefore require every H3 prompt to carry an explicit three-layer
+  audio spec: WHO speaks and their EXACT quoted words (or an explicit
+  `No dialog; nobody speaks.`), a named ambient sound, and music or `no
+  music` (reference prompts may defer a layer to `<Audio N>` instead). This
+  is skill-text guidance only - no executor gate, since "audio was specified"
+  isn't deterministically checkable.
 - Skill docs: `aichat/skills/video_to_video.md` (modes, slots, tags, examples,
   same-people identity recipe), `image_to_movie.md` (multi-photo r2v + the
   start-frame two-stage recipe), `extract_still.md` (frame extraction for
