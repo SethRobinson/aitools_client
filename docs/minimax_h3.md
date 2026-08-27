@@ -90,10 +90,19 @@ native stereo audio (dialog in 11 languages), no RIFE in the output path.
 - Cold-start adders the first time a server touches H3: ~20 GB checkpoint stage
   (tens of seconds) + LoRA load a few more.
 - r2v turbo 8-step, 1 photo (the DEFAULT reference tier since 2026-08-27):
-  ~64-68s server-side Blackwell, ~124s A100 (that one included a cold Ref2VA
-  checkpoint stage) - in line with i2v turbo, ~3.7x faster than the 20-step
-  reference render. rv2v turbo unmeasured; expect the same ratio over its
-  20-step figure.
+  ~64-68s server-side Blackwell (~6.6-7.0 s/step), ~124s A100 (that one
+  included a cold Ref2VA checkpoint stage) - in line with i2v turbo, ~3.7x
+  faster than the 20-step reference render. rv2v turbo unmeasured; expect the
+  same ratio over its 20-step figure.
+- Reference per-step cost tracks TOTAL token count, not just the canvas: the
+  same r2v turbo run at 1152x640 measured 12.6 s/step (~113s), and a
+  full-resolution reference photo adds more on top (`ref_image_size: match`
+  scales each ref toward the canvas AREA, so a big source photo carries ~3x
+  the ref tokens of a 512x512 one; observed 14.6-14.8 s/step, ~136-166s, for
+  1-photo 1152x640 requests). A "reference render took 2x as long" report is
+  almost always a bigger request (canvas/duration/refs), not a slower
+  workflow - AI Chat's skill docs deliberately raise identity-critical
+  reference renders to 1152x640.
 - Single-clip rv2v 5s (20-step, no turbo):
   242s (~4 min), ~1.6x plain 20-step i2v - reference tokens ride every sampling
   step; 359s measured with the Ref2VA checkpoint cold-loading. 15s rv2v: measured
