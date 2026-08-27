@@ -256,6 +256,28 @@ public class AutomationDriver : MonoBehaviour
         return AIChatPanel.AutomationCompact(mode, keepExchanges, out error);
     }
 
+    /// <summary>
+    /// Paste from the Windows clipboard as if the user pressed Ctrl+V: target "chat"
+    /// runs AI Chat's attachment-zone paste (clipboard files first, bitmap fallback),
+    /// anything else pastes into the workspace via GameLogic.OnAddPicFromClipboard.
+    /// </summary>
+    public bool Paste(string target, out string error)
+    {
+        error = "";
+        string t = (target ?? "").Trim().ToLowerInvariant();
+        if (t == "chat")
+            return AIChatPanel.AutomationPasteClipboard(out error);
+
+        var gameLogic = GameLogic.Get();
+        if (gameLogic == null)
+        {
+            error = "no GameLogic";
+            return false;
+        }
+        gameLogic.OnAddPicFromClipboard();
+        return true;
+    }
+
     /// <summary>Save a chat image to disk as PNG. index &lt;= 0 means latest.</summary>
     public bool Save(int index, string path, out string error)
     {

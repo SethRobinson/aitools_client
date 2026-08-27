@@ -14,8 +14,10 @@ using UnityEngine.UI;
 ///   - A list of attachments (Texture2D thumb + raw byte[] PNG to send).
 ///   - A horizontal thumbnail strip (built into a caller-provided RectTransform).
 ///   - A drag-and-drop intercept that claims any file dropped over a caller-provided rect.
-///   - A Ctrl+V handler that runs <c>utils\RTClip.exe</c> to pull an image off the
-///     Windows clipboard, fired only while a caller-provided TMP_InputField is focused.
+///   - A Ctrl+V handler (fired only while a caller-provided TMP_InputField is focused)
+///     that imports clipboard FILE references (Explorer copy, Snipping Tool recording -
+///     videos/audio/images route like drops) and falls back to <c>utils\RTClip.exe</c>
+///     for a bitmap-only clipboard image.
 ///
 /// Hosts (e.g. AIChatPanel, AdventureInput) call <see cref="Initialize"/> once, then
 /// subscribe to <see cref="OnAttachmentsChanged"/> to re-layout their own surrounding UI
@@ -294,15 +296,54 @@ public class ChatImageAttachmentZone : MonoBehaviour
 
     private void Update()
     {
-        // Ctrl+V paste -> if Windows clipboard has an image, attach it. We let TMP_InputField
-        // do its own text paste in parallel; if the clipboard had only an image then no text
-        // is pasted and only the attachment is added.
+        // Ctrl+V paste -> clipboard FILES first (that's how videos arrive: Explorer copy,
+        // Snipping Tool recording), then any bitmap image. We let TMP_InputField do its
+        // own text paste in parallel; if the clipboard had only media then no text is
+        // pasted and only the import happens.
         if (_pasteField != null && _pasteField.isFocused
             && Input.GetKeyDown(KeyCode.V)
             && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)))
         {
-            TryPasteImageFromClipboard();
+            PasteFromClipboard();
         }
+    }
+
+    /// <summary>
+    /// Full paste behavior (what Ctrl+V runs): clipboard file references import exactly
+    /// like files dropped on this zone (videos to the video-import flow, audio to audio,
+    /// images become attachments); with no usable files, any clipboard bitmap becomes an
+    /// attachment via RTClip. Also the automation "/paste target=chat" entry point.
+    /// </summary>
+    public void PasteFromClipboard()
+    {
+        if (!TryPasteFilesFromClipboard())
+            TryPasteImageFromClipboard();
+    }
+
+    /// <summary>
+    /// Import any files referenced by the Windows clipboard. Returns true when at least
+    /// one supported file was consumed; false (clipboard empty of usable files) lets the
+    /// bitmap-paste fallback run.
+    /// </summary>
+    private bool TryPasteFilesFromClipboard()
+    {
+        var files = RTClipboardFileList.GetFiles();
+        if (files.Count == 0) return false;
+
+        // Snapshot videos into the paste cache before handing them to the import flow:
+        // the chooser/transcode reads the source for a while, and clipboard sources are
+        // often transient temp files (Snipping Tool recordings live in its TempState).
+        for (int i = 0; i < files.Count; i++)
+        {
+            if (FfmpegTool.IsSupportedVideoExtension(files[i]))
+            {
+                string cached = RTClipboardFileList.CopyToPasteCache(files[i]);
+                if (cached != null) files[i] = cached;
+            }
+        }
+
+        ImportExternalFiles(files, out bool addedAny, out bool handledMedia);
+        return addedAny || handledMedia;
     }
 
     /// <summary>
@@ -686,8 +727,22 @@ public class ChatImageAttachmentZone : MonoBehaviour
                 return false;
         }
 
-        bool addedAny = false;
-        bool handledVideo = false;
+        ImportExternalFiles(files, out bool addedAny, out bool handledMedia);
+
+        // Even if no images were valid, return true to indicate "drop was over us" so the
+        // default handler doesn't also try to load them as new pics.
+        return addedAny || handledMedia || files.Count > 0;
+    }
+
+    /// <summary>
+    /// Shared file routing for drops over this zone and clipboard-file pastes: videos and
+    /// audio go to the host's import handlers (Movie / Audio bubbles), supported images
+    /// become attachments, anything else is skipped.
+    /// </summary>
+    private void ImportExternalFiles(List<string> files, out bool addedAny, out bool handledMedia)
+    {
+        addedAny = false;
+        handledMedia = false;
         foreach (var f in files)
         {
             string ext;
@@ -703,16 +758,27 @@ public class ChatImageAttachmentZone : MonoBehaviour
 
             if (isVideo)
             {
-                handledVideo = true;
-                try { OnVideoFileDropped?.Invoke(f); }
-                catch (Exception ex) { Debug.LogError("ChatImageAttachmentZone: video drop handler failed for " + f + ": " + ex); }
+                handledMedia = true;
+                if (OnVideoFileDropped == null)
+                {
+                    // This zone's host doesn't take video imports (e.g. Adventure).
+                    RTQuickMessageManager.Get().ShowMessage("Videos go to AI Chat or the main workspace");
+                    continue;
+                }
+                try { OnVideoFileDropped.Invoke(f); }
+                catch (Exception ex) { Debug.LogError("ChatImageAttachmentZone: video import handler failed for " + f + ": " + ex); }
                 continue;
             }
             if (isAudio)
             {
-                handledVideo = true;
-                try { OnAudioFileDropped?.Invoke(f); }
-                catch (Exception ex) { Debug.LogError("ChatImageAttachmentZone: audio drop handler failed for " + f + ": " + ex); }
+                handledMedia = true;
+                if (OnAudioFileDropped == null)
+                {
+                    RTQuickMessageManager.Get().ShowMessage("Audio files go to AI Chat");
+                    continue;
+                }
+                try { OnAudioFileDropped.Invoke(f); }
+                catch (Exception ex) { Debug.LogError("ChatImageAttachmentZone: audio import handler failed for " + f + ": " + ex); }
                 continue;
             }
 
@@ -724,13 +790,9 @@ public class ChatImageAttachmentZone : MonoBehaviour
             }
             catch (Exception ex)
             {
-                Debug.LogError("ChatImageAttachmentZone: failed to read dropped file " + f + ": " + ex);
+                Debug.LogError("ChatImageAttachmentZone: failed to read imported file " + f + ": " + ex);
             }
         }
-
-        // Even if no images were valid, return true to indicate "drop was over us" so the
-        // default handler doesn't also try to load them as new pics.
-        return addedAny || handledVideo || files.Count > 0;
     }
 
     /// <summary>

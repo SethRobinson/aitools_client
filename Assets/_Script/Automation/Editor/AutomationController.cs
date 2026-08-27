@@ -42,6 +42,7 @@ using UnityEngine;
 //   POST /chat_main_llm -> body: name=<instance-name substring|default>; select the footer Main LLM override
 //   POST /chat_web    -> body: enabled=<true|false> (optional; omitted = report only); the header "Web" checkbox (gates web_* skills)
 //   POST /chat_compact -> body: mode=<summarize|truncate> (default summarize), keep=<n> exchanges kept (default 2); runs AI Chat's Compact
+//   POST /paste       -> body: target=<chat|app> (default app); run the Ctrl+V clipboard paste
 //   GET  /chat_images -> JSON array: index/w/h/busy/movie for each chat image
 //   POST /movie_state -> body: index=<n|latest>; PicMovie playback telemetry for a Movie bubble
 //   POST /save        -> body: index=<n|latest>, path=<file>; save chat image PNG
@@ -415,6 +416,26 @@ public static class AutomationController
                         bool ok = AutomationBridge.CompactChat(compactMode, keepExchanges, out string err);
                         return ok
                             ? $"{{\"ok\":true,\"accepted\":\"chat_compact\",\"mode\":{JsonStr(compactMode)}}}"
+                            : $"{{\"ok\":false,\"error\":{JsonStr(err)}}}";
+                    }, "{\"ok\":false,\"error\":\"timed out\"}");
+                    WriteJson(stream, 200, result);
+                    break;
+                }
+
+                case "/paste":
+                {
+                    // Body: key=value lines. target=<chat|app> (default app). Runs the same
+                    // clipboard paste Ctrl+V triggers (the bridge cannot inject keystrokes):
+                    // "chat" = AI Chat attachment-zone paste (clipboard files first - videos
+                    // enter the video-import flow - then bitmap fallback); "app" = workspace
+                    // paste (files/bitmap become new pics).
+                    var kv = ParseKeyValues(body);
+                    string pasteTarget = kv.TryGetValue("target", out var pt) ? pt : "app";
+                    string result = RunOnMainAndWait(() =>
+                    {
+                        bool ok = AutomationBridge.Paste(pasteTarget, out string err);
+                        return ok
+                            ? $"{{\"ok\":true,\"accepted\":\"paste\",\"target\":{JsonStr(pasteTarget)}}}"
                             : $"{{\"ok\":false,\"error\":{JsonStr(err)}}}";
                     }, "{\"ok\":false,\"error\":\"timed out\"}");
                     WriteJson(stream, 200, result);

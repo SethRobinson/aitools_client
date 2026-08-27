@@ -8418,6 +8418,24 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         return true;
     }
 
+    /// <summary>
+    /// Automation seam: run the attachment zone's full Ctrl+V paste behavior (clipboard
+    /// file references first - videos through the video-import flow - then any bitmap
+    /// image). The bridge can't inject real keystrokes, so /paste calls this directly.
+    /// </summary>
+    public static bool AutomationPasteClipboard(out string error)
+    {
+        error = null;
+        Show();
+        if (_instance == null || _instance._attachmentZone == null)
+        {
+            error = "no chat panel / attachment zone";
+            return false;
+        }
+        _instance._attachmentZone.PasteFromClipboard();
+        return true;
+    }
+
     public static bool AddLocalStillFrameToChat(string sourcePath, float atSeconds, string dimensions, out string error)
     {
         error = null;

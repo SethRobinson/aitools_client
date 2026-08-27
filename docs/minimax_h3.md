@@ -267,6 +267,17 @@ Six reference presets, split across the universal workflow pair (since
     resolved preset's `@upload|imageN|` lines and system-injects a warning when a
     slot has no consumer, so over-slotted actions fail loudly instead of silently
     dropping references (the pre-9-slot `chat_image4` incident).
+  - Reference-tag gate (2026-08-27, `BlockH3ReferencePromptTagMismatch`): on any
+    Reference preset (photo or clip, chained or not, matched on the RESOLVED
+    name) the executor requires the prompt to use EVERY staged reference's tag -
+    `<Video 1..2>` / `<Picture 1..N>` in slot order, whitespace between word and
+    number, case-insensitive - and to name no tag with nothing staged behind it.
+    A mismatch blocks BEFORE the render queues and injects a slot->tag map plus a
+    correction turn (`RequestContinueTurn`), because prose like "the blond woman"
+    over untagged photos kept rendering different people (3-attachment test,
+    2026-08-27). Correction notes translate attachment refs to their paste's
+    chat_image bubble (attachments don't survive continue turns); a blocked
+    chained action is told to re-point at the chain Pic's bubble number.
   - Aspect comes from the PRIMARY clip only; length stays the preset's unless the
     action carries `duration="N"` (seconds).
 - Explicit durations: any H3 generation action (t2v/i2v/r2v/rv2v, chained or not)

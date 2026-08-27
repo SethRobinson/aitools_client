@@ -1,6 +1,6 @@
 ---
 id: image_to_movie
-summary: Animate a STILL image into a short video. Default to Image To Video (MiniMax H3 Turbo Cache) 5s (native audio/dialog, 8-step turbo + Spectrum cache; progress shows 16 steps - 8 real + 8 cheap replay ticks, that is normal); use the 15s preset only for explicit long clips and duration="N" for ~5-15s. "High quality"/max-quality requests use the 20-step (MiniMax H3 Quality) presets; plain Image To Video (MiniMax H3) 5s is the cache-free variant, used only when the user explicitly asks to skip the cache or blames it for artifacts/audio stutter. Reference To Video presets REQUIRE a photo source; the plain name is already turbo (8-step Ref2V distill), "high quality" uses Reference To Video (MiniMax H3 Quality) 5s (20-step), and there is NO Cache variant - never invent other preset names; a video with no source at all is generate_movie (direct t2v) territory. For a video starring reference photos without an exact start frame, use H3 Reference To Video with up to 9 photos. A Movie #N is not an image source by default: edit/reference an existing Movie with video_to_video. Only when the user explicitly wants to animate one current frame may image_to_movie target a Movie, and it must include movie_frame="true".
+summary: Animate a STILL image into a short video. Default to Image To Video (MiniMax H3 Turbo Cache) 5s (native audio/dialog, 8-step turbo + Spectrum cache; progress shows 16 steps - 8 real + 8 cheap replay ticks, that is normal); use the 15s preset only for explicit long clips and duration="N" for ~5-15s. "High quality"/max-quality requests use the 20-step (MiniMax H3 Quality) presets; plain Image To Video (MiniMax H3) 5s is the cache-free variant, used only when the user explicitly asks to skip the cache or blames it for artifacts/audio stutter. Reference To Video presets REQUIRE a photo source; the plain name is already turbo (8-step Ref2V distill), "high quality" uses Reference To Video (MiniMax H3 Quality) 5s (20-step), and there is NO Cache variant - never invent other preset names; a video with no source at all is generate_movie (direct t2v) territory. For a video starring reference photos without an exact start frame, use H3 Reference To Video with up to 9 photos; the prompt MUST use each staged photo via its tag, <Picture 1>..<Picture N> in slot order ("the woman from <Picture 1>") - prose alone ("the blond woman") does not bind to a photo, and the host refuses reference actions whose prompts skip a staged photo's tag. A Movie #N is not an image source by default: edit/reference an existing Movie with video_to_video. Only when the user explicitly wants to animate one current frame may image_to_movie target a Movie, and it must include movie_frame="true".
 inputs: attachment
 autoload: true
 triggers: animate, animation, image to video, image-to-video, image to movie, image-to-movie, animate this, animate it, make this move, make it move, make a video, make a movie, make a clip, create a video, create a movie, generate a video, generate a movie, video starring, movie starring, video of, movie of, second video, second movie, reference to video, minimax, mini max, minmax, minimax h3, minmax h3, h3, hailuo, spectrum, turbo cache, spectrum cache
@@ -147,9 +147,15 @@ is ideal for anchors: "make a video of Mara surfing" from an anchored portrait.
   composite still first and animate it - that is only for pinning an exact
   start frame (see the two-stage recipe below).
 - Reference each supplied photo by its `<Picture N>` tag in the prompt and
-  give it ONE job. Multiple photos of the SAME person are encouraged (better
-  identity lock) but must be described as ONE character: `the man from
-  <Picture 1> and <Picture 2>` - never as two people standing together.
+  give it ONE job. EVERY staged photo must appear as its exact tag at least
+  once - the tag is the ONLY link between your prose and that photo's pixels,
+  so an untagged photo conditions the render ambiguously and identity drifts.
+  The host checks this and refuses the action (with a correction turn) when a
+  staged photo's tag is missing from the prompt, or when the prompt names a
+  `<Picture N>` with no photo behind it. Multiple photos of the SAME person
+  are encouraged (better identity lock) but must be described as ONE
+  character: `the man from <Picture 1> and <Picture 2>` - never as two people
+  standing together.
 - Dialog/audio rules are the same as normal H3.
 - Describe each referenced person ONLY from what is visible in their photo(s)
   or caption - NEVER from outside knowledge of a film, show, or actor, even

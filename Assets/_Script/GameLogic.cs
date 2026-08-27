@@ -1074,6 +1074,34 @@ public class GameLogic : MonoBehaviour
     
     public void OnAddPicFromClipboard()
     {
+        // Clipboard FILE references first (Explorer copy, Snipping Tool recording copy) -
+        // that's how videos arrive, and they route exactly like files dragged onto the
+        // workspace. A bitmap-only clipboard keeps the old RTClip image path below.
+        var files = RTClipboardFileList.GetFiles();
+        if (files.Count > 0)
+        {
+            // Snapshot videos into the paste cache: a movie pic streams from its file
+            // long-term and clipboard sources are often transient temp files.
+            for (int i = 0; i < files.Count; i++)
+            {
+                if (AITools.AIChat.Video.FfmpegTool.IsSupportedVideoExtension(files[i]))
+                {
+                    string cached = RTClipboardFileList.CopyToPasteCache(files[i]);
+                    if (cached != null) files[i] = cached;
+                }
+            }
+            DragAndDropHandler.OpenFilesInWorkspace(files);
+            return;
+        }
+
+        // Don't leave a blank pic behind for a text-only/empty clipboard (easy to hit
+        // now that Ctrl+V is a workspace hotkey).
+        if (!RTClipboardFileList.HasImage())
+        {
+            RTQuickMessageManager.Get().ShowMessage("No image or media files on the Windows clipboard");
+            return;
+        }
+
         var go = m_AIimageGenerator.CreateNewPic();
         var picScript = go.GetComponent<PicMain>();
         if (picScript.LoadImageFromClipboard())
@@ -1081,6 +1109,21 @@ public class GameLogic : MonoBehaviour
 
             //success
         }
+    }
+
+    /// <summary>
+    /// True while any input field has keyboard focus, so global hotkeys like Ctrl+V
+    /// don't fire while the user is typing/pasting text. (AI Chat's attachment zone
+    /// handles its own Ctrl+V while its input field is focused.)
+    /// </summary>
+    bool IsAnyInputFieldFocused()
+    {
+        var selected = EventSystem.current != null ? EventSystem.current.currentSelectedGameObject : null;
+        if (selected == null) return false;
+        var tmpInput = selected.GetComponent<TMPro.TMP_InputField>();
+        if (tmpInput != null && tmpInput.isFocused) return true;
+        var legacyInput = selected.GetComponent<UnityEngine.UI.InputField>();
+        return legacyInput != null && legacyInput.isFocused;
     }
 
     public bool GetInpaintMaskEnabled()
@@ -2293,6 +2336,17 @@ public string GetPrompt() { return m_prompt; }
         }
 
         if (m_gameMode == eGameMode.EXPERIMENT) return;
+
+        // Ctrl+V into the workspace: paste clipboard media (images, or video/image files
+        // from an Explorer copy / Snipping Tool) as new pics - same as the Paste button.
+        // Skipped while any input field is focused so text paste keeps working (AI Chat's
+        // attachment zone runs its own Ctrl+V while its input is focused).
+        if (Input.GetKeyDown(KeyCode.V)
+            && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
+            && !IsAnyInputFieldFocused())
+        {
+            OnAddPicFromClipboard();
+        }
 
         const float penAdjustmentSize = 7.0f;
 

@@ -145,6 +145,15 @@ public static class AutomationBridge
         return _driver.CompactChat(mode, keepExchanges, out error);
     }
 
+    /// <summary>Paste from the Windows clipboard like Ctrl+V. target "chat" = AI Chat
+    /// attachment-zone paste; anything else = workspace paste (new pics).</summary>
+    public static bool Paste(string target, out string error)
+    {
+        error = "no driver";
+        if (_driver == null) return false;
+        return _driver.Paste(target, out error);
+    }
+
     /// <summary>JSON array describing the current chat images. "[]" if no chat panel.</summary>
     public static string ChatImagesJson()
     {

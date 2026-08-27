@@ -48,11 +48,21 @@ public class DragAndDropHandler : MonoBehaviour
             }
         }
 
+        OpenFilesInWorkspace(aFiles);
+    }
+
+    /// <summary>
+    /// Default workspace handling for external media files - shared by drag-drop (above)
+    /// and clipboard paste (GameLogic.OnAddPicFromClipboard): supported image/movie files
+    /// become new pics, audio and unknown types get a quick explanatory message.
+    /// </summary>
+    public static void OpenFilesInWorkspace(List<string> files)
+    {
         // List to collect all supported files
         List<string> validFiles = new List<string>();
 
         // Scan through dropped files and filter out supported image types
-        foreach (var f in aFiles)
+        foreach (var f in files)
         {
             var fi = new System.IO.FileInfo(f);
             var ext = fi.Extension.ToLower();
@@ -75,7 +85,7 @@ public class DragAndDropHandler : MonoBehaviour
         // Process all valid files
         if (validFiles.Count > 0)
         {
-            Debug.Log("Dropped " + validFiles.Count + " valid files at " + new Vector2(aPos.x, aPos.y));
+            Debug.Log("Opening " + validFiles.Count + " valid files");
             RTQuickMessageManager.Get().ShowMessage("Opening " + validFiles.Count + " files");
 
             // Add a small delay for each file to ensure proper loading sequence

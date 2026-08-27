@@ -1392,6 +1392,96 @@ namespace AITools.AIChat.Skills
             => !string.IsNullOrEmpty(presetName)
                && presetName.IndexOf("Reference To Video", StringComparison.OrdinalIgnoreCase) >= 0;
 
+        // H3 reference prompts bind prose to pixels ONLY through per-type tags in
+        // connection order (<Picture 1>.., <Video 1>.. - docs/minimax_h3.md "Model
+        // facts"). Whitespace is required between word and number because the tag
+        // reaches the encoder literally; "<Picture1>" is not a form we've verified.
+        private static readonly Regex s_promptPictureTagRegex =
+            new Regex(@"<\s*picture\s+(\d+)\s*>", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex s_promptVideoTagRegex =
+            new Regex(@"<\s*video\s+(\d+)\s*>", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        /// <summary>
+        /// Describe where a staged reference came from, for correction notes. Slot 1
+        /// is the primary chat_image/attachment; slots 2+ are the extra-input slots.
+        /// Attachment refs are translated to their paste's durable chat_image bubble
+        /// number when possible: correction notes ride a synthetic continue turn,
+        /// which clears the per-turn attachment list, so naming attachment indexes
+        /// there is dead advice.
+        /// </summary>
+        private string DescribeStagedRefSource(SkillAction action, int slot)
+        {
+            string suffix = slot == 1 ? "" : slot.ToString();
+            string ci = action.GetArg("chat_image" + suffix);
+            if (!string.IsNullOrEmpty(ci)) return $"chat_image{suffix}=\"{ci}\"";
+            string at = action.GetArg("attachment" + suffix);
+            if (!string.IsNullOrEmpty(at))
+            {
+                if (int.TryParse(at, out int aIdx))
+                {
+                    int bubble = _host?.ResolvePasteAttachmentToChatIndex(aIdx) ?? 0;
+                    if (bubble > 0) return $"the pasted image chat_image=\"{bubble}\"";
+                }
+                return $"attachment{suffix}=\"{at}\"";
+            }
+            return slot == 1 ? "the primary source" : $"the photo staged in slot {slot}";
+        }
+
+        /// <summary>
+        /// Deterministic pre-queue gate for H3 reference presets: the encoder gets no
+        /// binding between prose and a staged reference except its tag, so a prompt
+        /// that says "the blond woman" over three untagged photos routinely renders a
+        /// different person. Require every staged clip/photo to appear as its exact
+        /// tag (and no out-of-range tags) BEFORE spending GPU minutes; on mismatch,
+        /// inject a slot->tag map plus a correction turn and report blocked=true (the
+        /// caller must return without queuing). Descriptor lists are in tag order:
+        /// clipDescs[0] = &lt;Video 1&gt;, photoDescs[0] = &lt;Picture 1&gt;, etc.
+        /// </summary>
+        private bool BlockH3ReferencePromptTagMismatch(SkillAction action, string resolvedPreset,
+            List<string> clipDescs, List<string> photoDescs, string reEmitHint)
+        {
+            if ((clipDescs?.Count ?? 0) == 0 && (photoDescs?.Count ?? 0) == 0) return false;
+
+            string prompt = action.Prompt ?? "";
+            var picturesInPrompt = new HashSet<int>();
+            foreach (Match m in s_promptPictureTagRegex.Matches(prompt))
+                if (int.TryParse(m.Groups[1].Value, out int n)) picturesInPrompt.Add(n);
+            var videosInPrompt = new HashSet<int>();
+            foreach (Match m in s_promptVideoTagRegex.Matches(prompt))
+                if (int.TryParse(m.Groups[1].Value, out int n)) videosInPrompt.Add(n);
+
+            var problems = new List<string>();
+            for (int k = 1; k <= photoDescs.Count; k++)
+                if (!picturesInPrompt.Contains(k))
+                    problems.Add($"<Picture {k}> ({photoDescs[k - 1]}) never appears in the prompt");
+            foreach (int k in picturesInPrompt)
+                if (k > photoDescs.Count)
+                    problems.Add($"<Picture {k}> has no staged photo behind it (only {photoDescs.Count} staged)");
+            for (int k = 1; k <= clipDescs.Count; k++)
+                if (!videosInPrompt.Contains(k))
+                    problems.Add($"<Video {k}> ({clipDescs[k - 1]}) never appears in the prompt");
+            foreach (int k in videosInPrompt)
+                if (k > clipDescs.Count)
+                    problems.Add($"<Video {k}> has no staged clip behind it (only {clipDescs.Count} staged)");
+            if (problems.Count == 0) return false;
+
+            var map = new List<string>();
+            for (int k = 1; k <= clipDescs.Count; k++) map.Add($"<Video {k}> = {clipDescs[k - 1]}");
+            for (int k = 1; k <= photoDescs.Count; k++) map.Add($"<Picture {k}> = {photoDescs[k - 1]}");
+
+            _host?.AddSystemInjectionAndBubble(
+                $"Skill '{action.SkillId}' (preset '{resolvedPreset}') was NOT run: H3 reference prompts must " +
+                "address EVERY staged reference by its exact tag - prose alone (\"the blond woman\") does not bind " +
+                "to a photo and the render drifts off-identity. Tag map for what you staged (per-type, slot order): " +
+                string.Join(", ", map) + ". Problems: " + string.Join("; ", problems) + ". " +
+                reEmitHint + ", rewriting only the prompt so each reference is used by its tag at least once " +
+                "(e.g. 'the woman from <Picture 1>' - angle brackets, capitalized, a space before the number).");
+            _host?.RequestContinueTurn();
+            AIChatLog.Note("ref_tag_gate",
+                $"{action.SkillId}/{resolvedPreset}: blocked - {string.Join("; ", problems)}");
+            return true;
+        }
+
         // Explicit width/height on a START-FRAME video preset (H3/LTX/WAN i2v) whose
         // aspect clashes with the source image would visibly SQUISH the pinned first
         // frame: H3's MiniMaxH3ImageToVideo resizes the frame to the canvas with crop
@@ -1839,6 +1929,32 @@ namespace AITools.AIChat.Skills
                     $"(preset '{preset}' wasn't found - used the closest match '{resolved}' instead. Use that exact name next time.)");
             RecordResolvedPreset(resolved);
 
+            // H3 reference presets: block before queuing when the prompt doesn't
+            // address every staged reference by its tag (see the helper's doc).
+            // Checked against the RESOLVED name so fuzzy preset matches gate too.
+            bool gateRefVideo = action.SkillId.ToLowerInvariant() == BuiltInSkillIds.VideoToVideo
+                && resolved.IndexOf("Reference Video To Video", StringComparison.OrdinalIgnoreCase) >= 0;
+            if (gateRefVideo || IsReferencePhotoPreset(resolved))
+            {
+                var clipDescs = new List<string>();
+                var photoDescs = new List<string>();
+                if (gateRefVideo)
+                {
+                    clipDescs.Add($"the source clip ({DescribeStagedRefSource(action, 1)})");
+                    if (secondClipPath != null)
+                        clipDescs.Add($"the second clip ({DescribeStagedRefSource(action, 2)})");
+                }
+                else if (useAttachment && attachmentBytes != null)
+                {
+                    photoDescs.Add(DescribeStagedRefSource(action, 1));
+                }
+                for (int slot = 2; slot <= PicMain.MaxExtraInputImageSlot; slot++)
+                    if (extraBytes[slot] != null) photoDescs.Add(DescribeStagedRefSource(action, slot));
+                if (BlockH3ReferencePromptTagMismatch(action, resolved, clipDescs, photoDescs,
+                        "Re-emit the SAME action with the SAME attributes"))
+                    return;
+            }
+
             var imageGen = ImageGenerator.Get();
             if (imageGen == null)
             {
@@ -2165,6 +2281,36 @@ namespace AITools.AIChat.Skills
                 _host?.AddInfoBubble(
                     $"(preset '{preset}' wasn't found - used the closest match '{resolved}' instead. Use that exact name next time.)");
             RecordResolvedPreset(resolved);
+
+            // Same H3 reference-tag gate as the non-chained path. Runs BEFORE prevPic
+            // is touched, so a block leaves the chained-from still rendering as its own
+            // bubble. The chain target was already consumed and continue turns reset
+            // chain state, so the correction must re-point at the Pic's bubble number.
+            bool chainGateRefVideo = action.SkillId.ToLowerInvariant() == BuiltInSkillIds.VideoToVideo
+                && resolved.IndexOf("Reference Video To Video", StringComparison.OrdinalIgnoreCase) >= 0;
+            if (chainGateRefVideo || IsReferencePhotoPreset(resolved))
+            {
+                var clipDescs = new List<string>();
+                var photoDescs = new List<string>();
+                if (chainGateRefVideo)
+                {
+                    clipDescs.Add("the source clip (the movie chained from this reply)");
+                    if (chainSecondClipPath != null)
+                        clipDescs.Add($"the second clip ({DescribeStagedRefSource(action, 2)})");
+                }
+                else
+                {
+                    photoDescs.Add("the image chained from this reply");
+                }
+                for (int slot = 2; slot <= PicMain.MaxExtraInputImageSlot; slot++)
+                    if (chainExtraBytes[slot] != null) photoDescs.Add(DescribeStagedRefSource(action, slot));
+                int chainBubbleIdx = _host?.GetChatImageIndexForPic(prevPic) ?? 0;
+                string reEmit = chainBubbleIdx > 0
+                    ? $"Re-emit the SAME action with chain=\"true\" replaced by chat_image=\"{chainBubbleIdx}\" (chain does not survive a continue turn), other attributes unchanged"
+                    : "Re-emit the SAME action with chain=\"true\" replaced by the chained-from bubble's chat_image=\"N\" (chain does not survive a continue turn), other attributes unchanged";
+                if (BlockH3ReferencePromptTagMismatch(action, resolved, clipDescs, photoDescs, reEmit))
+                    return;
+            }
 
             for (int slot = 2; slot <= PicMain.MaxExtraInputImageSlot; slot++)
                 if (!TryWireExtraInput(prevPic, chainExtraBytes[slot], slot, action.SkillId)) return;

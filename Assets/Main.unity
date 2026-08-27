@@ -5629,8 +5629,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: edd328fb144e819498d395172c8823a0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _text: 'Pastes from the Windows clipboard.  Tip: You can use Win+Shift+S to copy
-    anything onscreen to the Windows clipboard.'
+  _text: 'Pastes from the Windows clipboard.  Works with images, videos, and copied
+    files.  Tip: You can use Win+Shift+S to copy anything onscreen, and the Snipping
+    Tool Copy button works for screen recordings too.'
 --- !u!114 &144219804
 MonoBehaviour:
   m_ObjectHideFlags: 0
