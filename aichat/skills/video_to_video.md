@@ -1,6 +1,6 @@
 ---
 id: video_to_video
-summary: Operate on an EXISTING "Movie #N" clip. Two modes - (1) VISUAL-ONLY RESTYLE/EDIT it with Bernini-R, keeping its motion but producing silent output; (2) REFERENCE-generate a brand-NEW MiniMax H3 clip that carries the source's subject/motion/style into a new scene, or creates/replaces dialogue, voice, music, audio, or sound effects. H3 preset: `Reference Video To Video (MiniMax H3) 5s.txt`; its prompt refers to the source as <Video 1>. For explicit LONG ~15s use the 15s preset; for other lengths use duration="N" (~5-15s). H3 also accepts up to 9 reference photos and/or a second clip. When the result must keep the SAME people as the source, first extract_still a close-up frame per person (anchored) and stage the stills via chat_image2+ (they become <Picture 1>..); describe people ONLY as they appear in the clip/caption, never from film or actor knowledge. Never use image_to_image on a Movie unless the user explicitly requests one still/current frame and the action has movie_frame="true". For smoothing/FPS use rife_video; for animating a STILL use image_to_movie.
+summary: Operate on an EXISTING "Movie #N" clip. Two modes - (1) VISUAL-ONLY RESTYLE/EDIT it with Bernini-R, keeping its motion but producing silent output; (2) REFERENCE-generate a brand-NEW MiniMax H3 clip that carries the source's subject/motion/style into a new scene, or creates/replaces dialogue, voice, music, audio, or sound effects. H3 preset: `Reference Video To Video (MiniMax H3) 5s.txt` (already turbo; "high quality" -> the 20-step `Reference Video To Video (MiniMax H3 Quality)` variants; no Cache variant exists); its prompt refers to the source as <Video 1>. For explicit LONG ~15s use the 15s preset; for other lengths use duration="N" (~5-15s). H3 also accepts up to 9 reference photos and/or a second clip. When the result must keep the SAME people as the source, first extract_still a close-up frame per person (anchored) and stage the stills via chat_image2+ (they become <Picture 1>..); describe people ONLY as they appear in the clip/caption, never from film or actor knowledge. Never use image_to_image on a Movie unless the user explicitly requests one still/current frame and the action has movie_frame="true". For smoothing/FPS use rife_video; for animating a STILL use image_to_movie.
 inputs: attachment
 autoload: true
 triggers: video to video, restyle the video, restyle this clip, edit the video, edit the clip, change the video, change the clip, redo the video, redo the clip, make the video, make the clip, the video but, the clip but, same video but, restyle the clip, turn the video, turn the clip, video into, clip into, re-render the video, regenerate the video, based on this video, based on that video, based on the clip, based on this clip, like this video, like the video, like this clip, same character as the video, from this video, from the clip, restyle the movie, edit the movie, change the movie, redo the movie, make the movie, the movie but, same movie but, turn the movie, movie into, re-render the movie, regenerate the movie, based on this movie, based on that movie, based on the movie, like this movie, like the movie, same character as the movie, from this movie, from the movie, use movie, use the movie, use this movie, use that movie, as reference, as a reference, reference video, reference clip, reference movie
@@ -38,11 +38,14 @@ two distinct modes - pick by what the user wants:
    A silent source clip is fine: the host detects it, drops the audio
    reference automatically, and H3 synthesizes a soundtrack from the prompt
    (there is then no `<Audio 1>` to reference).
-   There is NO Turbo, Cache, or Quality variant of any Reference Video To
-   Video preset (the reference model cannot run the turbo LoRA; these always
-   run the full 20-step render). Never invent such a preset name - if the
-   user asks for the spectrum/cache/turbo variant on a reference generation,
-   use the plain preset above and tell them the speedup does not apply here.
+   The plain preset names above are already turbo (an 8-step Ref2V distill
+   is baked in). For high/maximum-quality requests use
+   `{{Reference Video To Video (MiniMax H3 Quality) 5s.txt}}` /
+   `{{Reference Video To Video (MiniMax H3 Quality) 15s.txt}}` (full 20-step
+   render, ~2x time). There is NO Cache variant of any Reference preset -
+   never invent such a preset name; if the user asks for the spectrum/cache
+   variant on a reference generation, use the plain preset above and tell
+   them the cache does not apply here.
 
    The SAME preset also accepts extra references alongside the clip:
    - **Photo references** (up to 9): stills in `chat_image2`..`chat_image10`

@@ -61,10 +61,11 @@ inherited automatically.
   `{{Image To Video (MiniMax H3) 5s.txt}}` for the movie action, or
   `{{Prompt To Video (MiniMax H3) 5s.txt}}` for direct text-to-video - the
   same turbo pipeline without the cache ("Step N/8", ~1.4x slower).
-  Reference To Video presets have NO cache/turbo variant (reference
-  generations always run the full 20-step model) - never invent such a
-  preset name; if references are needed, use the plain Reference preset and
-  tell the user the cache does not apply.
+  Reference presets are ALSO turbo by default (an 8-step Ref2V distill baked
+  into the plain preset names) but have NO cache variant and no separate
+  no-cache name; for high/maximum-quality reference generations use the
+  `... (MiniMax H3 Quality)` Reference variants (full 20-step render). Never
+  invent other reference preset names by combining suffixes.
 - Always use `{{Prompt To Image (Z-Image).txt}}` for the still base unless the
   user explicitly names a different still-image model.
 

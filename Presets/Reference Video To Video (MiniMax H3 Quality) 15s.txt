@@ -1,9 +1,8 @@
 COMMAND_START|joblist
 #Generate a NEW ~15-second video with audio using a loaded VIDEO as the reference (MiniMax H3 Ref2VA).
-#TURBO default: lightx2v's Ref2V 4-step distill LoRA at 8 steps (euler, sigma shift 12/3), roughly
-#2.5x faster than the 20-step render. For maximum fidelity use "Reference Video To Video (MiniMax H3
-#Quality) 15s" (the full 20-step graph).
-#Same as the 5s preset at the model's trained maximum duration (~3x the render time).
+#QUALITY: the full 20-step render (~2x the turbo default "Reference Video To Video (MiniMax H3) 15s").
+#Use for explicit high-quality / maximum-fidelity requests.
+#Same as the Quality 5s preset at the model's trained maximum duration (~3x the render time).
 #The clip's visuals AND soundtrack condition the output; prompts refer to them as <Video 1> and <Audio 1>.
 #OPTIONAL extra references, pruned from the graph when absent (wired by AI Chat):
 #  video2 (second Movie bubble via chat_image2) -> <Video 2> / <Audio 2>
@@ -24,5 +23,5 @@ COMMAND_START|joblist
 %vid_height%="480"
 %vid_length%="362"
 
-ref_multi_to_video_minimax_h3_turbo.json @upload|video|input1| @upload|video2|input2|optional| @upload|image2|input3|optional| @upload|image3|input4|optional| @upload|image4|input5|optional| @upload|image5|input6|optional| @upload|image6|input7|optional| @upload|image7|input8|optional| @upload|image8|input9|optional| @upload|image9|input10|optional| @upload|image10|input11|optional| @replace|"width": 864|"width": %vid_width%| @replace|"height": 480|"height": %vid_height%| @replace|"length": 124|"length": %vid_length%|
+ref_multi_to_video_minimax_h3.json @upload|video|input1| @upload|video2|input2|optional| @upload|image2|input3|optional| @upload|image3|input4|optional| @upload|image4|input5|optional| @upload|image5|input6|optional| @upload|image6|input7|optional| @upload|image7|input8|optional| @upload|image8|input9|optional| @upload|image9|input10|optional| @upload|image10|input11|optional| @replace|"width": 864|"width": %vid_width%| @replace|"height": 480|"height": %vid_height%| @replace|"length": 124|"length": %vid_length%|
 COMMAND_END

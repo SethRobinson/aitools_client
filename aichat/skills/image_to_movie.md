@@ -1,6 +1,6 @@
 ---
 id: image_to_movie
-summary: Animate a STILL image into a short video. Default to Image To Video (MiniMax H3 Turbo Cache) 5s (native audio/dialog, 8-step turbo + Spectrum cache; progress shows 16 steps - 8 real + 8 cheap replay ticks, that is normal); use the 15s preset only for explicit long clips and duration="N" for ~5-15s. "High quality"/max-quality requests use the 20-step (MiniMax H3 Quality) presets; plain Image To Video (MiniMax H3) 5s is the cache-free variant, used only when the user explicitly asks to skip the cache or blames it for artifacts/audio stutter. Reference To Video presets REQUIRE a photo source and have NO Turbo/Cache/Quality variants - never invent preset names; a video with no source at all is generate_movie (direct t2v) territory. For a video starring reference photos without an exact start frame, use H3 Reference To Video with up to 9 photos. A Movie #N is not an image source by default: edit/reference an existing Movie with video_to_video. Only when the user explicitly wants to animate one current frame may image_to_movie target a Movie, and it must include movie_frame="true".
+summary: Animate a STILL image into a short video. Default to Image To Video (MiniMax H3 Turbo Cache) 5s (native audio/dialog, 8-step turbo + Spectrum cache; progress shows 16 steps - 8 real + 8 cheap replay ticks, that is normal); use the 15s preset only for explicit long clips and duration="N" for ~5-15s. "High quality"/max-quality requests use the 20-step (MiniMax H3 Quality) presets; plain Image To Video (MiniMax H3) 5s is the cache-free variant, used only when the user explicitly asks to skip the cache or blames it for artifacts/audio stutter. Reference To Video presets REQUIRE a photo source; the plain name is already turbo (8-step Ref2V distill), "high quality" uses Reference To Video (MiniMax H3 Quality) 5s (20-step), and there is NO Cache variant - never invent other preset names; a video with no source at all is generate_movie (direct t2v) territory. For a video starring reference photos without an exact start frame, use H3 Reference To Video with up to 9 photos. A Movie #N is not an image source by default: edit/reference an existing Movie with video_to_video. Only when the user explicitly wants to animate one current frame may image_to_movie target a Movie, and it must include movie_frame="true".
 inputs: attachment
 autoload: true
 triggers: animate, animation, image to video, image-to-video, image to movie, image-to-movie, animate this, animate it, make this move, make it move, make a video, make a movie, make a clip, create a video, create a movie, generate a video, generate a movie, video starring, movie starring, video of, movie of, second video, second movie, reference to video, minimax, mini max, minmax, minimax h3, minmax h3, h3, hailuo, spectrum, turbo cache, spectrum cache
@@ -60,11 +60,12 @@ animate one single still/current frame from that Movie; add
 - `{{Reference To Video (MiniMax H3) 5s.txt}}` - the SUBJECT of the source
   image doing something new; output does NOT start on the source frame. See
   "Reference-to-video" below. REQUIRES at least one photo source
-  (`attachment`/`chat_image`/`chain`) - never emit it sourceless. There is NO
-  Turbo, Cache, or Quality variant of ANY Reference preset (the reference
-  model cannot run the turbo LoRA; reference generations are always the full
-  20-step render) - never invent preset names by combining suffixes; use only
-  names listed in this skill or generate_movie.
+  (`attachment`/`chat_image`/`chain`) - never emit it sourceless. This plain
+  name is already turbo (8-step Ref2V distill). For high/maximum-quality
+  reference requests use `{{Reference To Video (MiniMax H3 Quality) 5s.txt}}`
+  (full 20-step render, ~2x time). There is NO Cache variant of any Reference
+  preset - never invent preset names by combining suffixes; use only names
+  listed in this skill or generate_movie.
 
 ## Invocation
 

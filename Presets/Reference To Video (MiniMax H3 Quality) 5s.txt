@@ -1,8 +1,7 @@
 COMMAND_START|joblist
 #Generate a ~5-second video with audio featuring the SUBJECT(s) of 1-9 input photos (MiniMax H3 Ref2VA).
-#TURBO default: lightx2v's Ref2V 4-step distill LoRA at 8 steps (euler, sigma shift 12/3), roughly
-#2.5x faster than the 20-step render. For maximum fidelity use "Reference To Video (MiniMax H3
-#Quality) 5s" (the full 20-step graph).
+#QUALITY: the full 20-step render (~2x the turbo default "Reference To Video (MiniMax H3) 5s").
+#Use for explicit high-quality / maximum-fidelity requests.
 #Unlike image-to-video, the output does not start on an input frame; the references lock identity/style.
 #Prompts must refer to the photos as <Picture 1> (and <Picture 2>..<Picture 9> when supplied).
 #Extra photos are OPTIONAL and pruned from the graph when absent; AI Chat wires them via
@@ -16,5 +15,5 @@ COMMAND_START|joblist
 %vid_height%="480"
 %vid_length%="124"
 
-ref_multi_to_video_minimax_h3_turbo.json @upload|image1|input3| @upload|image2|input4|optional| @upload|image3|input5|optional| @upload|image4|input6|optional| @upload|image5|input7|optional| @upload|image6|input8|optional| @upload|image7|input9|optional| @upload|image8|input10|optional| @upload|image9|input11|optional| @replace|"width": 864|"width": %vid_width%| @replace|"height": 480|"height": %vid_height%| @replace|"length": 124|"length": %vid_length%|
+ref_multi_to_video_minimax_h3.json @upload|image1|input3| @upload|image2|input4|optional| @upload|image3|input5|optional| @upload|image4|input6|optional| @upload|image5|input7|optional| @upload|image6|input8|optional| @upload|image7|input9|optional| @upload|image8|input10|optional| @upload|image9|input11|optional| @replace|"width": 864|"width": %vid_width%| @replace|"height": 480|"height": %vid_height%| @replace|"length": 124|"length": %vid_length%|
 COMMAND_END

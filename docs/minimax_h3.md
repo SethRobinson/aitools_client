@@ -50,13 +50,23 @@ native stereo audio (dialog in 11 languages), no RIFE in the output path.
   `MiniMaxH3TurboSampler` (dual-clock Euler; replaces `KSamplerSelect` into
   `SamplerCustomAdvanced`, fixes 4-step audio noise). Local install
   status and file locations: `agents_secret.md`.
-- **Ref2VA is NOT turbo-capable** (tested 2026-08-10): the node's time-conditioning
-  reinjection for pruned bases (`__init__.py` forward, the `h3_silu_temb_grid`
-  replay) assumes FL2VA's 2-stream latent packing and crashes on Ref2VA's 3-stream
-  ("size of tensor a (3) must match b (2)"), in both bypass and merge modes.
-  Reference presets stay 20-step; retest when the node/LoRA updates (lightx2v's
-  separate 4-step LoRA is FL2V-only preview quality, its Ref2V distill is
-  "on the roadmap").
+- **The FL2VA turbo node cannot run on Ref2VA** (tested 2026-08-10): its
+  time-conditioning reinjection for pruned bases (`__init__.py` forward, the
+  `h3_silu_temb_grid` replay) assumes FL2VA's 2-stream latent packing and crashes
+  on Ref2VA's 3-stream ("size of tensor a (3) must match b (2)"), in both bypass
+  and merge modes. That limitation is the CUSTOM NODE only, not LoRA-on-Ref2VA in
+  general: plain core `LoraLoaderModelOnly` patches attach to the Ref2VA
+  int8-convrot checkpoint cleanly (verified 2026-08-27 - adapters trained on the
+  bf16 FL2VA base attached 208 patches with zero `lora key not loaded` warnings
+  and sampled normally). Ref2VA turbo distills now exist upstream, both loading
+  through the plain core LoRA node with no custom nodes: lightx2v's 4-step Ref2V
+  distill (released 2026-08-13; `lightx2v/Minimax-h3-Turbo` ->
+  `minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors`, 1.82 GB, trained
+  at 544p, community sharpness comfort zone 6-8 steps) and alibaba-pai's PDD
+  8-step (`alibaba-pai/MiniMax-H3-Acc-LoRAs` ->
+  `MiniMax-H3-Ref2VA-Acc-8Step.safetensors`, 1.37 GB). The lightx2v distill is
+  wired in as the DEFAULT reference path since 2026-08-27 (see Workflows /
+  Presets below); the alibaba-pai one is untried.
 - The `SpectrumApplyMiniMaxH3` cache node (xmarre/ComfyUI-Spectrum-MiniMax-H3;
   must be installed on the server) stacks with turbo for ~1.4x more (50s vs 70s per 5s clip on a
   Blackwell) with A/B-identical frames; shipped as the `(MiniMax H3 Turbo Cache)
@@ -79,7 +89,12 @@ native stereo audio (dialog in 11 languages), no RIFE in the output path.
 - i2v turbo 8-step + Spectrum cache (the AI Chat default): ~50s Blackwell.
 - Cold-start adders the first time a server touches H3: ~20 GB checkpoint stage
   (tens of seconds) + LoRA load a few more.
-- Single-clip rv2v 5s (20-step, no turbo - Ref2VA can't run the turbo LoRA):
+- r2v turbo 8-step, 1 photo (the DEFAULT reference tier since 2026-08-27):
+  ~64-68s server-side Blackwell, ~124s A100 (that one included a cold Ref2VA
+  checkpoint stage) - in line with i2v turbo, ~3.7x faster than the 20-step
+  reference render. rv2v turbo unmeasured; expect the same ratio over its
+  20-step figure.
+- Single-clip rv2v 5s (20-step, no turbo):
   242s (~4 min), ~1.6x plain 20-step i2v - reference tokens ride every sampling
   step; 359s measured with the Ref2VA checkpoint cold-loading. 15s rv2v: measured
   ~51 min once but CONTENDED (shared host); treat as "much worse than 3x the 5s
@@ -107,6 +122,16 @@ native stereo audio (dialog in 11 languages), no RIFE in the output path.
   - `<AITOOLS_INPUT_3>`..`_11` photos 1-9 (`VHS_LoadImagePath`) -> `ref_image_0..8`
     (the node's full 9-image capacity)
   To run it manually in ComfyUI, delete the loaders you aren't using.
+- `ref_multi_to_video_minimax_h3_turbo.json` - the SAME universal Ref2VA graph
+  plus lightx2v's Ref2V turbo distill; run by the DEFAULT reference presets
+  since 2026-08-27. Deltas from the 20-step graph, mirroring lightx2v's
+  official example workflow: `LoraLoaderModelOnly` (the distill LoRA,
+  strength 1.0 - plain core node, no custom nodes) between `UNETLoader` and
+  the sage patch; `MiniMaxH3SigmaShift` (video 12 / audio 3, core since
+  ComfyUI 0.31) on the GUIDER branch only, so `BasicScheduler` still emits
+  unshifted sigmas; sampler `euler`/`simple` at 8 steps (the distill targets
+  4 NFE, community sharpness comfort zone is 6-8). Loaders, placeholders, and
+  submit-time pruning are identical to the 20-step graph.
 - `ref_to_video_minimax_h3.json`, `ref_video_to_video_minimax_h3.json` - legacy
   single-reference Ref2VA graphs, no longer referenced by any preset; kept as clean
   manual-use ComfyUI workflows.
@@ -176,18 +201,26 @@ FL2VA presets:
   plain turbo, ~3x the cache default); skills route "high quality" /
   "maximum quality" requests here.
 
-Three reference presets, all pointing at the universal workflow (all 20-step -
-Ref2VA cannot run the turbo LoRA, see Model facts). 
+Six reference presets, split across the universal workflow pair (since
+2026-08-27 the plain names are TURBO defaults, mirroring the FL2VA family):
 
-- `Reference Video To Video (MiniMax H3) 5s.txt` / `15s.txt`: clip required
+- `Reference Video To Video (MiniMax H3) 5s.txt` / `15s.txt` and
+  `Reference To Video (MiniMax H3) 5s.txt` - the DEFAULTS, running
+  `ref_multi_to_video_minimax_h3_turbo.json` (lightx2v Ref2V distill, 8 steps).
+- `Reference Video To Video (MiniMax H3 Quality) 5s.txt` / `15s.txt` and
+  `Reference To Video (MiniMax H3 Quality) 5s.txt` - the full 20-step graph
+  (`ref_multi_to_video_minimax_h3.json`, ~2x the turbo time); skills route
+  explicit high/maximum-quality reference requests here. There is deliberately
+  NO cache variant of any reference preset.
+- Slot layout (same for both tiers): rv2v = clip required
   (`@upload|video|input1|`), then optional `video2`->input2 and `image2..image10`
-  ->inputs 3-11 (photo refs 1-9).
-  The 5s preset deliberately has NO length `@replace` (opts out of AI Chat's
-  video_to_video source-duration override, which uses WAN's 16fps/4n+1 cadence -
-  wrong for a reference generation); the 15s preset's `124 -> 362` replace is
-  override-safe because it stales the appended override's find-text.
-- `Reference To Video (MiniMax H3) 5s.txt`: photo 1 required (`image1`->input3),
-  photos 2-9 (`image2..image9`->inputs 4-11) optional. Both video loaders prune away.
+  ->inputs 3-11 (photo refs 1-9); r2v = photo 1 required (`image1`->input3),
+  photos 2-9 (`image2..image9`->inputs 4-11) optional, both video loaders prune
+  away.
+- The rv2v 5s presets deliberately have NO length `@replace` (opts out of AI
+  Chat's video_to_video source-duration override, which uses WAN's 16fps/4n+1
+  cadence - wrong for a reference generation); the 15s presets' `124 -> 362`
+  replace is override-safe because it stales the appended override's find-text.
 - Video presets use `%vid_width%`/`%vid_height%`/`%vid_length%` because chained
   presets share one PicMain variable scope (see AGENTS.md job-script rules).
 - Preset names must keep the `"Reference Video To Video"` substring: the executor

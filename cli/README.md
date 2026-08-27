@@ -243,16 +243,19 @@ ffprobe is unavailable, pass `--no-clip-audio 1` (or `2`) for silent clips.
 ### Quality
 
 The default t2v/i2v presets run an 8-step turbo LoRA (~70s for a 5s clip on
-a fast GPU). For the full 20-step render (~2x slower, best quality), pick the
-`Quality` preset variants:
+a fast GPU), and the default reference presets (modes 3 and 4) run an 8-step
+Ref2V turbo distill. For the full 20-step render (~2x slower, best quality),
+pick the `Quality` preset variants:
 
 - `Prompt To Video (MiniMax H3 Quality) 5s`
 - `Image To Video (MiniMax H3 Quality) 5s` / `15s`
+- `Reference To Video (MiniMax H3 Quality) 5s`
+- `Reference Video To Video (MiniMax H3 Quality) 5s` / `15s`
 
-The reference presets (modes 3 and 4) are always 20-step (the turbo LoRA is
-incompatible with the reference checkpoint). Rough wall-clock for a 5s clip,
-uncontended: turbo t2v/i2v ~70s, Quality ~163s, single-clip reference video
-~4min; 15s clips cost several times the 5s figure.
+Rough wall-clock for a 5s clip, uncontended: turbo t2v/i2v ~70s, Quality
+t2v/i2v ~163s, 20-step single-clip reference video ~4min (the turbo
+reference default is roughly half that); 15s clips cost several times the
+5s figure.
 
 ### Size and duration
 

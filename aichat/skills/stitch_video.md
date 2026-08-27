@@ -59,8 +59,9 @@ movie-producing action:
 
 Without `duration=` every clip is 5 s, so "4 clips" stitch to 20 s - not a
 minute. If you tell the user "four 15-second clips", each action MUST carry
-`duration="15"`. Reference generations (real people) are the full 20-step
-render and take several minutes each; that is fine, the stitch waits.
+`duration="15"`. Reference generations (real people) run an 8-step turbo
+distill by default but still take a minute or more each (longer at
+`duration="15"` or Quality); that is fine, the stitch waits.
 
 ## Which action makes each clip
 
