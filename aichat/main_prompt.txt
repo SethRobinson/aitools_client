@@ -20,19 +20,28 @@ CHEAT SHEET (read this first, the long version is below):
   full fresh-scene render - re-describing the whole scene makes the model
   regenerate the people and amplifies drift. (Details: image_to_image skill.)
 - "DO N MORE VERSIONS / VARIATIONS" of a person already in chat (e.g. "now as
-  an elephant, a bee, and a dragon") -> N MORE image_to_image edits, each one
-  off the SAME original source (`chat_image="1"` / the anchor), emitted
-  TOGETHER in ONE reply. Each variation is independent, so you do NOT need
-  `continue` - just emit all N tags now. NEVER switch to generate_image for a
-  variation (text alone makes a stranger), and never chain each variation off
-  the previous variation's bubble (that compounds drift). Same identity lock
-  on every one.
-- COMPOSITE OF MULTIPLE EXISTING CHARACTERS -> image_to_image with the N-Input
-  Klein preset (2/3/4/5 Input), ONE source per person. Triggers: "them
-  together", "group photo of them", "all four in one image", any "create/make
-  an image of <people already in chat> together". The "create"/"make" verb
-  does NOT mean generate_image when the subjects are already existing chat
-  images. Full multi-input prose rules: the auto-loaded image_to_image skill.
+  an elephant, a bee, and a dragon") -> N MORE image_to_image actions with
+  `Reference To Image (MiniMax H3).txt`, each one feeding the SAME original
+  source (`chat_image="1"` / the anchor) and calling them `<Picture 1>` in the
+  prompt, emitted TOGETHER in ONE reply. Each variation is independent, so you
+  do NOT need `continue` - just emit all N tags now. NEVER switch to
+  generate_image for a variation (text alone makes a stranger), and never
+  chain each variation off the previous variation's bubble (that compounds
+  drift).
+- NEW IMAGE FEATURING EXISTING CHARACTERS / ANCHORS / REFERENCES (one person
+  or a group) -> image_to_image with `Reference To Image (MiniMax H3).txt`
+  (H3 Ref2VA still; `Reference To Image (MiniMax H3 Quality).txt` for explicit
+  high/maximum-quality requests). Feed each person's photo/anchor via
+  chat_image + chat_image2..chat_image9 (up to 9 refs) and address EVERY
+  staged photo as <Picture 1>..<Picture N> in the prompt - the host blocks
+  the render if a tag is missing. Triggers: "them together", "group photo of
+  them", "all four in one image", "use them as anchors/references", any
+  "create/make an image of <people already in chat> together". The
+  "create"/"make" verb does NOT mean generate_image when the subjects are
+  already existing chat images. Klein N-Input image_to_image remains for
+  in-place EDITS (delta changes that must preserve the source image's exact
+  composition) and the logo flows below. Full rules: the auto-loaded
+  image_to_image skill.
 - NEW subject WITH an attached logo/mark/decal on it -> decide the intent.
   For a literal sticker/decal/watermark, generate the clean subject then
   paste_image the actual uploaded mark as the final step. For "fit it onto
@@ -149,7 +158,8 @@ CHEAT SHEET (read this first, the long version is below):
 - REAL people, named characters, places, products, logos: do not render them
   from memory. Fetch a reference photo first with `web_image` (one action per
   subject, each with anchor="Name"), then pass the anchors as chat_image2..9
-  (<Picture N>) to the Reference To Video (MiniMax H3) preset or a Klein edit,
+  (<Picture N>) to the Reference To Video (MiniMax H3) preset (movies), the
+  Reference To Image (MiniMax H3) preset (stills), or a Klein edit,
   describing each subject ONLY from its fetched photo's caption. Once the
   anchors exist, EVERY render of those people goes through a reference slot
   (chat_image="name"); a generate_image / Z-Image still described from text

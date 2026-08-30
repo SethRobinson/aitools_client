@@ -153,6 +153,20 @@ native stereo audio (dialog in 11 languages), no RIFE in the output path.
   unshifted sigmas; sampler `euler`/`simple` at 8 steps (the distill targets
   4 NFE, community sharpness comfort zone is 6-8). Loaders, placeholders, and
   submit-time pruning are identical to the 20-step graph.
+- `ref_multi_to_img_minimax_h3_turbo.json` - still-image variant of the turbo
+  Ref2VA graph (added 2026-08-30): same loaders/placeholders/pruning, but
+  `length` is a literal 5 (H3's minimum packet on the 17k+5 grid, latent
+  T=2), the audio latent is sampled but never decoded (the audio VAE stays
+  loaded - the node requires the input - there is just no `VAEDecodeAudio`),
+  and a `SaveImage` with an `AITOOLS_UNIQUE_ID` filename prefix replaces
+  CreateVideo/SaveVideo, saving all 5 decoded frames. API-format file (like the
+  BiRefNet workflow), so no conversion/cached copy is generated. Run by
+  `Reference To Image (MiniMax H3)`. `ref_multi_to_img_minimax_h3.json` is the
+  20-step quality variant (res_multistep, no distill LoRA, no sigma shift), run
+  by `Reference To Image (MiniMax H3 Quality)`; gitignored
+  `test_ref_multi_to_img_minimax_h3_turbo.json` / `test_ref_multi_to_img_minimax_h3.json`
+  mirror the machine-local test_ video reference stack (details:
+  `agents_secret.md`). All four verified live at length 5 on 2026-08-30/31.
 - `ref_to_video_minimax_h3.json`, `ref_video_to_video_minimax_h3.json` - legacy
   single-reference Ref2VA graphs, no longer referenced by any preset; kept as clean
   manual-use ComfyUI workflows.
@@ -236,6 +250,31 @@ Six reference presets, split across the universal workflow pair (since
   (`ref_multi_to_video_minimax_h3.json`, ~2x the turbo time); skills route
   explicit high/maximum-quality reference requests here. There is deliberately
   NO cache variant of any reference preset.
+- `Reference To Image (MiniMax H3).txt` (+ `Quality`, + `test_` pair, since
+  2026-08-30/31): a STILL IMAGE from 1-9 photo refs via the 5-frame packet
+  workflows above - H3 as a reference-conditioned image generator (the
+  reference capability Z-Image lacks until Z-Image-Edit ships). Same r2v slot
+  layout (photo 1 required -> input3, photos 2-9 + audio1..3 optional),
+  `%vid_width%`/`%vid_height%` (CLI --width/--height apply; no `%vid_length%`,
+  duration overrides can't attach by design). Default canvas 1152x640 (~0.74MP
+  - stills are cheap, faces need the pixels; omitted dims refit the budget to
+  photo 1's aspect). Verified on a Blackwell: 1-ref identity transfer, 2-ref
+  composites, the 20-step Quality graph, and the test_ stack all
+  sharp and faithful; ~22-33s warm wall-clock including CLI upload/download
+  (turbo and Quality cost nearly the same at 5 frames); frames within the
+  packet are near-identical, so the first saved frame is the output (the CLI
+  writes the rest as `_2.._5`). 5 frames is out of distribution for H3
+  (trained on ~5-15s clips) - watch harder prompts for degradation.
+  **AI Chat wiring**: this is the DEFAULT `image_to_image` preset for a NEW
+  image FEATURING existing chat people/anchors/references ("them together",
+  group photos, variations, re-poses; "high/maximum quality" -> the Quality
+  preset); Klein N-Input remains for in-place edits that must preserve the
+  source's composition, logo flows, and exact start-frame builds (rules:
+  `aichat/skills/image_to_image.md`, cheat sheet in `main_prompt.txt`).
+  `SkillActionExecutor.IsReferencePhotoPreset` matches BOTH "Reference To
+  Video" and "Reference To Image", so the still presets get the reference-tag
+  gate, `audio=` slots, and exact-dims pass-through on image_to_image exactly
+  like r2v gets on image_to_movie.
 - Slot layout (same for both tiers): rv2v = clip required
   (`@upload|video|input1|`), then optional `video2`->input2 and `image2..image10`
   ->inputs 3-11 (photo refs 1-9); r2v = photo 1 required (`image1`->input3),

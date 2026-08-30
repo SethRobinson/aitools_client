@@ -1,0 +1,15 @@
+COMMAND_START|joblist
+#Generate a STILL IMAGE featuring the SUBJECT(s) of 1-9 input photos - the full 20-step
+#H3 Ref2VA render (res_multistep, no distill LoRA), ~2x the turbo preset's time. Use for
+#explicit high/maximum-quality requests; the default tier is "Reference To Image (MiniMax H3)".
+#Same mechanism as the turbo preset: minimum 5-frame packet, video branch only, all 5
+#decoded frames saved (first = main output).
+#Prompts must call the photos <Picture 1> (<Picture 2>..<Picture 9> when supplied);
+#give each photo ONE job. Default canvas 1152x640 (~0.74MP; omitted action dims refit
+#this budget to <Picture 1>'s aspect); trained max ~1.03MP (cap 1344x768, /32).
+#Length is a literal 5 in the workflow: no %vid_length%, no duration override.
+%vid_width%="1152"
+%vid_height%="640"
+
+ref_multi_to_img_minimax_h3.json @upload|image1|input3| @upload|image2|input4|optional| @upload|image3|input5|optional| @upload|image4|input6|optional| @upload|image5|input7|optional| @upload|image6|input8|optional| @upload|image7|input9|optional| @upload|image8|input10|optional| @upload|image9|input11|optional| @upload|audio1|input12|optional| @upload|audio2|input13|optional| @upload|audio3|input14|optional| @replace|"width": 864|"width": %vid_width%| @replace|"height": 480|"height": %vid_height%|
+COMMAND_END

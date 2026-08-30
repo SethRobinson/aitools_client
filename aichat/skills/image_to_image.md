@@ -1,11 +1,11 @@
 ---
 id: image_to_image
-summary: Edit / compose a STILL image with a prompt (Klein/Flux 2 by default; Bernini-R only when explicitly named). Pick the preset by INPUT COUNT (1-5), one input per distinct reference. Klein wants 40-70 words of narrative prose, slot-number references, concise identity locks, per-subject placement, and explicit left-to-right ordering. A Movie #N is NOT a still source by default: scene/motion/dialogue/audio edits use video_to_video. Only when the user explicitly requests one still/current frame may image_to_image target a Movie, and the action must include movie_frame="true". Result spawns as a new still; originals remain unchanged.
+summary: Two still-image modes. (1) NEW image FEATURING existing chat people/anchors/references ("them together", group shots, variations, re-poses) - DEFAULT preset {{Reference To Image (MiniMax H3).txt}}, up to 9 refs via chat_image + chat_image2..9, prompt MUST address every staged photo as <Picture N> (use {{Reference To Image (MiniMax H3 Quality).txt}} for explicit high/maximum quality). (2) In-place EDIT of one image - delta changes that preserve the source's exact composition - Klein/Flux 2 by INPUT COUNT (1-5), 40-70 words of narrative prose, slot-number references, concise identity locks; Bernini-R only when explicitly named. A Movie #N is NOT a still source by default: scene/motion/dialogue/audio edits use video_to_video. Only when the user explicitly requests one still/current frame may image_to_image target a Movie, and the action must include movie_frame="true". Result spawns as a new still; originals remain unchanged.
 inputs: attachment
 autoload: true
 triggers: edit the image, edit this image, modify the image, alter the image, change the image, tweak the image, adjust the image, retouch, refine the image, transform the image, restyle, restyle as, redraw, repaint, change the pose, change her pose, change his pose, new pose, different pose, dress her, dress him, undress, replace the, swap the, swap out, remove from the image, in the style of, them together, all together, side by side, group photo of them, group shot of, all three of them, all four of them, all five of them, both of them in, the two of them in, in one image, all in one, use them as anchors, use these as anchors, combine them, combine these, put them together, put them all, put all of them, scene with them, scene with all, posing together, line them up, hanging out together
 exclude_triggers: generate a brand new, brand new image, fresh image of a, fresh image from scratch, picture from scratch
-template: <aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 1 Input.txt}}" prompt="<narrative prose, 40-70 words. For multi-input: name each subject by slot, give each a placement, end with scene + lighting.>" chat_image="N"/>  # STILL sources only. attachment= works only in the very message the user pasted the image in; on later turns use chat_image="N" (the paste's bubble number). A Movie source is allowed only for an explicit single-frame/current-frame request and requires movie_frame="true". For multi-input use the N Input preset with chat_image2..chat_image5; N must equal the exact reference count.
+template: <aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 1 Input.txt}}" prompt="<narrative prose, 40-70 words. For multi-input: name each subject by slot, give each a placement, end with scene + lighting.>" chat_image="N"/>  # STILL sources only. attachment= works only in the very message the user pasted the image in; on later turns use chat_image="N" (the paste's bubble number). A Movie source is allowed only for an explicit single-frame/current-frame request and requires movie_frame="true". Klein is the EDIT path; for a NEW scene FEATURING existing people/anchors use preset="{{Reference To Image (MiniMax H3).txt}}" with chat_image + chat_image2..chat_image9 and every staged photo addressed as <Picture N> in the prompt.
 ---
 # Image-to-image (Klein / Flux 2 edit family)
 
@@ -33,24 +33,24 @@ drifted composite. The live name->slot map is printed every turn in the
 
 WRONG (drift trap - points at the composite, and guesses a number):
 > User: "now show them at the beach"
-> `<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 1 Input.txt}}"
+> `<aitools_action skill="image_to_image" preset="{{Reference To Image (MiniMax H3).txt}}"
 >   prompt="Move them to a sunny beach scene..." chat_image="5"/>`
 
 RIGHT (reference each character by anchor name):
 > User: "now show them at the beach"
-> `<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 4 Input.txt}}"
->   prompt="The four people from images 1, 2, 3, and 4 together on a sunny
->   tropical beach, maintaining exact likeness, arranged left to right -
->   image 1's man (Caucasian, ~60s) on the left holding a coconut, image 2's
->   woman (East Asian, ~28) next to him in the surf, image 3's man
->   (Caucasian, ~35) building a sandcastle with image 4's woman
->   (Middle Eastern, ~40) on the right. Golden hour light from the west,
->   waves rolling in." chat_image="Elias" chat_image2="Mei" chat_image3="Jonah" chat_image4="Layla"/>`
+> `<aitools_action skill="image_to_image" preset="{{Reference To Image (MiniMax H3).txt}}"
+>   prompt="The four people from <Picture 1>, <Picture 2>, <Picture 3>, and
+>   <Picture 4> together on a sunny tropical beach - <Picture 1>'s man on the
+>   left holding a coconut, <Picture 2>'s woman next to him in the surf,
+>   <Picture 3>'s man building a sandcastle with <Picture 4>'s woman on the
+>   right. Golden hour light from the west, waves rolling in."
+>   chat_image="Elias" chat_image2="Mei" chat_image3="Jonah" chat_image4="Layla"
+>   width="1152" height="640"/>`
 
-Note the `prompt=` still uses SLOT numbers ("image 1's man", "image 2's
-woman") because Klein sees the images in feed order - slot 1 is whichever
-name you put in `chat_image`, slot 2 is `chat_image2`, and so on. Names
-are ONLY for the `chat_image*` attributes; the prose always says "image N".
+Note the `prompt=` binds people to photos ONLY through slot-order tags -
+`<Picture 1>` is whichever name you put in `chat_image`, `<Picture 2>` is
+`chat_image2`, and so on (Klein edits use "image N" the same way). Names are
+ONLY for the `chat_image*` attributes; the prose never says "Elias".
 
 If a character has no anchor name yet (older session, or a user-supplied
 reference), fall back to the numeric slot from the `ANCHORS:` / `CHAT
@@ -70,16 +70,66 @@ Single-character variation series follow the same rule: feed
 `chat_image="Elias"` (the anchor) for every "show him doing X" follow-up,
 NOT the previous variant's bubble.
 
+## H3 REFERENCE RENDER - the DEFAULT for new scenes FEATURING existing people
+
+When the request is a NEW image STARRING people/subjects who already exist in
+chat - "make an image of them together", "group photo", "show her at the
+beach", "use these as anchors/references" - do NOT edit an existing image.
+Render fresh from references with H3 Ref2VA (the same reference engine as the
+H3 video presets, single-still output):
+
+- `{{Reference To Image (MiniMax H3).txt}}` - the DEFAULT (8-step turbo).
+- `{{Reference To Image (MiniMax H3 Quality).txt}}` - only for explicit
+  "high quality" / "maximum quality" requests (20 steps, ~2x slower).
+
+Slots: `chat_image` (or `attachment`) is `<Picture 1>`, `chat_image2..9` /
+`attachment2..9` are `<Picture 2>..<Picture 9>` - up to NINE references
+(Klein tops out at 5). Anchors by name work in every slot.
+
+Prompt rules (DIFFERENT from Klein prose - these are H3 reference prompts):
+
+- Address EVERY staged photo by its `<Picture N>` tag at least once, in slot
+  order ("the man from <Picture 1>", "<Picture 2>'s woman"). The host BLOCKS
+  the render and bounces the action back if any staged photo goes untagged or
+  a tag has no photo behind it.
+- The tags ARE the identity lock - describe each person ONLY as they appear
+  in their reference (brief traits at most); invented prose details ("auburn
+  hair") OVERRIDE the photo and drift identity. No Klein-style lock clauses.
+- Give each photo ONE job (identity, second character, setting/style).
+  Several photos of the SAME person strengthen the lock - describe them as
+  one character ("the man from <Picture 1> and <Picture 2>").
+- Then describe the NEW scene, action, and lighting as normal prose. The
+  output is a STILL: no dialog line or audio spec needed.
+- Chat names never appear in `prompt=` (H3 has no chat history either).
+- Canvas: default 1152x640. Pass explicit dims to control the shape -
+  `width="1152" height="640"` landscape, 640x1152 portrait, 896x896 square
+  (trained cap 1344x768). Omitting dims inherits <Picture 1>'s aspect at the
+  default pixel budget.
+
+Example - two anchored characters in one new scene:
+
+```
+<aitools_action skill="image_to_image" preset="{{Reference To Image (MiniMax H3).txt}}" prompt="The man from <Picture 1> and the woman from <Picture 2> sit together at an outdoor cafe table at dusk, laughing over coffee, city lights bokeh behind them, warm streetlight from the left." chat_image="Elias" chat_image2="Mei" width="1152" height="640"/>
+```
+
+Use KLEIN instead (see below) when the task is an in-place EDIT: the output
+must keep the source image's exact composition/pixels with a delta applied
+("change the sky", "add a hat", "remove the car"), the logo paste/integration
+flows, building an exact start frame for a video, or when the user explicitly
+names Klein/Flux/Bernini. H3 REGENERATES a fresh scene from references; it
+does not preserve the source's composition.
+
 ## "DO N MORE VERSIONS" - keep it image_to_image, emit them all at once
 
 When the user asks for several variations of someone already in chat -
 "now as an elephant, a bee, and a dragon", "give me three more versions",
 "same boys but at the beach / in space / as superheroes" - EVERY variation
-is another `image_to_image` edit, NOT a `generate_image`. Rules:
+is another `image_to_image` action with
+`{{Reference To Image (MiniMax H3).txt}}`, NOT a `generate_image`. Rules:
 
 - Feed the SAME ORIGINAL source on every variation (`chat_image="1"` or the
-  anchor name) - the canonical face, never the previous variation's output
-  (chaining off the last variant compounds drift).
+  anchor name) as `<Picture 1>` - the canonical face, never the previous
+  variation's output (chaining off the last variant compounds drift).
 - NEVER use `generate_image` / Z-Image for a variation of an existing person.
   Re-describing them from text produces a stranger no matter how detailed -
   that is the exact failure this skill exists to prevent.
@@ -87,9 +137,14 @@ is another `image_to_image` edit, NOT a `generate_image`. Rules:
   reply (one `image_to_image` tag per variation). You do NOT need `continue`
   for independent variations - only use `continue` when a later step needs an
   earlier step's OUTPUT image. Do not stop after one or two and trail off.
-- Put the full IDENTITY LOCK clause on every single variation.
+- Each variation's prompt uses the `<Picture 1>` tag and describes the new
+  scene/costume; a tight in-place delta on the ORIGINAL image ("same picture,
+  just add a hat") is a Klein edit instead.
 
-## IDENTITY LOCK - anchoring MEANS "keep their identity" BY DEFAULT
+## IDENTITY LOCK (KLEIN EDITS) - anchoring MEANS "keep their identity" BY DEFAULT
+
+(On the H3 reference path above, identity rides the `<Picture N>` tags and
+prose traits stay MINIMAL - the clause below is for KLEIN edit prompts.)
 
 Using an anchor, or editing an existing person via `chat_image`, IS the
 instruction to keep their face / height / build - that is the entire point of
@@ -120,7 +175,8 @@ full scene re-description is what made identity drift on the first pass.
 
 ## NEVER use chat character names in the prompt - HARDEST RULE
 
-Klein has NO access to chat history. It sees only the numbered input
+Neither model has chat history. H3 sees the photos only through `<Picture N>`
+tags; Klein sees only the numbered input
 images (image 1, image 2, ...) and the literal `prompt=` text. A name
 like "Mei-Lin", "Elias Thorne", "the heroine" is just an unresolvable
 token. Refer to each subject by SLOT NUMBER ("image 1's subject", "the
@@ -157,10 +213,13 @@ keyword soup and NOT long lists of "Keep X 100% identical" boilerplate.
 - Lighting matters: one short clause about light direction / warmth /
   source helps a lot.
 
-## Multi-input scene composition - canonical pattern
+## Klein multi-input scene composition - canonical pattern
 
-For 2+ recurring people in one new scene (the most common multi-input
-case), use this 4-part structure:
+(Default for 2+ recurring people in a NEW scene is the H3 REFERENCE RENDER
+above; use this Klein pattern when the composite must preserve existing
+pixels/composition or Klein was explicitly requested.)
+
+For 2+ recurring people in one composed scene, use this 4-part structure:
 
 1. **Anchor list** (one sentence): "The N people from images 1, 2,
    ..., N, maintaining exact likeness of each face, hair, and build."
@@ -250,9 +309,18 @@ Integrated same-reply example:
 <aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 2 Input.txt}}" prompt="Image 1 is a realistic baby dragon with a temporary logo placement guide on its chest. Integrate image 2's logo geometry and colors into the dragon's chest scales as a natural inlaid scale pattern following the body curvature and forest lighting, not a flat pasted overlay. Preserve the dragon pose and make the logo readable; do not make it glowing or white unless the source logo is glowing or white." chain="true" attachment2="1" anchor="Dragon"/>
 ```
 
-## Presets - pick by INPUT COUNT
+## Presets
 
-- `{{Image To Image Klein Edit 1 Input.txt}}` - 1 input. DEFAULT.
+H3 reference render (NEW scene featuring existing people - the composite
+default, up to 9 refs):
+
+- `{{Reference To Image (MiniMax H3).txt}}` - DEFAULT (8-step turbo).
+- `{{Reference To Image (MiniMax H3 Quality).txt}}` - explicit high/maximum
+  quality only (20 steps, ~2x slower).
+
+Klein edit family - pick by INPUT COUNT:
+
+- `{{Image To Image Klein Edit 1 Input.txt}}` - 1 input. EDIT DEFAULT.
 - `{{Image To Image Klein Edit 2 Input.txt}}` - 2 inputs.
 - `{{Image To Image Klein Edit 3 Input.txt}}` - 3 inputs.
 - `{{Image To Image Klein Edit 4 Input.txt}}` - 4 inputs.
@@ -283,11 +351,12 @@ describe-the-delta rules apply.
 For a scene with 2+ previously-shown people:
 
 1. Count the recurring people who exist as chat-image bubbles.
-2. Pick the smallest N-Input preset that fits (N = people, or
-   people + 1 if you also have a separate scene/background reference).
-3. Feed each person's bubble as `chat_image` / `chat_image2` / ... /
-   `chat_image5`.
-4. Use the canonical 4-part prompt pattern above.
+2. Default: `{{Reference To Image (MiniMax H3).txt}}` - feed each person's
+   bubble/anchor as `chat_image` / `chat_image2` / ... / `chat_image9` and
+   tag each as `<Picture N>` in the prompt (H3 REFERENCE RENDER above).
+3. Klein N-Input instead only when the composite must preserve existing
+   pixels/composition (then N = exact reference count, max 5, canonical
+   4-part Klein pattern above).
 
 Never duplicate the same chat_image into two slots. Newly-invented
 people stay in the prompt text - only feed a slot per person you want
@@ -326,26 +395,31 @@ Subject + scene combine (2-Input):
 <aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 2 Input.txt}}" prompt="Image 1's subject (Latina woman, ~32) seated at the cafe table in the scene from image 2, maintaining exact likeness, soft afternoon window light from the right." chat_image="1" chat_image2="2"/>
 ```
 
-Group photo, 4 people (canonical pattern):
+Group photo, 4 people (H3 reference render - the default):
 ```
-<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 4 Input.txt}}" prompt="The four people from images 1, 2, 3, and 4 together in a cozy Christmas living room, maintaining exact likeness of each face, hair, and build, arranged left to right in that order - image 1's man (Caucasian, ~62) on the left holding a steaming mug, image 2's woman (East Asian, ~28) next to him laughing, image 3's man (Caucasian, ~35) leaning on the mantle with an arm around image 4's woman (Middle Eastern, ~40) on the right. Christmas tree behind them, fireplace glow from the left, warm evening atmosphere." chat_image="1" chat_image2="2" chat_image3="3" chat_image4="4"/>
+<aitools_action skill="image_to_image" preset="{{Reference To Image (MiniMax H3).txt}}" prompt="The four people from <Picture 1>, <Picture 2>, <Picture 3>, and <Picture 4> together in a cozy Christmas living room, left to right in that order - <Picture 1>'s man holding a steaming mug, <Picture 2>'s woman next to him laughing, <Picture 3>'s man leaning on the mantle with an arm around <Picture 4>'s woman. Christmas tree behind them, fireplace glow from the left, warm evening atmosphere." chat_image="1" chat_image2="2" chat_image3="3" chat_image4="4" width="1152" height="640"/>
 ```
 
-That last example is ~80 words - on the high side but acceptable for
-4 subjects. For 2-3 subjects target 50-65 words.
+Same scene as a Klein 4-Input composite (only when preserving existing
+pixels/composition, or Klein was requested): swap the preset, use "image N"
+phrasing plus visual tags and the likeness clause instead of <Picture N>.
+For 2-3 subjects target 50-65 words.
 
 ## Rules summary
 
+- NEW scene FEATURING existing people/anchors -> `{{Reference To Image
+  (MiniMax H3).txt}}` (Quality variant only on explicit high-quality asks),
+  `<Picture N>` tag per staged photo, up to 9 refs. In-place EDITS ->
+  Klein by input count.
 - Pick exactly ONE primary source.
 - Movie sources require an explicit still/current-frame request plus
   `movie_frame="true"`; all other Movie edits use video_to_video.
 - Recurring characters: feed them by anchor NAME in `chat_image*`
-  (`chat_image="Elias"`); the prose still refers to "image 1", "image 2".
+  (`chat_image="Elias"`); the prose says `<Picture N>` (H3) / "image N"
+  (Klein), never the chat name.
 - Never feed a downstream composite as the anchor; names already prevent
   this. Update a look by re-tagging `anchor="Name"` on a fresh edit.
-- Inside `prompt=`, refer to each subject by slot number, never by chat
-  name (Klein has no chat history).
-- Open with a concise per-slot identity clause; don't repeat boilerplate.
-- For multi-person scenes, always include per-subject placement +
-  left-to-right ordering.
-- Describe the CHANGE, not the whole image (model sees the input).
+- Klein prompts: open with a concise per-slot identity clause, include
+  per-subject placement + left-to-right ordering on multi-person scenes,
+  and describe the CHANGE, not the whole image. H3 prompts: tags carry
+  identity, prose describes the new scene.

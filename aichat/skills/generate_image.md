@@ -1,6 +1,6 @@
 ---
 id: generate_image
-summary: Generate a brand-new still image from a text prompt. Use when the user asks for a picture of a NEW subject. Do NOT use this when the user wants a scene combining people / things that already exist as numbered chat-image bubbles - that's image_to_image with the N-Input Klein preset, feeding each existing bubble as a chat_image anchor. generate_image cannot reproduce a specific past face from text alone; it will produce strangers no matter how detailed the description.
+summary: Generate a brand-new still image from a text prompt. Use when the user asks for a picture of a NEW subject. Do NOT use this when the user wants a scene featuring people / things that already exist as numbered chat-image bubbles - that's image_to_image with the Reference To Image (MiniMax H3) preset, feeding each existing bubble as a chat_image reference and tagging each as <Picture N> in the prompt. generate_image cannot reproduce a specific past face from text alone; it will produce strangers no matter how detailed the description.
 inputs: none
 template: <aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="vivid visual description of the scene"/>
 ---
@@ -11,7 +11,9 @@ of a brand-new subject with no input reference (no chat-image character
 to preserve, no pasted image to transform). If the user wants to put
 previously-shown chat-image characters together in a new scene - even
 if their wording is "create / make / generate an image of them" - that
-is **image_to_image** with the N-Input Klein preset, not this skill.
+is **image_to_image** with the `Reference To Image (MiniMax H3)` preset
+(each person's bubble/anchor in a chat_image slot, tagged `<Picture N>`
+in the prompt), not this skill.
 generate_image cannot reproduce a specific past face from text.
 
 Same trap for "do N more versions / variations" of a person already in

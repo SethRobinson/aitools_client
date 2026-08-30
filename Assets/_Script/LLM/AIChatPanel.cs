@@ -10435,7 +10435,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             // rendering Z-Image lookalike stills of "a man in his 40s with wavy hair" - the
             // references sat unused. Repeat the routing rule right where the anchor lands.
             string usageNote = anchorName != null
-                ? " Use it as a REFERENCE SLOT (chat_image=" + Q(anchorName) + " / chat_image2.. on image_to_movie with Reference To Video (MiniMax H3) 5s.txt, video_to_video with Reference Video To Video, or a Klein edit) - never generate_image a lookalike from text."
+                ? " Use it as a REFERENCE SLOT (chat_image=" + Q(anchorName) + " / chat_image2.. on image_to_image with Reference To Image (MiniMax H3).txt for stills, image_to_movie with Reference To Video (MiniMax H3) 5s.txt for videos, video_to_video with Reference Video To Video, or a Klein edit) - never generate_image a lookalike from text."
                 : "";
             // The Bugs Bunny test (2026-08-30) showed the model following THIS note's photo
             // recipe verbatim on the render turn while the voice sample fetched one action

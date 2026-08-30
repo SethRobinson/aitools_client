@@ -1,0 +1,17 @@
+COMMAND_START|joblist
+#EXPERIMENTAL: Generate a STILL IMAGE featuring the SUBJECT(s) of 1-9 input photos
+#(MiniMax H3 Ref2VA sampled at its minimum 5-frame packet, video branch only - the audio
+#latent is sampled but never decoded). All 5 decoded frames are saved: the first is the
+#main output, the rest land beside it (out_2..out_5 in the CLI) for frame choice.
+#Same reference contract as the H3 video presets: the prompt must call the photos
+#<Picture 1> (<Picture 2>..<Picture 9> when supplied); give each photo ONE job.
+#Turbo graph (lightx2v Ref2V 4-step distill at 8 steps, euler, sigma shift 12/3).
+#Default canvas 1152x640 (~0.74MP - stills are cheap at 5 frames, and faces need the
+#pixels; omitted action dims refit this budget to <Picture 1>'s aspect). H3 trained
+#max ~1.03MP (768 short edge, cap 1344x768, /32).
+#Length is a literal 5 in the workflow: no %vid_length%, no duration override.
+%vid_width%="1152"
+%vid_height%="640"
+
+ref_multi_to_img_minimax_h3_turbo.json @upload|image1|input3| @upload|image2|input4|optional| @upload|image3|input5|optional| @upload|image4|input6|optional| @upload|image5|input7|optional| @upload|image6|input8|optional| @upload|image7|input9|optional| @upload|image8|input10|optional| @upload|image9|input11|optional| @upload|audio1|input12|optional| @upload|audio2|input13|optional| @upload|audio3|input14|optional| @replace|"width": 864|"width": %vid_width%| @replace|"height": 480|"height": %vid_height%|
+COMMAND_END

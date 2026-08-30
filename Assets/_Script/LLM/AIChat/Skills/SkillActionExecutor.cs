@@ -1457,13 +1457,16 @@ namespace AITools.AIChat.Skills
 
         // ---------- Generate (image or movie) ----------
 
-        // H3 reference-to-video presets (photo refs, no pinned start frame). Distinct
-        // from isH3RefVideoPreset ("Reference Video To Video", clip refs): the photo
-        // presets ride the image_to_movie skill, so the start-frame aspect logic below
-        // must exempt them by preset name.
+        // H3 photo-reference presets (no pinned start frame). Distinct from
+        // isH3RefVideoPreset ("Reference Video To Video", clip refs): the photo presets
+        // ride the image_to_movie skill ("Reference To Video", r2v) or image_to_image
+        // ("Reference To Image", the 5-frame still packet - docs/minimax_h3.md), so the
+        // start-frame aspect logic below must exempt them by preset name. Both families
+        // get the reference-tag gate, audio= slots, and exact-dims pass-through.
         private static bool IsReferencePhotoPreset(string presetName)
             => !string.IsNullOrEmpty(presetName)
-               && presetName.IndexOf("Reference To Video", StringComparison.OrdinalIgnoreCase) >= 0;
+               && (presetName.IndexOf("Reference To Video", StringComparison.OrdinalIgnoreCase) >= 0
+                   || presetName.IndexOf("Reference To Image", StringComparison.OrdinalIgnoreCase) >= 0);
 
         // H3 reference prompts bind prose to pixels ONLY through per-type tags in
         // connection order (<Picture 1>.., <Video 1>.., <Audio 1>.. - docs/minimax_h3.md
@@ -2162,7 +2165,7 @@ namespace AITools.AIChat.Skills
             {
                 _host?.AddSystemInjectionSilent(
                     $"(audio=\"...\" references are only consumed by the H3 Reference presets " +
-                    $"(Reference To Video / Reference Video To Video); ignored on '{resolved}'.)");
+                    $"(Reference To Image / Reference To Video / Reference Video To Video); ignored on '{resolved}'.)");
             }
 
             var imageGen = ImageGenerator.Get();
@@ -2555,7 +2558,7 @@ namespace AITools.AIChat.Skills
             {
                 _host?.AddSystemInjectionSilent(
                     $"(audio=\"...\" references are only consumed by the H3 Reference presets " +
-                    $"(Reference To Video / Reference Video To Video); ignored on '{resolved}'.)");
+                    $"(Reference To Image / Reference To Video / Reference Video To Video); ignored on '{resolved}'.)");
             }
 
             for (int slot = 2; slot <= PicMain.MaxExtraInputImageSlot; slot++)

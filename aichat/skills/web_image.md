@@ -18,7 +18,8 @@ name, and works everywhere a pasted image works: `chat_image` slots, Klein
 1. **Reference photos for real / named subjects.** The image and video models
    cannot draw Jerry Seinfeld, the Eiffel Tower at night, a specific product, or a
    brand logo faithfully from a text prompt. Fetch a photo first, then use it as
-   a `<Picture N>` reference (H3 Reference To Video) or a Klein edit input.
+   a `<Picture N>` reference (H3 Reference To Image for stills, Reference To
+   Video for movies) or a Klein edit input.
 2. **The user asks for a picture from the web**: "find a photo of a 1986 Honda
    Civic", "grab a picture of the Mona Lisa", "show me what Kramer looks like".
 

@@ -129,19 +129,21 @@ When anchors are requested, mint one canonical portrait per character with
 <aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full Z-Image portrait of the old mage>" anchor="Doran"/>
 ```
 
-Later anchored scenes use `image_to_image` and reference those names in the
-`chat_image*` attributes:
+Later anchored scenes use `image_to_image` with the H3 reference preset and
+reference those names in the `chat_image*` attributes:
 
 ```
-<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 2 Input.txt}}" prompt="image 1's woman (athletic, ~30, dark braid, leather armor) and image 2's man (frail, ~70, white beard, blue robe) standing in a torch-lit stone hall, maintaining exact likeness - image 1's woman on the left hand on sword hilt, image 2's man on the right leaning on a staff. Warm torchlight from the left." chat_image="Reya" chat_image2="Doran"/>
+<aitools_action skill="image_to_image" preset="{{Reference To Image (MiniMax H3).txt}}" prompt="The woman from <Picture 1> and the man from <Picture 2> stand in a torch-lit stone hall - <Picture 1>'s woman on the left, hand on sword hilt, <Picture 2>'s man on the right leaning on a staff. Warm torchlight from the left." chat_image="Reya" chat_image2="Doran" width="1152" height="640"/>
 ```
 
-The `prompt=` still says "image 1" / "image 2" because Klein sees only input
-slots. Names belong only in `chat_image*` attributes.
+The `prompt=` binds each person to their photo ONLY via the slot-order
+`<Picture N>` tag (a Klein edit uses "image N" the same way). Names belong
+only in `chat_image*` attributes.
 
-For movies of anchored characters, compose the scene first with
-`image_to_image`, then immediately animate that composite with
-`image_to_movie chain="true"`. Never animate a raw anchor portrait directly.
+For movies of anchored characters, use `image_to_movie` with
+`{{Reference To Video (MiniMax H3) 5s.txt}}`, feeding the anchors directly
+as chat_image / chat_image2.. references (`<Picture N>` in the prompt) -
+no composite still first unless the video must OPEN on an exact frame.
 
 To update a character's look in anchor mode, generate a fresh image from their
 current anchor and re-tag the SAME `anchor="Name"`, which re-points the name

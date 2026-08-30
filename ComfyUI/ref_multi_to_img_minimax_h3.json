@@ -1,0 +1,412 @@
+{
+  "1": {
+    "inputs": {
+      "unet_name": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Load Diffusion Model"
+    }
+  },
+  "2": {
+    "inputs": {
+      "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "type": "minimax",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "3": {
+    "inputs": {
+      "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Video VAE"
+    }
+  },
+  "4": {
+    "inputs": {
+      "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Audio VAE"
+    }
+  },
+  "5": {
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "MiniMaxH3MemoryEfficientSageAttentionPatch",
+    "_meta": {
+      "title": "MiniMax H3 Memory Efficient Sage Attention Patch"
+    }
+  },
+  "6": {
+    "inputs": {
+      "video": "<AITOOLS_INPUT_1>",
+      "force_rate": 24,
+      "custom_width": 0,
+      "custom_height": 0,
+      "frame_load_cap": 360,
+      "skip_first_frames": 0,
+      "select_every_nth": 1,
+      "format": "None"
+    },
+    "class_type": "VHS_LoadVideoPath",
+    "_meta": {
+      "title": "Reference clip 1"
+    }
+  },
+  "7": {
+    "inputs": {
+      "prompt": "<AITOOLS_PROMPT>",
+      "width": 864,
+      "height": 480,
+      "length": 5,
+      "ref_image_size": "match",
+      "clip": [
+        "2",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "audio_vae": [
+        "4",
+        0
+      ],
+      "ref_videos.ref_video_0": [
+        "6",
+        0
+      ],
+      "ref_video_audios.ref_video_audio_0": [
+        "6",
+        2
+      ],
+      "ref_videos.ref_video_1": [
+        "18",
+        0
+      ],
+      "ref_video_audios.ref_video_audio_1": [
+        "18",
+        2
+      ],
+      "ref_images.ref_image_0": [
+        "19",
+        0
+      ],
+      "ref_images.ref_image_1": [
+        "20",
+        0
+      ],
+      "ref_images.ref_image_2": [
+        "21",
+        0
+      ],
+      "ref_images.ref_image_3": [
+        "22",
+        0
+      ],
+      "ref_images.ref_image_4": [
+        "23",
+        0
+      ],
+      "ref_images.ref_image_5": [
+        "24",
+        0
+      ],
+      "ref_images.ref_image_6": [
+        "25",
+        0
+      ],
+      "ref_images.ref_image_7": [
+        "26",
+        0
+      ],
+      "ref_images.ref_image_8": [
+        "27",
+        0
+      ],
+      "ref_audios.ref_audio_0": [
+        "31",
+        0
+      ],
+      "ref_audios.ref_audio_1": [
+        "32",
+        0
+      ],
+      "ref_audios.ref_audio_2": [
+        "33",
+        0
+      ]
+    },
+    "class_type": "MiniMaxH3ReferenceToVideo",
+    "_meta": {
+      "title": "MiniMax H3 Reference to Video (5-frame still packet)"
+    }
+  },
+  "8": {
+    "inputs": {
+      "noise_seed": 43
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "RandomNoise"
+    }
+  },
+  "9": {
+    "inputs": {
+      "sampler_name": "res_multistep"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "KSamplerSelect"
+    }
+  },
+  "10": {
+    "inputs": {
+      "scheduler": "simple",
+      "steps": 20,
+      "denoise": 1,
+      "model": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {
+      "title": "BasicScheduler"
+    }
+  },
+  "11": {
+    "inputs": {
+      "model": [
+        "5",
+        0
+      ],
+      "conditioning": [
+        "7",
+        0
+      ]
+    },
+    "class_type": "BasicGuider",
+    "_meta": {
+      "title": "Basic Guider"
+    }
+  },
+  "12": {
+    "inputs": {
+      "noise": [
+        "8",
+        0
+      ],
+      "guider": [
+        "11",
+        0
+      ],
+      "sampler": [
+        "9",
+        0
+      ],
+      "sigmas": [
+        "10",
+        0
+      ],
+      "latent_image": [
+        "7",
+        1
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "13": {
+    "inputs": {
+      "samples": [
+        "12",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "16": {
+    "inputs": {
+      "filename_prefix": "aitools_ref_img_AITOOLS_UNIQUE_ID",
+      "images": [
+        "13",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Still Frames"
+    }
+  },
+  "18": {
+    "inputs": {
+      "video": "<AITOOLS_INPUT_2>",
+      "force_rate": 24,
+      "custom_width": 0,
+      "custom_height": 0,
+      "frame_load_cap": 360,
+      "skip_first_frames": 0,
+      "select_every_nth": 1,
+      "format": "None"
+    },
+    "class_type": "VHS_LoadVideoPath",
+    "_meta": {
+      "title": "Reference clip 2"
+    }
+  },
+  "19": {
+    "inputs": {
+      "image": "<AITOOLS_INPUT_3>",
+      "custom_width": 0,
+      "custom_height": 0
+    },
+    "class_type": "VHS_LoadImagePath",
+    "_meta": {
+      "title": "Reference photo 1"
+    }
+  },
+  "20": {
+    "inputs": {
+      "image": "<AITOOLS_INPUT_4>",
+      "custom_width": 0,
+      "custom_height": 0
+    },
+    "class_type": "VHS_LoadImagePath",
+    "_meta": {
+      "title": "Reference photo 2"
+    }
+  },
+  "21": {
+    "inputs": {
+      "image": "<AITOOLS_INPUT_5>",
+      "custom_width": 0,
+      "custom_height": 0
+    },
+    "class_type": "VHS_LoadImagePath",
+    "_meta": {
+      "title": "Reference photo 3"
+    }
+  },
+  "22": {
+    "inputs": {
+      "image": "<AITOOLS_INPUT_6>",
+      "custom_width": 0,
+      "custom_height": 0
+    },
+    "class_type": "VHS_LoadImagePath",
+    "_meta": {
+      "title": "Reference photo 4"
+    }
+  },
+  "23": {
+    "inputs": {
+      "image": "<AITOOLS_INPUT_7>",
+      "custom_width": 0,
+      "custom_height": 0
+    },
+    "class_type": "VHS_LoadImagePath",
+    "_meta": {
+      "title": "Reference photo 5"
+    }
+  },
+  "24": {
+    "inputs": {
+      "image": "<AITOOLS_INPUT_8>",
+      "custom_width": 0,
+      "custom_height": 0
+    },
+    "class_type": "VHS_LoadImagePath",
+    "_meta": {
+      "title": "Reference photo 6"
+    }
+  },
+  "25": {
+    "inputs": {
+      "image": "<AITOOLS_INPUT_9>",
+      "custom_width": 0,
+      "custom_height": 0
+    },
+    "class_type": "VHS_LoadImagePath",
+    "_meta": {
+      "title": "Reference photo 7"
+    }
+  },
+  "26": {
+    "inputs": {
+      "image": "<AITOOLS_INPUT_10>",
+      "custom_width": 0,
+      "custom_height": 0
+    },
+    "class_type": "VHS_LoadImagePath",
+    "_meta": {
+      "title": "Reference photo 8"
+    }
+  },
+  "27": {
+    "inputs": {
+      "image": "<AITOOLS_INPUT_11>",
+      "custom_width": 0,
+      "custom_height": 0
+    },
+    "class_type": "VHS_LoadImagePath",
+    "_meta": {
+      "title": "Reference photo 9"
+    }
+  },
+  "31": {
+    "inputs": {
+      "audio_file": "<AITOOLS_INPUT_12>",
+      "seek_seconds": 0,
+      "duration": 0
+    },
+    "class_type": "VHS_LoadAudio",
+    "_meta": {
+      "title": "Reference audio 1"
+    }
+  },
+  "32": {
+    "inputs": {
+      "audio_file": "<AITOOLS_INPUT_13>",
+      "seek_seconds": 0,
+      "duration": 0
+    },
+    "class_type": "VHS_LoadAudio",
+    "_meta": {
+      "title": "Reference audio 2"
+    }
+  },
+  "33": {
+    "inputs": {
+      "audio_file": "<AITOOLS_INPUT_14>",
+      "seek_seconds": 0,
+      "duration": 0
+    },
+    "class_type": "VHS_LoadAudio",
+    "_meta": {
+      "title": "Reference audio 3"
+    }
+  }
+}
