@@ -4,7 +4,7 @@ License:  BSD style attribution, see LICENSE.md
 
 # Download
 
-Download the latest: V3.05 (Jul 13th, 2026) [AI Tools Client (Windows, 132 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) (codesigned by me)
+Download the latest: V3.06 (Aug 30th, 2026) [AI Tools Client (Windows, 150 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) (codesigned by me)
 
 ## Features
 
@@ -20,6 +20,15 @@ Download the latest: V3.05 (Jul 13th, 2026) [AI Tools Client (Windows, 132 MB)](
 - Privacy respected - does not phone home or collect any statistics, purely local usage. (it does check a single file on github.com to check for newer versions, but that's it)
 
 ## Recent changes
+
+### V3.06 (Aug 30th, 2026)
+
+* MiniMax H3 video generation: text-to-video, start-frame, reference-photo and reference-video modes with native audio and spoken dialog; turbo and quality tiers, now AI Chat's default video route
+* H3 reference renders accept audio clips as voice/music style references alongside photos and video clips (up to 9 photos + 2 clips + 3 audio files per render)
+* AI Chat audio generation (music, sound effects, speech) with Audio bubbles and set_video_audio soundtrack mixing
+* AI Chat web research: search the web, fetch images/video clips (vision-checked), and read web pages for reference material
+* Paste videos and files straight from the Windows clipboard; movie seek bar / playback fixes; video import previews with audio
+* CLI can render H3 movies in all modes, including transparent-background VFX output (alpha webm / sprite sheets)
 
 ### V3.05 (Jul 13th, 2026)
 
