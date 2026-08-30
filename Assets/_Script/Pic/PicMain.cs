@@ -4556,24 +4556,18 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                             var normalizedLines = OpenAITextCompletionManager.NormalizeForStrictAlternation(lines);
                             
                             bool isDeepSeek = LLMRequestProfile.IsDeepSeekModel(model);
-                            var compatReasoningEffort = isDeepSeek
-                                ? activeSettings.GetReasoningEffort()
-                                : (activeSettings.enableThinking ? LLMReasoningEffort.High : LLMReasoningEffort.Off);
-                            bool? compatEnableThinking = isDeepSeek
-                                ? compatReasoningEffort != LLMReasoningEffort.Off
-                                : activeSettings.enableThinking;
+                            var compatReasoning = LLMRequestProfile.ResolveCompatReasoning(model, activeSettings);
                             float compatTemperature = isDeepSeek
-                                ? LLMRequestProfile.GetRecommendedTemperature(model, compatReasoningEffort, temperature)
+                                ? LLMRequestProfile.GetRecommendedTemperature(model, compatReasoning.effort, temperature)
                                 : temperature;
                             float? compatTopP = isDeepSeek
-                                ? LLMRequestProfile.GetRecommendedTopP(model, compatReasoningEffort, 1.0f)
+                                ? LLMRequestProfile.GetRecommendedTopP(model, compatReasoning.effort, 1.0f)
                                 : (float?)null;
-                            
-                            string compatReasoningEffortParam = isDeepSeek ? LLMReasoningEffortUtil.ToConfigValue(compatReasoningEffort) : null;
+
                             string json = _openAITextCompletionManager.BuildChatCompleteJSON(normalizedLines, LLMRequestProfile.NoExplicitOutputTokenCap, compatTemperature, model, true,
-                                enableThinking: compatEnableThinking,
+                                enableThinking: compatReasoning.enableThinking,
                                 topP: compatTopP,
-                                customReasoningEffort: compatReasoningEffortParam);
+                                customReasoningEffort: compatReasoning.customReasoningEffortParam);
                             _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true, debugJobSize: LLMDebugLog.JobSize.Small);
                             SetLLMActive(true, llmInstanceID, llmReplicaIndex);
                         }

@@ -1479,8 +1479,8 @@ public class AdventureText : MonoBehaviour
                     // Normalize messages for strict role alternation (required by models like Mistral)
                     var normalizedLines = OpenAITextCompletionManager.NormalizeForStrictAlternation(lines);
 
-                    // Pass enableThinking for sglang/vLLM reasoning models (Qwen, etc.)
-                    bool? compatEnableThinking = (bool?)(settings?.enableThinking ?? true);
+                    // Reasoning shape (enable_thinking / effort levels) for sglang/vLLM reasoning models
+                    var compatReasoning = LLMRequestProfile.ResolveCompatReasoning(model, settings);
 
                     // Honor sampling-parameter overrides set in the LLM Settings panel (vLLM/sglang/etc.)
                     float baseTemp = AdventureLogic.Get().GetExtractor().Temperature;
@@ -1491,8 +1491,9 @@ public class AdventureText : MonoBehaviour
                     float? compatRepPenalty = (settings != null && settings.overrideRepeatPenalty) ? (float?)settings.repeatPenalty : null;
 
                     string json = _openAITextCompletionManager.BuildChatCompleteJSON(normalizedLines, LLMRequestProfile.NoExplicitOutputTokenCap, compatTemperature, model, true,
-                        enableThinking: compatEnableThinking,
-                        topP: compatTopP, topK: compatTopK, minP: compatMinP, repetitionPenalty: compatRepPenalty);
+                        enableThinking: compatReasoning.enableThinking,
+                        topP: compatTopP, topK: compatTopK, minP: compatMinP, repetitionPenalty: compatRepPenalty,
+                        customReasoningEffort: compatReasoning.customReasoningEffortParam);
                     _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
                     SetLLMActive(true);
                 }

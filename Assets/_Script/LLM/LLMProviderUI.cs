@@ -32,7 +32,11 @@ public class LLMProviderUI
     public Toggle thinkingModeToggle;
     public TMP_Dropdown reasoningEffortDropdown;
     public TextMeshProUGUI serverModeLabel;
-    private GameObject _thinkingModeRow; // Reference to hide/show based on model
+    private GameObject _thinkingModeRow; // Checkbox row; hide/show based on model
+    private GameObject _reasoningEffortRow; // Effort dropdown row; hide/show based on model
+    // Effort value behind each dropdown index; rebuilt per model family
+    // (DeepSeek: Off/High/Max, Qwen Flash-Next: Off/Low/Medium/XHigh).
+    private readonly List<LLMReasoningEffort> _effortDropdownValues = new List<LLMReasoningEffort>();
     private bool _enableThinking = true;
     private LLMReasoningEffort _reasoningEffort = LLMReasoningEffort.High;
     private bool _isRouterMode = false;
@@ -183,7 +187,13 @@ public class LLMProviderUI
             _reasoningEffort = _enableThinking ? LLMReasoningEffort.High : LLMReasoningEffort.Off;
             CreateOpenAIThinkingModeRow(sectionRoot.transform, settings);
             if (_provider == LLMProvider.OpenAICompatible)
+            {
+                // Effort-capable models (DeepSeek, Qwen Flash-Next) get a level
+                // dropdown instead of the on/off checkbox; both rows exist and
+                // UpdateThinkingModeVisibility picks per selected model.
+                CreateReasoningEffortRow(sectionRoot.transform, settings);
                 UpdateThinkingModeVisibility();
+            }
         }
 
         // Sampling parameters (temperature, top_p, top_k, min_p, repetition penalty) for OpenAI Compatible
@@ -447,11 +457,7 @@ public class LLMProviderUI
             _isRouterMode = settings.isRouterMode;
             if (thinkingModeToggle != null)
                 thinkingModeToggle.isOn = settings.enableThinking;
-            if (reasoningEffortDropdown != null)
-            {
-                reasoningEffortDropdown.SetValueWithoutNotify(ReasoningEffortToDropdownIndex(_reasoningEffort));
-                reasoningEffortDropdown.RefreshShownValue();
-            }
+            RebuildReasoningEffortOptions();
             UpdateServerModeLabel(settings);
             UpdateThinkingModeVisibility();
             
@@ -479,11 +485,13 @@ public class LLMProviderUI
         if (_provider == LLMProvider.OpenAI || _provider == LLMProvider.OpenAICompatible)
         {
             _enableThinking = settings.enableThinking;
-            _reasoningEffort = _enableThinking ? LLMReasoningEffort.High : LLMReasoningEffort.Off;
+            _reasoningEffort = _provider == LLMProvider.OpenAICompatible
+                ? settings.GetReasoningEffort()
+                : (_enableThinking ? LLMReasoningEffort.High : LLMReasoningEffort.Off);
             if (thinkingModeToggle != null)
                 thinkingModeToggle.isOn = settings.enableThinking;
             if (_provider == LLMProvider.OpenAICompatible)
-                UpdateThinkingModeVisibility();
+                UpdateThinkingModeVisibility(); // also re-selects the effort dropdown
         }
 
         // OpenAI Compatible sampling parameter overrides
@@ -566,9 +574,19 @@ public class LLMProviderUI
         // OpenAI / OpenAI Compatible thinking mode
         if (_provider == LLMProvider.OpenAI || _provider == LLMProvider.OpenAICompatible)
         {
-            settings.enableThinking = _enableThinking;
-            if (_provider == LLMProvider.OpenAICompatible)
-                settings.reasoningEffort = "";
+            if (_provider == LLMProvider.OpenAICompatible
+                && LLMRequestProfile.HasConfigurableReasoningEffort(settings.selectedModel))
+            {
+                // Effort dropdown is authoritative for these models; this also
+                // keeps enableThinking in sync for code that only checks the bool.
+                settings.SetReasoningEffort(_reasoningEffort);
+            }
+            else
+            {
+                settings.enableThinking = _enableThinking;
+                if (_provider == LLMProvider.OpenAICompatible)
+                    settings.reasoningEffort = "";
+            }
         }
 
         // OpenAI Compatible sampling parameter overrides
@@ -1146,7 +1164,7 @@ public class LLMProviderUI
     private void CreateReasoningEffortRow(Transform parent, LLMProviderSettings settings)
     {
         var row = CreateRowContainer(parent, "ReasoningEffort");
-        _thinkingModeRow = row;
+        _reasoningEffortRow = row;
         CreateRowLabel(row.transform, "Reasoning:");
 
         var ddGo = TMP_DefaultControls.CreateDropdown(_tmpResources);
@@ -1166,18 +1184,9 @@ public class LLMProviderUI
         reasoningEffortDropdown = ddGo.GetComponent<TMP_Dropdown>();
         if (reasoningEffortDropdown == null) return;
 
-        reasoningEffortDropdown.ClearOptions();
-        reasoningEffortDropdown.AddOptions(new List<TMP_Dropdown.OptionData>
-        {
-            new TMP_Dropdown.OptionData(LLMReasoningEffortUtil.ToDisplayName(LLMReasoningEffort.Off)),
-            new TMP_Dropdown.OptionData(LLMReasoningEffortUtil.ToDisplayName(LLMReasoningEffort.High)),
-            new TMP_Dropdown.OptionData(LLMReasoningEffortUtil.ToDisplayName(LLMReasoningEffort.Max))
-        });
-
         _reasoningEffort = settings.GetReasoningEffort();
         _enableThinking = _reasoningEffort != LLMReasoningEffort.Off;
-        reasoningEffortDropdown.value = ReasoningEffortToDropdownIndex(_reasoningEffort);
-        reasoningEffortDropdown.RefreshShownValue();
+        RebuildReasoningEffortOptions();
         reasoningEffortDropdown.onValueChanged.AddListener(OnReasoningEffortChanged);
 
         if (reasoningEffortDropdown.captionText != null)
@@ -1204,53 +1213,91 @@ public class LLMProviderUI
 
     private void OnReasoningEffortChanged(int value)
     {
-        _reasoningEffort = DropdownIndexToReasoningEffort(value);
+        _reasoningEffort = (value >= 0 && value < _effortDropdownValues.Count)
+            ? _effortDropdownValues[value]
+            : LLMReasoningEffort.Off;
         _enableThinking = _reasoningEffort != LLMReasoningEffort.Off;
         _onSettingsChanged?.Invoke();
     }
 
-    private static int ReasoningEffortToDropdownIndex(LLMReasoningEffort effort)
+    // Rebuild the effort dropdown's options for the currently selected model's
+    // family and re-select the entry matching _reasoningEffort.
+    private void RebuildReasoningEffortOptions()
     {
-        switch (effort)
+        if (reasoningEffortDropdown == null) return;
+
+        _effortDropdownValues.Clear();
+        var options = new List<TMP_Dropdown.OptionData>();
+        if (_provider == LLMProvider.OpenAICompatible
+            && LLMRequestProfile.IsQwenFlashNextModel(GetCurrentModelName()))
         {
-            case LLMReasoningEffort.Max:
-                return 2;
-            case LLMReasoningEffort.High:
-                return 1;
-            default:
-                return 0;
+            // Match the model's native levels: low / medium / xhigh (its default).
+            _effortDropdownValues.Add(LLMReasoningEffort.Off);
+            _effortDropdownValues.Add(LLMReasoningEffort.Low);
+            _effortDropdownValues.Add(LLMReasoningEffort.Medium);
+            _effortDropdownValues.Add(LLMReasoningEffort.High);
+            options.Add(new TMP_Dropdown.OptionData("No-think"));
+            options.Add(new TMP_Dropdown.OptionData("Think Low"));
+            options.Add(new TMP_Dropdown.OptionData("Think Medium"));
+            options.Add(new TMP_Dropdown.OptionData("Think XHigh"));
         }
+        else
+        {
+            _effortDropdownValues.Add(LLMReasoningEffort.Off);
+            _effortDropdownValues.Add(LLMReasoningEffort.High);
+            _effortDropdownValues.Add(LLMReasoningEffort.Max);
+            foreach (var effort in _effortDropdownValues)
+                options.Add(new TMP_Dropdown.OptionData(LLMReasoningEffortUtil.ToDisplayName(effort)));
+        }
+
+        reasoningEffortDropdown.ClearOptions();
+        reasoningEffortDropdown.AddOptions(options);
+        int idx = _effortDropdownValues.IndexOf(_reasoningEffort);
+        if (idx < 0) // e.g. Low/Medium carried over to a family without those levels
+            idx = _reasoningEffort == LLMReasoningEffort.Off ? 0 : _effortDropdownValues.IndexOf(LLMReasoningEffort.High);
+        if (idx < 0) idx = 0;
+        reasoningEffortDropdown.SetValueWithoutNotify(idx);
+        reasoningEffortDropdown.RefreshShownValue();
     }
 
-    private static LLMReasoningEffort DropdownIndexToReasoningEffort(int value)
-    {
-        switch (value)
-        {
-            case 2:
-                return LLMReasoningEffort.Max;
-            case 1:
-                return LLMReasoningEffort.High;
-            default:
-                return LLMReasoningEffort.Off;
-        }
-    }
-    
     private void UpdateThinkingModeVisibility()
     {
-        if (_thinkingModeRow == null) return;
-        
-        // Show thinking mode toggle only for models that support it (GLM, DeepSeek, Qwen reasoning models)
+        if (_thinkingModeRow == null && _reasoningEffortRow == null) return;
+
+        // Show thinking controls only for models that support it (GLM, DeepSeek, Qwen reasoning models)
         string currentModel = GetCurrentModelName();
         if (string.IsNullOrEmpty(currentModel))
         {
-            _thinkingModeRow.SetActive(false);
+            if (_thinkingModeRow != null) _thinkingModeRow.SetActive(false);
+            if (_reasoningEffortRow != null) _reasoningEffortRow.SetActive(false);
             return;
         }
-        
+
         string modelLower = currentModel.ToLowerInvariant();
-        bool supportsThinking = modelLower.Contains("glm") || modelLower.Contains("deepseek") || modelLower.Contains("qwen");
-        
-        _thinkingModeRow.SetActive(supportsThinking);
+        bool supportsThinking = modelLower.Contains("glm") || modelLower.Contains("deepseek") || modelLower.Contains("qwen")
+            || LLMRequestProfile.HasConfigurableReasoningEffort(currentModel);
+        // OpenAI Compatible: models with selectable effort levels use the dropdown
+        // row, other thinking models keep the on/off checkbox. llama.cpp has only
+        // the dropdown row; OpenAI has only the checkbox row.
+        bool useEffortDropdown = _provider == LLMProvider.OpenAICompatible
+            && LLMRequestProfile.HasConfigurableReasoningEffort(currentModel);
+
+        if (_thinkingModeRow != null && _reasoningEffortRow != null)
+        {
+            _reasoningEffortRow.SetActive(useEffortDropdown);
+            _thinkingModeRow.SetActive(supportsThinking && !useEffortDropdown);
+        }
+        else if (_reasoningEffortRow != null)
+        {
+            _reasoningEffortRow.SetActive(supportsThinking);
+        }
+        else
+        {
+            _thinkingModeRow.SetActive(supportsThinking);
+        }
+
+        if (_reasoningEffortRow != null && _reasoningEffortRow.activeSelf)
+            RebuildReasoningEffortOptions();
     }
     
     /// <summary>

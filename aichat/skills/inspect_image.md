@@ -51,6 +51,12 @@ inspections whose result you do not need to act on.
 
 ## Rules
 
+- Phrase checks as NEUTRAL questions about what is visible, never as
+  confirmations that presuppose the request succeeded. Ask "Is the figure a
+  single hybrid creature, or are there a separate person and a separate
+  animal?" rather than "Does the dog body read correctly?". The sidecar is
+  instructed to describe first and verify every claim, but a leading
+  checklist still biases weaker vision models toward PASS.
 - Do not use this to edit the image. Use `image_to_image` or composition
   skills after the inspection result comes back.
 - For checking/fixing a layout, the prompt must ask for PASS/FAIL and list the

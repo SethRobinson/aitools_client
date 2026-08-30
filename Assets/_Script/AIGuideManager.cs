@@ -531,30 +531,23 @@ public class AIGuideManager : MonoBehaviour
         var normalizedLines = OpenAITextCompletionManager.NormalizeForStrictAlternation(lines);
 
         bool isDeepSeek = LLMRequestProfile.IsDeepSeekModel(model);
-        bool settingsEnableThinking = settings == null || settings.enableThinking;
-        var compatReasoningEffort = isDeepSeek && settings != null
-            ? settings.GetReasoningEffort()
-            : (settingsEnableThinking ? LLMReasoningEffort.High : LLMReasoningEffort.Off);
-        bool? compatEnableThinking = isDeepSeek
-            ? compatReasoningEffort != LLMReasoningEffort.Off
-            : settingsEnableThinking;
+        var compatReasoning = LLMRequestProfile.ResolveCompatReasoning(model, settings);
 
         // Honor sampling-parameter overrides set in the LLM Settings panel (vLLM/sglang/etc.)
         float compatTemperature = (settings != null && settings.overrideTemperature)
             ? settings.temperature
-            : (isDeepSeek ? LLMRequestProfile.GetRecommendedTemperature(model, compatReasoningEffort, m_extractor.Temperature) : m_extractor.Temperature);
+            : (isDeepSeek ? LLMRequestProfile.GetRecommendedTemperature(model, compatReasoning.effort, m_extractor.Temperature) : m_extractor.Temperature);
         float? compatTopP = (settings != null && settings.overrideTopP)
             ? (float?)settings.topP
-            : (isDeepSeek ? (float?)LLMRequestProfile.GetRecommendedTopP(model, compatReasoningEffort, 1.0f) : null);
+            : (isDeepSeek ? (float?)LLMRequestProfile.GetRecommendedTopP(model, compatReasoning.effort, 1.0f) : null);
         int? compatTopK = (settings != null && settings.overrideTopK) ? (int?)settings.topK : null;
         float? compatMinP = (settings != null && settings.overrideMinP) ? (float?)settings.minP : null;
         float? compatRepPenalty = (settings != null && settings.overrideRepeatPenalty) ? (float?)settings.repeatPenalty : null;
 
-        string compatReasoningEffortParam = isDeepSeek ? LLMReasoningEffortUtil.ToConfigValue(compatReasoningEffort) : null;
         string json = _openAITextCompletionManager.BuildChatCompleteJSON(normalizedLines, LLMRequestProfile.NoExplicitOutputTokenCap, compatTemperature, model, true,
-            enableThinking: compatEnableThinking,
+            enableThinking: compatReasoning.enableThinking,
             topP: compatTopP, topK: compatTopK, minP: compatMinP, repetitionPenalty: compatRepPenalty,
-            customReasoningEffort: compatReasoningEffortParam);
+            customReasoningEffort: compatReasoning.customReasoningEffortParam);
         RTDB db = new RTDB();
         _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnGTP4CompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
     }

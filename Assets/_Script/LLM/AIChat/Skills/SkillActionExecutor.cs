@@ -3765,16 +3765,13 @@ namespace AITools.AIChat.Skills
                     string endpoint = serverAddress.TrimEnd('/') + "/v1/chat/completions";
                     string model = settings.selectedModel ?? "";
                     bool isDeepSeek = LLMRequestProfile.IsDeepSeekModel(model);
-                    var effort = isDeepSeek
-                        ? settings.GetReasoningEffort()
-                        : (settings.enableThinking ? LLMReasoningEffort.High : LLMReasoningEffort.Off);
-                    float temp = isDeepSeek ? LLMRequestProfile.GetRecommendedTemperature(model, effort, 0.4f) : 0.4f;
-                    float? topP = isDeepSeek ? (float?)LLMRequestProfile.GetRecommendedTopP(model, effort, 1.0f) : null;
-                    string reasoningEffortParam = isDeepSeek ? LLMReasoningEffortUtil.ToConfigValue(effort) : null;
+                    var compatReasoning = LLMRequestProfile.ResolveCompatReasoning(model, settings);
+                    float temp = isDeepSeek ? LLMRequestProfile.GetRecommendedTemperature(model, compatReasoning.effort, 0.4f) : 0.4f;
+                    float? topP = isDeepSeek ? (float?)LLMRequestProfile.GetRecommendedTopP(model, compatReasoning.effort, 1.0f) : null;
                     string json = mgr.BuildChatCompleteJSON(lines, maxNewTokens, temp, model, stream,
-                        enableThinking: isDeepSeek ? effort != LLMReasoningEffort.Off : settings.enableThinking,
+                        enableThinking: compatReasoning.enableThinking,
                         topP: topP,
-                        customReasoningEffort: reasoningEffortParam);
+                        customReasoningEffort: compatReasoning.customReasoningEffortParam);
                     mgr.SpawnChatCompleteRequest(json, (rtdb, jn, str) =>
                     {
                         try { onDone(rtdb, jn, str); }

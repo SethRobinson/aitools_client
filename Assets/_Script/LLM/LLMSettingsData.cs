@@ -18,13 +18,17 @@ public enum LLMProvider
 public enum LLMReasoningEffort
 {
     Off = 0,
-    High = 1,
-    Max = 2
+    Low = 1,
+    Medium = 2,
+    High = 3,
+    Max = 4
 }
 
 public static class LLMReasoningEffortUtil
 {
     public const string OffValue = "off";
+    public const string LowValue = "low";
+    public const string MediumValue = "medium";
     public const string HighValue = "high";
     public const string MaxValue = "max";
 
@@ -40,7 +44,14 @@ public static class LLMReasoningEffortUtil
             case "false":
             case "0":
                 return LLMReasoningEffort.Off;
+            case LowValue:
+            case "minimal":
+                return LLMReasoningEffort.Low;
+            case MediumValue:
+            case "med":
+                return LLMReasoningEffort.Medium;
             case HighValue:
+            case "xhigh":
             case "think":
             case "thinking":
             case "true":
@@ -65,6 +76,10 @@ public static class LLMReasoningEffortUtil
                 return MaxValue;
             case LLMReasoningEffort.High:
                 return HighValue;
+            case LLMReasoningEffort.Medium:
+                return MediumValue;
+            case LLMReasoningEffort.Low:
+                return LowValue;
             default:
                 return OffValue;
         }
@@ -78,6 +93,10 @@ public static class LLMReasoningEffortUtil
                 return "Think Max";
             case LLMReasoningEffort.High:
                 return "Think High";
+            case LLMReasoningEffort.Medium:
+                return "Think Medium";
+            case LLMReasoningEffort.Low:
+                return "Think Low";
             default:
                 return "No-think";
         }
@@ -105,6 +124,69 @@ public static class LLMRequestProfile
     public static bool IsDeepSeekModel(string model)
     {
         return !string.IsNullOrEmpty(model) && model.ToLowerInvariant().Contains("deepseek");
+    }
+
+    // Qwen "Flash Next" family served by vLLM (e.g. Qwen3.8-Flash-Next). Verified
+    // live 2026-08-30: accepts a top-level "reasoning_effort" of only
+    // "low" / "medium" / "xhigh" (xhigh = the model's default; "high", "minimal"
+    // and "max" are HTTP 400), and chat_template_kwargs {"enable_thinking": false}
+    // disables thinking entirely (it also overrides any reasoning_effort sent).
+    public static bool IsQwenFlashNextModel(string model)
+    {
+        return !string.IsNullOrEmpty(model)
+            && model.ToLowerInvariant().Contains("flash-next")
+            && !IsDeepSeekModel(model);
+    }
+
+    // Models whose reasoning amount is selectable (not just on/off), so the UI
+    // shows an effort dropdown and the request builders emit per-level params.
+    public static bool HasConfigurableReasoningEffort(string model)
+    {
+        return IsDeepSeekModel(model) || IsQwenFlashNextModel(model);
+    }
+
+    // Wire value for the Qwen Flash-Next family; null means thinking off
+    // (send chat_template_kwargs enable_thinking=false instead).
+    public static string GetQwenFlashNextEffortWireValue(LLMReasoningEffort effort)
+    {
+        switch (effort)
+        {
+            case LLMReasoningEffort.Off:
+                return null;
+            case LLMReasoningEffort.Low:
+                return "low";
+            case LLMReasoningEffort.Medium:
+                return "medium";
+            default:
+                return "xhigh"; // High/Max both map to the model's top (and default) level
+        }
+    }
+
+    // Resolved reasoning shape for one OpenAI-compatible request.
+    public struct CompatReasoning
+    {
+        public LLMReasoningEffort effort;
+        public bool? enableThinking;
+        public string customReasoningEffortParam; // null for models without effort levels
+    }
+
+    // Single source of truth for the five OpenAI-compatible call sites (AI Chat
+    // main turn, sidecars/one-shots, AI Guide, PicMain call_llm, Adventure):
+    // decide effort/enable_thinking/effort-param once from the model name +
+    // instance settings so the call sites cannot drift.
+    public static CompatReasoning ResolveCompatReasoning(string model, LLMProviderSettings settings)
+    {
+        bool hasEffortLevels = HasConfigurableReasoningEffort(model);
+        bool enableThinkingSetting = settings == null || settings.enableThinking;
+        LLMReasoningEffort effort = hasEffortLevels && settings != null
+            ? settings.GetReasoningEffort()
+            : (enableThinkingSetting ? LLMReasoningEffort.High : LLMReasoningEffort.Off);
+        return new CompatReasoning
+        {
+            effort = effort,
+            enableThinking = hasEffortLevels ? effort != LLMReasoningEffort.Off : enableThinkingSetting,
+            customReasoningEffortParam = hasEffortLevels ? LLMReasoningEffortUtil.ToConfigValue(effort) : null
+        };
     }
 
     // Anthropic requires max_tokens in every Messages API request. Use the known

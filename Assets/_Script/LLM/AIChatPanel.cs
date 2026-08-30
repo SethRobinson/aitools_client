@@ -372,11 +372,22 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // the caption as failed.
     private const float CAPTION_TIMEOUT_SECONDS = 60f;
     private const float INSPECT_IMAGE_TIMEOUT_SECONDS = 300f;
+    // Describe-first, anti-sycophancy QA prompt. Verified live 2026-08-30 against
+    // Qwen3.8-Flash-Next on the "human head, dog body" test image: the old prompt
+    // (verdict-first) returned PASS while literally describing the failure ("a dog
+    // sitting next to her") because the leading checklist primed agreement; forcing
+    // a literal description BEFORE the verdict plus "a question is a claim to
+    // verify, not a fact" flipped it to a correct FAIL. Note: with that model the
+    // correct verdict also required thinking enabled (no-think agreed with the
+    // question even under this prompt), so keep reasoning on for vision QA sidecars.
     private const string InspectImageSystemPrompt =
         "You are a vision inspection helper inside an image generation app. " +
-        "Answer only from the pixels in the attached image; do not trust the requested prompt or prior chat over visible evidence. " +
+        "The attached image came from an unreliable image generator and often does NOT contain what was requested; your job is to catch mismatches, so never assume a requested feature is present. " +
+        "Questions sent to you frequently presuppose things that are not in the image (for example asking whether a hybrid creature's body reads correctly when the image actually shows an ordinary person and an ordinary animal as separate beings). Treat every question or checklist item as a claim to verify against the pixels, never as a fact. " +
+        "ALWAYS respond in two parts. Part 1 - DESCRIPTION: 2-5 sentences stating literally what is visible - every person, animal, and object as its own entity, their full anatomy, their positions, and any text - written as if you had never seen the request. " +
+        "Part 2 - VERDICT: when the prompt asks to check, verify, QA, find problems, compare to a request, or inspect layout/text, start Part 2 with PASS or FAIL, then judge each requested point strictly against your own Part 1 description, defects first. A point passes only if the feature is positively visible; a feature that is absent, hidden, or replaced by something else fails that point, and any failed point makes the overall verdict FAIL. " +
+        "If the prompt only asks for a caption or description, Part 2 is simply a direct answer to the prompt instead of a verdict. " +
         "If the user message says transparency was visualized as a gray checkerboard, treat checkerboard pixels as transparent alpha, not real image content. " +
-        "When the user prompt asks to check, verify, QA, find problems, compare to a request, or inspect layout/text, start with PASS or FAIL, then list defects first. " +
         "For comics, posters, covers, grids, storyboards, and captioned images, mark FAIL for title/text touching or overlapping unrelated artwork, unreadable or clipped text, duplicated text, bad gutters, blank/black panels, missing panels, or obvious wrong subject matter. " +
         "Name the affected region such as top-left, title band, upper-right panel, or bottom gutter. Be concise and specific.";
     private const string InspectAlphaVisualizationNote =
@@ -6269,30 +6280,24 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
                 var normalizedLines = OpenAITextCompletionManager.NormalizeForStrictAlternation(lines);
                 bool isDeepSeek = LLMRequestProfile.IsDeepSeekModel(model);
-                LLMReasoningEffort compatReasoningEffort = isDeepSeek
-                    ? activeSettings.GetReasoningEffort()
-                    : (activeSettings.enableThinking ? LLMReasoningEffort.High : LLMReasoningEffort.Off);
-                bool? compatEnableThinking = isDeepSeek
-                    ? compatReasoningEffort != LLMReasoningEffort.Off
-                    : activeSettings.enableThinking;
+                var compatReasoning = LLMRequestProfile.ResolveCompatReasoning(model, activeSettings);
                 float compatTemperature = activeSettings.overrideTemperature
                     ? activeSettings.temperature
-                    : (isDeepSeek ? LLMRequestProfile.GetRecommendedTemperature(model, compatReasoningEffort, temperature) : temperature);
+                    : (isDeepSeek ? LLMRequestProfile.GetRecommendedTemperature(model, compatReasoning.effort, temperature) : temperature);
                 float? compatTopP = activeSettings.overrideTopP
                     ? (float?)activeSettings.topP
-                    : (isDeepSeek ? (float?)LLMRequestProfile.GetRecommendedTopP(model, compatReasoningEffort, 1.0f) : null);
+                    : (isDeepSeek ? (float?)LLMRequestProfile.GetRecommendedTopP(model, compatReasoning.effort, 1.0f) : null);
                 int? compatTopK = activeSettings.overrideTopK ? (int?)activeSettings.topK : null;
                 float? compatMinP = activeSettings.overrideMinP ? (float?)activeSettings.minP : null;
                 float? compatRepPenalty = activeSettings.overrideRepeatPenalty ? (float?)activeSettings.repeatPenalty : null;
                 float? compatPresencePenalty = activeSettings.overridePresencePenalty ? (float?)activeSettings.presencePenalty : null;
                 float? compatFrequencyPenalty = activeSettings.overrideFrequencyPenalty ? (float?)activeSettings.frequencyPenalty : null;
                 int? compatRepeatLastN = activeSettings.overrideRepeatLastN ? (int?)activeSettings.repeatLastN : null;
-                string compatReasoningEffortParam = isDeepSeek ? LLMReasoningEffortUtil.ToConfigValue(compatReasoningEffort) : null;
                 string json = _openAIMgr.BuildChatCompleteJSON(normalizedLines, LLMRequestProfile.NoExplicitOutputTokenCap, compatTemperature, model, true,
-                    enableThinking: compatEnableThinking,
+                    enableThinking: compatReasoning.enableThinking,
                     topP: compatTopP, topK: compatTopK, minP: compatMinP, repetitionPenalty: compatRepPenalty,
                     frequencyPenalty: compatFrequencyPenalty, presencePenalty: compatPresencePenalty, repeatLastN: compatRepeatLastN,
-                    customReasoningEffort: compatReasoningEffortParam);
+                    customReasoningEffort: compatReasoning.customReasoningEffortParam);
                 _openAIMgr.SpawnChatCompleteRequest(json, OnLLMCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
                 break;
             }

@@ -519,12 +519,30 @@ public class OpenAITextCompletionManager : MonoBehaviour
 
             // For custom OpenAI-compatible reasoning models, control thinking via
             // chat_template_kwargs. DeepSeek-V4-Flash expects "thinking"; Qwen/GLM
-            // servers generally expect "enable_thinking".
+            // servers generally expect "enable_thinking". The Qwen Flash-Next
+            // family additionally takes a top-level "reasoning_effort" with
+            // native levels low/medium/xhigh (see LLMRequestProfile).
             string thinkingPart = "";
+            string effortPart = "";
             if (isDeepSeekModel)
             {
                 if (effectiveCustomEffort != LLMReasoningEffort.Off)
                     thinkingPart = @"""chat_template_kwargs"": {""thinking"": true},";
+            }
+            else if (LLMRequestProfile.IsQwenFlashNextModel(model))
+            {
+                string wireEffort = LLMRequestProfile.GetQwenFlashNextEffortWireValue(effectiveCustomEffort);
+                if (wireEffort != null)
+                {
+                    effortPart = $@"""reasoning_effort"": ""{wireEffort}"",";
+                    thinkingPart = @"""chat_template_kwargs"": {""enable_thinking"": true},";
+                }
+                else
+                {
+                    // enable_thinking=false overrides reasoning_effort server-side,
+                    // so it is the reliable off switch.
+                    thinkingPart = @"""chat_template_kwargs"": {""enable_thinking"": false},";
+                }
             }
             else if (enableThinking.HasValue)
             {
@@ -557,7 +575,7 @@ public class OpenAITextCompletionManager : MonoBehaviour
              ""messages"":[{msg}],
              {temperaturePart}
              {maxTokensPart}
-             {samplingPart}{thinkingPart}
+             {samplingPart}{effortPart}{thinkingPart}
             ""stream"": {bStreamText}
             }}";
 
