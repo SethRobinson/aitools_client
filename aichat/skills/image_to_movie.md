@@ -1,6 +1,6 @@
 ---
 id: image_to_movie
-summary: Animate a STILL image into a short video. Default to Image To Video (MiniMax H3 Turbo Cache) 5s (native audio/dialog, 8-step turbo + Spectrum cache; progress shows 16 steps - 8 real + 8 cheap replay ticks, that is normal); use the 15s preset only for explicit long clips and duration="N" for ~5-15s. "High quality"/max-quality requests use the 20-step (MiniMax H3 Quality) presets; plain Image To Video (MiniMax H3) 5s is the cache-free variant, used only when the user explicitly asks to skip the cache or blames it for artifacts/audio stutter. Reference To Video presets REQUIRE a photo source; the plain name is already turbo (8-step Ref2V distill), "high quality" uses Reference To Video (MiniMax H3 Quality) 5s (20-step), and there is NO Cache variant - never invent other preset names; a video with no source at all is generate_movie (direct t2v) territory. For a video starring reference photos without an exact start frame, use H3 Reference To Video with up to 9 photos; the prompt MUST use each staged photo via its tag, <Picture 1>..<Picture N> in slot order ("the woman from <Picture 1>") - prose alone ("the blond woman") does not bind to a photo, and the host refuses reference actions whose prompts skip a staged photo's tag. A Movie #N is not an image source by default: edit/reference an existing Movie with video_to_video. Only when the user explicitly wants to animate one current frame may image_to_movie target a Movie, and it must include movie_frame="true". Every H3 prompt must END with an explicit AUDIO spec - who speaks and their EXACT quoted words (or state that nobody speaks), the ambient sound, and music or "no music": H3 always generates a soundtrack, and a person on screen with no specified line mouths gibberish.
+summary: Animate a STILL image into a short video. Default to Image To Video (MiniMax H3 Turbo Cache) 5s (native audio/dialog, 8-step turbo + Spectrum cache; progress shows 16 steps - 8 real + 8 cheap replay ticks, that is normal); use the 15s preset only for explicit long clips and duration="N" for ~5-15s. "High quality"/max-quality requests use the 20-step (MiniMax H3 Quality) presets; plain Image To Video (MiniMax H3) 5s is the cache-free variant, used only when the user explicitly asks to skip the cache or blames it for artifacts/audio stutter. Reference To Video presets REQUIRE a photo source; the plain name is already turbo (8-step Ref2V distill), "high quality" uses Reference To Video (MiniMax H3 Quality) 5s (20-step), and there is NO Cache variant - never invent other preset names; a video with no source at all is generate_movie (direct t2v) territory. For a video starring reference photos without an exact start frame, use H3 Reference To Video with up to 9 photos plus up to 3 standalone AUDIO refs (audio=/audio2/audio3 pointing at Audio bubbles or Movies with sound -> <Audio N> tags; the voice recipe is generate_speech per line, optionally ref_voice-cloned, staged as an audio ref); the prompt MUST use each staged photo/audio via its tag, <Picture 1>..<Picture N> / <Audio N> in slot order ("the woman from <Picture 1>") - prose alone ("the blond woman") does not bind to a photo, and the host refuses reference actions whose prompts skip a staged reference's tag. A Movie #N is not an image source by default: edit/reference an existing Movie with video_to_video. Only when the user explicitly wants to animate one current frame may image_to_movie target a Movie, and it must include movie_frame="true". Every H3 prompt must END with an explicit AUDIO spec - who speaks and their EXACT quoted words (or state that nobody speaks), the ambient sound, and music or "no music": H3 always generates a soundtrack, and a person on screen with no specified line mouths gibberish (audio refs carry the VOICE only, never the words). BUDGET THE SECONDS: dialog + described silent action must cover the full duration or the gaps grow invented mumbling - 15s clips need an explicit silent tail ("then he nods silently; no further dialog").
 inputs: attachment
 autoload: true
 triggers: animate, animation, image to video, image-to-video, image to movie, image-to-movie, animate this, animate it, make this move, make it move, make a video, make a movie, make a clip, create a video, create a movie, generate a video, generate a movie, video starring, movie starring, video of, movie of, second video, second movie, reference to video, minimax, mini max, minmax, minimax h3, minmax h3, h3, hailuo, spectrum, turbo cache, spectrum cache
@@ -169,7 +169,24 @@ is ideal for anchors: "make a video of Mara surfing" from an anchored portrait.
   standing together.
 - Audio rules are the same as normal H3: the mandatory three-layer audio
   spec (exact quoted speech or explicit no-dialog, ambience, music or none)
-  applies to every reference prompt too.
+  applies to every reference prompt too - never "she speaks her line"
+  without the actual quoted words. Budget the seconds: unscripted on-screen
+  time grows invented mumbled filler, so longer clips end with an explicit
+  silent tail ("then she reads quietly; no further dialog").
+- UP TO 3 STANDALONE AUDIO REFERENCES: `audio="N"` (then `audio2`, `audio3`)
+  points at an Audio #N bubble (or a Movie whose SOUND matters; numbers or
+  anchors) and becomes an `<Audio N>` tag - numbered in slot order (with no
+  clip staged on this preset, the first standalone file is `<Audio 1>`).
+  THE voice recipe for named/real characters: `generate_speech` each exact
+  line (optionally `ref_voice`-cloned from a clip of that person), anchor it,
+  stage it (`audio="line1"` `audio2="line2"`), and bind it in the prompt WITH
+  the exact words still quoted: "he says, with the voice from <Audio 1>:
+  'exact line'; she answers, with the voice from <Audio 2>: 'her line'". An
+  audio ref supplies the VOICE only, never the words - a voice ref without
+  quoted words makes H3 invent dialog in a random language (tested
+  2026-08-30). Every staged audio ref's tag must appear in the prompt (same
+  host gate as photos). Also good for a `generate_music` bed. Max 3 audio
+  refs per render.
 - Describe each referenced person ONLY from what is visible in their photo(s)
   or caption - NEVER from outside knowledge of a film, show, or actor, even
   when you recognize them. Unfaithful prose (wrong hair color, missing

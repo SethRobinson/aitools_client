@@ -152,6 +152,8 @@ and clips) has its own section below: "Generating movies (MiniMax H3)".
 | `-i2..-i10 PATH` | Image bound to that exact source slot (`-i2` = image2, etc.) |
 | `--video PATH` | Input video; repeatable (fills `video`, then `video2`) |
 | `--video2 PATH` | Video bound to the second reference clip slot |
+| `--audio PATH` | Standalone audio reference (H3 reference presets); repeatable (fills `audio1`..`audio3`) |
+| `--audio2 PATH`, `--audio3 PATH` | Audio bound to that exact standalone audio slot |
 | `--width N`, `--height N` | Render-size override for size-controllable (video) presets; snapped to /32, clamped 256..2048 |
 | `--duration SECONDS` | Video length override (MiniMax H3 5s presets only; snapped to the 24fps 17k+5 frame grid, ~5.2..15.1s) |
 | `--no-aspect-fit` | Disable the automatic start-frame aspect fit (see the movies section) |
@@ -239,6 +241,22 @@ audio stream with ffprobe (the repo's bundled
 `../utils/ffmpeg/bin/ffprobe.exe` on Windows, `ffprobe` on PATH on Linux)
 and prunes that clip's audio input automatically, printing what it did. If
 ffprobe is unavailable, pass `--no-clip-audio 1` (or `2`) for silent clips.
+
+### Standalone audio references (voices, music)
+
+The reference presets (modes 3 and 4) also take up to 3 standalone AUDIO
+files via repeated `--audio` (or exact-slot `--audio2`/`--audio3`): a voice
+sample, a music bed, any wav/mp3/mp4 with sound. `<Audio N>` tags number the
+wired audio refs in order - clip soundtracks first, then `--audio` files, so
+with no clip the first `--audio` is `<Audio 1>`, and with one clip it is
+`<Audio 2>`. At most 3 audio refs TOTAL per render (clip soundtracks count);
+the CLI errors before submit if more would be wired. Each `--audio` file is
+ffprobe-checked for an audio stream.
+
+```
+aitools_cli.py "<Picture 1> stands on a cliff and speaks with the voice and words from <Audio 1>. Wind ambience; no music." out.mp4 \
+    -p "Reference To Video (MiniMax H3) 5s" -i face.png --audio line.wav
+```
 
 ### Quality
 
@@ -387,14 +405,16 @@ Inside the preset's `joblist` block these are supported:
   - `@replace|find|with|` — string substitution on the workflow JSON
   - `@upload|<source>|inputN|[optional|]` — uploads a CLI-supplied file to
     ComfyUI's `/temp/` folder and routes the path into `<AITOOLS_INPUT_N>`
-    (N = 1..11). Suppliable sources: `image1`..`image10` (repeatable `-i`
+    (N = 1..14). Suppliable sources: `image1`..`image10` (repeatable `-i`
     fills them in declared order; numbered `-i2`..`-i10` bind exact slots),
-    `video` and `video2` (repeatable `--video` / `--video2`). `image` is an
-    alias for `image1`, `video1` for `video`. A trailing `optional` flag
-    means a missing source is fine: that slot's loader node is pruned from
-    the graph at submit time instead of erroring (this is how the universal
-    H3 reference workflow serves every photo/clip combination).
-    `temp1`/`temp2`/`temp3` aren't supported.
+    `video` and `video2` (repeatable `--video` / `--video2`), and
+    `audio1`..`audio3` (repeatable `--audio` / exact `--audio2`/`--audio3`).
+    `image` is an alias for `image1`, `video1` for `video`, `audio` for
+    `audio1`. A trailing `optional` flag means a missing source is fine:
+    that slot's loader node is pruned from the graph at submit time instead
+    of erroring (this is how the universal H3 reference workflow serves
+    every photo/clip/audio combination). `temp1`/`temp2`/`temp3` aren't
+    supported.
   - `@prune_input|name|` — remove that named input key from every node in
     the API JSON before submit (same as the `--prune-input` flag; used for
     per-clip audio pruning on H3 reference workflows).
@@ -410,9 +430,9 @@ Inside the preset's `joblist` block these are supported:
 
 In short: single-step presets work for text-to-image, image-in workflows
 (img2img, mask, inpaint, etc.), and all four MiniMax H3 movie modes (up to
-9 reference photos + 2 reference clips). Multi-step chains, LLM calls, and
-presets that pull from `temp1`/`temp2`/`temp3` slots still error out with a
-clear explanation.
+9 reference photos + 2 reference clips + 3 standalone audio refs). Multi-step
+chains, LLM calls, and presets that pull from `temp1`/`temp2`/`temp3` slots
+still error out with a clear explanation.
 
 ## Missing features (vs. the Unity app)
 
@@ -439,6 +459,8 @@ their presence in a preset is harmless:
   (e.g. `Image To Image Klein Edit 2 Input`) take `-i` + `-i2`.
 - `@upload|video|inputN|` / `@upload|video2|inputN|` — **supported**
   (repeatable `--video`, or `--video2` for the second clip).
+- `@upload|audio1..audio3|inputN|` — **supported** (repeatable `--audio`, or
+  `--audio2`/`--audio3` for exact slots; H3 standalone audio references).
 - `@upload|...|optional|` — **supported** (unfilled slots prune their loader
   nodes from the graph).
 - `@prune_input|name|` — **supported** (also via `--prune-input`).

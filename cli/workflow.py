@@ -16,7 +16,7 @@ PLACEHOLDERS_BLANK_BY_DEFAULT = [
     "<AITOOLS_AUDIO_PROMPT>",
     "<AITOOLS_AUDIO_NEGATIVE_PROMPT>",
     "<AITOOLS_SEGMENTATION_PROMPT>",
-] + [f"<AITOOLS_INPUT_{i}>" for i in range(1, 12)] \
+] + [f"<AITOOLS_INPUT_{i}>" for i in range(1, 15)] \
   + [f"<AITOOLS_PROMPT_{i}>" for i in range(1, 9)]
 
 

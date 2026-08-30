@@ -1393,13 +1393,91 @@ namespace AITools.AIChat.Skills
                && presetName.IndexOf("Reference To Video", StringComparison.OrdinalIgnoreCase) >= 0;
 
         // H3 reference prompts bind prose to pixels ONLY through per-type tags in
-        // connection order (<Picture 1>.., <Video 1>.. - docs/minimax_h3.md "Model
-        // facts"). Whitespace is required between word and number because the tag
+        // connection order (<Picture 1>.., <Video 1>.., <Audio 1>.. - docs/minimax_h3.md
+        // "Model facts"). Whitespace is required between word and number because the tag
         // reaches the encoder literally; "<Picture1>" is not a form we've verified.
         private static readonly Regex s_promptPictureTagRegex =
             new Regex(@"<\s*picture\s+(\d+)\s*>", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex s_promptVideoTagRegex =
             new Regex(@"<\s*video\s+(\d+)\s*>", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex s_promptAudioTagRegex =
+            new Regex(@"<\s*audio\s+(\d+)\s*>", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        // The H3 Ref2VA node accepts at most 3 audio references TOTAL: staged clip
+        // soundtracks (ref_video_audio_0/1) plus standalone audio files (audio=/audio2=/
+        // audio3= -> workflow inputs 12-14 -> ref_video_audio_2..4).
+        private const int MaxH3AudioRefs = 3;
+
+        /// <summary>
+        /// Resolve the standalone audio reference attributes (audio= / audio2= / audio3=,
+        /// numbers or anchors, Audio bubbles or Movies with sound) into local file paths +
+        /// correction-note descriptions, in slot order. Emits a correction turn and
+        /// returns false on a bad reference (unknown bubble, a still image, a silent or
+        /// still-rendering source) so the caller can bail before queuing.
+        /// </summary>
+        private bool ResolveAudioRefSlots(SkillAction action, List<string> paths, List<string> descs)
+        {
+            for (int slot = 1; slot <= MaxH3AudioRefs; slot++)
+            {
+                string key = "audio" + (slot == 1 ? "" : slot.ToString());
+                string raw = action.GetArg(key);
+                if (slot == 1 && string.IsNullOrWhiteSpace(raw)) { raw = action.GetArg("audio1"); if (!string.IsNullOrWhiteSpace(raw)) key = "audio1"; }
+                if (string.IsNullOrWhiteSpace(raw)) continue;
+
+                int idx = ResolveChatMediaRef(raw);
+                if (idx <= 0)
+                {
+                    _host?.AddSystemInjectionAndBubble(
+                        $"Skill '{action.SkillId}': {key}=\"{raw}\" is neither an Audio/Movie bubble number nor a known anchor. " +
+                        "Audio references take an Audio #N bubble (generate_speech / generate_music / a dropped sound file) " +
+                        "or a Movie #N whose soundtrack you want. Fix the reference and re-emit.");
+                    _host?.RequestContinueTurn();
+                    return false;
+                }
+                string path = (_host?.IsChatImageAudio(idx) ?? false)
+                    ? _host.GetChatImageAudioFilePath(idx)
+                    : ((_host?.IsChatImageMovie(idx) ?? false) ? _host.GetChatImageMovieFilePath(idx) : null);
+                if (string.IsNullOrEmpty(path))
+                {
+                    bool isMovie = _host?.IsChatImageMovie(idx) ?? false;
+                    _host?.AddSystemInjectionAndBubble(
+                        $"Skill '{action.SkillId}': {key}=\"{raw}\" (chat image {idx}) " +
+                        (isMovie
+                            ? "is a Movie that has no clip file yet (still rendering?). Wait for it to finish, then re-emit."
+                            : "is a still image - audio references need an Audio #N bubble or a Movie with sound."));
+                    _host?.RequestContinueTurn();
+                    return false;
+                }
+                if (ClipLacksAudio(path))
+                {
+                    _host?.AddSystemInjectionAndBubble(
+                        $"Skill '{action.SkillId}': {key}=\"{raw}\" (chat image {idx}) has no audio stream, so it can't be an audio reference. " +
+                        "Pick a source with sound or drop the attribute.");
+                    _host?.RequestContinueTurn();
+                    return false;
+                }
+                paths.Add(path);
+                descs.Add($"{key}=\"{raw}\"");
+            }
+            return true;
+        }
+
+        // Append a staged clip's soundtrack to the ordered <Audio n> tag lists (skipped
+        // for clips we can probe and know are silent - their audio wire gets pruned at
+        // submit, so it never earns a tag). clipAudioTags gets that clip's 1-based audio
+        // tag number, or 0 when its soundtrack won't be wired.
+        private static void AddClipSoundtrackTag(string clipPath, string desc,
+            List<int> clipAudioTags, List<string> audioDescs, List<bool> audioRequired)
+        {
+            if (!string.IsNullOrEmpty(clipPath) && ClipLacksAudio(clipPath))
+            {
+                clipAudioTags.Add(0);
+                return;
+            }
+            audioDescs.Add(desc);
+            audioRequired.Add(false); // clip soundtracks may be bound via <Video k> instead
+            clipAudioTags.Add(audioDescs.Count);
+        }
 
         /// <summary>
         /// Describe where a staged reference came from, for correction notes. Slot 1
@@ -1431,16 +1509,24 @@ namespace AITools.AIChat.Skills
         /// Deterministic pre-queue gate for H3 reference presets: the encoder gets no
         /// binding between prose and a staged reference except its tag, so a prompt
         /// that says "the blond woman" over three untagged photos routinely renders a
-        /// different person. Require every staged clip/photo to appear as its exact
-        /// tag (and no out-of-range tags) BEFORE spending GPU minutes; on mismatch,
+        /// different person. Require every staged clip/photo/audio ref to appear as its
+        /// exact tag (and no out-of-range tags) BEFORE spending GPU minutes; on mismatch,
         /// inject a slot->tag map plus a correction turn and report blocked=true (the
         /// caller must return without queuing). Descriptor lists are in tag order:
-        /// clipDescs[0] = &lt;Video 1&gt;, photoDescs[0] = &lt;Picture 1&gt;, etc.
+        /// clipDescs[0] = &lt;Video 1&gt;, photoDescs[0] = &lt;Picture 1&gt;, audioDescs[0] =
+        /// &lt;Audio 1&gt;. A staged clip counts as bound when EITHER its &lt;Video k&gt; or its
+        /// soundtrack's &lt;Audio n&gt; appears (clipAudioTags[k-1] = that n, 0 = silent clip):
+        /// "narrates with the voice from &lt;Audio 1&gt;" is a legitimate way to use a clip
+        /// staged purely as a voice source. Standalone audio refs (audioRequired[n-1] =
+        /// true) must appear as their own &lt;Audio n&gt;.
         /// </summary>
         private bool BlockH3ReferencePromptTagMismatch(SkillAction action, string resolvedPreset,
-            List<string> clipDescs, List<string> photoDescs, string reEmitHint)
+            List<string> clipDescs, List<int> clipAudioTags, List<string> photoDescs,
+            List<string> audioDescs, List<bool> audioRequired, string reEmitHint)
         {
-            if ((clipDescs?.Count ?? 0) == 0 && (photoDescs?.Count ?? 0) == 0) return false;
+            if ((clipDescs?.Count ?? 0) == 0 && (photoDescs?.Count ?? 0) == 0
+                && (audioDescs?.Count ?? 0) == 0) return false;
+            audioDescs = audioDescs ?? new List<string>();
 
             string prompt = action.Prompt ?? "";
             var picturesInPrompt = new HashSet<int>();
@@ -1449,6 +1535,9 @@ namespace AITools.AIChat.Skills
             var videosInPrompt = new HashSet<int>();
             foreach (Match m in s_promptVideoTagRegex.Matches(prompt))
                 if (int.TryParse(m.Groups[1].Value, out int n)) videosInPrompt.Add(n);
+            var audiosInPrompt = new HashSet<int>();
+            foreach (Match m in s_promptAudioTagRegex.Matches(prompt))
+                if (int.TryParse(m.Groups[1].Value, out int n)) audiosInPrompt.Add(n);
 
             var problems = new List<string>();
             for (int k = 1; k <= photoDescs.Count; k++)
@@ -1458,16 +1547,30 @@ namespace AITools.AIChat.Skills
                 if (k > photoDescs.Count)
                     problems.Add($"<Picture {k}> has no staged photo behind it (only {photoDescs.Count} staged)");
             for (int k = 1; k <= clipDescs.Count; k++)
-                if (!videosInPrompt.Contains(k))
-                    problems.Add($"<Video {k}> ({clipDescs[k - 1]}) never appears in the prompt");
+            {
+                int soundtrackTag = (clipAudioTags != null && k <= clipAudioTags.Count) ? clipAudioTags[k - 1] : 0;
+                bool boundBySoundtrack = soundtrackTag > 0 && audiosInPrompt.Contains(soundtrackTag);
+                if (!videosInPrompt.Contains(k) && !boundBySoundtrack)
+                    problems.Add($"<Video {k}> ({clipDescs[k - 1]}) never appears in the prompt" +
+                        (soundtrackTag > 0 ? $" (nor its soundtrack tag <Audio {soundtrackTag}>)" : ""));
+            }
             foreach (int k in videosInPrompt)
                 if (k > clipDescs.Count)
                     problems.Add($"<Video {k}> has no staged clip behind it (only {clipDescs.Count} staged)");
+            for (int n = 1; n <= audioDescs.Count; n++)
+                if (audioRequired != null && n <= audioRequired.Count && audioRequired[n - 1]
+                    && !audiosInPrompt.Contains(n))
+                    problems.Add($"<Audio {n}> ({audioDescs[n - 1]}) never appears in the prompt");
+            foreach (int n in audiosInPrompt)
+                if (n > audioDescs.Count)
+                    problems.Add($"<Audio {n}> has no audio reference behind it (only {audioDescs.Count} wired: " +
+                        "clip soundtracks first, then standalone audio)");
             if (problems.Count == 0) return false;
 
             var map = new List<string>();
             for (int k = 1; k <= clipDescs.Count; k++) map.Add($"<Video {k}> = {clipDescs[k - 1]}");
             for (int k = 1; k <= photoDescs.Count; k++) map.Add($"<Picture {k}> = {photoDescs[k - 1]}");
+            for (int n = 1; n <= audioDescs.Count; n++) map.Add($"<Audio {n}> = {audioDescs[n - 1]}");
 
             _host?.AddSystemInjectionAndBubble(
                 $"Skill '{action.SkillId}' (preset '{resolvedPreset}') was NOT run: H3 reference prompts must " +
@@ -1934,15 +2037,31 @@ namespace AITools.AIChat.Skills
             // Checked against the RESOLVED name so fuzzy preset matches gate too.
             bool gateRefVideo = action.SkillId.ToLowerInvariant() == BuiltInSkillIds.VideoToVideo
                 && resolved.IndexOf("Reference Video To Video", StringComparison.OrdinalIgnoreCase) >= 0;
+            var stagedAudioPaths = new List<string>();
             if (gateRefVideo || IsReferencePhotoPreset(resolved))
             {
+                // Standalone audio references (audio=/audio2=/audio3= -> @upload|audio1..3|).
+                var stagedAudioDescs = new List<string>();
+                if (!ResolveAudioRefSlots(action, stagedAudioPaths, stagedAudioDescs)) return;
+
                 var clipDescs = new List<string>();
+                var clipAudioTags = new List<int>();
                 var photoDescs = new List<string>();
+                var audioDescs = new List<string>();
+                var audioRequired = new List<bool>();
                 if (gateRefVideo)
                 {
+                    int probeChatN = action.ChatImageIndex ?? (_host?.GetLatestChatImageIndex() ?? -1);
+                    string clip1Probe = _host?.GetChatImageMovieFilePath(probeChatN);
                     clipDescs.Add($"the source clip ({DescribeStagedRefSource(action, 1)})");
+                    AddClipSoundtrackTag(clip1Probe, "the source clip's soundtrack",
+                        clipAudioTags, audioDescs, audioRequired);
                     if (secondClipPath != null)
+                    {
                         clipDescs.Add($"the second clip ({DescribeStagedRefSource(action, 2)})");
+                        AddClipSoundtrackTag(secondClipPath, "the second clip's soundtrack",
+                            clipAudioTags, audioDescs, audioRequired);
+                    }
                 }
                 else if (useAttachment && attachmentBytes != null)
                 {
@@ -1950,9 +2069,33 @@ namespace AITools.AIChat.Skills
                 }
                 for (int slot = 2; slot <= PicMain.MaxExtraInputImageSlot; slot++)
                     if (extraBytes[slot] != null) photoDescs.Add(DescribeStagedRefSource(action, slot));
-                if (BlockH3ReferencePromptTagMismatch(action, resolved, clipDescs, photoDescs,
-                        "Re-emit the SAME action with the SAME attributes"))
+                for (int i = 0; i < stagedAudioDescs.Count; i++)
+                {
+                    audioDescs.Add(stagedAudioDescs[i]);
+                    audioRequired.Add(true);
+                }
+                // The Ref2VA node caps at 3 audio refs total (clip soundtracks + standalone).
+                if (audioDescs.Count > MaxH3AudioRefs)
+                {
+                    _host?.AddSystemInjectionAndBubble(
+                        $"Skill '{action.SkillId}': H3 accepts at most {MaxH3AudioRefs} audio references TOTAL, but " +
+                        $"{audioDescs.Count} were staged ({string.Join(", ", audioDescs)} - clip soundtracks count too). " +
+                        "Drop audio attributes (or use a silent clip) until at most 3 remain, then re-emit.");
+                    _host?.RequestContinueTurn();
                     return;
+                }
+                if (stagedAudioPaths.Count > 0)
+                    _host?.AddInfoBubble($"(standalone audio wired as <Audio {audioDescs.Count - stagedAudioPaths.Count + 1}>" +
+                        (stagedAudioPaths.Count > 1 ? $"..<Audio {audioDescs.Count}>)" : ">)"));
+                if (BlockH3ReferencePromptTagMismatch(action, resolved, clipDescs, clipAudioTags, photoDescs,
+                        audioDescs, audioRequired, "Re-emit the SAME action with the SAME attributes"))
+                    return;
+            }
+            else if (!string.IsNullOrWhiteSpace(FirstArg(action, "audio", "audio1", "audio2", "audio3")))
+            {
+                _host?.AddSystemInjectionSilent(
+                    $"(audio=\"...\" references are only consumed by the H3 Reference presets " +
+                    $"(Reference To Video / Reference Video To Video); ignored on '{resolved}'.)");
             }
 
             var imageGen = ImageGenerator.Get();
@@ -2002,10 +2145,16 @@ namespace AITools.AIChat.Skills
             for (int slot = 2; slot <= PicMain.MaxExtraInputImageSlot; slot++)
                 if (!TryWireExtraInput(picMain, extraBytes[slot], slot, action.SkillId)) return;
 
+            // Standalone audio references -> @upload|audio1..3| (H3 reference presets;
+            // resolved + tag-gated above). New Pic, so no stale paths to clear.
+            for (int i = 0; i < stagedAudioPaths.Count && i < MaxH3AudioRefs; i++)
+                picMain.SetPendingAudioUpload(i + 1, stagedAudioPaths[i]);
+
             // Tell the model up front when it staged more reference slots than this
             // preset can consume - otherwise the extras vanish silently and the model
             // only finds out from the rendered result (see the chat_image4 incident).
-            WarnUnconsumedExtraInputSlots(action, resolved, extraBytes, secondClipPath != null);
+            WarnUnconsumedExtraInputSlots(action, resolved, extraBytes, secondClipPath != null,
+                stagedAudioPaths.Count);
 
             // video_to_video needs the actual SOURCE VIDEO file - the Bernini v2v preset
             // uploads it via @upload|video|input1|. We hand the source clip's path to the Pic
@@ -2288,15 +2437,33 @@ namespace AITools.AIChat.Skills
             // chain state, so the correction must re-point at the Pic's bubble number.
             bool chainGateRefVideo = action.SkillId.ToLowerInvariant() == BuiltInSkillIds.VideoToVideo
                 && resolved.IndexOf("Reference Video To Video", StringComparison.OrdinalIgnoreCase) >= 0;
+            var chainAudioPaths = new List<string>();
             if (chainGateRefVideo || IsReferencePhotoPreset(resolved))
             {
+                var chainAudioDescs = new List<string>();
+                if (!ResolveAudioRefSlots(action, chainAudioPaths, chainAudioDescs)) return;
+
                 var clipDescs = new List<string>();
+                var clipAudioTags = new List<int>();
                 var photoDescs = new List<string>();
+                var audioDescs = new List<string>();
+                var audioRequired = new List<bool>();
                 if (chainGateRefVideo)
                 {
+                    // The chained-from movie is usually still rendering, so its file can't
+                    // be probed yet; AddClipSoundtrackTag treats an unprobeable clip as
+                    // having audio (H3 outputs always carry a soundtrack anyway).
+                    string chainClip1Probe = (prevPic.m_picMovie != null && prevPic.IsMovie())
+                        ? prevPic.m_picMovie.GetProcessingFileName() : null;
                     clipDescs.Add("the source clip (the movie chained from this reply)");
+                    AddClipSoundtrackTag(chainClip1Probe, "the source clip's soundtrack",
+                        clipAudioTags, audioDescs, audioRequired);
                     if (chainSecondClipPath != null)
+                    {
                         clipDescs.Add($"the second clip ({DescribeStagedRefSource(action, 2)})");
+                        AddClipSoundtrackTag(chainSecondClipPath, "the second clip's soundtrack",
+                            clipAudioTags, audioDescs, audioRequired);
+                    }
                 }
                 else
                 {
@@ -2304,19 +2471,47 @@ namespace AITools.AIChat.Skills
                 }
                 for (int slot = 2; slot <= PicMain.MaxExtraInputImageSlot; slot++)
                     if (chainExtraBytes[slot] != null) photoDescs.Add(DescribeStagedRefSource(action, slot));
+                for (int i = 0; i < chainAudioDescs.Count; i++)
+                {
+                    audioDescs.Add(chainAudioDescs[i]);
+                    audioRequired.Add(true);
+                }
+                if (audioDescs.Count > MaxH3AudioRefs)
+                {
+                    _host?.AddSystemInjectionAndBubble(
+                        $"Skill '{action.SkillId}': H3 accepts at most {MaxH3AudioRefs} audio references TOTAL, but " +
+                        $"{audioDescs.Count} were staged ({string.Join(", ", audioDescs)} - clip soundtracks count too). " +
+                        "Drop audio attributes until at most 3 remain, then re-emit.");
+                    _host?.RequestContinueTurn();
+                    return;
+                }
                 int chainBubbleIdx = _host?.GetChatImageIndexForPic(prevPic) ?? 0;
                 string reEmit = chainBubbleIdx > 0
                     ? $"Re-emit the SAME action with chain=\"true\" replaced by chat_image=\"{chainBubbleIdx}\" (chain does not survive a continue turn), other attributes unchanged"
                     : "Re-emit the SAME action with chain=\"true\" replaced by the chained-from bubble's chat_image=\"N\" (chain does not survive a continue turn), other attributes unchanged";
-                if (BlockH3ReferencePromptTagMismatch(action, resolved, clipDescs, photoDescs, reEmit))
+                if (BlockH3ReferencePromptTagMismatch(action, resolved, clipDescs, clipAudioTags, photoDescs,
+                        audioDescs, audioRequired, reEmit))
                     return;
+            }
+            else if (!string.IsNullOrWhiteSpace(FirstArg(action, "audio", "audio1", "audio2", "audio3")))
+            {
+                _host?.AddSystemInjectionSilent(
+                    $"(audio=\"...\" references are only consumed by the H3 Reference presets " +
+                    $"(Reference To Video / Reference Video To Video); ignored on '{resolved}'.)");
             }
 
             for (int slot = 2; slot <= PicMain.MaxExtraInputImageSlot; slot++)
                 if (!TryWireExtraInput(prevPic, chainExtraBytes[slot], slot, action.SkillId)) return;
 
+            // Standalone audio references. Unconditional clear first: prevPic is a
+            // reused Pic, so stale paths from an earlier action must not leak through.
+            prevPic.ClearPendingAudioUploads();
+            for (int i = 0; i < chainAudioPaths.Count && i < MaxH3AudioRefs; i++)
+                prevPic.SetPendingAudioUpload(i + 1, chainAudioPaths[i]);
+
             // Same unconsumed-slot check as the non-chained path.
-            WarnUnconsumedExtraInputSlots(action, resolved, chainExtraBytes, chainSecondClipPath != null);
+            WarnUnconsumedExtraInputSlots(action, resolved, chainExtraBytes, chainSecondClipPath != null,
+                chainAudioPaths.Count);
 
             // Same per-Pic negative-prompt extraction as the non-chained path so the
             // chained workflow inherits the preset author's negative prompt instead of
@@ -2850,6 +3045,18 @@ namespace AITools.AIChat.Skills
                     errored = true;
                     return null;
                 }
+                // An Audio bubble in a photo slot would "photo-reference" its waveform
+                // preview frame - never what the model meant. Block with the right slot.
+                if (_host?.IsChatImageAudio(chatN) ?? false)
+                {
+                    _host?.AddSystemInjectionAndBubble(
+                        $"Skill '{action.SkillId}': {chatKey}=\"{chatN}\" is an Audio bubble - it can't be a photo reference. " +
+                        $"To use its SOUND as a reference, put it in audio=\"{chatN}\" (or audio2/audio3) on an H3 Reference preset; " +
+                        "otherwise drop the slot. Re-emit with the corrected attributes.");
+                    _host?.RequestContinueTurn();
+                    errored = true;
+                    return null;
+                }
                 // Clip slots never reach this resolver (chat_image is the primary clip and
                 // chat_image2 is skipped as the second clip on Reference Video To Video), so a
                 // Movie landing here is being coerced into a STILL: its current display
@@ -2861,7 +3068,7 @@ namespace AITools.AIChat.Skills
                         $"NOTE: {chatKey}=\"{chatN}\" is a Movie, but this action takes a clip only in chat_image " +
                         "(plus chat_image2 on Reference Video To Video - at most 2 clips per render). " +
                         $"Its current display frame was used as the PHOTO reference for slot {slot} instead, so count it as a <Picture N>. " +
-                        "For a third speaker use their photo anchor only, or drop that slot.");
+                        $"To use its SOUNDTRACK as a voice/sound reference instead, put it in audio=\"{chatN}\" (or audio2/audio3).");
                 }
                 return bytes;
             }
@@ -2916,11 +3123,12 @@ namespace AITools.AIChat.Skills
         /// than the resolved preset's @upload lines actually consume, so the model learns
         /// IMMEDIATELY instead of discovering missing references in the rendered result.
         /// A staged slot K is consumed when the preset uploads "imageK" (or, for K=2 with
-        /// a second reference clip wired, "video2"). The render still proceeds with the
-        /// supported subset - the extras are simply never uploaded.
+        /// a second reference clip wired, "video2"; audio refs need "audioN" lines). The
+        /// render still proceeds with the supported subset - the extras are simply never
+        /// uploaded.
         /// </summary>
         private void WarnUnconsumedExtraInputSlots(SkillAction action, string resolvedPresetName,
-            byte[][] extraBytes, bool secondClipWired)
+            byte[][] extraBytes, bool secondClipWired, int stagedAudioCount = 0)
         {
             if (extraBytes == null || string.IsNullOrEmpty(resolvedPresetName)) return;
 
@@ -2945,6 +3153,14 @@ namespace AITools.AIChat.Skills
                 if (int.TryParse(m.Groups[1].Value, out int n)) consumedSlots.Add(n);
             }
             bool presetTakesVideo2 = presetText.IndexOf("@upload|video2|", StringComparison.OrdinalIgnoreCase) >= 0;
+
+            int consumedAudioSlots = System.Text.RegularExpressions.Regex.Matches(
+                presetText, @"@upload\|audio\d\|", System.Text.RegularExpressions.RegexOptions.IgnoreCase).Count;
+            if (stagedAudioCount > consumedAudioSlots)
+                _host?.AddSystemInjectionAndBubble(
+                    $"Skill '{action.SkillId}': preset '{resolvedPresetName}' only consumes {consumedAudioSlots} " +
+                    $"audio reference slot(s), so {stagedAudioCount - consumedAudioSlots} staged audio reference(s) " +
+                    "were IGNORED for this render.");
 
             for (int slot = 2; slot < extraBytes.Length; slot++)
             {

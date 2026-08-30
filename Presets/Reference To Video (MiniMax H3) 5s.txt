@@ -16,5 +16,10 @@ COMMAND_START|joblist
 %vid_height%="480"
 %vid_length%="124"
 
-ref_multi_to_video_minimax_h3_turbo.json @upload|image1|input3| @upload|image2|input4|optional| @upload|image3|input5|optional| @upload|image4|input6|optional| @upload|image5|input7|optional| @upload|image6|input8|optional| @upload|image7|input9|optional| @upload|image8|input10|optional| @upload|image9|input11|optional| @replace|"width": 864|"width": %vid_width%| @replace|"height": 480|"height": %vid_height%| @replace|"length": 124|"length": %vid_length%|
+#OPTIONAL standalone AUDIO references (wired by AI Chat audio=/audio2=/audio3=, CLI --audio):
+#audio1..audio3 -> inputs 12-14 -> <Audio N> prompt tags, numbered AFTER any clip soundtracks
+#(e.g. with one clip staged: <Audio 1> = the clip's soundtrack, <Audio 2> = first standalone file).
+#Use for per-character voice samples or a music bed; at most 3 audio refs TOTAL per render
+#(clip soundtracks + standalone), the model's ref_video_audios ceiling.
+ref_multi_to_video_minimax_h3_turbo.json @upload|image1|input3| @upload|image2|input4|optional| @upload|image3|input5|optional| @upload|image4|input6|optional| @upload|image5|input7|optional| @upload|image6|input8|optional| @upload|image7|input9|optional| @upload|image8|input10|optional| @upload|image9|input11|optional| @upload|audio1|input12|optional| @upload|audio2|input13|optional| @upload|audio3|input14|optional| @replace|"width": 864|"width": %vid_width%| @replace|"height": 480|"height": %vid_height%| @replace|"length": 124|"length": %vid_length%|
 COMMAND_END

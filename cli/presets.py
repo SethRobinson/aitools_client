@@ -12,6 +12,9 @@ Supports the subset relevant to single-step image generation:
   - @upload|video|inputM|[optional|]   (CLI --video file; also 'video2' for
                                         a second clip via --video2 / repeated
                                         --video)
+  - @upload|audioN|inputM|[optional|]  (CLI --audio file, repeatable / --audio2
+                                        / --audio3; standalone H3 audio refs,
+                                        N = 1..3)
   - @prune_input|name|              (remove that named input key from every
                                      node in the API JSON before submit)
   - @resize|x|W|y|H|aspect_correct|N|        (always resize input image)
@@ -77,9 +80,9 @@ class ResizeOp:
 
 @dataclass
 class UploadSpec:
-    """An @upload directive: route a local media source to input slot N (0..10)."""
-    source: str        # 'image1'..'image10', 'video', or 'video2' (temp slots only when optional)
-    slot_idx: int      # 0..10 -> <AITOOLS_INPUT_(slot_idx+1)>
+    """An @upload directive: route a local media source to input slot N (0..13)."""
+    source: str        # 'image1'..'image10', 'video'/'video2', 'audio1'..'audio3' (temp slots only when optional)
+    slot_idx: int      # 0..13 -> <AITOOLS_INPUT_(slot_idx+1)>
     optional: bool = False  # unfilled optional slots get their loader node pruned
 
 
@@ -294,16 +297,18 @@ def _handle_directive(directive: str, args: List[str], data: PresetData, path: P
     die(f"preset {path.name}: unknown directive '@{d}'", 1)
 
 
-# input1..input11 (or bare 1..11) -> 0-based slot index. 11 slots mirror Unity's
-# PicJob.MAX_INPUT_SLOTS (2 reference videos + 9 reference photos for H3 Ref2VA).
+# input1..input14 (or bare 1..14) -> 0-based slot index. 14 slots mirror Unity's
+# PicJob.MAX_INPUT_SLOTS (2 reference videos + 9 reference photos + 3 standalone
+# audio references for H3 Ref2VA).
 _INPUT_SLOTS = {}
-for _i in range(1, 12):
+for _i in range(1, 15):
     _INPUT_SLOTS[f"input{_i}"] = _i - 1
     _INPUT_SLOTS[str(_i)] = _i - 1
 
 # Sources the CLI can supply from the command line: image1..image10 (repeated
-# -i / numbered -iN flags) and video/video2 (repeated --video / --video2).
-SUPPLIABLE_SOURCE_RE = re.compile(r"^(image([1-9]|10)|video2?)$")
+# -i / numbered -iN flags), video/video2 (repeated --video / --video2), and
+# audio1..audio3 (repeated --audio / --audio2 / --audio3).
+SUPPLIABLE_SOURCE_RE = re.compile(r"^(image([1-9]|10)|video2?|audio[1-3])$")
 
 
 def _handle_upload(args: List[str], data: PresetData, path: Path):
@@ -322,6 +327,8 @@ def _handle_upload(args: List[str], data: PresetData, path: Path):
         source = "image1"
     if source == "video1":
         source = "video"
+    if source == "audio":
+        source = "audio1"
     if not SUPPLIABLE_SOURCE_RE.match(source) and not optional:
         # Optional uploads with sources the CLI can't supply (temp slots) are
         # fine: the slot stays unfilled and its loader node is pruned from the
@@ -329,14 +336,15 @@ def _handle_upload(args: List[str], data: PresetData, path: Path):
         die(
             f"preset {path.name}: @upload source '{source}' not supported — "
             f"aitools_cli handles image1..image10 (repeatable -i / numbered -iN "
-            f"flags) and video/video2 (--video / --video2). "
+            f"flags), video/video2 (--video / --video2), and audio1..audio3 "
+            f"(--audio / --audio2 / --audio3). "
             f"Sources like temp1/temp2/temp3 require multi-step workflows.",
             1,
         )
     if dest not in _INPUT_SLOTS:
         die(
             f"preset {path.name}: @upload dest '{dest}' not recognised — "
-            f"expected one of input1..input11 (or 1..11)",
+            f"expected one of input1..input14 (or 1..14)",
             1,
         )
     data.uploads.append(UploadSpec(source=source, slot_idx=_INPUT_SLOTS[dest], optional=optional))

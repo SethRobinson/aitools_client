@@ -61,10 +61,13 @@ public class PicJob
     public float _timeOfStart = 0;
     public float _timeOfEnd = 0;
     
-    // Multi-input upload support: filenames for <AITOOLS_INPUT_1>..<AITOOLS_INPUT_11>.
-    // 11 slots = 2 reference videos (inputs 1-2) + 9 reference photos (inputs 3-11),
-    // the MiniMax H3 Ref2VA ceiling (the node accepts up to 9 ref images).
-    public const int MAX_INPUT_SLOTS = 11;
+    // Multi-input upload support: filenames for <AITOOLS_INPUT_1>..<AITOOLS_INPUT_14>.
+    // 14 slots = 2 reference videos (inputs 1-2) + 9 reference photos (inputs 3-11)
+    // + 3 standalone audio references (inputs 12-14), the MiniMax H3 Ref2VA ceiling
+    // (the node accepts up to 9 ref images / 3 ref audios; total wired audio refs -
+    // clip soundtracks plus standalone - must stay <= 3, enforced by the AI Chat
+    // executor and the CLI before submit).
+    public const int MAX_INPUT_SLOTS = 14;
     public string[] _inputFilenames = CreateEmptyInputFilenames();
 
     public static string[] CreateEmptyInputFilenames()
@@ -220,6 +223,11 @@ public class PicMain : MonoBehaviour
     // explicit file path supplied by AI Chat (a Movie bubble in chat_image2); the Pic's own
     // movie is clip 1 by definition, so video2 has no m_picMovie fallback.
     public string m_pendingVideoUploadPath2 = null;
+    // Standalone audio reference files for @upload|audio1|..@upload|audio3| (H3 Ref2VA
+    // ref_video_audios group, workflow inputs 12-14). Always explicit file paths staged
+    // by AI Chat (an Audio bubble's original sound file, or a Movie clip whose soundtrack
+    // is the reference) - no fallback source, mirroring m_pendingVideoUploadPath2.
+    public string[] m_pendingAudioUploadPaths = new string[3];
     List<PicJob> m_picJobs = new List<PicJob>();
     List<PicJob> _jobHistory = new List<PicJob>();
     PicJob m_jobDefaultInfo = null;
@@ -3617,8 +3625,39 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 // "image2".."image10" - extra input slots
                 if (TryParseExtraImageSlot(source, out int extraSlot))
                     return m_extraInputImages[extraSlot] != null;
+                // "audio1".."audio3" - standalone audio reference slots
+                if (TryParseAudioUploadSlot(source, out int audioSlot))
+                    return !string.IsNullOrEmpty(m_pendingAudioUploadPaths[audioSlot]);
                 return false;
         }
+    }
+
+    // "audio" / "audio1".."audio3" -> 0-based index into m_pendingAudioUploadPaths.
+    static bool TryParseAudioUploadSlot(string source, out int zeroBasedSlot)
+    {
+        zeroBasedSlot = -1;
+        if (string.IsNullOrEmpty(source) || !source.StartsWith("audio")) return false;
+        string tail = source.Substring("audio".Length);
+        if (tail.Length == 0) { zeroBasedSlot = 0; return true; }
+        if (int.TryParse(tail, out int n) && n >= 1 && n <= 3) { zeroBasedSlot = n - 1; return true; }
+        return false;
+    }
+
+    /// <summary>
+    /// Stage a standalone audio reference file for @upload|audioN| (slot 1..3 ->
+    /// workflow inputs 12-14 on the H3 Ref2VA reference workflows). Pass null to clear.
+    /// </summary>
+    public void SetPendingAudioUpload(int slotOneBased, string path)
+    {
+        if (slotOneBased >= 1 && slotOneBased <= m_pendingAudioUploadPaths.Length)
+            m_pendingAudioUploadPaths[slotOneBased - 1] = path;
+    }
+
+    /// <summary>Clear all staged standalone audio references (reused chain Pics).</summary>
+    public void ClearPendingAudioUploads()
+    {
+        for (int i = 0; i < m_pendingAudioUploadPaths.Length; i++)
+            m_pendingAudioUploadPaths[i] = null;
     }
     
     /// <summary>
@@ -4273,6 +4312,26 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                             "Point chat_image2=\"N\" at the Movie #N bubble to supply the second reference clip.");
                         return;
                     }
+                    else if (TryParseAudioUploadSlot(source, out int audioUploadSlot))
+                    {
+                        // Standalone audio reference - always an explicit file path staged by
+                        // AI Chat (an Audio bubble's original sound file, or a Movie clip whose
+                        // soundtrack is the reference). Uploaded as-is; the workflow's audio
+                        // loader (VHS) decodes wav/mp3/mp4 alike.
+                        string audioPath = m_pendingAudioUploadPaths[audioUploadSlot];
+                        if (!string.IsNullOrEmpty(audioPath))
+                        {
+                            uploaderScript.UploadFile(serverID, audioPath, remoteFileName, OnUploadFinished);
+                            return; // Audio upload handled, exit early
+                        }
+                        ClearErrorsAndJobs();
+                        SetStatusMessage("Need audio\nfile first!");
+                        RTConsole.Log($"Error: No audio wired for {source} upload");
+                        ReportWorkflowAbortOnce(
+                            $"Workflow aborted: the preset expected an audio reference ({source}), but none was wired. " +
+                            $"Point audio{(audioUploadSlot == 0 ? "" : (audioUploadSlot + 1).ToString())}=\"N\" at an Audio #N bubble (or a Movie with sound).");
+                        return;
+                    }
                     else if (TryParseExtraImageSlot(source, out int extraImageSlot))
                     {
                         // "image2".."image10" - extra input slots
@@ -4925,8 +4984,8 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                         else if (picJobData._name.ToLower() == "upload")
                         {
                             // Parse: @upload|source|inputN| or @upload|source|inputN|optional|
-                            // source: image1..image10, temp1..temp3, video/video1, video2
-                            // dest: input1..input11 (or just the bare number)
+                            // source: image1..image10, temp1..temp3, video/video1, video2, audio1..audio3
+                            // dest: input1..input14 (or just the bare number)
                             // "optional": if the source isn't wired, skip the upload and leave the
                             // <AITOOLS_INPUT_N> placeholder unfilled so PicTextToImage prunes that
                             // loader from the API graph (universal multi-reference workflows).
@@ -4972,6 +5031,15 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                                         string movieExt2 = string.IsNullOrEmpty(m_pendingVideoUploadPath2)
                                             ? null : System.IO.Path.GetExtension(m_pendingVideoUploadPath2);
                                         uploadExt = string.IsNullOrEmpty(movieExt2) ? ".mp4" : movieExt2;
+                                    }
+                                    else if (TryParseAudioUploadSlot(source, out int audioExtSlot))
+                                    {
+                                        // Audio references keep their real container extension too
+                                        // (.wav Audio bubbles, .mp4 movie soundtracks - VHS decodes both).
+                                        string audioFile = m_pendingAudioUploadPaths[audioExtSlot];
+                                        string audioExt = string.IsNullOrEmpty(audioFile)
+                                            ? null : System.IO.Path.GetExtension(audioFile);
+                                        uploadExt = string.IsNullOrEmpty(audioExt) ? ".wav" : audioExt;
                                     }
                                     string guidFilename = "pic_" + System.Guid.NewGuid() + uploadExt;
 

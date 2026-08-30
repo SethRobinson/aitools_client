@@ -1,8 +1,8 @@
 {
  "id": "minimax-h3-ref-multi-turbo-aitools",
  "revision": 0,
- "last_node_id": 30,
- "last_link_id": 34,
+ "last_node_id": 33,
+ "last_link_id": 37,
  "nodes": [
   {
    "id": 1,
@@ -386,6 +386,24 @@
      "name": "ref_images.ref_image_8",
      "type": "IMAGE",
      "link": 32,
+     "shape": 7
+    },
+    {
+     "name": "ref_video_audios.ref_video_audio_2",
+     "type": "AUDIO",
+     "link": 35,
+     "shape": 7
+    },
+    {
+     "name": "ref_video_audios.ref_video_audio_3",
+     "type": "AUDIO",
+     "link": 36,
+     "shape": 7
+    },
+    {
+     "name": "ref_video_audios.ref_video_audio_4",
+     "type": "AUDIO",
+     "link": 37,
      "shape": 7
     }
    ],
@@ -816,7 +834,7 @@
     "Node name for S&R": "MarkdownNote"
    },
    "widgets_values": [
-    "## MiniMax H3 (universal multi-reference to video)\n\nOmni-modal video model: up to 15s of 24fps video with native stereo audio\n(dialog in 11 languages). Requires ComfyUI 0.30.0+ and the Ref2VA checkpoint.\n\nThis graph carries EVERY reference loader the app can wire:\n\n- `<AITOOLS_INPUT_1>` reference clip 1 -> `ref_videos.ref_video_0` (+ soundtrack)\n- `<AITOOLS_INPUT_2>` reference clip 2 -> `ref_videos.ref_video_1` (+ soundtrack)\n- `<AITOOLS_INPUT_3>`..`_11` reference photos 1-9 -> `ref_images.ref_image_0..8`\n\nSeth's AI Tools PRUNES unused loaders at submit time: any loader whose\n`<AITOOLS_INPUT_N>` placeholder is still unfilled is removed from the\nAPI-format JSON (references cascade-removed, autogrow indices renumbered),\nand a silent clip's audio wire is dropped via `@prune_input`. To run this\ngraph manually in ComfyUI, delete the loaders you aren't using and fill real\npaths into the rest.\n\nPrompt tags are per-type in connection order among the references that\nREMAIN: clips are `<Video 1>` / `<Video 2>`, their soundtracks `<Audio 1>` /\n`<Audio 2>`, photos are `<Picture 1>`..`<Picture 9>`. Give each reference ONE\njob (e.g. `<Video 1>` = motion/camera/voice, `<Picture 1>` = person identity).\n\n`length` is a frame count at 24fps, snapped up to the model's 17k+5 grid\n(124 = ~5s, trained range is ~124-362 = ~5-15s). Canvas max is 768x1344-area\n(~1MP); this workflow defaults to 864x480 (~0.4MP, the official template\ndefault).\n\nThe `MiniMaxH3MemoryEfficientSageAttentionPatch` node (kjnodes) needs the\n`sageattention` pip package on the server; delete or bypass it to run without.\n\n**Models** (from [Comfy-Org/MiniMax-H3](https://huggingface.co/Comfy-Org/MiniMax-H3)):\n\n- `diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors`\n- `text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors`\n- `vae/minimax_h3_video_vae_fp16.safetensors`\n- `vae/minimax_h3_audio_vae_fp32.safetensors`\n"
+    "## MiniMax H3 (universal multi-reference to video)\n\nOmni-modal video model: up to 15s of 24fps video with native stereo audio\n(dialog in 11 languages). Requires ComfyUI 0.30.0+ and the Ref2VA checkpoint.\n\nThis graph carries EVERY reference loader the app can wire:\n\n- `<AITOOLS_INPUT_1>` reference clip 1 -> `ref_videos.ref_video_0` (+ soundtrack)\n- `<AITOOLS_INPUT_2>` reference clip 2 -> `ref_videos.ref_video_1` (+ soundtrack)\n- `<AITOOLS_INPUT_3>`..`_11` reference photos 1-9 -> `ref_images.ref_image_0..8`\n- `<AITOOLS_INPUT_12>`..`_14` standalone audio refs 1-3 -> `ref_video_audios.ref_video_audio_2..4`\n\nSeth's AI Tools PRUNES unused loaders at submit time: any loader whose\n`<AITOOLS_INPUT_N>` placeholder is still unfilled is removed from the\nAPI-format JSON (references cascade-removed, autogrow indices renumbered),\nand a silent clip's audio wire is dropped via `@prune_input`. To run this\ngraph manually in ComfyUI, delete the loaders you aren't using and fill real\npaths into the rest.\n\nPrompt tags are per-type in connection order among the references that\nREMAIN: clips are `<Video 1>` / `<Video 2>`, photos `<Picture 1>`..`<Picture 9>`,\nand `<Audio 1>`.. numbers clip soundtracks first, then the standalone audio\nfiles (a voice sample, a music bed...). The model accepts at most 3 audio refs\nTOTAL (clip soundtracks + standalone) - the app enforces that before submit;\nrunning manually, keep at most 3 audio wires connected. Give each reference ONE\njob (e.g. `<Video 1>` = motion/camera, `<Audio 1>` = voice, `<Picture 1>` =\nperson identity).\n\n`length` is a frame count at 24fps, snapped up to the model's 17k+5 grid\n(124 = ~5s, trained range is ~124-362 = ~5-15s). Canvas max is 768x1344-area\n(~1MP); this workflow defaults to 864x480 (~0.4MP, the official template\ndefault).\n\nThe `MiniMaxH3MemoryEfficientSageAttentionPatch` node (kjnodes) needs the\n`sageattention` pip package on the server; delete or bypass it to run without.\n\n**Models** (from [Comfy-Org/MiniMax-H3](https://huggingface.co/Comfy-Org/MiniMax-H3)):\n\n- `diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors`\n- `text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors`\n- `vae/minimax_h3_video_vae_fp16.safetensors`\n- `vae/minimax_h3_audio_vae_fp32.safetensors`\n"
    ],
    "title": "About this workflow"
   },
@@ -1437,6 +1455,111 @@
     "## MiniMax H3 multi-reference to video - TURBO\n\n`ref_multi_to_video_minimax_h3.json` plus lightx2v's Ref2V turbo distill\nLoRA (`minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors`,\nstrength 1.0) loaded with the plain core `LoraLoaderModelOnly` node -\nno custom nodes. Wiring follows lightx2v's official example:\n`MiniMaxH3SigmaShift` (video 12 / audio 3, ComfyUI 0.31+ core) sits on\nthe guider branch only, so `BasicScheduler` still emits unshifted\nsigmas; sampler is `euler`/`simple`. The distill targets 4 steps; this\ngraph ships 8 (the community sharpness comfort zone is 6-8). Loaders,\nplaceholders, and submit-time pruning are identical to the 20-step\ngraph - to run manually in ComfyUI, delete the loaders you aren't\nusing.\n"
    ],
    "title": "About this workflow"
+  },
+  {
+   "id": 31,
+   "type": "VHS_LoadAudio",
+   "pos": [
+    -240,
+    2100
+   ],
+   "size": [
+    340,
+    82
+   ],
+   "flags": {},
+   "order": 30,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "audio",
+     "type": "AUDIO",
+     "links": [
+      35
+     ]
+    }
+   ],
+   "properties": {
+    "cnr_id": "comfyui-videohelpersuite",
+    "ver": "1.7.9",
+    "Node name for S&R": "VHS_LoadAudio"
+   },
+   "widgets_values": {
+    "audio_file": "<AITOOLS_INPUT_12>",
+    "seek_seconds": 0
+   },
+   "title": "Reference audio 1"
+  },
+  {
+   "id": 32,
+   "type": "VHS_LoadAudio",
+   "pos": [
+    -240,
+    2260
+   ],
+   "size": [
+    340,
+    82
+   ],
+   "flags": {},
+   "order": 31,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "audio",
+     "type": "AUDIO",
+     "links": [
+      36
+     ]
+    }
+   ],
+   "properties": {
+    "cnr_id": "comfyui-videohelpersuite",
+    "ver": "1.7.9",
+    "Node name for S&R": "VHS_LoadAudio"
+   },
+   "widgets_values": {
+    "audio_file": "<AITOOLS_INPUT_13>",
+    "seek_seconds": 0
+   },
+   "title": "Reference audio 2"
+  },
+  {
+   "id": 33,
+   "type": "VHS_LoadAudio",
+   "pos": [
+    -240,
+    2420
+   ],
+   "size": [
+    340,
+    82
+   ],
+   "flags": {},
+   "order": 32,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "name": "audio",
+     "type": "AUDIO",
+     "links": [
+      37
+     ]
+    }
+   ],
+   "properties": {
+    "cnr_id": "comfyui-videohelpersuite",
+    "ver": "1.7.9",
+    "Node name for S&R": "VHS_LoadAudio"
+   },
+   "widgets_values": {
+    "audio_file": "<AITOOLS_INPUT_14>",
+    "seek_seconds": 0
+   },
+   "title": "Reference audio 3"
   }
  ],
  "links": [
@@ -1711,6 +1834,30 @@
    29,
    0,
    "MODEL"
+  ],
+  [
+   35,
+   31,
+   0,
+   7,
+   16,
+   "AUDIO"
+  ],
+  [
+   36,
+   32,
+   0,
+   7,
+   17,
+   "AUDIO"
+  ],
+  [
+   37,
+   33,
+   0,
+   7,
+   18,
+   "AUDIO"
   ]
  ],
  "groups": [],

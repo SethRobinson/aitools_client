@@ -130,7 +130,14 @@ native stereo audio (dialog in 11 languages), no RIFE in the output path.
   - `<AITOOLS_INPUT_2>` clip 2 -> `ref_video_1` + `ref_video_audio_1`
   - `<AITOOLS_INPUT_3>`..`_11` photos 1-9 (`VHS_LoadImagePath`) -> `ref_image_0..8`
     (the node's full 9-image capacity)
-  To run it manually in ComfyUI, delete the loaders you aren't using.
+  - `<AITOOLS_INPUT_12>`..`_14` standalone audio refs 1-3 (`VHS_LoadAudio`, since
+    2026-08-30) -> `ref_video_audio_2..4`. Wav/mp3/mp4 all decode. The node accepts
+    at most 3 audio refs TOTAL (clip soundtracks + standalone) - the graph declares
+    5 potential audio inputs but the executor/CLI refuse before submit if more than
+    3 would survive pruning; `<Audio N>` numbers the survivors in group order (clip
+    soundtracks first, then standalone).
+  To run it manually in ComfyUI, delete the loaders you aren't using (and keep at
+  most 3 audio wires connected).
 - `ref_multi_to_video_minimax_h3_turbo.json` - the SAME universal Ref2VA graph
   plus lightx2v's Ref2V turbo distill; run by the DEFAULT reference presets
   since 2026-08-27. Deltas from the 20-step graph, mirroring lightx2v's
@@ -178,7 +185,10 @@ native stereo audio (dialog in 11 languages), no RIFE in the output path.
   (`@prune_input` directive + `--prune-input` flag), optional-aware
   `cli/presets.py` / `aitools_cli.py`. Repeatable `-i` fills imageN slots in
   declared order (all 9 photo refs reachable; `-i2`..`-i10` bind exact slots),
-  `--video`/`--video2` supply both clips. `--width`/`--height` (snap /32, clamp
+  `--video`/`--video2` supply both clips, and repeatable `--audio` (or
+  `--audio2`/`--audio3`) fills the standalone audio refs (each file is
+  ffprobe-checked for an audio stream; a post-prune count > 3 wired
+  `ref_video_audios.*` inputs is a hard error). `--width`/`--height` (snap /32, clamp
   256..2048, >1.03MP warning) and `--duration` (17k+5 grid, 124..362; refused on
   the fixed 15s presets; synthetic length replace on the rv2v 5s preset) are
   HARD errors if their @replace can't apply. Start-frame presets (image1 ->
@@ -225,7 +235,9 @@ Six reference presets, split across the universal workflow pair (since
   (`@upload|video|input1|`), then optional `video2`->input2 and `image2..image10`
   ->inputs 3-11 (photo refs 1-9); r2v = photo 1 required (`image1`->input3),
   photos 2-9 (`image2..image9`->inputs 4-11) optional, both video loaders prune
-  away.
+  away. All six presets also declare optional `audio1..audio3`->inputs 12-14
+  (standalone audio refs; `PicMain.m_pendingAudioUploadPaths` via
+  `SetPendingAudioUpload`, upload sources `audio1`..`audio3`).
 - The rv2v 5s presets deliberately have NO length `@replace` (opts out of AI
   Chat's video_to_video source-duration override, which uses WAN's 16fps/4n+1
   cadence - wrong for a reference generation); the 15s presets' `124 -> 362`
@@ -270,14 +282,31 @@ Six reference presets, split across the universal workflow pair (since
   - Reference-tag gate (2026-08-27, `BlockH3ReferencePromptTagMismatch`): on any
     Reference preset (photo or clip, chained or not, matched on the RESOLVED
     name) the executor requires the prompt to use EVERY staged reference's tag -
-    `<Video 1..2>` / `<Picture 1..N>` in slot order, whitespace between word and
-    number, case-insensitive - and to name no tag with nothing staged behind it.
-    A mismatch blocks BEFORE the render queues and injects a slot->tag map plus a
-    correction turn (`RequestContinueTurn`), because prose like "the blond woman"
-    over untagged photos kept rendering different people (3-attachment test,
-    2026-08-27). Correction notes translate attachment refs to their paste's
-    chat_image bubble (attachments don't survive continue turns); a blocked
-    chained action is told to re-point at the chain Pic's bubble number.
+    `<Video 1..2>` / `<Picture 1..N>` / `<Audio N>` in slot order, whitespace
+    between word and number, case-insensitive - and to name no tag with nothing
+    staged behind it. A mismatch blocks BEFORE the render queues and injects a
+    slot->tag map plus a correction turn (`RequestContinueTurn`), because prose
+    like "the blond woman" over untagged photos kept rendering different people
+    (3-attachment test, 2026-08-27). Since 2026-08-30 a staged CLIP counts as
+    bound via its `<Video k>` OR its soundtrack's `<Audio n>` tag ("narrates
+    with the voice from <Audio 1>" is legal alone - the old gate pushed models
+    off the audio tag, seen in the Dexter test), and every STANDALONE audio ref
+    must appear as its own `<Audio n>`. Correction notes translate attachment
+    refs to their paste's chat_image bubble (attachments don't survive continue
+    turns); a blocked chained action is told to re-point at the chain Pic's
+    bubble number.
+  - Standalone audio refs (2026-08-30): `audio="N|anchor"` / `audio2` / `audio3`
+    on any Reference-preset action stage an Audio bubble's original sound file
+    (or a Movie's clip - the soundtrack is the reference) into
+    `PicMain.SetPendingAudioUpload(1..3)` -> `@upload|audio1..3|input12..14|`.
+    `<Audio N>` numbers clip soundtracks first (silent clips skipped when
+    probeable), then standalone files. The executor blocks with a correction
+    turn on: an unresolvable ref, a still image, a silent source, a
+    still-rendering Movie with no file, or more than 3 total audio refs. An
+    Audio bubble in a photo slot (`chat_imageN`) blocks with "use audio=";
+    audio attrs on non-Reference presets inject an ignored-note. The intended
+    voice flow is generate_speech (ref_voice cloning) -> anchor -> audio ref,
+    giving each character a clean per-voice sample without a video slot.
   - Aspect comes from the PRIMARY clip only; length stays the preset's unless the
     action carries `duration="N"` (seconds).
 - Explicit durations: any H3 generation action (t2v/i2v/r2v/rv2v, chained or not)
@@ -332,9 +361,45 @@ Six reference presets, split across the universal workflow pair (since
   stitch) therefore require every H3 prompt to carry an explicit three-layer
   audio spec: WHO speaks and their EXACT quoted words (or an explicit
   `No dialog; nobody speaks.`), a named ambient sound, and music or `no
-  music` (reference prompts may defer a layer to `<Audio N>` instead). This
-  is skill-text guidance only - no executor gate, since "audio was specified"
-  isn't deterministically checkable.
+  music` (reference prompts may defer a layer to `<Audio N>` instead). For
+  voice FIDELITY the skills push per-speaker standalone audio refs
+  (generate_speech + ref_voice cloning -> `audio=`) over whole-clip
+  soundtracks.
+- Speech-quality A/B findings (2026-08-30, Whisper-judged via the glados STT
+  worker; matrix in this session's scratchpad, same seed/photo/prompt):
+  - **The turbo Ref2V distill is NOT a speech-gibberish source.** With exact
+    quoted dialog, EVERY variant was word-perfect: turbo 8/12/16 steps,
+    Quality 20, sigma shift_audio 3/5/6, LoRA strength 1.0/0.75, the
+    alibaba-pai `MiniMax-H3-Ref2VA-Acc-8Step` LoRA, a voice-ref (`--audio`)
+    run, a 15s ~50-word monolog, and a worst-case 15s rv2v (2 speakers +
+    voice-from-clip + market walla + music). Do not spend 20 steps to "fix"
+    dialog.
+  - **A voice/audio ref with NO quoted words = invented dialog in a random
+    language** (2/2 such renders came out literal German). H3 never lifts
+    WORDS from an audio ref - it carries voice timbre only. This is
+    skill-text guidance ONLY (see the AGENTS.md rule against new
+    prompt-quality executor gates) - a deterministic gate for it was built,
+    verified, and then REMOVED at Seth's request (2026-08-30); do not
+    reintroduce it.
+  - **Unbudgeted seconds grow invented mumbled filler**: a 15s turbo clip
+    with ~8s of scripted lines gained a nonsense line in the dead air
+    between lines (the likely mechanism behind the 2026-08-30 Dexter run's
+    "half the clips have gibberish" - its 15s scenes carried 2-3 short lines
+    each). The SAME prompt/seed at 20 steps (Quality) rendered clean, so the
+    Quality tier has real margin here (1-of-4 turbo 15s runs grew filler; the
+    matched Quality run did not) - but the primary, free mitigation is
+    prompt budgeting: skill docs now require dialog + described silent
+    action to cover the full duration, with an explicit silent tail on long
+    clips. If filler still bites on 15s dialog scenes, route them to the
+    Quality presets (or bump the turbo graph to 12 steps - word-perfect at
+    5s, untested at 15s, ~+50% time).
+  - All known upstream audio fixes (ComfyUI #15243 audio-sigma carry, #15377
+    offload, #15390 wrapper carry) are already in hal's 0.31.0 build; a
+    ComfyUI update buys nothing here.
+  - The alibaba-pai PDD LoRA renders at turbo speed (~68s/5s clip) with
+    correct speech and loads via the same plain core LoRA node (no server
+    restart needed after dropping it into models/loras) - a ready fallback
+    if the lightx2v distill shows visual artifacts, not needed for audio.
 - Skill docs: `aichat/skills/video_to_video.md` (modes, slots, tags, examples,
   same-people identity recipe), `image_to_movie.md` (multi-photo r2v + the
   start-frame two-stage recipe), `extract_still.md` (frame extraction for
@@ -352,8 +417,10 @@ Six reference presets, split across the universal workflow pair (since
 
 1. CLI smoke (fast, no editor): `python cli/aitools_cli.py "<prompt with tags>"
    out.mp4 -p "Reference Video To Video (MiniMax H3) 5s" --video clip.mp4 -i2
-   photo.png -v` against a server with the H3 models - watch for "pruned unused loader node(s)" and check
-   the regenerated `*_cached_api_version.json` has all autogrow inputs on node 7.
+   photo.png --audio voice.wav -v` against a server with the H3 models - watch for "pruned unused loader node(s)" and check
+   the regenerated `*_cached_api_version.json` has all autogrow inputs on node 7
+   (photos AND the 5 `ref_video_audios.*` entries; verified end-to-end 2026-08-30:
+   a photo + unpaired `--audio` wav renders fine, audio renumbered to `_0`).
    Offline variant (servers down): append `--dry-run` and inspect the emitted
    `out.mp4.api.json` instead - same pruning/override pipeline, faked upload
    paths, no network.

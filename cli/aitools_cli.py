@@ -84,6 +84,16 @@ def build_argparser():
                         "clip slot (--video a.mp4 --video b.mp4 -> video, video2)")
     p.add_argument("--video2", default=None, dest="video2",
                    help="Video bound to source video2 (second reference clip)")
+    p.add_argument("--audio", action="append", default=[],
+                   help="Standalone audio reference file (H3 reference presets); "
+                        "repeat to fill audio1..audio3 in order. <Audio N> prompt "
+                        "tags number clip soundtracks first, then these files. "
+                        "At most 3 audio refs total per render (clip soundtracks "
+                        "+ standalone)")
+    p.add_argument("--audio2", default=None, dest="audio2",
+                   help="Audio file bound to source audio2 (second standalone audio ref)")
+    p.add_argument("--audio3", default=None, dest="audio3",
+                   help=argparse.SUPPRESS)
     p.add_argument("--width", type=int, default=None,
                    help="Override the render width (video presets; snapped to "
                         "/32, clamped 256..2048)")
@@ -205,6 +215,10 @@ def _flag_for_source(source):
         return "--video"
     if source == "video2":
         return "--video2"
+    if source == "audio1":
+        return "--audio"
+    if source in ("audio2", "audio3"):
+        return f"--{source}"
     return f"(source '{source}' — not suppliable from the CLI)"
 
 
@@ -213,11 +227,13 @@ def build_source_paths(args, preset):
 
     Returns {source_name: local_path}. Dies on ambiguous or over-supplied
     combinations so a mistyped command can't silently drop a reference:
-      - numbered flags (-i2..-i10, --video2) bind to their exact source name;
+      - numbered flags (-i2..-i10, --video2, --audio2/--audio3) bind to their
+        exact source name;
       - repeated -i fills the preset's declared image sources in sorted order
         (reference-video presets declare image2..image10, so the first -i is
         photo ref 1 there);
       - repeated --video fills 'video' then 'video2';
+      - repeated --audio fills 'audio1'..'audio3';
       - multiple -i mixed with numbered -iN flags is ambiguous -> error;
       - assigning one source twice (e.g. rv2v -i x -i2 y) -> error.
     """
@@ -231,6 +247,7 @@ def build_source_paths(args, preset):
     image_sources = sorted((s for s in declared if _IMAGE_SOURCE_RE.match(s)),
                            key=lambda s: int(_IMAGE_SOURCE_RE.match(s).group(1)))
     video_sources = [s for s in ("video", "video2") if s in declared]
+    audio_sources = [s for s in ("audio1", "audio2", "audio3") if s in declared]
     label = preset.source_path.name if preset else "(none)"
 
     def img_capacity():
@@ -245,6 +262,12 @@ def build_source_paths(args, preset):
         return ("this preset's video inputs: "
                 + ", ".join(f"{s} ({_flag_for_source(s)})" for s in video_sources))
 
+    def aud_capacity():
+        if not audio_sources:
+            return "this preset declares no audio inputs"
+        return ("this preset's audio inputs: "
+                + ", ".join(f"{s} ({_flag_for_source(s)})" for s in audio_sources))
+
     if not declared:
         supplied = []
         if args.input:
@@ -254,6 +277,12 @@ def build_source_paths(args, preset):
             supplied.append("--video")
         if args.video2:
             supplied.append("--video2")
+        if args.audio:
+            supplied.append("--audio")
+        if args.audio2:
+            supplied.append("--audio2")
+        if args.audio3:
+            supplied.append("--audio3")
         if supplied:
             die(
                 f"{'/'.join(supplied)} given but "
@@ -299,6 +328,26 @@ def build_source_paths(args, preset):
         if source in assignments:
             die(f"video source '{source}' assigned twice: --video fills "
                 f"'{source}' and --video2 was also given", 1)
+        assignments[source] = path
+
+    for flag, source in (("--audio2", "audio2"), ("--audio3", "audio3")):
+        path = getattr(args, source)
+        if not path:
+            continue
+        if source not in declared:
+            die(f"{flag} given but preset {label} has no '{source}' @upload — "
+                f"{aud_capacity()}", 1)
+        assignments[source] = path
+    if args.audio and not audio_sources:
+        die(f"--audio given but {aud_capacity()} ({label})", 1)
+    for idx, path in enumerate(args.audio):
+        if idx >= len(audio_sources):
+            die(f"too many --audio inputs ({len(args.audio)}) — {aud_capacity()} ({label})", 1)
+        source = audio_sources[idx]
+        if source in assignments:
+            die(f"audio source '{source}' assigned twice: --audio fills "
+                f"'{source}' and {_flag_for_source(source)} was also given — "
+                f"use repeated --audio or numbered flags, not both for one slot", 1)
         assignments[source] = path
 
     for source in sorted({u.source for u in preset.uploads if not u.optional}):
@@ -647,11 +696,18 @@ def main():
                 if args.verbose:
                     print(f"optional {source} input not provided - its loader will be pruned")
                 continue
-            if source.startswith("video"):
+            if source.startswith(("video", "audio")):
+                if source.startswith("audio"):
+                    # A "silent" audio reference would hard-abort server-side in the
+                    # audio loader; catch it before any upload/GPU time.
+                    has_audio = images.video_has_audio(Path(local_path), args.verbose)
+                    if has_audio is False:
+                        die(f"{source} input {Path(local_path).name} has no audio stream", 1)
                 if args.dry_run:
                     if not Path(local_path).exists():
                         die(f"input file not found: {local_path}", 1)
-                    server_path = f"temp/dryrun_{source}{Path(local_path).suffix or '.mp4'}"
+                    default_ext = ".wav" if source.startswith("audio") else ".mp4"
+                    server_path = f"temp/dryrun_{source}{Path(local_path).suffix or default_ext}"
                 else:
                     if args.verbose:
                         print(f"uploading {source} input: {local_path}")
@@ -702,6 +758,18 @@ def main():
         api_workflow = workflow.prune_unfilled_inputs(api_workflow, args.verbose)
     if prune_names:
         api_workflow = workflow.prune_named_inputs(api_workflow, prune_names, args.verbose)
+
+    # H3 Ref2VA accepts at most 3 audio references TOTAL (clip soundtracks +
+    # standalone --audio files). Count what actually survived the prunes so a
+    # 2-clip + 2-audio command fails here with a clear message, not server-side.
+    wired_audio_inputs = sum(
+        1 for node in api_workflow.values() if isinstance(node, dict)
+        for name in (node.get("inputs") or {})
+        if name.startswith("ref_video_audios."))
+    if wired_audio_inputs > 3:
+        die(f"{wired_audio_inputs} audio references wired but MiniMax H3 accepts at "
+            f"most 3 total (clip soundtracks + --audio files). Drop --audio inputs "
+            f"or declare a clip silent with --no-clip-audio N.", 1)
     blank_replacements = {ph: "" for ph in workflow.PLACEHOLDERS_BLANK_BY_DEFAULT}
     api_workflow = workflow.replace_placeholders(api_workflow, blank_replacements)
     workflow.override_seeds(api_workflow, seed)
