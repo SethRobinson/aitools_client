@@ -1,6 +1,6 @@
 ---
 id: web_page
-summary: Read ONE web page - fetch its readable text (article body, headings, infobox rows) into your context and list its candidate images as P<n>:<i> so you can fetch one with web_image result="P<n>:<i>". Sources - url="https://..." (a page, not an image file), result="S1:3" (a web_search kind="web" hit), or query="..." (Brave web search; the best reference-quality hit is read, Wikipedia first). Use it to RESEARCH real things before rendering them, to answer "what does this page/article say", or to pull the pictures from a specific article. Auto-continues with the text in your prompt. One fetch per action; links inside the page are never followed. Needs the Web checkbox on.
+summary: Read ONE web page - fetch its readable text (article body, headings, infobox rows) into your context and list its candidate images as P<n>:<i> so you can fetch one with web_image result="P<n>:<i>". Bare sound-file links on the page (.wav/.mp3/...) are ALSO listed, as P<n>:a<i> for web_audio result= - the way to find sound files, since no audio search engine exists. Sources - url="https://..." (a page, not an image file), result="S1:3" (a web_search kind="web" hit), or query="..." (Brave web search; the best reference-quality hit is read, Wikipedia first). Use it to RESEARCH real things before rendering them, to answer "what does this page/article say", or to pull the pictures from a specific article. Auto-continues with the text in your prompt. One fetch per action; links inside the page are never followed. Needs the Web checkbox on.
 inputs: none
 autoload: true
 triggers: read this page, read the page, read that page, read the article, read this article, read the wikipedia, wikipedia article, wikipedia page, on wikipedia, according to wikipedia, what does this article say, what does the page say, what does this page say, summarize this url, summarize this page, summarize this article, summarize the article, open this link, open this url, open the link, research, look up online, look it up online, from the web page, from this page, from this article, read the url, read this url, web page, webpage
@@ -56,6 +56,18 @@ P1:2 https://upload.wikimedia.org/wikipedia/commons/4/4a/Atari-2600-Woody-FL.jpg
 Headings arrive as `#`/`##` lines, list items as `- `, infobox rows as
 `Label: value`, table rows as `a | b`. Navigation, footers, reference lists,
 "[edit]" links and icons are already removed.
+
+When the page links to bare sound files (a soundboard / quotes page full of
+.wav or .mp3 links), those are listed too:
+
+```
+[Page audio links P1 - bare sound files, NOT downloaded yet; fetch one with web_audio result="P1:aN" anchor="name"]
+P1:a1 https://www.example.com/sounds/serenity-now.wav ("Serenity now!")
+P1:a2 https://www.example.com/sounds/marine-biologist.wav ("The sea was angry that day")
+```
+
+Fetch one with `web_audio result="P1:a2" anchor="name"` (add `speech="true"`
+when it will be a voice reference).
 
 ## Research recipe (real things, then render them)
 

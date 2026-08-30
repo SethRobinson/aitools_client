@@ -23,6 +23,7 @@ namespace AITools.AIChat.Video
         public const string AudioColorSfx = "0xffb74d";
         public const string AudioColorSpeech = "0x81c784";
         public const string AudioColorUser = "0xb39ddb";
+        public const string AudioColorWeb = "0x4db6ac";
 
         private const int AudioProbeTimeoutMs = 15000;
         private const int AudioPreviewTimeoutMs = 5 * 60 * 1000;

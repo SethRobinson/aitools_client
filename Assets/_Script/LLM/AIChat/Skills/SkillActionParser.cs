@@ -560,6 +560,7 @@ namespace AITools.AIChat.Skills
                 case BuiltInSkillIds.WebImage:
                 case BuiltInSkillIds.WebVideo:
                 case BuiltInSkillIds.WebPage:
+                case BuiltInSkillIds.WebAudio:
                     return false;
                 default:
                     return true;

@@ -16,7 +16,7 @@ the MiniMax H3 Reference To Video preset or Klein edits, and reference clips as
 | yt-dlp wrapper | `Web/YtDlpTool.cs` | resolves `utils/yt-dlp/yt-dlp.exe` (then PATH), auto-detects a JS runtime (deno / node / bun on PATH, passed as `--js-runtimes`), builds the exact command line, runs it via `FfmpegTool.RunProcessCancellable`, progress lines drained on the main thread. Downloads the WHOLE video capped at 480p (`--match-filters "duration<?N"`, `--max-filesize 250m`); the host cuts the section locally |
 | Page reader | `Web/WebPageReader.cs` | pure C# (no Unity usings, compiles in a plain dotnet console app): charset decode (BOM > HTTP charset > `<meta charset>` > strict UTF-8 with windows-1252 fallback), single-pass HTML tag scanner -> readable text + candidate image list; see "web_page" below |
 | Trace bubble | `Web/WebTraceBubble.cs` + `AIChatPanel.BeginWebTrace` | the always-visible "Web" bubble; plain text (only TMP angle brackets escaped, NO markdown pass), throttled status line, every line mirrored to `llm_aichat_log.json` as `note/web` |
-| Host | `AIChatPanel.cs` "Web media fetch" region | busy gate (`_webFetchCount`, `_webCaptionInFlight`), epoch-based cancellation, the four coroutines, `AppendWebStillBubble`, caption tracking, search sessions `S1..`, page sessions `P1..` |
+| Host | `AIChatPanel.cs` "Web media fetch" region | busy gate (`_webFetchCount`, `_webCaptionInFlight`), epoch-based cancellation, the five coroutines, `AppendWebStillBubble`, caption tracking, search sessions `S1..`, page sessions `P1..` (images + audio links) |
 | Executor | `SkillActionExecutor.cs` `ExecuteWebSearch/Image/Video/Page` | argument parsing + aliases, Web-toggle / key / URL pre-flight (`WebPreflight`), defers the pump like `extract_still` |
 | Web toggle | `AIChatPanel.CreateHeader` (`_webToggle`), `GetWebEnabled()` (`aichat_web_enabled`, default on) | header checkbox; see "Web toggle" below |
 | Settings | `AppSettingsPanel` Web tab, `Config.cs` | `set_brave_search_api_key`, `set_web_search_safesearch` (strict/off), `set_ytdlp_cookies_browser` in `config.txt` |
@@ -32,12 +32,14 @@ version). `UpdateBuildDirConfigFiles.bat` already copies `utils`, so builds ship
 | `web_search` | `query`, `kind=images\|videos\|web` (default images), `count` (max 20), `safesearch`, `resume` (default TRUE) | list only; stored as `S1`, `S2`... for `result="S1:3"`; auto-continues with the list |
 | `web_image` | one of `query` / `url` / `result`; `count` (max 4), `anchor` (count>1 -> `name`, `name_2`...), `min_width` (256), `criteria` (extra vision-check requirements), `verify` (default true), `safesearch`, `resume` (default false) | assistant still bubble(s) `#N`, kind `web image`, provenance `web image: "query" -> host/path`, vision-verified and captioned |
 | `web_video` | one of `query` / `url` / `result`; `start`, `duration` (0.5..15, default 5), `max_source_minutes` (20), `criteria`, `verify` (default true), `audio`, `anchor`, `resume` (default TRUE) | `Movie #N` via yt-dlp whole-video download at <=480p (page URLs) or direct file download, then `FfmpegTool.CreateClip` cuts `start`..`start+duration`; each cut is vision-checked via a contact sheet, rejects retry +30 s / +90 s in the same source, then the next ranked result (4 sources max) |
-| `web_page` | one of `url` / `result` (a `kind="web"` hit) / `query`; `max_chars` (500..20000, default 6000), `images` (default true), `max_images` (1..40, default 12), `safesearch`, `resume` (default TRUE) | no bubble: the page's readable text goes to the model via the info-recap tail, its image candidates are stored as `P1`, `P2`... for `web_image result="P1:3"`; the Web bubble shows URL / HTTP status / bytes / char counts / the image list |
+| `web_page` | one of `url` / `result` (a `kind="web"` hit) / `query`; `max_chars` (500..20000, default 6000), `images` (default true), `max_images` (1..40, default 12), `safesearch`, `resume` (default TRUE) | no bubble: the page's readable text goes to the model via the info-recap tail, its image candidates are stored as `P1`, `P2`... for `web_image result="P1:3"`, and its bare sound-file links (`<a href="....wav">`, `<audio src>`) as `P1:a1`... for `web_audio result="P1:a2"`; the Web bubble shows URL / HTTP status / bytes / char counts / the image and audio-link lists |
+| `web_audio` | one of `url` (a direct sound-file URL) / `result` (`"P1:a2"` page audio link, or an `S` web hit whose URL is itself a sound file); `start`, `duration` (0 = whole file, cap 300 s), `speech` (reject silent/music-only), `anchor`, `resume` (default TRUE) | playable `Audio #N` bubble via the same landing as dropped/generated audio (waveform preview MP4 + lossless `audioPath`); no vision check - ffprobe gate (real audio, no video stream) + the web_video-style SpeechCheck for the caption transcript. No `query=` mode (no audio search engine exists): finding sounds is `web_search kind="web"` -> `web_page` -> `result="P1:aN"` |
 
 Aliases (`NormalizeSkillId`): `search_web`, `image_search`, `brave_search`... -> `web_search`;
 `find_image`, `fetch_image`, `download_image`... -> `web_image`;
 `download_video`, `fetch_video`, `youtube`, `web_clip`... -> `web_video`;
-`read_page`, `fetch_page`, `open_url`, `read_url`, `browse`, `visit`, `web_fetch` (moved here from `web_image`)... -> `web_page`.
+`read_page`, `fetch_page`, `open_url`, `read_url`, `browse`, `visit`, `web_fetch` (moved here from `web_image`)... -> `web_page`;
+`download_audio`, `fetch_audio`, `find_sound`, `download_wav`, `web_sound`... -> `web_audio`.
 
 ## Choosing good images (ranking + vision verification)
 
@@ -103,8 +105,9 @@ garbled voice. With `speech="true"` (also implied by criteria words like talk/sp
 accepted cut is audio-checked before it enters chat: `FfmpegTool.ExtractAudioWav` (16 kHz mono),
 `FfmpegTool.MeasureMeanVolume` (volumedetect; below -50 dB = silent = definite no-speech), then
 OpenAI Whisper `whisper-1` with `response_format=verbose_json`; speech is present when >= 5 real
-words came back, the average segment `no_speech_prob` is <= 0.6 and the text is not a `[Music]` /
-`♪` marker. No-speech cuts retry +30/+90 s then the next source; an accepted clip's LONG caption gets
+words came back (clips under 4 s: >= 2 words - the flat 5-word rule falsely rejected the 3-word
+"What's up, Doc?" catchphrase wav; callers pass the clip duration to `SpeechCheck.Run`), the
+average segment `no_speech_prob` is <= 0.6 and the text is not a `[Music]` / `♪` marker. No-speech cuts retry +30/+90 s then the next source; an accepted clip's LONG caption gets
 `Audio transcript: "..."` and the recap says it is usable as a voice reference. The transcription
 endpoint is Settings > Web "Speech-to-text": any OpenAI-compatible `/v1/audio/transcriptions` URL
 (`set_stt_endpoint`, optional `set_stt_api_key`, `set_stt_model`, e.g. a local faster-whisper /
@@ -241,6 +244,59 @@ charset precedence, invalid UTF-8) plus `--fetch <url> <file>` / `<file> <url>` 
 and the `P1:N` list for a saved page. Register `CodePagesEncodingProvider` in the harness (Unity's Mono has the
 code pages built in; .NET 10 needs the provider for windows-1252).
 
+## web_audio: bare sound files (since 2026-08-30)
+
+Web fetch originally had no audio concept at all: `MediaKind` knew no audio containers (a
+`.wav` is `RIFF....WAVE`, which failed the `WEBP` check and sniffed `Unknown`), and
+`web_video`'s pipeline needs frames to cut and vision-check, so a bare `.wav` URL could
+never land no matter which skill the model picked (the Seinfeld-.wav session that exposed
+this ended with "no usable clip" on every drodd.com link). `web_audio` fixes that end to
+end:
+
+- **Sniffing**: `SniffMagic` now knows Wav (RIFF+WAVE), Mp3 (ID3 or raw FF Ex/Fx frame
+  sync, checked after JPEG/containers), Flac, Ogg, M4a (ftyp m4a/m4b); `IsAudioKind`.
+- **Sources**: `url=` (direct file URL; `YtDlpTool.LooksLikeDirectAudioUrl` extension
+  check), `result="P1:a2"` (a page audio link, below), or an `S` web hit whose URL is
+  itself a sound file. NO `query=` mode: Brave has no audio vertical, so the executor
+  refuses it with the search->page->result recipe. `web_video url=` pointing at an audio
+  extension is silently rerouted to `web_audio` (`ExecuteWebVideo` redirect) with a note.
+- **Gate**: no vision check (a waveform shows a vision model nothing). Accept =
+  `FfmpegTool.ProbeAudio` finds a real audio stream and NO video stream (mp3 cover art
+  already excluded by the `attached_pic` check); html/image/video sniffs are refused with
+  a pointer to the right skill. `SpeechCheck` then ALWAYS runs (volumedetect + Whisper
+  when STT is configured): the transcript goes into the caption and the completion recap;
+  with `speech="true"` a silent or music-only file is REJECTED (voice-reference case),
+  without it any sound passes.
+- **Trim**: `start`/`duration` cut via `ExtractAudioWavSection` (full-quality WAV); a
+  source over `MaxAudioSeconds` (300 s) is auto-trimmed from `start` with a trace note.
+  Byte cap `MaxAudioBytes` 50 MB.
+- **Landing**: the same `AppendAudioBubble` seam as dropped/generated audio (teal
+  `AudioColorWeb` waveform preview, lossless `audioPath`, `alwaysIncludeCaption`,
+  synthesized caption - never a vision call), provenance `web audio: "label" host/path`,
+  dedupe via `_webFetchedUrlToPic`, anchors, epoch cancellation, `FinishWebFetch` pokes.
+  The recap tells the model its uses: `set_video_audio`, and the H3 standalone `audio=`
+  reference (STYLE conditioning) as THE voice path - per Seth's rule (2026-08-30) the
+  model must assume the H3 reference and never ask about / offer `generate_speech
+  ref_voice` cloning as an alternative.
+
+**web_page audio links**: `WebPageReader` also collects `<a href>` targets whose path ends
+in an audio extension (plus `<audio src>` from the open tag; `<source>` children are
+raw-skipped with the element) - deduped, capped at 30, labeled with the collapsed link
+text (else the file name), junk-gated like images. They are listed in the trace and the
+recap as `P<n>:a<i>` (`FormatAudioLine`), stored on the `WebPageSession`, and resolved by
+`TryResolveWebPageAudioToken` (which also accepts a bare `P1:3` since web_audio only ever
+means the audio list). This is the discovery path: soundboard/quotes pages are indexed by
+Brave web search, their .wav links are not.
+
+Measured (2026-08-30, live editor): `web_audio url=` on a direct MP3 landed as `Audio #1`
+in 1.6 s (speech check correctly said music-only); a dead .wav host then made the model
+self-recover exactly as the skill teaches - `web_search kind="web"` -> `web_page` on an
+archive.org item (3 audio links listed) -> `web_audio result="P1:a3"` -> 351 s MP3
+auto-trimmed to 300 s WAV, landed as `Audio #2` with its anchor, 9.4 s total. Known
+wrinkle: Whisper hallucinates subtitle-credit text on some music, which can pass the
+speech heuristic and put a bogus "transcript" in the caption (same limits as web_video's
+check; harmless without `speech="true"`).
+
 ## Web toggle (AI Chat header)
 
 A "Web" checkbox in the AI Chat header (between the GPUs/LLMs pill and Settings; `_webToggle`, PlayerPrefs
@@ -248,10 +304,10 @@ A "Web" checkbox in the AI Chat header (between the GPUs/LLMs pill and Settings;
 online feature off at a glance. When it is OFF:
 
 - The model is told every turn: `BuildCurrentStateBlock(..., webEnabled)` writes `WEB ACCESS: ON (...)` or
-  `WEB ACCESS: OFF - ... web_search, web_image, web_video and web_page are disabled and will fail; do not emit
+  `WEB ACCESS: OFF - ... web_search, web_image, web_video, web_page and web_audio are disabled and will fail; do not emit
   them ...` right under the CURRENT STATE header (volatile block, so a flip is seen on the next turn without
   touching the cached prefix).
-- The four web skills are left out of the stable SKILLS block (`ChatContextBuilder.Build(keepOldToolCalls,
+- The five web skills are left out of the stable SKILLS block (`ChatContextBuilder.Build(keepOldToolCalls,
   hiddenSkillIds)` -> `SkillManager.BuildSkillSummariesBlock(excludeIds)`) and cannot keyword-autoload
   (`GetAutoloadSkillsForMessage(msg, excludeIds)`); `BuiltInSkillIds.WebSkills` is the set,
   `AIChatPanel.HiddenSkillIdsForPrompt()` the switch. This changes the prompt prefix once per flip (one cache
@@ -330,15 +386,18 @@ runtime was detected, and the yt-dlp warning is visible in the trace.
 - `[web_search S1 images "..." -> 10 results]` + one line per result + how to use `result="S1:N"`.
 - `(web_image "<query>" added #7 (1200x1600, upload.wikimedia.org, anchor "jerry"). The vision check judged it a suitable reference: <reason>.)` followed by a separate `(Full description of #7 (web image) anchor="jerry" - describe it from this, not from outside knowledge: <LONG caption>)` note. That second note comes from `AIChatPanel.ForwardFullDescriptionOnce`, called by `ApplyCaptionResultToPic` for EVERY captioned chat image or movie (generated, extracted, imported/cut clips, web fetches; pasted attachments already carry theirs in the paste header), deduped per Pic + text: the full description is paid for once in cached history, while the per-turn CHAT IMAGES list keeps only the SHORT caption. web_video's transcript is appended to the LONG caption, so it arrives the same way. Both verify prompts forbid naming people from general knowledge (only the query's subject name, only for the person who visibly matches); a session log showed the sidecar calling Kramer "Jerry Seinfeld in a white lab coat" in the LONG caption while its own VERDICT said Kramer.
 - `(web_image "<query>": no usable image in N attempts (download failed x3 not an image x2 ...). Try a different query, a lower min_width, or a direct url=.)`
+- When chat holds any Audio bubble, the web_image recap ALSO appends "If the render has this character SPEAKING and Audio #K is their voice sample, ALSO stage it on the SAME reference action: audio=\"K\"...". The Bugs Bunny test (2026-08-30) showed the model following the photo-slot recipe verbatim on the render turn while the voice sample fetched one action earlier sat unused - the freshest concrete recipe wins, so the pairing reminder must ride it. The same rule now leads `generate_movie.md` ("First: check chat for existing references") and hardens `image_to_movie.md`'s audio-ref bullet plus the CHAT IMAGES audio legend (staging an existing voice sample is MANDATORY when its character speaks).
 - `(web_video added Movie #10: "<title>" youtube.com 12s for 5s. Reference it via chat_image="10" ...)`
 - No key / rejected key / quota: red Error bubble for the user naming Settings > Web (plus the HTTP error) and a note telling the model to relay it and not retry.
 
 ## Temp files
 
 `tempCache/aichat_web_images/web_<id>.png|jpg` (plus transient `src_*` inputs for ffmpeg conversion),
-`tempCache/aichat_web_videos/ytdlp_<id>.mp4` (whole source at <=480p) / `direct_<id>.<ext>` (deleted after the clip is cut), and the
-normalized clip in `tempCache/aichat_video_clips/` (auto-deleted with the Pic). `tempCache` is wiped on quit;
-save a bubble to keep it.
+`tempCache/aichat_web_videos/ytdlp_<id>.mp4` (whole source at <=480p) / `direct_<id>.<ext>` (deleted after the clip is cut), the
+normalized clip in `tempCache/aichat_video_clips/` (auto-deleted with the Pic), and web_audio's
+`tempCache/aichat_audio/web_<id>.<ext>` / `web_cut_<id>.wav` (the bubble's lossless `audioPath`) with its waveform
+preview in `tempCache/aichat_audio_previews/`. `tempCache` is wiped on quit; save a bubble to keep it
+(an Audio bubble's S saves the sound file next to the preview movie).
 
 ## Edge cases
 
@@ -358,6 +417,11 @@ save a bubble to keep it.
 | no JS runtime | yt-dlp warning in the trace; downloads throttled / fewer formats; Settings > Web suggests installing Deno or Node.js |
 | source longer than `max_source_minutes` / over 250 MB | yt-dlp skips it (`does not pass filter` / `max-filesize`), reported as such in the trace |
 | bot check / sign-in | stderr tail verbatim; suggest Settings > Web "cookies from browser" (Firefox most reliable; Chromium app-bound cookie encryption often breaks Chrome/Brave extraction) |
+| web_audio URL is a page / image / video | refused after the sniff with a pointer to web_page / web_image / web_video (a video's soundtrack: fetch with web_video, then set_video_audio) |
+| web_audio URL NAMES a sound file but the server sent HTML | hotlink/scraper decoy (movie-sounds.org serves a 482 B stand-in page for its .mp3 URLs; wavsource builds wav URLs in JS with tokens): the note tells the model the HOST is protected, not to retry its links or web_page the decoy, and to prefer archive.org - the Bugs Bunny session (2026-08-30) burned two attempts on the same decoy URL before this message existed |
+| web_audio file has a video stream (ffprobe) | refused; mp3/flac cover art does NOT count (attached_pic excluded) |
+| web_audio speech="true" on silent / music-only audio | file deleted, recap says it would make a wrong voice reference; without the flag any sound passes |
+| web_video url= ends in .wav/.mp3/... | executor reroutes the action to web_audio with a silent note |
 | Stop / Clear mid-fetch | requests aborted, processes killed, "Cancelled." in the bubble, partial files left in tempCache |
 
 ## Testing recipe (automation bridge)

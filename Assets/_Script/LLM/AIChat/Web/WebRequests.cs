@@ -61,6 +61,30 @@ namespace AITools.AIChat.Web
     }
 
     /// <summary>
+    /// Parsed arguments of a web_audio action (download ONE bare sound file - .wav/.mp3/...
+    /// - into an Audio #N bubble). Exactly one of Url / ResultToken is set; there is no
+    /// query= mode because Brave has no audio search vertical (the skill teaches the
+    /// web_search kind="web" -> web_page -> audio-link flow instead).
+    /// </summary>
+    public sealed class WebAudioRequest
+    {
+        public string Url;
+        /// <summary>"P1:a2" = audio link 2 of page session P1, or "S1:3" = a web hit whose URL is a bare sound file.</summary>
+        public string ResultToken;
+        /// <summary>Optional trim: seconds into the source (0 = from the start).</summary>
+        public float StartSeconds = 0f;
+        /// <summary>Optional trim length; 0 = the whole file (capped at MaxAudioSeconds).</summary>
+        public float DurationSeconds = 0f;
+        public string Anchor;
+        /// <summary>
+        /// The audio must contain SPEECH (it will be a voice reference). Checked with
+        /// ffmpeg volumedetect + Whisper like web_video speech="true"; silent or
+        /// music-only files are rejected.
+        /// </summary>
+        public bool RequireSpeech;
+    }
+
+    /// <summary>
     /// Parsed arguments of a web_page action (fetch ONE page, extract readable text, list its
     /// candidate images). Exactly one of Url / ResultToken / Query is set.
     /// </summary>
@@ -103,6 +127,13 @@ namespace AITools.AIChat.Web
         public const float MaxClipSeconds = 15f;
         public const long MaxImageBytes = 25L * 1024 * 1024;
         public const long MaxVideoBytes = 250L * 1024 * 1024;
+        // web_audio: a bare sound file. 50 MB covers ~5 min of stereo WAV; longer
+        // downloads abort mid-stream like the other caps.
+        public const long MaxAudioBytes = 50L * 1024 * 1024;
+        /// <summary>Longest audio landed by web_audio; a longer source is trimmed to this from the requested start.</summary>
+        public const float MaxAudioSeconds = 300f;
+        /// <summary>How many page audio links web_page lists per page.</summary>
+        public const int MaxPageAudioLinks = 30;
         public const float DownloadTimeoutSeconds = 30f;
         public const int MaxImageSide = 2048;
 

@@ -931,8 +931,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             wrt.anchoredPosition = new Vector2(-130, 0);
             var tt = _webToggle.gameObject.AddComponent<RTToolTip>();
             tt._text =
-                "Allow AI Chat to search the web and fetch pages, images and clips\n" +
-                "(web_search / web_image / web_video / web_page; Brave key in Settings > Web).\n" +
+                "Allow AI Chat to search the web and fetch pages, images, clips and sounds\n" +
+                "(web_search / web_image / web_video / web_page / web_audio; Brave key in Settings > Web).\n" +
                 "Off: the model is told web access is disabled and any web action fails.";
         }
 
@@ -9498,7 +9498,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         var session = StoreWebSearchSession(req.Kind, req.Query, resp);
         int n = resp.ResultCount(req.Kind);
-        trace.AppendLine("Stored as " + session.Id + ": use result=\"" + session.Id + ":N\" with web_image / web_video to download one.");
+        trace.AppendLine("Stored as " + session.Id + ": use result=\"" + session.Id + ":N\" with web_image / web_video (web hits: web_page / web_audio) to fetch one.");
 
         var recap = new StringBuilder();
         recap.Append("[web_search ").Append(session.Id).Append(' ').Append(BraveSearchClient.KindLabel(req.Kind)).Append(' ').Append(Q(req.Query)).Append(" -> ").Append(n).Append(" results]");
@@ -9527,6 +9527,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         public string Url;
         public string Title;
         public List<WebPageImage> Images;
+        /// <summary>Bare sound-file links found on the page ("P&lt;n&gt;:a&lt;i&gt;" web_audio targets).</summary>
+        public List<WebPageAudioLink> AudioLinks;
     }
     private readonly Dictionary<string, WebPageSession> _webPageSessions = new Dictionary<string, WebPageSession>(StringComparer.OrdinalIgnoreCase);
     private int _nextWebPageId = 1;
@@ -9564,6 +9566,45 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (index > session.Images.Count)
         {
             error = id + " only has " + session.Images.Count + " images";
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Parse "P1:a3" (or a bare "P1:3" - web_audio only ever means the audio list) into the
+    /// page session + 1-based audio-link index it names.
+    /// </summary>
+    private bool TryResolveWebPageAudioToken(string token, out WebPageSession session, out int index, out string error)
+    {
+        session = null;
+        index = 0;
+        error = null;
+        if (string.IsNullOrWhiteSpace(token)) { error = "empty result token"; return false; }
+        string t = token.Trim();
+        int colon = t.IndexOf(':');
+        if (colon <= 0 || colon == t.Length - 1) { error = "page audio refs look like \"P1:a2\" (page id, colon, audio link number)"; return false; }
+        string id = t.Substring(0, colon).Trim();
+        string num = t.Substring(colon + 1).Trim();
+        if (num.Length > 1 && (num[0] == 'a' || num[0] == 'A')) num = num.Substring(1);
+        if (!_webPageSessions.TryGetValue(id, out session) || session == null)
+        {
+            error = "unknown page id \"" + id + "\" (web_page audio lists expire on Clear)";
+            return false;
+        }
+        if (session.AudioLinks == null || session.AudioLinks.Count == 0)
+        {
+            error = id + " listed no audio links";
+            return false;
+        }
+        if (!int.TryParse(num, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out index) || index < 1)
+        {
+            error = "bad audio link number \"" + num + "\"";
+            return false;
+        }
+        if (index > session.AudioLinks.Count)
+        {
+            error = id + " only has " + session.AudioLinks.Count + " audio links";
             return false;
         }
         return true;
@@ -9837,7 +9878,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             Id = NextWebPageId(),
             Url = usedUrl,
             Title = string.IsNullOrEmpty(ex.Title) ? usedUrl : ex.Title,
-            Images = ex.Images ?? new List<WebPageImage>()
+            Images = ex.Images ?? new List<WebPageImage>(),
+            AudioLinks = ex.AudioLinks ?? new List<WebPageAudioLink>()
         };
         _webPageSessions[page.Id] = page;
         trace.AppendLine("Title: " + page.Title);
@@ -9855,6 +9897,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                     trace.AppendLine("  " + WebPageReader.FormatImageLine(page.Id, i + 1, page.Images[i]));
             }
         }
+        if (page.AudioLinks.Count > 0)
+        {
+            trace.AppendLine("Audio links (" + page.AudioLinks.Count + (ex.AudioLinkCandidatesTotal > page.AudioLinks.Count ? " of " + ex.AudioLinkCandidatesTotal : "") + "; fetch one with web_audio result=\"" + page.Id + ":aN\"):");
+            for (int i = 0; i < page.AudioLinks.Count; i++)
+                trace.AppendLine("  " + WebPageReader.FormatAudioLine(page.Id, i + 1, page.AudioLinks[i]));
+        }
         AIChatLog.Note("web_page_text", "[" + page.Id + "] " + usedUrl + " (" + ex.Scope + ", " + (charsetUsed ?? "?") + ")\n" + ex.Text);
 
         // 5. Hand the text to the model through the info-recap tail of the next user message,
@@ -9871,6 +9919,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
               .Append(":N\" anchor=\"name\" (vision-checked and captioned like any web_image)]");
             for (int i = 0; i < page.Images.Count; i++)
                 sb.Append('\n').Append(WebPageReader.FormatImageLine(page.Id, i + 1, page.Images[i]));
+        }
+        if (page.AudioLinks.Count > 0)
+        {
+            sb.Append("\n\n[Page audio links ").Append(page.Id).Append(" - bare sound files, NOT downloaded yet; fetch one with web_audio result=\"").Append(page.Id)
+              .Append(":aN\" anchor=\"name\" (lands as a playable Audio #N bubble)]");
+            for (int i = 0; i < page.AudioLinks.Count; i++)
+                sb.Append('\n').Append(WebPageReader.FormatAudioLine(page.Id, i + 1, page.AudioLinks[i]));
         }
         sb.Append("\n(This page was fetched once; links inside it were NOT followed. Quote or summarize from the text above only. Page ids expire on Clear.)");
         _infoMessages.Add(new InfoMessage(sb.ToString()));
@@ -10382,9 +10437,27 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             string usageNote = anchorName != null
                 ? " Use it as a REFERENCE SLOT (chat_image=" + Q(anchorName) + " / chat_image2.. on image_to_movie with Reference To Video (MiniMax H3) 5s.txt, video_to_video with Reference Video To Video, or a Klein edit) - never generate_image a lookalike from text."
                 : "";
+            // The Bugs Bunny test (2026-08-30) showed the model following THIS note's photo
+            // recipe verbatim on the render turn while the voice sample fetched one action
+            // earlier sat unused: the freshest concrete recipe wins, so when a voice sample
+            // exists in chat the pairing reminder must ride the same note.
+            string voiceNote = "";
+            for (int ri = _chatImageRecords.Count - 1; ri >= 0; ri--)
+            {
+                var audioRec = _chatImageRecords[ri];
+                if (audioRec == null || !audioRec.isAudio || audioRec.pic == null || audioRec.pic.gameObject == null) continue;
+                int audioIdx = _chatImagePics.IndexOf(audioRec.pic) + 1;
+                if (audioIdx <= 0) continue;
+                string audioAnchor = null;
+                foreach (var kv in _anchors) { if (kv.Value == audioRec.pic) { audioAnchor = kv.Key; break; } }
+                voiceNote = " If the render has this character SPEAKING and Audio #" + audioIdx
+                    + (audioAnchor != null ? " (anchor " + Q(audioAnchor) + ")" : "")
+                    + " is their voice sample, ALSO stage it on the SAME reference action: audio=\"" + audioIdx + "\", and style the voice via its <Audio N> tag in the prompt.";
+                break;
+            }
             string recap = "(web_image " + (string.IsNullOrEmpty(queryForProvenance) ? Q(usedUrl) : Q(queryForProvenance)) + " added #" + idx
                 + " (" + dims + ", " + (string.IsNullOrEmpty(cand.Host) ? SafeHost(usedUrl) : cand.Host)
-                + (anchorName != null ? ", anchor " + Q(anchorName) : "") + ")." + verifiedNote + usageNote + ")";
+                + (anchorName != null ? ", anchor " + Q(anchorName) : "") + ")." + verifiedNote + usageNote + voiceNote + ")";
             _infoMessages.Add(new InfoMessage(recap));
             if (captionFromVerdict)
             {
@@ -10956,7 +11029,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                     trace.SetStatus("  checking the audio for speech...");
                     speech = new SpeechCheck.Result();
                     bool clipHasAudio = outInfo != null ? outInfo.HasAudio : info.HasAudio;
-                    yield return SpeechCheck.Run(clip.OutputPath, clipHasAudio && req.IncludeAudio, speech);
+                    yield return SpeechCheck.Run(clip.OutputPath, clipHasAudio && req.IncludeAudio, speech,
+                        (float)(outInfo != null && outInfo.DurationSeconds > 0 ? outInfo.DurationSeconds : clipDuration));
                     trace.ClearStatus();
                     if (epoch != _webFetchEpoch) { onDone?.Invoke(false); yield break; }
 
@@ -11027,6 +11101,298 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             _infoMessages.Add(new InfoMessage("(web_video " + (string.IsNullOrEmpty(req.Query) ? sourceText : Q(req.Query)) + ": no usable clip in " + attempts + " sources; the Web bubble shows each failure" + (verifyClips ? " (cuts judged not to show the subject are rejected" + (req.RequireSpeech ? ", and cuts without speech too" : "") + ")" : "") + ". Try a more specific query naming the scene or episode" + (req.RequireSpeech ? " with dialogue (\"interview\" is fine for a voice reference if the face matches)" : "") + ", a different url=, or tell the user if yt-dlp reported a sign-in / bot check.)"));
         }
 
+        EndWebTrace(trace);
+        FinishWebFetch();
+        onDone?.Invoke(true);
+    }
+
+    // ---------- web_audio ----------
+
+    bool IChatHost.StartWebAudioAction(SkillAction action, WebAudioRequest request, Action<bool> onDone)
+    {
+        if (request == null) return false;
+        int epoch = _webFetchEpoch;
+        BeginWebFetch();
+        StartCoroutine(WebAudioCoroutine(action, request, epoch, onDone));
+        return true;
+    }
+
+    /// <summary>
+    /// web_audio: download ONE bare sound file (.wav/.mp3/...) into an "Audio #N" bubble,
+    /// through the same landing as dropped / generated audio (waveform preview MP4 +
+    /// AppendAudioBubble, so set_video_audio / H3 audio refs / ref_voice all work). There is
+    /// deliberately NO vision check - a waveform shows a vision model nothing; the accept
+    /// gate is ffprobe (a real audio stream, no video stream) plus the web_video-style
+    /// SpeechCheck, which always runs for the caption transcript when speech-to-text is
+    /// available and REJECTS silent / music-only files only when speech="true".
+    /// </summary>
+    private IEnumerator WebAudioCoroutine(SkillAction action, WebAudioRequest req, int epoch, Action<bool> onDone)
+    {
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        string sourceText = !string.IsNullOrEmpty(req.Url) ? "url=" + Q(req.Url) : "result=" + Q(req.ResultToken);
+        var trace = BeginWebTrace("web_audio  " + sourceText
+            + (req.StartSeconds > 0f ? "  start=" + req.StartSeconds.ToString("0.###", inv) : "")
+            + (req.DurationSeconds > 0f ? "  duration=" + req.DurationSeconds.ToString("0.###", inv) : "")
+            + (req.RequireSpeech ? "  speech=true" : "")
+            + (string.IsNullOrEmpty(req.Anchor) ? "" : "  anchor=" + Q(req.Anchor)));
+        float started = Time.realtimeSinceStartup;
+
+        // Every non-cancel exit funnels through here; cancel exits (epoch mismatch after a
+        // yield) skip it on purpose: CancelAllWebFetches already zeroed the counters and
+        // wrote "Cancelled." into the bubble.
+        void Fail(string traceLine, string modelNote)
+        {
+            if (!string.IsNullOrEmpty(traceLine)) trace.AppendLine(traceLine);
+            if (!string.IsNullOrEmpty(modelNote)) _infoMessages.Add(new InfoMessage(modelNote));
+            EndWebTrace(trace);
+            FinishWebFetch();
+            onDone?.Invoke(true);
+        }
+
+        // 1. Resolve the URL: url=, "P1:a2" (web_page audio link), or a kind="web" hit whose
+        //    URL is itself a bare sound file.
+        string url = req.Url;
+        string label = null;
+        if (string.IsNullOrEmpty(url))
+        {
+            string token = (req.ResultToken ?? "").Trim();
+            if (IsWebPageToken(token))
+            {
+                WebPageSession page; int aIndex; string tokenError;
+                if (!TryResolveWebPageAudioToken(token, out page, out aIndex, out tokenError))
+                {
+                    Fail("Result lookup failed: " + tokenError, "(web_audio result=" + Q(token) + " failed: " + tokenError + ".)");
+                    yield break;
+                }
+                var link = page.AudioLinks[aIndex - 1];
+                url = link.Url;
+                label = link.Label;
+                trace.AppendLine("Using " + page.Id + " audio link " + aIndex + ": " + (string.IsNullOrEmpty(label) ? "" : Q(label) + " ") + url);
+            }
+            else
+            {
+                WebSearchSession session; int index; string tokenError;
+                if (!TryResolveWebSearchToken(token, out session, out index, out tokenError))
+                {
+                    Fail("Result lookup failed: " + tokenError, "(web_audio result=" + Q(token) + " failed: " + tokenError + ".)");
+                    yield break;
+                }
+                if (session.Kind != WebSearchKind.Web)
+                {
+                    string kindLabel = BraveSearchClient.KindLabel(session.Kind);
+                    Fail("Result " + token + " is a " + kindLabel + " result, not a sound file.",
+                        "(web_audio result=" + Q(token) + " is a " + kindLabel + " result. web_audio takes a direct url=, a web_page audio link (result=\"P1:a2\"), or a kind=\"web\" hit whose URL is itself a bare sound file.)");
+                    yield break;
+                }
+                var r = session.Response.Web[index - 1];
+                if (!YtDlpTool.LooksLikeDirectAudioUrl(r.Url))
+                {
+                    Fail("Result " + token + " is a page (" + r.Url + "), not a bare sound file.",
+                        "(web_audio result=" + Q(token) + " points at a page, not a sound file. Read it with web_page result=" + Q(token) + " - bare sound-file links on it are listed as P<n>:a<i> for web_audio.)");
+                    yield break;
+                }
+                url = r.Url;
+                label = r.Title;
+                trace.AppendLine("Using " + session.Id + " result " + index + ": " + (r.Title ?? "") + " | " + r.Url);
+            }
+        }
+
+        string reason;
+        if (!WebMediaDownloader.IsAllowedPublicHttpUrl(url, out reason))
+        {
+            Fail("Skip " + url + ": " + reason, "(web_audio rejected " + Q(url) + ": " + reason + ". Only public http/https URLs are allowed; never invent URLs.)");
+            yield break;
+        }
+
+        // Dedupe: the same URL already lives in chat this session.
+        PicMain existing;
+        if (_webFetchedUrlToPic.TryGetValue(url, out existing) && existing != null && existing.gameObject != null && _chatImagePics.Contains(existing))
+        {
+            int existingIdx = _chatImagePics.IndexOf(existing) + 1;
+            if (!string.IsNullOrEmpty(req.Anchor)) _anchors[req.Anchor] = existing;
+            Fail("Already fetched this session as #" + existingIdx + ", reusing it" + (string.IsNullOrEmpty(req.Anchor) ? "" : " (anchor " + Q(req.Anchor) + ")") + ".",
+                "(web_audio: that URL is already in chat as #" + existingIdx + (string.IsNullOrEmpty(req.Anchor) ? "" : ", anchor " + Q(req.Anchor)) + "; use it instead of re-fetching.)");
+            yield break;
+        }
+
+        // 2. Download to a file the chat owns.
+        string ext = ".bin";
+        try { string e = System.IO.Path.GetExtension(new Uri(url).AbsolutePath); if (!string.IsNullOrEmpty(e)) ext = e.ToLowerInvariant(); } catch { }
+        string target = System.IO.Path.Combine(FfmpegTool.GetAppRoot(), "tempCache", "aichat_audio", "web_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ext);
+        try { System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(target)); } catch { }
+        trace.AppendLine("Download: " + url);
+        var handle = new WebMediaDownloader.Handle();
+        _webDownloadHandles.Add(handle);
+        WebMediaDownloader.DownloadResult dl = null;
+        yield return WebMediaDownloader.DownloadToFile(url, target, WebRequestLimits.MaxAudioBytes, 120f, handle,
+            p => { if (trace.IsAlive) trace.SetStatus("  downloading " + Mathf.RoundToInt(p * 100f) + "%"); },
+            r => dl = r);
+        _webDownloadHandles.Remove(handle);
+        trace.ClearStatus();
+        if (epoch != _webFetchEpoch) { onDone?.Invoke(false); yield break; }
+
+        if (dl == null || !dl.Success)
+        {
+            try { System.IO.File.Delete(target); } catch { }
+            Fail("  -> " + (dl != null ? dl.Error : "no response"),
+                "(web_audio " + sourceText + " failed: " + (dl != null ? dl.Error : "no response") + ". Try a different url= or source.)");
+            yield break;
+        }
+        if (dl.Kind == WebMediaDownloader.MediaKind.Html && YtDlpTool.LooksLikeDirectAudioUrl(url))
+        {
+            // The URL NAMES a sound file but the server sent HTML: hotlink / scraper
+            // protection serving a decoy page (movie-sounds.org does exactly this).
+            // Reading that page is useless and other direct links on the host will
+            // bounce the same way, so steer the model to a different site instead.
+            try { System.IO.File.Delete(target); } catch { }
+            Fail("  -> HTTP " + dl.HttpStatus + " " + dl.ContentType + " " + WebMediaDownloader.FormatBytes(dl.Bytes) + " (a web page instead of the sound file - the site protects its files from direct download), skipped",
+                "(web_audio " + sourceText + ": the server returned a WEB PAGE instead of the sound file - " + SafeHost(url) + " protects its audio from direct download (hotlink/bot protection). Do NOT retry this URL or other direct audio links on that host, and do not web_page the decoy. Try a DIFFERENT site: archive.org items serve plain files reliably (add archive.org to the web_search query).)");
+            yield break;
+        }
+        if (dl.Kind == WebMediaDownloader.MediaKind.Html || WebMediaDownloader.IsImageKind(dl.Kind) || WebMediaDownloader.IsVideoKind(dl.Kind))
+        {
+            string what = dl.Kind == WebMediaDownloader.MediaKind.Html ? "a web page" : WebMediaDownloader.KindLabel(dl.Kind);
+            string hint = dl.Kind == WebMediaDownloader.MediaKind.Html ? "read it with web_page url=\"...\""
+                : WebMediaDownloader.IsImageKind(dl.Kind) ? "use web_image url=\"...\" for it"
+                : "use web_video url=\"...\" for it";
+            try { System.IO.File.Delete(target); } catch { }
+            Fail("  -> HTTP " + dl.HttpStatus + " " + dl.ContentType + " " + WebMediaDownloader.FormatBytes(dl.Bytes) + " (" + what + ", not a sound file), skipped",
+                "(web_audio " + sourceText + ": that URL is " + what + ", not a sound file; " + hint + ".)");
+            yield break;
+        }
+        trace.AppendLine("  -> HTTP " + dl.HttpStatus + " " + dl.ContentType + " " + WebMediaDownloader.FormatBytes(dl.Bytes) + " in " + FormatSeconds(dl.ElapsedSeconds) + ", " + WebMediaDownloader.KindLabel(dl.Kind));
+
+        // 3. ffprobe gate: decodable audio, no real video stream (mp3/flac cover art is
+        //    already excluded by ProbeAudio's attached_pic check).
+        FfmpegTool.AudioInfo info = null;
+        string probeError = null;
+        yield return FfmpegTool.ProbeAudio(target, (i, e) => { info = i; probeError = e; });
+        if (epoch != _webFetchEpoch) { onDone?.Invoke(false); yield break; }
+        if (info == null || !info.HasAudio)
+        {
+            try { System.IO.File.Delete(target); } catch { }
+            Fail("  -> not decodable audio: " + (probeError ?? "no audio stream") + ", skipped",
+                "(web_audio " + sourceText + ": the file could not be read as audio (" + (probeError ?? "no audio stream") + ").)");
+            yield break;
+        }
+        if (info.HasVideo)
+        {
+            try { System.IO.File.Delete(target); } catch { }
+            Fail("  -> the file has a video stream, skipped",
+                "(web_audio " + sourceText + ": that file has a video stream - fetch it with web_video url=\"...\" instead; set_video_audio can then lift its soundtrack.)");
+            yield break;
+        }
+        trace.AppendLine("  source: " + AudioGenClient.FormatSeconds(info.DurationSeconds) + " " + (info.CodecName ?? "?") + " " + info.SampleRate + " Hz " + info.Channels + " ch");
+
+        // 4. Optional trim: an explicit start/duration, or a source over the length cap.
+        double sourceDur = info.DurationSeconds;
+        float cutStart = Mathf.Max(0f, req.StartSeconds);
+        if (sourceDur > 0 && cutStart >= sourceDur)
+        {
+            try { System.IO.File.Delete(target); } catch { }
+            Fail("  start " + cutStart.ToString("0.#", inv) + "s is past the end of this " + sourceDur.ToString("0.#", inv) + "s file, skipped",
+                "(web_audio " + sourceText + ": start=" + cutStart.ToString("0.#", inv) + " is past the end of the " + sourceDur.ToString("0.#", inv) + "s file.)");
+            yield break;
+        }
+        string audioPath = target;
+        string rangeText = null;
+        bool overCap = sourceDur > WebRequestLimits.MaxAudioSeconds + 0.5f;
+        if (cutStart > 0f || req.DurationSeconds > 0f || overCap)
+        {
+            float cutDur = req.DurationSeconds > 0f ? req.DurationSeconds
+                : (float)Math.Min(sourceDur > 0 ? sourceDur - cutStart : WebRequestLimits.MaxAudioSeconds, WebRequestLimits.MaxAudioSeconds);
+            string wavPath = System.IO.Path.Combine(FfmpegTool.GetAppRoot(), "tempCache", "aichat_audio", "web_cut_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".wav");
+            FfmpegTool.ClipResult cut = null;
+            trace.SetStatus("  ffmpeg cutting...");
+            yield return FfmpegTool.ExtractAudioWavSection(target, cutStart, cutDur, wavPath, r => cut = r);
+            trace.ClearStatus();
+            if (epoch != _webFetchEpoch) { onDone?.Invoke(false); yield break; }
+            if (cut == null || !cut.Success)
+            {
+                try { System.IO.File.Delete(target); } catch { }
+                Fail("  ffmpeg cut failed: " + (cut != null ? cut.Error : "unknown") + ", skipped",
+                    "(web_audio " + sourceText + ": could not cut the requested range (" + (cut != null ? cut.Error : "unknown") + ").)");
+                yield break;
+            }
+            rangeText = cutStart.ToString("0.#", inv) + "-" + (cutStart + cutDur).ToString("0.#", inv) + "s";
+            trace.AppendLine("  cut " + rangeText + " of source -> WAV" + (req.DurationSeconds <= 0f && overCap ? " (source over the " + (int)WebRequestLimits.MaxAudioSeconds + "s cap)" : ""));
+            try { System.IO.File.Delete(target); } catch { }
+            audioPath = wavPath;
+            FfmpegTool.AudioInfo cutInfo = null;
+            yield return FfmpegTool.ProbeAudio(audioPath, (i, e) => cutInfo = i);
+            if (epoch != _webFetchEpoch) { onDone?.Invoke(false); yield break; }
+            if (cutInfo != null && cutInfo.HasAudio) info = cutInfo;
+        }
+
+        // 5. Audio check: volumedetect always; the Whisper transcript when speech-to-text is
+        //    configured (it becomes the caption). Rejecting is gated on speech="true" - a
+        //    music-only file is a perfectly good fetch unless a voice was required.
+        var speech = new SpeechCheck.Result();
+        trace.SetStatus("  checking the audio" + (req.RequireSpeech ? " for speech" : "") + "...");
+        yield return SpeechCheck.Run(audioPath, true, speech, (float)info.DurationSeconds);
+        trace.ClearStatus();
+        if (epoch != _webFetchEpoch) { onDone?.Invoke(false); yield break; }
+        trace.AppendLine("  -> audio check: " + speech.Summary());
+        if (req.RequireSpeech && (speech.Silent || (speech.Transcribed && !speech.HasSpeech)))
+        {
+            try { System.IO.File.Delete(audioPath); } catch { }
+            Fail("  -> no speech, skipped",
+                "(web_audio " + sourceText + ": the audio contains no speech (" + speech.Summary() + "), so as a VOICE reference it would produce a wrong voice. Fetch a different file, or drop speech=\"true\" if any sound is fine.)");
+            yield break;
+        }
+
+        // 6. Waveform preview + Audio bubble: the same landing as drops / generated audio.
+        string previewPath = FfmpegTool.GetAudioPreviewOutputPath(audioPath);
+        FfmpegTool.ClipResult preview = null;
+        yield return FfmpegTool.CreateAudioWaveformPreview(audioPath, previewPath, FfmpegTool.AudioColorWeb, r => preview = r);
+        if (epoch != _webFetchEpoch) { onDone?.Invoke(false); yield break; }
+        if (preview == null || !preview.Success)
+        {
+            Fail("  could not render the waveform preview: " + (preview != null ? preview.Error : "unknown error"),
+                "(web_audio " + sourceText + ": could not render the audio preview (" + (preview != null ? preview.Error : "unknown error") + ").)");
+            yield break;
+        }
+
+        string fileName = "audio" + ext;
+        try { string f = System.IO.Path.GetFileName(new Uri(url).AbsolutePath); if (!string.IsNullOrEmpty(f)) fileName = f; } catch { }
+        double durationSeconds = info.DurationSeconds > 0 ? info.DurationSeconds : 0;
+        string dur = AudioGenClient.FormatSeconds(durationSeconds);
+        bool hasTranscript = speech.Transcribed && speech.HasSpeech && !string.IsNullOrEmpty(speech.Transcript);
+        string shortCaption = "web audio: " + (string.IsNullOrEmpty(label) ? fileName : label);
+        string longCaption = "Sound file " + Q(fileName) + " fetched from the web (" + dur + ", " + (info.CodecName ?? "?") + ", " + info.SampleRate + " Hz, " + info.Channels + " ch) from " + SafeHost(url)
+            + (rangeText != null ? ", range " + rangeText : "") + "."
+            + (hasTranscript ? " Audio transcript: \"" + speech.Transcript + "\""
+                : speech.Transcribed && !speech.HasSpeech ? " No speech detected (music / ambience / noise)."
+                : " Its content was not transcribed.");
+
+        PicMain pic = AppendAudioBubble(preview.OutputPath, audioPath, action, "web audio", durationSeconds, isUserImport: false, shortCaption, longCaption);
+        if (pic == null)
+        {
+            Fail("  could not load the audio preview into a chat bubble.",
+                "(web_audio " + sourceText + ": could not load the audio preview into a chat bubble.)");
+            yield break;
+        }
+        int idx = _chatImagePics.Count;
+        var record = _chatImageRecords.Count > 0 ? _chatImageRecords[_chatImageRecords.Count - 1] : null;
+        if (record != null && record.pic == pic)
+        {
+            record.provenanceSteps.Clear();
+            record.provenanceSteps.Add("web audio: " + (string.IsNullOrEmpty(label) ? "" : Q(BraveSearchClient.Clip(label, 60)) + " ") + ShortUrlForProvenance(url) + (rangeText != null ? " " + rangeText : ""));
+        }
+        _webFetchedUrlToPic[url] = pic;
+        trace.AppendLine("Added as Audio #" + idx + (string.IsNullOrEmpty(action?.AnchorName) ? "" : " (anchor " + Q(action.AnchorName) + ")") + ".");
+        if (hasTranscript)
+            trace.AppendLine("Audio #" + idx + " transcript: " + Q(BraveSearchClient.Clip(speech.Transcript, 300)));
+
+        string speechNote = req.RequireSpeech
+            ? (hasTranscript ? " It contains speech, so it is usable as a voice reference."
+                : " WARNING: speech could not be confirmed (" + speech.Summary() + "); as a voice reference it may produce a wrong voice.")
+            : (hasTranscript ? " Transcript: \"" + BraveSearchClient.Clip(speech.Transcript, 300) + "\"" : "");
+        _infoMessages.Add(new InfoMessage("(web_audio added Audio #" + idx + ": " + Q(fileName) + " " + SafeHost(url) + ", " + dur + "." + speechNote
+            + " Besides set_video_audio, use it as the H3 VOICE/audio reference: audio=\"" + idx + "\" on a Reference To Video / Reference Video To Video action, referenced as its <Audio N> tag in the prompt (STYLE conditioning - the voice character is nudged toward the sample). That is the assumed path for making someone sound right; do not offer other voice options."
+            + (string.IsNullOrEmpty(action?.AnchorName) ? "" : " Anchor " + Q(action.AnchorName) + " points at it.") + ")"));
+
+        trace.AppendLine("Done in " + FormatSeconds(Time.realtimeSinceStartup - started) + ".");
         EndWebTrace(trace);
         FinishWebFetch();
         onDone?.Invoke(true);

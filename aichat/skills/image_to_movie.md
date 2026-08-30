@@ -177,6 +177,10 @@ is ideal for anchors: "make a video of Mara surfing" from an anchored portrait.
   points at an Audio #N bubble (or a Movie whose SOUND matters; numbers or
   anchors) and becomes an `<Audio N>` tag - numbered in slot order (with no
   clip staged on this preset, the first standalone file is `<Audio 1>`).
+  When a voice sample of a SPEAKING character already exists in chat (an
+  Audio #N from web_audio, an imported .wav, a speech-checked clip), staging
+  it here is MANDATORY, not optional - the user put it in chat to be used,
+  and rendering that character speaking without it gets an invented voice.
   An audio ref is a STYLE reference, like a video ref: it nudges voice
   character/tone, music, or ambience toward the sample - it is NOT an exact
   voice clone and never supplies the words, so each speaker's exact line

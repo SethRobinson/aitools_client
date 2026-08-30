@@ -25,6 +25,15 @@ namespace AITools.AIChat.Web
         public string Note;
     }
 
+    /// <summary>One bare sound-file link (&lt;a href="....wav"&gt; or &lt;audio src&gt;) found on a page (not downloaded).</summary>
+    public sealed class WebPageAudioLink
+    {
+        /// <summary>Absolute http(s) URL, fragment stripped.</summary>
+        public string Url;
+        /// <summary>The link's text (collapsed), else the file name. May be empty.</summary>
+        public string Label = "";
+    }
+
     /// <summary>Result of <see cref="WebPageReader.Extract"/>.</summary>
     public sealed class WebPageExtraction
     {
@@ -43,6 +52,10 @@ namespace AITools.AIChat.Web
         public int ImageCandidatesTotal;
         /// <summary>Raw &lt;img&gt; tags seen anywhere in the document.</summary>
         public int ImageTagsSeen;
+        /// <summary>Bare sound-file links found on the page (web_audio result targets), capped and deduped.</summary>
+        public List<WebPageAudioLink> AudioLinks = new List<WebPageAudioLink>();
+        /// <summary>Deduped audio links seen (before the cap).</summary>
+        public int AudioLinkCandidatesTotal;
         public string Charset;
         public string CanonicalUrl;
         public string Lang;
@@ -310,6 +323,23 @@ namespace AITools.AIChat.Web
             return sb.ToString();
         }
 
+        /// <summary>One "P1:a2 https://... ("link text")" line for the trace and the model recap.</summary>
+        public static string FormatAudioLine(string pageId, int index, WebPageAudioLink link)
+        {
+            var sb = new StringBuilder();
+            sb.Append(pageId).Append(":a").Append(index.ToString(CultureInfo.InvariantCulture)).Append(' ');
+            string url = link.Url ?? "";
+            if (url.Length > 300) url = url.Substring(0, 297) + "...";
+            sb.Append(url);
+            if (!string.IsNullOrEmpty(link.Label))
+            {
+                string label = link.Label.Replace('"', '\'');
+                if (label.Length > 90) label = label.Substring(0, 87) + "...";
+                sb.Append(" (\"").Append(label).Append("\")");
+            }
+            return sb.ToString();
+        }
+
         /// <summary>Neutralise literal action tags inside fetched text so the transcript can never re-parse them.</summary>
         public static string StripActionTags(string text)
         {
@@ -360,6 +390,9 @@ namespace AITools.AIChat.Web
                 if (kind == TagKind.Close) { st.CloseElement(name); continue; }
 
                 if (name == "title") { pos = st.CaptureTitle(pos); continue; }
+                // <audio src=...> is raw-skipped below (its <source> children with it), but the
+                // open tag's own src is a bare sound file worth listing for web_audio.
+                if (name == "audio") st.CollectAudioSrc(attrs);
                 if (RawTextElements.Contains(name)) { pos = st.SkipRawText(pos, name); continue; }
                 st.OpenElement(name, attrs, selfClosing);
             }
@@ -608,6 +641,9 @@ namespace AITools.AIChat.Web
             public bool Heading;
             public bool H1;
             public int H1Start = -1;
+            /// <summary>Set on an &lt;a&gt; whose href is a bare sound file; its text span becomes the label.</summary>
+            public string AudioHref;
+            public int AudioTextStart = -1;
             public bool Block;
             public bool Paragraph;
             public int FirstImageIndex = -1;
@@ -628,6 +664,11 @@ namespace AITools.AIChat.Web
             private readonly List<Region> _regions = new List<Region>();
             private readonly List<WebPageImage> _images = new List<WebPageImage>();
             private readonly HashSet<string> _seenUrls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            private readonly List<WebPageAudioLink> _audioLinks = new List<WebPageAudioLink>();
+            private readonly HashSet<string> _seenAudioUrls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            private int _audioCandidatesTotal;
+            // Not WebRequestLimits.MaxPageAudioLinks: this file compiles alone in the offline harness.
+            private const int MaxAudioLinks = 30;
             private int _junkDepth, _noscriptDepth, _mainDepth, _preDepth, _listDepth, _captionDepth;
             private int _regionStart = -1; private string _regionKind;
             private Frame _captionFigure;
@@ -839,6 +880,12 @@ namespace AITools.AIChat.Web
                 f.Picture = name == "picture";
                 f.List = name == "ul" || name == "ol" || name == "menu";
                 f.Ordered = name == "ol";
+
+                if (name == "a" && !junk && CanEmit)
+                {
+                    string audioUrl = ResolveAudioFileUrl(GetAttr(attrs, "href"));
+                    if (audioUrl != null) { f.AudioHref = audioUrl; f.AudioTextStart = _buf.Length; }
+                }
 
                 _stack.Add(f);
                 if (f.Junk) _junkDepth++;
@@ -1138,6 +1185,51 @@ namespace AITools.AIChat.Web
                 return null;
             }
 
+            // ---- audio links (web_audio result targets)
+
+            private static readonly string[] AudioFileExtensions =
+                { ".wav", ".mp3", ".flac", ".ogg", ".oga", ".opus", ".m4a", ".aac", ".aiff", ".aif" };
+
+            /// <summary>The href resolved to an absolute http(s) URL whose path names a sound file, else null.</summary>
+            private string ResolveAudioFileUrl(string href)
+            {
+                if (string.IsNullOrEmpty(href)) return null;
+                string decoded = WebUtility.HtmlDecode(href.Trim());
+                if (decoded.Length == 0 || decoded.StartsWith("data:", StringComparison.OrdinalIgnoreCase)) return null;
+                string abs = Resolve(decoded);
+                if (abs == null) return null;
+                Uri u;
+                if (!Uri.TryCreate(abs, UriKind.Absolute, out u)) return null;
+                if (u.Scheme != "http" && u.Scheme != "https") return null;
+                string path = u.AbsolutePath.ToLowerInvariant();
+                for (int i = 0; i < AudioFileExtensions.Length; i++)
+                    if (path.EndsWith(AudioFileExtensions[i], StringComparison.Ordinal))
+                        return u.GetLeftPart(UriPartial.Query);
+                return null;
+            }
+
+            /// <summary>src of an &lt;audio&gt; open tag (its &lt;source&gt; children are raw-skipped with the element).</summary>
+            public void CollectAudioSrc(List<Attr> attrs)
+            {
+                if (!CanEmit) return;
+                string url = ResolveAudioFileUrl(GetAttr(attrs, "src"));
+                if (url != null) AddAudioLink(url, "");
+            }
+
+            private void AddAudioLink(string url, string label)
+            {
+                if (!_seenAudioUrls.Add(url)) return;
+                _audioCandidatesTotal++;
+                if (_audioLinks.Count >= MaxAudioLinks) return;
+                label = CollapseWhitespace(label ?? "").Trim();
+                if (label.Length > 80) label = label.Substring(0, 77) + "...";
+                if (label.Length == 0)
+                {
+                    try { label = System.IO.Path.GetFileName(new Uri(url).AbsolutePath) ?? ""; } catch { label = ""; }
+                }
+                _audioLinks.Add(new WebPageAudioLink { Url = url, Label = label });
+            }
+
             // ---- closing
 
             public void CloseElement(string name)
@@ -1198,6 +1290,13 @@ namespace AITools.AIChat.Web
                     {
                         string h = _buf.ToString(f.H1Start, Math.Max(0, _buf.Length - f.H1Start)).Trim();
                         if (h.Length > 0) _firstH1 = h;
+                    }
+                    if (f.AudioHref != null)
+                    {
+                        string label = f.AudioTextStart >= 0 && _buf.Length > f.AudioTextStart
+                            ? _buf.ToString(f.AudioTextStart, _buf.Length - f.AudioTextStart)
+                            : "";
+                        AddAudioLink(f.AudioHref, label);
                     }
                     if (f.Paragraph || f.Heading) EnsureBlankLine();
                     else if (f.Block && !f.Cell) EnsureNewline();
@@ -1299,6 +1398,8 @@ namespace AITools.AIChat.Web
                 r.Images = _images;
                 r.ImageCandidatesTotal = _candidatesTotal;
                 r.ImageTagsSeen = _imageTagsSeen;
+                r.AudioLinks = _audioLinks;
+                r.AudioLinkCandidatesTotal = _audioCandidatesTotal;
                 r.CanonicalUrl = _canonical;
                 r.Lang = _lang;
             }

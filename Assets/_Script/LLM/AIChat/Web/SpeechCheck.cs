@@ -31,6 +31,11 @@ namespace AITools.AIChat.Web
     public static class SpeechCheck
     {
         public const int MinWordsForSpeech = 5;
+        // Short catchphrase files ("What's up, Doc?" is 3 words in 3 s) would always fail
+        // the 5-word rule, which was tuned for 5 s video cuts. Under ShortClipSeconds the
+        // bar drops to MinWordsForShortClip; the no_speech_prob cap still applies.
+        public const float ShortClipSeconds = 4f;
+        public const int MinWordsForShortClip = 2;
         public const float SilentMeanVolumeDb = -50f;
         public const float MaxNoSpeechProb = 0.6f;
         private const int WhisperTimeoutSeconds = 60;
@@ -39,6 +44,8 @@ namespace AITools.AIChat.Web
         {
             public bool Completed;
             public bool HasAudioStream;
+            /// <summary>Clip length the caller knows (0 = unknown); relaxes the word minimum for short catchphrase files.</summary>
+            public float ClipDurationSeconds;
             public float MeanVolumeDb = float.NaN;
             public bool Silent;
             /// <summary>true = Whisper ran and produced a verdict; false = no STT available / failed (see Error).</summary>
@@ -117,9 +124,10 @@ namespace AITools.AIChat.Web
             return "Speech-to-text (web_video speech checks): " + url + " model " + model + (string.IsNullOrEmpty(key) ? " (no key)" : " (key set)");
         }
 
-        public static IEnumerator Run(string clipPath, bool clipHasAudioStream, Result result)
+        public static IEnumerator Run(string clipPath, bool clipHasAudioStream, Result result, float clipDurationSeconds = 0f)
         {
             result.HasAudioStream = clipHasAudioStream;
+            result.ClipDurationSeconds = clipDurationSeconds;
             if (!clipHasAudioStream)
             {
                 result.Completed = true;
@@ -218,7 +226,8 @@ namespace AITools.AIChat.Web
                         if (n > 0) result.AvgNoSpeechProb = (float)(sum / n);
                     }
                     result.Transcribed = true;
-                    bool enoughWords = result.WordCount >= MinWordsForSpeech;
+                    bool shortClip = result.ClipDurationSeconds > 0f && result.ClipDurationSeconds < ShortClipSeconds;
+                    bool enoughWords = result.WordCount >= (shortClip ? MinWordsForShortClip : MinWordsForSpeech);
                     bool probOk = float.IsNaN(result.AvgNoSpeechProb) || result.AvgNoSpeechProb <= MaxNoSpeechProb;
                     result.HasSpeech = enoughWords && probOk && !LooksLikeNonSpeechMarker(result.Transcript);
                 }

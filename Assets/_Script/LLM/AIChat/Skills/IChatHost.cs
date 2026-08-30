@@ -163,6 +163,14 @@ namespace AITools.AIChat.Skills
         bool StartWebPageAction(SkillAction action, AITools.AIChat.Web.WebPageRequest request, Action<bool> onDone);
 
         /// <summary>
+        /// Start a web audio fetch (web_audio action): download ONE bare sound file (url=
+        /// or a web_page audio-link token), ffprobe-gate it (real audio, no video stream),
+        /// optionally speech-check it like web_video speech="true", and append an
+        /// "Audio #N" bubble; trace in a Web bubble, then invoke <paramref name="onDone"/>.
+        /// </summary>
+        bool StartWebAudioAction(SkillAction action, AITools.AIChat.Web.WebAudioRequest request, Action<bool> onDone);
+
+        /// <summary>
         /// The AI Chat header "Web" toggle. When false every web_* action must fail before
         /// any request is made (the model is told so in CURRENT STATE).
         /// </summary>

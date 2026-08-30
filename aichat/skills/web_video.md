@@ -36,6 +36,9 @@ source fps, audio kept) and captioned.
 ```
 
 - Exactly ONE of `query` / `url` / `result`.
+- A direct AUDIO file URL (.wav/.mp3/.flac/...) is not a video: the host reroutes
+  it to `web_audio` automatically (it lands as an `Audio #N` bubble), but prefer
+  emitting `web_audio` yourself for bare sound files.
 - `start` = seconds into the source; `duration` = clip length (0.5 to 15 s,
   default 5). You usually cannot know timestamps for a searched video: default to
   the start, or ask the user for a time if the moment matters.

@@ -215,6 +215,7 @@ namespace AITools.AIChat.Skills
                 case BuiltInSkillIds.WebVideo:
                 case BuiltInSkillIds.WebSearch:
                 case BuiltInSkillIds.WebPage:
+                case BuiltInSkillIds.WebAudio:
                 case BuiltInSkillIds.ExtractStill:
                 case BuiltInSkillIds.ClipVideo:
                     return true;
@@ -368,6 +369,10 @@ namespace AITools.AIChat.Skills
 
                 case BuiltInSkillIds.WebPage:
                     ExecuteWebPage(action);
+                    break;
+
+                case BuiltInSkillIds.WebAudio:
+                    ExecuteWebAudio(action);
                     break;
 
                 case BuiltInSkillIds.GenerateMusic:
@@ -857,7 +862,7 @@ namespace AITools.AIChat.Skills
             {
                 _host.AddWebTraceNotice(skillId + "  " + DescribeWebSource(action) + "\nNot started: Web access is OFF (the \"Web\" checkbox in the AI Chat header).");
                 _host.AddSystemInjectionSilent(
-                    "(" + skillId + " is disabled: the user turned Web access off in the AI Chat header, so web_search / web_image / web_video / web_page " +
+                    "(" + skillId + " is disabled: the user turned Web access off in the AI Chat header, so web_search / web_image / web_video / web_page / web_audio " +
                     "all fail and nothing was fetched. Do not emit them again until CURRENT STATE says WEB ACCESS: ON. Continue without online data " +
                     "and, if the request needed it, tell the user web access is off and that the Web checkbox in the AI Chat header turns it on.)");
                 _host.RequestContinueTurn();
@@ -871,7 +876,7 @@ namespace AITools.AIChat.Skills
                     "Keys come from https://brave.com/search/api/ (the Search plan includes free monthly credit).");
                 _host?.AddSystemInjectionSilent(
                     "(" + skillId + " is unavailable: no Brave Search API key is configured. Tell the user to set one in Settings > Web. " +
-                    "Do not retry web_search/web_image/web_video/web_page query= until they say it is set; a direct url= still works for web_image/web_video/web_page.)");
+                    "Do not retry web_search/web_image/web_video/web_page query= until they say it is set; a direct url= still works for web_image/web_video/web_page/web_audio.)");
                 // The streamed reply usually already promised the result; one bounded
                 // continue turn lets the assistant tell the user what actually happened.
                 _host?.RequestContinueTurn();
@@ -1052,6 +1057,18 @@ namespace AITools.AIChat.Skills
                 else req.Query = null;
                 _host?.AddSystemInjectionSilent("(web_video: use only ONE of query/url/result per action; the most specific one was used.)");
             }
+
+            // A direct .wav/.mp3/... URL is a sound file, not a video: route it to web_audio.
+            // The video pipeline needs frames to cut and vision-check, so a bare audio file
+            // could never pass it; as an Audio #N bubble it still works as a voice reference.
+            if (!string.IsNullOrEmpty(req.Url) && YtDlpTool.LooksLikeDirectAudioUrl(req.Url))
+            {
+                _host?.AddSystemInjectionSilent("(web_video url=\"" + req.Url + "\" points at a bare audio file; it was fetched with web_audio instead and lands as an Audio #N bubble, usable via set_video_audio or as an H3 audio= reference.)");
+                action.SkillId = BuiltInSkillIds.WebAudio;
+                ExecuteWebAudio(action);
+                return;
+            }
+
             req.StartSeconds = Mathf.Max(0f, ParseFloat(FirstArg(action, "start", "start_seconds", "time", "at", "offset"), 0f));
             req.DurationSeconds = Mathf.Clamp(ParseFloat(FirstArg(action, "duration", "duration_seconds", "seconds", "length"), FfmpegTool.DefaultClipDurationSeconds),
                 WebRequestLimits.MinClipSeconds, WebRequestLimits.MaxClipSeconds);
@@ -1085,6 +1102,62 @@ namespace AITools.AIChat.Skills
             if (!started)
             {
                 _host?.AddSystemInjectionAndBubble("web_video could not start.");
+                return;
+            }
+            _lastActionDeferred = true;
+        }
+
+        /// <summary>
+        /// web_audio: download ONE bare sound file (.wav/.mp3/.flac/...) into an "Audio #N"
+        /// bubble. Sources: url= (a direct audio-file URL) or result= ("P1:a2" from a
+        /// web_page audio-link list, or "S1:3" when that web hit's URL is itself a sound
+        /// file). There is deliberately no query= mode - Brave has no audio search vertical;
+        /// the skill teaches the web_search kind="web" -> web_page -> result= flow instead.
+        /// No vision check (a waveform shows nothing): the accept gate is ffprobe (real
+        /// audio, no video stream) plus the web_video-style speech check when speech="true".
+        /// </summary>
+        private void ExecuteWebAudio(SkillAction action)
+        {
+            var req = new WebAudioRequest();
+            req.Url = FirstArg(action, "url", "link", "src", "href");
+            req.ResultToken = FirstArg(action, "result", "pick", "from_result", "search_result");
+            string query = FirstArg(action, "query", "q", "search");
+            if (string.IsNullOrEmpty(req.Url) && string.IsNullOrEmpty(req.ResultToken))
+            {
+                _host?.AddSystemInjectionAndBubble(string.IsNullOrEmpty(query)
+                    ? "web_audio needs url=\"https://.../file.wav\" or result=\"P1:a2\" (an audio link listed by web_page)."
+                    : "web_audio has no query= mode (there is no audio search engine): find a page that hosts the sound with web_search kind=\"web\", read it with web_page (bare sound-file links are listed as P<n>:a<i>), then emit web_audio result=\"P1:a2\" or url=\"...\".");
+                return;
+            }
+            if (!string.IsNullOrEmpty(req.Url) && !string.IsNullOrEmpty(req.ResultToken))
+            {
+                req.ResultToken = null;
+                _host?.AddSystemInjectionSilent("(web_audio: use only ONE of url/result per action; url was used.)");
+            }
+            req.StartSeconds = Mathf.Max(0f, ParseFloat(FirstArg(action, "start", "start_seconds", "time", "at", "offset"), 0f));
+            req.DurationSeconds = Mathf.Max(0f, ParseFloat(FirstArg(action, "duration", "duration_seconds", "seconds", "length"), 0f));
+            if (req.DurationSeconds > 0f)
+                req.DurationSeconds = Mathf.Clamp(req.DurationSeconds, 0.5f, WebRequestLimits.MaxAudioSeconds);
+            req.Anchor = string.IsNullOrWhiteSpace(action.AnchorName) ? null : action.AnchorName.Trim();
+            req.RequireSpeech = ParseBool(FirstArg(action, "speech", "dialog", "dialogue", "needs_speech", "voice", "talking"), false);
+
+            // result= tokens never need a Brave call: P-lists are plain page URLs and
+            // S-lists only exist if a key already worked.
+            if (!WebPreflight(action, "web_audio", req.Url, needsSearch: false))
+                return;
+
+            // A fetched sound is a stepping stone (set_video_audio, an H3 audio= ref, a
+            // ref_voice clone source) and its transcript only exists once the check ran:
+            // auto-continue by default; resume="false" opts out.
+            bool resume = ParseBool(action.GetArg("resume"), true);
+            if (resume)
+                _host?.RequestAutoResumeAfterWebFetch();
+
+            _host?.MarkChainTargetStale();
+            bool started = _host != null && _host.StartWebAudioAction(action, req, ok => ResumePumpAfterDeferredComplete(action));
+            if (!started)
+            {
+                _host?.AddSystemInjectionAndBubble("web_audio could not start.");
                 return;
             }
             _lastActionDeferred = true;
@@ -4409,6 +4482,26 @@ namespace AITools.AIChat.Skills
                 case "fetch_clip":
                 case "video_from_web":
                     return BuiltInSkillIds.WebVideo;
+
+                // web_audio: a bare sound file from the web into an Audio #N bubble.
+                case "webaudio":
+                case "download_audio":
+                case "fetch_audio":
+                case "get_audio":
+                case "find_audio":
+                case "download_sound":
+                case "fetch_sound":
+                case "get_sound":
+                case "find_sound":
+                case "download_wav":
+                case "fetch_wav":
+                case "download_mp3":
+                case "fetch_mp3":
+                case "web_sound":
+                case "web_wav":
+                case "audio_from_web":
+                case "sound_from_web":
+                    return BuiltInSkillIds.WebAudio;
 
                 // web_page: read one page's text + image list. "web_fetch" moved here from
                 // web_image: fetching a URL is a page read now that the page action exists.

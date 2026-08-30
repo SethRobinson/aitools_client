@@ -1,6 +1,6 @@
 ---
 id: generate_movie
-summary: Make a new video from a text description. DEFAULT recipe is two actions: generate a Z-Image still, then animate it with image_to_movie chain="true" using `Image To Video (MiniMax H3 Turbo Cache) 5s.txt`. Use direct text-to-video (`skill="generate_movie"`) only when the user explicitly asks for direct/text-to-video or no still-image base. Every H3 movie prompt must include an explicit AUDIO spec - who speaks and their EXACT quoted words (or state that nobody speaks), ambient sound, and music or "no music": unstated audio is invented and on-screen people mouth gibberish.
+summary: Make a new video from a text description. DEFAULT recipe is two actions: generate a Z-Image still, then animate it with image_to_movie chain="true" using `Image To Video (MiniMax H3 Turbo Cache) 5s.txt`. Use direct text-to-video (`skill="generate_movie"`) only when the user explicitly asks for direct/text-to-video or no still-image base. Every H3 movie prompt must include an explicit AUDIO spec - who speaks and their EXACT quoted words (or state that nobody speaks), ambient sound, and music or "no music": unstated audio is invented and on-screen people mouth gibberish. BEFORE picking the recipe, check ANCHORS / CHAT IMAGES for existing references of the requested subject: photo anchors AND any Audio #N voice sample of a SPEAKING character (a web_audio fetch, an imported .wav). When either exists, route through image_to_movie with a Reference To Video preset instead of this default recipe, staging the photos (chat_image=) and the voice sample (audio="N", voice styled via its <Audio N> tag) - rendering a character speaking while their voice sample sits unused in chat is a routing error.
 inputs: none
 autoload: true
 triggers: generate a video, generate video, make a video, create a video, create video, generate a movie, make a movie, create a movie, generate a clip, make a clip, minimax video, minimax movie, minmax video, h3 video, prompt to video, text to video, text-to-video, direct video
@@ -11,6 +11,25 @@ template: <aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Im
 
 Use this skill when the user asks for a NEW short video / animation /
 clip / movie from a text description and has not supplied a source image.
+
+## First: check chat for existing references
+
+Before the default recipe below, scan ANCHORS / CHAT IMAGES for material the
+user already staged for this subject:
+
+- **Photo anchors** of the subject (web_image fetches, extracted stills):
+  route through `image_to_movie` with `{{Reference To Video (MiniMax H3) 5s.txt}}`
+  and `<Picture N>` tags instead of generating a text-described lookalike.
+- **A voice sample** of a SPEAKING character - any `Audio #N` (a `web_audio`
+  fetch, an imported .wav) or a speech-checked clip: stage it on that SAME
+  reference action via `audio="N"` (or its anchor) and style the voice with
+  its `<Audio N>` tag ("he says, his voice styled like <Audio 1>: '...'").
+  This is MANDATORY when the sample exists, not optional: the user fetched
+  that sample to be used, and a render of the character speaking without it
+  gets an invented voice. The exact words still come from your quoted lines
+  (an audio ref never supplies the words).
+
+Only when chat holds nothing usable does the default text-first recipe apply.
 
 ## Default Workflow
 

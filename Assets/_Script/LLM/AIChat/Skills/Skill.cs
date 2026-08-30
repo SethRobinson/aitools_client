@@ -123,9 +123,11 @@ namespace AITools.AIChat.Skills
         public const string WebVideo = "web_video";
         /// <summary>Fetch ONE page's readable text + image list (P&lt;n&gt; session) into the prompt.</summary>
         public const string WebPage = "web_page";
+        /// <summary>Download one bare sound file (.wav/.mp3/...) into an Audio #N bubble (url= or a web_page audio link).</summary>
+        public const string WebAudio = "web_audio";
 
         /// <summary>Every skill that needs the AI Chat "Web" toggle to be on.</summary>
-        public static readonly HashSet<string> WebSkills = new HashSet<string> { WebSearch, WebImage, WebVideo, WebPage };
+        public static readonly HashSet<string> WebSkills = new HashSet<string> { WebSearch, WebImage, WebVideo, WebPage, WebAudio };
 
         // Audio generation through the configurable gateway (Settings > Audio > Audio
         // generation): music, sound effects, speech -> "Audio #N" bubbles. Hidden from the
@@ -144,7 +146,7 @@ namespace AITools.AIChat.Skills
             GenerateImage, GenerateMovie, ImageToImage, ImageToMovie, VideoToVideo, RifeVideo, ClipVideo,
             ExtractStill, StitchVideo, ReadSkill, SummarizeWithSmallLlm, DescribeImage, InspectImage, Continue,
             DrawText, AddBorder, PasteImage, NewCanvas, CropResize, DrawShape,
-            WebSearch, WebImage, WebVideo, WebPage,
+            WebSearch, WebImage, WebVideo, WebPage, WebAudio,
             GenerateMusic, GenerateSfx, GenerateSpeech, SetVideoAudio
         };
     }

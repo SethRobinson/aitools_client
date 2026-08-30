@@ -157,6 +157,14 @@ namespace AITools.AIChat.Web
                 || path.EndsWith(".mkv") || path.EndsWith(".gif") || path.EndsWith(".avi") || path.EndsWith(".mpg") || path.EndsWith(".mpeg");
         }
 
+        /// <summary>The URL's path names a bare sound file (web_audio direct download; web_video redirects here).</summary>
+        public static bool LooksLikeDirectAudioUrl(string url)
+        {
+            Uri uri;
+            if (string.IsNullOrWhiteSpace(url) || !Uri.TryCreate(url.Trim(), UriKind.Absolute, out uri)) return false;
+            return FfmpegTool.IsSupportedAudioExtension(uri.AbsolutePath ?? "");
+        }
+
         public static string BuildArgs(string url, string outputTemplate, int maxHeight, float maxSourceSeconds, long maxFileBytes, string ffmpegDir, string cookiesBrowser, string jsRuntime)
         {
             var sb = new StringBuilder();

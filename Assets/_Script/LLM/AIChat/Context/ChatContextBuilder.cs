@@ -173,9 +173,9 @@ namespace AITools.AIChat.Context
             // so flipping it mid-chat is seen on the very next turn; when OFF the web_* skills are
             // also left out of the SKILLS block and any web action fails before it starts.
             if (webEnabled)
-                sb.AppendLine("WEB ACCESS: ON (web_search / web_image / web_video / web_page are available).");
+                sb.AppendLine("WEB ACCESS: ON (web_search / web_image / web_video / web_page / web_audio are available).");
             else
-                sb.AppendLine("WEB ACCESS: OFF - the user turned off the Web checkbox in the AI Chat header. web_search, web_image, web_video and web_page are disabled and will fail; do not emit them. Render real people, places and products from your own knowledge with descriptive prompts instead of fetching references; if the user asks for an online lookup, say web access is off and that the Web checkbox in the AI Chat header turns it on.");
+                sb.AppendLine("WEB ACCESS: OFF - the user turned off the Web checkbox in the AI Chat header. web_search, web_image, web_video, web_page and web_audio are disabled and will fail; do not emit them. Render real people, places and products from your own knowledge with descriptive prompts instead of fetching references; if the user asks for an online lookup, say web access is off and that the Web checkbox in the AI Chat header turns it on.");
 
             sb.Append(GpuSnapshot.BuildBlock());
             sb.AppendLine();
@@ -243,7 +243,7 @@ namespace AITools.AIChat.Context
                 }
                 if (anyAudioListed)
                 {
-                    sb.AppendLine("\"generated music\" / \"generated sound effect\" / \"generated speech\" / \"user audio\" entries are Audio #N SOUND files (shown as a waveform), not pictures. TWO uses: (1) on H3 Reference To Video / Reference Video To Video actions, stage one as a voice/music/ambience STYLE reference via audio=\"<audio N>\" (then audio2/audio3) and bind its <Audio N> tag in the prompt - when the user supplies a voice sample of a character, DO this; (2) lay one over a finished Movie with set_video_audio chat_image=\"<movie>\" audio=\"<audio N>\" (mode=\"mix\" keeps the clip's own track, mode=\"replace\" drops it). A Movie's soundtrack can also be an audio= source. Never put an Audio entry in a chat_image/photo slot.");
+                    sb.AppendLine("\"generated music\" / \"generated sound effect\" / \"generated speech\" / \"user audio\" / \"web audio\" entries are Audio #N SOUND files (shown as a waveform), not pictures. TWO uses: (1) on H3 Reference To Video / Reference Video To Video actions, stage one as a voice/music/ambience STYLE reference via audio=\"<audio N>\" (then audio2/audio3) and bind its <Audio N> tag in the prompt - when a voice sample of a character exists here and that character SPEAKS in a render, staging it is MANDATORY, not optional (rendering the character speaking while their sample sits unused wastes the fetch and gets a wrong voice); (2) lay one over a finished Movie with set_video_audio chat_image=\"<movie>\" audio=\"<audio N>\" (mode=\"mix\" keeps the clip's own track, mode=\"replace\" drops it). A Movie's soundtrack can also be an audio= source. Never put an Audio entry in a chat_image/photo slot.");
                 }
                 if (anyMovieListed)
                 {

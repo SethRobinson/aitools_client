@@ -4,7 +4,9 @@ AI Chat can generate music, sound effects, and spoken lines through a small HTTP
 "audio generation gateway" the user runs (Settings > Audio > Audio generation), show
 them as playable `Audio #N` bubbles, accept dropped-in sound files the same way, and
 mix or replace a Movie bubble's soundtrack with any of them via the bundled FFmpeg
-(`set_video_audio`). Typical requests: "generate a song about bananas and add it to
+(`set_video_audio`). Sound files fetched from the web (`web_audio`, see
+`docs/web_media.md`) land through the same `AppendAudioBubble` seam as ordinary
+`Audio #N` bubbles (kind `web audio`, teal waveform). Typical requests: "generate a song about bananas and add it to
 the video", "replace the video's audio with a funny song about computers", "generate
 a door shutting sound effect", "narrate movie 2 in a Scottish voice".
 

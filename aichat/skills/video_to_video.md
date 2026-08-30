@@ -288,10 +288,13 @@ first, then regenerate with them):
   further dialog." Short clips (5s) with one or two lines rarely have gaps;
   15s clips almost always need an explicit silent tail.
 - When voice fidelity matters (real people, recurring characters), give each
-  speaker a standalone audio ref (`generate_speech` with `ref_voice` cloning
-  -> `audio=`/`audio2`/`audio3`) instead of leaning on a whole video clip's
+  speaker a standalone audio ref via `audio=`/`audio2`/`audio3`: an `Audio #N`
+  of that speaker talking (a `web_audio` fetch, a clip's exported audio, or
+  any Audio bubble in chat) instead of leaning on a whole video clip's
   soundtrack - cleaner voices, no video-clipping-by-ear, and the clip slot
-  stays free for motion/camera. At most 3 audio refs total per render.
+  stays free for motion/camera. At most 3 audio refs total per render. This
+  H3 reference path is the assumed way to make someone sound right; do not
+  ask about or offer other voice options.
 - Pick exactly ONE source MOVIE; `chain="true"` must not be combined with `chat_image`.
 - `chat_image="N"` must reference a Movie bubble. If you point it at a still image
   the action will report that it needs a video source.

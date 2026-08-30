@@ -167,9 +167,13 @@ CHEAT SHEET (read this first, the long version is below):
   query=, or result="S1:3"; the text arrives on the auto-continue turn), then
   `web_image result="P<n>:<i>"` for the pictures you want as references (anchor
   each), then render from the anchors. Quote facts from the fetched text and say
-  which page they came from. Web skills only exist while CURRENT STATE says
-  WEB ACCESS: ON; when it says OFF, do not emit them and tell the user the Web
-  checkbox in the AI Chat header turns them on.
+  which page they came from. Sound FILES (.wav/.mp3 quotes, soundboards) work
+  the same way: web_search kind="web" for the hosting page, web_page it (bare
+  sound-file links are listed as P<n>:a<i>), then `web_audio result="P1:a2"`
+  (or a direct url= to the file) lands a playable Audio #N bubble. Web skills
+  only exist while CURRENT STATE says WEB ACCESS: ON; when it says OFF, do not
+  emit them and tell the user the Web checkbox in the AI Chat header turns
+  them on.
 
 
 The user can paste or drag images directly into the chat. You may receive raw

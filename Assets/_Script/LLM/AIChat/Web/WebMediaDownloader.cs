@@ -40,6 +40,11 @@ namespace AITools.AIChat.Web
             Webm,
             Mov,
             Mkv,
+            Wav,
+            Mp3,
+            Flac,
+            Ogg,
+            M4a,
             Html
         }
 
@@ -390,6 +395,10 @@ namespace AITools.AIChat.Web
             if (head[0] == 0xFF && head[1] == 0xD8 && head[2] == 0xFF) return MediaKind.Jpeg;
             if (head[0] == 'G' && head[1] == 'I' && head[2] == 'F' && head[3] == '8') return MediaKind.Gif;
             if (head.Length >= 12 && head[0] == 'R' && head[1] == 'I' && head[2] == 'F' && head[3] == 'F' && head[8] == 'W' && head[9] == 'E' && head[10] == 'B' && head[11] == 'P') return MediaKind.Webp;
+            if (head.Length >= 12 && head[0] == 'R' && head[1] == 'I' && head[2] == 'F' && head[3] == 'F' && head[8] == 'W' && head[9] == 'A' && head[10] == 'V' && head[11] == 'E') return MediaKind.Wav;
+            if (head[0] == 'f' && head[1] == 'L' && head[2] == 'a' && head[3] == 'C') return MediaKind.Flac;
+            if (head[0] == 'O' && head[1] == 'g' && head[2] == 'g' && head[3] == 'S') return MediaKind.Ogg; // vorbis/opus (rarely theora)
+            if (head[0] == 'I' && head[1] == 'D' && head[2] == '3') return MediaKind.Mp3;
             if (head[0] == 'B' && head[1] == 'M') return MediaKind.Bmp;
             if ((head[0] == 'I' && head[1] == 'I' && head[2] == 0x2A && head[3] == 0x00) || (head[0] == 'M' && head[1] == 'M' && head[2] == 0x00 && head[3] == 0x2A)) return MediaKind.Tiff;
             if (head.Length >= 4 && head[0] == 0x1A && head[1] == 0x45 && head[2] == 0xDF && head[3] == 0xA3) return MediaKind.Webm; // EBML (webm/mkv)
@@ -398,8 +407,12 @@ namespace AITools.AIChat.Web
                 string brand = System.Text.Encoding.ASCII.GetString(head, 8, 4).ToLowerInvariant();
                 if (brand.StartsWith("avif") || brand.StartsWith("avis")) return MediaKind.Avif;
                 if (brand.StartsWith("qt")) return MediaKind.Mov;
+                if (brand.StartsWith("m4a") || brand.StartsWith("m4b")) return MediaKind.M4a;
                 return MediaKind.Mp4;
             }
+            // Raw MPEG audio frame sync (an mp3 with no ID3 tag): FF Ex/Fx. Checked after
+            // JPEG (FF D8) and the container magics above, so no overlap.
+            if (head[0] == 0xFF && (head[1] & 0xE0) == 0xE0) return MediaKind.Mp3;
             // Text-ish: HTML / JSON / XML interstitials, error pages.
             int limit = Math.Min(head.Length, 64);
             int i = 0;
@@ -441,6 +454,21 @@ namespace AITools.AIChat.Web
             }
         }
 
+        public static bool IsAudioKind(MediaKind k)
+        {
+            switch (k)
+            {
+                case MediaKind.Wav:
+                case MediaKind.Mp3:
+                case MediaKind.Flac:
+                case MediaKind.Ogg:
+                case MediaKind.M4a:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
         public static string KindLabel(MediaKind k)
         {
             return k == MediaKind.Unknown ? "unknown format" : k.ToString().ToUpperInvariant();
@@ -461,6 +489,11 @@ namespace AITools.AIChat.Web
                 case MediaKind.Webm: return ".webm";
                 case MediaKind.Mov: return ".mov";
                 case MediaKind.Mkv: return ".mkv";
+                case MediaKind.Wav: return ".wav";
+                case MediaKind.Mp3: return ".mp3";
+                case MediaKind.Flac: return ".flac";
+                case MediaKind.Ogg: return ".ogg";
+                case MediaKind.M4a: return ".m4a";
                 default: return ".bin";
             }
         }
