@@ -165,9 +165,13 @@ You only need to download [the zip](https://www.rtsoft.com/files/SethsAIToolsWin
 - Open the scene "Main" and click play to run
 - Assets/GUI/GOTHIC.TFF and Assets/GUI/times.ttf are not included and might break the build because I was having trouble and switched some settings around that might require them now (dynamic vs static TMPro font settings...)
 
+# AI Disclosure
+
+This project was developed with assistance from AI tools. I mean, you can still blame me (Seth) for bugs, but I just wanted to mention it.
+
 ---
 
-Credits and links
+# Credits and links
 
 - Audio: "Chee Zee Jungle"
 
