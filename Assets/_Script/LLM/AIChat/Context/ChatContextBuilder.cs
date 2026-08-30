@@ -243,7 +243,7 @@ namespace AITools.AIChat.Context
                 }
                 if (anyAudioListed)
                 {
-                    sb.AppendLine("\"generated music\" / \"generated sound effect\" / \"generated speech\" / \"user audio\" entries are Audio #N SOUND files (shown as a waveform), not pictures. Put one onto a video with set_video_audio chat_image=\"<movie>\" audio=\"<audio N>\" (mode=\"mix\" keeps the clip's own track, mode=\"replace\" drops it); a Movie's soundtrack can also be an audio= source. Never use image or video skills on an Audio entry.");
+                    sb.AppendLine("\"generated music\" / \"generated sound effect\" / \"generated speech\" / \"user audio\" entries are Audio #N SOUND files (shown as a waveform), not pictures. TWO uses: (1) on H3 Reference To Video / Reference Video To Video actions, stage one as a voice/music/ambience STYLE reference via audio=\"<audio N>\" (then audio2/audio3) and bind its <Audio N> tag in the prompt - when the user supplies a voice sample of a character, DO this; (2) lay one over a finished Movie with set_video_audio chat_image=\"<movie>\" audio=\"<audio N>\" (mode=\"mix\" keeps the clip's own track, mode=\"replace\" drops it). A Movie's soundtrack can also be an audio= source. Never put an Audio entry in a chat_image/photo slot.");
                 }
                 if (anyMovieListed)
                 {

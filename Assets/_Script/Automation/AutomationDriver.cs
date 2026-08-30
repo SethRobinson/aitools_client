@@ -245,9 +245,9 @@ public class AutomationDriver : MonoBehaviour
     }
 
     /// <summary>Import a local video file into AI Chat as a clipped Movie bubble.</summary>
-    public bool ImportChatVideo(string path, float startSeconds, float durationSeconds, double fps, bool includeAudio, out string error)
+    public bool ImportChatVideo(string path, float startSeconds, float durationSeconds, double fps, bool includeAudio, bool saveAudioWav, out string error)
     {
-        return AIChatPanel.AutomationImportVideo(path, startSeconds, durationSeconds, fps, includeAudio, out error);
+        return AIChatPanel.AutomationImportVideo(path, startSeconds, durationSeconds, fps, includeAudio, saveAudioWav, out error);
     }
 
     /// <summary>Run AI Chat's Compact feature (mode "summarize" or "truncate").</summary>

@@ -38,7 +38,7 @@ public class PicMenuNavBar : MonoBehaviour
         _navBar.AddOption("Cleanup pixel art", _picMain.CleanupPixelArt, "Resamples image to 128x128 then scales it back up<br>(results in more pixelly output)");
         _navBar.AddOption("Save as PNG", _picMain.SaveFilePNG, "Saves a PNG (no mask included).  The little S on the bar saves images as bmp with the mask intact, and saves movies / audio as their files.");
         _navBar.AddOption("Copy to Windows clipboard", _picMain.CopyImageToClipboard, "Copies this image to the Windows clipboard (alpha preserved) so you can paste it elsewhere, e.g. into AI Chat.");
-        _navBar.AddOption("Export movie clip", _picMain.OnExportMovieClipButton, "For movie pics: export a trimmed MP4 clip and add it to AI Chat as a Movie bubble.");
+        _navBar.AddOption("Export movie or audio clip", _picMain.OnExportMovieClipButton, "For movie pics: trim a range and export a video clip, audio WAV, or still frame to the output folder and/or AI Chat.");
         //_navBar.AddOption("Render w/ AIT/A1111", _picMain.OnRenderWithAITOrA1111, "Works if you have a AI Tools or A1111 server");
         _navBar.AddOption("Render w/ ComfyUI", _picMain.OnRenderWithComfyUI, "Works if you have a ComfyUI server defined in your config");
         _navBar.AddOption("Copy to Temp Pic 1", _picMain.OnSetTemp1Button, "Set image to temp pic 1, useful to hold for more complicated scripting");

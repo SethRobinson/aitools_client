@@ -97,12 +97,13 @@ public static class AutomationBridge
         return _driver.FocusInput(nameSubstring, selectAll, out error, out matchedPath, out hasCaretGraphic);
     }
 
-    /// <summary>Import a local video file into AI Chat as a clipped Movie bubble.</summary>
-    public static bool ImportChatVideo(string path, float startSeconds, float durationSeconds, double fps, bool includeAudio, out string error)
+    /// <summary>Import a local video file into AI Chat as a clipped Movie bubble.
+    /// saveAudioWav additionally lands the range's audio as a WAV Audio bubble.</summary>
+    public static bool ImportChatVideo(string path, float startSeconds, float durationSeconds, double fps, bool includeAudio, bool saveAudioWav, out string error)
     {
         error = "no driver";
         if (_driver == null) return false;
-        return _driver.ImportChatVideo(path, startSeconds, durationSeconds, fps, includeAudio, out error);
+        return _driver.ImportChatVideo(path, startSeconds, durationSeconds, fps, includeAudio, saveAudioWav, out error);
     }
 
     /// <summary>Import a local still image file into AI Chat as a "#N (you)" image bubble.
@@ -173,13 +174,27 @@ public static class AutomationBridge
         return _driver.Save(index, path, out error);
     }
 
+    /// <summary>Set while a bridge click dispatch asked for a held ALT modifier, so UI
+    /// that checks alt (e.g. the clip chooser's alt-click marker snap) honors synthetic
+    /// clicks - the editor may lack OS keyboard focus during scripted tests, making
+    /// real key injection unreliable.</summary>
+    public static bool SyntheticAltHeld;
+
     /// <summary>Synthesize a pointer click on the UI under top-left game-view pixel (x, y); see AutomationDriver.ClickAt.</summary>
-    public static bool Click(int x, int y, bool rightButton, out string error, out string hitPath)
+    public static bool Click(int x, int y, bool rightButton, bool altHeld, out string error, out string hitPath)
     {
         error = "no driver";
         hitPath = "";
         if (_driver == null) return false;
-        return _driver.ClickAt(x, y, rightButton, out error, out hitPath);
+        SyntheticAltHeld = altHeld;
+        try
+        {
+            return _driver.ClickAt(x, y, rightButton, out error, out hitPath);
+        }
+        finally
+        {
+            SyntheticAltHeld = false;
+        }
     }
 
     /// <summary>Capture the game view (full screen if w/h non-positive) to a PNG.</summary>

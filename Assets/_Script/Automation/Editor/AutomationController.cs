@@ -36,7 +36,8 @@ using UnityEngine;
 //                        focus a TMP_InputField (returns matched path + whether a caret graphic exists)
 //   POST /chat        -> body = message text; open chat + send one turn (ok:false if a busy gate refused the send)
 //   POST /chat_stop   -> press AI Chat's Stop button (aborts the streaming turn, pending inspections/auto-resumes, web fetches)
-//   POST /chat_import_video -> body: path=<file>, optional start=<seconds>, duration=<seconds>, fps=<n>, audio=<true|false>; import clipped Movie bubble
+//   POST /chat_import_video -> body: path=<file>, optional start=<seconds>, duration=<seconds>, fps=<n>, audio=<true|false>,
+//                        save_wav=<true|false> (also land the range's audio as a WAV Audio bubble); import clipped Movie bubble
 //   POST /chat_import_image -> body: path=<file>; import a local still image as a "#N (you)" bubble
 //   POST /chat_attach -> body: path=<file>; stage a still as a PENDING attachment for the next /chat send
 //   POST /chat_main_llm -> body: name=<instance-name substring|default>; select the footer Main LLM override
@@ -315,10 +316,11 @@ public static class AutomationController
                     bool includeAudio = ParseBool(kv, "audio", ParseBool(kv, "include_audio", true));
                     if (ParseBool(kv, "no_audio", false))
                         includeAudio = false;
+                    bool saveAudioWav = ParseBool(kv, "save_wav", false);
                     string result = RunOnMainAndWait(() =>
                     {
                         AutomationBridge.OpenChat();
-                        bool ok = AutomationBridge.ImportChatVideo(videoPath, startSeconds, durationSeconds, fps, includeAudio, out string err);
+                        bool ok = AutomationBridge.ImportChatVideo(videoPath, startSeconds, durationSeconds, fps, includeAudio, saveAudioWav, out string err);
                         return ok
                             ? $"{{\"ok\":true,\"accepted\":\"chat_import_video\",\"path\":{JsonStr(videoPath)}}}"
                             : $"{{\"ok\":false,\"error\":{JsonStr(err)}}}";
@@ -485,6 +487,7 @@ public static class AutomationController
                     var kv = ParseKeyValues(body);
                     int cx = ParseInt(kv, "x", -1), cy = ParseInt(kv, "y", -1);
                     bool right = kv.TryGetValue("button", out var btn) && string.Equals(btn.Trim(), "right", StringComparison.OrdinalIgnoreCase);
+                    bool altHeld = ParseBool(kv, "alt", false);
                     if (cx < 0 || cy < 0)
                     {
                         WriteJson(stream, 200, "{\"ok\":false,\"error\":\"x and y are required\"}");
@@ -492,7 +495,7 @@ public static class AutomationController
                     }
                     string result = RunOnMainAndWait(() =>
                     {
-                        bool ok = AutomationBridge.Click(cx, cy, right, out string err, out string hitPath);
+                        bool ok = AutomationBridge.Click(cx, cy, right, altHeld, out string err, out string hitPath);
                         return ok
                             ? $"{{\"ok\":true,\"hit\":{JsonStr(hitPath)}}}"
                             : $"{{\"ok\":false,\"error\":{JsonStr(err)}}}";

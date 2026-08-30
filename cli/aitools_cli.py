@@ -759,17 +759,16 @@ def main():
     if prune_names:
         api_workflow = workflow.prune_named_inputs(api_workflow, prune_names, args.verbose)
 
-    # H3 Ref2VA accepts at most 3 audio references TOTAL (clip soundtracks +
-    # standalone --audio files). Count what actually survived the prunes so a
-    # 2-clip + 2-audio command fails here with a clear message, not server-side.
-    wired_audio_inputs = sum(
-        1 for node in api_workflow.values() if isinstance(node, dict)
-        for name in (node.get("inputs") or {})
-        if name.startswith("ref_video_audios."))
-    if wired_audio_inputs > 3:
-        die(f"{wired_audio_inputs} audio references wired but MiniMax H3 accepts at "
-            f"most 3 total (clip soundtracks + --audio files). Drop --audio inputs "
-            f"or declare a clip silent with --no-clip-audio N.", 1)
+    # H3 Ref2VA audio groups are separate: ref_video_audios is index-PAIRED with
+    # ref_videos (max 3), standalone --audio files ride ref_audios (max 3).
+    # Count what survived the prunes so an over-wired graph fails here with a
+    # clear message, not server-side.
+    for group, cap, what in (("ref_video_audios.", 3, "clip soundtracks"),
+                             ("ref_audios.", 3, "standalone --audio files")):
+        wired = sum(1 for node in api_workflow.values() if isinstance(node, dict)
+                    for name in (node.get("inputs") or {}) if name.startswith(group))
+        if wired > cap:
+            die(f"{wired} {what} wired but MiniMax H3 accepts at most {cap}.", 1)
     blank_replacements = {ph: "" for ph in workflow.PLACEHOLDERS_BLANK_BY_DEFAULT}
     api_workflow = workflow.replace_placeholders(api_workflow, blank_replacements)
     workflow.override_seeds(api_workflow, seed)

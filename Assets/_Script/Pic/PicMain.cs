@@ -63,10 +63,10 @@ public class PicJob
     
     // Multi-input upload support: filenames for <AITOOLS_INPUT_1>..<AITOOLS_INPUT_14>.
     // 14 slots = 2 reference videos (inputs 1-2) + 9 reference photos (inputs 3-11)
-    // + 3 standalone audio references (inputs 12-14), the MiniMax H3 Ref2VA ceiling
-    // (the node accepts up to 9 ref images / 3 ref audios; total wired audio refs -
-    // clip soundtracks plus standalone - must stay <= 3, enforced by the AI Chat
-    // executor and the CLI before submit).
+    // + 3 standalone audio references (inputs 12-14), the MiniMax H3 Ref2VA ceiling.
+    // Standalone audio feeds the node's ref_audios group (ref_video_audios is
+    // index-paired with ref_videos and ignores unpaired entries - see
+    // docs/minimax_h3.md).
     public const int MAX_INPUT_SLOTS = 14;
     public string[] _inputFilenames = CreateEmptyInputFilenames();
 
@@ -1769,7 +1769,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     {
         if (!IsMovie() || m_picMovie == null)
         {
-            RTQuickMessageManager.Get().ShowMessage("Export movie clip only works on a movie pic");
+            RTQuickMessageManager.Get().ShowMessage("Export movie or audio clip only works on a movie pic");
             return;
         }
 
@@ -1797,69 +1797,16 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             yield break;
         }
 
+        // The chooser does the exporting itself (video clip / audio WAV / still, to the
+        // output folder and/or AI Chat per its remembered destination checkboxes).
         ChatVideoClipChooser.Show(
             null,
             null,
             sourcePath,
             info,
-            selection => StartCoroutine(ExportMovieClipSelection(sourcePath, selection)),
-            () => { },
-            "Export Movie Clip",
-            "Export Clip",
-            initialStartSeconds,
-            onImportStill: seconds =>
-            {
-                // Same shared clip chooser as the drag-drop video import: grab the frame
-                // at the current scrub position and drop it into AI Chat as an image bubble.
-                string dims = info.Width > 0 && info.Height > 0 ? $"{info.Width}x{info.Height}" : null;
-                if (!AIChatPanel.AddLocalStillFrameToChat(sourcePath, seconds, dims, out string stillError))
-                    RTQuickMessageManager.Get().ShowMessage("Could not import still: " + stillError);
-            });
-    }
-
-    private IEnumerator ExportMovieClipSelection(string sourcePath, ChatVideoClipChooser.ClipSelection selection)
-    {
-        if (selection == null)
-            yield break;
-
-        string outputPath = FfmpegTool.GetClipOutputPath(sourcePath);
-        FfmpegTool.ClipResult result = null;
-        RTQuickMessageManager.Get().ShowMessage("Exporting movie clip...");
-        yield return FfmpegTool.CreateClip(
-            sourcePath,
-            selection.StartSeconds,
-            selection.DurationSeconds,
-            outputPath,
-            r => result = r,
-            fps: selection.Fps,
-            includeAudio: selection.IncludeAudio);
-
-        if (result == null || !result.Success)
-        {
-            RTQuickMessageManager.Get().ShowMessage("Could not export movie clip: " + (result != null ? result.Error : "unknown error"));
-            yield break;
-        }
-
-        string dimensions = null;
-        FfmpegTool.VideoInfo outputInfo = null;
-        string probeError = null;
-        yield return FfmpegTool.ProbeVideo(result.OutputPath, (i, e) => { outputInfo = i; probeError = e; });
-        if (outputInfo != null)
-            dimensions = BuildMovieClipDimensionsText(outputInfo);
-
-        if (AIChatPanel.AddLocalMovieClipToChat(result.OutputPath, dimensions, out string chatError))
-            RTQuickMessageManager.Get().ShowMessage("Exported clip and added it to AI Chat");
-        else
-            RTQuickMessageManager.Get().ShowMessage("Exported clip, but could not add to AI Chat: " + chatError);
-    }
-
-    private static string BuildMovieClipDimensionsText(FfmpegTool.VideoInfo info)
-    {
-        if (info == null || info.Width <= 0 || info.Height <= 0) return null;
-        string dims = $"{info.Width}x{info.Height}";
-        if (info.Fps > 0)
-            dims += $" @{info.Fps:0.##}fps";
-        return dims;
+            onClose: null,
+            titleText: "Export Movie or Audio Clip",
+            initialStartSeconds: initialStartSeconds);
     }
 
     //Encodes the current image to a temp PNG and shells out to utils\RTClip.exe in "set"
@@ -2989,6 +2936,56 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         catch (System.Exception ex)
         {
             Debug.LogWarning("PicMain.MakeVideoThumbPng: " + ex.Message);
+            return null;
+        }
+        finally
+        {
+            if (tex != null) UnityEngine.Object.Destroy(tex);
+        }
+    }
+
+    // Placeholder tile shown in the "?" info panel's inputs row for AUDIO reference
+    // slots. Sounds have no frame to show, and an EMPTY slot reads as "the audio was
+    // never sent" (2026-08-30 report: the wired voice ref looked missing because the
+    // Inputs->Result strip showed only the photos). Dark tile + white waveform bars,
+    // deterministic so every audio input gets the identical icon. Cached once.
+    private static byte[] s_audioThumbPngCache;
+    private static byte[] MakeAudioThumbPng()
+    {
+        if (s_audioThumbPngCache != null) return s_audioThumbPngCache;
+        const int w = 160, h = 120;
+        Texture2D tex = null;
+        try
+        {
+            tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
+            var bg = new Color(0.13f, 0.13f, 0.16f, 1f);
+            var px = new Color[w * h];
+            for (int i = 0; i < px.Length; i++) px[i] = bg;
+            tex.SetPixels(px);
+            // Fixed symmetric waveform envelope - instantly reads as "sound".
+            float[] env = { 0.18f, 0.42f, 0.30f, 0.68f, 0.52f, 0.88f, 0.62f, 1.0f,
+                            0.72f, 0.94f, 0.50f, 0.78f, 0.34f, 0.58f, 0.22f, 0.40f };
+            int bars = env.Length;
+            int barW = Mathf.Max(2, w / (bars * 2));
+            int span = bars * barW * 2 - barW;
+            int x0 = (w - span) / 2;
+            float cy = h * 0.5f, maxH = h * 0.38f;
+            for (int b = 0; b < bars; b++)
+            {
+                int bh = Mathf.Max(2, Mathf.RoundToInt(env[b] * maxH));
+                int bx = x0 + b * barW * 2;
+                for (int x = bx; x < bx + barW; x++)
+                    for (int y = (int)(cy - bh); y <= (int)(cy + bh); y++)
+                        if (x >= 0 && x < w && y >= 0 && y < h)
+                            tex.SetPixel(x, y, Color.white);
+            }
+            tex.Apply();
+            s_audioThumbPngCache = tex.EncodeToPNG();
+            return s_audioThumbPngCache;
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogWarning("PicMain.MakeAudioThumbPng: " + ex.Message);
             return null;
         }
         finally
@@ -4321,6 +4318,14 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                         string audioPath = m_pendingAudioUploadPaths[audioUploadSlot];
                         if (!string.IsNullOrEmpty(audioPath))
                         {
+                            // Stash a waveform tile for the "?" info panel so the user can SEE
+                            // an audio reference was fed into this slot alongside the photo/video
+                            // thumbs - an empty slot reads as "the audio was never sent".
+                            if (int.TryParse(uploadParts[1], out int aThumbIdx)
+                                && aThumbIdx >= 0 && aThumbIdx < m_pendingInputImagePngs.Length)
+                            {
+                                m_pendingInputImagePngs[aThumbIdx] = MakeAudioThumbPng();
+                            }
                             uploaderScript.UploadFile(serverID, audioPath, remoteFileName, OnUploadFinished);
                             return; // Audio upload handled, exit early
                         }

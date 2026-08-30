@@ -16,10 +16,15 @@ native stereo audio (dialog in 11 languages), no RIFE in the output path.
   - **Ref2VA** (`minimax_h3_ref2va_pruned_int8_convrot.safetensors`) - reference-
     conditioned generation via `MiniMaxH3ReferenceToVideo`. Accepts MIXED references
     in one run: up to 9 images (`ref_images.ref_image_N`), 3 videos
-    (`ref_videos.ref_video_N`), and 3 audio refs (`ref_video_audios.ref_video_audio_N`
-    carry each clip's soundtrack). No first-frame pinning. Prompt tags are per-type in
-    connection order: `<Picture 1>`.., `<Video 1>`.., `<Audio 1>`.. - give each
-    reference ONE job (video = motion/camera/voice, picture = identity/setting).
+    (`ref_videos.ref_video_N`), 3 clip soundtracks (`ref_video_audios.ref_video_audio_N`
+    - index-PAIRED with the same-numbered `ref_video_N` and SILENTLY IGNORED without
+    it, verified in `comfy_extras/nodes_minimax_h3.py` 2026-08-30), and 3 standalone
+    audio refs (`ref_audios.ref_audio_N` - the group for wav/music/voice-style
+    samples). No first-frame pinning. Prompt tags are per-type in connection order:
+    `<Picture 1>`.., `<Video 1>`.., and `<Audio j>` numbers each clip soundtrack
+    (emitted just before its video) then the standalone audios - give each
+    reference ONE job (video = motion/camera, audio = voice/music style, picture =
+    identity/setting).
   - "Exact start frame + specific person" therefore needs the two-stage recipe
     (Klein 2-input person insert -> `Image To Video (MiniMax H3)`); documented in
     `aichat/skills/image_to_movie.md`.
@@ -131,13 +136,13 @@ native stereo audio (dialog in 11 languages), no RIFE in the output path.
   - `<AITOOLS_INPUT_3>`..`_11` photos 1-9 (`VHS_LoadImagePath`) -> `ref_image_0..8`
     (the node's full 9-image capacity)
   - `<AITOOLS_INPUT_12>`..`_14` standalone audio refs 1-3 (`VHS_LoadAudio`, since
-    2026-08-30) -> `ref_video_audio_2..4`. Wav/mp3/mp4 all decode. The node accepts
-    at most 3 audio refs TOTAL (clip soundtracks + standalone) - the graph declares
-    5 potential audio inputs but the executor/CLI refuse before submit if more than
-    3 would survive pruning; `<Audio N>` numbers the survivors in group order (clip
-    soundtracks first, then standalone).
-  To run it manually in ComfyUI, delete the loaders you aren't using (and keep at
-  most 3 audio wires connected).
+    2026-08-30) -> `ref_audios.ref_audio_0..2`. Wav/mp3/mp4 all decode. MUST be
+    this group: the first wiring shipped them into `ref_video_audio_2..4`, which
+    is index-paired with `ref_videos` and the node silently ignored them (fixed
+    2026-08-30 after a "didn't use my wav" report - the renders were literally
+    unconditioned by the audio). `<Audio N>` numbers clip soundtracks first, then
+    standalone.
+  To run it manually in ComfyUI, delete the loaders you aren't using.
 - `ref_multi_to_video_minimax_h3_turbo.json` - the SAME universal Ref2VA graph
   plus lightx2v's Ref2V turbo distill; run by the DEFAULT reference presets
   since 2026-08-27. Deltas from the 20-step graph, mirroring lightx2v's
@@ -301,12 +306,18 @@ Six reference presets, split across the universal workflow pair (since
     `PicMain.SetPendingAudioUpload(1..3)` -> `@upload|audio1..3|input12..14|`.
     `<Audio N>` numbers clip soundtracks first (silent clips skipped when
     probeable), then standalone files. The executor blocks with a correction
-    turn on: an unresolvable ref, a still image, a silent source, a
-    still-rendering Movie with no file, or more than 3 total audio refs. An
-    Audio bubble in a photo slot (`chat_imageN`) blocks with "use audio=";
-    audio attrs on non-Reference presets inject an ignored-note. The intended
-    voice flow is generate_speech (ref_voice cloning) -> anchor -> audio ref,
-    giving each character a clean per-voice sample without a video slot.
+    turn on: an unresolvable ref, a still image, a silent source, or a
+    still-rendering Movie with no file. An Audio bubble in a photo slot
+    (`chat_imageN`) blocks with "use audio="; audio attrs on non-Reference
+    presets inject an ignored-note. Audio refs are STYLE conditioning, same
+    contract as the video/photo refs: they nudge voice character / music /
+    ambience toward the sample, they are NOT an exact voice clone. Two
+    findings from the 2026-08-30 "didn't use my wav" report: (1) the "?"
+    Inputs strip showed nothing for audio inputs - it now shows a waveform
+    tile (`PicMain.MakeAudioThumbPng`); (2) the REAL bug - standalone audio
+    was wired into the index-paired `ref_video_audios` group, which the node
+    silently ignores without a same-numbered video, so those renders had ZERO
+    audio conditioning. Standalone audio now rides `ref_audios.ref_audio_0..2`.
   - Aspect comes from the PRIMARY clip only; length stays the preset's unless the
     action carries `duration="N"` (seconds).
 - Explicit durations: any H3 generation action (t2v/i2v/r2v/rv2v, chained or not)
@@ -362,10 +373,9 @@ Six reference presets, split across the universal workflow pair (since
   audio spec: WHO speaks and their EXACT quoted words (or an explicit
   `No dialog; nobody speaks.`), a named ambient sound, and music or `no
   music` (reference prompts may defer a layer to `<Audio N>` instead). For
-  voice FIDELITY the skills push per-speaker standalone audio refs
-  (generate_speech + ref_voice cloning -> `audio=`) over whole-clip
-  soundtracks.
-- Speech-quality A/B findings (2026-08-30, Whisper-judged via the glados STT
+  per-speaker voice STYLE the skills push standalone audio refs (`audio=`)
+  over whole-clip soundtracks - style nudges, not clones.
+- Speech-quality A/B findings (2026-08-30, Whisper-judged via the local STT
   worker; matrix in this session's scratchpad, same seed/photo/prompt):
   - **The turbo Ref2V distill is NOT a speech-gibberish source.** With exact
     quoted dialog, EVERY variant was word-perfect: turbo 8/12/16 steps,
@@ -394,7 +404,7 @@ Six reference presets, split across the universal workflow pair (since
     Quality presets (or bump the turbo graph to 12 steps - word-perfect at
     5s, untested at 15s, ~+50% time).
   - All known upstream audio fixes (ComfyUI #15243 audio-sigma carry, #15377
-    offload, #15390 wrapper carry) are already in hal's 0.31.0 build; a
+    offload, #15390 wrapper carry) are already in the ComfyUI server's 0.31.0 build; a
     ComfyUI update buys nothing here.
   - The alibaba-pai PDD LoRA renders at turbo speed (~68s/5s clip) with
     correct speech and loads via the same plain core LoRA node (no server
@@ -419,8 +429,10 @@ Six reference presets, split across the universal workflow pair (since
    out.mp4 -p "Reference Video To Video (MiniMax H3) 5s" --video clip.mp4 -i2
    photo.png --audio voice.wav -v` against a server with the H3 models - watch for "pruned unused loader node(s)" and check
    the regenerated `*_cached_api_version.json` has all autogrow inputs on node 7
-   (photos AND the 5 `ref_video_audios.*` entries; verified end-to-end 2026-08-30:
-   a photo + unpaired `--audio` wav renders fine, audio renumbered to `_0`).
+   (photos, the paired `ref_video_audios.*` entries, AND the standalone
+   `ref_audios.*` entries - standalone audio in the wrong group renders
+   "fine" while conditioning nothing, so check the GROUP, not just that a
+   wav loads).
    Offline variant (servers down): append `--dry-run` and inspect the emitted
    `out.mp4.api.json` instead - same pruning/override pipeline, faked upload
    paths, no network.

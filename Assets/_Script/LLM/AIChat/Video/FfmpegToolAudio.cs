@@ -144,6 +144,22 @@ namespace AITools.AIChat.Video
             return System.IO.Path.Combine(dir, stem + "_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ext);
         }
 
+        /// <summary>Where the clip chooser's "Save audio" WAV lands so chat owns its own copy.</summary>
+        public static string GetExtractedAudioWavPath(string sourcePath)
+        {
+            string dir = System.IO.Path.Combine(GetAppRoot(), "tempCache", "aichat_audio");
+            Directory.CreateDirectory(dir);
+            string stem = "clip_audio";
+            try
+            {
+                string fileStem = System.IO.Path.GetFileNameWithoutExtension(sourcePath);
+                if (!string.IsNullOrWhiteSpace(fileStem))
+                    stem = SanitizeFileStem(fileStem);
+            }
+            catch { }
+            return System.IO.Path.Combine(dir, stem + "_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".wav");
+        }
+
         public static string GetVoiceSamplePath()
         {
             string dir = System.IO.Path.Combine(GetAppRoot(), "tempCache", "aichat_audio");
@@ -267,6 +283,26 @@ namespace AITools.AIChat.Video
                 + " -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p"
                 + " -c:a aac -b:a 192k -movflags +faststart -shortest "
                 + QuoteArg(outputPath);
+        }
+
+        /// <summary>
+        /// Cut a full-quality WAV section out of a video/audio file: native channel count
+        /// and sample rate, 16-bit PCM. The clip chooser's "Save audio" path; unlike
+        /// <see cref="ExtractAudioSection"/> it is NOT downmixed for voice cloning.
+        /// </summary>
+        public static IEnumerator ExtractAudioWavSection(string inputPath, float startSeconds, float durationSeconds, string outputWavPath, Action<ClipResult> onDone)
+        {
+            startSeconds = Mathf.Max(0f, startSeconds);
+            // No maximum: the clip chooser can export arbitrarily long ranges.
+            durationSeconds = Mathf.Max(durationSeconds <= 0f ? FfmpegTool.DefaultClipDurationSeconds : durationSeconds, 0.1f);
+            int timeoutMs = (int)Mathf.Max(AudioSectionTimeoutMs, durationSeconds * 1000f + 30000f);
+            string args = "-hide_banner -y"
+                + " -ss " + startSeconds.ToString("0.###", CultureInfo.InvariantCulture)
+                + " -t " + durationSeconds.ToString("0.###", CultureInfo.InvariantCulture)
+                + " -i " + QuoteArg(inputPath)
+                + " -vn -map 0:a:0 -c:a pcm_s16le -f wav "
+                + QuoteArg(outputWavPath);
+            yield return RunFfmpegToFile(args, outputWavPath, timeoutMs, "ffmpeg audio wav section", onDone);
         }
 
         /// <summary>

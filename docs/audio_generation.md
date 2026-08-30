@@ -13,12 +13,13 @@ a door shutting sound effect", "narrate movie 2 in a Scottish voice".
 | piece | where | role |
 |---|---|---|
 | Gateway client | `Assets/_Script/LLM/AIChat/Audio/AudioGenClient.cs` | `POST {base}/audio` (music, sfx) / `POST {base}/tts` (speech) as multipart, optional `Authorization: Bearer`, saves the returned file under `tempCache/aichat_audio/`, surfaces JSON `detail` errors, `Handle.Cancel()` for Stop |
-| FFmpeg audio helpers | `Assets/_Script/LLM/AIChat/Video/FfmpegToolAudio.cs` (`partial class FfmpegTool`) | `ProbeAudio`, `CreateAudioWaveformPreview` (showwaves -> 640x160 H.264 + AAC), `ExtractAudioSection` (voice-clone sample), `MuxAudioIntoVideo` + `BuildMuxAudioArgs` (mix / replace graph), `IsSupportedAudioExtension` |
+| FFmpeg audio helpers | `Assets/_Script/LLM/AIChat/Video/FfmpegToolAudio.cs` (`partial class FfmpegTool`) | `ProbeAudio`, `CreateAudioWaveformPreview` (showwaves -> 640x160 H.264 + AAC), `ExtractAudioSection` (voice-clone sample, mono 24k), `ExtractAudioWavSection` (full-quality native-rate WAV for the clip chooser's `Export audio clip`), `MuxAudioIntoVideo` + `BuildMuxAudioArgs` (mix / replace graph), `IsSupportedAudioExtension` |
 | Executor | `SkillActionExecutor.cs` `ExecuteGenerateAudio` / `ExecuteSetVideoAudio` | attribute parsing + aliases, clamps (music 10-360 s: the music model rejects shorter with a 422, sfx 0.1-11 s), `ref_voice` resolution, defers the pump like clip_video |
 | Host | `AIChatPanel.cs` "Audio generation" region | `GenerateAudioActionCoroutine`, `SetVideoAudioActionCoroutine`, `AppendAudioBubble`, `HandleDroppedAudioFile`, `CancelAllAudioGeneration`, `ChatImageRecord.isAudio/audioPath/durationSeconds` |
 | Prompt | `ChatContextBuilder.cs` (`ChatImageState.IsAudio`, the "Audio #N" legend), `aichat/skills/set_video_audio.md` (tracked), `aichat/skills/local_generate_music.md` / `local_generate_sfx.md` / `local_generate_speech.md` (gitignored, machine-local) | routing + the model-facing parameter docs |
 | Settings | `AppSettingsPanel.BuildAudioTab` "Audio generation" box, `Config.cs` `set_audio_gen_endpoint` / `set_audio_gen_api_key` | gateway URL + optional key in `config.txt` |
 | Drops | `ChatImageAttachmentZone.OnAudioFileDropped`, `DragAndDropHandler` | `.wav .mp3 .flac .ogg .m4a .aac .opus .wma .aiff` dropped on the chat -> `Audio #N (you)`; dropped elsewhere -> toast |
+| Clip audio | `ChatVideoClipChooser` `Export audio clip` button -> `AIChatPanel.AddLocalClipAudioToChat` | the video clip chooser (drag-drop import and `Process > Export movie or audio clip`) cuts the selected range's audio to a WAV `Audio #N` bubble (kind `user audio`) and/or a WAV in the output folder |
 
 ## Gateway contract (what the server must implement)
 

@@ -1403,9 +1403,13 @@ namespace AITools.AIChat.Skills
         private static readonly Regex s_promptAudioTagRegex =
             new Regex(@"<\s*audio\s+(\d+)\s*>", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-        // The H3 Ref2VA node accepts at most 3 audio references TOTAL: staged clip
-        // soundtracks (ref_video_audio_0/1) plus standalone audio files (audio=/audio2=/
-        // audio3= -> workflow inputs 12-14 -> ref_video_audio_2..4).
+        // Standalone audio reference slots (audio=/audio2=/audio3= -> workflow inputs
+        // 12-14 -> the node's ref_audios.ref_audio_0..2 group). SEPARATE from clip
+        // soundtracks: ref_video_audios is index-PAIRED with ref_videos and the node
+        // silently ignores unpaired entries (the 2026-08-30 "didn't use my wav" bug -
+        // standalone audio wired there conditions NOTHING). <Audio j> ordinals still
+        // run clip soundtracks first (each emitted just before its <Video k>), then
+        // standalone files.
         private const int MaxH3AudioRefs = 3;
 
         /// <summary>
@@ -2074,16 +2078,6 @@ namespace AITools.AIChat.Skills
                     audioDescs.Add(stagedAudioDescs[i]);
                     audioRequired.Add(true);
                 }
-                // The Ref2VA node caps at 3 audio refs total (clip soundtracks + standalone).
-                if (audioDescs.Count > MaxH3AudioRefs)
-                {
-                    _host?.AddSystemInjectionAndBubble(
-                        $"Skill '{action.SkillId}': H3 accepts at most {MaxH3AudioRefs} audio references TOTAL, but " +
-                        $"{audioDescs.Count} were staged ({string.Join(", ", audioDescs)} - clip soundtracks count too). " +
-                        "Drop audio attributes (or use a silent clip) until at most 3 remain, then re-emit.");
-                    _host?.RequestContinueTurn();
-                    return;
-                }
                 if (stagedAudioPaths.Count > 0)
                     _host?.AddInfoBubble($"(standalone audio wired as <Audio {audioDescs.Count - stagedAudioPaths.Count + 1}>" +
                         (stagedAudioPaths.Count > 1 ? $"..<Audio {audioDescs.Count}>)" : ">)"));
@@ -2475,15 +2469,6 @@ namespace AITools.AIChat.Skills
                 {
                     audioDescs.Add(chainAudioDescs[i]);
                     audioRequired.Add(true);
-                }
-                if (audioDescs.Count > MaxH3AudioRefs)
-                {
-                    _host?.AddSystemInjectionAndBubble(
-                        $"Skill '{action.SkillId}': H3 accepts at most {MaxH3AudioRefs} audio references TOTAL, but " +
-                        $"{audioDescs.Count} were staged ({string.Join(", ", audioDescs)} - clip soundtracks count too). " +
-                        "Drop audio attributes until at most 3 remain, then re-emit.");
-                    _host?.RequestContinueTurn();
-                    return;
                 }
                 int chainBubbleIdx = _host?.GetChatImageIndexForPic(prevPic) ?? 0;
                 string reEmit = chainBubbleIdx > 0

@@ -8214,33 +8214,24 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 _videoClipChooser = null;
                 FinishVideoImport();
             }
+            // The chooser is self-contained now: its Export buttons cut clips/audio/
+            // stills and deliver to file and/or AI Chat themselves (via the AddLocal*
+            // statics). We just hold the video-import gate while it is open.
             _videoClipChooser = ChatVideoClipChooser.Show(
                 _mainPanel,
                 _font,
                 path,
                 info,
-                selection =>
+                onClose: exportedAnything =>
                 {
                     _videoClipChooser = null;
                     if (epoch != _videoImportEpoch)
                         return;
-                    StartCoroutine(TranscodeAndAppendVideoClip(path, info, selection, epoch, null, isUserImport: true));
-                },
-                () =>
-                {
-                    _videoClipChooser = null;
-                    if (epoch == _videoImportEpoch)
-                    {
-                        FinishVideoImport();
+                    FinishVideoImport();
+                    if (!exportedAnything)
                         AddSystemMessage("Video import cancelled.", includeInLLMRecap: false);
-                    }
                 },
-                onImportStill: seconds =>
-                {
-                    if (epoch != _videoImportEpoch)
-                        return;
-                    StartCoroutine(ExtractAndAppendStillFrame(path, info, seconds, epoch));
-                });
+                titleText: "Import Video Clip");
             UpdateVideoImportStatus(force: true);
             yield break;
         }
@@ -8295,6 +8286,104 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             string durationText = durationSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
             AddSystemMessage($"Imported {durationText}s video clip starting at {startText}s as Movie #{idx}.", includeInLLMRecap: false);
         }
+
+        if (selection != null && selection.SaveAudioWav)
+        {
+            if (info == null || !info.HasAudio)
+            {
+                AddSystemMessage("Save audio: the source video has no audio track.", includeInLLMRecap: false);
+            }
+            else
+            {
+                yield return ExtractAndAppendClipAudio(sourcePath, startSeconds, durationSeconds, epoch);
+                if (epoch != _videoImportEpoch)
+                    yield break;
+            }
+        }
+        FinishVideoImport();
+    }
+
+    /// <summary>
+    /// The clip chooser's audio export: cut the same start/duration range out of the
+    /// ORIGINAL source as a full-quality WAV and land it as an Audio bubble. The bubble's
+    /// S button saves the .wav next to the waveform preview movie, and the record's
+    /// audioPath makes it usable as a set_video_audio / ref_voice source like any other
+    /// imported sound file. Caller owns the video-import gate and the final epoch check.
+    /// </summary>
+    private IEnumerator ExtractAndAppendClipAudio(string sourcePath, float startSeconds, float durationSeconds, int epoch)
+    {
+        string wavPath = FfmpegTool.GetExtractedAudioWavPath(sourcePath);
+        FfmpegTool.ClipResult wav = null;
+        yield return FfmpegTool.ExtractAudioWavSection(sourcePath, startSeconds, durationSeconds, wavPath, r => wav = r);
+        if (epoch != _videoImportEpoch) yield break;
+        if (wav == null || !wav.Success)
+        {
+            AddSystemMessage("Could not save clip audio: " + (wav != null ? wav.Error : "unknown error"), includeInLLMRecap: false);
+            yield break;
+        }
+
+        FfmpegTool.AudioInfo audioInfo = null;
+        yield return FfmpegTool.ProbeAudio(wavPath, (i, e) => audioInfo = i);
+        if (epoch != _videoImportEpoch) yield break;
+        double audioDuration = audioInfo != null && audioInfo.DurationSeconds > 0 ? audioInfo.DurationSeconds : durationSeconds;
+
+        string previewPath = FfmpegTool.GetAudioPreviewOutputPath(wavPath);
+        FfmpegTool.ClipResult preview = null;
+        yield return FfmpegTool.CreateAudioWaveformPreview(wavPath, previewPath, FfmpegTool.AudioColorUser, r => preview = r);
+        if (epoch != _videoImportEpoch) yield break;
+        if (preview == null || !preview.Success)
+        {
+            AddSystemMessage("Could not render the clip audio preview: " + (preview != null ? preview.Error : "unknown error"), includeInLLMRecap: false);
+            yield break;
+        }
+
+        string name = System.IO.Path.GetFileName(sourcePath);
+        string durText = AudioGenClient.FormatSeconds(audioDuration);
+        string startText = startSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+        PicMain pic = AppendAudioBubble(preview.OutputPath, wavPath, null, "user audio", audioDuration, isUserImport: true,
+            captionShort: "audio from video: " + name,
+            captionLong: $"Audio track ({durText}, WAV) extracted from user video \"{name}\" starting at {startText}s. Its content was not transcribed; ask the user what it contains if that matters.");
+        if (pic != null)
+            AddSystemMessage($"Saved clip audio ({durText}) as Audio #{_chatImagePics.Count}.", includeInLLMRecap: false);
+    }
+
+    /// <summary>
+    /// "Export audio clip" to AI Chat from the clip chooser: extract the selection's
+    /// audio range from the source as a WAV and add it to AI Chat as an Audio bubble.
+    /// Fire-and-forget (extraction is async); returns false only if chat could not be
+    /// opened or the source is missing.
+    /// </summary>
+    public static bool AddLocalClipAudioToChat(string sourcePath, float startSeconds, float durationSeconds, out string error)
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(sourcePath))
+        {
+            error = "no source path";
+            return false;
+        }
+        if (!System.IO.File.Exists(sourcePath))
+        {
+            error = "source file not found: " + sourcePath;
+            return false;
+        }
+
+        Show();
+        if (_instance == null)
+        {
+            error = "no chat panel";
+            return false;
+        }
+
+        _instance.StartCoroutine(_instance.AppendExportedClipAudioRoutine(sourcePath, startSeconds, durationSeconds));
+        return true;
+    }
+
+    private IEnumerator AppendExportedClipAudioRoutine(string sourcePath, float startSeconds, float durationSeconds)
+    {
+        int epoch = _videoImportEpoch;
+        BeginVideoImport("Importing audio");
+        yield return ExtractAndAppendClipAudio(sourcePath, startSeconds, durationSeconds, epoch);
+        if (epoch != _videoImportEpoch) yield break;
         FinishVideoImport();
     }
 
@@ -8346,41 +8435,6 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         return info != null && info.Width > 0 && info.Height > 0 ? $"{info.Width}x{info.Height}" : null;
     }
 
-    /// <summary>
-    /// Drag-drop video import "Import still": extract + append, gated by the video-import
-    /// busy state and epoch so a Clear/cancel mid-extraction drops the frame silently. The
-    /// clip chooser stays open, so several stills can be grabbed from different positions.
-    /// </summary>
-    private IEnumerator ExtractAndAppendStillFrame(string sourcePath, FfmpegTool.VideoInfo info, float atSeconds, int epoch)
-    {
-        BeginVideoImport();
-
-        bool ok = false;
-        string err = null;
-        yield return AppendStillFrameFromSource(sourcePath, BuildStillDimensionsText(info), atSeconds,
-            isStale: () => epoch != _videoImportEpoch,
-            onDone: (o, e) => { ok = o; err = e; });
-
-        if (ok)
-        {
-            int idx = _chatImagePics.Count;
-            string atText = atSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
-            AddSystemMessage($"Imported still frame at {atText}s as #{idx}.", includeInLLMRecap: false);
-        }
-        else if (!string.IsNullOrEmpty(err))
-        {
-            AddSystemMessage("Could not import still frame: " + err, includeInLLMRecap: false);
-        }
-
-        FinishVideoImport();
-    }
-
-    /// <summary>
-    /// Static entry point used by a movie pic's "Export movie clip" dialog so its
-    /// "Import still" button lands the current-position frame in AI Chat as an image
-    /// bubble. Fire-and-forget (extraction is async); returns false only if chat could
-    /// not be opened or the source is missing.
-    /// </summary>
     /// <summary>
     /// Automation seam: stage a local image file as a PENDING attachment on the next
     /// user message, going through the REAL attachment-zone path (thumbnail strip,
@@ -11821,7 +11875,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     /// Automation-only local video import. Bypasses the human clip chooser by taking
     /// explicit start/duration values, then appends the normalized MP4 as a Movie bubble.
     /// </summary>
-    public static bool AutomationImportVideo(string path, float startSeconds, float durationSeconds, double fps, bool includeAudio, out string error)
+    public static bool AutomationImportVideo(string path, float startSeconds, float durationSeconds, double fps, bool includeAudio, bool saveAudioWav, out string error)
     {
         error = null;
         if (string.IsNullOrWhiteSpace(path))
@@ -11851,11 +11905,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             return false;
         }
 
-        _instance.StartCoroutine(_instance.AutomationImportVideoRoutine(path, startSeconds, durationSeconds, fps, includeAudio));
+        _instance.StartCoroutine(_instance.AutomationImportVideoRoutine(path, startSeconds, durationSeconds, fps, includeAudio, saveAudioWav));
         return true;
     }
 
-    private IEnumerator AutomationImportVideoRoutine(string path, float startSeconds, float durationSeconds, double fps, bool includeAudio)
+    private IEnumerator AutomationImportVideoRoutine(string path, float startSeconds, float durationSeconds, double fps, bool includeAudio, bool saveAudioWav)
     {
         int epoch = _videoImportEpoch;
         BeginVideoImport();
@@ -11883,6 +11937,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (fps > 0 && !double.IsNaN(fps) && !double.IsInfinity(fps))
             selection.Fps = fps;
         selection.IncludeAudio = includeAudio;
+        selection.SaveAudioWav = saveAudioWav;
 
         yield return TranscodeAndAppendVideoClip(path, info, selection, epoch, null, isUserImport: true);
     }

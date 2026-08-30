@@ -9,8 +9,13 @@ using UnityEngine.Video;
 namespace AITools.AIChat.Video
 {
     /// <summary>
-    /// Small modal used when a user drops a long local video over AI Chat. It lets
-    /// them pick a short FFmpeg clip without sending the original movie to ComfyUI.
+    /// Trim/export dialog for a local video: shown when a long video is dropped over AI
+    /// Chat and from a movie pic's "Export movie or audio clip". A start/end marker pair
+    /// picks the range; the Export buttons cut a video clip, an audio-only WAV, or a
+    /// still frame from it and send each to the checked destinations ("Export to file" =
+    /// the app's output folder, "Export to AI Chat" = a Movie/Audio/still bubble). The
+    /// dialog stays open between exports so several things can be grabbed; Close ends it.
+    /// Export work runs on GameLogic's coroutines so closing mid-export can't kill it.
     /// </summary>
     public class ChatVideoClipChooser : MonoBehaviour
     {
@@ -19,15 +24,12 @@ namespace AITools.AIChat.Video
         private string _sourcePath;
         private string _previewSourcePath;
         private string _previewProxyPath;
-        private string _titleText = "Import Video Clip";
-        private string _confirmText = "Import Clip";
+        private string _titleText = "Export Video / Audio Clip";
         private FfmpegTool.VideoInfo _info;
-        private Action<ClipSelection> _onConfirm;
-        private Action _onCancel;
-        // Invoked by the "Import still" button with the current preview position in
-        // seconds. Unlike Confirm/Cancel it does NOT close the dialog, so the user can
-        // scrub and import several stills.
-        private Action<float> _onImportStill;
+        // Invoked by the Close button; the bool says whether anything was exported.
+        // NOT invoked when the dialog is destroyed externally (chat Clear) - that
+        // caller owns its own cleanup.
+        private Action<bool> _onClose;
 
         private VideoPlayer _player;
         private AudioSource _audioSource;
@@ -40,40 +42,73 @@ namespace AITools.AIChat.Video
         private Image _proxyProgressFill;
         private TextMeshProUGUI _proxyProgressText;
         private TMP_InputField _startField;
+        private TMP_InputField _endField;
         private TMP_InputField _durationField;
         private TMP_InputField _fpsField;
         private Toggle _includeAudioToggle;
+        private Toggle _exportToFileToggle;
+        private Toggle _exportToChatToggle;
         private Button _playButton;
         private TextMeshProUGUI _playButtonLabel;
         private Button _duration3Button;
         private Button _duration5Button;
         private Button _duration8Button;
+        private RectTransform _markerArea;
+        private RectTransform _rangeFill;
+        private RectTransform _startMarker;
+        private RectTransform _endMarker;
         private float _duration = FfmpegTool.DefaultClipDurationSeconds;
         private float _selectedStartSeconds;
+        private float _selectedEndSeconds;
         private float _previewCurrentSeconds;
         private float _initialStartSeconds;
         private double _fps = FfmpegTool.DefaultFps;
         private bool _includeAudio = true;
+        private bool _exportToFile;
+        private bool _exportToChat = true;
+        private bool _exportedAnything;
+        private bool _exportBusy;
         private bool _prepared;
         private bool _proxyTried;
         private bool _proxyConversionInFlight;
         private bool _ignoreSlider;
         private bool _isScrubbing;
-        private bool _resumeAfterScrub;
-        private bool _seekPending;
-        private float _pendingSeekSeconds;
-        private bool _resumeAfterPendingSeek;
+        private bool _isDraggingMarker;
         private bool _ignoreDurationField;
         private bool _ignoreFpsField;
         private float _proxyProgress;
         private string _proxyProgressMessage = "";
         private FfmpegTool.CancelToken _proxyCancelToken;
+
+        // ---- Playback state. The single source of truth is _wantPlaying (the user's
+        // intent); an Update-tick state machine reconciles the VideoPlayer toward it,
+        // loops the selection, serializes seeks, and un-wedges Media Foundation. See
+        // UpdatePlaybackStateMachine.
+        private bool _wantPlaying;
+        private bool _seekPending;
+        private float _pendingSeekSeconds;
+        private float _seekIssuedAt;
+        private bool _hasQueuedSeek;
+        private float _queuedSeekSeconds;
+        private float _postSeekHoldUntil;
+        private float _playIssuedAt;
+        private float _lastObservedTime = -1f;
+        private float _timeFrozenSince;
+        private bool _loopArmed = true;
+        private float _loopFiredClockTime = -999f;
+
         private const string ModalCanvasName = "VideoClipChooserCanvas";
+        private const string PrefsExportToFile = "clipchooser_export_to_file";
+        private const string PrefsExportToChat = "clipchooser_export_to_chat";
         private const float HeaderDragHeight = 58f;
         private const float MinDialogWidth = 500f;
-        private const float MinDialogHeight = 470f;
+        private const float MinDialogHeight = 500f;
         private const float MaxDialogWidth = 920f;
-        private const float MaxDialogHeight = 760f;
+        private const float MaxDialogHeight = 790f;
+        private const float MinClipSeconds = 0.1f;
+        private const float SeekWatchdogSeconds = 1.5f;
+        private const float PostSeekHoldSeconds = 0.35f;
+        private const float FrozenClockKickSeconds = 0.8f;
 
         public sealed class ClipSelection
         {
@@ -81,6 +116,9 @@ namespace AITools.AIChat.Video
             public float DurationSeconds;
             public double Fps;
             public bool IncludeAudio;
+            /// <summary>Also extract the selected range's audio as a WAV Audio bubble
+            /// (automation import path; the dialog itself uses its Export audio button).</summary>
+            public bool SaveAudioWav;
         }
 
         public static ChatVideoClipChooser Show(
@@ -88,37 +126,35 @@ namespace AITools.AIChat.Video
             TMP_FontAsset font,
             string sourcePath,
             FfmpegTool.VideoInfo info,
-            Action<ClipSelection> onConfirm,
-            Action onCancel,
-            string titleText = "Import Video Clip",
-            string confirmText = "Import Clip",
-            float initialStartSeconds = 0f,
-            Action<float> onImportStill = null)
+            Action<bool> onClose = null,
+            string titleText = "Export Video / Audio Clip",
+            float initialStartSeconds = 0f)
         {
             RectTransform dialogParent = ResolveDialogParent(parent);
             var go = new GameObject("AIChatVideoClipChooser");
             go.transform.SetParent(dialogParent, false);
             var chooser = go.AddComponent<ChatVideoClipChooser>();
-            chooser.Initialize(dialogParent, font, sourcePath, info, onConfirm, onCancel, titleText, confirmText, initialStartSeconds, onImportStill);
+            chooser.Initialize(dialogParent, font, sourcePath, info, onClose, titleText, initialStartSeconds);
             return chooser;
         }
 
-        private void Initialize(RectTransform parent, TMP_FontAsset font, string sourcePath, FfmpegTool.VideoInfo info, Action<ClipSelection> onConfirm, Action onCancel, string titleText, string confirmText, float initialStartSeconds, Action<float> onImportStill)
+        private void Initialize(RectTransform parent, TMP_FontAsset font, string sourcePath, FfmpegTool.VideoInfo info, Action<bool> onClose, string titleText, float initialStartSeconds)
         {
             _font = font;
             _sourcePath = sourcePath;
             _previewSourcePath = sourcePath;
-            _titleText = string.IsNullOrWhiteSpace(titleText) ? "Import Video Clip" : titleText;
-            _confirmText = string.IsNullOrWhiteSpace(confirmText) ? "Import Clip" : confirmText;
+            _titleText = string.IsNullOrWhiteSpace(titleText) ? "Export Video / Audio Clip" : titleText;
             _info = info ?? new FfmpegTool.VideoInfo();
             _initialStartSeconds = ClampStartSeconds(initialStartSeconds);
             _selectedStartSeconds = _initialStartSeconds;
+            _selectedEndSeconds = ClampEndSeconds(_initialStartSeconds + _duration);
+            _duration = Mathf.Max(MinClipSeconds, _selectedEndSeconds - _selectedStartSeconds);
             _previewCurrentSeconds = _initialStartSeconds;
             _fps = _info.Fps > 0 ? ClampFps(_info.Fps) : FfmpegTool.DefaultFps;
             _includeAudio = true;
-            _onConfirm = onConfirm;
-            _onCancel = onCancel;
-            _onImportStill = onImportStill;
+            _exportToFile = PlayerPrefs.GetInt(PrefsExportToFile, 0) != 0;
+            _exportToChat = PlayerPrefs.GetInt(PrefsExportToChat, 1) != 0;
+            _onClose = onClose;
 
             _root = gameObject.AddComponent<RectTransform>();
             _root.anchorMin = new Vector2(0.5f, 0.5f);
@@ -128,7 +164,7 @@ namespace AITools.AIChat.Video
             if (parentSize.x <= 1f || parentSize.y <= 1f)
                 parentSize = new Vector2(Screen.width, Screen.height);
             float dialogW = parentSize.x > 0f ? Mathf.Clamp(parentSize.x - 32f, MinDialogWidth, 720f) : 660f;
-            float dialogH = parentSize.y > 0f ? Mathf.Clamp(parentSize.y - 36f, MinDialogHeight, 590f) : 520f;
+            float dialogH = parentSize.y > 0f ? Mathf.Clamp(parentSize.y - 36f, MinDialogHeight, 620f) : 550f;
             _root.sizeDelta = new Vector2(dialogW, dialogH);
             _root.anchoredPosition = Vector2.zero;
 
@@ -136,7 +172,6 @@ namespace AITools.AIChat.Video
             bg.color = new Color(0.94f, 0.94f, 0.96f, 0.98f);
 
             BuildUI();
-            SetStartSeconds(_initialStartSeconds);
             SetSliderSeconds(_initialStartSeconds);
             if (FfmpegTool.ShouldUseUnityPreviewProxy(_info))
                 StartCoroutine(ConvertPreviewProxyAndRetry("Unity preview proxy required for " + (_info.CodecName ?? "this codec")));
@@ -150,12 +185,13 @@ namespace AITools.AIChat.Video
             float dialogW = _root.sizeDelta.x;
             float dialogH = _root.sizeDelta.y;
             float innerW = Mathf.Max(496f, dialogW - 44f);
-            float previewH = Mathf.Clamp(dialogH - 230f, 220f, 360f);
+            float previewH = Mathf.Clamp(dialogH - 262f, 220f, 360f);
             float previewTop = -74f;
             float sliderY = previewTop - previewH - 22f;
             float controlsY = sliderY - 32f;
             float durationY = controlsY - 33f;
-            float actionY = durationY - 38f;
+            float destY = durationY - 32f;
+            float actionY = destY - 36f;
             float left = -innerW * 0.5f;
             float right = innerW * 0.5f;
 
@@ -206,17 +242,22 @@ namespace AITools.AIChat.Video
             _playButtonLabel = _playButton != null ? _playButton.GetComponentInChildren<TextMeshProUGUI>() : null;
 
             CreateLabel("StartLabel", "Start", new Vector2(left + 112f, controlsY - 1f), new Vector2(48, 22), 11, FontStyles.Bold, TextAlignmentOptions.MidlineRight);
-            _startField = CreateInput("StartInput", new Vector2(left + 170f, controlsY), new Vector2(62, 26), "0");
+            _startField = CreateInput("StartInput", new Vector2(left + 170f, controlsY), new Vector2(62, 26), FormatNumber(_selectedStartSeconds));
             if (_startField != null)
                 _startField.onEndEdit.AddListener(OnStartFieldChanged);
 
-            CreateLabel("FpsLabel", "FPS", new Vector2(left + 240f, controlsY - 1f), new Vector2(34, 22), 11, FontStyles.Bold, TextAlignmentOptions.MidlineRight);
-            _fpsField = CreateInput("FpsInput", new Vector2(left + 292f, controlsY), new Vector2(58, 26), FormatNumber(_fps));
+            CreateLabel("EndLabel", "End", new Vector2(left + 224f, controlsY - 1f), new Vector2(36, 22), 11, FontStyles.Bold, TextAlignmentOptions.MidlineRight);
+            _endField = CreateInput("EndInput", new Vector2(left + 274f, controlsY), new Vector2(62, 26), FormatNumber(_selectedEndSeconds));
+            if (_endField != null)
+                _endField.onEndEdit.AddListener(OnEndFieldChanged);
+
+            CreateLabel("FpsLabel", "FPS", new Vector2(left + 336f, controlsY - 1f), new Vector2(34, 22), 11, FontStyles.Bold, TextAlignmentOptions.MidlineRight);
+            _fpsField = CreateInput("FpsInput", new Vector2(left + 388f, controlsY), new Vector2(58, 26), FormatNumber(_fps));
             if (_fpsField != null)
                 _fpsField.onEndEdit.AddListener(OnFpsFieldChanged);
 
             CreateLabel("DurationLabel", "Duration", new Vector2(left + 42f, durationY - 1f), new Vector2(74, 22), 11, FontStyles.Bold, TextAlignmentOptions.MidlineLeft);
-            _durationField = CreateInput("DurationInput", new Vector2(left + 124f, durationY), new Vector2(58, 26), FfmpegTool.DefaultClipDurationSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture));
+            _durationField = CreateInput("DurationInput", new Vector2(left + 124f, durationY), new Vector2(58, 26), FormatNumber(_duration));
             if (_durationField != null)
                 _durationField.onEndEdit.AddListener(OnDurationFieldChanged);
             CreateLabel("DurationUnit", "seconds", new Vector2(left + 184f, durationY - 1f), new Vector2(58, 22), 10, FontStyles.Normal, TextAlignmentOptions.MidlineLeft);
@@ -230,14 +271,29 @@ namespace AITools.AIChat.Video
                 ApplyPreviewAudioSettings();
             });
 
-            // "Import still" grabs the single frame at the current scrub position as a
-            // still image and leaves the dialog open, so it sits left of Import Clip.
-            if (_onImportStill != null)
-                CreateButton("ImportStill", "Import still", new Vector2(right - 326f, actionY), new Vector2(118, 28), ImportStill);
-            CreateButton("Import", _confirmText, new Vector2(right - 200f, actionY), new Vector2(118, 28), Confirm);
-            CreateButton("Cancel", "Cancel", new Vector2(right - 82f, actionY), new Vector2(84, 28), Cancel);
+            // Destinations for every Export button; remembered across sessions.
+            _exportToFileToggle = CreateToggle("ExportToFile", "Export to file", new Vector2(left + 66f, destY), new Vector2(132f, 26f), _exportToFile, on =>
+            {
+                _exportToFile = on;
+                PlayerPrefs.SetInt(PrefsExportToFile, on ? 1 : 0);
+                PlayerPrefs.Save();
+            });
+            _exportToChatToggle = CreateToggle("ExportToChat", "Export to AI Chat", new Vector2(left + 240f, destY), new Vector2(146f, 26f), _exportToChat, on =>
+            {
+                _exportToChat = on;
+                PlayerPrefs.SetInt(PrefsExportToChat, on ? 1 : 0);
+                PlayerPrefs.Save();
+            });
+
+            // Every Export button leaves the dialog open so several clips/stills can be
+            // grabbed from one source; Close ends the session.
+            CreateButton("ExportStill", "Export still", new Vector2(right - 364f, actionY), new Vector2(96, 28), ExportStill);
+            if (_info.HasAudio)
+                CreateButton("ExportAudio", "Export audio clip", new Vector2(right - 252f, actionY), new Vector2(116, 28), ExportAudioClip);
+            CreateButton("ExportVideo", "Export video clip", new Vector2(right - 130f, actionY), new Vector2(116, 28), ExportVideoClip);
+            CreateButton("Close", "Close", new Vector2(right - 36f, actionY), new Vector2(64, 28), Close);
             CreateResizeGrip();
-            RefreshDurationControls();
+            RefreshRangeUi();
             RefreshPlayButton();
         }
 
@@ -251,7 +307,9 @@ namespace AITools.AIChat.Video
                 _player.source = VideoSource.Url;
                 _player.url = _previewSourcePath;
                 _player.playOnAwake = false;
-                _player.isLooping = true;
+                // Looping is handled by the playback state machine (it loops the
+                // selected start..end range, not the whole file).
+                _player.isLooping = false;
                 _player.waitForFirstFrame = true;
                 // Audio goes through an AudioSource, not Direct — Direct mode desyncs
                 // the audio track on the first play of a clip under Media Foundation
@@ -303,18 +361,27 @@ namespace AITools.AIChat.Video
             if (_previewHint != null)
                 _previewHint.gameObject.SetActive(false);
             SetProxyProgressVisible(false);
+            source.seekCompleted -= OnSeekCompleted;
+            source.seekCompleted += OnSeekCompleted;
+            // Prime: without one Play/Pause the first frame never lands in the RT.
             try
             {
-                source.time = _initialStartSeconds;
                 source.Play();
                 source.Pause();
             }
             catch { }
-            source.seekCompleted -= OnSeekCompleted;
-            source.seekCompleted += OnSeekCompleted;
-            _previewCurrentSeconds = _initialStartSeconds;
-            SetStartSeconds(_selectedStartSeconds);
-            SetSliderSeconds(_initialStartSeconds);
+            // Seek to the requested start; skip the no-op seek at 0 (Media Foundation
+            // can fail to complete a seek to the position it is already at).
+            if (_initialStartSeconds > 0.05f)
+            {
+                SeekTo(_initialStartSeconds);
+            }
+            else
+            {
+                _previewCurrentSeconds = 0f;
+                SetSliderSeconds(0f);
+            }
+            RefreshRangeUi();
             RefreshPlayButton();
             UpdateTimeLabel();
         }
@@ -336,40 +403,198 @@ namespace AITools.AIChat.Video
             StartCoroutine(ConvertPreviewProxyAndRetry(message));
         }
 
-        private void OnSeekCompleted(VideoPlayer source)
-        {
-            if (source == null || source != _player || !_seekPending) return;
-
-            bool resumePlayback = _resumeAfterPendingSeek;
-            float requestedSeconds = _pendingSeekSeconds;
-            _seekPending = false;
-            _resumeAfterPendingSeek = false;
-            _previewCurrentSeconds = requestedSeconds;
-            SetSliderSeconds(requestedSeconds);
-            SetStartSeconds(requestedSeconds);
-
-            if (resumePlayback)
-            {
-                try { source.Play(); } catch { }
-            }
-
-            RefreshPlayButton();
-            UpdateTimeLabel();
-        }
+        // ---- Playback state machine ------------------------------------------------
+        //
+        // Rules distilled from PicMovie's Media Foundation battles:
+        //  - Seeks are SERIALIZED; a seek requested during a pending one queues the
+        //    newest target (overlapping time= assignments wedge MF).
+        //  - Play/Pause is reconciled toward _wantPlaying from the Update tick, never
+        //    inside seekCompleted.
+        //  - seekCompleted can be silently dropped; a watchdog force-clears the pending
+        //    flag so the dialog never wedges.
+        //  - A frozen clock while isPlaying reads true is kicked by RE-SEEKING with a
+        //    tiny nudge (Pause+Play does not unfreeze MF).
+        //  - The slider shows the seek target plus a short post-seek hold, never raw
+        //    live time, which reports stale values for a few frames after a seek.
 
         private void Update()
         {
             ApplyPreviewAudioSettings();
-            if (!_isScrubbing && !_seekPending && _player != null && _prepared && _info.DurationSeconds > 0)
+            UpdatePlaybackStateMachine();
+
+            if (_prepared && _player != null && !_seekPending && !_isScrubbing && !_isDraggingMarker
+                && _info.DurationSeconds > 0 && Time.unscaledTime >= _postSeekHoldUntil)
             {
                 _previewCurrentSeconds = ClampPreviewSeconds((float)_player.time);
-                _ignoreSlider = true;
-                _slider.value = Mathf.Clamp01(_previewCurrentSeconds / (float)_info.DurationSeconds);
-                _ignoreSlider = false;
+                SetSliderSeconds(_previewCurrentSeconds);
             }
             RefreshPlayButton();
             UpdateTimeLabel();
         }
+
+        private void UpdatePlaybackStateMachine()
+        {
+            if (_player == null || !_prepared) return;
+            float now = Time.unscaledTime;
+
+            if (_seekPending)
+            {
+                if (now - _seekIssuedAt > SeekWatchdogSeconds)
+                {
+                    _seekPending = false;
+                    _postSeekHoldUntil = now + PostSeekHoldSeconds;
+                }
+                else
+                {
+                    return;
+                }
+            }
+
+            if (_hasQueuedSeek)
+            {
+                _hasQueuedSeek = false;
+                IssueSeek(_queuedSeekSeconds);
+                return;
+            }
+
+            bool shouldPlay = _wantPlaying && !_isScrubbing && !_isDraggingMarker;
+            float time = (float)_player.time;
+            float loopEps = GetLoopEndEpsilon();
+
+            if (!shouldPlay)
+            {
+                if (_player.isPlaying)
+                {
+                    try { _player.Pause(); } catch { }
+                }
+                _lastObservedTime = -1f; // restart the progress watch on the next play
+                return;
+            }
+
+            // Re-arm the loop once the clock has left the boundary (back at the start
+            // on success, or drifted elsewhere after a silently failed seek).
+            if (!_loopArmed && (time < _selectedEndSeconds - loopEps - 0.05f
+                                || Mathf.Abs(time - _loopFiredClockTime) > 0.3f))
+                _loopArmed = true;
+
+            // Loop the selection: hitting the end marker jumps back to the start
+            // marker. Fires ONCE per boundary hit - re-seeking every tick while the
+            // clock sits at the boundary is a seek storm, and seek storms wedge Media
+            // Foundation (observed: clock frozen at the last in-range frame with
+            // isPlaying true while every seek "completed" without moving it). Pause
+            // first: pause -> single seek -> tick-resume is the proven-safe sequence.
+            if (_loopArmed && time >= _selectedEndSeconds - loopEps)
+            {
+                _loopArmed = false;
+                _loopFiredClockTime = time;
+                if (_player.isPlaying)
+                {
+                    try { _player.Pause(); } catch { }
+                }
+                SeekTo(_selectedStartSeconds);
+                return;
+            }
+
+            // Play() is async and isPlaying lags it; re-issuing it every frame keeps
+            // restarting the pipeline and the clock never moves. Issue it sparingly and
+            // let the progress watch below handle a start that doesn't take.
+            if (!_player.isPlaying && now - _playIssuedAt > 0.3f)
+            {
+                try { _player.Play(); } catch { }
+                _playIssuedAt = now;
+            }
+
+            // Progress watch: whatever isPlaying claims (MF lies in both directions), a
+            // clock that hasn't moved gets kicked by RE-SEEKING with a tiny nudge - the
+            // only unfreeze that works (Pause+Play does not; see PicMovie). A clock
+            // frozen at/past the end marker is kicked to the START marker instead of
+            // forward, so a wedged loop jump gets retried.
+            if (_lastObservedTime < 0f || Mathf.Abs(time - _lastObservedTime) > 0.0005f)
+            {
+                _lastObservedTime = time;
+                _timeFrozenSince = now;
+            }
+            else if (now - _timeFrozenSince > FrozenClockKickSeconds && now >= _postSeekHoldUntil)
+            {
+                _timeFrozenSince = now;
+                float kickTarget = time >= _selectedEndSeconds - loopEps
+                    ? _selectedStartSeconds
+                    : time + 0.05f;
+                SeekTo(ClampPreviewSeconds(kickTarget));
+            }
+        }
+
+        // One source video frame plus margin: the last displayed frame before the end
+        // marker must already trigger the loop.
+        private float GetLoopEndEpsilon()
+        {
+            float fps = _player != null && _player.frameRate > 0.01f
+                ? _player.frameRate
+                : (_info != null && _info.Fps > 0 ? (float)_info.Fps : FfmpegTool.DefaultFps);
+            return Mathf.Clamp(1.2f / Mathf.Max(1f, fps), 0.03f, 0.15f);
+        }
+
+        private void SeekTo(float seconds)
+        {
+            if (_player == null || !_prepared) return;
+            seconds = ClampPreviewSeconds(seconds);
+            _previewCurrentSeconds = seconds;
+            if (_seekPending)
+            {
+                _queuedSeekSeconds = seconds; // newest target wins
+                _hasQueuedSeek = true;
+                SetSliderSeconds(seconds);
+                return;
+            }
+            IssueSeek(seconds);
+        }
+
+        private void IssueSeek(float seconds)
+        {
+            _seekPending = true;
+            _pendingSeekSeconds = seconds;
+            _seekIssuedAt = Time.unscaledTime;
+            _previewCurrentSeconds = seconds;
+            SetSliderSeconds(seconds);
+            try
+            {
+                _player.time = seconds;
+            }
+            catch
+            {
+                _seekPending = false;
+            }
+        }
+
+        private void OnSeekCompleted(VideoPlayer source)
+        {
+            if (source == null || source != _player || !_seekPending) return;
+            _seekPending = false;
+            _postSeekHoldUntil = Time.unscaledTime + PostSeekHoldSeconds;
+            _previewCurrentSeconds = _pendingSeekSeconds;
+            SetSliderSeconds(_pendingSeekSeconds);
+            _lastObservedTime = -1f;
+            _timeFrozenSince = Time.unscaledTime;
+            UpdateTimeLabel();
+        }
+
+        private void TogglePlay()
+        {
+            if (_proxyConversionInFlight || _player == null || !_prepared) return;
+            _wantPlaying = !_wantPlaying;
+            if (_wantPlaying)
+            {
+                // Start inside the selection; outside it, jump to the start marker.
+                float t = _previewCurrentSeconds;
+                if (t < _selectedStartSeconds - 0.05f || t >= _selectedEndSeconds - 0.05f)
+                    SeekTo(_selectedStartSeconds);
+            }
+            RefreshPlayButton();
+        }
+
+        // ---- Scrubbing (playhead) --------------------------------------------------
+        // A plain CLICK on the bar seeks in place without pausing; a DRAG holds the
+        // player paused and seeks once on release.
 
         private void OnSliderValueChanged(float value)
         {
@@ -377,94 +602,82 @@ namespace AITools.AIChat.Video
             float t = ClampPreviewSeconds((float)(Mathf.Clamp01(value) * _info.DurationSeconds));
             _previewCurrentSeconds = t;
             if (!_isScrubbing)
-            {
-                bool resumePlayback = _seekPending ? _resumeAfterPendingSeek : (_prepared && _player.isPlaying);
-                SeekPreview(t, resumePlayback);
-            }
-            SetStartSeconds(t);
+                SeekTo(t);
             UpdateTimeLabel();
         }
 
         private void BeginSliderScrub()
         {
-            if (_isScrubbing) return;
-            _isScrubbing = true;
-            _resumeAfterScrub = _seekPending
-                ? _resumeAfterPendingSeek
-                : (_player != null && _prepared && _player.isPlaying);
-            _seekPending = false;
-            _resumeAfterPendingSeek = false;
-            if (_player != null && _player.isPlaying)
-            {
-                try { _player.Pause(); } catch { }
-            }
+            _isScrubbing = true; // the state machine pauses playback on the next tick
         }
 
         private void EndSliderScrub()
         {
             if (!_isScrubbing) return;
-
-            float t = _previewCurrentSeconds;
-            if (_slider != null && _info != null && _info.DurationSeconds > 0)
-                t = ClampPreviewSeconds(_slider.value * (float)_info.DurationSeconds);
-
-            bool resumePlayback = _resumeAfterScrub;
             _isScrubbing = false;
-            _resumeAfterScrub = false;
-            _previewCurrentSeconds = t;
-            SeekPreview(t, resumePlayback);
-            SetStartSeconds(t);
+            float t = _slider != null && _info != null && _info.DurationSeconds > 0
+                ? ClampPreviewSeconds(_slider.value * (float)_info.DurationSeconds)
+                : _previewCurrentSeconds;
+            SeekTo(t);
             UpdateTimeLabel();
         }
 
-        private void SeekPreview(float seconds, bool resumePlayback)
+        // ---- Trim markers (start/end) ----------------------------------------------
+        // A drag holds playback paused and seeks once on release, landing the preview
+        // on the frame the marker points at; a plain click just seeks to that marker.
+
+        private void DragMarkerToFraction(bool isEndMarker, float fraction)
         {
-            if (_player == null || !_prepared) return;
-            seconds = ClampPreviewSeconds(seconds);
-            _seekPending = true;
-            _pendingSeekSeconds = seconds;
-            _resumeAfterPendingSeek = resumePlayback;
-            _previewCurrentSeconds = seconds;
-            try
-            {
-                // Unity 6 reports a transient zero and halts an audio-clocked player
-                // while Media Foundation resolves a seek. Hold the requested time and
-                // restore playback from OnSeekCompleted instead of calling Play here.
-                _player.time = seconds;
-            }
-            catch
-            {
-                _seekPending = false;
-                _resumeAfterPendingSeek = false;
-                if (resumePlayback)
-                {
-                    try { _player.Play(); } catch { }
-                }
-            }
+            if (_info == null || _info.DurationSeconds <= 0) return;
+            _isDraggingMarker = true; // idempotent; the state machine holds pause
+            float t = Mathf.Clamp01(fraction) * (float)_info.DurationSeconds;
+            ApplyRangeEdit(isEndMarker ? RangeEdit.End : RangeEdit.StartKeepEnd, t);
+            UpdateTimeLabel();
         }
 
-        // Preview audio follows the Audio toggle (what you hear is what Import Clip
-        // will keep) plus the app's global mute and clip volume settings.
+        private void FinishMarkerInteraction(bool isEndMarker)
+        {
+            bool wasDragging = _isDraggingMarker;
+            _isDraggingMarker = false;
+
+            // Alt+click a marker: snap the MARKER to the current playhead position
+            // (clamped by the usual range rules) instead of seeking the playhead to
+            // the marker.
+            if (!wasDragging && IsAltHeld())
+            {
+                ApplyRangeEdit(isEndMarker ? RangeEdit.End : RangeEdit.StartKeepEnd, _previewCurrentSeconds);
+                UpdateTimeLabel();
+                return;
+            }
+
+            SeekTo(isEndMarker ? _selectedEndSeconds : _selectedStartSeconds);
+            UpdateTimeLabel();
+        }
+
+        // The bridge flag lets scripted tests exercise alt-clicks: the editor may lack
+        // OS keyboard focus during automation, so real Alt key state is unreliable.
+        private static bool IsAltHeld()
+        {
+            return Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt)
+                || global::AutomationBridge.SyntheticAltHeld;
+        }
+
+        private float FractionFromPointer(PointerEventData eventData)
+        {
+            if (_markerArea == null) return 0f;
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(_markerArea, eventData.position, eventData.pressEventCamera, out Vector2 local);
+            Rect r = _markerArea.rect;
+            return r.width > 0f ? Mathf.Clamp01((local.x - r.xMin) / r.width) : 0f;
+        }
+
+        // Preview audio follows the Audio toggle (what you hear is what the exported
+        // video clip will keep) plus the app's global mute and clip volume settings.
         private void ApplyPreviewAudioSettings()
         {
             if (_audioSource == null) return;
             var gameLogic = global::GameLogic.Get();
             _audioSource.volume = gameLogic != null ? gameLogic.GetClipVolume() : 1f;
             _audioSource.mute = !_includeAudio || (gameLogic != null && gameLogic.GetGlobalMute());
-        }
-
-        private void TogglePlay()
-        {
-            if (_proxyConversionInFlight || _player == null || !_prepared) return;
-            if (_seekPending)
-            {
-                _resumeAfterPendingSeek = !_resumeAfterPendingSeek;
-                RefreshPlayButton();
-                return;
-            }
-            if (_player.isPlaying) _player.Pause();
-            else _player.Play();
-            RefreshPlayButton();
         }
 
         private IEnumerator ConvertPreviewProxyAndRetry(string sourceError)
@@ -533,20 +746,100 @@ namespace AITools.AIChat.Video
             PreparePreview();
         }
 
-        private void SetDuration(float seconds)
+        private enum RangeEdit
         {
-            _duration = Mathf.Clamp(seconds, 0.1f, 60f);
+            /// <summary>Move the start, dragging the end along to keep the clip length (typed Start field).</summary>
+            StartKeepDuration,
+            /// <summary>Trim the start against a fixed end (start marker drag).</summary>
+            StartKeepEnd,
+            /// <summary>Move the end; start stays put (end marker drag / End field).</summary>
+            End,
+            /// <summary>Set the clip length from the start (Duration field / 3s-5s-8s buttons).</summary>
+            Duration
+        }
+
+        // The one place the trim range moves; keeps start < end and the clip inside the
+        // source (any length down to 0.1s - no max), then refreshes every control that
+        // displays the range.
+        private void ApplyRangeEdit(RangeEdit kind, float value)
+        {
+            float start = _selectedStartSeconds;
+            float end = _selectedEndSeconds;
+            switch (kind)
+            {
+                case RangeEdit.StartKeepDuration:
+                {
+                    float dur = Mathf.Max(end - start, MinClipSeconds);
+                    start = ClampStartSeconds(value);
+                    end = ClampEndSeconds(start + dur);
+                    start = Mathf.Min(start, end - MinClipSeconds);
+                    break;
+                }
+                case RangeEdit.StartKeepEnd:
+                    start = Mathf.Min(ClampStartSeconds(value), end - MinClipSeconds);
+                    break;
+                case RangeEdit.End:
+                    end = Mathf.Max(ClampEndSeconds(value), start + MinClipSeconds);
+                    break;
+                case RangeEdit.Duration:
+                    end = Mathf.Max(start + MinClipSeconds, ClampEndSeconds(start + Mathf.Max(value, MinClipSeconds)));
+                    break;
+            }
+
+            _selectedStartSeconds = Mathf.Max(0f, start);
+            _selectedEndSeconds = Mathf.Max(_selectedStartSeconds + MinClipSeconds * 0.5f, end);
+            _duration = _selectedEndSeconds - _selectedStartSeconds;
+            RefreshRangeUi();
+        }
+
+        private void RefreshRangeUi()
+        {
+            if (_startField != null)
+                _startField.SetTextWithoutNotify(FormatNumber(_selectedStartSeconds));
+            if (_endField != null)
+                _endField.SetTextWithoutNotify(FormatNumber(_selectedEndSeconds));
             SetDurationFieldText(_duration);
             RefreshDurationControls();
+            UpdateRangeMarkerVisuals();
+        }
+
+        private void UpdateRangeMarkerVisuals()
+        {
+            if (_markerArea == null) return;
+            float dur = _info != null && _info.DurationSeconds > 0 ? (float)_info.DurationSeconds : 0f;
+            float f0 = dur > 0 ? Mathf.Clamp01(_selectedStartSeconds / dur) : 0f;
+            float f1 = dur > 0 ? Mathf.Clamp01(_selectedEndSeconds / dur) : 1f;
+            if (_startMarker != null)
+            {
+                _startMarker.anchorMin = new Vector2(f0, 0f);
+                _startMarker.anchorMax = new Vector2(f0, 0.5f);
+            }
+            if (_endMarker != null)
+            {
+                _endMarker.anchorMin = new Vector2(f1, 0.5f);
+                _endMarker.anchorMax = new Vector2(f1, 1f);
+            }
+            if (_rangeFill != null)
+            {
+                _rangeFill.anchorMin = new Vector2(f0, 0.5f);
+                _rangeFill.anchorMax = new Vector2(f1, 0.5f);
+                _rangeFill.offsetMin = new Vector2(0f, -4f);
+                _rangeFill.offsetMax = new Vector2(0f, 4f);
+            }
+        }
+
+        private void SetDuration(float seconds)
+        {
+            ApplyRangeEdit(RangeEdit.Duration, seconds);
         }
 
         private void OnDurationFieldChanged(string text)
         {
             if (_ignoreDurationField) return;
             if (float.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float seconds))
-                _duration = Mathf.Clamp(seconds, 0.1f, 60f);
-            SetDurationFieldText(_duration);
-            RefreshDurationControls();
+                ApplyRangeEdit(RangeEdit.Duration, seconds);
+            else
+                RefreshRangeUi();
         }
 
         private void OnFpsFieldChanged(string text)
@@ -560,45 +853,43 @@ namespace AITools.AIChat.Video
         private void OnStartFieldChanged(string text)
         {
             if (float.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float seconds))
-                SetStartSeconds(seconds);
+                ApplyRangeEdit(RangeEdit.StartKeepDuration, seconds);
             else
-                SetStartSeconds(_selectedStartSeconds);
+                RefreshRangeUi();
 
-            SetSliderSeconds(_selectedStartSeconds);
-            if (_player != null && _prepared)
-            {
-                bool resumePlayback = _player.isPlaying;
-                _previewCurrentSeconds = _selectedStartSeconds;
-                SeekPreview(_selectedStartSeconds, resumePlayback);
-            }
-            UpdateTimeLabel();
+            SeekPreviewToRangePoint(_selectedStartSeconds);
         }
 
-        private void SetStartSeconds(float seconds)
+        private void OnEndFieldChanged(string text)
         {
-            _selectedStartSeconds = ClampStartSeconds(seconds);
-            if (_startField != null)
-                _startField.SetTextWithoutNotify(_selectedStartSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture));
+            if (float.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float seconds))
+                ApplyRangeEdit(RangeEdit.End, seconds);
+            else
+                RefreshRangeUi();
+
+            SeekPreviewToRangePoint(_selectedEndSeconds);
+        }
+
+        // Jump the preview to a just-edited range endpoint so the user sees that frame.
+        private void SeekPreviewToRangePoint(float seconds)
+        {
+            if (_player != null && _prepared)
+                SeekTo(seconds);
+            else
+                SetSliderSeconds(seconds);
+            UpdateTimeLabel();
         }
 
         private void SetSliderSeconds(float seconds)
         {
             if (_slider == null || _info == null || _info.DurationSeconds <= 0) return;
             _ignoreSlider = true;
-            _slider.value = Mathf.Clamp01(ClampStartSeconds(seconds) / (float)_info.DurationSeconds);
+            _slider.value = Mathf.Clamp01(ClampPreviewSeconds(seconds) / (float)_info.DurationSeconds);
             _ignoreSlider = false;
         }
 
         private float GetCurrentPreviewSeconds()
         {
-            if (_player != null && _prepared && _player.isPlaying)
-                _previewCurrentSeconds = ClampPreviewSeconds((float)_player.time);
-            if (_slider != null && _info.DurationSeconds > 0)
-            {
-                float sliderSeconds = ClampPreviewSeconds(_slider.value * (float)_info.DurationSeconds);
-                if (_player == null || !_prepared || !_player.isPlaying)
-                    _previewCurrentSeconds = sliderSeconds;
-            }
             return _previewCurrentSeconds;
         }
 
@@ -622,58 +913,234 @@ namespace AITools.AIChat.Video
             return seconds;
         }
 
-        private void Confirm()
+        private float ClampEndSeconds(float seconds)
         {
-            float start = _selectedStartSeconds;
+            if (float.IsNaN(seconds) || float.IsInfinity(seconds))
+                seconds = MinClipSeconds;
+            seconds = Mathf.Max(MinClipSeconds, seconds);
+            if (_info != null && _info.DurationSeconds > 0)
+                seconds = Mathf.Min(seconds, (float)_info.DurationSeconds);
+            return seconds;
+        }
+
+        // ---- Exports ---------------------------------------------------------------
+        // Each button cuts from the ORIGINAL source and delivers to the checked
+        // destinations. The work runs on GameLogic's coroutines so closing the dialog
+        // mid-export cannot kill it; the routines only touch locals, statics, and
+        // plain fields afterwards (never Unity-side members of this destroyed object).
+
+        private ClipSelection BuildSelection()
+        {
+            // Commit any still-focused numeric field the way its onEndEdit would.
             if (_startField != null && _startField.isFocused
                 && float.TryParse(_startField.text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float editedStart))
-            {
-                start = ClampStartSeconds(editedStart);
-                _selectedStartSeconds = start;
-            }
+                ApplyRangeEdit(RangeEdit.StartKeepDuration, editedStart);
+            if (_endField != null && _endField.isFocused
+                && float.TryParse(_endField.text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float editedEnd))
+                ApplyRangeEdit(RangeEdit.End, editedEnd);
+            if (_durationField != null && _durationField.isFocused)
+                OnDurationFieldChanged(_durationField.text);
+            OnFpsFieldChanged(_fpsField != null ? _fpsField.text : null);
 
-            start = Mathf.Max(0f, start);
+            float start = Mathf.Max(0f, _selectedStartSeconds);
             if (_info.DurationSeconds > 0)
                 start = Mathf.Min(start, Mathf.Max(0f, (float)_info.DurationSeconds - 0.1f));
-            OnDurationFieldChanged(_durationField != null ? _durationField.text : null);
-            OnFpsFieldChanged(_fpsField != null ? _fpsField.text : null);
-            float dur = _duration;
+            float dur = Mathf.Max(MinClipSeconds, _selectedEndSeconds - start);
             if (_info.DurationSeconds > 0)
-                dur = Mathf.Clamp(dur, 0.1f, Mathf.Max(0.1f, (float)_info.DurationSeconds - start));
+                dur = Mathf.Clamp(dur, MinClipSeconds, Mathf.Max(MinClipSeconds, (float)_info.DurationSeconds - start));
 
-            var cb = _onConfirm;
-            Destroy(gameObject);
-            cb?.Invoke(new ClipSelection
+            return new ClipSelection
             {
                 StartSeconds = start,
                 DurationSeconds = dur,
                 Fps = _fps,
                 IncludeAudio = _includeAudioToggle == null ? _includeAudio : _includeAudioToggle.isOn
-            });
+            };
         }
 
-        private void Cancel()
+        private bool BeginExport(out bool toFile, out bool toChat)
         {
-            var cb = _onCancel;
+            toFile = _exportToFile;
+            toChat = _exportToChat;
+            if (!toFile && !toChat)
+            {
+                ShowToast("Check 'Export to file' and/or 'Export to AI Chat' first");
+                return false;
+            }
+            if (_exportBusy)
+            {
+                ShowToast("Still working on the previous export...");
+                return false;
+            }
+            _exportBusy = true;
+            _exportedAnything = true;
+            return true;
+        }
+
+        private static MonoBehaviour GetExportRunner(MonoBehaviour fallback)
+        {
+            var gameLogic = global::GameLogic.Get();
+            return gameLogic != null ? (MonoBehaviour)gameLogic : fallback;
+        }
+
+        private static void ShowToast(string message)
+        {
+            global::RTQuickMessageManager.Get().ShowMessage(message);
+        }
+
+        private void ExportVideoClip()
+        {
+            if (!BeginExport(out bool toFile, out bool toChat)) return;
+            GetExportRunner(this).StartCoroutine(ExportVideoClipRoutine(_sourcePath, BuildSelection(), toFile, toChat));
+        }
+
+        private IEnumerator ExportVideoClipRoutine(string sourcePath, ClipSelection sel, bool toFile, bool toChat)
+        {
+            ShowToast("Exporting video clip...");
+            string outputPath = FfmpegTool.GetClipOutputPath(sourcePath);
+            FfmpegTool.ClipResult result = null;
+            yield return FfmpegTool.CreateClip(sourcePath, sel.StartSeconds, sel.DurationSeconds, outputPath, r => result = r,
+                fps: sel.Fps, includeAudio: sel.IncludeAudio);
+            if (result == null || !result.Success)
+            {
+                ShowToast("Could not export video clip: " + (result != null ? result.Error : "unknown error"));
+                _exportBusy = false;
+                yield break;
+            }
+
+            string dims = null;
+            if (toChat)
+            {
+                FfmpegTool.VideoInfo outInfo = null;
+                yield return FfmpegTool.ProbeVideo(result.OutputPath, (i, e) => outInfo = i);
+                if (outInfo != null && outInfo.Width > 0 && outInfo.Height > 0)
+                {
+                    dims = $"{outInfo.Width}x{outInfo.Height}";
+                    if (outInfo.Fps > 0)
+                        dims += $" @{outInfo.Fps:0.##}fps";
+                }
+            }
+
+            if (toFile)
+            {
+                if (TryCopyToOutputFolder(result.OutputPath, out string savedPath, out string fileError))
+                    ShowToast("Saved " + global::Config._saveDirName + "/" + System.IO.Path.GetFileName(savedPath));
+                else
+                    ShowToast("Could not save video clip: " + fileError);
+            }
+            if (toChat)
+            {
+                if (global::AIChatPanel.AddLocalMovieClipToChat(result.OutputPath, dims, out string chatError))
+                    ShowToast("Added video clip to AI Chat");
+                else
+                    ShowToast("Could not add clip to AI Chat: " + chatError);
+            }
+            _exportBusy = false;
+        }
+
+        private void ExportAudioClip()
+        {
+            if (!BeginExport(out bool toFile, out bool toChat)) return;
+            var sel = BuildSelection();
+            GetExportRunner(this).StartCoroutine(ExportAudioClipRoutine(_sourcePath, sel.StartSeconds, sel.DurationSeconds, toFile, toChat));
+        }
+
+        private IEnumerator ExportAudioClipRoutine(string sourcePath, float startSeconds, float durationSeconds, bool toFile, bool toChat)
+        {
+            ShowToast("Exporting audio clip...");
+            if (toFile)
+            {
+                string wavPath = FfmpegTool.GetExtractedAudioWavPath(sourcePath);
+                FfmpegTool.ClipResult wav = null;
+                yield return FfmpegTool.ExtractAudioWavSection(sourcePath, startSeconds, durationSeconds, wavPath, r => wav = r);
+                if (wav == null || !wav.Success)
+                    ShowToast("Could not export audio clip: " + (wav != null ? wav.Error : "unknown error"));
+                else if (TryCopyToOutputFolder(wavPath, out string savedPath, out string fileError))
+                    ShowToast("Saved " + global::Config._saveDirName + "/" + System.IO.Path.GetFileName(savedPath));
+                else
+                    ShowToast("Could not save audio clip: " + fileError);
+            }
+            if (toChat)
+            {
+                // Extracts its own WAV from the source and lands it as an Audio bubble.
+                if (global::AIChatPanel.AddLocalClipAudioToChat(sourcePath, startSeconds, durationSeconds, out string chatError))
+                    ShowToast("Added audio clip to AI Chat");
+                else
+                    ShowToast("Could not add audio to AI Chat: " + chatError);
+            }
+            _exportBusy = false;
+        }
+
+        private void ExportStill()
+        {
+            if (!BeginExport(out bool toFile, out bool toChat)) return;
+            string dims = _info != null && _info.Width > 0 && _info.Height > 0 ? $"{_info.Width}x{_info.Height}" : null;
+            GetExportRunner(this).StartCoroutine(ExportStillRoutine(_sourcePath, GetCurrentPreviewSeconds(), dims, toFile, toChat));
+        }
+
+        private IEnumerator ExportStillRoutine(string sourcePath, float atSeconds, string dims, bool toFile, bool toChat)
+        {
+            ShowToast("Exporting still...");
+            if (toFile)
+            {
+                string pngPath = FfmpegTool.GetStillFrameOutputPath(sourcePath);
+                FfmpegTool.ClipResult still = null;
+                yield return FfmpegTool.ExtractStillFrame(sourcePath, atSeconds, pngPath, r => still = r);
+                if (still == null || !still.Success)
+                    ShowToast("Could not export still: " + (still != null ? still.Error : "unknown error"));
+                else if (TryCopyToOutputFolder(pngPath, out string savedPath, out string fileError))
+                    ShowToast("Saved " + global::Config._saveDirName + "/" + System.IO.Path.GetFileName(savedPath));
+                else
+                    ShowToast("Could not save still: " + fileError);
+            }
+            if (toChat)
+            {
+                // Extracts the frame itself from the source at native resolution.
+                if (global::AIChatPanel.AddLocalStillFrameToChat(sourcePath, atSeconds, dims, out string chatError))
+                    ShowToast("Added still to AI Chat");
+                else
+                    ShowToast("Could not add still to AI Chat: " + chatError);
+            }
+            _exportBusy = false;
+        }
+
+        private static bool TryCopyToOutputFolder(string srcPath, out string savedPath, out string error)
+        {
+            savedPath = null;
+            error = null;
+            try
+            {
+                var config = global::Config.Get();
+                if (config == null)
+                {
+                    error = "no Config instance";
+                    return false;
+                }
+                string dir = config.GetBaseFileDir("/" + global::Config._saveDirName) + "/";
+                System.IO.Directory.CreateDirectory(dir);
+                savedPath = System.IO.Path.Combine(dir, System.IO.Path.GetFileName(srcPath));
+                System.IO.File.Copy(srcPath, savedPath, true);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        private void Close()
+        {
+            var cb = _onClose;
+            bool exported = _exportedAnything;
             Destroy(gameObject);
-            cb?.Invoke();
-        }
-
-        // Grab the frame at the current preview position. Deliberately does NOT close
-        // the dialog so the user can scrub to another spot and import more stills.
-        private void ImportStill()
-        {
-            float seconds = GetCurrentPreviewSeconds();
-            _onImportStill?.Invoke(seconds);
+            cb?.Invoke(exported);
         }
 
         private void RefreshPlayButton()
         {
-            bool isPlayingOrPending = _seekPending
-                ? _resumeAfterPendingSeek
-                : (_player != null && _player.isPlaying);
             if (_playButtonLabel != null)
-                _playButtonLabel.text = _proxyConversionInFlight ? "Wait" : (isPlayingOrPending ? "Pause" : "Play");
+                _playButtonLabel.text = _proxyConversionInFlight ? "Wait" : (_wantPlaying ? "Pause" : "Play");
             if (_playButton != null)
                 _playButton.interactable = !_proxyConversionInFlight && _prepared;
         }
@@ -798,7 +1265,9 @@ namespace AITools.AIChat.Video
         private void ReleasePreviewPlayer()
         {
             _seekPending = false;
-            _resumeAfterPendingSeek = false;
+            _hasQueuedSeek = false;
+            _wantPlaying = false;
+            _loopArmed = true;
             if (_player == null) return;
             try { _player.Stop(); } catch { }
             _player.prepareCompleted -= OnPrepared;
@@ -947,7 +1416,9 @@ namespace AITools.AIChat.Video
             bgRt.anchoredPosition = Vector2.zero;
             var bg = bgGo.AddComponent<Image>();
             bg.color = new Color(0.22f, 0.22f, 0.25f, 1f);
-            bg.raycastTarget = false;
+            // Raycastable so clicking anywhere on the bar jumps the playhead there
+            // (the Slider jumps its value on pointer down over any raycast child).
+            bg.raycastTarget = true;
 
             var fillArea = new GameObject("Fill Area");
             fillArea.transform.SetParent(go.transform, false);
@@ -987,8 +1458,8 @@ namespace AITools.AIChat.Video
             var handleImg = handle.AddComponent<Image>();
             handleImg.color = Color.white;
 
-            // Add this before Slider so pointer-down captures the original play state
-            // before Slider changes its value and initiates the first seek.
+            // Detects real drags (begin/end) so a drag pauses playback and seeks once
+            // on release, while a plain click seeks in place without pausing.
             var scrubHandler = go.AddComponent<SliderScrubHandler>();
             scrubHandler.SetOwner(this);
             var slider = go.AddComponent<Slider>();
@@ -999,10 +1470,123 @@ namespace AITools.AIChat.Video
             slider.handleRect = handleRt;
             slider.targetGraphic = handleImg;
             slider.direction = Slider.Direction.LeftToRight;
+
+            // Trim range lives in the same handle-slide space as the playhead so one
+            // 0..1 fraction maps the playhead, the highlight, and both markers alike.
+            _markerArea = handleAreaRt;
+            _rangeFill = CreateRangeFill(handleArea.transform);
+            _rangeFill.SetAsFirstSibling(); // draw under the playhead handle
+            _startMarker = CreateRangeMarker(handleArea.transform, "StartMarker", isEndMarker: false);
+            _endMarker = CreateRangeMarker(handleArea.transform, "EndMarker", isEndMarker: true);
             return slider;
         }
 
-        private sealed class SliderScrubHandler : MonoBehaviour, IPointerDownHandler, IPointerUpHandler
+        private RectTransform CreateRangeFill(Transform parent)
+        {
+            var go = new GameObject("RangeFill");
+            go.transform.SetParent(parent, false);
+            var rt = go.AddComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0f, 0.5f);
+            rt.anchorMax = new Vector2(1f, 0.5f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.offsetMin = new Vector2(0f, -4f);
+            rt.offsetMax = new Vector2(0f, 4f);
+            var img = go.AddComponent<Image>();
+            img.color = new Color(0.30f, 0.75f, 0.42f, 0.35f);
+            img.raycastTarget = false;
+            return rt;
+        }
+
+        // A trim marker: a colored vertical line across the bar with a small flag - the
+        // START marker's flag hangs BELOW the bar and the END marker's sits ABOVE it,
+        // and each marker's invisible grab surface covers only its own half of the row
+        // (start = lower half + below, end = upper half + above), so the two markers
+        // stay individually grabbable even when a short selection puts them on top of
+        // each other. The marker's own pointer/drag handlers consume events before the
+        // Slider sees them, so dragging a marker never scrubs the playhead.
+        private RectTransform CreateRangeMarker(Transform parent, string name, bool isEndMarker)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            var rt = go.AddComponent<RectTransform>();
+            float fx = isEndMarker ? 1f : 0f;
+            rt.anchorMin = new Vector2(fx, isEndMarker ? 0.5f : 0f);
+            rt.anchorMax = new Vector2(fx, isEndMarker ? 1f : 0.5f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.offsetMin = new Vector2(-10f, isEndMarker ? 0f : -10f);
+            rt.offsetMax = new Vector2(10f, isEndMarker ? 12f : 0f);
+
+            var grabImg = go.AddComponent<Image>();
+            grabImg.color = new Color(0f, 0f, 0f, 0.001f);
+            grabImg.raycastTarget = true;
+
+            Color color = isEndMarker ? new Color(0.87f, 0.34f, 0.30f, 1f) : new Color(0.22f, 0.68f, 0.36f, 1f);
+
+            // The line pokes past this half-row rect so it visibly crosses the whole bar.
+            var lineGo = new GameObject("Line");
+            lineGo.transform.SetParent(go.transform, false);
+            var lineRt = lineGo.AddComponent<RectTransform>();
+            lineRt.anchorMin = new Vector2(0.5f, 0f);
+            lineRt.anchorMax = new Vector2(0.5f, 0f);
+            lineRt.pivot = new Vector2(0.5f, 0f);
+            lineRt.sizeDelta = new Vector2(3f, isEndMarker ? 20f : 19f);
+            lineRt.anchoredPosition = new Vector2(0f, isEndMarker ? -4f : 6f);
+            var lineImg = lineGo.AddComponent<Image>();
+            lineImg.color = color;
+            lineImg.raycastTarget = false;
+
+            // Flags point OUTWARD - the direction that marker drags to extend the
+            // range: end/red to the right, start/green to the left.
+            var flagGo = new GameObject("Flag");
+            flagGo.transform.SetParent(go.transform, false);
+            var flagRt = flagGo.AddComponent<RectTransform>();
+            flagRt.anchorMin = new Vector2(0.5f, isEndMarker ? 1f : 0f);
+            flagRt.anchorMax = new Vector2(0.5f, isEndMarker ? 1f : 0f);
+            flagRt.pivot = new Vector2(isEndMarker ? 0f : 1f, isEndMarker ? 1f : 0f);
+            flagRt.sizeDelta = new Vector2(9f, 7f);
+            flagRt.anchoredPosition = new Vector2(isEndMarker ? 1f : -1f, 0f);
+            var flagImg = flagGo.AddComponent<Image>();
+            flagImg.color = color;
+            flagImg.raycastTarget = false;
+
+            var handler = go.AddComponent<RangeMarkerDragHandler>();
+            handler.Configure(this, isEndMarker);
+            return rt;
+        }
+
+        private sealed class RangeMarkerDragHandler : MonoBehaviour, IPointerDownHandler, IDragHandler, IPointerUpHandler
+        {
+            private ChatVideoClipChooser _owner;
+            private bool _isEndMarker;
+
+            public void Configure(ChatVideoClipChooser owner, bool isEndMarker)
+            {
+                _owner = owner;
+                _isEndMarker = isEndMarker;
+            }
+
+            public void OnPointerDown(PointerEventData eventData)
+            {
+                // Swallow the press so the Slider underneath never jump-scrubs; the
+                // drag flag is set on the first real drag event, not here, so a plain
+                // click never pauses playback.
+            }
+
+            public void OnDrag(PointerEventData eventData)
+            {
+                if (_owner == null) return;
+                _owner.DragMarkerToFraction(_isEndMarker, _owner.FractionFromPointer(eventData));
+            }
+
+            public void OnPointerUp(PointerEventData eventData)
+            {
+                // Handles both a finished drag and a plain click: either way, land the
+                // preview on this marker's frame.
+                _owner?.FinishMarkerInteraction(_isEndMarker);
+            }
+        }
+
+        private sealed class SliderScrubHandler : MonoBehaviour, IBeginDragHandler, IEndDragHandler
         {
             private ChatVideoClipChooser _owner;
 
@@ -1011,12 +1595,12 @@ namespace AITools.AIChat.Video
                 _owner = owner;
             }
 
-            public void OnPointerDown(PointerEventData eventData)
+            public void OnBeginDrag(PointerEventData eventData)
             {
                 _owner?.BeginSliderScrub();
             }
 
-            public void OnPointerUp(PointerEventData eventData)
+            public void OnEndDrag(PointerEventData eventData)
             {
                 _owner?.EndSliderScrub();
             }
@@ -1200,14 +1784,19 @@ namespace AITools.AIChat.Video
             var img = go.AddComponent<Image>();
             img.color = new Color(0f, 0f, 0f, 0.001f);
             img.raycastTarget = true;
-            CreateGripLine(go.transform, "GripLineSmall", 9f);
-            CreateGripLine(go.transform, "GripLineMedium", 15f);
-            CreateGripLine(go.transform, "GripLineLarge", 21f);
+            CreateGripLine(go.transform, "GripLineSmall", 9f, 8f);
+            CreateGripLine(go.transform, "GripLineMedium", 15f, 14f);
+            CreateGripLine(go.transform, "GripLineLarge", 21f, 20f);
             var grip = go.AddComponent<ResizeGripDragHandler>();
             grip.SetOwner(this);
         }
 
-        private void CreateGripLine(Transform parent, string name, float offset)
+        // One "/" stroke of the classic corner grip: parallel ridges facing the
+        // bottom-right corner, shortest nearest the corner. The rotation must be +45
+        // (perpendicular to the (-offset, offset) placement axis) - at -45 the three
+        // strokes lie along the very line they are offset on and collapse into one
+        // long diagonal.
+        private void CreateGripLine(Transform parent, string name, float offset, float length)
         {
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);
@@ -1215,9 +1804,9 @@ namespace AITools.AIChat.Video
             rt.anchorMin = new Vector2(1f, 0f);
             rt.anchorMax = new Vector2(1f, 0f);
             rt.pivot = new Vector2(0.5f, 0.5f);
-            rt.sizeDelta = new Vector2(16f, 2f);
+            rt.sizeDelta = new Vector2(length, 2f);
             rt.anchoredPosition = new Vector2(-offset, offset);
-            rt.localRotation = Quaternion.Euler(0f, 0f, -45f);
+            rt.localRotation = Quaternion.Euler(0f, 0f, 45f);
             var img = go.AddComponent<Image>();
             img.color = new Color(0.22f, 0.27f, 0.34f, 0.95f);
             img.raycastTarget = false;
@@ -1248,9 +1837,12 @@ namespace AITools.AIChat.Video
             _slider = null;
             _timeText = null;
             _startField = null;
+            _endField = null;
             _durationField = null;
             _fpsField = null;
             _includeAudioToggle = null;
+            _exportToFileToggle = null;
+            _exportToChatToggle = null;
             _playButton = null;
             _playButtonLabel = null;
             _proxyProgressRoot = null;
@@ -1259,6 +1851,12 @@ namespace AITools.AIChat.Video
             _duration3Button = null;
             _duration5Button = null;
             _duration8Button = null;
+            _markerArea = null;
+            _rangeFill = null;
+            _startMarker = null;
+            _endMarker = null;
+            _isDraggingMarker = false;
+            _isScrubbing = false;
 
             BuildUI();
             if (_preview != null && _rt != null)
@@ -1269,8 +1867,6 @@ namespace AITools.AIChat.Video
             if (_previewHint != null && _prepared)
                 _previewHint.gameObject.SetActive(false);
             SetProxyProgressVisible(_proxyConversionInFlight);
-            SetStartSeconds(_selectedStartSeconds);
-            SetDurationFieldText(_duration);
             SetFpsFieldText(_fps);
             SetSliderSeconds(GetCurrentPreviewSeconds());
             RefreshPlayButton();

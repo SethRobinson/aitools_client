@@ -385,15 +385,18 @@ namespace AITools.AIChat.Video
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(outputPath));
 
             startSeconds = Mathf.Max(0f, startSeconds);
-            durationSeconds = Mathf.Clamp(durationSeconds <= 0f ? DefaultClipDurationSeconds : durationSeconds, 0.1f, 60f);
+            // No maximum: the clip chooser can export arbitrarily long ranges.
+            durationSeconds = Mathf.Max(durationSeconds <= 0f ? DefaultClipDurationSeconds : durationSeconds, 0.1f);
             if (fps <= 0 || double.IsNaN(fps) || double.IsInfinity(fps))
                 fps = DefaultFps;
             fps = Math.Max(1, Math.Min(120, fps));
             maxWidth = Mathf.Max(2, maxWidth);
             maxHeight = Mathf.Max(2, maxHeight);
 
+            // Long ranges need more encode time than the base 10 minutes.
+            int timeoutMs = (int)Math.Min(PreviewProxyTimeoutMs, Math.Max(ClipTimeoutMs, durationSeconds * 3000.0 + 60000.0));
             string args = BuildClipArgs(inputPath, outputPath, startSeconds, durationSeconds, fps, maxWidth, maxHeight, includeAudio);
-            Task<ProcessResult> task = Task.Run(() => RunProcess(ffmpegPath, args, ClipTimeoutMs));
+            Task<ProcessResult> task = Task.Run(() => RunProcess(ffmpegPath, args, timeoutMs));
             while (!task.IsCompleted)
                 yield return null;
 

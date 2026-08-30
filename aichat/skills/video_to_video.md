@@ -1,6 +1,6 @@
 ---
 id: video_to_video
-summary: Operate on an EXISTING "Movie #N" clip. Two modes - (1) VISUAL-ONLY RESTYLE/EDIT it with Bernini-R, keeping its motion but producing silent output; (2) REFERENCE-generate a brand-NEW MiniMax H3 clip that carries the source's subject/motion/style into a new scene, or creates/replaces dialogue, voice, music, audio, or sound effects. H3 preset: `Reference Video To Video (MiniMax H3) 5s.txt` (already turbo; "high quality" -> the 20-step `Reference Video To Video (MiniMax H3 Quality)` variants; no Cache variant exists); its prompt refers to the source as <Video 1>. For explicit LONG ~15s use the 15s preset; for other lengths use duration="N" (~5-15s). H3 also accepts up to 9 reference photos, a second clip, and up to 3 AUDIO references: audio="N" / audio2 / audio3 point at Audio bubbles (a generate_speech voice sample, music) or Movies whose SOUND matters -> <Audio N> tags (clip soundtracks number first, then standalone; max 3 audio refs total). Best per-character voice recipe: generate_speech (optionally ref_voice-cloned) -> stage as audio ref -> "speaks with the voice from <Audio 2>". When the result must keep the SAME people as the source, first extract_still a close-up frame per person (anchored) and stage the stills via chat_image2+ (they become <Picture 1>..); describe people ONLY as they appear in the clip/caption, never from film or actor knowledge. H3 reference prompts must USE every staged reference by its exact tag (<Video 1>, <Video 2>, <Picture 1>.., <Audio N> in slot order; a clip counts as used via its <Video k> OR its soundtrack's <Audio n>) - the host refuses reference actions whose prompts skip a staged reference's tag. H3 prompts must also spell out the audio: exact quoted words per speaker (or state that nobody speaks), ambient sound, and music or "no music" (or defer a layer to <Audio N>) - unstated audio is invented and people mouth gibberish; an audio ref carries the VOICE only, never the words - always quote the exact line anyway. Budget the seconds: dialog + described silent action must fill the duration (15s clips end with an explicit silent tail) or gaps grow invented mumbling. Never use image_to_image on a Movie unless the user explicitly requests one still/current frame and the action has movie_frame="true". For smoothing/FPS use rife_video; for animating a STILL use image_to_movie.
+summary: Operate on an EXISTING "Movie #N" clip. Two modes - (1) VISUAL-ONLY RESTYLE/EDIT it with Bernini-R, keeping its motion but producing silent output; (2) REFERENCE-generate a brand-NEW MiniMax H3 clip that carries the source's subject/motion/style into a new scene, or creates/replaces dialogue, voice, music, audio, or sound effects. H3 preset: `Reference Video To Video (MiniMax H3) 5s.txt` (already turbo; "high quality" -> the 20-step `Reference Video To Video (MiniMax H3 Quality)` variants; no Cache variant exists); its prompt refers to the source as <Video 1>. For explicit LONG ~15s use the 15s preset; for other lengths use duration="N" (~5-15s). H3 also accepts up to 9 reference photos, a second clip, and up to 3 AUDIO references: audio="N" / audio2 / audio3 point at Audio bubbles (a dropped .wav, generated speech/music) or Movies whose SOUND matters -> <Audio N> tags (clip soundtracks number first, then standalone; up to 3 standalone). Audio refs are STYLE references like video refs - they nudge voice character/music/ambience toward the sample, not exact clones; the words still come from the quoted lines. When the result must keep the SAME people as the source, first extract_still a close-up frame per person (anchored) and stage the stills via chat_image2+ (they become <Picture 1>..); describe people ONLY as they appear in the clip/caption, never from film or actor knowledge. H3 reference prompts must USE every staged reference by its exact tag (<Video 1>, <Video 2>, <Picture 1>.., <Audio N> in slot order; a clip counts as used via its <Video k> OR its soundtrack's <Audio n>) - the host refuses reference actions whose prompts skip a staged reference's tag. H3 prompts must also spell out the audio: exact quoted words per speaker (or state that nobody speaks), ambient sound, and music or "no music" (or defer a layer to <Audio N>) - unstated audio is invented and people mouth gibberish; an audio ref carries the VOICE only, never the words - always quote the exact line anyway. Budget the seconds: dialog + described silent action must fill the duration (15s clips end with an explicit silent tail) or gaps grow invented mumbling. Never use image_to_image on a Movie unless the user explicitly requests one still/current frame and the action has movie_frame="true". For smoothing/FPS use rife_video; for animating a STILL use image_to_movie.
 inputs: attachment
 autoload: true
 triggers: video to video, restyle the video, restyle this clip, edit the video, edit the clip, change the video, change the clip, redo the video, redo the clip, make the video, make the clip, the video but, the clip but, same video but, restyle the clip, turn the video, turn the clip, video into, clip into, re-render the video, regenerate the video, based on this video, based on that video, based on the clip, based on this clip, like this video, like the video, like this clip, same character as the video, from this video, from the clip, restyle the movie, edit the movie, change the movie, redo the movie, make the movie, the movie but, same movie but, turn the movie, movie into, re-render the movie, regenerate the movie, based on this movie, based on that movie, based on the movie, like this movie, like the movie, same character as the movie, from this movie, from the movie, use movie, use the movie, use this movie, use that movie, as reference, as a reference, reference video, reference clip, reference movie
@@ -60,21 +60,19 @@ two distinct modes - pick by what the user wants:
      and it becomes `<Video 2>` / `<Audio 2>` (e.g. `<Video 1>` = subject,
      `<Video 2>` = camera style or music source). A movie in `chat_image2`
      always means "second clip"; stills always mean photo references.
-   - **Standalone AUDIO references** (up to 3 audio refs TOTAL, clip
-     soundtracks included): `audio="N"` (then `audio2`, `audio3`) points at an
+   - **Standalone AUDIO references** (up to 3, separate from clip
+     soundtracks): `audio="N"` (then `audio2`, `audio3`) points at an
      Audio #N bubble (or a Movie whose SOUND is the reference; numbers or
      anchors). `<Audio N>` tags number the wired audio refs in order - clip
      soundtracks first, then these files. So with one clip staged,
      `<Audio 1>` = the clip's soundtrack and `<Audio 2>` = your first
-     standalone file. THE voice recipe: `generate_speech` the exact line
-     (optionally `ref_voice`-cloned from any clip with that person's voice),
-     anchor it, stage it via `audio="thatanchor"`, and write "she says, with
-     the voice from <Audio 2>: 'exact line'" - each character can get their
-     OWN voice sample without burning a video slot or clipping video by ear.
-     An audio ref supplies the VOICE only, never the words: the prompt must
-     STILL quote each exact line, or H3 invents dialog (tested 2026-08-30:
-     it comes out in a random language, e.g. German). Also good for a music
-     bed (`generate_music` -> audio ref -> "music follows <Audio 2>").
+     standalone file. An audio ref is a STYLE reference, exactly like a
+     video ref: it steers voice character, tone, accent, music, or ambience
+     TOWARD the sample. It is NOT an exact voice clone and never supplies
+     the words - quote each speaker's exact line as always, or H3 invents
+     dialog (tested 2026-08-30: it comes out in a random language). Good
+     jobs for one: "her voice styled like <Audio 2>", a music bed, an
+     ambience sample.
    Give each reference ONE job in the prompt and unused slots simply don't
    exist - no preset switching needed. EVERY staged reference must appear in
    the prompt as its exact tag at least once (`<Video 1>`, `<Picture 1>`..
@@ -237,19 +235,18 @@ Two reference clips - subject from one, camera/music from the other:
 <aitools_action skill="video_to_video" preset="{{Reference Video To Video (MiniMax H3) 5s.txt}}" prompt="The husky from <Video 1> runs through a sunflower field. Use the slow orbiting drone move and the upbeat acoustic track from <Video 2> / <Audio 2>. Golden-hour light, petals drifting in the wind." chat_image="1" chat_image2="4"/>
 ```
 
-Per-character VOICE samples via generate_speech + standalone audio refs
-(two speakers, each with their own cloned voice; the clip supplies motion only).
-CRITICAL: an audio ref carries the VOICE, never the words - the prompt still
-quotes each speaker's EXACT line (a voice ref without quoted words makes H3
-invent dialog, often in the wrong language):
+Per-character voice-STYLE samples via standalone audio refs (two speakers,
+each nudged toward their own sample; the clip supplies motion only). The
+refs steer voice style, not exact words - each speaker's line stays quoted:
 ```
-<aitools_action skill="generate_speech" text="Tonight, I walk the aisles looking for something perfect." ref_voice="dexter_clip" anchor="dexter_line"/>
+<aitools_action skill="generate_speech" text="Tonight, I walk the aisles looking for something perfect." voice="chadwick" anchor="dexter_line"/>
 <aitools_action skill="generate_speech" text="This one. Perfect." voice="yuki" anchor="akiko_line"/>
-<aitools_action skill="video_to_video" preset="{{Reference Video To Video (MiniMax H3) 5s.txt}}" prompt="The man from <Picture 1> pushes a cart through a sunny market and says, speaking with the voice from <Audio 2>: 'Tonight, I walk the aisles looking for something perfect.' The woman from <Picture 2> holds up a mango and says, with the voice from <Audio 3>: 'This one. Perfect.' <Video 1> guides the steady tracking shot. Ambient market chatter; no music." chat_image="5" chat_image2="dexter" chat_image3="akiko" audio="dexter_line" audio2="akiko_line" width="1152" height="640"/>
+<aitools_action skill="video_to_video" preset="{{Reference Video To Video (MiniMax H3) 5s.txt}}" prompt="The man from <Picture 1> pushes a cart through a sunny market and says, his voice styled like <Audio 2>: 'Tonight, I walk the aisles looking for something perfect.' The woman from <Picture 2> holds up a mango and says, her voice styled like <Audio 3>: 'This one. Perfect.' <Video 1> guides the steady tracking shot. Ambient market chatter; no music." chat_image="5" chat_image2="dexter" chat_image3="akiko" audio="dexter_line" audio2="akiko_line" width="1152" height="640"/>
 ```
 (The clip's own soundtrack is `<Audio 1>` here, so the staged files land on
 `<Audio 2>` / `<Audio 3>`. With no clip staged - e.g. on the photo-only
-Reference To Video preset - they would be `<Audio 1>` / `<Audio 2>`.)
+Reference To Video preset - they would be `<Audio 1>` / `<Audio 2>`. A
+dropped .wav / Audio bubble works the same as the generated ones here.)
 
 Same people as the clip, new dialog (identity-critical - extract face refs
 first, then regenerate with them):
