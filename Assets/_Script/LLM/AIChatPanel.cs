@@ -3685,7 +3685,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             return true;
 
         // Pixel-based threshold (the normalized position is fraction-of-scroll-range, which
-        // gets unhelpfully generous on long chats — 5% of a tall conversation is hundreds of
+        // gets unhelpfully generous on long chats - 5% of a tall conversation is hundreds of
         // pixels). Must be within SCROLL_BOTTOM_PIXEL_EPSILON of the actual bottom.
         float scrollableRange = contentHeight - viewportHeight;
         float pixelsFromBottom = Mathf.Clamp01(scroll.verticalNormalizedPosition) * scrollableRange;
@@ -4658,6 +4658,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _webPageSessions.Clear();
         _nextWebPageId = 1;
         _webFetchedUrlToPic.Clear();
+        _webFetchedUrlToQuery.Clear();
         _forwardedDescriptions.Clear();
         _videoImportEpoch++;
         _videoImportCount = 0;
@@ -9339,6 +9340,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // URL -> the Pic it was already fetched into this session (dedupe; Pic reference
     // because chat_image numbers shift when old bubbles are trimmed).
     private readonly Dictionary<string, PicMain> _webFetchedUrlToPic = new Dictionary<string, PicMain>(StringComparer.OrdinalIgnoreCase);
+    // URL -> the search query whose vision check accepted it (empty for url=/result= fetches).
+    // A query-driven fetch must not adopt a URL a DIFFERENT subject's search already claimed:
+    // castmates of one show share search results, and the unchecked reuse handed "kramer_2" a
+    // Jerry photo (2026-08-31).
+    private readonly Dictionary<string, string> _webFetchedUrlToQuery = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
     private bool HasPendingWebWork() => _webFetchCount > 0 || _webCaptionInFlight.Count > 0;
 
@@ -10480,6 +10486,17 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             if (_webFetchedUrlToPic.TryGetValue(cand.Url, out existing) && existing != null && existing.gameObject != null && _chatImagePics.Contains(existing))
             {
                 int existingIdx = _chatImagePics.IndexOf(existing) + 1;
+                string priorQuery;
+                _webFetchedUrlToQuery.TryGetValue(cand.Url, out priorQuery);
+                string priorNorm = (priorQuery ?? "").Trim().ToLowerInvariant();
+                string thisNorm = (req.Query ?? "").Trim().ToLowerInvariant();
+                bool queryDriven = string.IsNullOrEmpty(req.Url) && string.IsNullOrEmpty(req.ResultToken) && thisNorm.Length > 0;
+                if (queryDriven && priorNorm.Length > 0 && priorNorm != thisNorm)
+                {
+                    attempts--;
+                    trace.AppendLine("Skip " + cand.Url + ": already in chat as #" + existingIdx + " from a different search (" + Q(priorQuery) + "); this subject gets its own vision-checked photo");
+                    continue;
+                }
                 trace.AppendLine("Download " + attempts + "/" + candidates.Count + ": " + cand.Url);
                 trace.AppendLine("  -> already fetched this session as #" + existingIdx + ", reusing it" + (anchorName != null ? " (anchor " + Q(anchorName) + ")" : ""));
                 if (anchorName != null) _anchors[anchorName] = existing;
@@ -10578,7 +10595,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             string dims = conv.Width + "x" + conv.Height;
             int idx = AppendWebStillBubble(pic, action, dims, provenance, anchorName);
             _webFetchedUrlToPic[cand.Url] = pic;
-            if (!string.Equals(usedUrl, cand.Url, StringComparison.OrdinalIgnoreCase)) _webFetchedUrlToPic[usedUrl] = pic;
+            _webFetchedUrlToQuery[cand.Url] = queryForProvenance ?? "";
+            if (!string.Equals(usedUrl, cand.Url, StringComparison.OrdinalIgnoreCase))
+            {
+                _webFetchedUrlToPic[usedUrl] = pic;
+                _webFetchedUrlToQuery[usedUrl] = queryForProvenance ?? "";
+            }
             added.Add(idx);
             addedPics.Add(pic);
 

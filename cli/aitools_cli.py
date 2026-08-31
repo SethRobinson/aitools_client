@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-aitools_cli — generate media from the command line via a ComfyUI server.
+aitools_cli - generate media from the command line via a ComfyUI server.
 
 Mirrors what the Unity app (PicTextToImage.cs + PresetManager.cs) does:
 load a workflow JSON (directly or via a Presets/*.txt file), ask a ComfyUI
@@ -23,7 +23,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
 # Windows consoles can default to a legacy codepage (cp1252) that can't
-# encode emoji found in some node titles (e.g. VHS nodes) — don't crash,
+# encode emoji found in some node titles (e.g. VHS nodes) - don't crash,
 # just substitute the characters the console can't show.
 for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):
@@ -219,7 +219,7 @@ def _flag_for_source(source):
         return "--audio"
     if source in ("audio2", "audio3"):
         return f"--{source}"
-    return f"(source '{source}' — not suppliable from the CLI)"
+    return f"(source '{source}' - not suppliable from the CLI)"
 
 
 def build_source_paths(args, preset):
@@ -292,38 +292,38 @@ def build_source_paths(args, preset):
         return {}
 
     if len(args.input) > 1 and numbered:
-        die("mixing repeated -i with numbered -iN flags is ambiguous — "
+        die("mixing repeated -i with numbered -iN flags is ambiguous - "
             "use one style for this command", 1)
 
     assignments = {}
     for source in sorted(numbered, key=lambda s: int(_IMAGE_SOURCE_RE.match(s).group(1))):
         if source not in declared:
             die(f"{_flag_for_source(source)} given but preset {label} has no "
-                f"'{source}' @upload — {img_capacity()}", 1)
+                f"'{source}' @upload - {img_capacity()}", 1)
         assignments[source] = numbered[source]
 
     if args.input and not image_sources:
         die(f"-i given but {img_capacity()} ({label})", 1)
     for idx, path in enumerate(args.input):
         if idx >= len(image_sources):
-            die(f"too many image inputs ({len(args.input)}) — {img_capacity()} ({label})", 1)
+            die(f"too many image inputs ({len(args.input)}) - {img_capacity()} ({label})", 1)
         source = image_sources[idx]
         if source in assignments:
             die(f"image source '{source}' assigned twice: -i fills '{source}' "
-                f"on this preset and {_flag_for_source(source)} was also given — "
+                f"on this preset and {_flag_for_source(source)} was also given - "
                 f"use repeated -i or numbered flags, not both for one slot", 1)
         assignments[source] = path
 
     if args.video2:
         if "video2" not in declared:
-            die(f"--video2 given but preset {label} has no 'video2' @upload — "
+            die(f"--video2 given but preset {label} has no 'video2' @upload - "
                 f"{vid_capacity()}", 1)
         assignments["video2"] = args.video2
     if args.video and not video_sources:
         die(f"--video given but {vid_capacity()} ({label})", 1)
     for idx, path in enumerate(args.video):
         if idx >= len(video_sources):
-            die(f"too many --video inputs ({len(args.video)}) — {vid_capacity()} ({label})", 1)
+            die(f"too many --video inputs ({len(args.video)}) - {vid_capacity()} ({label})", 1)
         source = video_sources[idx]
         if source in assignments:
             die(f"video source '{source}' assigned twice: --video fills "
@@ -335,18 +335,18 @@ def build_source_paths(args, preset):
         if not path:
             continue
         if source not in declared:
-            die(f"{flag} given but preset {label} has no '{source}' @upload — "
+            die(f"{flag} given but preset {label} has no '{source}' @upload - "
                 f"{aud_capacity()}", 1)
         assignments[source] = path
     if args.audio and not audio_sources:
         die(f"--audio given but {aud_capacity()} ({label})", 1)
     for idx, path in enumerate(args.audio):
         if idx >= len(audio_sources):
-            die(f"too many --audio inputs ({len(args.audio)}) — {aud_capacity()} ({label})", 1)
+            die(f"too many --audio inputs ({len(args.audio)}) - {aud_capacity()} ({label})", 1)
         source = audio_sources[idx]
         if source in assignments:
             die(f"audio source '{source}' assigned twice: --audio fills "
-                f"'{source}' and {_flag_for_source(source)} was also given — "
+                f"'{source}' and {_flag_for_source(source)} was also given - "
                 f"use repeated --audio or numbered flags, not both for one slot", 1)
         assignments[source] = path
 
@@ -359,7 +359,7 @@ def build_source_paths(args, preset):
 
 
 # MiniMax H3's trained pixel maximum (~1.03MP, hard cap 1344x768). Overrides
-# above this still run, but quality/identity degrade — warn with the skill
+# above this still run, but quality/identity degrade - warn with the skill
 # docs' recommended sizes.
 H3_MAX_TRAINED_PIXELS = 1344 * 768
 
@@ -377,7 +377,7 @@ def snap_dim(value, flag):
 def warn_pixel_budget(w, h):
     if w * h > H3_MAX_TRAINED_PIXELS:
         print(f"warning: {w}x{h} exceeds MiniMax H3's trained maximum (~1.03MP; "
-              f"hard cap 1344x768). Quality may degrade — good large canvases: "
+              f"hard cap 1344x768). Quality may degrade - good large canvases: "
               f"1152x640 landscape, 640x1152 portrait, 896x896 square.")
 
 
@@ -617,7 +617,7 @@ def main():
     def add_dim_override(flag_label, value, names):
         for name in names:
             if name in overrides:
-                die(f"{flag_label} conflicts with --set-var {name}= — use one or the other", 1)
+                die(f"{flag_label} conflicts with --set-var {name}= - use one or the other", 1)
         if not vars_in_replaces & set(names):
             knob = "/".join(f"%{n}%" for n in names)
             if preset:
@@ -644,15 +644,15 @@ def main():
     if args.duration is not None:
         frames = duration_to_frames(args.duration)
         if not preset:
-            die("--duration needs a preset (-p) — raw workflows carry no length knob", 1)
+            die("--duration needs a preset (-p) - raw workflows carry no length knob", 1)
         length_default = preset.variables.get("vid_length") or preset.variables.get("length")
         if length_default and length_default.strip() not in ("124", "362"):
             die(f"--duration is MiniMax H3 frame math and doesn't fit preset "
                 f"{preset.source_path.name} (default {length_default} frames, "
-                f"a different model's cadence) — use --set-var vid_length=N there", 1)
+                f"a different model's cadence) - use --set-var vid_length=N there", 1)
         for name in ("length", "vid_length"):
             if name in overrides:
-                die(f"--duration conflicts with --set-var {name}= — use one or the other", 1)
+                die(f"--duration conflicts with --set-var {name}= - use one or the other", 1)
         if vars_in_replaces & {"length", "vid_length"}:
             for name in ("length", "vid_length"):
                 all_vars[name] = str(frames)
@@ -680,7 +680,7 @@ def main():
         api_workflow = workflow.apply_replaces(api_workflow, expanded, args.verbose)
 
     # Handle preset @upload + @resize: for each unique source the preset
-    # references, load that local file, run resizes (image1 only — see
+    # references, load that local file, run resizes (image1 only - see
     # README), upload, then map the server path into <AITOOLS_INPUT_N> for
     # every slot that source was routed to.
     input_path_replacements = {}

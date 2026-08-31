@@ -1969,7 +1969,7 @@ public string GetPrompt() { return m_prompt; }
             ApplyMainPreset("Prompt To Image (Z-Image).txt");
         }
 
-        // Apply Temp Job Script preference (label only — temp preset is loaded on demand)
+        // Apply Temp Job Script preference (label only - temp preset is loaded on demand)
         if (!string.IsNullOrEmpty(prefs.TempJobScript) &&
             PresetManager.Get().DoesPresetExistByNameNotCaseSensitive(prefs.TempJobScript))
         {

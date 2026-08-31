@@ -41,6 +41,26 @@ Aliases (`NormalizeSkillId`): `search_web`, `image_search`, `brave_search`... ->
 `read_page`, `fetch_page`, `open_url`, `read_url`, `browse`, `visit`, `web_fetch` (moved here from `web_image`)... -> `web_page`;
 `download_audio`, `fetch_audio`, `find_sound`, `download_wav`, `web_sound`... -> `web_audio`.
 
+**Default cast recipe (Seth, 2026-08-31).** When the user asks for a new
+video of a named show/film cast (or any real person) and the Web toggle is
+ON, the prompt text (`main_prompt.txt` real-people bullet, `web_image.md`
+"Recipe: a video starring a real cast", `web_video.md`, `stitch_video.md`,
+`generate_movie.md`) makes reference fetching the DEFAULT - the user should
+never have to say "use references from the web": per person ONE `web_image`
+with `count="2"` (two in-character stills, anchors `name` + `name_2`, defined
+as ONE `<Subject N>`), query `"<show> <character> scene still"`, and
+`criteria="in-character scene frame from the show itself, in costume on set -
+not an interview, talk show, premiere, red carpet, award show, photoshoot, or
+headshot"` (press/interview photos give the wrong look and wardrobe - the old
+`portrait photo face` queries pulled exactly those); per SPEAKING character
+ONE `web_video query="<show> <character> talking scene" speech="true"`
+clip; then a `Reference Video To Video` render on the auto-continue turn
+(first two speakers' clips in the clip slots, further speakers via
+`audio="name_clip"` standalone refs, stills after the clips), voices bound
+"styled like <Audio N>". Web OFF: use chat references or ask, never a
+text-described lookalike. No code changed for this; it is all prompt/skill
+text using the existing `count` / `criteria` / `speech` attributes.
+
 ## Choosing good images (ranking + vision verification)
 
 The first version took the first download that decoded, which produced a wall of framed
@@ -400,6 +420,19 @@ preview in `tempCache/aichat_audio_previews/`. `tempCache` is wiped on quit; sav
 (an Audio bubble's S saves the sound file next to the preview movie).
 
 ## Edge cases
+
+- **Same URL, different subject (fixed 2026-08-31).** `_webFetchedUrlToPic`
+  dedupes by URL across the session; the image path used to REUSE a cached URL
+  for any later fetch, skipping the vision check, so with the default cast
+  recipe (`count="2"` per castmate of one show) a Reddit diptych accepted for
+  "Seinfeld Jerry ... scene still" was silently handed to the next fetch as
+  `kramer_2`. `AIChatPanel` now also keeps `_webFetchedUrlToQuery` (URL -> the
+  query whose vision check accepted it, empty for url=/result= fetches);
+  a query-driven fetch skips a candidate whose recorded query differs (trace:
+  `Skip <url>: already in chat as #N from a different search (...)`, no
+  attempt consumed) and only reuses for the same query or an explicit
+  url=/result=. Video/audio dedupe is unchanged (clips are per-character
+  queries; no collision observed).
 
 | case | behavior |
 |---|---|

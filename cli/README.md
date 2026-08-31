@@ -44,7 +44,7 @@ resulting image via `/view`.
 3. Python deps: `requests`, `websocket-client`, `Pillow` (see
    `requirements.txt`).
 
-   **Windows:** just run `aitools_cli.bat` — the first run creates a local
+   **Windows:** just run `aitools_cli.bat` - the first run creates a local
    `venv\` folder next to the script and installs the requirements
    automatically (re-installs if `requirements.txt` changes). Needs Python 3
    on PATH (the `py` launcher or `python`).
@@ -75,7 +75,7 @@ Basic run using the default workflow from `config.txt`:
 aitools_cli.py "a giant pig riding a dolphin" pig.png
 ```
 
-Use a preset from `../Presets/` — name resolution accepts the bare file
+Use a preset from `../Presets/` - name resolution accepts the bare file
 stem, with or without `.txt`:
 ```
 aitools_cli.py "a cat" cat.png -p "Prompt To Image (Z-Image)"
@@ -121,7 +121,7 @@ aitools_cli.py "make her hair red" edited.png \
     -i portrait.jpg
 ```
 
-Two-image preset — combine/edit using two source images. Use `-i2` for the
+Two-image preset - combine/edit using two source images. Use `-i2` for the
 second image; presets that declare both `@upload|image1|...` and
 `@upload|image2|...` (e.g. `Image To Image Klein Edit 2 Input`) require
 both inputs:
@@ -319,18 +319,18 @@ H3 can't output an alpha channel directly, but three pipelines get you
 game-ready transparent clips. Transparent output comes in two forms, both
 made locally with the repo's bundled ffmpeg:
 
-- `<output>_alpha.webm` — VP9 WebM with a real alpha channel (plays
+- `<output>_alpha.webm` - VP9 WebM with a real alpha channel (plays
   transparently in engines that support it, e.g. Unity's VideoPlayer)
-- `<output>_sheet.png` — an RGBA sprite-sheet flipbook atlas for particle
+- `<output>_sheet.png` - an RGBA sprite-sheet flipbook atlas for particle
   systems (grid, frame count, and playback fps are printed; unused cells are
-  transparent). Use `--sheet-fps 12` to thin the frames — a full 124-frame
+  transparent). Use `--sheet-fps 12` to thin the frames - a full 124-frame
   clip makes a huge atlas and the CLI warns when it would exceed common
   8192px GPU texture caps.
 
 ### Recipe A: emissive VFX (explosions, fire, magic, sparks)
 
 Generate on a PURE BLACK background and either use additive blending in your
-engine (black simply disappears — no alpha needed at all), or bake
+engine (black simply disappears - no alpha needed at all), or bake
 alpha-from-luminance:
 
 ```
@@ -340,7 +340,7 @@ aitools_cli.py "a single massive explosion: bright orange fireball, flying spark
 ```
 
 This is the best-quality option for glowing effects: no key fringing, and
-semi-transparent glow falls off naturally. (Dark smoke disappears with it —
+semi-transparent glow falls off naturally. (Dark smoke disappears with it - 
 use Recipe C when the smoke matters.)
 
 ### Recipe B: chroma key (solid objects with defined edges)
@@ -360,7 +360,7 @@ too much or too little is keyed. `#RRGGBB` colors also work.
 
 The `Video Remove Background (BiRefNet)` preset runs a matting model
 server-side (MIT-licensed, auto-downloads on first use) and outputs a
-transparent `.webm` directly — no special background needed when generating:
+transparent `.webm` directly - no special background needed when generating:
 
 ```
 aitools_cli.py "" matted.webm -p "Video Remove Background (BiRefNet)" --video anyclip.mp4
@@ -384,7 +384,7 @@ vid2alpha.py matted.webm --sheet 8 --sheet-fps 12  # atlas from an alpha webm
 
 Ask for: a SINGLE centered subject, "camera locked off" (no pans), "pure
 black background" or "pure solid bright green background, evenly lit, no
-shadows", and "nothing else visible". Avoid ground planes and cast shadows —
+shadows", and "nothing else visible". Avoid ground planes and cast shadows - 
 they key badly and matte as part of the subject.
 
 ## Preset support
@@ -403,8 +403,8 @@ Inside the preset's `joblist` block these are supported:
 - `%var%` substitution in directive args, including built-ins `%prompt%`
   and `%negative_prompt%`
 - Directives:
-  - `@replace|find|with|` — string substitution on the workflow JSON
-  - `@upload|<source>|inputN|[optional|]` — uploads a CLI-supplied file to
+  - `@replace|find|with|` - string substitution on the workflow JSON
+  - `@upload|<source>|inputN|[optional|]` - uploads a CLI-supplied file to
     ComfyUI's `/temp/` folder and routes the path into `<AITOOLS_INPUT_N>`
     (N = 1..14). Suppliable sources: `image1`..`image10` (repeatable `-i`
     fills them in declared order; numbered `-i2`..`-i10` bind exact slots),
@@ -416,18 +416,18 @@ Inside the preset's `joblist` block these are supported:
     of erroring (this is how the universal H3 reference workflow serves
     every photo/clip/audio combination). `temp1`/`temp2`/`temp3` aren't
     supported.
-  - `@prune_input|name|` — remove that named input key from every node in
+  - `@prune_input|name|` - remove that named input key from every node in
     the API JSON before submit (same as the `--prune-input` flag; used for
     per-clip audio pruning on H3 reference workflows).
-  - `@resize|x|W|y|H|aspect_correct|0_or_1|` — resize the input image to
+  - `@resize|x|W|y|H|aspect_correct|0_or_1|` - resize the input image to
     `W×H` before upload. `aspect_correct|1` center-crops to the target
     aspect first; `aspect_correct|0` stretches.
-  - `@resize_if_larger|...|` — same args as `@resize`, but only acts when
+  - `@resize_if_larger|...|` - same args as `@resize`, but only acts when
     the image exceeds either dimension.
-  - `@invert_alpha|` — post-process the *output* image, flipping its alpha
+  - `@invert_alpha|` - post-process the *output* image, flipping its alpha
     channel. Useful when a mask workflow gives you the inverse of what you
     want (e.g. you want to keep the background, not the subject). Any slot
-    arg is ignored — it always acts on the saved output.
+    arg is ignored - it always acts on the saved output.
 
 In short: single-step presets work for text-to-image, image-in workflows
 (img2img, mask, inpaint, etc.), and all four MiniMax H3 movie modes (up to
@@ -442,62 +442,62 @@ deliberately implements only the text-to-image subset. Each item below will
 either error out clearly when encountered, or (for the silently-ignored
 blocks) is parsed and discarded.
 
-### Block types — silently ignored
+### Block types - silently ignored
 These are LLM/Adventure-mode features and don't affect text-to-image, so
 their presence in a preset is harmless:
-- `summarize_prompt` — summarization prompt for the LLM (Adventure mode)
-- `recent_interactions` — integer controlling LLM history depth
+- `summarize_prompt` - summarization prompt for the LLM (Adventure mode)
+- `recent_interactions` - integer controlling LLM history depth
 
-### Multi-step orchestration — error
+### Multi-step orchestration - error
 - More than one workflow line in a single `joblist` (chained workflows)
 - `command ...` lines (built-in command sequences)
 - Multiline `@end`-terminated arguments
 - Mid-job control flow: `@stopjob`, `@no_undo`, `@lock_gpu`
 
 ### Image / input-slot features
-- `@upload|image1..image10|inputN|` — **supported** (repeatable `-i`, or
+- `@upload|image1..image10|inputN|` - **supported** (repeatable `-i`, or
   numbered `-i2`..`-i10` for exact slots). Two-input presets
   (e.g. `Image To Image Klein Edit 2 Input`) take `-i` + `-i2`.
-- `@upload|video|inputN|` / `@upload|video2|inputN|` — **supported**
+- `@upload|video|inputN|` / `@upload|video2|inputN|` - **supported**
   (repeatable `--video`, or `--video2` for the second clip).
-- `@upload|audio1..audio3|inputN|` — **supported** (repeatable `--audio`, or
+- `@upload|audio1..audio3|inputN|` - **supported** (repeatable `--audio`, or
   `--audio2`/`--audio3` for exact slots; H3 standalone audio references).
-- `@upload|...|optional|` — **supported** (unfilled slots prune their loader
+- `@upload|...|optional|` - **supported** (unfilled slots prune their loader
   nodes from the graph).
-- `@prune_input|name|` — **supported** (also via `--prune-input`).
-- `@resize|...|` and `@resize_if_larger|...|` — **supported** (no-slot form;
+- `@prune_input|name|` - **supported** (also via `--prune-input`).
+- `@resize|...|` and `@resize_if_larger|...|` - **supported** (no-slot form;
   always applied to `image1`. Other images upload as-is.)
 
 Still missing:
-- `@upload|temp1|...|`, `@upload|temp2|...|`, `@upload|temp3|...|` — multi-step
+- `@upload|temp1|...|`, `@upload|temp2|...|`, `@upload|temp3|...|` - multi-step
   presets that pass intermediate results between jobs (Qwen Edit From
-  Temp1+Temp2, etc.) — the CLI only runs a single job at a time
-- `@setimage|%var%|src|` — copy an image into a named variable
-- `@fill_mask_if_blank` — auto-fill an empty inpaint mask
+  Temp1+Temp2, etc.) - the CLI only runs a single job at a time
+- `@setimage|%var%|src|` - copy an image into a named variable
+- `@fill_mask_if_blank` - auto-fill an empty inpaint mask
 
-### Variable mutation across steps — error
+### Variable mutation across steps - error
 These exist to pass values between sequential jobs in a chain, which the
 CLI doesn't run:
-- `@copy|src|dst|` — copy a variable's value
-- `@add|src|dst|` — append a variable's value
-- `@set|%var%|value|` — set a custom text variable
-- `@clear|%var%|` — clear a variable
+- `@copy|src|dst|` - copy a variable's value
+- `@add|src|dst|` - append a variable's value
+- `@set|%var%|value|` - set a custom text variable
+- `@clear|%var%|` - clear a variable
 
-### LLM integration — error
-- `call_llm` — invoke the configured LLM with the current prompt state
-- `@llm_prompt_reset` — clear LLM conversation history
-- `@llm_prompt_set_base_prompt|text|` — set the LLM system prompt
-- `@llm_prompt_pop_first` — drop the oldest LLM interaction
-- `@llm_prompt_add_from_user|text|` — append a user-side message
-- `@llm_prompt_add_from_assistant|text|` — append an assistant-side message
-- `@llm_prompt_add_to_last_interaction|text|` — extend the last LLM message
-- `@llm_add_image|slot|` — attach an image to the next LLM message (vision)
-- `@parse_llm_prompts` — parse `SET_PROMPT1:`..`SET_PROMPT8:` tags from the
+### LLM integration - error
+- `call_llm` - invoke the configured LLM with the current prompt state
+- `@llm_prompt_reset` - clear LLM conversation history
+- `@llm_prompt_set_base_prompt|text|` - set the LLM system prompt
+- `@llm_prompt_pop_first` - drop the oldest LLM interaction
+- `@llm_prompt_add_from_user|text|` - append a user-side message
+- `@llm_prompt_add_from_assistant|text|` - append an assistant-side message
+- `@llm_prompt_add_to_last_interaction|text|` - extend the last LLM message
+- `@llm_add_image|slot|` - attach an image to the next LLM message (vision)
+- `@parse_llm_prompts` - parse `SET_PROMPT1:`..`SET_PROMPT8:` tags from the
   LLM reply into per-job prompt slots
 
 ### Built-in variables not exposed
 Only `%prompt%` and `%negative_prompt%` are pre-populated. The Unity app
-also exposes the following — they are *not* errors when referenced (unknown
+also exposes the following - they are *not* errors when referenced (unknown
 `%var%` tokens are left as-is, matching the C# behavior), but they will
 never resolve to anything useful here:
 - `%audio_prompt%`, `%audio_negative_prompt%`, `%segmentation_prompt%`
@@ -533,13 +533,13 @@ cli/
 ```
 
 The first conversion of any workflow writes
-`../ComfyUI/<workflow>_cached_api_version.json` next to the source — same
+`../ComfyUI/<workflow>_cached_api_version.json` next to the source - same
 location and behavior as the Unity app.
 
 ## Exit codes
 
-- `0` — success
-- `1` — user / config error (bad args, missing preset, unsupported directive)
-- `2` — server / network error (no servers reachable, HTTP failure, timeout)
-- `3` — generation reported an error from ComfyUI
-- `130` — Ctrl-C
+- `0` - success
+- `1` - user / config error (bad args, missing preset, unsupported directive)
+- `2` - server / network error (no servers reachable, HTTP failure, timeout)
+- `3` - generation reported an error from ComfyUI
+- `130` - Ctrl-C

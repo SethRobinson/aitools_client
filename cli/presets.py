@@ -49,16 +49,16 @@ VAR_ASSIGN_PATTERN = re.compile(r'^%([a-zA-Z_][a-zA-Z0-9_]*)%\s*=\s*(.*)$')
 # Per-directive error reasons. Anything not in here AND not in the supported
 # set is reported as "unknown directive".
 UNSUPPORTED_DIRECTIVE_REASONS = {
-    "setimage":           "needs Unity image-slot manipulation — not supported by aitools_cli",
-    "fill_mask_if_blank": "needs Unity mask handling — not supported by aitools_cli",
-    "copy":               "needs cross-job variable mutation — aitools_cli runs a single workflow",
-    "add":                "needs cross-job variable mutation — aitools_cli runs a single workflow",
-    "set":                "needs cross-job variable mutation — aitools_cli runs a single workflow",
-    "clear":              "needs cross-job variable mutation — aitools_cli runs a single workflow",
+    "setimage":           "needs Unity image-slot manipulation - not supported by aitools_cli",
+    "fill_mask_if_blank": "needs Unity mask handling - not supported by aitools_cli",
+    "copy":               "needs cross-job variable mutation - aitools_cli runs a single workflow",
+    "add":                "needs cross-job variable mutation - aitools_cli runs a single workflow",
+    "set":                "needs cross-job variable mutation - aitools_cli runs a single workflow",
+    "clear":              "needs cross-job variable mutation - aitools_cli runs a single workflow",
     "stopjob":            "only meaningful inside the Unity job pipeline",
     "no_undo":            "only meaningful inside the Unity job pipeline",
-    "lock_gpu":           "needs Unity GPU locking — not supported by aitools_cli",
-    "parse_llm_prompts":  "needs LLM integration — not supported by aitools_cli",
+    "lock_gpu":           "needs Unity GPU locking - not supported by aitools_cli",
+    "parse_llm_prompts":  "needs LLM integration - not supported by aitools_cli",
 }
 
 
@@ -90,7 +90,7 @@ class UploadSpec:
 class ReplaceOp:
     """An expanded @replace: find/repl after %var% substitution. When
     `required_by` names a CLI flag (e.g. '--width'), a find-miss is a hard
-    error instead of a warning — used so explicit overrides can't silently
+    error instead of a warning - used so explicit overrides can't silently
     render at defaults."""
     find: str
     repl: str
@@ -143,7 +143,7 @@ def load_preset(name_or_path: str) -> PresetData:
             continue
         if name not in SUPPORTED_BLOCKS:
             die(
-                f"preset {path.name}: unsupported block 'COMMAND_START|{name}' — "
+                f"preset {path.name}: unsupported block 'COMMAND_START|{name}' - "
                 f"aitools_cli only handles {sorted(SUPPORTED_BLOCKS)}",
                 1,
             )
@@ -197,13 +197,13 @@ def _parse_joblist(body: str, data: PresetData, path: Path):
         if line.startswith("command "):
             die(
                 f"preset {path.name}: joblist contains a 'command ...' line "
-                f"({_short(line)}) — aitools_cli does not support multi-step "
+                f"({_short(line)}) - aitools_cli does not support multi-step "
                 f"command sequences (LLM, image ops, etc.)",
                 1,
             )
         if line == "call_llm":
             die(
-                f"preset {path.name}: joblist contains 'call_llm' — "
+                f"preset {path.name}: joblist contains 'call_llm' - "
                 f"LLM integration is not supported by aitools_cli",
                 1,
             )
@@ -221,7 +221,7 @@ def _parse_joblist(body: str, data: PresetData, path: Path):
     if len(workflow_lines) > 1:
         die(
             f"preset {path.name}: joblist has {len(workflow_lines)} workflow "
-            f"lines — aitools_cli only supports single-step presets. "
+            f"lines - aitools_cli only supports single-step presets. "
             f"First two lines: {_short(workflow_lines[0])} | {_short(workflow_lines[1])}",
             1,
         )
@@ -235,13 +235,13 @@ def _parse_workflow_line(line: str, data: PresetData, path: Path):
     """Parse `<workflow.json> [@directive|args| ...]` into data.workflow + data.replaces."""
     # Split on whitespace-then-@ to keep @ args containing spaces intact.
     # Format is loose; the C# parser splits on '@' which means '@' inside
-    # a @replace arg would break things — we follow the same loose convention.
+    # a @replace arg would break things - we follow the same loose convention.
     parts = line.split("@")
     head = parts[0].strip()
     if not head or not head.lower().endswith(".json"):
         die(
             f"preset {path.name}: joblist workflow line must start with a .json "
-            f"filename — got: {_short(line)}",
+            f"filename - got: {_short(line)}",
             1,
         )
     data.workflow = head
@@ -293,7 +293,7 @@ def _handle_directive(directive: str, args: List[str], data: PresetData, path: P
     if d in UNSUPPORTED_DIRECTIVE_REASONS:
         die(f"preset {path.name}: @{d} {UNSUPPORTED_DIRECTIVE_REASONS[d]}", 1)
     if d.startswith("llm_"):
-        die(f"preset {path.name}: @{d} needs LLM integration — not supported by aitools_cli", 1)
+        die(f"preset {path.name}: @{d} needs LLM integration - not supported by aitools_cli", 1)
     die(f"preset {path.name}: unknown directive '@{d}'", 1)
 
 
@@ -334,7 +334,7 @@ def _handle_upload(args: List[str], data: PresetData, path: Path):
         # fine: the slot stays unfilled and its loader node is pruned from the
         # graph before submission.
         die(
-            f"preset {path.name}: @upload source '{source}' not supported — "
+            f"preset {path.name}: @upload source '{source}' not supported - "
             f"aitools_cli handles image1..image10 (repeatable -i / numbered -iN "
             f"flags), video/video2 (--video / --video2), and audio1..audio3 "
             f"(--audio / --audio2 / --audio3). "
@@ -343,7 +343,7 @@ def _handle_upload(args: List[str], data: PresetData, path: Path):
         )
     if dest not in _INPUT_SLOTS:
         die(
-            f"preset {path.name}: @upload dest '{dest}' not recognised — "
+            f"preset {path.name}: @upload dest '{dest}' not recognised - "
             f"expected one of input1..input14 (or 1..14)",
             1,
         )
@@ -360,7 +360,7 @@ def _handle_resize(directive: str, args: List[str], data: PresetData, path: Path
     if first != "x":
         die(
             f"preset {path.name}: @{directive} with a slot prefix ('{first}') "
-            f"is not supported — aitools_cli always resizes the -i input image. "
+            f"is not supported - aitools_cli always resizes the -i input image. "
             f"Use the form @{directive}|x|W|y|H|aspect_correct|N|.",
             1,
         )
@@ -372,7 +372,7 @@ def _handle_resize(directive: str, args: List[str], data: PresetData, path: Path
         )
     if args[2].strip().lower() != "y" or args[4].strip().lower() != "aspect_correct":
         die(
-            f"preset {path.name}: @{directive} args malformed — "
+            f"preset {path.name}: @{directive} args malformed - "
             f"expected x|W|y|H|aspect_correct|N, got {args}",
             1,
         )
@@ -420,7 +420,7 @@ def expand_replaces(replaces, variables, verbose=False, critical_vars=None):
     `critical_vars` maps var name -> CLI flag label (e.g. {"vid_width":
     "--width"}). When the RAW replace text references one of those vars, the
     resulting ReplaceOp is marked required_by=<flag>, and apply_replaces will
-    hard-error if its find-string is missing — so an explicit CLI override can
+    hard-error if its find-string is missing - so an explicit CLI override can
     never silently render at defaults."""
     critical_vars = critical_vars or {}
     out = []

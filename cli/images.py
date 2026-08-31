@@ -108,13 +108,13 @@ def _center_crop_to_aspect(img: Image.Image, target_w: int, target_h: int) -> Im
     src_aspect = img.width / img.height
     dst_aspect = target_w / target_h
     if dst_aspect < src_aspect:
-        # Source is wider — crop the width
+        # Source is wider - crop the width
         new_w = int(img.height * dst_aspect)
         new_h = img.height
         x = (img.width - new_w) // 2
         y = 0
     else:
-        # Source is taller (or equal) — crop the height
+        # Source is taller (or equal) - crop the height
         new_w = img.width
         new_h = int(img.width / dst_aspect)
         x = 0
@@ -124,7 +124,7 @@ def _center_crop_to_aspect(img: Image.Image, target_w: int, target_h: int) -> Im
 
 def invert_alpha_bytes(png_bytes: bytes, verbose: bool = False) -> bytes:
     """Invert the alpha channel of a PNG. RGB inputs are promoted to RGBA
-    with full alpha first (so inverting yields a fully transparent image —
+    with full alpha first (so inverting yields a fully transparent image - 
     typically not what you want, but at least well-defined)."""
     img = Image.open(io.BytesIO(png_bytes))
     img.load()

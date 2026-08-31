@@ -5,7 +5,7 @@ COMMAND_START|joblist
 img_to_img_kontext_lora.json @upload|image1|input1| @replace|kontext/kontext-turnaround-sheet-v1.safetensors|%lora%|
 COMMAND_END
 COMMAND_START|default_prompt
-reate turnaround sheet of this exact character, 5 full-body poses on pure white background: front view, 3/4 left, left profile, back view, right profile, 3/4 right — evenly spaced in a clean horizontal row, consistent lighting and style, no background noise, no shadows, same proportions and detailing across all views
+reate turnaround sheet of this exact character, 5 full-body poses on pure white background: front view, 3/4 left, left profile, back view, right profile, 3/4 right - evenly spaced in a clean horizontal row, consistent lighting and style, no background noise, no shadows, same proportions and detailing across all views
 COMMAND_END
 COMMAND_START|default_negative_prompt
 blurry, illustration, drawing, horror

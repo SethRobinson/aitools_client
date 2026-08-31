@@ -43,7 +43,7 @@ public static class ComfyUIConverter
             }
         }
 
-        // The output API JSON – a dictionary keyed by node id.
+        // The output API JSON - a dictionary keyed by node id.
         var output = new JSONObject();
 
         // Iterate over all nodes in the original workflow.

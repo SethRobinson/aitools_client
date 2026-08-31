@@ -1,11 +1,11 @@
 ---
 id: generate_movie
-summary: Make a new video from a text description. DEFAULT recipe is two actions: generate a Z-Image still, then animate it with image_to_movie chain="true" using `Image To Video (MiniMax H3 Turbo Cache) 5s.txt`. Use direct text-to-video (`skill="generate_movie"`) only when the user explicitly asks for direct/text-to-video or no still-image base. Every H3 movie prompt must include an explicit AUDIO spec - who speaks and their EXACT quoted words (or state that nobody speaks), ambient sound, and music or "no music": unstated audio is invented and on-screen people mouth gibberish. BEFORE picking the recipe, check ANCHORS / CHAT IMAGES for existing references of the requested subject: photo anchors AND any Audio #N voice sample of a SPEAKING character (a web_audio fetch, an imported .wav). When either exists, route through image_to_movie with a Reference To Video preset instead of this default recipe, staging the photos (chat_image=) and the voice sample (audio="N", voice styled via its <Audio N> tag) - rendering a character speaking while their voice sample sits unused in chat is a routing error.
+summary: Make a new video from a text description. DEFAULT recipe is two actions: generate a Z-Image still, then animate it with image_to_movie chain="true" using `Image To Video (MiniMax H3 Turbo Cache) 5s.txt`. Use direct text-to-video (`skill="generate_movie"`) only when the user explicitly asks for direct/text-to-video or no still-image base. Every H3 movie prompt is the official structured multi-line DOCUMENT (see image_to_movie): integrated_multimodal_description: with [Shot 1] style + the WHOLE scene re-described + actions, dialog as plain prose with the exact words quoted and the voice described around them - she says 'exact line.' in English with a warm calm voice - NEVER <d>[English]...</d> blocks or (S1) IDs (that markup renders as narration with a closed mouth; ~2.5 words/sec; a visible person with no quoted line mouths gibberish - write the line or state nobody speaks), then overall_soundscape: (1-4 sentences) and non_diegetic_music: (instruments/tempo or N/A). 150-250 words for 5s, 250-450 for 10-15s/multi-shot; chained i2v prompts refer to the chained still as <Picture 1> inside Shot 1. Put prompt LAST in the tag. BEFORE picking the recipe, check ANCHORS / CHAT IMAGES for existing references of the requested subject: photo anchors AND any Audio #N voice sample of a SPEAKING character (a web_audio fetch, an imported .wav). When either exists, route through image_to_movie with a Reference To Video preset instead of this default recipe, staging the photos (chat_image=) and the voice sample (audio="N", voice styled via its <Audio N> tag) - rendering a character speaking while their voice sample sits unused in chat is a routing error.
 inputs: none
 autoload: true
 triggers: generate a video, generate video, make a video, create a video, create video, generate a movie, make a movie, create a movie, generate a clip, make a clip, minimax video, minimax movie, minmax video, h3 video, prompt to video, text to video, text-to-video, direct video
 exclude_triggers: edit this video, restyle this video, video to video, video-to-video, animate this image, animate this, animate it, image to video, image-to-video
-template: <aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="full self-contained still-image scene prompt"/><aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" prompt="motion + one camera move + AUDIO: exact quoted dialog line (or: No dialog) + ambient sound + music or no music" chain="true"/>
+template: <aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="full self-contained still-image scene prompt"/><aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" chain="true" prompt="integrated_multimodal_description: [Shot 1] <the whole scene re-described> ... she says 'exact line.' in English with a warm calm voice ... + overall_soundscape: ... + non_diegetic_music: ... (150-250 words)"/>
 ---
 # Generate a movie
 
@@ -29,7 +29,19 @@ user already staged for this subject:
   gets an invented voice. The exact words still come from your quoted lines
   (an audio ref never supplies the words).
 
-Only when chat holds nothing usable does the default text-first recipe apply.
+If the subject is a REAL person or a named character from a show/film and
+chat holds nothing usable, do NOT fall through to the text-first recipe:
+with WEB ACCESS on, fetch references first, by default and without being
+asked - per person one `web_image count="2"` from the show itself (query
+"<show> <character> scene still" + the not-an-interview criteria), per
+SPEAKING character one `web_video ... speech="true"` clip - then render on
+the auto-continue turn with the reference presets (recipe: the web_image
+skill). With WEB ACCESS off, ask the user for photos/clips or to enable Web;
+never render a text-described lookalike of a real person.
+
+Only for invented subjects, or when chat holds nothing usable and the
+subject is not a real/named person, does the default text-first recipe
+apply.
 
 ## Default Workflow
 
@@ -46,8 +58,8 @@ Note the SAME `width`/`height` on both actions - that makes the still at
 exactly the video's canvas instead of a needlessly large 1024x1024 frame (see
 "Sizing" below):
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full Z-Image still prompt: subject, wardrobe, pose, setting, lighting, camera, style>" width="864" height="480"/>
-<aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" prompt="<H3 motion prompt with one camera move, plus the audio spec: exact quoted dialog (or an explicit no-dialog), ambient sound, music or no music>" chain="true" width="864" height="480"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" width="864" height="480" prompt="<full Z-Image still prompt: subject, wardrobe, pose, setting, lighting, camera, style>"/>
+<aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" chain="true" width="864" height="480" prompt="<the full three-field H3 document: integrated_multimodal_description with [Shot 1] + the whole scene + prose-quoted dialog, overall_soundscape, non_diegetic_music - see image_to_movie>"/>
 ```
 
 The chained movie action carries ONLY `chain="true"` plus its preset/prompt.
@@ -108,7 +120,11 @@ Direct text-to-video presets are still available, but they are NOT the default:
 
 Direct example, only for explicit direct T2V:
 ```
-<aitools_action skill="generate_movie" preset="{{Prompt To Video (MiniMax H3 Turbo Cache) 5s.txt}}" prompt="full direct text-to-video prompt"/>
+<aitools_action skill="generate_movie" preset="{{Prompt To Video (MiniMax H3 Turbo Cache) 5s.txt}}" prompt="integrated_multimodal_description: [Shot 1] Live-action, cinematic, <style + opening composition + subjects + actions + camera + prose-quoted dialog along the timeline>.
+
+overall_soundscape: <1-4 sentences of ambience and physical sound>.
+
+non_diegetic_music: <instruments/tempo, or N/A>"/>
 ```
 
 ## Prompt Writing
@@ -124,18 +140,22 @@ For "a Japanese woman playing basketball", the still prompt should choose the
 court, time of day, wardrobe, pose, camera, and style explicitly instead of
 passing that phrase unchanged.
 
-### MiniMax H3 Image-To-Video (default)
+### The H3 movie prompt (chained i2v AND direct t2v)
 
-Single-scene: 4-8 sentences, one paragraph, subject restatement, concrete
-motion, one camera move, mood/lighting, then the MANDATORY audio spec: WHO
-speaks and their EXACT words in double quotes with language + accent (or an
-explicit `No dialog; nobody speaks.`), a named ambient sound, and music or
-`no music`. H3 always generates a soundtrack - unstated speech comes out as
-gibberish mumbling, so never leave audio unspecified. Avoid jump cuts
-("suddenly", "cuts to") and vague motion words ("dynamic", "epic"). H3
-also supports explicit multi-shot structure (`SHOT 1: ... SHOT 2: cut to ...`)
-- 1-2 shots at 5s. No negative prompts for H3. See `image_to_movie` ->
-"MiniMax H3" for full guidance.
+Every H3 prompt is the official structured document - full spec, field
+rules, and a worked example live in `image_to_movie` -> "The H3 prompt
+format". In short: `integrated_multimodal_description:` ([Shot 1] style, the
+WHOLE scene described - for a chained i2v, re-anchor the still as "the woman
+shown in <Picture 1>"; never a delta like "the same scene but..." - then
+concrete actions, ONE camera move as motion type + amplitude + speed, and
+dialog as plain prose with the exact words quoted and the voice described
+around them - `she says 'exact line.' in English with a warm calm voice` -
+NEVER `<d>` blocks or `(S1)` IDs, which render as closed-mouth narration;
+~2.5 words/sec, or an explicit `No dialog; nobody speaks.`),
+`overall_soundscape:` (1-4 sentences), `non_diegetic_music:` (instruments/
+tempo, or N/A). **150-250 words at 5s; 250-450 for 10-15s/multi-shot** (a 5s
+clip is ONE shot, two at most; later shots start `[Shot N] At MM:SS.mmm`).
+Describe only what a viewer can see or hear; no negative prompts.
 
 ## Sizing
 
@@ -157,9 +177,11 @@ unless asked. See `image_to_movie` -> "Sizing" for details.
 ## Rules
 
 - User asked for a new video -> spawn it, no confirmation.
-- EVERY H3 movie prompt carries the explicit audio spec: exact quoted dialog
-  per speaker (or `No dialog; nobody speaks.`), named ambient sound, and
-  music or `no music`.
+- EVERY H3 movie prompt is the structured document with all three audio
+  layers: prose-quoted dialog per speaker (never `<d>`/`(S1)` markup - it
+  kills lip sync; or an explicit `No dialog; nobody speaks.`),
+  `overall_soundscape:`, and `non_diegetic_music:` (or N/A). 150-250 words
+  at 5s, the whole scene re-described. `prompt` LAST in the tag.
 - Default is Z-Image still -> `image_to_movie chain="true"` with
   `{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}`.
 - ALWAYS put the same `width`/`height` on both actions. Use the size the user

@@ -67,7 +67,7 @@ Dialog format: The [description], [physical action]: "[Short line.]"
 GOOD: The older man sets down his mug, his jaw tightening: "You said you'd be there."
 BAD: The older man (frustrated): "You said you'd be there. You promised me you'd come."
 
-Do not use character names — use visual descriptions only.
+Do not use character names - use visual descriptions only.
 Output ONLY the action prompt. No labels, no explanations.
 
 Keep the user's core idea: %original_idea%

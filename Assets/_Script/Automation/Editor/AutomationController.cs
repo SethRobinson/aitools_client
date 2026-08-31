@@ -145,7 +145,7 @@ public static class AutomationController
         catch (Exception e)
         {
             _running = false;
-            Debug.LogError($"[Automation] Failed to start control server on :{kPort} — {e.Message}");
+            Debug.LogError($"[Automation] Failed to start control server on :{kPort} - {e.Message}");
         }
     }
 
@@ -156,7 +156,7 @@ public static class AutomationController
         try { _listener?.Stop(); } catch { }
         _listener = null;
         // The listener thread is a background thread blocked in AcceptTcpClient(); Stop()
-        // makes it throw and exit. Don't Join() here — beforeAssemblyReload must return fast.
+        // makes it throw and exit. Don't Join() here - beforeAssemblyReload must return fast.
         _listenerThread = null;
     }
 
@@ -745,7 +745,7 @@ public static class AutomationController
     //   play    -> re-enter play mode, wait until the driver re-registers, then clear
 
     // Fires after every domain reload. A reload that lands while we're in the compile
-    // stage IS the "compilation finished" signal — advance to re-entering play. Reloads
+    // stage IS the "compilation finished" signal - advance to re-entering play. Reloads
     // from other causes (play-mode exit/enter) are ignored here; PumpRebuild handles those.
     static void OnAfterAssemblyReload()
     {
@@ -790,7 +790,7 @@ public static class AutomationController
 
             case kStageCompile:
                 // Request a compile once. Advancement to the play stage happens in
-                // OnAfterAssemblyReload — the post-compile domain reload is the reliable
+                // OnAfterAssemblyReload - the post-compile domain reload is the reliable
                 // "compile finished" signal (polling isCompiling races the request).
                 if (!SessionState.GetBool(kCompileRequestedKey, false))
                 {

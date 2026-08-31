@@ -1,6 +1,6 @@
 ---
 id: web_video
-summary: Download a SHORT clip (default 5s, max 15s) from the web into chat as a Movie #N bubble - from a page URL (YouTube, Vimeo, etc. via bundled yt-dlp) or a direct media file URL, found via a Brave video search (query=) or given (url=). The host ranks results (scenes/clips up, interviews/podcasts/reactions down), cuts the section, and VISION-CHECKS each cut (talk shows, intros, wrong subject are rejected; a later part of the source, then the next result, is tried). It ALWAYS auto-continues: the clip, its anchor and caption are in CHAT IMAGES on your next turn, so a request like "find a clip of X and make a video" is two steps - fetch now, emit video_to_video on the continue turn. Main use - a motion / appearance / VOICE reference for Reference Video To Video (MiniMax H3) (<Video 1>). H3 clones the clip's AUDIO for the generated voice, so whenever the new video has the character TALKING, set speech="true": the host then also checks the audio (ffmpeg + Whisper) and rejects music-only / silent cuts.
+summary: Download a SHORT clip (default 5s, max 15s) from the web into chat as a Movie #N bubble - from a page URL (YouTube, Vimeo, etc. via bundled yt-dlp) or a direct media file URL, found via a Brave video search (query=) or given (url=). The host ranks results (scenes/clips up, interviews/podcasts/reactions down), cuts the section, and VISION-CHECKS each cut (talk shows, intros, wrong subject are rejected; a later part of the source, then the next result, is tried). It ALWAYS auto-continues: the clip, its anchor and caption are in CHAT IMAGES on your next turn, so a request like "find a clip of X and make a video" is two steps - fetch now, emit video_to_video on the continue turn. Main use - a motion / appearance / VOICE reference for Reference Video To Video (MiniMax H3) (<Video 1>). H3 styles the generated voice from the clip's AUDIO (a style reference - bind it "styled like <Audio N>", never "matches"/"the voice from", which splice the sample verbatim), so whenever the new video has the character TALKING, set speech="true": the host then also checks the audio (ffmpeg + Whisper) and rejects music-only / silent cuts.
 inputs: none
 autoload: true
 triggers: download a clip, download a video, download the video, download this video, clip from youtube, youtube clip, youtube video, from youtube, grab a clip, grab a video, fetch a video, fetch a clip, get a clip of, get a video of, video from the web, video from the internet, clip from the web, clip from the internet, find a video of, find a clip of, find footage, real footage, actual footage, movie clip of, scene from the movie, scene from the show, reference clip, reference clips, reference video, reference videos, stills and video, stills and videos, vimeo, tiktok, youtu.be, sound correct, sound right, sound like, sounds like, sound like themselves, their voices, real voices, actual voices, voice reference, look and sound, in their own voice
@@ -19,6 +19,12 @@ source fps, audio kept) and captioned.
 
 ## When to use it
 
+- A **VOICE reference, by default, for every real / named character who will
+  SPEAK** in a render when WEB ACCESS is on - the user only has to name the
+  show; fetch `query="<show> <character> talking scene" speech="true"
+  anchor="name_clip"` per speaker alongside the `web_image` stills (a scene
+  from the show itself, not an interview or talk show). See the web_image
+  skill's cast recipe.
 - A **reference clip** for `video_to_video` with
   `{{Reference Video To Video (MiniMax H3) 5s.txt}}` (`<Video 1>`): motion,
   camera move, timing, or audio the user wants reproduced ("make her dance like
@@ -50,9 +56,11 @@ source fps, audio kept) and captioned.
   yt-dlp's duration check); raise it for a user-pasted long video when the
   wanted moment is deep into it.
 - `speech="true"` - REQUIRED whenever the video you will generate has this
-  character speaking. H3 Reference Video To Video copies the reference clip's
-  audio for the voice, so a clip with only music or sound effects yields a
-  garbled / wrong voice. With `speech="true"` the host extracts each cut's
+  character speaking. H3 Reference Video To Video styles the generated voice
+  from the reference clip's audio (bind it "styled like <Audio N>" in the
+  prompt - never "matches"/"the voice from", which splice the sample
+  verbatim), so a clip with only music or sound effects yields a garbled /
+  wrong voice. With `speech="true"` the host extracts each cut's
   audio and runs it through Whisper; silent or music-only cuts are rejected and
   a later part of the source (then the next result) is tried. The accepted
   clip's caption ends with `Audio transcript: "..."`. Phrase the query for
@@ -78,7 +86,24 @@ with `speech="true"` because he will talk:
 Let the host fetch and auto-continue, then on the `(continue)` turn read the
 Movie's caption (and its `Audio transcript`) in CHAT IMAGES and emit the render:
 ```
-<aitools_action skill="video_to_video" preset="{{Reference Video To Video (MiniMax H3) 5s.txt}}" prompt="The tall wild-haired man from <Video 1>, same face, hair, wardrobe and VOICE, sits on a couch holding an NES controller and says 'Zelda? Jerry, the Triforce is a pyramid scheme.' Keep the sitcom lighting and laugh-track energy." chat_image="clip1" chat_image2="kramer"/>
+<aitools_action skill="video_to_video" preset="{{Reference Video To Video (MiniMax H3) 5s.txt}}" chat_image="clip1" chat_image2="kramer" chat_image3="kramer_2" prompt="subject_definitions:
+<Subject 1> is the tall wild-haired man in <Picture 1> and <Picture 2>, <traits from the captions>.
+<Video 1> is a talking-scene source for the voice only.
+<Audio 1> is the voice-timbre reference for <Subject 1>.
+
+summary:
+[reference generation + audio reference] The target video shows <Subject 1> on a couch ranting about a video game, his voice styled by <Audio 1>.
+
+retention_analysis:
+<Subject 1>: fully_preserved - face, hair, and wardrobe retained. <Video 1> (voice source): weak_reference. <Audio 1>: reference - timbre only, no signal copied.
+
+detailed_description:
+The target video uses a warm multi-camera 90s sitcom style.
+[Shot 1] A medium shot frames <Subject 1> on a worn couch holding an NES controller... his voice styled like <Audio 1>, he says 'Zelda? Jerry, the Triforce is a pyramid scheme.' in a fast excitable New York voice ...<complete the scene, one camera move, ~250 words>.
+
+overall_soundscape: Controller clicks, a canned audience laugh after the line, room tone.
+
+non_diegetic_music: N/A"/>
 ```
 Never end a turn with "I'll fetch the clip first, then make the video" and no
 follow-up: the host only continues automatically after a web fetch, so the

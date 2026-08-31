@@ -234,7 +234,7 @@ namespace B83.Image.BMP
                 // 14+40).  For a plain 40-byte header they're separate DWORDs there; for a V4/V5 header
                 // (size 108/124, as Photoshop/Patchy write) they're fields INSIDE the header at the same
                 // offset.  The seek above used 14+size, which points past them at the pixel data for
-                // V4/V5 — reading garbage masks and corrupting the channel order.  Seek to the real spot.
+                // V4/V5 - reading garbage masks and corrupting the channel order.  Seek to the real spot.
                 aReader.BaseStream.Seek(14 + 40, SeekOrigin.Begin);
                 bmp.rMask = aReader.ReadUInt32();
                 bmp.gMask = aReader.ReadUInt32();

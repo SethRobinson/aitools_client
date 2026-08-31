@@ -35,7 +35,7 @@ EXAMPLE PROMPT1:
 **** PROMPT 2 RULES (20-Second Video Action/Dialog) ****
 This prompt drives an image-to-video AI. The starting image is already generated from PROMPT1, so do NOT re-describe the scene or characters.
 
-Focus ONLY on what happens next — the transition from stillness to motion over 20 seconds. You need PLENTY of content to fill this duration!
+Focus ONLY on what happens next - the transition from stillness to motion over 20 seconds. You need PLENTY of content to fill this duration!
 
 Structure as three beats:
 # BEAT 1 (~7 seconds): Opening action and first exchange

@@ -35,7 +35,7 @@ EXAMPLE PROMPT1:
 **** PROMPT 2 RULES (5-Second Video Action/Dialog) ****
 This prompt drives an LTX-2.3 image-to-video AI. The starting image is already generated from PROMPT1, so do NOT re-describe the scene or characters.
 
-Focus ONLY on what happens next — the transition from stillness to motion:
+Focus ONLY on what happens next - the transition from stillness to motion:
 - One or two actions and reactions
 - Break dialog into SHORT phrases with a physical acting direction between each line
 - Show emotion through the BODY, not labels. No parenthetical mood words like (angry) or (sad)

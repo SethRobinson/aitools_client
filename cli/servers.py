@@ -28,7 +28,7 @@ def pick_server(servers, verbose=False):
     always taking the first reachable one. Otherwise, when many jobs launch
     at the same instant (e.g. a build script nohup-firing 14 renders at
     once), every client probes BEFORE any of them submits, sees all queues
-    equal, and deterministically piles onto the same server — serializing
+    equal, and deterministically piles onto the same server - serializing
     the whole batch on one GPU while the other cards idle. Random
     tie-breaking spreads a simultaneous burst ~evenly across the
     equal-lowest servers; when one card is genuinely busier it still has a

@@ -13,7 +13,7 @@ Do not number the entries.
 
 You will create an original continuing story told through 20-second AI-generated video clips using LTX-2.3.
 
-IMPORTANT: This is a CONTINUING STORY. Each new scene builds on what came before. Keep the same characters, setting, and plot thread throughout. Develop the story with rising tension, surprises, and emotional stakes. The story should feel like episodes of a TV show — each clip advances the plot.
+IMPORTANT: This is a CONTINUING STORY. Each new scene builds on what came before. Keep the same characters, setting, and plot thread throughout. Develop the story with rising tension, surprises, and emotional stakes. The story should feel like episodes of a TV show - each clip advances the plot.
 
 The format to use for each scene:
 
@@ -23,7 +23,7 @@ OPENING (1-2 sentences): Establish the shot.
 - Shot scale and camera position (medium shot, close-up, wide establishing shot)
 - Location, lighting, color palette, atmosphere, textures
 
-*** CHARACTER DESCRIPTIONS — MANDATORY FOR EVERY SCENE ***
+*** CHARACTER DESCRIPTIONS - MANDATORY FOR EVERY SCENE ***
 The video AI has NO MEMORY. Every single SET_PROMPT1 MUST introduce every character with a FULL physical description, even if they appeared in previous scenes. Include ALL of these for EACH person:
 - Age (specific, e.g. "in his 40s")
 - Ethnicity/skin tone
@@ -32,7 +32,7 @@ The video AI has NO MEMORY. Every single SET_PROMPT1 MUST introduce every charac
 - Clothing (specific items and colors)
 - One distinguishing feature (scar, tattoo, glasses, beard, etc.)
 
-Use the EXACT SAME description for each character every time so they look consistent across scenes. Do NOT use character names — always refer to them by their visual description.
+Use the EXACT SAME description for each character every time so they look consistent across scenes. Do NOT use character names - always refer to them by their visual description.
 
 GOOD: "A wiry man in his 40s with a graying beard, weathered tan skin, and a red flannel shirt rolled to the elbows"
 BAD: "The man" or "he" without first establishing who he is visually
@@ -60,13 +60,13 @@ CRITICAL RULES:
 - Use the SAME character descriptions word-for-word across scenes for consistency.
 - NEVER use character names. Always use visual descriptions.
 - NO parenthetical emotion labels. Show it through the body.
-- Every scene MUST include dialog — 3-5 short spoken lines with physical action between them.
+- Every scene MUST include dialog - 3-5 short spoken lines with physical action between them.
 - Balance action and dialog.
 - Be LITERAL and CLEAR, not poetic or vague.
 - Describe what the camera SEES, not feelings or abstract concepts.
 - Do NOT use the word "cinematic".
 - ~250-350 words for SET_PROMPT1 to properly fill 20 seconds.
-- Each scene should advance the story — don't repeat the same situation.
+- Each scene should advance the story - don't repeat the same situation.
 )
 
 IMAGE: render
@@ -79,7 +79,7 @@ IMAGE: render
 
 Each video design uses one SET_PROMPT1 and one IMAGE tag. Create one scene to begin the story.
 
-The story's theme will be: two strangers surviving a road trip gone wrong — breakdowns, wrong turns, and bad luck.
+The story's theme will be: two strangers surviving a road trip gone wrong - breakdowns, wrong turns, and bad luck.
 
 Start your reply with SET_PROMPT1:
 COMMAND_END
@@ -94,12 +94,12 @@ COMMAND_END
 
 #you can dynamically change this mid-story to make it focus on something or end the story or whatever
 COMMAND_START|auto_continue_text
-(continue the story with the next scene. Build on what just happened — advance the plot, raise the stakes, develop the characters.
+(continue the story with the next scene. Build on what just happened - advance the plot, raise the stakes, develop the characters.
 Remember: Use SET_PROMPT1/IMAGE format. Write ONE flowing paragraph.
 
-MANDATORY: The video AI has NO MEMORY. You MUST re-describe EVERY character's full appearance in EVERY scene — age, ethnicity, build, hair color and style, specific clothing items and colors, distinguishing features. Use the EXACT SAME descriptions as previous scenes. NEVER just say "the man" or "the woman" — always include their full visual description. NEVER use character names.
+MANDATORY: The video AI has NO MEMORY. You MUST re-describe EVERY character's full appearance in EVERY scene - age, ethnicity, build, hair color and style, specific clothing items and colors, distinguishing features. Use the EXACT SAME descriptions as previous scenes. NEVER just say "the man" or "the woman" - always include their full visual description. NEVER use character names.
 
-Start by establishing the shot (location, lighting, textures). Structure as three beats mixing physical action with 3-5 short dialog lines (one sentence each, always with a physical acting direction between them). No parenthetical emotion labels. Include 1-2 camera directions. End with an audio description. ~250-350 words. Advance the story — don't repeat the same scene.)
+Start by establishing the shot (location, lighting, textures). Structure as three beats mixing physical action with 3-5 short dialog lines (one sentence each, always with a physical acting direction between them). No parenthetical emotion labels. Include 1-2 camera directions. End with an audio description. ~250-350 words. Advance the story - don't repeat the same scene.)
 COMMAND_END
 
 #This is what we show the user for their first prompt

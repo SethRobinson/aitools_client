@@ -431,7 +431,7 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
                 }
                 
                 // enable_thinking is handled via chat_template_kwargs for supported models (GLM/DeepSeek/Qwen),
-                // so don't emit it as a top-level field — it's read from parms by the chatTemplateKwargs builder below
+                // so don't emit it as a top-level field - it's read from parms by the chatTemplateKwargs builder below
                 if (parm._key == "enable_thinking")
                 {
                     continue;

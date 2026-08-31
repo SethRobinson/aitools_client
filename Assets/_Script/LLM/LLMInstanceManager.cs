@@ -115,7 +115,7 @@ public class LLMInstanceManager : MonoBehaviour
     /// the user already had (custom typed entries, deprecated names, etc.) are appended after
     /// to preserve their setup. The currently selectedModel is never changed here.
     ///
-    /// Local providers (Ollama / LlamaCpp / OpenAICompatible) are skipped — their model lists
+    /// Local providers (Ollama / LlamaCpp / OpenAICompatible) are skipped - their model lists
     /// come from the server itself, not from model_data.json.
     /// </summary>
     /// <returns>True if any instance's availableModels list was modified.</returns>
@@ -897,7 +897,7 @@ public class LLMInstanceManager : MonoBehaviour
     
     /// <summary>
     /// Get the configured base endpoint of an instance with the replica's port offset applied.
-    /// This is just the raw endpoint (no provider-specific path suffix) — for the full URL
+    /// This is just the raw endpoint (no provider-specific path suffix) - for the full URL
     /// including paths like /v1/chat/completions, see LLMSettingsManager.GetInstanceEndpointUrl.
     /// </summary>
     public string GetInstanceBaseEndpoint(int instanceID, int replicaIndex)

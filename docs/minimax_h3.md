@@ -428,9 +428,12 @@ Six reference presets, split across the universal workflow pair (since
   on-screen person whose line the prompt never specifies mouths GIBBERISH. The
   movie skills (image_to_movie, generate_movie, video_to_video, storytelling,
   stitch) therefore require every H3 prompt to carry an explicit three-layer
-  audio spec: WHO speaks and their EXACT quoted words (or an explicit
-  `No dialog; nobody speaks.`), a named ambient sound, and music or `no
-  music` (reference prompts may defer a layer to `<Audio N>` instead). For
+  audio spec: WHO speaks and their EXACT words (or an explicit
+  `No dialog; nobody speaks.`), ambience, and music or none (reference
+  prompts may defer a layer to `<Audio N>` instead). Since 2026-08-31 the
+  three layers are expressed through the official format's structures -
+  `<d>[Language] ...</d>` dialog blocks, `overall_soundscape:`, and
+  `non_diegetic_music:` (see "Prompting: the official H3 format"). For
   per-speaker voice STYLE the skills push standalone audio refs (`audio=`)
   over whole-clip soundtracks - style nudges, not clones.
 - Speech-quality A/B findings (2026-08-30, Whisper-judged via the local STT
@@ -476,6 +479,105 @@ Six reference presets, split across the universal workflow pair (since
   `<Video 1>` / `<Picture 1>` inside the prompt attribute, and a naive `[^>]*`
   attribute span would end the action tag at the first inner `>` and mis-report
   "truncated tool call". Don't regress this when touching the parser.
+
+## Prompting: the official H3 format (adopted 2026-08-31)
+
+Since 2026-08-31 every AI Chat H3 prompt (and the recommended CLI style) is
+MiniMax's official structured prompt document, not a free paragraph. Source:
+the model publisher's `skills/h3-prompt-writing` skill in the MiniMax-H3
+GitHub/HF repo (`references/base-en.txt` + `ref-en.txt`) - fetched and
+mirrored into our skill text this date. H3 reads prompts through a large text
+encoder and was trained on this format; community + official consensus is
+that thin prompts render flat, and prompts under ~100 words are too sparse.
+
+- **Base modes (t2v, i2v start-frame)** - three labeled fields inside the one
+  prompt string: `integrated_multimodal_description:` (`[Shot 1]` opens with
+  style + composition, no timestamp; later shots `[Shot N] At MM:SS.mmm, the
+  camera cuts to ...` strictly increasing; ~1 cut per 3s, each shot >= ~3s),
+  `overall_soundscape:` (1-4 sentences, ambience/physical/non-verbal only),
+  `non_diegetic_music:` (1-3 sentences of instrumentation/tempo/dynamics, or
+  `N/A`). i2v prompts refer to the source frame as `<Picture 1>` inside Shot
+  1. The official I2VA "alignment line" prefix is NOT used: it was visually
+  neutral in A/B (A2 vs A3 identical) and absent from the proven lip-synced
+  configuration, so the skills teach the simpler form (ComfyUI's i2v node
+  binds the start frame itself).
+- **Reference modes (Ref2VA: Reference To Video / Reference Video To Video /
+  Reference To Image)** - six sections in order: `subject_definitions`
+  (defines `<Subject N>` FROM the staged `<Picture N>`/`<Video N>`/`<Audio N>`
+  assets - this is where the executor's tag gate is satisfied), `summary`
+  (bracketed task types, e.g. `[reference generation + audio reference]`),
+  `retention_analysis` (visible: fully_preserved / partially_preserved /
+  attribute_transfer / weak_reference; audio: fully_copy / partially_copy /
+  reference / weak_reference), `detailed_description` (style opening BEFORE
+  `[Shot 1]`), `overall_soundscape`, `non_diegetic_music`. The executor's tag
+  regexes ignore `<Subject N>` and `<d>` (they only match Picture/Video/Audio
+  tags), so the format passes the reference gate untouched.
+- **Dialog - the one official element we REJECTED after testing**: the
+  official `(S1)` speaker IDs + `<d>[Language] ...</d>` blocks (and by
+  extension `<scenetrans>`/`<cutoff>`) render the line as off-screen
+  NARRATION under ComfyUI - correct audio, but the on-screen speaker's mouth
+  never moves. Lip-sync A/B 2026-08-31 (same cafe scene/line, i2v turbo
+  cache): 4/4 clips with `<d>`+`(S1)` failed to lip-sync (A2, A3, A5a, A5b -
+  two seeds each side) while 3/3 with plain prose-quoted dialog synced (A1,
+  A4a, A4b - including A4 = the full structured document with the dialog
+  sentence swapped to prose, so the document format itself is innocent).
+  Skills therefore teach prose dialog: exact words quoted, voice/accent
+  described around them (`she says 'We open in five minutes.' in English
+  with a warm calm voice`); voiceover stated in prose (`says in an
+  off-screen voiceover ... lips remain completely closed`). ~2.5 spoken
+  words per second. On-screen text verbatim in double quotes (skills teach
+  `&quot;` inside the action attribute; the parser decodes XML entities).
+- **Whole-scene rule (Seth, 2026-08-31)**: every H3 document - reference AND
+  t2v/i2v - re-describes the ENTIRE scene each render; H3 carries nothing
+  between videos, so "only describe the changes" phrasing is strictly a
+  Klein/Bernini EDIT convention and the skills say so explicitly wherever
+  delta language appears.
+- **Voice-ref phrasing decides copy vs style (Seth's test, 2026-08-31)**:
+  under the six-section format H3 honors the copy semantics literally -
+  equivalence/copy wording on a voice ("her voice matches <Audio 1>", "the
+  voice from <Audio 1>", "reuses", a `fully_copy`/`partially_copy` retention
+  marker) makes it SPLICE the reference sample's actual audio into the clip
+  instead of speaking the new quoted line in that voice (the render played
+  the exact reference audio). Canonical voice phrasing, now enforced in the
+  skill text: subject_definitions `voice-timbre reference for <Subject N>`,
+  retention_analysis `reference - timbre only, signal not copied`,
+  detailed_description `styled like <Audio N>`, summary task type
+  `+ audio reference`. Copy wording (`fully_copy`, "directly reused") is
+  reserved for deliberate MUSIC/AMBIENCE reuse the user asked to keep. The
+  older "loose resemblance is model behavior" note still holds for
+  properly-phrased style refs.
+- **Camera**: natural sentences, motion type + amplitude + speed ("pushes in
+  with small amplitude at slow speed"); 14-entry official motion vocabulary.
+- **Word targets** (the "how long should an H3 prompt be" answer): 150-250
+  words for a 5s single-scene base clip; 250-450 for 10-15s/multi-shot;
+  reference `detailed_description` officially 350-500 words (~250-350 at 5s;
+  dialog-dense clips prioritize fitting the spoken timeline); Reference To
+  Image stills ~120-250 words with both audio sections `N/A`. Multi-clip
+  films: the shared `subject_definitions`/style block is written once and
+  pasted VERBATIM into every clip's document (consistency beats bulk).
+- **Kept from our own testing** (the official guides agree in spirit):
+  identity prose stays minimal/faithful on reference paths (tags carry
+  identity; invented traits override photos), audio refs are style-only and
+  never supply words, second-budgeting with explicit silent tails, 5s film
+  default, no negative-prompt path, and no deterministic prompt-quality
+  executor gates.
+- **Plumbing verified 2026-08-31**: multi-line `prompt="..."` attributes
+  (blank lines, `<d>` tags, unescaped inner quotes, streamed in 7-char
+  chunks) survive `SkillActionParser` byte-identically - regression harness
+  in that session's scratchpad (`parsertest`, the plain dotnet console
+  pattern); CLI `--dry-run` confirmed all five preset families deliver the
+  document intact into the H3 node's prompt input; nine live A/B clips
+  rendered clean at 864x480/5.17s with audio. Seth's verdicts: visual
+  quality equal across control/document/alignment variants at this scene
+  complexity; the `<d>`/`(S1)` dialog markup killed lip sync (see the Dialog
+  bullet above - the deciding result), so skills ship the document format
+  with prose dialog and no alignment line.
+- Skill text carrying the format: `image_to_movie.md` (the hub - full base +
+  reference spec), `generate_movie.md`, `video_to_video.md`,
+  `image_to_image.md` (Reference To Image stills), `stitch_video.md`
+  (per-film-clip targets + verbatim shared blocks),
+  `scenario_storytelling.md`, and `main_prompt.txt` (PER-SKILL PROMPT LENGTH
+  + VIDEO DIALOG RULE + the multi-line-prompt action-protocol note).
 
 ## Troubleshooting
 

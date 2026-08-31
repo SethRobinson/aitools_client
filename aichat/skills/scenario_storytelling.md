@@ -104,8 +104,8 @@ as a still beat:
 
 ```
 <short prose/dialog beat>
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full self-contained Z-Image scene prompt>" width="864" height="480"/>
-<aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" prompt="<H3 motion + camera + audio spec: ONE short quoted in-scene dialog line (or an explicit no-dialog) + ambient sound + music or no music>" chain="true" width="864" height="480"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" width="864" height="480" prompt="<full self-contained Z-Image scene prompt>"/>
+<aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" chain="true" width="864" height="480" prompt="<the full three-field H3 document, 150-250 words (see image_to_movie): integrated_multimodal_description: [Shot 1] the whole scene re-described + actions + one camera move + ONE short prose-quoted in-scene line with the voice around it (~12 words at 5s; or an explicit no-dialog) + overall_soundscape: + non_diegetic_music:>"/>
 ```
 
 Each movie starts with a `generate_image` base and then
@@ -133,12 +133,28 @@ Later anchored scenes use `image_to_image` with the H3 reference preset and
 reference those names in the `chat_image*` attributes:
 
 ```
-<aitools_action skill="image_to_image" preset="{{Reference To Image (MiniMax H3).txt}}" prompt="The woman from <Picture 1> and the man from <Picture 2> stand in a torch-lit stone hall - <Picture 1>'s woman on the left, hand on sword hilt, <Picture 2>'s man on the right leaning on a staff. Warm torchlight from the left." chat_image="Reya" chat_image2="Doran" width="1152" height="640"/>
+<aitools_action skill="image_to_image" preset="{{Reference To Image (MiniMax H3).txt}}" chat_image="Reya" chat_image2="Doran" width="1152" height="640" prompt="subject_definitions:
+<Subject 1> is the woman in <Picture 1>, with her sword and travel leathers.
+<Subject 2> is the man in <Picture 2>, with his staff and gray robes.
+
+summary:
+[reference generation] The target image shows <Subject 1> and <Subject 2> together in a torch-lit stone hall.
+
+retention_analysis:
+<Subject 1> / <Subject 2>: fully_preserved - faces, hair, and wardrobe retained.
+
+detailed_description:
+A live-action fantasy style with warm torchlight from the left. <Subject 1> stands on the left, hand resting on her sword hilt; <Subject 2> stands on the right, leaning on his staff. <the rest of the scene: hall detail, light, composition - ~120-250 words, no dialog>
+
+overall_soundscape: N/A
+
+non_diegetic_music: N/A"/>
 ```
 
 The `prompt=` binds each person to their photo ONLY via the slot-order
-`<Picture N>` tag (a Klein edit uses "image N" the same way). Names belong
-only in `chat_image*` attributes.
+`<Picture N>` tag in subject_definitions (a Klein edit uses "image N" the
+same way). Names belong only in `chat_image*` attributes; the still output
+needs no dialog and both audio sections are `N/A`.
 
 For movies of anchored characters, use `image_to_movie` with
 `{{Reference To Video (MiniMax H3) 5s.txt}}`, feeding the anchors directly

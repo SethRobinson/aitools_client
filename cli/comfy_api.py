@@ -11,7 +11,7 @@ import auth
 from util import die
 
 HTTP_TIMEOUT = 30
-# /view downloads can be a whole multi-minute H3 mp4 — allow far more than
+# /view downloads can be a whole multi-minute H3 mp4 - allow far more than
 # the general request timeout.
 DOWNLOAD_TIMEOUT = 300
 HISTORY_POLL_INTERVAL = 0.5
@@ -115,7 +115,7 @@ def poll_history_until_done(server_url, prompt_id, label, verbose=False,
                 in_queue = any(prompt_id in map(str, item) for item in queued
                                if isinstance(item, (list, tuple)))
             except Exception:
-                in_queue = True  # can't tell — keep waiting
+                in_queue = True  # can't tell - keep waiting
             if not entry and not in_queue:
                 missing_checks += 1
                 if missing_checks >= 2:
@@ -154,7 +154,7 @@ def save_extension(src_filename):
 
 
 def save_image(data, src_filename, out_path: Path):
-    """Images are written as PNG (preserves alpha) — re-encoded via Pillow
+    """Images are written as PNG (preserves alpha) - re-encoded via Pillow
     unless already PNG. Videos are written as-is (raw container bytes)."""
     src_ext = os.path.splitext(src_filename)[1].lower()
     if src_ext == ".png" or src_ext in VIDEO_EXTS:

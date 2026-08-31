@@ -94,8 +94,8 @@ public class PicMovie : MonoBehaviour
     // Audio is routed through an AudioSource (not VideoAudioOutputMode.Direct) because
     // Direct mode desyncs the audio track from the video pipeline on the first play
     // of every new clip (visible as a frozen first frame + chipmunk-speed audio,
-    // then a clean second loop). Unity marked this Won't-Fix on issuetracker — it
-    // stems from the underlying platform decoder (Media Foundation / AVPlayer) — and
+    // then a clean second loop). Unity marked this Won't-Fix on issuetracker - it
+    // stems from the underlying platform decoder (Media Foundation / AVPlayer) - and
     // the official workaround is AudioOutputMode.AudioSource.
     AudioSource _audioSource;
 
@@ -151,7 +151,7 @@ public class PicMovie : MonoBehaviour
         _videoPlayer.renderMode = VideoRenderMode.RenderTexture;
         _videoPlayer.waitForFirstFrame = true;
         _videoPlayer.playOnAwake = false;
-        // DSPTime drives video time from the audio clock — without this, in Unity 6
+        // DSPTime drives video time from the audio clock - without this, in Unity 6
         // the game clock can race ahead of the decoder on the first play of a clip,
         // producing a frozen first frame while audio sprints. skipOnDrop=false stops
         // the player from "catching up" by skipping the frames it hasn't decoded yet.
@@ -182,7 +182,7 @@ public class PicMovie : MonoBehaviour
     public Vector2Int GetMovieSize() { return m_movieSize; }
 
     // The position the user sees: the scrub/seek target while one is in flight, and
-    // (briefly) still the target right after the seek settles — the player reports
+    // (briefly) still the target right after the seek settles - the player reports
     // stale/zero times for a few frames there, and returning those made the bar
     // flicker between the old and new position on a click.
     public double GetCurrentPlaybackTimeSeconds()
@@ -1307,7 +1307,7 @@ public class PicMovie : MonoBehaviour
             _videoPlayer.url = playbackFilename;
             _videoPlayer.isLooping = true;
             _videoPlayer.playOnAwake = false;
-            // Defensive re-assert — Start() sets these too, but if the prefab is
+            // Defensive re-assert - Start() sets these too, but if the prefab is
             // re-imported or another script touches the VideoPlayer at runtime we
             // want to be certain the first prepare/play uses the right mode and
             // doesn't race ahead of the first decoded frame.
@@ -1324,7 +1324,7 @@ public class PicMovie : MonoBehaviour
             _videoPlayer.seekCompleted += OnSeekCompleted;
             _videoPlayer.controlledAudioTrackCount = 1;
             _videoPlayer.EnableAudioTrack(0, true);
-            // Re-bind the AudioSource each play — controlledAudioTrackCount is a
+            // Re-bind the AudioSource each play - controlledAudioTrackCount is a
             // serialized field that can reset the per-track target bindings.
             if (_audioSource != null)
             {
@@ -1506,7 +1506,7 @@ public class PicMovie : MonoBehaviour
     {
         try
         {
-            // Second prepare callback — decoder is now bound to the real RT, safe to play.
+            // Second prepare callback - decoder is now bound to the real RT, safe to play.
             if (_waitingForSecondPrepare)
             {
                 _waitingForSecondPrepare = false;
@@ -1514,7 +1514,7 @@ public class PicMovie : MonoBehaviour
                 return;
             }
 
-            // First prepare callback — we finally know the video dimensions, so build
+            // First prepare callback - we finally know the video dimensions, so build
             // the RT and bind it, then re-prepare to give the decoder a chance to
             // initialize against the actual target.
             _consecutivePrepareFailures = 0;
@@ -1542,7 +1542,7 @@ public class PicMovie : MonoBehaviour
             _movieObject.transform.localScale = scale;
 
             // Stop() flips isPrepared back to false so Prepare() actually re-runs and
-            // fires the second prepareCompleted — without this, Prepare() on an
+            // fires the second prepareCompleted - without this, Prepare() on an
             // already-prepared player is a no-op and the second callback never fires
             // (which broke auto-play).
             _waitingForSecondPrepare = true;

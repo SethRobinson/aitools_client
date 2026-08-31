@@ -84,7 +84,7 @@ BAD: The older man (frustrated): "You said you'd be there. You promised me you'd
 Include 1-2 camera directions at natural transition points.
 End with one sentence describing the audio environment (voice qualities, ambient sounds, room tone).
 
-Do not use character names — use visual descriptions only.
+Do not use character names - use visual descriptions only.
 Output ONLY the action prompt. No labels, no explanations. ~150-200 words.
 
 Keep the user's core idea: %original_idea%

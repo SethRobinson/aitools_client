@@ -311,7 +311,7 @@ namespace AITools.AIChat.Video
                 // selected start..end range, not the whole file).
                 _player.isLooping = false;
                 _player.waitForFirstFrame = true;
-                // Audio goes through an AudioSource, not Direct — Direct mode desyncs
+                // Audio goes through an AudioSource, not Direct - Direct mode desyncs
                 // the audio track on the first play of a clip under Media Foundation
                 // (see PicMovie). DSPTime + skipOnDrop=false is part of the same fix.
                 if (_audioSource == null)

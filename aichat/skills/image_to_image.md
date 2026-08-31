@@ -1,6 +1,6 @@
 ---
 id: image_to_image
-summary: Two still-image modes. (1) NEW image FEATURING existing chat people/anchors/references ("them together", group shots, variations, re-poses) - DEFAULT preset {{Reference To Image (MiniMax H3).txt}}, up to 9 refs via chat_image + chat_image2..9, prompt MUST address every staged photo as <Picture N> (use {{Reference To Image (MiniMax H3 Quality).txt}} for explicit high/maximum quality). (2) In-place EDIT of one image - delta changes that preserve the source's exact composition - Klein/Flux 2 by INPUT COUNT (1-5), 40-70 words of narrative prose, slot-number references, concise identity locks; Bernini-R only when explicitly named. A Movie #N is NOT a still source by default: scene/motion/dialogue/audio edits use video_to_video. Only when the user explicitly requests one still/current frame may image_to_image target a Movie, and the action must include movie_frame="true". Result spawns as a new still; originals remain unchanged.
+summary: Two still-image modes. (1) NEW image FEATURING existing chat people/anchors/references ("them together", group shots, variations, re-poses) - DEFAULT preset {{Reference To Image (MiniMax H3).txt}}, up to 9 refs via chat_image + chat_image2..9; the prompt is the six-section H3 reference document (subject_definitions defining <Subject N> from every staged <Picture N> / summary / retention_analysis / detailed_description ~120-250 words, no dialog / overall_soundscape: N/A / non_diegetic_music: N/A) and MUST address every staged photo by its <Picture N> tag (use {{Reference To Image (MiniMax H3 Quality).txt}} for explicit high/maximum quality; prompt LAST in the tag). (2) In-place EDIT of one image - delta changes that preserve the source's exact composition - Klein/Flux 2 by INPUT COUNT (1-5), 40-70 words of narrative prose, slot-number references, concise identity locks; Bernini-R only when explicitly named. A Movie #N is NOT a still source by default: scene/motion/dialogue/audio edits use video_to_video. Only when the user explicitly requests one still/current frame may image_to_image target a Movie, and the action must include movie_frame="true". Result spawns as a new still; originals remain unchanged.
 inputs: attachment
 autoload: true
 triggers: edit the image, edit this image, modify the image, alter the image, change the image, tweak the image, adjust the image, retouch, refine the image, transform the image, restyle, restyle as, redraw, repaint, change the pose, change her pose, change his pose, new pose, different pose, dress her, dress him, undress, replace the, swap the, swap out, remove from the image, in the style of, them together, all together, side by side, group photo of them, group shot of, all three of them, all four of them, all five of them, both of them in, the two of them in, in one image, all in one, use them as anchors, use these as anchors, combine them, combine these, put them together, put them all, put all of them, scene with them, scene with all, posing together, line them up, hanging out together
@@ -36,16 +36,17 @@ WRONG (drift trap - points at the composite, and guesses a number):
 > `<aitools_action skill="image_to_image" preset="{{Reference To Image (MiniMax H3).txt}}"
 >   prompt="Move them to a sunny beach scene..." chat_image="5"/>`
 
-RIGHT (reference each character by anchor name):
+RIGHT (reference each character by anchor name; the prompt is the
+six-section H3 document - see "H3 REFERENCE RENDER" below):
 > User: "now show them at the beach"
 > `<aitools_action skill="image_to_image" preset="{{Reference To Image (MiniMax H3).txt}}"
->   prompt="The four people from <Picture 1>, <Picture 2>, <Picture 3>, and
->   <Picture 4> together on a sunny tropical beach - <Picture 1>'s man on the
->   left holding a coconut, <Picture 2>'s woman next to him in the surf,
->   <Picture 3>'s man building a sandcastle with <Picture 4>'s woman on the
->   right. Golden hour light from the west, waves rolling in."
 >   chat_image="Elias" chat_image2="Mei" chat_image3="Jonah" chat_image4="Layla"
->   width="1152" height="640"/>`
+>   width="1152" height="640"
+>   prompt="subject_definitions: <Subject 1> is the man in <Picture 1>, ...
+>   <Subject 4> is the woman in <Picture 4>, ... / summary + retention_analysis
+>   / detailed_description: the four on a sunny tropical beach, <Subject 1> on
+>   the left holding a coconut, ... golden hour light - the full document as
+>   specified below"/>`
 
 Note the `prompt=` binds people to photos ONLY through slot-order tags -
 `<Picture 1>` is whichever name you put in `chat_image`, `<Picture 2>` is
@@ -86,30 +87,58 @@ Slots: `chat_image` (or `attachment`) is `<Picture 1>`, `chat_image2..9` /
 `attachment2..9` are `<Picture 2>..<Picture 9>` - up to NINE references
 (Klein tops out at 5). Anchors by name work in every slot.
 
-Prompt rules (DIFFERENT from Klein prose - these are H3 reference prompts):
+The prompt is the official six-section H3 reference document (DIFFERENT from
+Klein prose; same structure as the H3 video reference presets, minus dialog):
 
-- Address EVERY staged photo by its `<Picture N>` tag at least once, in slot
-  order ("the man from <Picture 1>", "<Picture 2>'s woman"). The host BLOCKS
-  the render and bounces the action back if any staged photo goes untagged or
-  a tag has no photo behind it.
-- The tags ARE the identity lock - describe each person ONLY as they appear
-  in their reference (brief traits at most); invented prose details ("auburn
-  hair") OVERRIDE the photo and drift identity. No Klein-style lock clauses.
-- Give each photo ONE job (identity, second character, setting/style).
-  Several photos of the SAME person strengthen the lock - describe them as
-  one character ("the man from <Picture 1> and <Picture 2>").
-- Then describe the NEW scene, action, and lighting as normal prose. The
-  output is a STILL: no dialog line or audio spec needed.
+- **subject_definitions**: one line per referenced person/thing, DEFINED from
+  its `<Picture N>` tag - `<Subject 1> is the man in <Picture 1>, with short
+  gray hair and a charcoal suit.` Address EVERY staged photo by its tag here,
+  in slot order; the host BLOCKS the render and bounces the action back if
+  any staged photo goes untagged or a tag has no photo behind it. Several
+  photos of the SAME person strengthen the lock - define them as ONE subject
+  (`<Subject 1> is the man in <Picture 1> and <Picture 2>`).
+- **summary**: one sentence, opening `[reference generation]`.
+- **retention_analysis**: one line per subject, normally `fully_preserved`
+  (a deliberate wardrobe/hair change is `partially_preserved - <what
+  changes>`).
+- **detailed_description**: the NEW scene as observable prose, ~120-250
+  words, described COMPLETELY from scratch - placement (left to right for
+  groups), pose, action, environment, lighting, style. H3 regenerates fresh
+  every time and carries nothing over except what the tags pin, so never
+  write a delta ("same as the last image but...") - that is Klein EDIT
+  phrasing. The tags ARE the identity lock: describe each person ONLY
+  as they appear in their reference (brief traits at most); invented details
+  ("auburn hair") OVERRIDE the photo and drift identity. No dialog, no
+  `(Sx)` IDs - the output is a still.
+- **overall_soundscape: N/A** and **non_diegetic_music: N/A** - always, for
+  stills.
 - Chat names never appear in `prompt=` (H3 has no chat history either).
 - Canvas: default 864x480. For identity-critical faces, group shots, or
   "high quality" requests raise it - `width="1152" height="640"` landscape,
   640x1152 portrait, 896x896 square (trained cap 1344x768). Omitting dims
   inherits <Picture 1>'s aspect at the default pixel budget.
+- Put `prompt` LAST in the action tag.
 
 Example - two anchored characters in one new scene:
 
 ```
-<aitools_action skill="image_to_image" preset="{{Reference To Image (MiniMax H3).txt}}" prompt="The man from <Picture 1> and the woman from <Picture 2> sit together at an outdoor cafe table at dusk, laughing over coffee, city lights bokeh behind them, warm streetlight from the left." chat_image="Elias" chat_image2="Mei" width="1152" height="640"/>
+<aitools_action skill="image_to_image" preset="{{Reference To Image (MiniMax H3).txt}}" chat_image="Elias" chat_image2="Mei" width="1152" height="640" prompt="subject_definitions:
+<Subject 1> is the man in <Picture 1>, with short gray hair and a trimmed white beard.
+<Subject 2> is the woman in <Picture 2>, with a dark bob and round glasses.
+
+summary:
+[reference generation] The target image shows <Subject 1> and <Subject 2> laughing over coffee at an outdoor cafe at dusk.
+
+retention_analysis:
+<Subject 1> (main subject): fully_preserved - his face, gray hair, and beard are retained.
+<Subject 2> (main subject): fully_preserved - her face, bob, and glasses are retained.
+
+detailed_description:
+A live-action photographic style at dusk with warm streetlight from the left. <Subject 1> sits on the left side of a small round marble cafe table, one hand around an espresso cup, leaning back mid-laugh; <Subject 2> sits on the right, elbows on the table, grinning at him over her raised cappuccino. Between them a shared plate of biscotti, a folded newspaper, and a small tealight. Behind the table, a cobbled street falls out of focus into warm city-light bokeh, with a bicycle leaning against a lamppost and awning stripes catching the last violet of the sky. Shallow depth of field at 50mm, natural skin tones, gentle film grain.
+
+overall_soundscape: N/A
+
+non_diegetic_music: N/A"/>
 ```
 
 Use KLEIN instead (see below) when the task is an in-place EDIT: the output
@@ -397,7 +426,21 @@ Subject + scene combine (2-Input):
 
 Group photo, 4 people (H3 reference render - the default):
 ```
-<aitools_action skill="image_to_image" preset="{{Reference To Image (MiniMax H3).txt}}" prompt="The four people from <Picture 1>, <Picture 2>, <Picture 3>, and <Picture 4> together in a cozy Christmas living room, left to right in that order - <Picture 1>'s man holding a steaming mug, <Picture 2>'s woman next to him laughing, <Picture 3>'s man leaning on the mantle with an arm around <Picture 4>'s woman. Christmas tree behind them, fireplace glow from the left, warm evening atmosphere." chat_image="1" chat_image2="2" chat_image3="3" chat_image4="4" width="1152" height="640"/>
+<aitools_action skill="image_to_image" preset="{{Reference To Image (MiniMax H3).txt}}" chat_image="1" chat_image2="2" chat_image3="3" chat_image4="4" width="1152" height="640" prompt="subject_definitions:
+<Subject 1> is the man in <Picture 1>, <a few caption traits>. <Subject 2> is the woman in <Picture 2>, ... <Subject 3> is the man in <Picture 3>, ... <Subject 4> is the woman in <Picture 4>, ...
+
+summary:
+[reference generation] The target image shows all four together in a cozy Christmas living room.
+
+retention_analysis:
+<Subject 1> / <Subject 2> / <Subject 3> / <Subject 4>: fully_preserved - faces, hair, and wardrobe retained.
+
+detailed_description:
+A warm photographic evening style lit by fireplace glow from the left. Left to right: <Subject 1> holding a steaming mug, <Subject 2> next to him laughing, <Subject 3> leaning on the mantle with an arm around <Subject 4>. A decorated Christmas tree glows behind them... <complete the scene to ~120-250 words>
+
+overall_soundscape: N/A
+
+non_diegetic_music: N/A"/>
 ```
 
 Same scene as a Klein 4-Input composite (only when preserving existing
@@ -421,5 +464,7 @@ For 2-3 subjects target 50-65 words.
   this. Update a look by re-tagging `anchor="Name"` on a fresh edit.
 - Klein prompts: open with a concise per-slot identity clause, include
   per-subject placement + left-to-right ordering on multi-person scenes,
-  and describe the CHANGE, not the whole image. H3 prompts: tags carry
-  identity, prose describes the new scene.
+  and describe the CHANGE, not the whole image. H3 prompts: the six-section
+  document - tags carry identity in subject_definitions,
+  detailed_description (~120-250 words) describes the new scene, both audio
+  sections N/A.

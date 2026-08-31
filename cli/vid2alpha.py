@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-vid2alpha — convert an EXISTING video into transparent game-ready assets
+vid2alpha - convert an EXISTING video into transparent game-ready assets
 using the repo's bundled ffmpeg (no server contact).
 
 Outputs (independent, composable):

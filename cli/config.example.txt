@@ -1,4 +1,4 @@
-# aitools_cli configuration — copy this file to config.txt and edit.
+# aitools_cli configuration - copy this file to config.txt and edit.
 #
 # Format: key|value   (lines starting with # and blank lines are ignored)
 #

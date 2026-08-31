@@ -34,7 +34,7 @@ def find_ffmpeg():
         return str(FFMPEG_BUNDLED)
     found = shutil.which("ffmpeg")
     if not found:
-        die(f"ffmpeg not found (looked for {FFMPEG_BUNDLED} and PATH) — "
+        die(f"ffmpeg not found (looked for {FFMPEG_BUNDLED} and PATH) - "
             f"needed for --alpha-key/--alpha-from-luma/--sprite-sheet", 1)
     return found
 
@@ -59,7 +59,7 @@ def probe_video(path: Path):
     stream (fps/duration may be None if unprobeable)."""
     ffprobe = images.find_ffprobe()
     if not ffprobe:
-        die("ffprobe not found — needed for sprite-sheet layout", 1)
+        die("ffprobe not found - needed for sprite-sheet layout", 1)
     try:
         r = subprocess.run(
             [ffprobe, "-v", "error", "-select_streams", "v:0",
@@ -110,7 +110,7 @@ def parse_color_spec(spec):
     else:
         m = re.fullmatch(r"(?:#|0x)([0-9a-f]{6})", color)
         if not m:
-            die(f"--alpha-key color must be green, blue, black, or #RRGGBB — "
+            die(f"--alpha-key color must be green, blue, black, or #RRGGBB - "
                 f"got: {parts[0]!r}", 1)
         hexval = m.group(1)
         ff_color = "0x" + hexval.upper()
@@ -193,7 +193,7 @@ def make_sprite_sheet(src: Path, dst: Path, mode, color_spec=None, cols=0,
     rows = max(1, math.ceil(frames / cols))
     if info["width"] and (cols * info["width"] > 8192 or rows * info["height"] > 8192):
         print(f"warning: sprite sheet would be {cols * info['width']}x"
-              f"{rows * info['height']}px — many GPUs cap textures at 8192px. "
+              f"{rows * info['height']}px - many GPUs cap textures at 8192px. "
               f"Reduce frames with --sheet-fps (e.g. --sheet-fps 12) or render "
               f"a smaller video.")
     fps_part = f"fps={sheet_fps:g}," if sheet_fps else ""

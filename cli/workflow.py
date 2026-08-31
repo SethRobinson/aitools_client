@@ -50,7 +50,7 @@ def load_or_convert_workflow(workflow_dir: Path, workflow_name: str,
 
     if offline:
         if not force and cache.exists():
-            print(f"warning: {cache.name} is older than {src.name} — dry-run is "
+            print(f"warning: {cache.name} is older than {src.name} - dry-run is "
                   f"using the stale cache (run once against a server to refresh)")
             return json.loads(cache.read_text(encoding="utf-8"))
         die(
@@ -89,7 +89,7 @@ def apply_replaces(api_workflow, replaces, verbose=False):
     """Apply a list of presets.ReplaceOp substitutions to the workflow.
     Done on the JSON-as-string to mirror PicTextToImage.cs:584-594.
     A find-miss is a warning, unless the op carries required_by (it came from
-    an explicit CLI flag like --width) — then it is a hard error, so explicit
+    an explicit CLI flag like --width) - then it is a hard error, so explicit
     overrides can't silently render at defaults.
     Returns the (possibly re-parsed) workflow dict."""
     if not replaces:
@@ -116,7 +116,7 @@ def apply_replaces(api_workflow, replaces, verbose=False):
 def substitute_unique_id(api_workflow, verbose=False):
     """Replace the literal AITOOLS_UNIQUE_ID token (used in save nodes'
     filename_prefix) with a per-run tag, mirroring Unity's PicTextToImage
-    submit-time substitution — without it, concurrent renders sharing a
+    submit-time substitution - without it, concurrent renders sharing a
     ComfyUI output folder can collide and download each other's file."""
     ts = time.strftime("%Y%m%d_%H%M%S") + f"{int(time.time() * 1000) % 1000:03d}"
     uid = f"cli_{ts}_{secrets.token_hex(2)}"
@@ -181,12 +181,12 @@ def prune_named_inputs(api_workflow, names, verbose=False):
     """Remove input keys by name from every node, then renumber autogrow
     groups on the nodes that changed. Mirrors Unity's @prune_input handling
     in PicTextToImage.PruneWorkflowInputs. Note: pruning e.g.
-    ref_video_audios.ref_video_audio_0 while _1 survives renumbers _1 -> _0 —
+    ref_video_audios.ref_video_audio_0 while _1 survives renumbers _1 -> _0 - 
     this matches Unity exactly (and shifts <Audio N> prompt-tag numbering the
     same way the app does); do not "fix" it."""
     if not isinstance(api_workflow, dict) or not names:
         return api_workflow
-    # Delete every named input first, renumber once at the end — renumbering
+    # Delete every named input first, renumber once at the end - renumbering
     # between deletions would shift group indices out from under later names
     # (pruning ..._0 would turn ..._1 into ..._0 before its own prune runs).
     changed = []
