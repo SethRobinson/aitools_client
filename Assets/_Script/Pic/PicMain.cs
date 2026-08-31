@@ -2389,21 +2389,27 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     public int LastQueuedWorkflowWidth { get; private set; } = 0;
     public int LastQueuedWorkflowHeight { get; private set; } = 0;
 
-    // Regexes used to dig the preset's default width/height out of the joblist.
-    // Match "@replace|\"width\": <N>|" - the FIRST half of the @replace pair, which
-    // carries the literal default the preset author wrote (and which the workflow
-    // JSON actually contains until our override appends a follow-up @replace).
+    // Regexes used to dig the preset's width/height @replace out of the joblist.
+    // Group 1 is the workflow's shipped literal (the find half); group 2 is the
+    // REPLACEMENT half the preset author wrote (e.g. "width": %vid_width%). The
+    // preset's own replace runs BEFORE anything we append, so the workflow text at
+    // that point contains the replacement half, NOT the find literal, whenever the
+    // preset default differs from the workflow's shipped value (H3 Reference To
+    // Image: workflow 864x480, preset vars 1152x640 - explicit 1024x1024 actions
+    // silently rendered at the default until 2026-08-31). Appended overrides must
+    // therefore target group 2 verbatim - %vars% intact, they substitute the same
+    // way in our find as they did in the preset's replace.
     private static readonly System.Text.RegularExpressions.Regex WorkflowWidthReplaceRx =
-        new System.Text.RegularExpressions.Regex(@"@replace\|""width"":\s*(\d+)\|",
+        new System.Text.RegularExpressions.Regex(@"@replace\|(""width"":\s*(\d+))\|([^|]+)\|",
             System.Text.RegularExpressions.RegexOptions.Compiled);
     private static readonly System.Text.RegularExpressions.Regex WorkflowHeightReplaceRx =
-        new System.Text.RegularExpressions.Regex(@"@replace\|""height"":\s*(\d+)\|",
+        new System.Text.RegularExpressions.Regex(@"@replace\|(""height"":\s*(\d+))\|([^|]+)\|",
             System.Text.RegularExpressions.RegexOptions.Compiled);
     private static readonly System.Text.RegularExpressions.Regex WorkflowLengthReplaceRx =
-        new System.Text.RegularExpressions.Regex(@"@replace\|""length"":\s*(\d+)\|",
+        new System.Text.RegularExpressions.Regex(@"@replace\|(""length"":\s*(\d+))\|([^|]+)\|",
             System.Text.RegularExpressions.RegexOptions.Compiled);
     private static readonly System.Text.RegularExpressions.Regex WorkflowFrameLoadCapReplaceRx =
-        new System.Text.RegularExpressions.Regex(@"@replace\|""frame_load_cap"":\s*(\d+)\|",
+        new System.Text.RegularExpressions.Regex(@"@replace\|(""frame_load_cap"":\s*(\d+))\|([^|]+)\|",
             System.Text.RegularExpressions.RegexOptions.Compiled);
 
     /// <summary>
@@ -2481,10 +2487,14 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 var hMatch = WorkflowHeightReplaceRx.Match(line);
                 int presetW = 0;
                 int presetH = 0;
+                // The EFFECTIVE preset default is the replacement half's value (a
+                // literal, or a %var% resolved from the joblist's assignment lines),
+                // not the workflow's shipped find literal - they differ on presets
+                // like H3 Reference To Image (workflow 864x480, preset 1152x640).
                 bool hasDimensionReplace = wMatch.Success
                     && hMatch.Success
-                    && int.TryParse(wMatch.Groups[1].Value, out presetW)
-                    && int.TryParse(hMatch.Groups[1].Value, out presetH)
+                    && TryResolveReplaceValue(lines, wMatch, out presetW)
+                    && TryResolveReplaceValue(lines, hMatch, out presetH)
                     && presetW > 0
                     && presetH > 0;
                 bool touched = false;
@@ -2540,9 +2550,13 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
                     if (newW != presetW || newH != presetH)
                     {
+                        // Find-target = the preset replace's REPLACEMENT half,
+                        // verbatim (%vars% substitute identically at submit), which
+                        // is what the workflow text holds once the preset's own
+                        // replace has run.
                         line = line
-                            + $" @replace|\"width\": {presetW}|\"width\": {newW}|"
-                            + $" @replace|\"height\": {presetH}|\"height\": {newH}|";
+                            + $" @replace|{wMatch.Groups[3].Value.Trim()}|\"width\": {newW}|"
+                            + $" @replace|{hMatch.Groups[3].Value.Trim()}|\"height\": {newH}|";
                         touched = true;
                     }
                 }
@@ -2576,22 +2590,54 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             return false;
 
         var lengthMatch = WorkflowLengthReplaceRx.Match(line);
-        if (!lengthMatch.Success || !int.TryParse(lengthMatch.Groups[1].Value, out int defaultLength) || defaultLength <= 0)
+        if (!lengthMatch.Success || !int.TryParse(lengthMatch.Groups[2].Value, out int defaultLength) || defaultLength <= 0)
             return false;
 
-        int defaultFrameLoadCap = defaultLength;
+        // Same replacement-half targeting as the dimension override: the preset's
+        // own replace has already consumed the find literal by the time appended
+        // directives run.
+        string frameLoadCapFind = null;
         var frameLoadCapMatch = WorkflowFrameLoadCapReplaceRx.Match(line);
-        if (frameLoadCapMatch.Success
-            && int.TryParse(frameLoadCapMatch.Groups[1].Value, out int parsedFrameLoadCap)
-            && parsedFrameLoadCap > 0)
-        {
-            defaultFrameLoadCap = parsedFrameLoadCap;
-        }
+        if (frameLoadCapMatch.Success)
+            frameLoadCapFind = frameLoadCapMatch.Groups[3].Value.Trim();
 
         line = line
-            + $" @replace|\"length\": {defaultLength}|\"length\": {frameCount}|"
-            + $" @replace|\"frame_load_cap\": {defaultFrameLoadCap}|\"frame_load_cap\": {frameCount}|";
+            + $" @replace|{lengthMatch.Groups[3].Value.Trim()}|\"length\": {frameCount}|";
+        if (frameLoadCapFind != null)
+            line = line + $" @replace|{frameLoadCapFind}|\"frame_load_cap\": {frameCount}|";
         return true;
+    }
+
+    // Resolve the numeric value a width/height/length @replace actually leaves in the
+    // workflow: the replacement half's literal, or its %var%'s default dug out of the
+    // joblist's own '%name%="123"' assignment lines; falls back to the find literal.
+    private static bool TryResolveReplaceValue(List<string> lines, System.Text.RegularExpressions.Match replaceMatch, out int value)
+    {
+        value = 0;
+        string replHalf = replaceMatch.Groups[3].Value.Trim();
+        int colon = replHalf.IndexOf(':');
+        string token = colon >= 0 ? replHalf.Substring(colon + 1).Trim() : replHalf;
+
+        if (int.TryParse(token, out value))
+            return value > 0;
+
+        var varMatch = System.Text.RegularExpressions.Regex.Match(token, @"^%([A-Za-z0-9_]+)%$");
+        if (varMatch.Success && lines != null)
+        {
+            var assignRx = new System.Text.RegularExpressions.Regex(
+                @"^\s*%" + System.Text.RegularExpressions.Regex.Escape(varMatch.Groups[1].Value) + @"%\s*=\s*""(\d+)""");
+            foreach (string l in lines)
+            {
+                if (string.IsNullOrEmpty(l)) continue;
+                var m = assignRx.Match(l);
+                if (m.Success && int.TryParse(m.Groups[1].Value, out value))
+                    return value > 0;
+            }
+        }
+
+        // Unresolvable replacement (odd var indirection): assume the classic
+        // identity-replace layout and use the workflow's shipped literal.
+        return int.TryParse(replaceMatch.Groups[2].Value, out value) && value > 0;
     }
 
     /// <summary>

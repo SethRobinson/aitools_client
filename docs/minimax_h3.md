@@ -32,8 +32,10 @@ native stereo audio (dialog in 11 languages), no RIFE in the output path.
   `minimax`), `minimax_h3_video_vae_fp16` + `minimax_h3_audio_vae_fp32`,
   `res_multistep`/`simple` 20 steps via `BasicGuider`. There is NO negative-prompt
   path, so H3 presets have no `default_negative_prompt` block.
-- `length` is a 24fps frame count snapped up to the 17k+5 grid (124 = ~5s, trained
-  max 362 = ~15s). Default canvas 864x480 (~0.4MP, ComfyUI template default);
+- `length` is a 24fps frame count on the 17k+5 grid (5, 22, 39, ... - 124 = ~5s,
+  trained max 362 = ~15s). Any grid step renders: 5 frames is the still-image
+  packet the Reference To Image presets use, and short movie lengths work too
+  (verified 2026-08-31). Default canvas 864x480 (~0.4MP, ComfyUI template default);
   trained max ~1.03MP (768 short edge, cap 768x1344, multiples of 32). Pixel count
   is the dominant cost knob.
 - Reference clips are consumed at 24fps, 2-15s (`force_rate: 24`,
@@ -208,8 +210,9 @@ native stereo audio (dialog in 11 languages), no RIFE in the output path.
   `--audio2`/`--audio3`) fills the standalone audio refs (each file is
   ffprobe-checked for an audio stream; a post-prune count > 3 wired
   `ref_video_audios.*` inputs is a hard error). `--width`/`--height` (snap /32, clamp
-  256..2048, >1.03MP warning) and `--duration` (17k+5 grid, 124..362; refused on
-  the fixed 15s presets; synthetic length replace on the rv2v 5s preset) are
+  256..2048, >1.03MP warning) and `--duration` (nearest 17k+5 grid step, min 5
+  frames, no clamp; works on 5s and 15s H3 presets, refused only on non-H3
+  frame cadences; synthetic length replace on the rv2v 5s preset) are
   HARD errors if their @replace can't apply. Start-frame presets (image1 ->
   input1 + "video" workflow) auto-fit the canvas to the -i image's aspect at
   the preset's pixel budget (`--no-aspect-fit` disables). `AITOOLS_UNIQUE_ID`
@@ -256,9 +259,12 @@ Six reference presets, split across the universal workflow pair (since
   reference capability Z-Image lacks until Z-Image-Edit ships). Same r2v slot
   layout (photo 1 required -> input3, photos 2-9 + audio1..3 optional),
   `%vid_width%`/`%vid_height%` (CLI --width/--height apply; no `%vid_length%`,
-  duration overrides can't attach by design). Default canvas 1152x640 (~0.74MP
-  - stills are cheap, faces need the pixels; omitted dims refit the budget to
-  photo 1's aspect). Verified on a Blackwell: 1-ref identity transfer, 2-ref
+  duration overrides can't attach by design). Default canvas 864x480 since
+  2026-08-31, matching the workflow literals like every other H3 preset (the
+  original 1152x640 default made the preset's own width/height replace
+  non-identity, the trap behind the 1024x1024 override bug); omitted dims
+  refit the budget to photo 1's aspect, and the skill text tells the model to
+  raise dims (e.g. 1152x640) for identity-critical faces. Verified on a Blackwell: 1-ref identity transfer, 2-ref
   composites, the 20-step Quality graph, and the test_ stack all
   sharp and faithful; ~22-33s warm wall-clock including CLI upload/download
   (turbo and Quality cost nearly the same at 5 frames); frames within the
@@ -285,7 +291,8 @@ Six reference presets, split across the universal workflow pair (since
 - The rv2v 5s presets deliberately have NO length `@replace` (opts out of AI
   Chat's video_to_video source-duration override, which uses WAN's 16fps/4n+1
   cadence - wrong for a reference generation); the 15s presets' `124 -> 362`
-  replace is override-safe because it stales the appended override's find-text.
+  replace runs before appended directives, so the duration override targets
+  literal 362 on "15s"-named presets.
 - Video presets use `%vid_width%`/`%vid_height%`/`%vid_length%` because chained
   presets share one PicMain variable scope (see AGENTS.md job-script rules).
 - Preset names must keep the `"Reference Video To Video"` substring: the executor
@@ -360,14 +367,17 @@ Six reference presets, split across the universal workflow pair (since
   - Aspect comes from the PRIMARY clip only; length stays the preset's unless the
     action carries `duration="N"` (seconds).
 - Explicit durations: any H3 generation action (t2v/i2v/r2v/rv2v, chained or not)
-  accepts `duration="N"` seconds. `ApplyH3DurationOverride` converts to 24fps
-  frames snapped UP to the 17k+5 grid, clamps to 124..362, and appends
-  `@replace|"length": 124|"length": <frames>|` via `AddWorkflowDirective`. Works
-  ONLY on presets whose workflow text still holds the shipped default 124 at
-  submit time - true for every 5s preset (their own length replace is a 124->124
-  no-op or absent); the 15s presets' 124->362 replace would stale it, so duration
-  is refused there with an info bubble. On video_to_video an explicit duration
-  also skips the (already H3-neutralized) source-duration override.
+  accepts `duration="N"` seconds on ANY H3 preset variant. `ApplyH3DurationOverride`
+  converts to 24fps frames snapped to the NEAREST 17k+5 grid step (min 5 frames,
+  NO clamp - since 2026-08-31; the old 124..362 clamp and the exact-"(MiniMax H3)"
+  preset-name gate silently ate `duration` on the Quality/Turbo Cache routes) and
+  appends `@replace|"length": <target>|"length": <frames>|` via
+  `AddWorkflowDirective`, where `<target>` is the literal the workflow holds after
+  the preset's own replaces ran: 362 for "15s"-named presets, the shipped default
+  124 for everything else (5s presets replace 124->124, a visible no-op, or carry
+  no length replace at all - appended directives run AFTER the preset's, see
+  `PicMain.ApplyDimensionOverrideToJoblist`). On video_to_video an explicit
+  duration also skips the (already H3-neutralized) source-duration override.
 - `image_to_movie` + `Reference To Video (MiniMax H3) 5s`: extra photos via the
   standard slot 2-9 wiring (`chat_image2..9` / `attachment2..9` -> `image2..image9`);
   no executor special-casing needed.
@@ -390,7 +400,16 @@ Six reference presets, split across the universal workflow pair (since
 - Dimension overrides: explicit `width`/`height` on any `video_to_video` /
   `image_to_movie` action WIN over the clip-aspect path
   (`SetWorkflowDimensionOverride`; snapped to /32, clamped 256..2048 by
-  `PicMain.ApplyDimensionOverrideToJoblist`). EXCEPTION (2026-08-10): on
+  `PicMain.ApplyDimensionOverrideToJoblist`). Since 2026-08-31 the appended
+  override targets the preset @replace's REPLACEMENT half verbatim (literal or
+  %var% - vars substitute identically at submit) and resolves the effective
+  preset default from the joblist's own `%name%="N"` assignment lines, because
+  the preset's replace runs FIRST: on presets whose default differs from the
+  workflow's shipped literal the old find-literal targeting went stale and
+  explicit dims silently rendered at the preset default (hit by Reference To
+  Image while it defaulted 1152x640 over workflow literals 864x480 - since
+  re-unified at 864x480, but the mechanism no longer requires that). The
+  frame-count override (`TryAppendFrameCountOverride`) got the same treatment. EXCEPTION (2026-08-10): on
   START-FRAME presets with an image source, explicit dims whose aspect differs
   >~5% from the source are refitted as a pixel budget at the SOURCE's aspect
   (`SkillActionExecutor.ApplyBudgetDimensionOverride`, with an info bubble) -

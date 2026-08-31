@@ -155,7 +155,7 @@ and clips) has its own section below: "Generating movies (MiniMax H3)".
 | `--audio PATH` | Standalone audio reference (H3 reference presets); repeatable (fills `audio1`..`audio3`) |
 | `--audio2 PATH`, `--audio3 PATH` | Audio bound to that exact standalone audio slot |
 | `--width N`, `--height N` | Render-size override for size-controllable (video) presets; snapped to /32, clamped 256..2048 |
-| `--duration SECONDS` | Video length override (MiniMax H3 5s presets only; snapped to the 24fps 17k+5 frame grid, ~5.2..15.1s) |
+| `--duration SECONDS` | Video length override (any MiniMax H3 preset; snapped to the nearest 24fps 17k+5 grid step, min ~0.2s, no upper clamp) |
 | `--no-aspect-fit` | Disable the automatic start-frame aspect fit (see the movies section) |
 | `--dry-run` | Build and validate the final API JSON with no server contact; writes `<output>.api.json` |
 | `--prune-input NAME` | Remove a named node input from the graph before submit (repeatable) |
@@ -282,10 +282,11 @@ reference default is roughly half that); 15s clips cost several times the
   ~1.03MP; the best large canvases are 1152x640 (landscape), 640x1152
   (portrait), and 896x896 (square). Render cost scales with pixel count
   (~2x at 1152x640).
-- `--duration SECONDS` works on any H3 `5s` preset and snaps to the model's
-  frame grid (~5.2s minimum, ~15.1s maximum), e.g. `--duration 8`. The `15s`
-  presets are fixed-length; the CLI will tell you to use the 5s preset with
-  `--duration` instead.
+- `--duration SECONDS` works on any H3 preset (5s and 15s variants) and snaps
+  to the nearest step of the model's 24fps 17k+5 frame grid, steps of ~0.7s
+  down to a ~0.2s minimum, with no upper clamp - e.g. `--duration 8`, or
+  `--duration 1` for a ~0.9s clip. H3 trained on ~5-15s, so expect the best
+  results in that range, but shorter renders work fine.
 - `-s SEED` makes renders reproducible, same as images.
 
 ### Validating commands offline (--dry-run)

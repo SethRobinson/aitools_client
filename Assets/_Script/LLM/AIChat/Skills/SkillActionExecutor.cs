@@ -2952,17 +2952,26 @@ namespace AITools.AIChat.Skills
         }
 
         // ---- Explicit H3 duration (duration="10" seconds on a generation action) ----
-        // H3's length is a 24fps frame count on a 17k+5 grid, trained range ~5-15s
-        // (124..362). The workflow's shipped default is 124; the 5s presets keep that
-        // literal intact (their own length replace is a 124->124 no-op or absent), so an
-        // appended @replace can retarget it. A 15s preset's 124->362 replace would stale
-        // the directive into a silent no-op, so duration is refused there with a hint.
+        // H3's length is a 24fps frame count on a 17k+5 packet grid (5, 22, 39, ...,
+        // 124 = ~5s, 362 = ~15s). Any grid step renders (a 5-frame packet is how the
+        // Reference To Image stills work), so the requested seconds are snapped to the
+        // NEAREST grid step and passed through UNCLAMPED - no host range gates on what
+        // the model asks for (Seth's rule); quality outside the ~5-15s trained range
+        // is between the user and the model. The appended @replace targets the literal
+        // the workflow holds AFTER the preset's own replaces ran: 362 for 15s presets,
+        // the shipped default 124 for everything else (5s presets replace 124->124, a
+        // visible no-op, or carry no length replace at all).
         private const int H3DefaultLengthFrames = 124;
+        private const int H3LongLengthFrames = 362;
 
         private static bool IsH3Preset(string preset)
         {
+            // No closing paren: must match every variant - "(MiniMax H3)",
+            // "(MiniMax H3 Quality)", "(MiniMax H3 Turbo Cache)". Requiring the
+            // exact "(MiniMax H3)" silently dropped duration on the Quality and
+            // default Turbo Cache routes.
             return !string.IsNullOrEmpty(preset)
-                && preset.IndexOf("(MiniMax H3)", StringComparison.OrdinalIgnoreCase) >= 0;
+                && preset.IndexOf("(MiniMax H3", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static int ParseH3DurationFrames(SkillAction action)
@@ -2973,23 +2982,19 @@ namespace AITools.AIChat.Skills
                 ?? action.GetArg("seconds"),
                 0f);
             if (seconds <= 0f) return 0;
-            int frames = Mathf.CeilToInt(seconds * 24f);
-            int k = Mathf.CeilToInt(Mathf.Max(0, frames - 5) / 17f);
-            frames = 17 * k + 5;
-            return Mathf.Clamp(frames, 124, 362);
+            int frames = Mathf.Max(1, Mathf.RoundToInt(seconds * 24f));
+            int k = Mathf.Max(0, Mathf.RoundToInt((frames - 5) / 17f));
+            return 17 * k + 5;
         }
 
         private void ApplyH3DurationOverride(PicMain picMain, SkillAction action, string preset)
         {
             int frames = IsH3Preset(preset) ? ParseH3DurationFrames(action) : 0;
             if (frames <= 0 || picMain == null) return;
-            if (preset.IndexOf("15s", StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                _host?.AddInfoBubble(
-                    "(duration=\"N\" is ignored on the 15s preset - put it on the 5s preset instead for non-default lengths)");
-                return;
-            }
-            picMain.AddWorkflowDirective($"@replace|\"length\": {H3DefaultLengthFrames}|\"length\": {frames}|");
+            int target = preset.IndexOf("15s", StringComparison.OrdinalIgnoreCase) >= 0
+                ? H3LongLengthFrames
+                : H3DefaultLengthFrames;
+            picMain.AddWorkflowDirective($"@replace|\"length\": {target}|\"length\": {frames}|");
             _host?.AddInfoBubble($"(H3 duration: {frames} frames = ~{frames / 24f:0.#}s on the model's 17k+5 grid)");
         }
 

@@ -102,8 +102,8 @@ def build_argparser():
                         "/32, clamped 256..2048)")
     p.add_argument("--duration", type=float, default=None, metavar="SECONDS",
                    help="Override video duration in seconds (MiniMax H3: 24fps "
-                        "frames snapped up to the 17k+5 grid, ~5.2..15.1s; use "
-                        "with the 5s presets)")
+                        "frames snapped to the nearest 17k+5 grid step, min "
+                        "~0.2s, no upper clamp; works with any H3 preset)")
     p.add_argument("--no-aspect-fit", action="store_true", dest="no_aspect_fit",
                    help="Don't refit the canvas to the start-frame image's "
                         "aspect ratio (video start-frame presets fit by default)")
@@ -382,16 +382,13 @@ def warn_pixel_budget(w, h):
 
 
 def duration_to_frames(seconds):
-    """MiniMax H3 length: a 24fps frame count snapped UP to the 17k+5 grid and
-    clamped to 124..362 (~5.2s..15.1s). Mirrors ApplyH3DurationOverride."""
-    frames = max(1, math.ceil(seconds * 24))
-    k = max(0, math.ceil((frames - 5) / 17))
-    frames = 17 * k + 5
-    clamped = min(362, max(124, frames))
-    if clamped != frames:
-        print(f"--duration {seconds:g}s is outside MiniMax H3's range — "
-              f"clamped to {clamped} frames (~{clamped / 24.0:.1f}s)")
-    return clamped
+    """MiniMax H3 length: a 24fps frame count snapped to the NEAREST 17k+5 grid
+    step (5, 22, 39, ... - min 5 frames = ~0.2s), unclamped: any grid length
+    renders (a 5-frame packet is how the Reference To Image stills work).
+    Mirrors ApplyH3DurationOverride."""
+    frames = max(1, round(seconds * 24))
+    k = max(0, round((frames - 5) / 17))
+    return 17 * k + 5
 
 
 def compute_aspect_fit(src_w, src_h, budget_w, budget_h):
@@ -649,10 +646,10 @@ def main():
         if not preset:
             die("--duration needs a preset (-p) — raw workflows carry no length knob", 1)
         length_default = preset.variables.get("vid_length") or preset.variables.get("length")
-        if length_default and length_default.strip() != "124":
-            die(f"--duration doesn't work with fixed-duration preset "
-                f"{preset.source_path.name} (default {length_default} frames) — "
-                f"use the matching 5s preset with --duration instead", 1)
+        if length_default and length_default.strip() not in ("124", "362"):
+            die(f"--duration is MiniMax H3 frame math and doesn't fit preset "
+                f"{preset.source_path.name} (default {length_default} frames, "
+                f"a different model's cadence) — use --set-var vid_length=N there", 1)
         for name in ("length", "vid_length"):
             if name in overrides:
                 die(f"--duration conflicts with --set-var {name}= — use one or the other", 1)
