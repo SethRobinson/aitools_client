@@ -61,14 +61,15 @@ inherited automatically.
   second action (native stereo audio + dialog, multi-shot capable; 8-step
   turbo LoRA + Spectrum cache, the fastest H3 path). Cache runs show
   "Step N/16" (8 real steps + 8 cheap replay ticks) - normal, not slower.
-- If the user asks for a specific duration between 5 and 15 seconds (e.g.
-  "a 10 second video"), keep `{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}`
-  and add `duration="10"` (seconds) to the movie action - the host snaps it
-  to H3's frame grid (so ~10.1s).
+- If the user asks for ANY specific duration (e.g. "a 10 second video", "a
+  1 second clip"), keep `{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}`
+  and add `duration="N"` (seconds) to the movie action - the host snaps it to
+  H3's 24fps frame grid (steps of ~0.7s, minimum ~0.2s; `duration="1"` gives
+  ~0.9s, `duration="10"` ~10.1s). Sub-5s and 15s+ lengths both work.
 - If the user explicitly asks for a LONG (~15 second) clip, use
   `{{Image To Video (MiniMax H3) 15s.txt}}` (plain turbo - there is no 15s
-  cache variant - roughly 4x the default render time). `duration` is ignored
-  on the 15s preset.
+  cache variant - roughly 4x the default render time). It takes
+  `duration="N"` too.
 - When the user asks for high/maximum quality, use the full 20-step
   `{{Image To Video (MiniMax H3 Quality) 5s.txt}}` / `... 15s.txt` /
   `{{Prompt To Video (MiniMax H3 Quality) 5s.txt}}` variants (~3x render time),
@@ -167,9 +168,9 @@ unless asked. See `image_to_movie` -> "Sizing" for details.
 - "MiniMax / H3 video of X" and generic "make a video of X" mean Z-Image
   still -> `Image To Video (MiniMax H3 Turbo Cache) 5s.txt`, unless the user
   explicitly asks for direct text-to-video.
-- Default to 5s unless the user asks longer. A specific 6-14s duration ->
-  the default 5s cache preset + `duration="N"` on the movie action; ~15s ->
-  the H3 15s preset.
+- Default to 5s unless the user asks otherwise. Any specific duration (short
+  or long) -> the default 5s cache preset + `duration="N"` on the movie
+  action; ~15s -> the H3 15s preset.
 - SEVERAL clips joined into one film ("make 10 videos telling a story, then
   stitch them together"): emit every pair in ONE reply, give each MOVIE
   action `anchor="sceneN"`, and end the reply with one

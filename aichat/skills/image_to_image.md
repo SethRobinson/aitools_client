@@ -101,10 +101,10 @@ Prompt rules (DIFFERENT from Klein prose - these are H3 reference prompts):
 - Then describe the NEW scene, action, and lighting as normal prose. The
   output is a STILL: no dialog line or audio spec needed.
 - Chat names never appear in `prompt=` (H3 has no chat history either).
-- Canvas: default 1152x640. Pass explicit dims to control the shape -
-  `width="1152" height="640"` landscape, 640x1152 portrait, 896x896 square
-  (trained cap 1344x768). Omitting dims inherits <Picture 1>'s aspect at the
-  default pixel budget.
+- Canvas: default 864x480. For identity-critical faces, group shots, or
+  "high quality" requests raise it - `width="1152" height="640"` landscape,
+  640x1152 portrait, 896x896 square (trained cap 1344x768). Omitting dims
+  inherits <Picture 1>'s aspect at the default pixel budget.
 
 Example - two anchored characters in one new scene:
 

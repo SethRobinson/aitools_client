@@ -47,7 +47,7 @@ chat_image3="7"`. Prefer `chat_images` for anything longer.
 ## Planning a film: length math first
 
 Decide the clip count and per-clip duration from the requested total BEFORE
-emitting anything, and put `duration="N"` (5-15 seconds) on EVERY
+emitting anything, and put `duration="N"` (seconds, any length) on EVERY
 movie-producing action:
 
 | requested total | plan |
