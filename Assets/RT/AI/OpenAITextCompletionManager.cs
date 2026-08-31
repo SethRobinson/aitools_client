@@ -30,6 +30,7 @@ public class GTPChatLine
             clone._promptCacheContent = _promptCacheContent;
             clone._promptCacheSourceContent = _promptCacheSourceContent;
             clone._promptCacheSourceLine = _promptCacheSourceLine;
+            clone._thinkingContent = _thinkingContent;
             return clone;
         }
 
@@ -114,6 +115,10 @@ public class GTPChatLine
         public string _promptCacheContent;
         public string _promptCacheSourceContent;
         [NonSerialized] public GTPChatLine _promptCacheSourceLine;
+        // Reasoning captured from a reply's <think>...</think> section, backing AI Chat's
+        // click-to-expand "[thinking]" marker. Display-only: the strip-think path removes
+        // the tags from _content, so this text never reaches an outgoing prompt.
+        [NonSerialized] public string _thinkingContent;
         public List<string> _images; // Base64-encoded images for vision LLM
         // Parallel to _images: the global chat_image="N" index of each image, or
         // -1 if not a numbered chat image. Used by serializers to inject explicit

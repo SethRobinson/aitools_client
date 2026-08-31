@@ -3100,18 +3100,18 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // ---------- "[skill: X]" click-to-expand: what was sent to the tool ----------
 
     /// <summary>
-    /// Toggle the details of the <paramref name="linkIndex"/>-th tool-call marker in an
-    /// assistant bubble. The marker ordinal maps onto the reply's actions that show a
-    /// marker (media actions leave none; see SkillActionParser.ShowsTranscriptMarker),
-    /// re-parsed from the stored RAW reply so the full prompt / lyrics / voice / scene
-    /// text is available without keeping it in the (editable) bubble text.
+    /// Toggle the details of the <paramref name="markerOrdinal"/>-th tool-call marker in
+    /// an assistant bubble (ordinal among "skill" links only - the click handler already
+    /// skips other link IDs such as the "[thinking]" marker). The ordinal maps onto the
+    /// reply's actions that show a marker (media actions leave none; see
+    /// SkillActionParser.ShowsTranscriptMarker), re-parsed from the stored RAW reply so
+    /// the full prompt / lyrics / voice / scene text is available without keeping it in
+    /// the (editable) bubble text.
     /// </summary>
-    private void ToggleActionDetails(TMP_InputField field, GTPChatLine interaction, int linkIndex)
+    private void ToggleActionDetails(TMP_InputField field, GTPChatLine interaction, int markerOrdinal)
     {
-        if (field == null || linkIndex < 0) return;
-        string raw = interaction != null ? interaction._content : null;
-        if (string.IsNullOrEmpty(raw) && ReferenceEquals(field, _streamingAssistantField))
-            raw = _streamBuffer.ToString();   // still streaming: the reply is not in history yet
+        if (field == null || markerOrdinal < 0) return;
+        string raw = GetRawReplyForDetails(field, interaction);
         if (string.IsNullOrEmpty(raw)) return;
 
         var bubble = field.transform.parent;
@@ -3119,24 +3119,73 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         var panel = bubble.GetComponent<ActionDetailsPanel>();
         if (panel == null) panel = bubble.gameObject.AddComponent<ActionDetailsPanel>();
         bool wasAtBottom = IsScrollAtBottom(_chatScroll);
-        if (!panel.Expanded.Remove(linkIndex))
-            panel.Expanded.Add(linkIndex);
-        RenderActionDetails(panel, bubble, raw);
+        if (!panel.Expanded.Remove(markerOrdinal))
+            panel.Expanded.Add(markerOrdinal);
+        RenderActionDetails(panel, bubble, raw, GetThinkingForDetails(field, interaction));
         // The newest reply sits at the bottom; keep the freshly expanded details in view.
         if (wasAtBottom)
             StartCoroutine(ScrollToBottomDeferred());
     }
 
-    private void RenderActionDetails(ActionDetailsPanel panel, Transform bubble, string raw)
+    /// <summary>
+    /// Toggle the reasoning view under a bubble (the "[thinking...]" / "[thinking]"
+    /// marker). While the reply is still streaming, the view re-renders live from the
+    /// stream buffer on every bubble update; afterwards it reads the reasoning stored
+    /// on the interaction (GTPChatLine._thinkingContent) - the bubble text and history
+    /// only ever carry the marker, never the reasoning itself.
+    /// </summary>
+    private void ToggleThinkingDetails(TMP_InputField field, GTPChatLine interaction)
+    {
+        if (field == null) return;
+        var bubble = field.transform.parent;
+        if (bubble == null) return;
+        var panel = bubble.GetComponent<ActionDetailsPanel>();
+        if (panel == null) panel = bubble.gameObject.AddComponent<ActionDetailsPanel>();
+        bool wasAtBottom = IsScrollAtBottom(_chatScroll);
+        panel.ThinkingExpanded = !panel.ThinkingExpanded;
+        RenderActionDetails(panel, bubble, GetRawReplyForDetails(field, interaction),
+            GetThinkingForDetails(field, interaction));
+        if (wasAtBottom)
+            StartCoroutine(ScrollToBottomDeferred());
+    }
+
+    private string GetRawReplyForDetails(TMP_InputField field, GTPChatLine interaction)
+    {
+        string raw = interaction != null ? interaction._content : null;
+        if (string.IsNullOrEmpty(raw) && ReferenceEquals(field, _streamingAssistantField))
+            raw = _streamBuffer.ToString();   // still streaming: the reply is not in history yet
+        return raw;
+    }
+
+    private string GetThinkingForDetails(TMP_InputField field, GTPChatLine interaction)
+    {
+        if (interaction != null && !string.IsNullOrEmpty(interaction._thinkingContent))
+            return interaction._thinkingContent;
+        if (ReferenceEquals(field, _streamingAssistantField))
+            return ExtractThinkingText(_streamBuffer.ToString());   // live: still arriving
+        // Strip-think-tags off keeps the raw reasoning in history; extract from there.
+        return interaction != null ? ExtractThinkingText(interaction._content) : "";
+    }
+
+    private void RenderActionDetails(ActionDetailsPanel panel, Transform bubble, string raw, string thinking)
     {
         var markerActions = new List<SkillAction>();
-        foreach (var a in SkillActionParser.ExtractActions(raw))
+        if (!string.IsNullOrEmpty(raw))
         {
-            if (SkillActionParser.ShowsTranscriptMarker(a.SkillId))
-                markerActions.Add(a);
+            foreach (var a in SkillActionParser.ExtractActions(raw))
+            {
+                if (SkillActionParser.ShowsTranscriptMarker(a.SkillId))
+                    markerActions.Add(a);
+            }
         }
 
         var sb = new StringBuilder();
+        if (panel.ThinkingExpanded)
+        {
+            string t = (thinking ?? "").Trim();
+            sb.Append("<b>thinking</b> (model reasoning; click the marker again to hide)\n");
+            sb.Append(t.Length > 0 ? EscapePlainTextForTMP(t) : "(no reasoning captured)");
+        }
         var ordered = new List<int>(panel.Expanded);
         ordered.Sort();
         foreach (int idx in ordered)
@@ -3688,6 +3737,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             // the wrapping tags are stripped by RemoveTMPTagsFromString, so an edit /
             // focus-loss write-back compares equal to the stored display text.
             text = Regex.Replace(text, @"\[skill: ([A-Za-z0-9_]+)\]", "<link=\"skill\"><color=#2B5FA6><u>[skill: $1]</u></color></link>");
+            // "[thinking...]" / "[thinking]" reasoning markers work the same way: a left
+            // click expands the model's reasoning below the bubble (live while it is
+            // still streaming). Same visible-chars survival contract as skill markers.
+            text = Regex.Replace(text, @"\[thinking(\.\.\.)?\]", "<link=\"think\"><color=#7A4FA6><u>[thinking$1]</u></color></link>");
         }
         catch
         {
@@ -4561,7 +4614,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 _streamBuffer.Append(finalDisplay);
         }
 
-        string visibleText = BuildVisibleStreamText(_streamBuffer.ToString());
+        string rawStreamed = _streamBuffer.ToString();
+        string visibleText = BuildVisibleStreamText(rawStreamed);
         completedField.text = ConvertMarkdownToTMP(visibleText);
 
         // Nothing streamed in yet -> leave the empty bubble readOnly and don't pollute
@@ -4573,8 +4627,14 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _promptManager.AddInteraction("assistant", historyText);
         var assistantInteraction = _promptManager.GetLastInteraction();
         assistantInteraction?.RememberDisplayContent(visibleText);
+        // Keep whatever reasoning streamed in before Stop, so the "[thinking...]"
+        // marker left in the stopped bubble still expands to something useful.
+        string thinkingText = GenerateSettingsPanel.GetStripThinkTags() ? ExtractThinkingText(rawStreamed) : "";
+        if (assistantInteraction != null && !string.IsNullOrEmpty(thinkingText))
+            assistantInteraction._thinkingContent = thinkingText;
         MarkInteractionMediaCheckpoint(assistantInteraction);
         EnableBubbleEditing(completedField, assistantInteraction);
+        RefreshOpenDetailsPanel(completedField, assistantInteraction);
     }
 
     private void OnClearClicked()
@@ -6736,9 +6796,43 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         // Body only - the "Assistant" label is its own TMP_Text above the input field.
         _streamingAssistantField.text = ConvertMarkdownToTMP(BuildVisibleStreamText(_streamBuffer.ToString()));
+        RefreshStreamingThinkingDetails();
         if (shouldAutoScroll)
             StartCoroutine(ScrollToBottomDeferred());
     }
+
+    /// <summary>
+    /// If the user expanded the "[thinking...]" marker on the streaming bubble, keep
+    /// the reasoning view under it growing with the stream.
+    /// </summary>
+    private void RefreshStreamingThinkingDetails()
+    {
+        if (_streamingAssistantField == null) return;
+        var bubble = _streamingAssistantField.transform.parent;
+        var panel = bubble != null ? bubble.GetComponent<ActionDetailsPanel>() : null;
+        if (panel == null || !panel.ThinkingExpanded) return;
+        string raw = _streamBuffer.ToString();
+        RenderActionDetails(panel, bubble, raw, ExtractThinkingText(raw));
+    }
+
+    /// <summary>
+    /// Re-render a details view that was open during streaming once the turn's
+    /// authoritative text has landed in history (completion or Stop-commit).
+    /// </summary>
+    private void RefreshOpenDetailsPanel(TMP_InputField field, GTPChatLine interaction)
+    {
+        if (field == null) return;
+        var bubble = field.transform.parent;
+        var panel = bubble != null ? bubble.GetComponent<ActionDetailsPanel>() : null;
+        if (panel == null || (!panel.ThinkingExpanded && panel.Expanded.Count == 0)) return;
+        RenderActionDetails(panel, bubble, GetRawReplyForDetails(field, interaction),
+            GetThinkingForDetails(field, interaction));
+    }
+
+    // Visible marker text for the reasoning section - both forms are linkified by
+    // ConvertMarkdownToTMP and toggle the reasoning view via ToggleThinkingDetails.
+    private const string ThinkingMarkerLive = "[thinking...]";
+    private const string ThinkingMarkerDone = "[thinking]";
 
     private static string BuildVisibleStreamText(string text)
     {
@@ -6749,12 +6843,70 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         int thinkClose = text.IndexOf("</think>", StringComparison.Ordinal);
         if (thinkOpen >= 0 && thinkClose < 0)
         {
-            // Hide partial reasoning until the closing boundary arrives, but keep the
-            // bubble visibly alive so long DeepSeek thinking does not look hung.
-            return thinkOpen > 0 ? text.Substring(0, thinkOpen) + "\n\nThinking..." : "Thinking...";
+            // Reasoning is still streaming in: hold it out of the bubble, but leave a
+            // clickable marker so the user can expand it and watch it live - and so
+            // long DeepSeek thinking does not look hung.
+            return thinkOpen > 0 ? text.Substring(0, thinkOpen) + "\n\n" + ThinkingMarkerLive : ThinkingMarkerLive;
         }
 
-        return OpenAITextCompletionManager.RemoveThinkTagsFromString(text);
+        if (thinkOpen >= 0 && thinkClose >= 0)
+        {
+            // Finished reasoning collapses to a persistent clickable "[thinking]"
+            // marker instead of vanishing; whitespace-only blocks leave no marker.
+            return Regex.Replace(text, @"(?s)<think>(.*?)</think>",
+                m => string.IsNullOrWhiteSpace(m.Groups[1].Value) ? "" : ThinkingMarkerDone);
+        }
+
+        if (thinkClose >= 0)
+        {
+            // Close-only format (DeepSeek-V4-Flash on llama.cpp): everything before
+            // </think> is reasoning, with no opening tag.
+            string answer = text.Substring(thinkClose + "</think>".Length);
+            return string.IsNullOrWhiteSpace(text.Substring(0, thinkClose))
+                ? answer
+                : ThinkingMarkerDone + "\n" + answer.TrimStart('\n');
+        }
+
+        return text;
+    }
+
+    /// <summary>
+    /// Extract the reasoning text from a raw reply: <think>...</think> content, an
+    /// unclosed <think> tail (still streaming), or the "reasoning </think> answer"
+    /// close-only format some llama.cpp templates emit. Returns "" when there is none.
+    /// </summary>
+    private static string ExtractThinkingText(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return "";
+
+        var sb = new StringBuilder();
+        int pos = 0;
+        int firstOpen = text.IndexOf("<think>", StringComparison.Ordinal);
+        int firstClose = text.IndexOf("</think>", StringComparison.Ordinal);
+        if (firstClose >= 0 && (firstOpen < 0 || firstClose < firstOpen))
+        {
+            // Close-only format: everything before </think> is reasoning.
+            sb.Append(text, 0, firstClose);
+            pos = firstClose + "</think>".Length;
+        }
+
+        while (true)
+        {
+            int open = text.IndexOf("<think>", pos, StringComparison.Ordinal);
+            if (open < 0) break;
+            int contentStart = open + "<think>".Length;
+            int close = text.IndexOf("</think>", contentStart, StringComparison.Ordinal);
+            if (sb.Length > 0) sb.Append("\n\n");
+            if (close < 0)
+            {
+                sb.Append(text, contentStart, text.Length - contentStart);
+                break;
+            }
+            sb.Append(text, contentStart, close - contentStart);
+            pos = close + "</think>".Length;
+        }
+
+        return sb.ToString().Trim();
     }
 
     /// <summary>
@@ -6805,6 +6957,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             catch { /* leave streamedText empty */ }
         }
 
+        // Capture the reasoning before it is stripped from the reply: the persistent
+        // "[thinking]" marker in the bubble expands it on click (stored per-interaction,
+        // display-only - never sent back to the LLM).
+        string thinkingText = GenerateSettingsPanel.GetStripThinkTags()
+            ? ExtractThinkingText(streamedText ?? "")
+            : "";
+
         if (GenerateSettingsPanel.GetStripThinkTags())
             streamedText = OpenAITextCompletionManager.RemoveThinkTagsFromString(streamedText ?? "");
 
@@ -6839,12 +6998,18 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _promptManager.AddInteraction("assistant", historyText);
         var assistantInteraction = _promptManager.GetLastInteraction();
         assistantInteraction?.RememberDisplayContent(visibleText);
+        if (assistantInteraction != null && !string.IsNullOrEmpty(thinkingText))
+            assistantInteraction._thinkingContent = thinkingText;
         MarkInteractionMediaCheckpoint(assistantInteraction);
 
         // Now that we have an interaction to link the bubble to, switch the assistant
         // bubble from readOnly to editable so the user can hand-tweak the assistant's
         // reply for testing follow-up turns.
         EnableBubbleEditing(completedField, assistantInteraction);
+
+        // An open details view was rendering from the live stream buffer; hand it the
+        // authoritative history/interaction text so it doesn't freeze on the last chunk.
+        RefreshOpenDetailsPanel(completedField, assistantInteraction);
 
         FinalizeAssistantTurn(aborted: false, shouldAutoScroll);
     }
@@ -13923,15 +14088,30 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             if (eventData == null) return;
             if (eventData.button == PointerEventData.InputButton.Left)
             {
-                // A left click on a "[skill: X]" link toggles the tool-call details panel.
+                // A left click on a "[skill: X]" link toggles the tool-call details
+                // panel; one on a "[thinking]" link toggles the reasoning view.
                 if (_isEntryInput || _panel == null || _field == null || _field.textComponent == null)
                     return;
                 int linkIndex = TMP_TextUtilities.FindIntersectingLink(_field.textComponent, eventData.position, eventData.pressEventCamera);
                 if (linkIndex < 0) return;
                 var linkInfo = _field.textComponent.textInfo.linkInfo;
                 if (linkInfo == null || linkIndex >= linkInfo.Length) return;
-                if (linkInfo[linkIndex].GetLinkID() != "skill") return;
-                _panel.ToggleActionDetails(_field, _interaction, linkIndex);
+                string linkId = linkInfo[linkIndex].GetLinkID();
+                if (linkId == "think")
+                {
+                    _panel.ToggleThinkingDetails(_field, _interaction);
+                    return;
+                }
+                if (linkId != "skill") return;
+                // Ordinal among "skill" links only - the "[thinking]" link (which sits
+                // before the first action marker) must not shift the marker -> action
+                // mapping in ToggleActionDetails.
+                int markerOrdinal = 0;
+                for (int i = 0; i < linkIndex; i++)
+                {
+                    if (linkInfo[i].GetLinkID() == "skill") markerOrdinal++;
+                }
+                _panel.ToggleActionDetails(_field, _interaction, markerOrdinal);
                 return;
             }
             if (eventData.button != PointerEventData.InputButton.Right)
@@ -13945,12 +14125,14 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     /// <summary>
     /// Per-bubble state for the click-to-expand tool-call details: which "[skill: X]"
-    /// markers (by link ordinal) are open, and the read-only TMP text under the bubble
-    /// that lists their attributes. Lives on the bubble root next to its layout group.
+    /// markers (by ordinal among skill links) are open, whether the "[thinking]"
+    /// reasoning view is open, and the read-only TMP text under the bubble that lists
+    /// them. Lives on the bubble root next to its layout group.
     /// </summary>
     private class ActionDetailsPanel : MonoBehaviour
     {
         public readonly HashSet<int> Expanded = new HashSet<int>();
+        public bool ThinkingExpanded;
         public TextMeshProUGUI Text;
     }
 }
