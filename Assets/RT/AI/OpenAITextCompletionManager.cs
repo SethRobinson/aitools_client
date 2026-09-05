@@ -389,7 +389,7 @@ public class OpenAITextCompletionManager : MonoBehaviour
     //   When non-null they are emitted in the request body. Only included by the Chat Completions branch
     //   (OpenAI Responses API does not accept these extras and would reject the request).
     public string BuildChatCompleteJSON(Queue<GTPChatLine> lines, int max_tokens = LLMRequestProfile.NoExplicitOutputTokenCap, float temperature = 1.3f, string model = "gpt-3.5-turbo", bool stream = false, bool useResponsesAPI = false, bool isReasoningModel = false, bool includeTemperature = true, string reasoningEffort = null, bool? enableThinking = null,
-        float? topP = null, int? topK = null, float? minP = null, float? repetitionPenalty = null, float? frequencyPenalty = null, float? presencePenalty = null, int? repeatLastN = null, string customReasoningEffort = null, bool deepSeekCloudApi = false)
+        float? topP = null, int? topK = null, float? minP = null, float? repetitionPenalty = null, float? frequencyPenalty = null, float? presencePenalty = null, int? repeatLastN = null, string customReasoningEffort = null, bool vendorCloudApi = false)
     {
         string bStreamText = stream ? "true" : "false";
 
@@ -539,7 +539,7 @@ public class OpenAITextCompletionManager : MonoBehaviour
             if (isDeepSeekV4)
             {
                 string wireEffort = LLMRequestProfile.GetDeepSeekV4EffortWireValue(effectiveCustomEffort);
-                if (deepSeekCloudApi)
+                if (vendorCloudApi)
                 {
                     // api.deepseek.com: OpenAI-style top-level fields only (thinking
                     // defaults to enabled at high there, so off must be explicit;
@@ -597,14 +597,21 @@ public class OpenAITextCompletionManager : MonoBehaviour
             else if (LLMRequestProfile.IsGlm53Model(model))
             {
                 // GLM-5.3 / GLM-5.3-Flash: thinking cannot be disabled, only sized
-                // (low/high/max). The level goes top-level (vLLM/SGLang/Z.ai honor
-                // it there) AND into chat_template_kwargs (llama.cpp only reads the
-                // kwarg). enable_thinking is ignored by the 5.3 template but stays so
-                // the response handler's think-tag sniff keeps wrapping
-                // reasoning_content for the [thinking] marker / strip logic.
+                // (low/high/max; the template turns the level into a leading
+                // "<|system|>Reasoning Effort: X" line and opens <think> always).
+                // Self-hosted: the level goes top-level (vLLM copies it into the
+                // template kwargs, current llama.cpp forwards it) AND into
+                // chat_template_kwargs (older llama.cpp only reads the kwarg);
+                // enable_thinking is ignored by the 5.3 template but stays so the
+                // response handler's think-tag sniff keeps wrapping reasoning_content
+                // for the [thinking] marker / strip logic. Z.ai's hosted API gets its
+                // documented shape instead: thinking {"type": "enabled"} (the only
+                // value it accepts for 5.3) + top-level reasoning_effort, no kwargs.
                 string wireEffort = LLMRequestProfile.GetGlm53EffortWireValue(effectiveCustomEffort);
                 effortPart = $@"""reasoning_effort"": ""{wireEffort}"",";
-                thinkingPart = $@"""chat_template_kwargs"": {{""enable_thinking"": true, ""reasoning_effort"": ""{wireEffort}""}},";
+                thinkingPart = vendorCloudApi
+                    ? @"""thinking"": {""type"": ""enabled""},"
+                    : $@"""chat_template_kwargs"": {{""enable_thinking"": true, ""reasoning_effort"": ""{wireEffort}""}},";
             }
             else if (enableThinking.HasValue)
             {

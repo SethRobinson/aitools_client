@@ -548,7 +548,7 @@ public class AIGuideManager : MonoBehaviour
             enableThinking: compatReasoning.enableThinking,
             topP: compatTopP, topK: compatTopK, minP: compatMinP, repetitionPenalty: compatRepPenalty,
             customReasoningEffort: compatReasoning.customReasoningEffortParam,
-            deepSeekCloudApi: compatReasoning.deepSeekCloudApi);
+            vendorCloudApi: compatReasoning.vendorCloudApi);
         RTDB db = new RTDB();
         _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnGTP4CompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
     }

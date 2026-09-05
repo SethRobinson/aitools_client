@@ -4054,7 +4054,7 @@ namespace AITools.AIChat.Skills
                         enableThinking: compatReasoning.enableThinking,
                         topP: topP,
                         customReasoningEffort: compatReasoning.customReasoningEffortParam,
-                        deepSeekCloudApi: compatReasoning.deepSeekCloudApi);
+                        vendorCloudApi: compatReasoning.vendorCloudApi);
                     mgr.SpawnChatCompleteRequest(json, (rtdb, jn, str) =>
                     {
                         try { onDone(rtdb, jn, str); }

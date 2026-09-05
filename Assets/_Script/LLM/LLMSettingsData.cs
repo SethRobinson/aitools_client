@@ -161,6 +161,25 @@ public static class LLMRequestProfile
         return !string.IsNullOrEmpty(endpoint) && endpoint.ToLowerInvariant().Contains("deepseek.com");
     }
 
+    // Z.ai's hosted GLM API (api.z.ai, and open.bigmodel.cn in China) likewise
+    // takes top-level "thinking": {"type": "enabled"} + "reasoning_effort"
+    // low/high/max for GLM-5.3 (its API reference, 2026-09-06).
+    public static bool IsZaiCloudEndpoint(string endpoint)
+    {
+        if (string.IsNullOrEmpty(endpoint)) return false;
+        string lower = endpoint.ToLowerInvariant();
+        return lower.Contains("z.ai") || lower.Contains("bigmodel.cn");
+    }
+
+    // True when the instance points at the model vendor's own hosted API, which
+    // wants the OpenAI-style top-level thinking/reasoning_effort fields and no
+    // chat_template_kwargs (DeepSeek-V4 on deepseek.com, GLM-5.3 on Z.ai).
+    public static bool IsVendorCloudApi(string model, string endpoint)
+    {
+        return (IsDeepSeekV4Model(model) && IsDeepSeekCloudEndpoint(endpoint))
+            || (IsGlm53Model(model) && IsZaiCloudEndpoint(endpoint));
+    }
+
     // DeepSeek-V4 has no Medium level; it rounds up to High exactly like the
     // hosted API's own "medium -> high" compatibility mapping.
     public static LLMReasoningEffort ClampEffortToDeepSeekV4(LLMReasoningEffort effort)
@@ -219,6 +238,9 @@ public static class LLMRequestProfile
     // "reasoning_effort": vLLM/SGLang/Z.ai read it top-level, all three
     // self-hosted servers (incl. llama.cpp, which drops the top-level field)
     // read it from chat_template_kwargs, so the request builders send both.
+    // Verified 2026-09-06 with vLLM's /tokenize: the kwarg renders as a leading
+    // "<|system|>Reasoning Effort: Low|High|Max" line (Max when absent); the
+    // amount of thinking it buys is a soft steer, not a hard budget.
     public static bool IsGlm53Model(string model)
     {
         if (string.IsNullOrEmpty(model)) return false;
@@ -289,7 +311,7 @@ public static class LLMRequestProfile
         public LLMReasoningEffort effort;
         public bool? enableThinking;
         public string customReasoningEffortParam; // null for models without effort levels
-        public bool deepSeekCloudApi; // DeepSeek-V4 on api.deepseek.com: top-level thinking/reasoning_effort, no chat_template_kwargs
+        public bool vendorCloudApi; // vendor-hosted API (DeepSeek-V4 on deepseek.com, GLM-5.3 on Z.ai): top-level thinking/reasoning_effort, no chat_template_kwargs
     }
 
     // Single source of truth for the five OpenAI-compatible call sites (AI Chat
@@ -312,7 +334,7 @@ public static class LLMRequestProfile
             effort = effort,
             enableThinking = hasEffortLevels ? effort != LLMReasoningEffort.Off : enableThinkingSetting,
             customReasoningEffortParam = hasEffortLevels ? LLMReasoningEffortUtil.ToConfigValue(effort) : null,
-            deepSeekCloudApi = IsDeepSeekV4Model(model) && settings != null && IsDeepSeekCloudEndpoint(settings.endpoint)
+            vendorCloudApi = settings != null && IsVendorCloudApi(model, settings.endpoint)
         };
     }
 
@@ -410,9 +432,8 @@ public class LLMProviderSettings
     public LLMReasoningEffort GetReasoningEffort()
     {
         // No explicit level saved yet: GLM-5.3 defaults to Max, its own model
-        // default (probed live 2026-09-05: "high" there is a one-line plan and
-        // "low" an empty think block; only "max" deliberates). Other families
-        // keep High.
+        // default (Z.ai's documented default; the level is only a soft steer on
+        // the think amount). Other families keep High.
         var fallback = enableThinking
             ? (LLMRequestProfile.IsGlm53Model(selectedModel) ? LLMReasoningEffort.Max : LLMReasoningEffort.High)
             : LLMReasoningEffort.Off;

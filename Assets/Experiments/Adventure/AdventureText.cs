@@ -1494,7 +1494,7 @@ public class AdventureText : MonoBehaviour
                         enableThinking: compatReasoning.enableThinking,
                         topP: compatTopP, topK: compatTopK, minP: compatMinP, repetitionPenalty: compatRepPenalty,
                         customReasoningEffort: compatReasoning.customReasoningEffortParam,
-                        deepSeekCloudApi: compatReasoning.deepSeekCloudApi);
+                        vendorCloudApi: compatReasoning.vendorCloudApi);
                     _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
                     SetLLMActive(true);
                 }

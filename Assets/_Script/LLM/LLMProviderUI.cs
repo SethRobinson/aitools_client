@@ -1265,15 +1265,17 @@ public class LLMProviderUI
         {
             // GLM-5.3 / GLM-5.3-Flash cannot stop thinking (the API rejects
             // "disabled", the template always opens <think>), so there is no
-            // No-think entry: its native low / high / max. Probed live on vLLM
-            // 2026-09-05: low = empty think block, high = a one-line plan, max
-            // (the model default) = real deliberation, so the labels say so.
+            // No-think entry: its native low / high / max, max being the model
+            // default. The level is a soft steer (the template turns it into a
+            // leading "Reasoning Effort: X" system line): re-probed 2026-09-06 on
+            // vLLM, all three produced full think blocks of similar size, so the
+            // labels no longer promise "none"/"brief" amounts.
             _effortDropdownValues.Add(LLMReasoningEffort.Low);
             _effortDropdownValues.Add(LLMReasoningEffort.High);
             _effortDropdownValues.Add(LLMReasoningEffort.Max);
-            options.Add(new TMP_Dropdown.OptionData("Think Low (none)"));
-            options.Add(new TMP_Dropdown.OptionData("Think High (brief)"));
-            options.Add(new TMP_Dropdown.OptionData("Think Max (default, deep)"));
+            options.Add(new TMP_Dropdown.OptionData("Think Low"));
+            options.Add(new TMP_Dropdown.OptionData("Think High"));
+            options.Add(new TMP_Dropdown.OptionData("Think Max (default)"));
         }
         else
         {
