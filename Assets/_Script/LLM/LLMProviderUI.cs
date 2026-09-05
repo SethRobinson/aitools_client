@@ -35,7 +35,8 @@ public class LLMProviderUI
     private GameObject _thinkingModeRow; // Checkbox row; hide/show based on model
     private GameObject _reasoningEffortRow; // Effort dropdown row; hide/show based on model
     // Effort value behind each dropdown index; rebuilt per model family
-    // (DeepSeek: Off/High/Max, Qwen Flash-Next: Off/Low/Medium/XHigh).
+    // (DeepSeek: Off/High/Max, Qwen Flash-Next: Off/Low/Medium/XHigh,
+    // GLM-5.3: Low/High/Max - that family cannot turn thinking off).
     private readonly List<LLMReasoningEffort> _effortDropdownValues = new List<LLMReasoningEffort>();
     private bool _enableThinking = true;
     private LLMReasoningEffort _reasoningEffort = LLMReasoningEffort.High;
@@ -188,8 +189,8 @@ public class LLMProviderUI
             CreateOpenAIThinkingModeRow(sectionRoot.transform, settings);
             if (_provider == LLMProvider.OpenAICompatible)
             {
-                // Effort-capable models (DeepSeek, Qwen Flash-Next) get a level
-                // dropdown instead of the on/off checkbox; both rows exist and
+                // Effort-capable models (DeepSeek, Qwen Flash-Next, GLM-5.3) get a
+                // level dropdown instead of the on/off checkbox; both rows exist and
                 // UpdateThinkingModeVisibility picks per selected model.
                 CreateReasoningEffortRow(sectionRoot.transform, settings);
                 UpdateThinkingModeVisibility();
@@ -1241,6 +1242,21 @@ public class LLMProviderUI
             options.Add(new TMP_Dropdown.OptionData("Think Medium"));
             options.Add(new TMP_Dropdown.OptionData("Think XHigh"));
         }
+        else if ((_provider == LLMProvider.OpenAICompatible || _provider == LLMProvider.LlamaCpp)
+            && LLMRequestProfile.IsGlm53Model(GetCurrentModelName()))
+        {
+            // GLM-5.3 / GLM-5.3-Flash cannot stop thinking (the API rejects
+            // "disabled", the template always opens <think>), so there is no
+            // No-think entry: its native low / high / max. Probed live on vLLM
+            // 2026-09-05: low = empty think block, high = a one-line plan, max
+            // (the model default) = real deliberation, so the labels say so.
+            _effortDropdownValues.Add(LLMReasoningEffort.Low);
+            _effortDropdownValues.Add(LLMReasoningEffort.High);
+            _effortDropdownValues.Add(LLMReasoningEffort.Max);
+            options.Add(new TMP_Dropdown.OptionData("Think Low (none)"));
+            options.Add(new TMP_Dropdown.OptionData("Think High (brief)"));
+            options.Add(new TMP_Dropdown.OptionData("Think Max (default, deep)"));
+        }
         else
         {
             _effortDropdownValues.Add(LLMReasoningEffort.Off);
@@ -1253,9 +1269,14 @@ public class LLMProviderUI
         reasoningEffortDropdown.ClearOptions();
         reasoningEffortDropdown.AddOptions(options);
         int idx = _effortDropdownValues.IndexOf(_reasoningEffort);
-        if (idx < 0) // e.g. Low/Medium carried over to a family without those levels
+        if (idx < 0) // e.g. Low/Medium carried over to a family without those levels, or Off on GLM-5.3
             idx = _reasoningEffort == LLMReasoningEffort.Off ? 0 : _effortDropdownValues.IndexOf(LLMReasoningEffort.High);
         if (idx < 0) idx = 0;
+        // Deliberately do NOT snap _reasoningEffort to the displayed entry: this
+        // runs before the model list arrives too (generic Off/High/Max options),
+        // and snapping there would overwrite a saved GLM-5.3 "low" with High. The
+        // request-time clamp in LLMRequestProfile keeps the wire value consistent
+        // with what the dropdown shows.
         reasoningEffortDropdown.SetValueWithoutNotify(idx);
         reasoningEffortDropdown.RefreshShownValue();
     }
@@ -1264,7 +1285,8 @@ public class LLMProviderUI
     {
         if (_thinkingModeRow == null && _reasoningEffortRow == null) return;
 
-        // Show thinking controls only for models that support it (GLM, DeepSeek, Qwen reasoning models)
+        // Show thinking controls only for models that support it (GLM, DeepSeek, Qwen reasoning models).
+        // Effort-level families (DeepSeek, Qwen Flash-Next, GLM-5.3) get the dropdown instead.
         string currentModel = GetCurrentModelName();
         if (string.IsNullOrEmpty(currentModel))
         {

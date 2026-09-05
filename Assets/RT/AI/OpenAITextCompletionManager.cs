@@ -526,7 +526,8 @@ public class OpenAITextCompletionManager : MonoBehaviour
             // chat_template_kwargs. DeepSeek-V4-Flash expects "thinking"; Qwen/GLM
             // servers generally expect "enable_thinking". The Qwen Flash-Next
             // family additionally takes a top-level "reasoning_effort" with
-            // native levels low/medium/xhigh (see LLMRequestProfile).
+            // native levels low/medium/xhigh, and GLM-5.3 takes reasoning_effort
+            // low/high/max with thinking always on (see LLMRequestProfile).
             string thinkingPart = "";
             string effortPart = "";
             if (isDeepSeekModel)
@@ -548,6 +549,18 @@ public class OpenAITextCompletionManager : MonoBehaviour
                     // so it is the reliable off switch.
                     thinkingPart = @"""chat_template_kwargs"": {""enable_thinking"": false},";
                 }
+            }
+            else if (LLMRequestProfile.IsGlm53Model(model))
+            {
+                // GLM-5.3 / GLM-5.3-Flash: thinking cannot be disabled, only sized
+                // (low/high/max). The level goes top-level (vLLM/SGLang/Z.ai honor
+                // it there) AND into chat_template_kwargs (llama.cpp only reads the
+                // kwarg). enable_thinking is ignored by the 5.3 template but stays so
+                // the response handler's think-tag sniff keeps wrapping
+                // reasoning_content for the [thinking] marker / strip logic.
+                string wireEffort = LLMRequestProfile.GetGlm53EffortWireValue(effectiveCustomEffort);
+                effortPart = $@"""reasoning_effort"": ""{wireEffort}"",";
+                thinkingPart = $@"""chat_template_kwargs"": {{""enable_thinking"": true, ""reasoning_effort"": ""{wireEffort}""}},";
             }
             else if (enableThinking.HasValue)
             {

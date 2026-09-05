@@ -475,7 +475,16 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
         {
             bool enableThinking = reasoningEffort != LLMReasoningEffort.Off;
             
-            if (isGLM || isQwen)
+            if (isGLM && LLMRequestProfile.IsGlm53Model(modelName))
+            {
+                // GLM-5.3 family: thinking is always on (the template ignores
+                // enable_thinking, which stays only for the think-tag sniff); the
+                // amount is the reasoning_effort template kwarg, low/high/max.
+                string wireEffort = LLMRequestProfile.GetGlm53EffortWireValue(reasoningEffort);
+                chatTemplateKwargs = ",\"chat_template_kwargs\": {\"enable_thinking\": true, \"reasoning_effort\": \"" + wireEffort + "\"}";
+                RTConsole.Log("GLM-5.3 model '" + modelName + "': Reasoning " + wireEffort + " (this family cannot turn thinking off)");
+            }
+            else if (isGLM || isQwen)
             {
                 // GLM and Qwen models use chat_template_kwargs with enable_thinking
                 if (enableThinking)

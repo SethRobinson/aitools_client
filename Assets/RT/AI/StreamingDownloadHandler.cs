@@ -196,6 +196,26 @@ public class StreamingDownloadHandler : DownloadHandlerScript
                     {
                         content = reasoningContent;
                     }
+
+                    // vLLM can put the TAIL of the reasoning and the FIRST answer
+                    // tokens in one delta when a multi-token step straddles </think>
+                    // (seen live with GLM-5.3-Flash 2026-09-05:
+                    // {"reasoning": " requested.", "content": "Nine"}). Taking only
+                    // the reasoning half silently ate the opening words of every
+                    // such reply ("Here's a scene..." arrived as " scene...").
+                    if (!string.IsNullOrEmpty(mainContent))
+                    {
+                        if (_injectReasoningThinkTags && _inReasoningBlock && !_reasoningBlockFromContent)
+                        {
+                            _inReasoningBlock = false;
+                            _reasoningBlockClosed = true;
+                            content += mainContent.Contains("</think>") ? mainContent : "</think>" + mainContent;
+                        }
+                        else
+                        {
+                            content += mainContent;
+                        }
+                    }
                 }
                 else if (!string.IsNullOrEmpty(mainContent))
                 {

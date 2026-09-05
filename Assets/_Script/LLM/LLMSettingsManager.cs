@@ -525,8 +525,8 @@ public class LLMSettingsManager : MonoBehaviour
         // For llama.cpp, add thinking mode and sampling parameters (sampling only if overrides enabled)
         if (provider == LLMProvider.LlamaCpp)
         {
-            bool isDeepSeek = LLMRequestProfile.IsDeepSeekModel(settings.selectedModel);
-            if (isDeepSeek)
+            bool hasEffortLevels = LLMRequestProfile.HasConfigurableReasoningEffort(settings.selectedModel);
+            if (hasEffortLevels)
             {
                 var reasoningEffort = settings.GetReasoningEffort();
                 result.Add(new LLMParm { _key = "reasoning_effort", _value = LLMReasoningEffortUtil.ToConfigValue(reasoningEffort) });
@@ -876,7 +876,7 @@ public class LLMSettingsManager : MonoBehaviour
     public LLMReasoningEffort GetReasoningEffort(LLMProvider provider)
     {
         var settings = _settings.GetProviderSettings(provider);
-        if (LLMRequestProfile.IsDeepSeekModel(settings.selectedModel))
+        if (LLMRequestProfile.HasConfigurableReasoningEffort(settings.selectedModel))
             return settings.GetReasoningEffort();
         return settings.enableThinking ? LLMReasoningEffort.High : LLMReasoningEffort.Off;
     }
@@ -886,7 +886,7 @@ public class LLMSettingsManager : MonoBehaviour
     /// </summary>
     public void SetThinkingModeEnabled(bool enabled)
     {
-        if (LLMRequestProfile.IsDeepSeekModel(_settings.llamaCpp.selectedModel))
+        if (LLMRequestProfile.HasConfigurableReasoningEffort(_settings.llamaCpp.selectedModel))
             _settings.llamaCpp.SetReasoningEffort(enabled ? LLMReasoningEffort.High : LLMReasoningEffort.Off);
         else
         {
@@ -1032,8 +1032,8 @@ public class LLMSettingsManager : MonoBehaviour
         // For llama.cpp, add the thinking mode setting and sampling parameters
         if (instance.providerType == LLMProvider.LlamaCpp)
         {
-            bool isDeepSeek = LLMRequestProfile.IsDeepSeekModel(settings.selectedModel);
-            if (isDeepSeek)
+            bool hasEffortLevels = LLMRequestProfile.HasConfigurableReasoningEffort(settings.selectedModel);
+            if (hasEffortLevels)
             {
                 var reasoningEffort = settings.GetReasoningEffort();
                 result.Add(new LLMParm { _key = "reasoning_effort", _value = LLMReasoningEffortUtil.ToConfigValue(reasoningEffort) });

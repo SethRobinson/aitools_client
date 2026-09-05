@@ -138,11 +138,62 @@ public static class LLMRequestProfile
             && !IsDeepSeekModel(model);
     }
 
+    // GLM-5.3 family (GLM-5.3 and GLM-5.3-Flash: Z.ai id "glm-5.3-flash", HF
+    // "zai-org/GLM-5.3-Flash", GGUF names like "GLM-5.3-Flash-Q4_K_M"). Researched
+    // 2026-09-04 against the Z.ai API reference and the open-weights chat template:
+    // thinking is ALWAYS ON and cannot be disabled (Z.ai answers HTTP 400 to
+    // thinking.type "disabled"; the template opens <think> unconditionally and
+    // ignores enable_thinking), and the amount has exactly three levels,
+    // "low" / "high" / "max" (model default max, no "medium"; any other value
+    // silently becomes max). The level is the chat-template variable
+    // "reasoning_effort": vLLM/SGLang/Z.ai read it top-level, all three
+    // self-hosted servers (incl. llama.cpp, which drops the top-level field)
+    // read it from chat_template_kwargs, so the request builders send both.
+    public static bool IsGlm53Model(string model)
+    {
+        if (string.IsNullOrEmpty(model)) return false;
+        string normalized = model.ToLowerInvariant().Replace("-", "").Replace("_", "").Replace(" ", "");
+        return normalized.Contains("glm5.3");
+    }
+
     // Models whose reasoning amount is selectable (not just on/off), so the UI
     // shows an effort dropdown and the request builders emit per-level params.
     public static bool HasConfigurableReasoningEffort(string model)
     {
-        return IsDeepSeekModel(model) || IsQwenFlashNextModel(model);
+        return IsDeepSeekModel(model) || IsQwenFlashNextModel(model) || IsGlm53Model(model);
+    }
+
+    // GLM-5.3 can never stop thinking, so its dropdown has no No-think entry: an
+    // Off setting (e.g. an instance saved with the old checkbox unticked) becomes
+    // the lightest level (Z.ai's own migration advice), and Medium, a level this
+    // family lacks, rounds up to High like Z.ai's GLM-5.2 remap did.
+    public static LLMReasoningEffort ClampEffortToGlm53(LLMReasoningEffort effort)
+    {
+        switch (effort)
+        {
+            case LLMReasoningEffort.Off:
+            case LLMReasoningEffort.Low:
+                return LLMReasoningEffort.Low;
+            case LLMReasoningEffort.Medium:
+            case LLMReasoningEffort.High:
+                return LLMReasoningEffort.High;
+            default:
+                return LLMReasoningEffort.Max;
+        }
+    }
+
+    // Wire value for the GLM-5.3 family: always one of "low" / "high" / "max".
+    public static string GetGlm53EffortWireValue(LLMReasoningEffort effort)
+    {
+        switch (ClampEffortToGlm53(effort))
+        {
+            case LLMReasoningEffort.Low:
+                return "low";
+            case LLMReasoningEffort.High:
+                return "high";
+            default:
+                return "max";
+        }
     }
 
     // Wire value for the Qwen Flash-Next family; null means thinking off
@@ -181,6 +232,8 @@ public static class LLMRequestProfile
         LLMReasoningEffort effort = hasEffortLevels && settings != null
             ? settings.GetReasoningEffort()
             : (enableThinkingSetting ? LLMReasoningEffort.High : LLMReasoningEffort.Off);
+        if (IsGlm53Model(model))
+            effort = ClampEffortToGlm53(effort); // never Off: this family cannot stop thinking
         return new CompatReasoning
         {
             effort = effort,
@@ -282,7 +335,13 @@ public class LLMProviderSettings
 
     public LLMReasoningEffort GetReasoningEffort()
     {
-        var fallback = enableThinking ? LLMReasoningEffort.High : LLMReasoningEffort.Off;
+        // No explicit level saved yet: GLM-5.3 defaults to Max, its own model
+        // default (probed live 2026-09-05: "high" there is a one-line plan and
+        // "low" an empty think block; only "max" deliberates). Other families
+        // keep High.
+        var fallback = enableThinking
+            ? (LLMRequestProfile.IsGlm53Model(selectedModel) ? LLMReasoningEffort.Max : LLMReasoningEffort.High)
+            : LLMReasoningEffort.Off;
         return LLMReasoningEffortUtil.Parse(reasoningEffort, fallback);
     }
 

@@ -4151,8 +4151,8 @@ namespace AITools.AIChat.Skills
             if (!string.IsNullOrEmpty(inst.settings.selectedModel))
                 result.Add(new LLMParm { _key = "model", _value = inst.settings.selectedModel });
 
-            bool isDeepSeek = LLMRequestProfile.IsDeepSeekModel(inst.settings.selectedModel);
-            if (isDeepSeek)
+            bool hasEffortLevels = LLMRequestProfile.HasConfigurableReasoningEffort(inst.settings.selectedModel);
+            if (hasEffortLevels)
             {
                 var effort = inst.settings.GetReasoningEffort();
                 result.Add(new LLMParm { _key = "reasoning_effort", _value = LLMReasoningEffortUtil.ToConfigValue(effort) });
