@@ -35,8 +35,9 @@ public class LLMProviderUI
     private GameObject _thinkingModeRow; // Checkbox row; hide/show based on model
     private GameObject _reasoningEffortRow; // Effort dropdown row; hide/show based on model
     // Effort value behind each dropdown index; rebuilt per model family
-    // (DeepSeek: Off/High/Max, Qwen Flash-Next: Off/Low/Medium/XHigh,
-    // GLM-5.3: Low/High/Max - that family cannot turn thinking off).
+    // (DeepSeek-V4: Off/Low/High/Max, other DeepSeek: Off/High/Max, Qwen
+    // Flash-Next: Off/Low/Medium/XHigh, GLM-5.3: Low/High/Max - that family
+    // cannot turn thinking off).
     private readonly List<LLMReasoningEffort> _effortDropdownValues = new List<LLMReasoningEffort>();
     private bool _enableThinking = true;
     private LLMReasoningEffort _reasoningEffort = LLMReasoningEffort.High;
@@ -1241,6 +1242,23 @@ public class LLMProviderUI
             options.Add(new TMP_Dropdown.OptionData("Think Low"));
             options.Add(new TMP_Dropdown.OptionData("Think Medium"));
             options.Add(new TMP_Dropdown.OptionData("Think XHigh"));
+        }
+        else if ((_provider == LLMProvider.OpenAICompatible || _provider == LLMProvider.LlamaCpp)
+            && LLMRequestProfile.IsDeepSeekV4Model(GetCurrentModelName()))
+        {
+            // DeepSeek-V4 (Flash / Pro / Flash-Vision-Exp): a thinking switch plus
+            // the model's own low / high / max levels (researched 2026-09-05, see
+            // LLMRequestProfile.IsDeepSeekV4Model). Low is the plain think block;
+            // high (DeepSeek's default) and max make the server prepend the
+            // official effort paragraphs.
+            _effortDropdownValues.Add(LLMReasoningEffort.Off);
+            _effortDropdownValues.Add(LLMReasoningEffort.Low);
+            _effortDropdownValues.Add(LLMReasoningEffort.High);
+            _effortDropdownValues.Add(LLMReasoningEffort.Max);
+            options.Add(new TMP_Dropdown.OptionData("No-think"));
+            options.Add(new TMP_Dropdown.OptionData("Think Low"));
+            options.Add(new TMP_Dropdown.OptionData("Think High (default)"));
+            options.Add(new TMP_Dropdown.OptionData("Think Max (deep)"));
         }
         else if ((_provider == LLMProvider.OpenAICompatible || _provider == LLMProvider.LlamaCpp)
             && LLMRequestProfile.IsGlm53Model(GetCurrentModelName()))

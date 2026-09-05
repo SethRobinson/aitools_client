@@ -67,6 +67,15 @@ public static class AutomationBridge
         return true;
     }
 
+    /// <summary>Open the LLM Settings panel and select the instance whose name contains nameSubstring. False (with error) if no driver or no match.</summary>
+    public static bool OpenLLMSettingsInstance(string nameSubstring, out string applied, out string error)
+    {
+        applied = null;
+        error = null;
+        if (_driver == null) { error = "driver not ready"; return false; }
+        return _driver.OpenLLMSettingsInstance(nameSubstring, out applied, out error);
+    }
+
     /// <summary>Open one server's Overrides panel. False if no driver yet.</summary>
     public static bool OpenServerSettings(int serverID)
     {
@@ -195,6 +204,15 @@ public static class AutomationBridge
         {
             SyntheticAltHeld = false;
         }
+    }
+
+    /// <summary>Synthesize a mouse-wheel scroll over the UI under top-left game-view pixel (x, y); see AutomationDriver.ScrollAt.</summary>
+    public static bool Scroll(int x, int y, float dy, out string error, out string hitPath)
+    {
+        error = "no driver";
+        hitPath = "";
+        if (_driver == null) return false;
+        return _driver.ScrollAt(x, y, dy, out error, out hitPath);
     }
 
     /// <summary>Capture the game view (full screen if w/h non-positive) to a PNG.</summary>

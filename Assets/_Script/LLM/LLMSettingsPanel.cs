@@ -108,6 +108,51 @@ public class LLMSettingsPanel : MonoBehaviour
             _panelRoot.SetActive(false);
     }
 
+    /// <summary>
+    /// Select the instance whose name (or list display string) contains
+    /// nameSubstring (case-insensitive) in the open panel and scroll the list to
+    /// it - the automation bridge's /llm_settings instance= option, so a
+    /// per-instance control can be screenshotted/clicked without scrolling the
+    /// list by hand. Returns the matched display string.
+    /// </summary>
+    public static bool SelectInstanceByName(string nameSubstring, out string applied, out string error)
+    {
+        applied = null;
+        error = null;
+        if (_instance == null || _instance._workingInstancesConfig == null)
+        {
+            error = "LLM Settings panel is not open";
+            return false;
+        }
+        if (string.IsNullOrEmpty(nameSubstring))
+        {
+            error = "empty instance name";
+            return false;
+        }
+        LLMInstanceInfo match = null;
+        foreach (var inst in _instance._workingInstancesConfig.instances)
+        {
+            string name = inst.name ?? "";
+            string display = inst.GetDisplayString() ?? "";
+            if (name.IndexOf(nameSubstring, StringComparison.OrdinalIgnoreCase) >= 0
+                || display.IndexOf(nameSubstring, StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                match = inst;
+                break;
+            }
+        }
+        if (match == null)
+        {
+            error = "no LLM instance name contains '" + nameSubstring + "'";
+            return false;
+        }
+        _instance._instanceListUI?.SetSelectedInstanceID(match.instanceID);
+        _instance._instanceListUI?.ScrollToInstanceID(match.instanceID);
+        _instance.OnInstanceSelected(match.instanceID);
+        applied = match.GetDisplayString();
+        return true;
+    }
+
     public static void Toggle()
     {
         if (_panelRoot != null && _panelRoot.activeSelf)

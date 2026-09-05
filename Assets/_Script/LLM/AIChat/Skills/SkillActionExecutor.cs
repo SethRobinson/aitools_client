@@ -4053,7 +4053,8 @@ namespace AITools.AIChat.Skills
                     string json = mgr.BuildChatCompleteJSON(lines, maxNewTokens, temp, model, stream,
                         enableThinking: compatReasoning.enableThinking,
                         topP: topP,
-                        customReasoningEffort: compatReasoning.customReasoningEffortParam);
+                        customReasoningEffort: compatReasoning.customReasoningEffortParam,
+                        deepSeekCloudApi: compatReasoning.deepSeekCloudApi);
                     mgr.SpawnChatCompleteRequest(json, (rtdb, jn, str) =>
                     {
                         try { onDone(rtdb, jn, str); }

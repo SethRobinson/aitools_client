@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
@@ -30,7 +31,8 @@ using UnityEngine;
 //   POST /stop       -> exit play mode
 //   POST /open_chat   -> open (create if needed) the AI Chat panel
 //   POST /settings    -> body: tab=<general|configuration|comfyui|audio|llm>; open Settings panel
-//   POST /llm_settings -> open the advanced LLM Settings panel
+//   POST /llm_settings -> optional body: instance=<instance-name substring>; open the advanced LLM Settings
+//                        panel (and select/scroll to that instance row, returning its display string)
 //   POST /server_settings -> body: id=<serverID>; open that server's Overrides panel
 //   POST /focus_input -> body: name=<hierarchy-path substring>, optional selectall=<true|false>;
 //                        focus a TMP_InputField (returns matched path + whether a caret graphic exists)
@@ -48,6 +50,8 @@ using UnityEngine;
 //   POST /movie_state -> body: index=<n|latest>; PicMovie playback telemetry for a Movie bubble
 //   POST /save        -> body: index=<n|latest>, path=<file>; save chat image PNG
 //   POST /screenshot  -> body: path=<file> [x,y,w,h top-left region]; capture game view
+//   POST /click       -> body: x=<px>, y=<px> [button=right] [alt=true]; pointer click on the UI under that point
+//   POST /scroll      -> body: x=<px>, y=<px> [dy=<wheel notches, default -3 = down>]; mouse-wheel scroll under that point
 //
 // Off by default. Toggle via Tools > RT Automation > Enable Control Server.
 [InitializeOnLoad]
@@ -251,9 +255,27 @@ public static class AutomationController
                 }
 
                 case "/llm_settings":
+                {
+                    // Optional body: instance=<instance-name substring>. Selects that row in
+                    // the opened panel (scrolling the list to it) so per-instance controls can
+                    // be screenshotted/clicked without scrolling the list by hand.
+                    var kv = ParseKeyValues(body);
+                    if (kv.TryGetValue("instance", out var instanceName) && !string.IsNullOrEmpty(instanceName))
+                    {
+                        string result = RunOnMainAndWait(() =>
+                        {
+                            bool ok = AutomationBridge.OpenLLMSettingsInstance(instanceName, out string applied, out string err);
+                            return ok
+                                ? $"{{\"ok\":true,\"accepted\":\"llm_settings\",\"applied\":{JsonStr(applied)}}}"
+                                : $"{{\"ok\":false,\"error\":{JsonStr(err)}}}";
+                        }, "{\"ok\":false,\"error\":\"timed out\"}");
+                        WriteJson(stream, 200, result);
+                        break;
+                    }
                     EnqueueMain(() => AutomationBridge.OpenLLMSettings());
                     WriteJson(stream, 200, "{\"ok\":true,\"accepted\":\"llm_settings\"}");
                     break;
+                }
 
                 case "/server_settings":
                 {
@@ -496,6 +518,33 @@ public static class AutomationController
                     string result = RunOnMainAndWait(() =>
                     {
                         bool ok = AutomationBridge.Click(cx, cy, right, altHeld, out string err, out string hitPath);
+                        return ok
+                            ? $"{{\"ok\":true,\"hit\":{JsonStr(hitPath)}}}"
+                            : $"{{\"ok\":false,\"error\":{JsonStr(err)}}}";
+                    }, "{\"ok\":false,\"error\":\"timed out\"}");
+                    WriteJson(stream, 200, result);
+                    break;
+                }
+
+                case "/scroll":
+                {
+                    // Body: x=<px>, y=<px> (top-left game-view pixels, the /screenshot frame),
+                    // optional dy=<wheel notches> (default -3; negative scrolls down, positive
+                    // up). Dispatches a scroll event to the ScrollRect under the point, so
+                    // long settings panels and lists can be paged without a real mouse.
+                    var kv = ParseKeyValues(body);
+                    int sx = ParseInt(kv, "x", -1), sy = ParseInt(kv, "y", -1);
+                    float dy = -3f;
+                    if (kv.TryGetValue("dy", out var dyText))
+                        float.TryParse(dyText, NumberStyles.Float, CultureInfo.InvariantCulture, out dy);
+                    if (sx < 0 || sy < 0)
+                    {
+                        WriteJson(stream, 200, "{\"ok\":false,\"error\":\"x and y are required\"}");
+                        break;
+                    }
+                    string result = RunOnMainAndWait(() =>
+                    {
+                        bool ok = AutomationBridge.Scroll(sx, sy, dy, out string err, out string hitPath);
                         return ok
                             ? $"{{\"ok\":true,\"hit\":{JsonStr(hitPath)}}}"
                             : $"{{\"ok\":false,\"error\":{JsonStr(err)}}}";

@@ -547,7 +547,8 @@ public class AIGuideManager : MonoBehaviour
         string json = _openAITextCompletionManager.BuildChatCompleteJSON(normalizedLines, LLMRequestProfile.NoExplicitOutputTokenCap, compatTemperature, model, true,
             enableThinking: compatReasoning.enableThinking,
             topP: compatTopP, topK: compatTopK, minP: compatMinP, repetitionPenalty: compatRepPenalty,
-            customReasoningEffort: compatReasoning.customReasoningEffortParam);
+            customReasoningEffort: compatReasoning.customReasoningEffortParam,
+            deepSeekCloudApi: compatReasoning.deepSeekCloudApi);
         RTDB db = new RTDB();
         _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnGTP4CompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
     }

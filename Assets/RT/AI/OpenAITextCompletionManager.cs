@@ -389,7 +389,7 @@ public class OpenAITextCompletionManager : MonoBehaviour
     //   When non-null they are emitted in the request body. Only included by the Chat Completions branch
     //   (OpenAI Responses API does not accept these extras and would reject the request).
     public string BuildChatCompleteJSON(Queue<GTPChatLine> lines, int max_tokens = LLMRequestProfile.NoExplicitOutputTokenCap, float temperature = 1.3f, string model = "gpt-3.5-turbo", bool stream = false, bool useResponsesAPI = false, bool isReasoningModel = false, bool includeTemperature = true, string reasoningEffort = null, bool? enableThinking = null,
-        float? topP = null, int? topK = null, float? minP = null, float? repetitionPenalty = null, float? frequencyPenalty = null, float? presencePenalty = null, int? repeatLastN = null, string customReasoningEffort = null)
+        float? topP = null, int? topK = null, float? minP = null, float? repetitionPenalty = null, float? frequencyPenalty = null, float? presencePenalty = null, int? repeatLastN = null, string customReasoningEffort = null, bool deepSeekCloudApi = false)
     {
         string bStreamText = stream ? "true" : "false";
 
@@ -466,13 +466,17 @@ public class OpenAITextCompletionManager : MonoBehaviour
             // Chat Completions API format: uses "messages"
             string msg = "";
             bool isDeepSeekModel = LLMRequestProfile.IsDeepSeekModel(model);
+            bool isDeepSeekV4 = LLMRequestProfile.IsDeepSeekV4Model(model);
             var customEffortFallback = enableThinking.HasValue && enableThinking.Value
                 ? LLMReasoningEffort.High
                 : LLMReasoningEffort.Off;
             LLMReasoningEffort effectiveCustomEffort = LLMReasoningEffortUtil.Parse(customReasoningEffort, customEffortFallback);
 
-            if (isDeepSeekModel && effectiveCustomEffort == LLMReasoningEffort.Max)
+            if (isDeepSeekModel && !isDeepSeekV4 && effectiveCustomEffort == LLMReasoningEffort.Max)
             {
+                // Pre-V4 DeepSeek templates have no reasoning_effort variable, so the
+                // max-reasoning prompt is injected by hand. DeepSeek-V4 servers build
+                // their own effort paragraph from the reasoning_effort value below.
                 lines = PrependSystemMessage(lines, LLMReasoningPrompts.DeepSeekMaxReasoningSystemPrompt);
             }
 
@@ -523,15 +527,55 @@ public class OpenAITextCompletionManager : MonoBehaviour
                 : "";
 
             // For custom OpenAI-compatible reasoning models, control thinking via
-            // chat_template_kwargs. DeepSeek-V4-Flash expects "thinking"; Qwen/GLM
+            // chat_template_kwargs. DeepSeek templates expect "thinking"; Qwen/GLM
             // servers generally expect "enable_thinking". The Qwen Flash-Next
             // family additionally takes a top-level "reasoning_effort" with
-            // native levels low/medium/xhigh, and GLM-5.3 takes reasoning_effort
-            // low/high/max with thinking always on (see LLMRequestProfile).
+            // native levels low/medium/xhigh, GLM-5.3 takes reasoning_effort
+            // low/high/max with thinking always on, and DeepSeek-V4 takes a
+            // thinking switch plus reasoning_effort low/high/max (see
+            // LLMRequestProfile).
             string thinkingPart = "";
             string effortPart = "";
-            if (isDeepSeekModel)
+            if (isDeepSeekV4)
             {
+                string wireEffort = LLMRequestProfile.GetDeepSeekV4EffortWireValue(effectiveCustomEffort);
+                if (deepSeekCloudApi)
+                {
+                    // api.deepseek.com: OpenAI-style top-level fields only (thinking
+                    // defaults to enabled at high there, so off must be explicit;
+                    // "none" is not a valid reasoning_effort on that API).
+                    if (wireEffort != null)
+                    {
+                        effortPart = $@"""reasoning_effort"": ""{wireEffort}"",";
+                        thinkingPart = @"""thinking"": {""type"": ""enabled""},";
+                    }
+                    else
+                    {
+                        thinkingPart = @"""thinking"": {""type"": ""disabled""},";
+                    }
+                }
+                else if (wireEffort != null)
+                {
+                    // Self-hosted (vLLM / SGLang / llama.cpp): the level goes top-level
+                    // (vLLM copies it into the template kwargs and its deepseek_v4
+                    // tokenizer mode reads it; current llama.cpp forwards it too) AND
+                    // into chat_template_kwargs (older llama.cpp, SGLang). "thinking"
+                    // is the DeepSeek template's own switch; "enable_thinking" is the
+                    // alias vLLM's deepseek_v4 mode and generic templates read, and the
+                    // one the streaming handler sniffs to wrap reasoning_content.
+                    effortPart = $@"""reasoning_effort"": ""{wireEffort}"",";
+                    thinkingPart = $@"""chat_template_kwargs"": {{""thinking"": true, ""enable_thinking"": true, ""reasoning_effort"": ""{wireEffort}""}},";
+                }
+                else
+                {
+                    // Explicit off: vLLM's deepseek_v4 mode and llama.cpp both default
+                    // to thinking ON when no switch is sent.
+                    thinkingPart = @"""chat_template_kwargs"": {""thinking"": false, ""enable_thinking"": false},";
+                }
+            }
+            else if (isDeepSeekModel)
+            {
+                // Pre-V4 DeepSeek templates: "thinking" switch only, off by default.
                 if (effectiveCustomEffort != LLMReasoningEffort.Off)
                     thinkingPart = @"""chat_template_kwargs"": {""thinking"": true},";
             }
@@ -895,6 +939,10 @@ public class OpenAITextCompletionManager : MonoBehaviour
                     && json.IndexOf("\"thinking\": true", StringComparison.Ordinal) >= 0)
                 || (json.IndexOf("\"thinking\"", StringComparison.Ordinal) >= 0
                     && json.IndexOf("\"thinking\":true", StringComparison.Ordinal) >= 0)
+                // Hosted DeepSeek API shape ("thinking": {"type": "enabled"}); its
+                // reasoning streams as delta.reasoning_content.
+                || (json.IndexOf("\"thinking\"", StringComparison.Ordinal) >= 0
+                    && json.IndexOf("\"type\": \"enabled\"", StringComparison.Ordinal) >= 0)
                 || json.IndexOf("\"reasoning\"", StringComparison.Ordinal) >= 0;
             bool wrapContentUntilThinkClose = (json.IndexOf("\"chat_template_kwargs\"", StringComparison.Ordinal) >= 0
                 && (json.IndexOf("\"thinking\": true", StringComparison.Ordinal) >= 0

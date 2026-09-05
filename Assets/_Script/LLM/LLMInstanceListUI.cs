@@ -568,6 +568,23 @@ public class LLMInstanceListUI
     }
 
     /// <summary>
+    /// Scroll the list so the row for this instance is in view (used by the
+    /// automation bridge's /llm_settings instance= selection).
+    /// </summary>
+    public void ScrollToInstanceID(int id)
+    {
+        if (_scrollRect == null || _listItems.Count <= 1) return;
+        int index = -1;
+        for (int i = 0; i < _listItems.Count; i++)
+        {
+            if (_listItems[i].instanceID == id) { index = i; break; }
+        }
+        if (index < 0) return;
+        Canvas.ForceUpdateCanvases();
+        _scrollRect.verticalNormalizedPosition = 1f - (float)index / (_listItems.Count - 1);
+    }
+
+    /// <summary>
     /// Reapply row colors after broad panel styling has reset TMP text colors.
     /// </summary>
     public void RefreshVisuals()

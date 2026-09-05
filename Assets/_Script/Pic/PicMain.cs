@@ -4677,7 +4677,8 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                             string json = _openAITextCompletionManager.BuildChatCompleteJSON(normalizedLines, LLMRequestProfile.NoExplicitOutputTokenCap, compatTemperature, model, true,
                                 enableThinking: compatReasoning.enableThinking,
                                 topP: compatTopP,
-                                customReasoningEffort: compatReasoning.customReasoningEffortParam);
+                                customReasoningEffort: compatReasoning.customReasoningEffortParam,
+                                deepSeekCloudApi: compatReasoning.deepSeekCloudApi);
                             _openAITextCompletionManager.SpawnChatCompleteRequest(json, OnTexGenCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true, debugJobSize: LLMDebugLog.JobSize.Small);
                             SetLLMActive(true, llmInstanceID, llmReplicaIndex);
                         }

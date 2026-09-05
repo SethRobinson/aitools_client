@@ -105,6 +105,11 @@ public static class LLMReasoningEffortUtil
 
 public static class LLMReasoningPrompts
 {
+    // Legacy hand-injected max-reasoning prompt for pre-V4 DeepSeek templates,
+    // which have no reasoning_effort variable. DeepSeek-V4 encoders/templates
+    // inject their own effort paragraphs from the reasoning_effort value (this
+    // text is their "high"; "max" is a stronger one), so the V4 request paths
+    // never prepend it - see LLMRequestProfile.IsDeepSeekV4Model.
     public const string DeepSeekMaxReasoningSystemPrompt =
         "Reasoning Effort: Absolute maximum with no shortcuts permitted.\n" +
         "You MUST be very thorough in your thinking and comprehensively decompose the problem to resolve the root cause, rigorously stress-testing your logic against all potential paths, edge cases, and adversarial scenarios.\n" +
@@ -124,6 +129,71 @@ public static class LLMRequestProfile
     public static bool IsDeepSeekModel(string model)
     {
         return !string.IsNullOrEmpty(model) && model.ToLowerInvariant().Contains("deepseek");
+    }
+
+    // DeepSeek-V4 family: deepseek-v4-flash / deepseek-v4-pro /
+    // deepseek-v4-flash-vision-exp (hosted ids), HF "deepseek-ai/DeepSeek-V4-
+    // Flash-Vision-Exp", GGUF names like "DeepSeek-V4-Flash-Vision-Exp-UD-Q4_K_XL".
+    // Researched 2026-09-05 from the DeepSeek API reference, the open-weights
+    // encoding script (encoding/encoding_dsv4.py in the Vision-Exp repo), vLLM's
+    // deepseek_v4 tokenizer mode and the Unsloth / llama.cpp chat templates:
+    // thinking is a boolean switch (hosted API "thinking": {"type": "enabled" |
+    // "disabled"}; self-hosted chat_template_kwargs "thinking" / "enable_thinking")
+    // and the amount is exactly "low" / "high" / "max" ("medium" and "xhigh" are
+    // remapped to high by the API and by vLLM). Low is the plain <think> block
+    // with no extra prompt; high (DeepSeek's default) and max make the encoder/
+    // template prepend a fixed "Reasoning Effort: ..." paragraph to the very front
+    // of the prompt from the reasoning_effort value, so the app must NOT inject
+    // that text itself. Both the hosted API and vLLM default to thinking ON at
+    // high when nothing is sent, so Off has to be explicit.
+    public static bool IsDeepSeekV4Model(string model)
+    {
+        if (!IsDeepSeekModel(model)) return false;
+        string normalized = model.ToLowerInvariant().Replace("-", "").Replace("_", "").Replace(" ", "");
+        return normalized.Contains("v4");
+    }
+
+    // The hosted DeepSeek API (api.deepseek.com) takes the OpenAI-style top-level
+    // "thinking" object + "reasoning_effort"; self-hosted servers (vLLM / SGLang /
+    // llama.cpp) read chat_template_kwargs instead.
+    public static bool IsDeepSeekCloudEndpoint(string endpoint)
+    {
+        return !string.IsNullOrEmpty(endpoint) && endpoint.ToLowerInvariant().Contains("deepseek.com");
+    }
+
+    // DeepSeek-V4 has no Medium level; it rounds up to High exactly like the
+    // hosted API's own "medium -> high" compatibility mapping.
+    public static LLMReasoningEffort ClampEffortToDeepSeekV4(LLMReasoningEffort effort)
+    {
+        switch (effort)
+        {
+            case LLMReasoningEffort.Off:
+                return LLMReasoningEffort.Off;
+            case LLMReasoningEffort.Low:
+                return LLMReasoningEffort.Low;
+            case LLMReasoningEffort.Medium:
+            case LLMReasoningEffort.High:
+                return LLMReasoningEffort.High;
+            default:
+                return LLMReasoningEffort.Max;
+        }
+    }
+
+    // Wire value for the DeepSeek-V4 family: null means thinking off, otherwise
+    // one of "low" / "high" / "max".
+    public static string GetDeepSeekV4EffortWireValue(LLMReasoningEffort effort)
+    {
+        switch (ClampEffortToDeepSeekV4(effort))
+        {
+            case LLMReasoningEffort.Off:
+                return null;
+            case LLMReasoningEffort.Low:
+                return "low";
+            case LLMReasoningEffort.High:
+                return "high";
+            default:
+                return "max";
+        }
     }
 
     // Qwen "Flash Next" family served by vLLM (e.g. Qwen3.8-Flash-Next). Verified
@@ -219,6 +289,7 @@ public static class LLMRequestProfile
         public LLMReasoningEffort effort;
         public bool? enableThinking;
         public string customReasoningEffortParam; // null for models without effort levels
+        public bool deepSeekCloudApi; // DeepSeek-V4 on api.deepseek.com: top-level thinking/reasoning_effort, no chat_template_kwargs
     }
 
     // Single source of truth for the five OpenAI-compatible call sites (AI Chat
@@ -234,11 +305,14 @@ public static class LLMRequestProfile
             : (enableThinkingSetting ? LLMReasoningEffort.High : LLMReasoningEffort.Off);
         if (IsGlm53Model(model))
             effort = ClampEffortToGlm53(effort); // never Off: this family cannot stop thinking
+        else if (IsDeepSeekV4Model(model))
+            effort = ClampEffortToDeepSeekV4(effort); // no Medium level: rounds up to High like the hosted API does
         return new CompatReasoning
         {
             effort = effort,
             enableThinking = hasEffortLevels ? effort != LLMReasoningEffort.Off : enableThinkingSetting,
-            customReasoningEffortParam = hasEffortLevels ? LLMReasoningEffortUtil.ToConfigValue(effort) : null
+            customReasoningEffortParam = hasEffortLevels ? LLMReasoningEffortUtil.ToConfigValue(effort) : null,
+            deepSeekCloudApi = IsDeepSeekV4Model(model) && settings != null && IsDeepSeekCloudEndpoint(settings.endpoint)
         };
     }
 

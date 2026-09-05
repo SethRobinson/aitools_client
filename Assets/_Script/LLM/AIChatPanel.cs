@@ -6369,7 +6369,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                     enableThinking: compatReasoning.enableThinking,
                     topP: compatTopP, topK: compatTopK, minP: compatMinP, repetitionPenalty: compatRepPenalty,
                     frequencyPenalty: compatFrequencyPenalty, presencePenalty: compatPresencePenalty, repeatLastN: compatRepeatLastN,
-                    customReasoningEffort: compatReasoning.customReasoningEffortParam);
+                    customReasoningEffort: compatReasoning.customReasoningEffortParam,
+                    deepSeekCloudApi: compatReasoning.deepSeekCloudApi);
                 _openAIMgr.SpawnChatCompleteRequest(json, OnLLMCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
                 break;
             }

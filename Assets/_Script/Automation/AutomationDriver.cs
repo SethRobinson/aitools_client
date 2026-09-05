@@ -99,6 +99,13 @@ public class AutomationDriver : MonoBehaviour
         LLMSettingsPanel.Show();
     }
 
+    /// <summary>Open the LLM Settings panel and select the instance whose name contains nameSubstring.</summary>
+    public bool OpenLLMSettingsInstance(string nameSubstring, out string applied, out string error)
+    {
+        LLMSettingsPanel.Show();
+        return LLMSettingsPanel.SelectInstanceByName(nameSubstring, out applied, out error);
+    }
+
     /// <summary>Open one server's Overrides panel.</summary>
     public void OpenServerSettings(int serverID)
     {
@@ -206,6 +213,50 @@ public class AutomationDriver : MonoBehaviour
         if (clickTarget != null)
             UnityEngine.EventSystems.ExecuteEvents.Execute(clickTarget, ped, UnityEngine.EventSystems.ExecuteEvents.pointerClickHandler);
         ped.pointerPress = null;
+        return true;
+    }
+
+    /// <summary>
+    /// Synthesize a mouse-wheel scroll over the UI under top-left game-view pixel
+    /// (x, y) - the /click twin for scroll views (settings panels, lists) that the
+    /// bridge otherwise cannot reach. dy is in wheel notches: positive = wheel up,
+    /// negative = wheel down (ScrollRect multiplies it by its scrollSensitivity).
+    /// </summary>
+    public bool ScrollAt(int x, int y, float dy, out string error, out string hitPath)
+    {
+        error = "";
+        hitPath = "";
+        var eventSystem = UnityEngine.EventSystems.EventSystem.current;
+        if (eventSystem == null)
+        {
+            error = "no EventSystem";
+            return false;
+        }
+
+        var pos = new Vector2(x, Screen.height - y);   // top-left -> Unity's bottom-left origin
+        var ped = new UnityEngine.EventSystems.PointerEventData(eventSystem)
+        {
+            position = pos,
+            scrollDelta = new Vector2(0f, dy)
+        };
+        var results = new System.Collections.Generic.List<UnityEngine.EventSystems.RaycastResult>();
+        eventSystem.RaycastAll(ped, results);
+        if (results.Count == 0)
+        {
+            error = $"nothing raycastable under ({x},{y})";
+            return false;
+        }
+
+        var hit = results[0];
+        ped.pointerCurrentRaycast = hit;
+        hitPath = GetTransformPath(hit.gameObject.transform);
+        var handled = UnityEngine.EventSystems.ExecuteEvents.ExecuteHierarchy(hit.gameObject, ped, UnityEngine.EventSystems.ExecuteEvents.scrollHandler);
+        if (handled == null)
+        {
+            error = "no scroll handler under " + hitPath;
+            return false;
+        }
+        hitPath = GetTransformPath(handled.transform);
         return true;
     }
 

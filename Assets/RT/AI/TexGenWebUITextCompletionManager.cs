@@ -142,7 +142,11 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
             }
         }
 
-        if (bIsLlamaCpp && LLMRequestProfile.IsDeepSeekModel(modelName) && reasoningEffort == LLMReasoningEffort.Max)
+        // Pre-V4 DeepSeek GGUF templates have no reasoning_effort variable, so the
+        // max-reasoning prompt is injected by hand; DeepSeek-V4 templates build
+        // their own effort paragraph from the chat_template_kwargs level below.
+        if (bIsLlamaCpp && LLMRequestProfile.IsDeepSeekModel(modelName) && !LLMRequestProfile.IsDeepSeekV4Model(modelName)
+            && reasoningEffort == LLMReasoningEffort.Max)
         {
             lines = PrependSystemMessage(lines, LLMReasoningPrompts.DeepSeekMaxReasoningSystemPrompt);
         }
@@ -498,10 +502,29 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
                     RTConsole.Log((isQwen ? "Qwen" : "GLM") + " model '" + modelName + "': Reasoning off");
                 }
             }
+            else if (isDeepSeek && LLMRequestProfile.IsDeepSeekV4Model(modelName))
+            {
+                // DeepSeek-V4 GGUF templates (Unsloth's, llama.cpp's bundled 0731
+                // template) read "thinking" (or "enable_thinking") plus
+                // "reasoning_effort" low/high/max and inject the high/max effort
+                // paragraphs themselves. llama.cpp's default --reasoning auto turns
+                // thinking ON, so off must be sent explicitly.
+                string wireEffort = LLMRequestProfile.GetDeepSeekV4EffortWireValue(reasoningEffort);
+                if (wireEffort != null)
+                {
+                    chatTemplateKwargs = ",\"chat_template_kwargs\": {\"thinking\": true, \"enable_thinking\": true, \"reasoning_effort\": \"" + wireEffort + "\"}";
+                    RTConsole.Log("DeepSeek-V4 model '" + modelName + "': Reasoning " + wireEffort);
+                }
+                else
+                {
+                    chatTemplateKwargs = ",\"chat_template_kwargs\": {\"thinking\": false, \"enable_thinking\": false}";
+                    RTConsole.Log("DeepSeek-V4 model '" + modelName + "': Reasoning off");
+                }
+            }
             else if (isDeepSeek)
             {
-                // DeepSeek-V4-Flash served by llama.cpp expects chat_template_kwargs.thinking.
-                // No-think is the server default, so omit chat_template_kwargs when off.
+                // Pre-V4 DeepSeek GGUF templates expect chat_template_kwargs.thinking.
+                // No-think is their default, so omit chat_template_kwargs when off.
                 if (enableThinking)
                 {
                     chatTemplateKwargs = ",\"chat_template_kwargs\": {\"thinking\": true}";
