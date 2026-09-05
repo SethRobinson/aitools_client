@@ -6228,10 +6228,17 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 _streamPromptApproxChars += promptLine._content.Length;
         _streamMaxContextTokens = ResolveMaxContextTokens(activeProvider, activeSettings, llmReplicaIndex);
 
-        float temperature = 0.7f;
-        var advLogic = AdventureLogic.Get();
-        if (advLogic != null && advLogic.GetExtractor() != null)
-            temperature = advLogic.GetExtractor().Temperature;
+        // Temperature policy (since 2026-09-05): send the field ONLY when the
+        // instance's sampling override is ticked; otherwise omit it so the
+        // server's model default applies (what "default" in LLM Settings means).
+        // AI Chat used to borrow the Adventure extractor's temperature here, which
+        // is 0 (greedy decoding) until an Adventure config has been parsed in the
+        // session and whatever that file says afterwards - never the instance's
+        // setting. llama.cpp/Ollama already omit it unless overridden (their
+        // builder only reads the "temperature" parm), so this makes every
+        // provider agree. DeepSeek keeps its model-card values when not overridden.
+        bool sendTemperature = activeSettings != null && activeSettings.overrideTemperature;
+        float temperature = sendTemperature ? activeSettings.temperature : 1.0f;
 
         // If the user attached images but the resolved provider's chat path doesn't yet
         // serialize them, surface a clear note so they don't think the model "ignored" the
@@ -6265,7 +6272,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 var profile = OpenAIRequestProfileResolver.Resolve(model, activeSettings, llmReplicaIndex);
 
                 string json = _openAIMgr.BuildChatCompleteJSON(lines, LLMRequestProfile.NoExplicitOutputTokenCap, temperature, model, true,
-                    profile.useResponsesAPI, profile.isReasoningModel, profile.includeTemperature,
+                    profile.useResponsesAPI, profile.isReasoningModel, profile.includeTemperature && sendTemperature,
                     profile.reasoningEffort, profile.enableThinking);
                 _openAIMgr.SpawnChatCompleteRequest(json, OnLLMCompletedCallback, db, apiKey, profile.endpoint, OnStreamingTextCallback, true);
                 break;
@@ -6280,7 +6287,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 if (string.IsNullOrEmpty(model)) model = Config.Get().GetAnthropicAI_APIModel();
                 if (string.IsNullOrEmpty(endpoint)) endpoint = Config.Get().GetAnthropicAI_APIEndpoint();
 
-                string json = _anthropicMgr.BuildChatCompleteJSON(lines, LLMRequestProfile.GetAnthropicMaxOutputTokens(model), temperature, model, true);
+                string json = _anthropicMgr.BuildChatCompleteJSON(lines, LLMRequestProfile.GetAnthropicMaxOutputTokens(model), temperature, model, true,
+                    includeTemperature: sendTemperature);
                 _anthropicMgr.SpawnChatCompletionRequest(json, OnLLMCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
                 break;
             }
@@ -6327,7 +6335,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 if (!HasUserMessage(lines))
                     lines.Enqueue(new GTPChatLine("user", "Please proceed."));
 
-                string json = _geminiMgr.BuildChatCompleteJSON(lines, LLMRequestProfile.NoExplicitOutputTokenCap, temperature, model, true, enableThinking);
+                string json = _geminiMgr.BuildChatCompleteJSON(lines, LLMRequestProfile.NoExplicitOutputTokenCap, temperature, model, true, enableThinking,
+                    includeTemperature: sendTemperature);
                 _geminiMgr.SpawnChatCompleteRequest(json, OnLLMCompletedCallback, db, apiKey, endpoint, OnStreamingTextCallback, true);
                 break;
             }
@@ -6345,6 +6354,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 float compatTemperature = activeSettings.overrideTemperature
                     ? activeSettings.temperature
                     : (isDeepSeek ? LLMRequestProfile.GetRecommendedTemperature(model, compatReasoning.effort, temperature) : temperature);
+                bool compatIncludeTemperature = sendTemperature || isDeepSeek;
                 float? compatTopP = activeSettings.overrideTopP
                     ? (float?)activeSettings.topP
                     : (isDeepSeek ? (float?)LLMRequestProfile.GetRecommendedTopP(model, compatReasoning.effort, 1.0f) : null);
@@ -6355,6 +6365,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 float? compatFrequencyPenalty = activeSettings.overrideFrequencyPenalty ? (float?)activeSettings.frequencyPenalty : null;
                 int? compatRepeatLastN = activeSettings.overrideRepeatLastN ? (int?)activeSettings.repeatLastN : null;
                 string json = _openAIMgr.BuildChatCompleteJSON(normalizedLines, LLMRequestProfile.NoExplicitOutputTokenCap, compatTemperature, model, true,
+                    includeTemperature: compatIncludeTemperature,
                     enableThinking: compatReasoning.enableThinking,
                     topP: compatTopP, topK: compatTopK, minP: compatMinP, repetitionPenalty: compatRepPenalty,
                     frequencyPenalty: compatFrequencyPenalty, presencePenalty: compatPresencePenalty, repeatLastN: compatRepeatLastN,

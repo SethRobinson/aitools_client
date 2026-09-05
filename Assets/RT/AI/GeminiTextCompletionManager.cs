@@ -50,7 +50,7 @@ public class GeminiTextCompletionManager : MonoBehaviour
     /// <param name="stream">Whether to stream response</param>
     /// <param name="enableThinking">Whether to enable thinking mode</param>
     /// <returns>JSON request string</returns>
-    public string BuildChatCompleteJSON(Queue<GTPChatLine> lines, int max_tokens = LLMRequestProfile.NoExplicitOutputTokenCap, float temperature = 1.0f, string model = "", bool stream = false, bool enableThinking = true)
+    public string BuildChatCompleteJSON(Queue<GTPChatLine> lines, int max_tokens = LLMRequestProfile.NoExplicitOutputTokenCap, float temperature = 1.0f, string model = "", bool stream = false, bool enableThinking = true, bool includeTemperature = true)
     {
         // Build contents array in Gemini format
         // Gemini uses: { "role": "user"|"model", "parts": [{"text": "..."}] }
@@ -136,7 +136,8 @@ public class GeminiTextCompletionManager : MonoBehaviour
         
         // Add generation config
         var genConfig = new JSONObject();
-        genConfig["temperature"] = temperature;
+        if (includeTemperature) // false = let Gemini use its model default
+            genConfig["temperature"] = temperature;
         if (max_tokens > 0)
             genConfig["maxOutputTokens"] = max_tokens;
         

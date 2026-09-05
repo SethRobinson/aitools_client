@@ -86,7 +86,7 @@ public class AnthropicAITextCompletionManager : MonoBehaviour
         return sb.ToString();
     }
 
-    public string BuildChatCompleteJSON(Queue<GTPChatLine> lines, int max_tokens, float temperature = 1.3f, string model = "claude-3-sonnet-20240229", bool stream = false)
+    public string BuildChatCompleteJSON(Queue<GTPChatLine> lines, int max_tokens, float temperature = 1.3f, string model = "claude-3-sonnet-20240229", bool stream = false, bool includeTemperature = true)
     {
         var messagesSb = new StringBuilder();
         string systemPrompt = "";
@@ -156,7 +156,7 @@ public class AnthropicAITextCompletionManager : MonoBehaviour
 
         // Opus 4.7+ rejects temperature/top_p/top_k. Omit the field entirely for those models;
         // Anthropic uses a sensible default when it's missing.
-        string temperatureField = ModelRejectsSamplingParams(model)
+        string temperatureField = (ModelRejectsSamplingParams(model) || !includeTemperature)
             ? ""
             : $",\n             \"temperature\": {temperature.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
 
