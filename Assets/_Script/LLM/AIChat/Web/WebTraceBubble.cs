@@ -23,6 +23,8 @@ namespace AITools.AIChat.Web
         private readonly Func<string, string> _escape;
         private readonly Func<bool> _isScrolledToBottom;
         private readonly Action _scrollToBottom;
+        private readonly Func<WebThumbStrip> _createThumbStrip;
+        private WebThumbStrip _thumbs;
         private readonly List<string> _lines = new List<string>();
         private string _statusLine;
         private float _lastStatusRenderTime = -1f;
@@ -32,16 +34,59 @@ namespace AITools.AIChat.Web
         /// <param name="escape">Display-only escape (TMP angle brackets).</param>
         /// <param name="isScrolledToBottom">Queried BEFORE each text change so the chat keeps following the bubble only when the user was already at the bottom.</param>
         /// <param name="scrollToBottom">Invoked after a change when the chat was at the bottom.</param>
-        public WebTraceBubble(TMP_InputField field, Func<string, string> escape, Func<bool> isScrolledToBottom, Action scrollToBottom)
+        /// <param name="createThumbStrip">Builds the thumbnail strip under this bubble on the first <see cref="AddThumb"/> (null = no thumbnails).</param>
+        public WebTraceBubble(TMP_InputField field, Func<string, string> escape, Func<bool> isScrolledToBottom, Action scrollToBottom,
+            Func<WebThumbStrip> createThumbStrip = null)
         {
             _field = field;
             _escape = escape;
             _isScrolledToBottom = isScrolledToBottom;
             _scrollToBottom = scrollToBottom;
+            _createThumbStrip = createThumbStrip;
         }
 
         // UnityEngine.Object's overloaded null check is false once the bubble was destroyed (Clear).
         public bool IsAlive => _field != null;
+
+        /// <summary>The thumbnail strip, once at least one thumbnail was added (null before that).</summary>
+        public WebThumbStrip Thumbs => _thumbs != null ? _thumbs : null;
+
+        /// <summary>
+        /// Show a thumbnail of an image this fetch downloaded and examined (accepted or not).
+        /// The strip is created lazily so list-only bubbles (web_search, web_page) stay text-only.
+        /// Returns null when thumbnails are unavailable or the bytes do not decode.
+        /// </summary>
+        public WebThumbEntry AddThumb(byte[] imageBytes, string filePath, string label, string title)
+        {
+            if (!IsAlive || _createThumbStrip == null) return null;
+            if (_thumbs == null)
+            {
+                try { _thumbs = _createThumbStrip(); }
+                catch (Exception ex) { Debug.LogWarning("WebTraceBubble: could not create the thumbnail strip: " + ex.Message); }
+                if (_thumbs == null) return null;
+            }
+            bool follow = false;
+            try { follow = _isScrolledToBottom != null && _isScrolledToBottom(); } catch { }
+            WebThumbEntry entry = _thumbs.AddThumb(imageBytes, filePath, label, title);
+            if (follow)
+            {
+                try { _scrollToBottom?.Invoke(); } catch { }
+            }
+            return entry;
+        }
+
+        public void SetThumbVerdict(WebThumbEntry entry, WebThumbVerdict verdict, string reason)
+        {
+            if (entry == null || _thumbs == null) return;
+            _thumbs.SetVerdict(entry, verdict, reason);
+        }
+
+        /// <summary>Link a thumbnail to the world Pic that now holds the media, so a click focuses it instead of loading a copy.</summary>
+        public void SetThumbPic(WebThumbEntry entry, PicMain pic)
+        {
+            if (entry == null || _thumbs == null) return;
+            _thumbs.SetLinkedPic(entry, pic);
+        }
 
         public void AppendLine(string line)
         {

@@ -9505,9 +9505,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // into newlines / tabs.
         if (field != null && field.textComponent != null)
             field.textComponent.parseCtrlCharacters = false;
+        Transform bubble = field != null ? field.transform.parent : null;
         var trace = new WebTraceBubble(field, EscapePlainTextForTMP,
             () => IsScrollAtBottom(_chatScroll),
-            () => StartCoroutine(ScrollToBottomDeferred()));
+            () => StartCoroutine(ScrollToBottomDeferred()),
+            bubble != null ? (Func<WebThumbStrip>)(() => WebThumbStrip.Create(bubble, _font, BaseFontSize * _fontSizeMultiplier, OnWebThumbClicked)) : null);
         _activeWebTraces.Add(trace);
         if (!string.IsNullOrEmpty(headerLine))
             trace.AppendLine(headerLine);
@@ -9519,6 +9521,40 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (trace == null) return;
         _activeWebTraces.Remove(trace);
         AIChatLog.Note("web_trace", trace.GetRawText());
+    }
+
+    /// <summary>
+    /// A thumbnail under a Web bubble was clicked. Accepted media already lives in a world
+    /// Pic (the chat bubble's), so focus the camera on it; a rejected candidate (or a video
+    /// contact sheet) is loaded from its kept file into a NEW PicMain on the canvas, once -
+    /// later clicks focus that Pic instead of duplicating it.
+    /// </summary>
+    private void OnWebThumbClicked(WebThumbEntry entry)
+    {
+        if (entry == null) return;
+        PicMain target = null;
+        if (entry.LinkedPic != null) target = entry.LinkedPic;
+        else if (entry.SpawnedPic != null) target = entry.SpawnedPic;
+
+        if (target == null)
+        {
+            if (string.IsNullOrEmpty(entry.FilePath) || !System.IO.File.Exists(entry.FilePath))
+            {
+                RTQuickMessageManager.Get().ShowMessage("That web image's file is no longer on disk");
+                return;
+            }
+            var imageGen = ImageGenerator.Get();
+            GameObject go = imageGen != null ? imageGen.AddImageByFileName(entry.FilePath) : null;
+            target = go != null ? go.GetComponent<PicMain>() : null;
+            if (target == null)
+            {
+                RTQuickMessageManager.Get().ShowMessage("Could not load " + System.IO.Path.GetFileName(entry.FilePath) + " onto the canvas");
+                return;
+            }
+            entry.SpawnedPic = target;
+            RTQuickMessageManager.Get().ShowMessage("Added the web image to the canvas" + (string.IsNullOrEmpty(entry.Label) ? "" : " (download " + entry.Label + ")"));
+        }
+        ChatPicMirror.FocusCameraOnPic(target, _mainPanel);
     }
 
     private static string Q(string s) => "\"" + (s ?? "") + "\"";
@@ -10319,6 +10355,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         public string Reason;
         public CaptionResult Caption;
         public string FailureDetail; // backend error when the vision call failed outright
+        /// <summary>Thumbnail shown under the Web bubble for the examined image/contact sheet (null when none could be made).</summary>
+        public WebThumbEntry Thumb;
         public string NoVerdictText => string.IsNullOrEmpty(FailureDetail)
             ? "vision check returned no verdict (accepting unverified)"
             : "vision check FAILED: " + FailureDetail + " (accepting unverified; fix the vision instance in LLM Settings)";
@@ -10577,10 +10615,16 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 failOther++;
                 continue;
             }
+            // Every decoded download gets a thumbnail under the Web bubble (accepted or not), so
+            // the user can see what the vision check looked at and click any of them onto the
+            // canvas. Rejected files are therefore KEPT in tempCache/aichat_web_images for the
+            // session instead of being deleted.
+            WebThumbEntry thumb = trace.AddThumb(conv.PngBytes, conv.Path, attempts.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                (string.IsNullOrEmpty(cand.Title) ? "" : BraveSearchClient.Clip(cand.Title, 80) + "  ") + ShortUrlForProvenance(usedUrl));
             if (conv.Width < req.MinWidth)
             {
                 trace.AppendLine(httpLine + ", " + conv.Note + " is narrower than min_width " + req.MinWidth + ", skipped");
-                try { System.IO.File.Delete(conv.Path); } catch { }
+                trace.SetThumbVerdict(thumb, WebThumbVerdict.Unsuitable, "narrower than min_width " + req.MinWidth);
                 failSmall++;
                 continue;
             }
@@ -10601,15 +10645,25 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 if (verdict.Verified && !verdict.Suitable)
                 {
                     trace.AppendLine("  -> vision check: UNSUITABLE" + (string.IsNullOrEmpty(verdict.Reason) ? "" : " - " + verdict.Reason) + ", skipped");
-                    try { System.IO.File.Delete(conv.Path); } catch { }
+                    trace.SetThumbVerdict(thumb, WebThumbVerdict.Unsuitable, verdict.Reason);
                     failUnsuitable++;
                     continue;
                 }
                 if (verdict.Verified)
+                {
                     trace.AppendLine("  -> vision check: SUITABLE" + (string.IsNullOrEmpty(verdict.Reason) ? "" : " - " + verdict.Reason));
+                    trace.SetThumbVerdict(thumb, WebThumbVerdict.Suitable, verdict.Reason);
+                }
                 else
+                {
                     trace.AppendLine("  -> " + verdict.NoVerdictText);
+                    trace.SetThumbVerdict(thumb, WebThumbVerdict.Unverified, string.IsNullOrEmpty(verdict.FailureDetail) ? "no verdict from the vision check" : "vision check failed: " + verdict.FailureDetail);
+                }
                 httpLine = "  saved " + System.IO.Path.GetFileName(conv.Path);
+            }
+            else
+            {
+                trace.SetThumbVerdict(thumb, WebThumbVerdict.Unverified, verify ? "no image data for the vision check" : "vision check skipped");
             }
 
             var imageGen = ImageGenerator.Get();
@@ -10618,9 +10672,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             if (pic == null)
             {
                 trace.AppendLine(httpLine + ", " + conv.Note + ", but the image could not be loaded into a Pic, skipped");
+                trace.SetThumbVerdict(thumb, WebThumbVerdict.Unsuitable, "could not be loaded into a Pic");
                 failOther++;
                 continue;
             }
+            trace.SetThumbPic(thumb, pic);
 
             string provenance = string.IsNullOrEmpty(queryForProvenance)
                 ? "web image: " + ShortUrlForProvenance(usedUrl)
@@ -10894,7 +10950,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     }
 
     /// <summary>Contact-sheet the clip and run the combined verify + caption vision call.</summary>
-    private IEnumerator VerifyWebVideoClipCoroutine(string clipPath, double durationSeconds, string query, string criteria, WebImageVerifyResult outResult)
+    private IEnumerator VerifyWebVideoClipCoroutine(string clipPath, double durationSeconds, string query, string criteria, WebImageVerifyResult outResult,
+        WebTraceBubble trace = null, string thumbLabel = null, string thumbTitle = null)
     {
         FfmpegTool.ContactSheetResult sheet = null;
         yield return FfmpegTool.CreateCaptionContactSheet(clipPath, durationSeconds > 0 ? durationSeconds : FfmpegTool.DefaultClipDurationSeconds, r => sheet = r);
@@ -10902,7 +10959,14 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (sheet != null && sheet.Success && !string.IsNullOrEmpty(sheet.OutputPath) && System.IO.File.Exists(sheet.OutputPath))
         {
             try { png = System.IO.File.ReadAllBytes(sheet.OutputPath); } catch { png = null; }
-            try { System.IO.File.Delete(sheet.OutputPath); } catch { }
+            // The sheet is what the vision LLM looked at: show it under the Web bubble and keep
+            // the file so a click can load it onto the canvas (it used to be deleted here).
+            if (trace != null && png != null && png.Length > 0)
+                outResult.Thumb = trace.AddThumb(png, sheet.OutputPath, thumbLabel, thumbTitle);
+            if (outResult.Thumb == null)
+            {
+                try { System.IO.File.Delete(sheet.OutputPath); } catch { }
+            }
         }
         if (png == null || png.Length == 0)
         {
@@ -11226,7 +11290,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                     trace.SetStatus("  checking the clip with the vision LLM...");
                     verdict = new WebImageVerifyResult();
                     double clipSeconds = outInfo != null && outInfo.DurationSeconds > 0 ? outInfo.DurationSeconds : clipDuration;
-                    yield return VerifyWebVideoClipCoroutine(clip.OutputPath, clipSeconds, string.IsNullOrEmpty(queryForProvenance) ? (cand.Title ?? "") : queryForProvenance, req.Criteria, verdict);
+                    yield return VerifyWebVideoClipCoroutine(clip.OutputPath, clipSeconds, string.IsNullOrEmpty(queryForProvenance) ? (cand.Title ?? "") : queryForProvenance, req.Criteria, verdict,
+                        trace, rangeText, "contact sheet of " + rangeText + (string.IsNullOrEmpty(cand.Title) ? "" : " of " + BraveSearchClient.Clip(cand.Title, 80)) + "  " + ShortUrlForProvenance(cand.Url));
                     trace.ClearStatus();
                     if (epoch != _webFetchEpoch) { onDone?.Invoke(false); yield break; }
 
@@ -11234,13 +11299,20 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                     {
                         trace.AppendLine("  -> vision check: UNSUITABLE" + (string.IsNullOrEmpty(verdict.Reason) ? "" : " - " + verdict.Reason)
                             + (oi + 1 < offsets.Count ? ", trying a later part of this source" : ", skipped"));
+                        trace.SetThumbVerdict(verdict.Thumb, WebThumbVerdict.Unsuitable, verdict.Reason);
                         try { System.IO.File.Delete(clip.OutputPath); } catch { }
                         continue;
                     }
                     if (verdict.Verified)
+                    {
                         trace.AppendLine("  -> vision check: SUITABLE" + (string.IsNullOrEmpty(verdict.Reason) ? "" : " - " + verdict.Reason));
+                        trace.SetThumbVerdict(verdict.Thumb, WebThumbVerdict.Suitable, verdict.Reason);
+                    }
                     else
+                    {
                         trace.AppendLine("  -> " + verdict.NoVerdictText);
+                        trace.SetThumbVerdict(verdict.Thumb, WebThumbVerdict.Unverified, string.IsNullOrEmpty(verdict.FailureDetail) ? "no verdict from the vision check" : "vision check failed: " + verdict.FailureDetail);
+                    }
                 }
 
                 SpeechCheck.Result speech = null;
@@ -11258,6 +11330,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                     if (definiteNoSpeech)
                     {
                         trace.AppendLine("  -> audio check: " + speech.Summary() + (oi + 1 < offsets.Count ? ", trying a later part of this source" : ", skipped"));
+                        if (verdict != null) trace.SetThumbVerdict(verdict.Thumb, WebThumbVerdict.Unsuitable, "audio check: " + speech.Summary());
                         try { System.IO.File.Delete(clip.OutputPath); } catch { }
                         continue;
                     }
@@ -11269,8 +11342,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 if (pic == null)
                 {
                     trace.AppendLine("  could not load the clip into a Movie bubble, skipped");
+                    if (verdict != null) trace.SetThumbVerdict(verdict.Thumb, WebThumbVerdict.Unsuitable, "could not load the clip into a Movie bubble");
                     break;
                 }
+                if (verdict != null) trace.SetThumbPic(verdict.Thumb, pic);
                 addedIndex = _chatImagePics.Count;
                 addedTitle = cand.Title;
                 addedUrl = cand.Url;

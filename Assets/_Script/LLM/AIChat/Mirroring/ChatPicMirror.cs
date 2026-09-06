@@ -309,18 +309,26 @@ namespace AITools.AIChat.Mirroring
 
         public void OnPointerClick(PointerEventData eventData)
         {
-            if (sourcePic == null || sourcePic.gameObject == null) return;
+            FocusCameraOnPic(sourcePic, occludingPanel);
+        }
 
-            // Move the world camera so the source Pic lands in the largest visible area
-            // not covered by the AI Chat panel.
+        /// <summary>
+        /// Move the world camera so <paramref name="pic"/> lands in the largest visible screen
+        /// area not covered by <paramref name="occludingPanel"/> (the AI Chat panel). Shared by
+        /// the media bubble click and the Web bubble thumbnail click.
+        /// </summary>
+        public static void FocusCameraOnPic(PicMain pic, RectTransform occludingPanel)
+        {
+            if (pic == null || pic.gameObject == null) return;
+
             // Reuse PicMain's own camera ref so we never pick the wrong one in multi-camera
             // setups (e.g. CrazyCam mode).
-            Camera cam = sourcePic.GetCamera();
+            Camera cam = pic.GetCamera();
             if (cam == null) cam = Camera.main;
             if (cam == null) return;
 
-            Vector3 picPos = sourcePic.transform.position;
-            Vector2 targetScreenPoint = GetBestFocusScreenPoint();
+            Vector3 picPos = pic.transform.position;
+            Vector2 targetScreenPoint = GetBestFocusScreenPoint(occludingPanel);
             float depth = Mathf.Abs(Vector3.Dot(picPos - cam.transform.position, cam.transform.forward));
             if (depth <= 0.001f)
                 depth = Mathf.Abs(picPos.z - cam.transform.position.z);
@@ -332,7 +340,7 @@ namespace AITools.AIChat.Mirroring
             cam.transform.position = newCamPos;
         }
 
-        private Vector2 GetBestFocusScreenPoint()
+        private static Vector2 GetBestFocusScreenPoint(RectTransform occludingPanel)
         {
             Rect screenRect = new Rect(0f, 0f, Screen.width, Screen.height);
             if (occludingPanel == null)

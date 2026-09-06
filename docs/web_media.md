@@ -16,6 +16,7 @@ the MiniMax H3 Reference To Video preset or Klein edits, and reference clips as
 | yt-dlp wrapper | `Web/YtDlpTool.cs` | resolves `utils/yt-dlp/yt-dlp.exe` (then PATH), auto-detects a JS runtime (deno / node / bun on PATH, passed as `--js-runtimes`), builds the exact command line, runs it via `FfmpegTool.RunProcessCancellable`, progress lines drained on the main thread. Downloads the WHOLE video capped at 480p (`--match-filters "duration<?N"`, `--max-filesize 250m`); the host cuts the section locally |
 | Page reader | `Web/WebPageReader.cs` | pure C# (no Unity usings, compiles in a plain dotnet console app): charset decode (BOM > HTTP charset > `<meta charset>` > strict UTF-8 with windows-1252 fallback), single-pass HTML tag scanner -> readable text + candidate image list; see "web_page" below |
 | Trace bubble | `Web/WebTraceBubble.cs` + `AIChatPanel.BeginWebTrace` | the always-visible "Web" bubble; plain text (only TMP angle brackets escaped, NO markdown pass), throttled status line, every line mirrored to `llm_aichat_log.json` as `note/web` |
+| Thumbnail strip | `Web/WebThumbStrip.cs` + `WebTraceBubble.AddThumb/SetThumbVerdict/SetThumbPic` | wrapping row of 72 px thumbnails under the Web bubble, one per image the vision check examined (accepted and rejected; see "Thumbnails of everything the vision check saw") |
 | Host | `AIChatPanel.cs` "Web media fetch" region | busy gate (`_webFetchCount`, `_webCaptionInFlight`), epoch-based cancellation, the five coroutines, `AppendWebStillBubble`, caption tracking, search sessions `S1..`, page sessions `P1..` (images + audio links) |
 | Executor | `SkillActionExecutor.cs` `ExecuteWebSearch/Image/Video/Page` | argument parsing + aliases, Web-toggle / key / URL pre-flight (`WebPreflight`), defers the pump like `extract_still` |
 | Web toggle | `AIChatPanel.CreateHeader` (`_webToggle`), `GetWebEnabled()` (`aichat_web_enabled`, default on) | header checkbox; see "Web toggle" below |
@@ -141,6 +142,39 @@ Trace compaction (same change): the bubble shows `Searched Brave images for "...
 instead of the GET line + HTTP status + the full numbered list; the list and the ranking order go
 to `llm_aichat_log.json` as `web_results` / `web_ranking` notes. Only the list-only `web_search`
 skill still prints the numbered results in the bubble.
+
+## Thumbnails of everything the vision check saw (since 2026-09-06)
+
+Rejected downloads used to be deleted silently, so the user only ever saw the accepted
+`#N` bubbles and could not tell what the model had looked at or rescue a wrongly rejected
+photo. Now every decoded `web_image` download and every `web_video` contact sheet is shown as
+a thumbnail under its Web bubble:
+
+- `WebTraceBubble.AddThumb(pngBytes, filePath, label, title)` lazily creates a
+  `WebThumbStrip` (`Web/WebThumbStrip.cs`) as the last child of the bubble: a
+  `GridLayoutGroup` (flexible constraint, wraps at the bubble width) of 72 px cells plus a
+  hint line. List-only bubbles (`web_search`, `web_page`) never get a strip. Thumbnails are
+  downscaled copies (max 128 px, `RenderTexture` blit) owned by the strip and destroyed with
+  the bubble (Clear / Rewind / Compact rebuilds).
+- Badges: green check = SUITABLE, red X = rejected (vision UNSUITABLE, narrower than
+  `min_width`, failed audio check, could not load), amber ? = accepted unverified, grey - =
+  still checking. Hovering a cell writes `#<download ordinal> VERDICT - reason (WxH)` plus the
+  title/URL into the hint line. The cell label is the download ordinal for images and the cut
+  range (`5-10s`) for video contact sheets.
+- Click (`AIChatPanel.OnWebThumbClicked`): accepted media already lives in a world Pic (the
+  chat bubble's), so the camera pans to it via the shared
+  `ChatPicMirror.FocusCameraOnPic`; a rejected candidate (or a contact sheet) is loaded from its
+  kept file into a NEW `PicMain` with `ImageGenerator.AddImageByFileName`, stored on the entry
+  as `SpawnedPic` so later clicks focus it instead of duplicating. The new Pic is a plain
+  canvas image, not a chat image (`chat_image` numbering is unaffected).
+- Consequence: rejected image files stay in `tempCache/aichat_web_images` and contact sheets
+  in `tempCache/aichat_video_captions` for the session (a sheet is still deleted when no
+  thumbnail could be made from it). Clip files of rejected cuts are deleted as before.
+
+Verified 2026-09-06 through the bridge: an Eiffel Tower `count="2"` fetch showed three
+thumbnails (check / X / check), and `POST /click` on the X cell
+(`.../Bubble_Web/WebThumbs/Grid/Thumb_2`) put the rejected bridge photo on the canvas and
+panned to it. The web_video contact-sheet path shares the same code but was not exercised live.
 
 ## web_page: reading a page (text + image list)
 
