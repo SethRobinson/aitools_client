@@ -414,15 +414,30 @@ public class LlamaCppModelFetcher : MonoBehaviour
     /// </summary>
     public static void FetchOpenAICompatibleModels(string baseUrl, Action<LlamaCppModelsInfo, string> onComplete)
     {
+        FetchOpenAICompatibleModels(baseUrl, "", onComplete);
+    }
+
+    /// <summary>
+    /// Same as above with the instance's API key sent as a Bearer token: servers
+    /// launched with an API key (vLLM --api-key, LM Studio auth, ...) gate
+    /// /v1/models behind it too. An empty key sends no Authorization header.
+    /// </summary>
+    public static void FetchOpenAICompatibleModels(string baseUrl, string apiKey, Action<LlamaCppModelsInfo, string> onComplete)
+    {
         GameObject go = new GameObject("OpenAICompatibleModelFetcher");
         LlamaCppModelFetcher fetcher = go.AddComponent<LlamaCppModelFetcher>();
-        fetcher.FetchOpenAICompatible(baseUrl, onComplete);
+        fetcher.FetchOpenAICompatible(baseUrl, apiKey, onComplete);
     }
 
     /// <summary>
     /// Fetch models from an OpenAI-compatible endpoint (/v1/models).
     /// </summary>
     public void FetchOpenAICompatible(string baseUrl, Action<LlamaCppModelsInfo, string> onComplete)
+    {
+        FetchOpenAICompatible(baseUrl, "", onComplete);
+    }
+
+    public void FetchOpenAICompatible(string baseUrl, string apiKey, Action<LlamaCppModelsInfo, string> onComplete)
     {
         if (_isFetching)
         {
@@ -434,10 +449,10 @@ public class LlamaCppModelFetcher : MonoBehaviour
         _fetchMultiple = true;
         _isFetching = true;
 
-        StartCoroutine(FetchOpenAICompatibleCoroutine(baseUrl));
+        StartCoroutine(FetchOpenAICompatibleCoroutine(baseUrl, apiKey));
     }
 
-    private IEnumerator FetchOpenAICompatibleCoroutine(string baseUrl)
+    private IEnumerator FetchOpenAICompatibleCoroutine(string baseUrl, string apiKey)
     {
         // Ensure the URL is properly formatted - use /v1/models for OpenAI-compatible servers
         baseUrl = baseUrl.TrimEnd('/');
@@ -448,6 +463,8 @@ public class LlamaCppModelFetcher : MonoBehaviour
         using (UnityWebRequest request = UnityWebRequest.Get(url))
         {
             request.timeout = 10;
+            if (!string.IsNullOrEmpty(apiKey))
+                request.SetRequestHeader("Authorization", "Bearer " + apiKey);
 
             yield return request.SendWebRequest();
 

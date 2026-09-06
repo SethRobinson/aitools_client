@@ -163,8 +163,37 @@ public class LLMSettingsPanel : MonoBehaviour
 
     private void OnDestroy()
     {
+        LLMModelAutoSwitch.Switched -= OnLLMModelAutoSwitched;
         _instance = null;
         _panelRoot = null;
+    }
+
+    // An OpenAI Compatible instance was auto-switched to a model that exists while
+    // this panel was open. Patch the working copy so a later Apply doesn't write the
+    // dead model back, and refresh the dropdown if that instance is the one shown.
+    private void OnLLMModelAutoSwitched(LLMModelAutoSwitch.SwitchResult result)
+    {
+        if (result == null || _workingInstancesConfig == null) return;
+
+        bool selectedAffected = false;
+        foreach (var switched in result.instances)
+        {
+            if (switched == null) continue;
+            var working = _workingInstancesConfig.GetInstance(switched.instanceID);
+            if (working?.settings == null || working.providerType != LLMProvider.OpenAICompatible) continue;
+            working.settings.availableModels = new List<string>(result.models);
+            working.settings.selectedModel = result.newModel;
+            if (switched.instanceID == _selectedInstanceID) selectedAffected = true;
+        }
+
+        _instanceListUI?.RefreshList(_workingInstancesConfig);
+
+        if (selectedAffected && _openAICompatibleUI != null)
+        {
+            _workingSettings.openAICompatible.availableModels = new List<string>(result.models);
+            _workingSettings.openAICompatible.selectedModel = result.newModel;
+            _openAICompatibleUI.UpdateModelDropdown(_workingSettings.openAICompatible.availableModels, _workingSettings.openAICompatible.selectedModel);
+        }
     }
 
     private void BringToFront()
@@ -819,7 +848,9 @@ public class LLMSettingsPanel : MonoBehaviour
         _instanceListUI.OnInstanceSelected += OnInstanceSelected;
         _instanceListUI.OnInstancesChanged += OnInstancesChanged;
         _instanceListUI.OnInstanceActiveChanged += OnInstanceActiveChangedFromList;
-        
+        LLMModelAutoSwitch.Switched -= OnLLMModelAutoSwitched;
+        LLMModelAutoSwitch.Switched += OnLLMModelAutoSwitched;
+
         // Display Name row (for selected instance)
         CreateDisplayNameRow(content.transform);
         
@@ -2061,8 +2092,10 @@ public class LLMSettingsPanel : MonoBehaviour
             RTQuickMessageManager.Get().ShowMessage("Fetching models...");
         }
 
-        // Use the OpenAI-compatible fetch which uses /v1/models (not /models like llama.cpp)
-        LlamaCppModelFetcher.FetchOpenAICompatibleModels(endpoint, (modelsInfo, error) =>
+        // Use the OpenAI-compatible fetch which uses /v1/models (not /models like llama.cpp).
+        // Send the instance's API key: servers launched with one gate /v1/models behind it too.
+        string apiKey = _openAICompatibleUI.apiKeyInput != null ? _openAICompatibleUI.apiKeyInput.text : _workingSettings.openAICompatible.apiKey;
+        LlamaCppModelFetcher.FetchOpenAICompatibleModels(endpoint, apiKey, (modelsInfo, error) =>
         {
             if (!string.IsNullOrEmpty(error))
             {

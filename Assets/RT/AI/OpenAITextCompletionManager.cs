@@ -808,13 +808,52 @@ public class OpenAITextCompletionManager : MonoBehaviour
          
 //                 ""max_tokens"": {max_tokens,
 
+    // Shared failure path for both request coroutines: log, mark idle, hand the
+    // caller a failed db with the best human-readable message.
+    private void SurfaceRequestError(string body, string transportError, RTDB db, Action<RTDB, JSONObject, string> myCallback, LLMDebugLog.JobSize debugJobSize)
+    {
+        string shown = LLMSamplingCompat.BestErrorMessage(body, transportError);
+        Debug.Log("LLM error response: " + shown);
+
+        LLMDebugLog.LogError(string.IsNullOrEmpty(body) ? (transportError ?? "(No response body)") : body, debugJobSize);
+        m_connectionActive = false;
+
+        db.Set("status", "failed");
+        db.Set("msg", shown);
+        myCallback.Invoke(db, null, "");
+    }
+
+    // Model-not-found recovery (OpenAI Compatible instances only, see
+    // LLMModelAutoSwitch): the server no longer serves the saved model, so ask
+    // the switcher to fetch /v1/models and repoint the instance. Yields until the
+    // fetch finishes (cancel-aware), then returns the model to retry with or null.
+    // The caller has already disposed the failed request; m_connectionActive stays
+    // true throughout so the request still reads as in-flight to its owner.
+    private IEnumerator ResolveModelSwitch(string json, string openAI_APIKey, string endpoint, Action<string> onResolved)
+    {
+        string requestedModel = LLMModelNotFound.ExtractRequestedModel(json);
+        bool done = false;
+        string newModel = null;
+        LLMModelAutoSwitch.TryResolve(endpoint, openAI_APIKey, requestedModel, m => { newModel = m; done = true; });
+        while (!done)
+        {
+            if (!m_connectionActive) yield break; // CancelCurrentRequest during the fetch
+            yield return null;
+        }
+        if (!m_connectionActive) yield break;
+        onResolved(newModel);
+    }
+
     IEnumerator GetRequest(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string openAI_APIKey, string endpoint, string sentJsonFilename,
-        LLMDebugLog.JobSize debugJobSize, bool retriedSamplingStrip = false)
+        LLMDebugLog.JobSize debugJobSize, bool retriedSamplingStrip = false, bool retriedModelSwitch = false)
     {
         // Pre-strip samplers this endpoint already rejected this session (see streaming path).
         if (!retriedSamplingStrip)
             json = LLMSamplingCompat.ApplyKnownStrips(endpoint, json);
 
+        // Captured before the first yield: retries issued frames later re-enter this
+        // scope so llm_aichat_log.json still attributes them to the chat turn.
+        string logPurpose = LLMDebugLog.CurrentPurpose;
         LLMDebugLog.LogRequest(json, debugJobSize);
         string url;
         url = endpoint;
@@ -822,6 +861,10 @@ public class OpenAITextCompletionManager : MonoBehaviour
         //Debug.Log("Sending request " + url );
 
         string retryJson = null;
+        // Non-null after the using-block: the server said the model doesn't exist;
+        // try an auto-switch (see below) before surfacing this error.
+        string modelNotFoundBody = null;
+        string modelNotFoundTransport = null;
 
         using (_currentRequest = UnityWebRequest.PostWwwForm(url, "POST"))
         {
@@ -864,18 +907,14 @@ public class OpenAITextCompletionManager : MonoBehaviour
             {
                 // Fall through to retry below; suppress this attempt's callback.
             }
+            else if (serverError && !retriedModelSwitch && LLMModelNotFound.LooksLikeModelNotFound(body))
+            {
+                modelNotFoundBody = body;
+                modelNotFoundTransport = httpFailed ? _currentRequest.error : "";
+            }
             else if (serverError)
             {
-                string transportError = httpFailed ? _currentRequest.error : "";
-                string shown = LLMSamplingCompat.BestErrorMessage(body, transportError);
-                Debug.Log("LLM error response: " + shown);
-
-                LLMDebugLog.LogError(string.IsNullOrEmpty(body) ? (transportError ?? "(No response body)") : body, debugJobSize);
-                m_connectionActive = false;
-
-                db.Set("status", "failed");
-                db.Set("msg", shown);
-                myCallback.Invoke(db, null, "");
+                SurfaceRequestError(body, httpFailed ? _currentRequest.error : "", db, myCallback, debugJobSize);
             }
             else
             {
@@ -893,7 +932,33 @@ public class OpenAITextCompletionManager : MonoBehaviour
         if (retryJson != null)
         {
             Debug.Log("Retrying LLM request with server-rejected sampling params removed.");
-            yield return StartCoroutine(GetRequest(retryJson, myCallback, db, openAI_APIKey, endpoint, sentJsonFilename, debugJobSize, retriedSamplingStrip: true));
+            Coroutine retry;
+            using (LLMDebugLog.PurposeScope(logPurpose))
+                retry = StartCoroutine(GetRequest(retryJson, myCallback, db, openAI_APIKey, endpoint, sentJsonFilename, debugJobSize,
+                    retriedSamplingStrip: true, retriedModelSwitch: retriedModelSwitch));
+            yield return retry;
+        }
+        else if (modelNotFoundBody != null)
+        {
+            _currentRequest = null; // already disposed by the using-block; keep CancelCurrentRequest safe during the wait
+            string switchedModel = null;
+            yield return StartCoroutine(ResolveModelSwitch(json, openAI_APIKey, endpoint, m => switchedModel = m));
+            if (!m_connectionActive) yield break; // cancelled while the model list was fetched
+
+            if (!string.IsNullOrEmpty(switchedModel))
+            {
+                Debug.Log($"Retrying LLM request with auto-switched model '{switchedModel}'.");
+                string switchedJson = LLMModelNotFound.PrepareRetryJson(json, switchedModel);
+                Coroutine retry;
+                using (LLMDebugLog.PurposeScope(logPurpose))
+                    retry = StartCoroutine(GetRequest(switchedJson, myCallback, db, openAI_APIKey, endpoint, sentJsonFilename, debugJobSize,
+                        retriedSamplingStrip: retriedSamplingStrip, retriedModelSwitch: true));
+                yield return retry;
+            }
+            else
+            {
+                SurfaceRequestError(modelNotFoundBody, modelNotFoundTransport, db, myCallback, debugJobSize);
+            }
         }
     }
 
@@ -915,7 +980,8 @@ public class OpenAITextCompletionManager : MonoBehaviour
 
 
     IEnumerator GetRequestStreaming(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string openAI_APIKey, string endpoint,
-         Action<string> updateChunkCallback, string sentJsonFilename, LLMDebugLog.JobSize debugJobSize, bool retriedSamplingStrip = false)
+         Action<string> updateChunkCallback, string sentJsonFilename, LLMDebugLog.JobSize debugJobSize, bool retriedSamplingStrip = false,
+         bool retriedModelSwitch = false, bool? forceInjectThinkTags = null)
     {
         // Pre-strip any sampling params this endpoint already rejected earlier this
         // session, so the request goes through on the first try. Skipped on the retry
@@ -923,6 +989,9 @@ public class OpenAITextCompletionManager : MonoBehaviour
         if (!retriedSamplingStrip)
             json = LLMSamplingCompat.ApplyKnownStrips(endpoint, json);
 
+        // Captured before the first yield: retries issued frames later re-enter this
+        // scope so llm_aichat_log.json still attributes them to the chat turn.
+        string logPurpose = LLMDebugLog.CurrentPurpose;
         LLMDebugLog.LogRequest(json, debugJobSize);
         string url;
         url = endpoint;
@@ -933,6 +1002,13 @@ public class OpenAITextCompletionManager : MonoBehaviour
         // dropped, and suppress this attempt's callback. Set inside the block so the
         // retry coroutine starts cleanly after _currentRequest is disposed.
         string retryJson = null;
+        // Non-null after the using-block: the server said the model doesn't exist;
+        // try an auto-switch (LLMModelAutoSwitch) before surfacing this error.
+        string modelNotFoundBody = null;
+        string modelNotFoundTransport = null;
+        // The think-tag decision this attempt ran with; an auto-switch retry reuses
+        // it because its stripped body no longer carries the fields the sniff reads.
+        bool injectThinkTagsUsed = false;
 
         using (_currentRequest = UnityWebRequest.PostWwwForm(url, "POST"))
         {
@@ -940,7 +1016,7 @@ public class OpenAITextCompletionManager : MonoBehaviour
             byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
             _currentRequest.uploadHandler = (UploadHandler)new UploadHandlerRaw(bodyRaw);
 
-            bool injectThinkTags = json.IndexOf("\"enable_thinking\": true", StringComparison.Ordinal) >= 0
+            bool injectThinkTags = forceInjectThinkTags ?? (json.IndexOf("\"enable_thinking\": true", StringComparison.Ordinal) >= 0
                 || json.IndexOf("\"enable_thinking\":true", StringComparison.Ordinal) >= 0
                 || (json.IndexOf("\"thinking\"", StringComparison.Ordinal) >= 0
                     && json.IndexOf("\"thinking\": true", StringComparison.Ordinal) >= 0)
@@ -950,7 +1026,8 @@ public class OpenAITextCompletionManager : MonoBehaviour
                 // reasoning streams as delta.reasoning_content.
                 || (json.IndexOf("\"thinking\"", StringComparison.Ordinal) >= 0
                     && json.IndexOf("\"type\": \"enabled\"", StringComparison.Ordinal) >= 0)
-                || json.IndexOf("\"reasoning\"", StringComparison.Ordinal) >= 0;
+                || json.IndexOf("\"reasoning\"", StringComparison.Ordinal) >= 0);
+            injectThinkTagsUsed = injectThinkTags;
             bool wrapContentUntilThinkClose = (json.IndexOf("\"chat_template_kwargs\"", StringComparison.Ordinal) >= 0
                 && (json.IndexOf("\"thinking\": true", StringComparison.Ordinal) >= 0
                     || json.IndexOf("\"thinking\":true", StringComparison.Ordinal) >= 0));
@@ -994,18 +1071,14 @@ public class OpenAITextCompletionManager : MonoBehaviour
             {
                 // Fall through to the retry below; don't fire the callback for this attempt.
             }
+            else if (serverError && !retriedModelSwitch && LLMModelNotFound.LooksLikeModelNotFound(body))
+            {
+                modelNotFoundBody = body;
+                modelNotFoundTransport = httpFailed ? _currentRequest.error : "";
+            }
             else if (serverError)
             {
-                string transportError = httpFailed ? _currentRequest.error : "";
-                string shown = LLMSamplingCompat.BestErrorMessage(body, transportError);
-                Debug.Log("LLM error response: " + shown);
-
-                LLMDebugLog.LogError(string.IsNullOrEmpty(body) ? (transportError ?? "(No response body)") : body, debugJobSize);
-                m_connectionActive = false;
-
-                db.Set("status", "failed");
-                db.Set("msg", shown);
-                myCallback.Invoke(db, null, "");
+                SurfaceRequestError(body, httpFailed ? _currentRequest.error : "", db, myCallback, debugJobSize);
             }
             else
             {
@@ -1020,8 +1093,34 @@ public class OpenAITextCompletionManager : MonoBehaviour
         if (retryJson != null)
         {
             Debug.Log("Retrying LLM request with server-rejected sampling params removed.");
-            yield return StartCoroutine(GetRequestStreaming(retryJson, myCallback, db, openAI_APIKey, endpoint,
-                updateChunkCallback, sentJsonFilename, debugJobSize, retriedSamplingStrip: true));
+            Coroutine retry;
+            using (LLMDebugLog.PurposeScope(logPurpose))
+                retry = StartCoroutine(GetRequestStreaming(retryJson, myCallback, db, openAI_APIKey, endpoint,
+                    updateChunkCallback, sentJsonFilename, debugJobSize, retriedSamplingStrip: true, retriedModelSwitch: retriedModelSwitch));
+            yield return retry;
+        }
+        else if (modelNotFoundBody != null)
+        {
+            _currentRequest = null; // already disposed by the using-block; keep CancelCurrentRequest safe during the wait
+            string switchedModel = null;
+            yield return StartCoroutine(ResolveModelSwitch(json, openAI_APIKey, endpoint, m => switchedModel = m));
+            if (!m_connectionActive) yield break; // cancelled while the model list was fetched
+
+            if (!string.IsNullOrEmpty(switchedModel))
+            {
+                Debug.Log($"Retrying LLM request with auto-switched model '{switchedModel}'.");
+                string switchedJson = LLMModelNotFound.PrepareRetryJson(json, switchedModel);
+                Coroutine retry;
+                using (LLMDebugLog.PurposeScope(logPurpose))
+                    retry = StartCoroutine(GetRequestStreaming(switchedJson, myCallback, db, openAI_APIKey, endpoint,
+                        updateChunkCallback, sentJsonFilename, debugJobSize, retriedSamplingStrip: retriedSamplingStrip, retriedModelSwitch: true,
+                        forceInjectThinkTags: injectThinkTagsUsed));
+                yield return retry;
+            }
+            else
+            {
+                SurfaceRequestError(modelNotFoundBody, modelNotFoundTransport, db, myCallback, debugJobSize);
+            }
         }
     }
 }

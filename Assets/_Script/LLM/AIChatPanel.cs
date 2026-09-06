@@ -678,6 +678,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         CancelAllAttachmentCaptions();
         CancelAllInspectImageJobs(showBubble: false);
         UnsubscribeFromLLMInstanceChanges();
+        LLMModelAutoSwitch.Switched -= OnLLMModelAutoSwitched;
         ClearSpeechSelectionOverlay();
         ClearCachedSpeakSelection();
         if (_skillManager != null)
@@ -791,6 +792,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         ApplyChatFontSize();
         CreateResizeGrip();
         SubscribeToLLMInstanceChanges();
+        LLMModelAutoSwitch.Switched -= OnLLMModelAutoSwitched;
+        LLMModelAutoSwitch.Switched += OnLLMModelAutoSwitched;
         RefreshMainLLMDropdownOptions();
 
         // Skills system. Loads aichat prompt files and aichat/skills/*.md, wires up
@@ -3255,6 +3258,24 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private TMP_InputField AddErrorBubble(string text)
     {
         return AppendBubble("Error", new Color(0.75f, 0.15f, 0.15f), text, new Color(0.99f, 0.92f, 0.92f, 1f));
+    }
+
+    // Always-visible amber notice: something was changed on the user's behalf and
+    // they should know (e.g. an LLM instance auto-switched to a model that exists).
+    // Not an error - the request went through - so it is not styled as one.
+    private TMP_InputField AddNoticeBubble(string text)
+    {
+        return AppendBubble("Notice", new Color(0.72f, 0.45f, 0.08f), text, new Color(0.99f, 0.96f, 0.88f, 1f));
+    }
+
+    // LLMModelAutoSwitch.Switched: an OpenAI Compatible instance's saved model
+    // vanished from its server (relaunched with a different model) and the app
+    // repointed it at the first listed model and retried. Tell the user in-chat,
+    // regardless of "Show debug stuff", since their saved settings just changed.
+    private void OnLLMModelAutoSwitched(LLMModelAutoSwitch.SwitchResult result)
+    {
+        if (result == null || string.IsNullOrEmpty(result.notice)) return;
+        AddNoticeBubble(EscapePlainTextForTMP(result.notice));
     }
 
     // Build the most useful human-readable error from a failed LLM callback's db.

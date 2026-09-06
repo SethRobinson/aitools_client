@@ -268,7 +268,35 @@ public class LLMInstanceManager : MonoBehaviour
     {
         InstancesChanged?.Invoke();
     }
-    
+
+    /// <summary>
+    /// LLMModelAutoSwitch: the server behind these instances no longer serves their
+    /// saved model, so point them at newModel (the first entry of the freshly fetched
+    /// list), remember the list, save config_llm.txt, and notify listeners. Instances
+    /// must be the live objects from GetAllInstances (not clones).
+    /// </summary>
+    public void ApplyModelAutoSwitch(List<LLMInstanceInfo> instances, List<string> models, string newModel)
+    {
+        if (instances == null || instances.Count == 0 || string.IsNullOrEmpty(newModel)) return;
+
+        bool changed = false;
+        foreach (var inst in instances)
+        {
+            if (inst?.settings == null) continue;
+            inst.settings.availableModels = models != null ? new List<string>(models) : new List<string> { newModel };
+            if (inst.settings.selectedModel != newModel)
+            {
+                RTConsole.Log($"LLMInstanceManager: '{inst.name}' model '{inst.settings.selectedModel}' -> '{newModel}' (auto-switch)");
+                inst.settings.selectedModel = newModel;
+            }
+            changed = true;
+        }
+        if (!changed) return;
+
+        SaveConfig();
+        NotifyInstancesChanged();
+    }
+
     // ============================================
     // Instance Management
     // ============================================

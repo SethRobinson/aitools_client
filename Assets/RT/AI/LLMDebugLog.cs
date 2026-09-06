@@ -78,6 +78,14 @@ public static class LLMDebugLog
     // Chat dispatch via PurposeScope. Main-thread only.
     private static string s_purpose = null;
 
+    /// <summary>
+    /// The purpose label currently in scope (null outside a PurposeScope). Request
+    /// coroutines capture it before their first yield so a RETRY they issue frames
+    /// later (sampler strip, model auto-switch) can re-enter the same scope and
+    /// still be attributed in llm_aichat_log.json.
+    /// </summary>
+    public static string CurrentPurpose => s_purpose;
+
     /// <summary>The exact request body about to be POSTed to the provider.</summary>
     public static void LogRequest(string json, JobSize jobSize = JobSize.Big)
     {
