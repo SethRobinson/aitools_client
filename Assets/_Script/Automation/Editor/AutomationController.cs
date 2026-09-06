@@ -235,11 +235,16 @@ public static class AutomationController
                 case "/chat_stop":
                 {
                     // Same as clicking AI Chat's Stop button: aborts the streaming turn,
-                    // pending inspections / auto-resumes, and in-flight web fetches.
+                    // pending inspections / auto-resumes, in-flight web fetches and audio
+                    // generation. "stopped" tells a test whether anything was actually
+                    // running (false = the button was greyed and the press was a no-op).
                     string result = RunOnMainAndWait(() =>
-                        AutomationBridge.StopChat()
-                            ? "{\"ok\":true,\"accepted\":\"chat_stop\"}"
-                            : "{\"ok\":false,\"error\":\"no chat panel\"}",
+                    {
+                        bool stopped;
+                        return AutomationBridge.StopChat(out stopped)
+                            ? "{\"ok\":true,\"accepted\":\"chat_stop\",\"stopped\":" + (stopped ? "true" : "false") + "}"
+                            : "{\"ok\":false,\"error\":\"no chat panel\"}";
+                    },
                         "{\"ok\":false,\"error\":\"timed out\"}");
                     WriteJson(stream, 200, result);
                     break;

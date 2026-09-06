@@ -289,10 +289,14 @@ public class AutomationDriver : MonoBehaviour
         return AIChatPanel.AutomationSend(text);
     }
 
-    /// <summary>Press AI Chat's Stop button (streaming turn, sidecars, web fetches).</summary>
-    public bool StopChat()
+    /// <summary>
+    /// Press AI Chat's Stop button (streaming turn, sidecars, web fetches, audio generation).
+    /// Returns false when no chat panel exists; <paramref name="stopped"/> reports whether
+    /// anything was actually running (false = the button was greyed, nothing to cancel).
+    /// </summary>
+    public bool StopChat(out bool stopped)
     {
-        return AIChatPanel.AutomationStop();
+        return AIChatPanel.AutomationStop(out stopped);
     }
 
     /// <summary>Import a local video file into AI Chat as a clipped Movie bubble.</summary>

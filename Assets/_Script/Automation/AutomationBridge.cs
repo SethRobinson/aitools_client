@@ -90,10 +90,14 @@ public static class AutomationBridge
         return _driver != null && _driver.SendChat(text);
     }
 
-    /// <summary>Press AI Chat's Stop button. False if no driver or no chat panel exists.</summary>
-    public static bool StopChat()
+    /// <summary>
+    /// Press AI Chat's Stop button. False if no driver or no chat panel exists;
+    /// <paramref name="stopped"/> = whether there was anything running to cancel.
+    /// </summary>
+    public static bool StopChat(out bool stopped)
     {
-        return _driver != null && _driver.StopChat();
+        stopped = false;
+        return _driver != null && _driver.StopChat(out stopped);
     }
 
     /// <summary>Focus a TMP_InputField by hierarchy-path substring; see AutomationDriver.FocusInput.</summary>

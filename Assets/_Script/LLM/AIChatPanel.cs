@@ -1358,7 +1358,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // Row 1: Send (full 186 wide). Row 2: [Copy 58][Stop 58][Clear 58], 6px gaps -> 186 wide total.
         _sendButton = CreateFooterButton(footer.transform, "Send", new Vector2(-8, -32), new Vector2(186, 30), OnSendClicked);
         _clearButton = CreateFooterButton(footer.transform, "Clear", new Vector2(-8, -68), new Vector2(58, 30), OnClearClicked);
-        _stopButton = CreateFooterButton(footer.transform, "Stop", new Vector2(-72, -68), new Vector2(58, 30), OnStopClicked);
+        _stopButton = CreateFooterButton(footer.transform, "Stop", new Vector2(-72, -68), new Vector2(58, 30), () => OnStopClicked());
         _copyButton = CreateFooterButton(footer.transform, "Copy", new Vector2(-136, -68), new Vector2(58, 30), OnCopyClicked);
         _stopButton.interactable = false;
 
@@ -2715,7 +2715,26 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         bool sidecarPending = HasPendingSidecarWork();
         _sendButton.interactable = !_isStreaming && !_waitingForForcedMainLLM && !sidecarPending;
         if (_stopButton != null)
-            _stopButton.interactable = _isStreaming || _waitingForForcedMainLLM || CountPendingInspectImageJobs() > 0 || HasSkillLoadAutoResumePendingForCurrentTurn() || HasGenericContinuePendingForCurrentTurn() || HasPendingWebWork();
+            _stopButton.interactable = ShouldStopBeInteractable();
+    }
+
+    /// <summary>
+    /// The ONE rule for the footer Stop button. Every state listed here has a cancel path in
+    /// OnStopClicked; keep the two in sync. SetBusyUI must not compute its own version: it
+    /// used to, without the web / audio terms, so FinalizeAssistantTurn greyed Stop the moment
+    /// the reply text ended while a web fetch (Brave / download / yt-dlp / vision check) that
+    /// had started mid-stream was still running - Send was blocked too, so the user's only
+    /// way out was Clear.
+    /// </summary>
+    private bool ShouldStopBeInteractable()
+    {
+        return _isStreaming
+            || _waitingForForcedMainLLM
+            || CountPendingInspectImageJobs() > 0
+            || HasSkillLoadAutoResumePendingForCurrentTurn()
+            || HasGenericContinuePendingForCurrentTurn()
+            || HasPendingWebWork()
+            || HasPendingAudioGeneration();
     }
 
     private void UpdateAttachmentCaptionStatus(bool force = false)
@@ -4563,7 +4582,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             SetBusyUI(false, showBubble ? "Stopped waiting" : "Idle");
     }
 
-    private void OnStopClicked()
+    /// <summary>Returns false when there was nothing to stop (the button is greyed in that state).</summary>
+    private bool OnStopClicked()
     {
         bool inspectPending = CountPendingInspectImageJobs() > 0;
         bool skillResumePending = HasSkillLoadAutoResumePendingForCurrentTurn();
@@ -4571,7 +4591,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         bool forcedWaitPending = _waitingForForcedMainLLM;
         bool webPending = HasPendingWebWork();
         bool audioPending = HasPendingAudioGeneration();
-        if (!_isStreaming && !inspectPending && !skillResumePending && !genericContinuePending && !forcedWaitPending && !webPending && !audioPending) return;
+        if (!_isStreaming && !inspectPending && !skillResumePending && !genericContinuePending && !forcedWaitPending && !webPending && !audioPending) return false;
         // Stop fully ends auto-repeat: uncheck the box (its handler also zeroes the
         // counter) so it doesn't quietly resume on the next reply.
         _autoContinueRemaining = 0;
@@ -4597,8 +4617,15 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         if (!_isStreaming)
         {
+            // The reply text already ended, so the fetch / generation was a deferred action
+            // the pump is parked on. Its cancelled coroutine will report onDone(false) on its
+            // next epoch check, and ResumePumpAfterDeferredComplete would then run the REST of
+            // the reply's queued actions (the render that was waiting on the fetch). Stop means
+            // the whole reply, so clear the queue now, before that callback lands.
+            if (webPending || audioPending)
+                ResetPerTurnExecutionState();
             SetBusyUI(false, inspectPending ? "Stopped inspection" : (forcedWaitPending ? "Stopped waiting" : (webPending ? "Stopped web fetch" : (audioPending ? "Stopped audio generation" : "Stopped"))));
-            return;
+            return true;
         }
 
         TryCancelActiveRequests();
@@ -4613,6 +4640,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _actionExecutor?.ResetForNewTurn();
         CancelAllWebFetches(showBubble: false);
         CancelAllAudioGeneration(showBubble: false);
+        return true;
     }
 
     /// <summary>
@@ -7317,7 +7345,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // OnSendClicked still prevents double-send.
         if (_inputField != null) _inputField.interactable = true;
         if (_clearButton != null) _clearButton.interactable = true;
-        if (_stopButton != null) _stopButton.interactable = busy || _waitingForForcedMainLLM || CountPendingInspectImageJobs() > 0 || HasSkillLoadAutoResumePendingForCurrentTurn() || HasGenericContinuePendingForCurrentTurn();
+        // busy is redundant with _isStreaming / _waitingForForcedMainLLM (both callers set
+        // their flag first) but is kept OR'd in so a future caller can't grey Stop mid-turn.
+        if (_stopButton != null) _stopButton.interactable = busy || ShouldStopBeInteractable();
         if (_statusText != null) _statusText.text = status;
     }
 
@@ -9360,6 +9390,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private readonly List<FfmpegTool.CancelToken> _webProcessCancels = new List<FfmpegTool.CancelToken>();
     private readonly List<WebTraceBubble> _activeWebTraces = new List<WebTraceBubble>();
     private readonly HashSet<PicMain> _webCaptionInFlight = new HashSet<PicMain>();
+    // Vision suitability checks (web_image download / web_video contact sheet) in flight, so
+    // Stop can cancel them: frees the LLM busy slot and drops the late result instead of
+    // holding the fetch coroutine (and a vision instance) until the model answers.
+    private readonly List<CaptionJob> _webVerifyJobs = new List<CaptionJob>();
 
     private sealed class WebSearchSession
     {
@@ -9435,6 +9469,15 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         }
         _activeWebTraces.Clear();
         _webCaptionInFlight.Clear();
+        // Vision suitability checks: free the LLM busy slot now and drop the late result
+        // (the HTTP request itself cannot be aborted; see CancelCaptionJob).
+        if (_webVerifyJobs.Count > 0)
+        {
+            var verifyJobs = new List<CaptionJob>(_webVerifyJobs);
+            _webVerifyJobs.Clear();
+            foreach (var job in verifyJobs)
+                CancelCaptionJob(job);
+        }
         _webFetchCount = 0;
         _webFetchStartTime = 0f;
         _webFetchStatusNextRefresh = 0f;
@@ -10363,14 +10406,20 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     }
 
     /// <summary>Run the combined verify+caption vision call; waits for a free vision slot.</summary>
-    private IEnumerator VerifyWebImageCoroutine(byte[] png, string query, string criteria, WebImageVerifyResult outResult)
+    /// <summary>
+    /// Vision suitability check for one downloaded image. <paramref name="epoch"/> is the
+    /// caller's web-fetch epoch: Stop/Clear bump it, which ends the capacity wait and the
+    /// result wait immediately (the CaptionJob itself is cancelled by CancelAllWebFetches via
+    /// _webVerifyJobs, freeing the vision slot); the caller re-checks the epoch on return.
+    /// </summary>
+    private IEnumerator VerifyWebImageCoroutine(byte[] png, string query, string criteria, WebImageVerifyResult outResult, int epoch)
     {
         string prompt = BuildWebImageVerifyPrompt(query, criteria);
         string rawText = null;
         CaptionJob job = null;
         // Same capacity gate as WaitForPicAndCaption: don't over-subscribe a single local vision model.
         float waitStart = Time.realtimeSinceStartup;
-        while (true)
+        while (epoch == _webFetchEpoch)
         {
             var mgr = LLMInstanceManager.Get();
             bool visionBusy = mgr != null
@@ -10379,12 +10428,16 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             if (!visionBusy || Time.realtimeSinceStartup - waitStart > 300f) break;
             yield return new WaitForSeconds(0.5f);
         }
+        if (epoch != _webFetchEpoch) yield break;
         job = TryCaptionBytes(png, r => { outResult.Caption = r; outResult.Completed = true; },
             requireFreeSlot: false, promptOverride: prompt, jobName: "WebImageVerify", debugFileName: "web_image_verify_sent.json",
             onRawText: t => rawText = t,
             onFailureDetail: d => outResult.FailureDetail = d);
-        while (!outResult.Completed)
+        if (job != null) _webVerifyJobs.Add(job);
+        while (!outResult.Completed && (job == null || !job.cancelled) && epoch == _webFetchEpoch)
             yield return null;
+        if (job != null) _webVerifyJobs.Remove(job);
+        if (epoch != _webFetchEpoch || (job != null && job.cancelled)) yield break;
         bool suitable; string reason;
         if (TryParseWebImageVerdict(rawText, out suitable, out reason))
         {
@@ -10638,7 +10691,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 trace.AppendLine(httpLine + ", " + conv.Note);
                 trace.SetStatus("  checking suitability with the vision LLM...");
                 verdict = new WebImageVerifyResult();
-                yield return VerifyWebImageCoroutine(conv.PngBytes, string.IsNullOrEmpty(queryForProvenance) ? (cand.Title ?? "") : queryForProvenance, req.Criteria, verdict);
+                yield return VerifyWebImageCoroutine(conv.PngBytes, string.IsNullOrEmpty(queryForProvenance) ? (cand.Title ?? "") : queryForProvenance, req.Criteria, verdict, epoch);
                 trace.ClearStatus();
                 if (epoch != _webFetchEpoch) { onDone?.Invoke(false); yield break; }
 
@@ -10838,6 +10891,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private IEnumerator CaptionWebStillBubble(PicMain pic, WebTraceBubble trace, int chatIndex)
     {
         if (pic == null || pic.gameObject == null) yield break;
+        int epoch = _webFetchEpoch;
         _webCaptionInFlight.Add(pic);
         RecomputeSendInteractable();
         UpdateWebFetchStatus(force: true);
@@ -10845,7 +10899,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         yield return WaitForPicAndCaption(pic);
 
         _webCaptionInFlight.Remove(pic);
-        if (trace != null && trace.IsAlive)
+        // Stop/Clear already printed "Cancelled." on this trace (and cleared the in-flight
+        // set); the caption may still land on the Pic, but don't append it under that line.
+        if (trace != null && trace.IsAlive && epoch == _webFetchEpoch)
         {
             bool alive = pic != null && pic.gameObject != null;
             string cap = alive ? (!string.IsNullOrWhiteSpace(pic.CaptionShort) ? pic.CaptionShort : pic.Caption) : null;
@@ -10949,8 +11005,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         return sb.ToString();
     }
 
-    /// <summary>Contact-sheet the clip and run the combined verify + caption vision call.</summary>
-    private IEnumerator VerifyWebVideoClipCoroutine(string clipPath, double durationSeconds, string query, string criteria, WebImageVerifyResult outResult,
+    /// <summary>
+    /// Contact-sheet the clip and run the combined verify + caption vision call.
+    /// <paramref name="epoch"/> is the caller's web-fetch epoch (see VerifyWebImageCoroutine).
+    /// </summary>
+    private IEnumerator VerifyWebVideoClipCoroutine(string clipPath, double durationSeconds, string query, string criteria, WebImageVerifyResult outResult, int epoch,
         WebTraceBubble trace = null, string thumbLabel = null, string thumbTitle = null)
     {
         FfmpegTool.ContactSheetResult sheet = null;
@@ -10974,8 +11033,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             yield break;
         }
 
+        if (epoch != _webFetchEpoch) yield break;
         float waitStart = Time.realtimeSinceStartup;
-        while (true)
+        while (epoch == _webFetchEpoch)
         {
             var mgr = LLMInstanceManager.Get();
             bool visionBusy = mgr != null
@@ -10984,13 +11044,17 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             if (!visionBusy || Time.realtimeSinceStartup - waitStart > 300f) break;
             yield return new WaitForSeconds(0.5f);
         }
+        if (epoch != _webFetchEpoch) yield break;
         string rawText = null;
-        TryCaptionBytes(png, r => { outResult.Caption = r; outResult.Completed = true; },
+        CaptionJob job = TryCaptionBytes(png, r => { outResult.Caption = r; outResult.Completed = true; },
             requireFreeSlot: false, promptOverride: BuildWebVideoVerifyPrompt(query, criteria), jobName: "WebVideoVerify", debugFileName: "web_video_verify_sent.json",
             onRawText: t => rawText = t,
             onFailureDetail: d => outResult.FailureDetail = d);
-        while (!outResult.Completed)
+        if (job != null) _webVerifyJobs.Add(job);
+        while (!outResult.Completed && (job == null || !job.cancelled) && epoch == _webFetchEpoch)
             yield return null;
+        if (job != null) _webVerifyJobs.Remove(job);
+        if (epoch != _webFetchEpoch || (job != null && job.cancelled)) yield break;
         bool suitable; string reason;
         if (TryParseWebImageVerdict(rawText, out suitable, out reason))
         {
@@ -11290,7 +11354,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                     trace.SetStatus("  checking the clip with the vision LLM...");
                     verdict = new WebImageVerifyResult();
                     double clipSeconds = outInfo != null && outInfo.DurationSeconds > 0 ? outInfo.DurationSeconds : clipDuration;
-                    yield return VerifyWebVideoClipCoroutine(clip.OutputPath, clipSeconds, string.IsNullOrEmpty(queryForProvenance) ? (cand.Title ?? "") : queryForProvenance, req.Criteria, verdict,
+                    yield return VerifyWebVideoClipCoroutine(clip.OutputPath, clipSeconds, string.IsNullOrEmpty(queryForProvenance) ? (cand.Title ?? "") : queryForProvenance, req.Criteria, verdict, epoch,
                         trace, rangeText, "contact sheet of " + rangeText + (string.IsNullOrEmpty(cand.Title) ? "" : " of " + BraveSearchClient.Clip(cand.Title, 80)) + "  " + ShortUrlForProvenance(cand.Url));
                     trace.ClearStatus();
                     if (epoch != _webFetchEpoch) { onDone?.Invoke(false); yield break; }
@@ -12458,10 +12522,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     /// <summary>Static accessor: send a chat message via the live panel. False if none.</summary>
     /// <summary>Static accessor: click Stop on the live panel. False if no panel exists.</summary>
-    public static bool AutomationStop()
+    public static bool AutomationStop(out bool stopped)
     {
+        stopped = false;
         if (_instance == null) return false;
-        _instance.OnStopClicked();
+        stopped = _instance.OnStopClicked();
         return true;
     }
 

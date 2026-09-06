@@ -395,6 +395,25 @@ online feature off at a glance. When it is OFF:
   in-flight `UnityWebRequest`s are aborted, yt-dlp is killed via its `CancelToken`,
   coroutines check the epoch after every yield and exit silently, active trace bubbles
   get a "Cancelled." line. The video-import epoch, by contrast, is only bumped on Clear.
+  The footer Stop button stays ENABLED for the whole fetch (fixed 2026-09-06): the button
+  is toggled only via `interactable`, `ShouldStopBeInteractable()` is the one rule
+  (streaming / forced-main wait / inspections / pending auto-resumes / web work / audio
+  generation), and `SetBusyUI` must not compute its own version - it used to, without the
+  web term, so `FinalizeAssistantTurn` greyed Stop the moment the reply text ended while a
+  fetch that had started mid-stream was still running (Send was blocked too, so the only
+  way out was Clear). A Stop pressed after the stream ended also calls
+  `ResetPerTurnExecutionState()` before `SetBusyUI`: the cancelled coroutine reports
+  `onDone(false)` on its next epoch check and `ResumePumpAfterDeferredComplete` would
+  otherwise run the REST of the reply's queued actions (the render waiting on the fetch).
+  The vision suitability checks (`VerifyWebImageCoroutine`, `VerifyWebVideoClipCoroutine`)
+  take the caller's epoch, end their capacity wait / result wait on a bump, and register
+  their `CaptionJob` in `_webVerifyJobs` so `CancelAllWebFetches` can `CancelCaptionJob`
+  it (LLM busy slot freed at once, the late HTTP result is dropped; the request itself
+  cannot be aborted). `CaptionWebStillBubble` skips its trace lines after a bump so
+  nothing is appended under "Cancelled.". Verified through the bridge: yt-dlp at 12% ->
+  Stop -> "Cancelled.", process gone, `/status` idle within a second, no Movie bubble, no
+  follow-up render; and Stop during a `WebImageVerify` request -> `stopped:true`, the
+  response logged later with no effect, no render.
 - Dedupe: a URL fetched earlier this session is reused (`_webFetchedUrlToPic`, Pic
   reference because chat numbers shift on trim); the anchor is re-bound.
 - Search sessions and the dedupe map are cleared on Clear.
