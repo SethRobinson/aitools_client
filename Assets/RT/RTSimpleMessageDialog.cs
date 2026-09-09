@@ -119,7 +119,7 @@ public class RTSimpleMessageDialog : MonoBehaviour
         titleText.fontStyle = FontStyles.Bold;
         titleText.alignment = TextAlignmentOptions.Center;
         titleText.color = new Color(0.4f, 0.7f, 1f, 1f);
-        titleText.enableWordWrapping = true;
+        titleText.textWrappingMode = TextWrappingModes.Normal;
         titleText.overflowMode = TextOverflowModes.Ellipsis;
     }
 
@@ -141,7 +141,7 @@ public class RTSimpleMessageDialog : MonoBehaviour
         bodyTextComp.alignment = TextAlignmentOptions.TopLeft;
         bodyTextComp.color = new Color(0.9f, 0.9f, 0.9f, 1f);
         bodyTextComp.richText = true;
-        bodyTextComp.enableWordWrapping = true;
+        bodyTextComp.textWrappingMode = TextWrappingModes.Normal;
         bodyTextComp.overflowMode = TextOverflowModes.Truncate;
     }
 
@@ -163,7 +163,7 @@ public class RTSimpleMessageDialog : MonoBehaviour
         linkTextComp.alignment = TextAlignmentOptions.Center;
         linkTextComp.color = new Color(0.5f, 0.65f, 0.85f, 1f);
         linkTextComp.richText = true;
-        linkTextComp.enableWordWrapping = true;
+        linkTextComp.textWrappingMode = TextWrappingModes.Normal;
 
         // Add click handler for the link
         var linkHandler = linkObj.AddComponent<RTSimpleMessageDialogLinkHandler>();

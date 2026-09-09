@@ -2659,9 +2659,6 @@ public class RTUtil
         tmp.fontStyle = fontStyles;
         tmp.name = "TextMeshProATemp";
         tmp.textWrappingMode = wordWrap ? TextWrappingModes.Normal : TextWrappingModes.NoWrap;
-#pragma warning disable CS0618
-        tmp.enableWordWrapping = wordWrap;
-#pragma warning restore CS0618
         //set largest allowed font size
         // Create a RenderTexture
         RenderTexture renderTexture = new RenderTexture(width, height, 24);

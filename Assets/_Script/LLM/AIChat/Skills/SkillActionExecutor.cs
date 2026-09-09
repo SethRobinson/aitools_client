@@ -4833,9 +4833,6 @@ namespace AITools.AIChat.Skills
                 tmp.fontStyle = styles;
                 tmp.alignment = alignment;
                 tmp.textWrappingMode = wrap ? TextWrappingModes.Normal : TextWrappingModes.NoWrap;
-#pragma warning disable CS0618
-                tmp.enableWordWrapping = wrap;
-#pragma warning restore CS0618
                 tmp.enableAutoSizing = false;
                 tmp.fontSize = fontSize;
                 tmp.rectTransform.sizeDelta = new Vector2(rectW, 99999f);
@@ -4923,9 +4920,6 @@ namespace AITools.AIChat.Skills
                 tmp.fontStyle = styles;
                 tmp.alignment = alignment;
                 tmp.textWrappingMode = TextWrappingModes.NoWrap;
-#pragma warning disable CS0618
-                tmp.enableWordWrapping = false;
-#pragma warning restore CS0618
                 tmp.enableAutoSizing = false;
                 tmp.fontSize = fontSize;
                 tmp.rectTransform.sizeDelta = new Vector2(99999f, 99999f);
@@ -5065,9 +5059,6 @@ namespace AITools.AIChat.Skills
                 tmp.fontStyle = styles;
                 tmp.alignment = alignment;
                 tmp.textWrappingMode = wrap ? TextWrappingModes.Normal : TextWrappingModes.NoWrap;
-#pragma warning disable CS0618
-                tmp.enableWordWrapping = wrap;
-#pragma warning restore CS0618
                 tmp.enableAutoSizing = false;
                 tmp.fontSize = REFERENCE_FONT_SIZE;
                 // Constrain width for word-wrap calc (height unconstrained so

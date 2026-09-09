@@ -52,7 +52,7 @@ When the user asks to commit, or when you finish a task, do a quick self-check: 
 Seth's AI Tools is a Unity 6 Windows application that provides a native front-end for ComfyUI workflows, image/video generation, LLM-assisted workflows, AI chat, and several interactive experiments.
 
 Current local facts:
-- Unity editor version: `6000.5.8f1` (`ProjectSettings/ProjectVersion.txt`)
+- Unity editor version: `6000.6.0f1` (`ProjectSettings/ProjectVersion.txt`)
 - App version in code/version metadata: `3.06`
 - Main scene: `Assets/Main.unity`
 - Primary platform: Windows desktop; a limited Python CLI (Windows + Linux) also exists under `cli/`
@@ -296,6 +296,7 @@ Generated or local-only folders include `Library/`, `Temp/`, `Logs/`, `build/`, 
 ## Development Notes
 
 - Prefer existing Unity/C# patterns in the repo: MonoBehaviours, TextMeshPro UI, `UnityWebRequest`, `SimpleJSON`, and the existing RT utility classes.
+- Unity 6000.6 / uGUI 2.6 treats `TMP_Text.enableWordWrapping` as a compile error (CS0619). Use `textWrappingMode = TextWrappingModes.Normal` or `TextWrappingModes.NoWrap`; do not retain legacy setters alongside the modern property.
 - Programmatic UI is common in the LLM panels and AI Chat. Match the local style when extending those panels.
 - Runtime-built `TMP_InputField`s (e.g. via `TMP_DefaultControls.CreateInputField`) run `OnEnable` before `textComponent` is wired, so TMP never creates the caret/selection renderer: typing works but the caret, mouse highlight, and wheel-scroll forwarding are dead. Call `TMPInputFieldCaretFix.Apply(input)` (`Assets/RT/TMPInputFieldCaretFix.cs`) after the field is fully wired AND parented; AI Chat's own `AIChatCaretFixer` already handles its fields.
 - When adding or moving Unity assets, keep `.meta` files with them.
