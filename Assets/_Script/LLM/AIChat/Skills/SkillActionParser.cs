@@ -29,6 +29,10 @@ namespace AITools.AIChat.Skills
     /// <item>Mid-stream chunk boundaries inside a tag (buffer holds until close).</item>
     /// </list>
     ///
+    /// Tags inside a model's <c>&lt;think&gt;...&lt;/think&gt;</c> reasoning are parsed
+    /// but NOT executed (<see cref="OnActionSkipped"/> fires instead of
+    /// <see cref="OnActionParsed"/>); see the reasoning-block notes below.
+    ///
     /// NOT a real XML parser - regex against the buffered text is plenty for the small
     /// allow-listed tag set we care about here. We intentionally never produce false
     /// positives: any <c>&lt;</c> that doesn't begin our tag is treated as plain text.
@@ -37,7 +41,42 @@ namespace AITools.AIChat.Skills
     {
         public event Action<SkillAction> OnActionParsed;
 
+        /// <summary>
+        /// Fired INSTEAD of <see cref="OnActionParsed"/> for a complete tag the parser
+        /// deliberately refuses to execute, with a short reason ("inside think block").
+        /// Hosts log it so a "missing" render is explainable; nothing else happens.
+        /// </summary>
+        public event Action<SkillAction, string> OnActionSkipped;
+
         private readonly StringBuilder _buffer = new StringBuilder();
+
+        // ---- Reasoning-block awareness ----
+        // Thinking models draft and quote action tags inside <think>...</think> while
+        // planning: on 2026-09-09 DeepSeek-V4-Flash (reasoning_effort high) pasted the
+        // generate_movie TEMPLATE, prompt "integrated_multimodal_description: ...", into
+        // its reasoning to "double-check the format", and the streaming scan rendered a
+        // placeholder-prompt clip before the real actions. A tag inside a think span is
+        // therefore never fired (OnActionSkipped instead). Spans are tracked in ABSOLUTE
+        // stream offsets, independent of the display buffer, because
+        // ConsumeDisplayText() trims emitted text (the "<think>" opener is long gone from
+        // _buffer by the time a tag inside the block completes) and a marker can straddle
+        // chunks ("<thi" + "nk>"). Rules mirror the host's think-stripping:
+        // - "<think>" opens a span; a nested opener while one is open is ignored.
+        // - "</think>" closes the open span; a stray close with no span ever opened is
+        //   the close-only DeepSeek/llama.cpp format ("reasoning </think> answer") and
+        //   retroactively marks everything before it as reasoning - that only protects
+        //   tags that complete in the same chunk as the close (earlier ones already
+        //   fired: there is no way to tell close-only reasoning from a plain reply
+        //   until the close arrives). A stray close after a real span is ignored.
+        // - An unclosed "<think>" keeps everything after it as reasoning through
+        //   Flush(), matching the bubble, which shows only "[thinking...]" then.
+        private const string ThinkOpen = "<think>";
+        private const string ThinkClose = "</think>";
+        private const string SkipReasonThink = "inside think block";
+        private long _streamLength = 0;                 // absolute chars fed so far
+        private long _bufferAbsStart = 0;               // absolute offset of _buffer[0]
+        private string _markerTail = "";                // last ThinkClose.Length-1 chars fed
+        private readonly List<long[]> _thinkSpans = new List<long[]>(); // [start, end) absolute; end = long.MaxValue while open
         private int _imageBubbleCounter = 0;
         private bool _suppressLeadingLineBreakAfterRemovedMediaAction = false;
 
@@ -132,6 +171,10 @@ namespace AITools.AIChat.Skills
             _imageBubbleCounter = 0;
             _scannedUpTo = 0;
             _suppressLeadingLineBreakAfterRemovedMediaAction = false;
+            _streamLength = 0;
+            _bufferAbsStart = 0;
+            _markerTail = "";
+            _thinkSpans.Clear();
         }
 
         /// <summary>
@@ -142,7 +185,13 @@ namespace AITools.AIChat.Skills
         public void Feed(string newChunk)
         {
             if (!string.IsNullOrEmpty(newChunk))
+            {
+                // Markers first, so a tag completing in the same chunk as a "</think>"
+                // that precedes it is already classified when the scan runs.
+                TrackThinkMarkers(newChunk);
                 _buffer.Append(newChunk);
+                _streamLength += newChunk.Length;
+            }
 
             // Walk the buffer extracting any complete tags. We don't remove them from the
             // buffer here - ConsumeDisplayText() does that after the matching action has
@@ -150,6 +199,64 @@ namespace AITools.AIChat.Skills
             // We still need to fire OnActionParsed exactly once per tag - track which
             // characters we've already inspected via _scannedUpTo.
             ScanForActions(endOfStream: false);
+        }
+
+        /// <summary>
+        /// Record every <c>&lt;think&gt;</c> / <c>&lt;/think&gt;</c> marker in the new chunk
+        /// as an absolute-offset span. The last ThinkClose.Length-1 chars of the previous
+        /// chunk are prepended so a marker split across chunks is still seen exactly once
+        /// (a marker ending inside that carried tail was handled by the previous call).
+        /// </summary>
+        private void TrackThinkMarkers(string chunk)
+        {
+            string scan = _markerTail + chunk;
+            long scanAbsStart = _streamLength - _markerTail.Length;
+            int idx = 0;
+            while (idx < scan.Length)
+            {
+                int open = scan.IndexOf(ThinkOpen, idx, StringComparison.OrdinalIgnoreCase);
+                int close = scan.IndexOf(ThinkClose, idx, StringComparison.OrdinalIgnoreCase);
+                if (open < 0 && close < 0) break;
+                bool isOpen = open >= 0 && (close < 0 || open < close);
+                int at = isOpen ? open : close;
+                int len = isOpen ? ThinkOpen.Length : ThinkClose.Length;
+                idx = at + len;
+                if (at + len <= _markerTail.Length) continue; // already handled last call
+                long abs = scanAbsStart + at;
+                if (isOpen) OpenThinkSpan(abs);
+                else CloseThinkSpan(abs + len);
+            }
+            int keep = ThinkClose.Length - 1;
+            _markerTail = scan.Length > keep ? scan.Substring(scan.Length - keep) : scan;
+        }
+
+        private long[] OpenThinkSpanOrNull()
+        {
+            int n = _thinkSpans.Count;
+            return n > 0 && _thinkSpans[n - 1][1] == long.MaxValue ? _thinkSpans[n - 1] : null;
+        }
+
+        private void OpenThinkSpan(long absStart)
+        {
+            if (OpenThinkSpanOrNull() != null) return; // nested opener: still inside
+            _thinkSpans.Add(new[] { absStart, long.MaxValue });
+        }
+
+        private void CloseThinkSpan(long absEnd)
+        {
+            var open = OpenThinkSpanOrNull();
+            if (open != null) { open[1] = absEnd; return; }
+            // Close with no opener ever seen: close-only format, everything before it
+            // was reasoning. A stray close after a real span is ignored.
+            if (_thinkSpans.Count == 0)
+                _thinkSpans.Add(new[] { 0L, absEnd });
+        }
+
+        private bool IsInsideThinkSpan(long abs)
+        {
+            for (int i = 0; i < _thinkSpans.Count; i++)
+                if (abs >= _thinkSpans[i][0] && abs < _thinkSpans[i][1]) return true;
+            return false;
         }
 
         // Index in _buffer up to which we've already scanned + fired tags. Tags ending
@@ -176,7 +283,15 @@ namespace AITools.AIChat.Skills
             foreach (var m in matches)
             {
                 var action = ParseAttributes(m.Groups[1].Value);
-                if (action != null) OnActionParsed?.Invoke(action);
+                if (action != null)
+                {
+                    // A tag the model wrote while reasoning is a draft, not a decision:
+                    // skip it (still advancing the watermark so it can't fire later).
+                    if (IsInsideThinkSpan(_bufferAbsStart + m.Index))
+                        OnActionSkipped?.Invoke(action, SkipReasonThink);
+                    else
+                        OnActionParsed?.Invoke(action);
+                }
                 _scannedUpTo = m.Index + m.Length;
             }
         }
@@ -318,6 +433,7 @@ namespace AITools.AIChat.Skills
                 emittable = text;
                 _buffer.Clear();
                 _scannedUpTo = 0;
+                _bufferAbsStart = _streamLength;
             }
             else
             {
@@ -325,6 +441,7 @@ namespace AITools.AIChat.Skills
                 string remainder = text.Substring(holdFromIndex);
                 _buffer.Clear();
                 _buffer.Append(remainder);
+                _bufferAbsStart += holdFromIndex;
                 // Translate the fired-tag watermark into the trimmed buffer's
                 // coordinates. A tag can be FIRED but still held for display (e.g.
                 // a value containing a bare '>' made FindHoldStart conservative);
@@ -352,6 +469,7 @@ namespace AITools.AIChat.Skills
             string text = _buffer.ToString();
             _buffer.Clear();
             _scannedUpTo = 0;
+            _bufferAbsStart = _streamLength;
             text = SuppressPendingLeadingLineBreak(text);
             text = ReplaceTagsWithSentinels(text);
             // Defense against an LLM that stopped mid-emission of an action tag (model

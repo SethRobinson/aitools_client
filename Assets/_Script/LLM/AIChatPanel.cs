@@ -810,6 +810,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _actionParser = new SkillActionParser();
         _actionExecutor = new SkillActionExecutor(_skillManager, this);
         _actionParser.OnActionParsed += OnSkillActionParsed;
+        _actionParser.OnActionSkipped += OnSkillActionSkipped;
 
         RefreshHeaderTitle();
         UpdateStatusPill();
@@ -7014,6 +7015,20 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             Debug.LogError("AIChatPanel: SkillActionExecutor.EnqueueAction threw: " + ex);
             AddSystemMessage("Skill error: " + ex.Message);
         }
+    }
+
+    /// <summary>
+    /// A complete action tag the parser refused to run - it sat inside the model's
+    /// <think> block (a drafted or quoted template, not a decision). Logged so
+    /// llm_aichat_log.json explains why no render appeared for it; never executed.
+    /// </summary>
+    private void OnSkillActionSkipped(SkillAction action, string reason)
+    {
+        string skill = action?.SkillId ?? "?";
+        string prompt = action != null && action.Args.TryGetValue("prompt", out var p) ? p : "";
+        if (prompt.Length > 120) prompt = prompt.Substring(0, 120) + "...";
+        AIChatLog.Note("parser", "ignored " + skill + " action (" + reason + ")"
+            + (prompt.Length > 0 ? " prompt=\"" + prompt + "\"" : ""));
     }
 
     private void OnLLMCompletedCallback(RTDB db, JSONObject jsonNode, string streamedText)
