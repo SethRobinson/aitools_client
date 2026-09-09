@@ -39,7 +39,8 @@ using UnityEngine;
 //   POST /chat        -> body = message text; open chat + send one turn (ok:false if a busy gate refused the send)
 //   POST /chat_stop   -> press AI Chat's Stop button (aborts the streaming turn, pending inspections/auto-resumes, web fetches)
 //   POST /chat_import_video -> body: path=<file>, optional start=<seconds>, duration=<seconds>, fps=<n>, audio=<true|false>,
-//                        save_wav=<true|false> (also land the range's audio as a WAV Audio bubble); import clipped Movie bubble
+//                        save_wav=<true|false> (also land the range's audio as a WAV Audio bubble),
+//                        normalize=<true|false> (override the "Normalize imported clip audio" setting for this import); import clipped Movie bubble
 //   POST /chat_import_image -> body: path=<file>; import a local still image as a "#N (you)" bubble
 //   POST /chat_attach -> body: path=<file>; stage a still as a PENDING attachment for the next /chat send
 //   POST /chat_main_llm -> body: name=<instance-name substring|default>; select the footer Main LLM override
@@ -48,6 +49,8 @@ using UnityEngine;
 //   POST /paste       -> body: target=<chat|app> (default app); run the Ctrl+V clipboard paste
 //   GET  /chat_images -> JSON array: index/w/h/busy/movie for each chat image
 //   POST /movie_state -> body: index=<n|latest>; PicMovie playback telemetry for a Movie bubble
+//   POST /chat_thinking -> body: action=<open|close|toggle|status> (default status); drives the floating Thinking
+//                        window for the latest assistant bubble like a click on its "[thinking]" marker, reports its state
 //   POST /save        -> body: index=<n|latest>, path=<file>; save chat image PNG
 //   POST /screenshot  -> body: path=<file> [x,y,w,h top-left region]; capture game view
 //   POST /click       -> body: x=<px>, y=<px> [button=right] [alt=true]; pointer click on the UI under that point
@@ -344,10 +347,11 @@ public static class AutomationController
                     if (ParseBool(kv, "no_audio", false))
                         includeAudio = false;
                     bool saveAudioWav = ParseBool(kv, "save_wav", false);
+                    int normalizeAudio = kv.ContainsKey("normalize") ? (ParseBool(kv, "normalize", true) ? 1 : 0) : -1;
                     string result = RunOnMainAndWait(() =>
                     {
                         AutomationBridge.OpenChat();
-                        bool ok = AutomationBridge.ImportChatVideo(videoPath, startSeconds, durationSeconds, fps, includeAudio, saveAudioWav, out string err);
+                        bool ok = AutomationBridge.ImportChatVideo(videoPath, startSeconds, durationSeconds, fps, includeAudio, saveAudioWav, normalizeAudio, out string err);
                         return ok
                             ? $"{{\"ok\":true,\"accepted\":\"chat_import_video\",\"path\":{JsonStr(videoPath)}}}"
                             : $"{{\"ok\":false,\"error\":{JsonStr(err)}}}";
@@ -474,6 +478,19 @@ public static class AutomationController
                 case "/chat_images":
                     WriteJson(stream, 200, RunOnMainAndWait(AutomationBridge.ChatImagesJson, "[]"));
                     break;
+
+                case "/chat_thinking":
+                {
+                    // Body: action=<open|close|toggle|status> (default status). Same code
+                    // path as a click on the latest assistant bubble's "[thinking]" marker,
+                    // plus the window state (open/live/title/chars/showingLatest/streaming).
+                    var kv = ParseKeyValues(body);
+                    string action = kv.TryGetValue("action", out var ta) ? ta : "status";
+                    string result = RunOnMainAndWait(() => AutomationBridge.ChatThinkingJson(action),
+                        "{\"ok\":false,\"error\":\"timed out\"}");
+                    WriteJson(stream, 200, result);
+                    break;
+                }
 
                 case "/movie_state":
                 {

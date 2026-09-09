@@ -49,7 +49,38 @@ namespace AITools.AIChat.Video
             public string Stdout;
             public string Stderr;
             public int ExitCode;
+            /// <summary>Human-readable note about what CreateClip did to the audio
+            /// ("audio normalized -28.9 -> -16 LUFS"), null when nothing was measured.</summary>
+            public string AudioNote;
         }
+
+        /// <summary>
+        /// EBU R128 loudness of an audio section as reported by ffmpeg's loudnorm filter
+        /// (its measurement pass). Valid is false when the section has no audio, the
+        /// measurement failed, or loudnorm printed -inf (digital silence).
+        /// </summary>
+        public sealed class LoudnessInfo
+        {
+            public bool Valid;
+            public double IntegratedLufs;   // input_i
+            public double TruePeakDb;       // input_tp
+            public double LoudnessRange;    // input_lra
+            public double Threshold;        // input_thresh
+            public double TargetOffset;     // target_offset
+        }
+
+        // Loudness normalization targets for imported clips (two-pass loudnorm). -16 LUFS
+        // is the common streaming/podcast level: quiet phone recordings come up by
+        // 10-15 dB, and H3 / the vision-caption speech check get a soundtrack at the
+        // level they were trained on. True peak -1.5 dBTP leaves AAC headroom.
+        public const double NormalizeTargetLufs = -16.0;
+        public const double NormalizeTruePeakDb = -1.5;
+        public const double NormalizeLoudnessRange = 11.0;
+        // Sections quieter than this are treated as room tone / silence and left alone
+        // (a +40 dB "normalization" of a silent clip only amplifies noise).
+        public const double NormalizeMinInputLufs = -50.0;
+        // Already within this many LU of the target: skip the filter, keep the audio as is.
+        public const double NormalizeSkipToleranceLu = 1.0;
 
         public sealed class ContactSheetResult
         {
@@ -363,6 +394,12 @@ namespace AITools.AIChat.Video
             }
         }
 
+        /// <summary>
+        /// Cut and transcode a section of <paramref name="inputPath"/> to a normalized H.264/AAC
+        /// MP4. With <paramref name="normalizeAudio"/> the soundtrack is loudness-normalized
+        /// (two-pass ffmpeg loudnorm, see MeasureLoudness) so a quiet phone recording lands
+        /// at the same level as a generated clip; the result's AudioNote says what happened.
+        /// </summary>
         public static IEnumerator CreateClip(
             string inputPath,
             float startSeconds,
@@ -372,7 +409,8 @@ namespace AITools.AIChat.Video
             double fps = 0,
             int maxWidth = DefaultMaxWidth,
             int maxHeight = DefaultMaxHeight,
-            bool includeAudio = true)
+            bool includeAudio = true,
+            bool normalizeAudio = false)
         {
             if (!TryGetToolPaths(out string ffmpegPath, out _, out string toolError))
             {
@@ -393,14 +431,27 @@ namespace AITools.AIChat.Video
             maxWidth = Mathf.Max(2, maxWidth);
             maxHeight = Mathf.Max(2, maxHeight);
 
+            // Pass 1 of loudnorm: measure the exact section we are about to cut, then
+            // pass 2 applies a fixed (linear) gain from those numbers inside the transcode.
+            string audioFilter = null;
+            string audioNote = null;
+            if (includeAudio && normalizeAudio)
+            {
+                LoudnessInfo measured = null;
+                yield return MeasureLoudness(inputPath, startSeconds, durationSeconds, m => measured = m);
+                audioNote = DescribeNormalizeDecision(measured, out bool apply);
+                if (apply)
+                    audioFilter = BuildNormalizeAudioFilter(measured);
+            }
+
             // Long ranges need more encode time than the base 10 minutes.
             int timeoutMs = (int)Math.Min(PreviewProxyTimeoutMs, Math.Max(ClipTimeoutMs, durationSeconds * 3000.0 + 60000.0));
-            string args = BuildClipArgs(inputPath, outputPath, startSeconds, durationSeconds, fps, maxWidth, maxHeight, includeAudio);
+            string args = BuildClipArgs(inputPath, outputPath, startSeconds, durationSeconds, fps, maxWidth, maxHeight, includeAudio, audioFilter);
             Task<ProcessResult> task = Task.Run(() => RunProcess(ffmpegPath, args, timeoutMs));
             while (!task.IsCompleted)
                 yield return null;
 
-            ClipResult result = new ClipResult { OutputPath = outputPath };
+            ClipResult result = new ClipResult { OutputPath = outputPath, AudioNote = audioNote };
             if (task.IsFaulted)
             {
                 result.Success = false;
@@ -801,6 +852,127 @@ namespace AITools.AIChat.Video
         }
 
         /// <summary>
+        /// EBU R128 loudness of the first audio stream of <paramref name="inputPath"/>
+        /// (optionally only startSeconds..+durationSeconds, the same -ss/-t cut CreateClip
+        /// makes) via ffmpeg's loudnorm measurement pass (print_format=json, output to
+        /// null). The result feeds BuildNormalizeAudioFilter for the second pass. Invalid
+        /// when the file has no audio, ffmpeg failed, or the section is digital silence.
+        /// </summary>
+        public static IEnumerator MeasureLoudness(string inputPath, float startSeconds, float durationSeconds, Action<LoudnessInfo> onDone)
+        {
+            var info = new LoudnessInfo();
+            if (!TryGetToolPaths(out string ffmpegPath, out _, out _))
+            {
+                onDone?.Invoke(info);
+                yield break;
+            }
+            var ci = CultureInfo.InvariantCulture;
+            string args = "-hide_banner -nostats"
+                + (startSeconds > 0f ? " -ss " + startSeconds.ToString("0.###", ci) : "")
+                + (durationSeconds > 0f ? " -t " + durationSeconds.ToString("0.###", ci) : "")
+                + " -i " + QuoteArg(inputPath)
+                + " -vn -map 0:a:0 -af " + QuoteArg(BuildLoudnormTargets() + ":print_format=json")
+                + " -f null -";
+            int timeoutMs = (int)Math.Max(60000.0, durationSeconds * 2000.0 + 30000.0);
+            Task<ProcessResult> task = Task.Run(() => RunProcess(ffmpegPath, args, timeoutMs));
+            while (!task.IsCompleted)
+                yield return null;
+            if (!task.IsFaulted && task.Result != null)
+            {
+                string text = (task.Result.Stderr ?? "") + "\n" + (task.Result.Stdout ?? "");
+                if (!ParseLoudnormJson(text, info))
+                    UnityEngine.Debug.Log("ffmpeg loudnorm measurement gave no usable numbers for " + inputPath + "\n" + task.Result.Command + "\n" + task.Result.Stderr);
+            }
+            onDone?.Invoke(info);
+        }
+
+        private static string BuildLoudnormTargets()
+        {
+            var ci = CultureInfo.InvariantCulture;
+            return "loudnorm=I=" + NormalizeTargetLufs.ToString("0.#", ci)
+                + ":TP=" + NormalizeTruePeakDb.ToString("0.#", ci)
+                + ":LRA=" + NormalizeLoudnessRange.ToString("0.#", ci);
+        }
+
+        /// <summary>
+        /// Parse the JSON block ffmpeg's loudnorm filter prints to stderr in its
+        /// measurement pass ("input_i" : "-28.88", ...). Returns false when the block is
+        /// missing or the integrated loudness is -inf (silence).
+        /// </summary>
+        internal static bool ParseLoudnormJson(string text, LoudnessInfo info)
+        {
+            if (info == null) return false;
+            info.Valid = false;
+            if (string.IsNullOrEmpty(text)) return false;
+            if (!TryReadLoudnormValue(text, "input_i", out info.IntegratedLufs)) return false;
+            TryReadLoudnormValue(text, "input_tp", out info.TruePeakDb);
+            TryReadLoudnormValue(text, "input_lra", out info.LoudnessRange);
+            TryReadLoudnormValue(text, "input_thresh", out info.Threshold);
+            if (!TryReadLoudnormValue(text, "target_offset", out info.TargetOffset))
+                info.TargetOffset = 0;
+            info.Valid = !double.IsNaN(info.IntegratedLufs) && !double.IsInfinity(info.IntegratedLufs) && info.IntegratedLufs > -99.0;
+            return info.Valid;
+        }
+
+        private static bool TryReadLoudnormValue(string text, string key, out double value)
+        {
+            value = double.NaN;
+            // Last occurrence wins: a stream with several loudnorm instances prints several blocks.
+            int at = text.LastIndexOf("\"" + key + "\"", StringComparison.Ordinal);
+            if (at < 0) return false;
+            int colon = text.IndexOf(':', at);
+            if (colon < 0) return false;
+            int q1 = text.IndexOf('"', colon);
+            if (q1 < 0) return false;
+            int q2 = text.IndexOf('"', q1 + 1);
+            if (q2 < 0) return false;
+            string num = text.Substring(q1 + 1, q2 - q1 - 1).Trim();
+            if (num.IndexOf("inf", StringComparison.OrdinalIgnoreCase) >= 0 || num.IndexOf("nan", StringComparison.OrdinalIgnoreCase) >= 0)
+                return false;
+            return double.TryParse(num, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
+        }
+
+        /// <summary>
+        /// Decide whether a measured section should be normalized and describe the
+        /// decision for the import note. Skips silence/room tone (below
+        /// NormalizeMinInputLufs) and sections already within NormalizeSkipToleranceLu of
+        /// the target.
+        /// </summary>
+        internal static string DescribeNormalizeDecision(LoudnessInfo measured, out bool apply)
+        {
+            apply = false;
+            var ci = CultureInfo.InvariantCulture;
+            if (measured == null || !measured.Valid)
+                return "audio loudness not measured (silent or no audio stream)";
+            string level = measured.IntegratedLufs.ToString("0.#", ci) + " LUFS";
+            if (measured.IntegratedLufs < NormalizeMinInputLufs)
+                return "audio left at " + level + " (near silence, not normalized)";
+            if (Math.Abs(measured.IntegratedLufs - NormalizeTargetLufs) <= NormalizeSkipToleranceLu)
+                return "audio already at " + level;
+            apply = true;
+            return "audio normalized " + level + " -> " + NormalizeTargetLufs.ToString("0.#", ci) + " LUFS";
+        }
+
+        /// <summary>
+        /// Second-pass loudnorm filter from a first-pass measurement: with measured_* given
+        /// and linear=true it is a single fixed gain (no dynamic compression) unless the
+        /// true-peak target cannot be met, where loudnorm falls back to dynamic mode itself.
+        /// loudnorm internally resamples to 192 kHz, so aresample brings the stream back to
+        /// 48 kHz for the AAC encoder.
+        /// </summary>
+        internal static string BuildNormalizeAudioFilter(LoudnessInfo measured)
+        {
+            var ci = CultureInfo.InvariantCulture;
+            return BuildLoudnormTargets()
+                + ":measured_I=" + measured.IntegratedLufs.ToString("0.##", ci)
+                + ":measured_TP=" + (double.IsNaN(measured.TruePeakDb) ? 0.0 : measured.TruePeakDb).ToString("0.##", ci)
+                + ":measured_LRA=" + (double.IsNaN(measured.LoudnessRange) ? 0.0 : measured.LoudnessRange).ToString("0.##", ci)
+                + ":measured_thresh=" + (double.IsNaN(measured.Threshold) ? (measured.IntegratedLufs - 10.0) : measured.Threshold).ToString("0.##", ci)
+                + ":offset=" + measured.TargetOffset.ToString("0.##", ci)
+                + ":linear=true:print_format=summary,aresample=48000";
+        }
+
+        /// <summary>
         /// Mean volume in dBFS via ffmpeg's volumedetect filter (float.NaN when it could not be
         /// measured). Around -90 dB = digital silence; speech or music sit well above -40 dB.
         /// </summary>
@@ -1023,7 +1195,7 @@ namespace AITools.AIChat.Video
             onDone?.Invoke(result);
         }
 
-        private static string BuildClipArgs(string inputPath, string outputPath, float start, float duration, double fps, int maxWidth, int maxHeight, bool includeAudio)
+        private static string BuildClipArgs(string inputPath, string outputPath, float start, float duration, double fps, int maxWidth, int maxHeight, bool includeAudio, string audioFilter = null)
         {
             string startStr = start.ToString("0.###", CultureInfo.InvariantCulture);
             string durStr = duration.ToString("0.###", CultureInfo.InvariantCulture);
@@ -1041,6 +1213,7 @@ namespace AITools.AIChat.Video
                 + " -map 0:v:0"
                 + (includeAudio ? " -map 0:a:0?" : " -an")
                 + " -vf " + QuoteArg(filter)
+                + (includeAudio && !string.IsNullOrEmpty(audioFilter) ? " -af " + QuoteArg(audioFilter) : "")
                 + " -c:v libx264 -preset veryfast -crf 18"
                 + (includeAudio ? " -c:a aac -b:a 160k -shortest " : " ")
                 + QuoteArg(outputPath);

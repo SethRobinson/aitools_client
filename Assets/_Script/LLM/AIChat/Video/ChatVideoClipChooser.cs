@@ -116,6 +116,9 @@ namespace AITools.AIChat.Video
             public float DurationSeconds;
             public double Fps;
             public bool IncludeAudio;
+            /// <summary>Loudness-normalize the clip's soundtrack (FfmpegTool.CreateClip
+            /// normalizeAudio; defaults from AIChatPanel.GetNormalizeClipAudio()).</summary>
+            public bool NormalizeAudio = true;
             /// <summary>Also extract the selected range's audio as a WAV Audio bubble
             /// (automation import path; the dialog itself uses its Export audio button).</summary>
             public bool SaveAudioWav;
@@ -954,7 +957,8 @@ namespace AITools.AIChat.Video
                 StartSeconds = start,
                 DurationSeconds = dur,
                 Fps = _fps,
-                IncludeAudio = _includeAudioToggle == null ? _includeAudio : _includeAudioToggle.isOn
+                IncludeAudio = _includeAudioToggle == null ? _includeAudio : _includeAudioToggle.isOn,
+                NormalizeAudio = global::AIChatPanel.GetNormalizeClipAudio()
             };
         }
 
@@ -1000,7 +1004,7 @@ namespace AITools.AIChat.Video
             string outputPath = FfmpegTool.GetClipOutputPath(sourcePath);
             FfmpegTool.ClipResult result = null;
             yield return FfmpegTool.CreateClip(sourcePath, sel.StartSeconds, sel.DurationSeconds, outputPath, r => result = r,
-                fps: sel.Fps, includeAudio: sel.IncludeAudio);
+                fps: sel.Fps, includeAudio: sel.IncludeAudio, normalizeAudio: sel.NormalizeAudio);
             if (result == null || !result.Success)
             {
                 ShowToast("Could not export video clip: " + (result != null ? result.Error : "unknown error"));
@@ -1031,7 +1035,7 @@ namespace AITools.AIChat.Video
             if (toChat)
             {
                 if (global::AIChatPanel.AddLocalMovieClipToChat(result.OutputPath, dims, out string chatError))
-                    ShowToast("Added video clip to AI Chat");
+                    ShowToast("Added video clip to AI Chat" + (!string.IsNullOrEmpty(result.AudioNote) ? " (" + result.AudioNote + ")" : ""));
                 else
                     ShowToast("Could not add clip to AI Chat: " + chatError);
             }

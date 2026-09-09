@@ -112,11 +112,12 @@ public static class AutomationBridge
 
     /// <summary>Import a local video file into AI Chat as a clipped Movie bubble.
     /// saveAudioWav additionally lands the range's audio as a WAV Audio bubble.</summary>
-    public static bool ImportChatVideo(string path, float startSeconds, float durationSeconds, double fps, bool includeAudio, bool saveAudioWav, out string error)
+    /// <paramref name="normalizeAudio"/>: 1 / 0 force clip loudness normalization on / off, -1 = the AI Chat setting.
+    public static bool ImportChatVideo(string path, float startSeconds, float durationSeconds, double fps, bool includeAudio, bool saveAudioWav, int normalizeAudio, out string error)
     {
         error = "no driver";
         if (_driver == null) return false;
-        return _driver.ImportChatVideo(path, startSeconds, durationSeconds, fps, includeAudio, saveAudioWav, out error);
+        return _driver.ImportChatVideo(path, startSeconds, durationSeconds, fps, includeAudio, saveAudioWav, normalizeAudio, out error);
     }
 
     /// <summary>Import a local still image file into AI Chat as a "#N (you)" image bubble.
@@ -174,10 +175,16 @@ public static class AutomationBridge
         return AIChatPanel.AutomationChatImagesJson();
     }
 
-    /// <summary>Save a chat image to disk as PNG. index &lt;= 0 means latest.</summary>
+    /// <summary>PicMovie playback telemetry JSON for a chat Movie bubble. index &lt;= 0 means latest.</summary>
     public static string MovieStateJson(int index)
     {
         return AIChatPanel.AutomationMovieState(index);
+    }
+
+    /// <summary>Drive / inspect the floating Thinking window for the latest assistant bubble (action = open|close|toggle|status).</summary>
+    public static string ChatThinkingJson(string action)
+    {
+        return AIChatPanel.AutomationThinking(action);
     }
 
     public static bool Save(int index, string path, out string error)

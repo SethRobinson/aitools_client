@@ -270,6 +270,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private const string PREFS_KEEP_OLD_TOOL_CALLS_IN_PROMPT = "aichat_keep_old_tool_calls_in_prompt";
     private const string PREFS_AUTO_CAPTION_GENERATED_IMAGES = "aichat_auto_caption_generated_images";
     private const string PREFS_SHOW_DEBUG_STUFF = "aichat_show_debug_stuff";
+    private const string PREFS_NORMALIZE_CLIP_AUDIO = "aichat_normalize_clip_audio";
     // Header "Web" checkbox: gates every web_* skill (search / image / video / page). Default on.
     private const string PREFS_WEB_ENABLED = "aichat_web_enabled";
     // Cap on the largest edge (in pixels) of dragged/pasted images. Anything
@@ -637,6 +638,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     public static void Hide()
     {
+        // The floating Thinking window belongs to the chat; don't leave it over the app.
+        ChatThinkingWindow.CloseIfOpen();
         if (_instance != null)
             _instance.SetVisible(false);
     }
@@ -3143,32 +3146,45 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         bool wasAtBottom = IsScrollAtBottom(_chatScroll);
         if (!panel.Expanded.Remove(markerOrdinal))
             panel.Expanded.Add(markerOrdinal);
-        RenderActionDetails(panel, bubble, raw, GetThinkingForDetails(field, interaction));
+        RenderActionDetails(panel, bubble, raw);
         // The newest reply sits at the bottom; keep the freshly expanded details in view.
         if (wasAtBottom)
             StartCoroutine(ScrollToBottomDeferred());
     }
 
     /// <summary>
-    /// Toggle the reasoning view under a bubble (the "[thinking...]" / "[thinking]"
-    /// marker). While the reply is still streaming, the view re-renders live from the
-    /// stream buffer on every bubble update; afterwards it reads the reasoning stored
-    /// on the interaction (GTPChatLine._thinkingContent) - the bubble text and history
-    /// only ever carry the marker, never the reasoning itself.
+    /// A click on the "[thinking...]" / "[thinking]" marker opens the reasoning in the
+    /// floating ChatThinkingWindow instead of expanding it under the bubble (a long
+    /// think block inline pushed the whole conversation around). Clicking the marker of
+    /// the bubble the window already shows closes it; another bubble's marker retargets
+    /// it. While the reply is still streaming the window is fed live from the stream
+    /// buffer (RefreshStreamingThinkingDetails) and handed the final text on
+    /// completion / Stop (RefreshOpenDetailsPanel); afterwards it reads the reasoning
+    /// stored on the interaction (GTPChatLine._thinkingContent) - the bubble text and
+    /// history only ever carry the marker, never the reasoning itself. Closing the
+    /// window never touches the turn, the stream or the stored reasoning.
     /// </summary>
     private void ToggleThinkingDetails(TMP_InputField field, GTPChatLine interaction)
     {
         if (field == null) return;
-        var bubble = field.transform.parent;
-        if (bubble == null) return;
-        var panel = bubble.GetComponent<ActionDetailsPanel>();
-        if (panel == null) panel = bubble.gameObject.AddComponent<ActionDetailsPanel>();
-        bool wasAtBottom = IsScrollAtBottom(_chatScroll);
-        panel.ThinkingExpanded = !panel.ThinkingExpanded;
-        RenderActionDetails(panel, bubble, GetRawReplyForDetails(field, interaction),
-            GetThinkingForDetails(field, interaction));
-        if (wasAtBottom)
-            StartCoroutine(ScrollToBottomDeferred());
+        var win = ChatThinkingWindow.Current;
+        if (win != null && win.IsShowing(field))
+        {
+            win.Close();
+            return;
+        }
+        bool live = ReferenceEquals(field, _streamingAssistantField) && IsThinkingStillStreaming(_streamBuffer.ToString());
+        ChatThinkingWindow.Show(_font, Mathf.Max(9f, (BaseFontSize - 1f) * _fontSizeMultiplier), field,
+            GetThinkingForDetails(field, interaction), live);
+    }
+
+    /// <summary>True while the newest think block in a streaming reply has not closed yet.</summary>
+    private static bool IsThinkingStillStreaming(string raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return false;
+        int lastOpen = raw.LastIndexOf("<think>", StringComparison.Ordinal);
+        int lastClose = raw.LastIndexOf("</think>", StringComparison.Ordinal);
+        return lastOpen >= 0 && lastOpen > lastClose;
     }
 
     private string GetRawReplyForDetails(TMP_InputField field, GTPChatLine interaction)
@@ -3189,7 +3205,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         return interaction != null ? ExtractThinkingText(interaction._content) : "";
     }
 
-    private void RenderActionDetails(ActionDetailsPanel panel, Transform bubble, string raw, string thinking)
+    private void RenderActionDetails(ActionDetailsPanel panel, Transform bubble, string raw)
     {
         var markerActions = new List<SkillAction>();
         if (!string.IsNullOrEmpty(raw))
@@ -3202,12 +3218,6 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         }
 
         var sb = new StringBuilder();
-        if (panel.ThinkingExpanded)
-        {
-            string t = (thinking ?? "").Trim();
-            sb.Append("<b>thinking</b> (model reasoning; click the marker again to hide)\n");
-            sb.Append(t.Length > 0 ? EscapePlainTextForTMP(t) : "(no reasoning captured)");
-        }
         var ordered = new List<int>(panel.Expanded);
         ordered.Sort();
         foreach (int idx in ordered)
@@ -3778,8 +3788,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             // focus-loss write-back compares equal to the stored display text.
             text = Regex.Replace(text, @"\[skill: ([A-Za-z0-9_]+)\]", "<link=\"skill\"><color=#2B5FA6><u>[skill: $1]</u></color></link>");
             // "[thinking...]" / "[thinking]" reasoning markers work the same way: a left
-            // click expands the model's reasoning below the bubble (live while it is
-            // still streaming). Same visible-chars survival contract as skill markers.
+            // click opens the model's reasoning in the floating ChatThinkingWindow (live
+            // while it is still streaming). Same visible-chars survival contract as
+            // skill markers.
             text = Regex.Replace(text, @"\[thinking(\.\.\.)?\]", "<link=\"think\"><color=#7A4FA6><u>[thinking$1]</u></color></link>");
         }
         catch
@@ -4690,6 +4701,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     {
         HideBubbleContextMenu();
         HideRewindConfirmation();
+        ChatThinkingWindow.CloseIfOpen();
         ClearSpeechSelectionOverlay();
         ClearCachedSpeakSelection();
         _autoContinueRemaining = 0;
@@ -6864,31 +6876,35 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     }
 
     /// <summary>
-    /// If the user expanded the "[thinking...]" marker on the streaming bubble, keep
-    /// the reasoning view under it growing with the stream.
+    /// If the floating Thinking window is open on the streaming bubble, keep feeding it
+    /// the reasoning as it arrives (the window throttles its own re-layout).
     /// </summary>
     private void RefreshStreamingThinkingDetails()
     {
         if (_streamingAssistantField == null) return;
-        var bubble = _streamingAssistantField.transform.parent;
-        var panel = bubble != null ? bubble.GetComponent<ActionDetailsPanel>() : null;
-        if (panel == null || !panel.ThinkingExpanded) return;
+        var win = ChatThinkingWindow.Current;
+        if (win == null || !win.IsShowing(_streamingAssistantField)) return;
         string raw = _streamBuffer.ToString();
-        RenderActionDetails(panel, bubble, raw, ExtractThinkingText(raw));
+        win.SetText(ExtractThinkingText(raw), IsThinkingStillStreaming(raw));
     }
 
     /// <summary>
-    /// Re-render a details view that was open during streaming once the turn's
-    /// authoritative text has landed in history (completion or Stop-commit).
+    /// Once the turn's authoritative text has landed in history (completion or
+    /// Stop-commit): hand an open Thinking window the final reasoning so it doesn't
+    /// freeze on the last chunk, and re-render any tool-call details view that was
+    /// open during streaming.
     /// </summary>
     private void RefreshOpenDetailsPanel(TMP_InputField field, GTPChatLine interaction)
     {
         if (field == null) return;
+        var win = ChatThinkingWindow.Current;
+        if (win != null && win.IsShowing(field))
+            win.SetText(GetThinkingForDetails(field, interaction), live: false);
+
         var bubble = field.transform.parent;
         var panel = bubble != null ? bubble.GetComponent<ActionDetailsPanel>() : null;
-        if (panel == null || (!panel.ThinkingExpanded && panel.Expanded.Count == 0)) return;
-        RenderActionDetails(panel, bubble, GetRawReplyForDetails(field, interaction),
-            GetThinkingForDetails(field, interaction));
+        if (panel == null || panel.Expanded.Count == 0) return;
+        RenderActionDetails(panel, bubble, GetRawReplyForDetails(field, interaction));
     }
 
     // Visible marker text for the reasoning section - both forms are linkified by
@@ -6914,9 +6930,16 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (thinkOpen >= 0 && thinkClose >= 0)
         {
             // Finished reasoning collapses to a persistent clickable "[thinking]"
-            // marker instead of vanishing; whitespace-only blocks leave no marker.
-            return Regex.Replace(text, @"(?s)<think>(.*?)</think>",
-                m => string.IsNullOrWhiteSpace(m.Groups[1].Value) ? "" : ThinkingMarkerDone);
+            // marker instead of vanishing; whitespace-only blocks leave no marker. Models
+            // that run the answer straight on after </think> get a space after the
+            // marker, otherwise it reads "[thinking]720p, high quality...".
+            return Regex.Replace(text, @"(?s)<think>(.*?)</think>", m =>
+            {
+                if (string.IsNullOrWhiteSpace(m.Groups[1].Value)) return "";
+                int next = m.Index + m.Length;
+                bool runsOn = next < text.Length && !char.IsWhiteSpace(text[next]);
+                return runsOn ? ThinkingMarkerDone + " " : ThinkingMarkerDone;
+            });
         }
 
         if (thinkClose >= 0)
@@ -8481,9 +8504,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         float durationSeconds = selection != null ? selection.DurationSeconds : FfmpegTool.DefaultClipDurationSeconds;
         double fps = selection != null ? selection.Fps : GetDefaultClipFps(info);
         bool includeAudio = selection == null || selection.IncludeAudio;
+        bool normalizeAudio = selection != null ? selection.NormalizeAudio : GetNormalizeClipAudio();
         yield return FfmpegTool.CreateClip(sourcePath, startSeconds, durationSeconds, outputPath, r => result = r,
             fps: fps,
-            includeAudio: includeAudio);
+            includeAudio: includeAudio,
+            normalizeAudio: normalizeAudio);
 
         if (epoch != _videoImportEpoch)
             yield break;
@@ -8513,7 +8538,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             int idx = _chatImagePics.Count;
             string startText = startSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
             string durationText = durationSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
-            AddSystemMessage($"Imported {durationText}s video clip starting at {startText}s as Movie #{idx}.", includeInLLMRecap: false);
+            string audioNote = !string.IsNullOrEmpty(result.AudioNote) ? " (" + result.AudioNote + ")" : "";
+            AddSystemMessage($"Imported {durationText}s video clip starting at {startText}s as Movie #{idx}.{audioNote}", includeInLLMRecap: false);
         }
 
         if (selection != null && selection.SaveAudioWav)
@@ -8776,7 +8802,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             StartSeconds = startSeconds,
             DurationSeconds = durationSeconds,
             Fps = GetDefaultClipFps(info),
-            IncludeAudio = true
+            IncludeAudio = true,
+            NormalizeAudio = GetNormalizeClipAudio()
         };
     }
 
@@ -11330,7 +11357,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 trace.SetStatus("  ffmpeg cutting " + rangeText + "...");
                 yield return FfmpegTool.CreateClip(sourcePath, cutStart, clipDuration, clipPath, r => clip = r,
                     fps: GetDefaultClipFps(info),
-                    includeAudio: req.IncludeAudio && info.HasAudio);
+                    includeAudio: req.IncludeAudio && info.HasAudio,
+                    normalizeAudio: GetNormalizeClipAudio());
                 trace.ClearStatus();
                 if (epoch != _webFetchEpoch) { onDone?.Invoke(false); yield break; }
 
@@ -11346,7 +11374,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 long clipSize = 0;
                 try { clipSize = new System.IO.FileInfo(clip.OutputPath).Length; } catch { }
                 string dims = BuildVideoDimensionsText(outInfo ?? info);
-                trace.AppendLine("  cut " + rangeText + " of source: " + (dims ?? "?") + (req.IncludeAudio && info.HasAudio ? ", audio" : ", silent") + " (" + WebMediaDownloader.FormatBytes(clipSize) + ")");
+                trace.AppendLine("  cut " + rangeText + " of source: " + (dims ?? "?") + (req.IncludeAudio && info.HasAudio ? ", audio" : ", silent")
+                    + (!string.IsNullOrEmpty(clip.AudioNote) ? ", " + clip.AudioNote : "") + " (" + WebMediaDownloader.FormatBytes(clipSize) + ")");
 
                 WebImageVerifyResult verdict = null;
                 if (verifyClips)
@@ -12601,7 +12630,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     /// Automation-only local video import. Bypasses the human clip chooser by taking
     /// explicit start/duration values, then appends the normalized MP4 as a Movie bubble.
     /// </summary>
-    public static bool AutomationImportVideo(string path, float startSeconds, float durationSeconds, double fps, bool includeAudio, bool saveAudioWav, out string error)
+    public static bool AutomationImportVideo(string path, float startSeconds, float durationSeconds, double fps, bool includeAudio, bool saveAudioWav, int normalizeAudio, out string error)
     {
         error = null;
         if (string.IsNullOrWhiteSpace(path))
@@ -12631,11 +12660,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             return false;
         }
 
-        _instance.StartCoroutine(_instance.AutomationImportVideoRoutine(path, startSeconds, durationSeconds, fps, includeAudio, saveAudioWav));
+        _instance.StartCoroutine(_instance.AutomationImportVideoRoutine(path, startSeconds, durationSeconds, fps, includeAudio, saveAudioWav, normalizeAudio));
         return true;
     }
 
-    private IEnumerator AutomationImportVideoRoutine(string path, float startSeconds, float durationSeconds, double fps, bool includeAudio, bool saveAudioWav)
+    /// <paramref name="normalizeAudio"/>: 1 / 0 force loudness normalization on / off for this import, -1 = the AI Chat setting.
+    private IEnumerator AutomationImportVideoRoutine(string path, float startSeconds, float durationSeconds, double fps, bool includeAudio, bool saveAudioWav, int normalizeAudio)
     {
         int epoch = _videoImportEpoch;
         BeginVideoImport();
@@ -12664,6 +12694,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             selection.Fps = fps;
         selection.IncludeAudio = includeAudio;
         selection.SaveAudioWav = saveAudioWav;
+        if (normalizeAudio >= 0)
+            selection.NormalizeAudio = normalizeAudio != 0;
 
         yield return TranscodeAndAppendVideoClip(path, info, selection, epoch, null, isUserImport: true);
     }
@@ -12801,6 +12833,79 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             : "{\"ok\":false,\"error\":\"no chat panel\"}";
     }
 
+    /// <summary>
+    /// Bridge: drive the floating Thinking window for the LATEST assistant bubble exactly
+    /// like a click on its "[thinking]" marker (see the automation /chat_thinking
+    /// endpoint). action = open | close | toggle | status. Returns the window state:
+    /// open, live (still expecting stream text), title, chars (reasoning length) and
+    /// whether it shows the latest assistant bubble.
+    /// </summary>
+    public static string AutomationThinking(string action)
+    {
+        return _instance != null
+            ? _instance.AutomationThinkingImpl(action)
+            : "{\"ok\":false,\"error\":\"no chat panel\"}";
+    }
+
+    private string AutomationThinkingImpl(string action)
+    {
+        action = (action ?? "status").Trim().ToLowerInvariant();
+        if (action.Length == 0) action = "status";
+        TryGetLatestAssistantBubble(out TMP_InputField field, out GTPChatLine interaction);
+        if (action != "status")
+        {
+            if (field == null)
+                return "{\"ok\":false,\"error\":\"no assistant bubble\"}";
+            var win = ChatThinkingWindow.Current;
+            bool showing = win != null && win.IsShowing(field);
+            if (action == "open") { if (!showing) ToggleThinkingDetails(field, interaction); }
+            else if (action == "close") { if (showing) ToggleThinkingDetails(field, interaction); }
+            else if (action == "toggle") ToggleThinkingDetails(field, interaction);
+            else return "{\"ok\":false,\"error\":\"unknown action '" + AutomationJsonEscape(action) + "' (open|close|toggle|status)\"}";
+        }
+
+        var w = ChatThinkingWindow.Current;
+        var sb = new StringBuilder();
+        sb.Append("{\"ok\":true,\"open\":").Append(w != null ? "true" : "false");
+        if (w != null)
+        {
+            sb.Append(",\"live\":").Append(w.IsLive ? "true" : "false");
+            sb.Append(",\"title\":\"").Append(AutomationJsonEscape(w.TitleText)).Append('"');
+            sb.Append(",\"chars\":").Append(w.TextLength);
+            sb.Append(",\"showingLatest\":").Append(field != null && w.IsShowing(field) ? "true" : "false");
+            sb.Append(",\"layout\":\"").Append(AutomationJsonEscape(w.LayoutDebug())).Append('"');
+        }
+        sb.Append(",\"hasAssistantBubble\":").Append(field != null ? "true" : "false");
+        sb.Append(",\"streaming\":").Append(_streamingAssistantField != null ? "true" : "false");
+        sb.Append('}');
+        return sb.ToString();
+    }
+
+    /// <summary>The newest "Bubble_Assistant" in the chat list: its text field and (once the turn landed in history) its interaction.</summary>
+    private bool TryGetLatestAssistantBubble(out TMP_InputField field, out GTPChatLine interaction)
+    {
+        field = null;
+        interaction = null;
+        if (_chatContent == null) return false;
+        for (int i = _chatContent.childCount - 1; i >= 0; i--)
+        {
+            var child = _chatContent.GetChild(i);
+            if (child == null || child.name != "Bubble_Assistant") continue;
+            var handler = child.GetComponentInChildren<AIChatBubbleContextClickHandler>(true);
+            if (handler == null || handler.Field == null) continue;
+            field = handler.Field;
+            interaction = handler.Interaction;
+            return true;
+        }
+        return false;
+    }
+
+    private static string AutomationJsonEscape(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        return s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r").Replace("\t", "\\t");
+    }
+
     /// <summary>Static accessor: chat images JSON. "[]" if no panel.</summary>
     public static string AutomationChatImagesJson()
     {
@@ -12909,6 +13014,23 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     public static void SetShowDebugStuff(bool v)
     {
         PlayerPrefs.SetInt(PREFS_SHOW_DEBUG_STUFF, v ? 1 : 0);
+        PlayerPrefs.Save();
+    }
+
+    /// <summary>
+    /// Loudness-normalize the soundtrack of every clip AI Chat transcodes (drops, pastes,
+    /// clip-chooser exports, web_video cuts, automation imports) to
+    /// FfmpegTool.NormalizeTargetLufs. Default on: a quiet phone recording used as an H3
+    /// reference otherwise hands the model a soundtrack 10-15 dB under what it expects.
+    /// </summary>
+    public static bool GetNormalizeClipAudio()
+    {
+        return PlayerPrefs.GetInt(PREFS_NORMALIZE_CLIP_AUDIO, 1) != 0;
+    }
+
+    public static void SetNormalizeClipAudio(bool v)
+    {
+        PlayerPrefs.SetInt(PREFS_NORMALIZE_CLIP_AUDIO, v ? 1 : 0);
         PlayerPrefs.Save();
     }
 
@@ -14239,6 +14361,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         private bool _isEntryInput;
         private bool _suppressCacheUntilLeftReleased;
 
+        public TMP_InputField Field => _field;
+        public GTPChatLine Interaction => _interaction;
+
         public void Setup(AIChatPanel panel, TMP_InputField field, GTPChatLine interaction, bool isEntryInput = false)
         {
             _panel = panel;
@@ -14320,14 +14445,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     /// <summary>
     /// Per-bubble state for the click-to-expand tool-call details: which "[skill: X]"
-    /// markers (by ordinal among skill links) are open, whether the "[thinking]"
-    /// reasoning view is open, and the read-only TMP text under the bubble that lists
-    /// them. Lives on the bubble root next to its layout group.
+    /// markers (by ordinal among skill links) are open and the read-only TMP text under
+    /// the bubble that lists them. Lives on the bubble root next to its layout group.
+    /// (The "[thinking]" marker opens the floating ChatThinkingWindow instead.)
     /// </summary>
     private class ActionDetailsPanel : MonoBehaviour
     {
         public readonly HashSet<int> Expanded = new HashSet<int>();
-        public bool ThinkingExpanded;
         public TextMeshProUGUI Text;
     }
 }

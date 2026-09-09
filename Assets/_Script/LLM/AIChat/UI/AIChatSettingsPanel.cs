@@ -50,13 +50,14 @@ namespace AITools.AIChat.UI
         private Toggle _keepOldToolCallsToggle;
         private Toggle _autoCaptionGeneratedImagesToggle;
         private Toggle _showDebugStuffToggle;
+        private Toggle _normalizeClipAudioToggle;
 
         private const float DEFAULT_WIDTH = 760f;
-        private const float DEFAULT_HEIGHT = 654f;
+        private const float DEFAULT_HEIGHT = 686f;
         private const float HEADER_HEIGHT = 40f;
-        // Tall enough for the session reminder row, prompt-slimming toggles,
-        // Compact controls, and one settings row above the bottom button row.
-        private const float FOOTER_HEIGHT = 184f;
+        // Tall enough for the media row, the session reminder row, prompt-slimming
+        // toggles, Compact controls, and one settings row above the bottom button row.
+        private const float FOOTER_HEIGHT = 216f;
         private const float BaseFontSize = 13f;
 
         private static readonly Color PanelBg = new Color(0.80f, 0.80f, 0.82f, 1f);
@@ -510,6 +511,15 @@ namespace AITools.AIChat.UI
                 AIChatPanel.GetShowDebugStuff(),
                 "When enabled, local Info/debug bubbles are shown in the chat. Off hides routine status notes while keeping needed internal reminders available to the next LLM turn.");
 
+            const float kMediaRowY = 182f;
+            _normalizeClipAudioToggle = MakeSettingToggle(
+                footer.transform,
+                "Normalize imported clip audio",
+                new Vector2(kSettingsLeftPad, kMediaRowY),
+                new Vector2(240, 24),
+                AIChatPanel.GetNormalizeClipAudio(),
+                "When enabled, every video clip AI Chat transcodes (dropped/pasted videos, clip-chooser exports, web_video cuts) gets its soundtrack loudness-normalized to " + AITools.AIChat.Video.FfmpegTool.NormalizeTargetLufs.ToString("0") + " LUFS (two-pass ffmpeg loudnorm, a fixed gain with no compression). Quiet phone recordings used as MiniMax H3 voice/audio references otherwise arrive 10-15 dB under what the model expects. Silent or near-silent clips are left alone.");
+
             const float kPostMessageRowY = 150f;
             BuildSettingPair(
                 footer.transform,
@@ -764,6 +774,8 @@ namespace AITools.AIChat.UI
                 _autoCaptionGeneratedImagesToggle.isOn = AIChatPanel.GetAutoCaptionGeneratedImages();
             if (_showDebugStuffToggle != null)
                 _showDebugStuffToggle.isOn = AIChatPanel.GetShowDebugStuff();
+            if (_normalizeClipAudioToggle != null)
+                _normalizeClipAudioToggle.isOn = AIChatPanel.GetNormalizeClipAudio();
             if (_mainPanel != null)
                 TMPInputFieldUndo.ResetHistoryInChildren(_mainPanel);
             RebuildSkillRows();
@@ -879,6 +891,8 @@ namespace AITools.AIChat.UI
                 AIChatPanel.SetAutoCaptionGeneratedImages(_autoCaptionGeneratedImagesToggle.isOn);
             if (_showDebugStuffToggle != null)
                 AIChatPanel.SetShowDebugStuff(_showDebugStuffToggle.isOn);
+            if (_normalizeClipAudioToggle != null)
+                AIChatPanel.SetNormalizeClipAudio(_normalizeClipAudioToggle.isOn);
 
             // Trigger the host's reload + UI update.
             _staticSkillManager?.Reload();
