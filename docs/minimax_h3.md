@@ -527,6 +527,34 @@ that thin prompts render flat, and prompts under ~100 words are too sparse.
   off-screen voiceover ... lips remain completely closed`). ~2.5 spoken
   words per second. On-screen text verbatim in double quotes (skills teach
   `&quot;` inside the action attribute; the parser decodes XML entities).
+- **Dialog timing - fill the clip (measured 2026-09-12)**: a 12-clip 5 s
+  Ref2V "heated argument" film (two women from one user photo, DeepSeek V4
+  Flash writing the prompts) was transcribed clip by clip: ffmpeg audio
+  extract (`-vn -ac 1 -ar 16000`) POSTed to the Settings > Web speech-to-text
+  endpoint (the Whisper-compatible API `web_video speech="true"` uses; fields
+  `file`, `model`, `language=en`). Only the clips whose quoted words covered
+  most of the 5 s came back word-perfect: the sequential two-line exchange
+  (`'You cheated with the dragon glitch!' / 'That's not cheating!'`, 9 words)
+  and the 8-9 word single lines. A lone 5-7 word line was LOOPED (`It's on
+  the shelf! It's on the shelf! Go buy your own! ...`), prepended with an
+  invented line, or replaced by gibberish; "both speak at once ... snaps
+  'Insane!' over her" rendered as garbage; a line delivered in a shot on
+  HANDS or on EYES only (mouth out of frame) looped or invented; and an
+  explicit `No dialog; nobody speaks.` on a chest-to-chest standoff still
+  produced an invented line. Single quotes with apostrophes inside the line
+  (`'it's mine!'`) were NOT a factor (those clips were word-perfect). Skills
+  now teach 10-13 words per 5 s (22-26 / 10 s, 32-38 / 15 s), a sequential
+  two-line exchange when two people are on screen, one speaker at a time,
+  the speaker's mouth in frame, plain `says 'line' in English with a <voice>
+  voice` phrasing (expression verbs like `sneering 'line'` / `protests` and
+  stacked vocal adjectives like `raw, incredulous` went with the failures -
+  correlation on 12 clips, not a controlled A/B), and silence as a last
+  resort with people on screen. The old "one ~12-word line at 5 s" wording
+  was what pushed the model to one short line per clip. Live re-test after
+  the skill change (same date, DeepSeek V4 Flash, a two-clip stitched
+  argument from a Z-Image test photo): both clips came out as two-line
+  exchanges (12 and 14 words) and transcribed word-perfect. Verify dialog
+  changes by TRANSCRIBING, never by ear or by reading the prompt.
 - **Whole-scene rule (Seth, 2026-08-31)**: every H3 document - reference AND
   t2v/i2v - re-describes the ENTIRE scene each render; H3 carries nothing
   between videos, so "only describe the changes" phrasing is strictly a
@@ -581,7 +609,7 @@ that thin prompts render flat, and prompts under ~100 words are too sparse.
 
 ## Troubleshooting
 
-- **Instant "CUDA error: invalid argument" (`cudaErrorInvalidValue`) from H3 runs** - e.g. in `ComfyUI-MiniMax-H3-Turbo/__init__.py` (`_interp_egrid`), or even a plain tensor copy: a wedged CUDA context on that ONE ComfyUI instance, not a GPU-class problem and not H3's fault. Once a context wedges, EVERY later CUDA call in that process fails instantly with the same error while sibling instances run identical code fine. Diagnosis rule: find the FIRST CUDA error in that instance's log (`logs/comfy_<port>.log` beside the install, or `GET /internal/logs/raw`) - whatever ran there is the trigger; everything after is collateral. Both observed incidents (2026-08-14, 2026-08-17) hit the same instance and first-errored during a BiRefNet `state_dict` load (`bb.layers.*` weight copies); if it recurs, suspect that card/driver. Remedy: restart the wedged instance; meanwhile pin a healthy server (CLI `--server http://<host>:<port>`) - a wedged instance fails instantly, so it always looks idle and becomes a job magnet, making the failure rate look much worse than 1-in-N. Do NOT conclude "turbo is broken" from this symptom. Local hostnames, ports, log paths, and the restart recipe live in `agents_secret.md`.
+- **Instant "CUDA error: invalid argument" (`cudaErrorInvalidValue`) from H3 runs** - e.g. in `ComfyUI-MiniMax-H3-Turbo/__init__.py` (`_interp_egrid`), or even a plain tensor copy: a wedged CUDA context on that ONE ComfyUI instance, not a GPU-class problem and not H3's fault. Once a context wedges, EVERY later CUDA call in that process fails instantly with the same error while sibling instances run identical code fine. Diagnosis rule: find the FIRST CUDA error in that instance's log (`logs/comfy_<port>.log` beside the install, or `GET /internal/logs/raw`) - whatever ran there is the trigger; everything after is collateral. Both observed incidents (2026-08-14, 2026-08-17) hit the same instance and first-errored during a BiRefNet `state_dict` load (`bb.layers.*` weight copies); a third (2026-09-12) first-errored on a MiniMaxH3VideoVAE weight load right after an SDXL -> Z-Image -> H3 (int8 test checkpoint) sequence, so the trigger is not BiRefNet-specific; if it recurs, suspect that card/driver. Remedy: restart the wedged instance; meanwhile pin a healthy server (CLI `--server http://<host>:<port>`) - a wedged instance fails instantly, so it always looks idle and becomes a job magnet, making the failure rate look much worse than 1-in-N (2026-09-12: 6 of 6 failures in a 12-clip AI Chat film landed on the one wedged instance because it was first in the server order and always idle; the model re-emitted the clip five times before pinning another GPU). Since 2026-09-12 `PicTextToImage` captures the `execution_error` (node type + message + server) from the websocket or the `/history` status messages into `PicMain.m_lastRenderError`, logs it to `log.txt` (`ComfyUI execution error on server N: ...`), and AI Chat's stitch_video / set_video_audio "finished without producing a video file" note quotes it with a recovery hint (re-emit unchanged; pin a different GPU only if the same one fails twice). Do NOT conclude "turbo is broken" from this symptom. Local hostnames, ports, log paths, and the restart recipe live in `agents_secret.md`.
 
 ## Verification checklist for changes here
 

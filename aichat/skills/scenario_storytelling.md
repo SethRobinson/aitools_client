@@ -105,7 +105,7 @@ as a still beat:
 ```
 <short prose/dialog beat>
 <aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" width="864" height="480" prompt="<full self-contained Z-Image scene prompt>"/>
-<aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" chain="true" width="864" height="480" prompt="<the full three-field H3 document, 150-250 words (see image_to_movie): integrated_multimodal_description: [Shot 1] the whole scene re-described + actions + one camera move + ONE short prose-quoted in-scene line with the voice around it (~12 words at 5s; or an explicit no-dialog) + overall_soundscape: + non_diegetic_music:>"/>
+<aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" chain="true" width="864" height="480" prompt="<the full three-field H3 document, 150-250 words (see image_to_movie): integrated_multimodal_description: [Shot 1] the whole scene re-described + actions + one camera move + prose-quoted dialog that fills the 5s (10-13 words: one line for a lone speaker, a sequential two-line exchange when two people are on screen; silence is a last resort with people on screen) + overall_soundscape: + non_diegetic_music:>"/>
 ```
 
 Each movie starts with a `generate_image` base and then

@@ -420,9 +420,14 @@ detailed_description quoting each speaker's exact line in prose:
   the clip's whole duration. On-screen people in unscripted seconds get
   INVENTED mumbled filler speech (measured 2026-08-30: a 15s clip with ~8s
   of lines grew a nonsense line in the gap). Either write enough dialog for
-  the length, or close the scene explicitly: "He then nods silently; no
-  further dialog." Short clips (5s) with one or two lines rarely have gaps;
-  15s clips almost always need an explicit silent tail.
+  the length - 10-13 words per 5 s, 22-26 per 10 s, 32-38 per 15 s, as a
+  sequential two-line exchange when two people are on screen - or close the
+  scene explicitly: "He then nods silently; no further dialog." A 5 s clip
+  with a single 5-7 word line DOES gap (transcribed 2026-09-12: the line was
+  looped, padded with an invented line, or replaced by gibberish); 15s clips
+  almost always need an explicit silent tail. One speaker at a time (never
+  overlapping speech) and keep the speaker's mouth in frame while the line
+  plays.
 - When voice fidelity matters (real people, recurring characters), give each
   speaker a standalone audio ref via `audio=`/`audio2`/`audio3`: an `Audio #N`
   of that speaker talking (a `web_audio` fetch, a clip's exported audio, or

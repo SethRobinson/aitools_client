@@ -1,6 +1,6 @@
 ---
 id: image_to_movie
-summary: Animate a STILL image into a short video. Default to Image To Video (MiniMax H3 Turbo Cache) 5s (native audio/dialog, 8-step turbo + Spectrum cache; progress shows 16 steps - 8 real + 8 cheap replay ticks, that is normal); use the 15s preset only for explicit long clips; duration="N" (seconds) works on EVERY H3 preset for any length. "High quality" requests use the 20-step (MiniMax H3 Quality) presets; plain Image To Video (MiniMax H3) 5s is the cache-free variant. EVERY H3 prompt is the official structured multi-line DOCUMENT, not a short paragraph (H3 trained on it; thin prompts render flat): integrated_multimodal_description: ([Shot 1] style + scene + actions + dialog; start-frame prompts re-anchor the source as <Picture 1> in Shot 1), overall_soundscape: (1-4 sentences of ambience/physical sound), non_diegetic_music: (instruments/tempo, or N/A). TARGET 150-250 words for a 5s clip, 250-450 for 10-15s/multi-shot, and the document RE-DESCRIBES THE WHOLE SCENE every render - H3 carries nothing over between videos, so never write delta prompts ("same scene but..."). Dialog is plain prose with the exact words quoted and the voice described around them - she says 'We open in five minutes.' in English with a warm calm voice - NEVER <d>[English]...</d> blocks or (S1) speaker IDs: that official-API markup renders as off-screen NARRATION with a closed mouth under ComfyUI (lip-sync A/B 2026-08-31). ~2.5 spoken words per second fit; a visible person with no quoted line mouths gibberish, so write the line or state nobody speaks. Camera moves are natural sentences: motion type + amplitude + speed ("the camera pushes in with small amplitude at slow speed"). Reference To Video presets REQUIRE a photo source and use the SIX-SECTION reference document instead (subject_definitions / summary / retention_analysis / detailed_description 350-500 words / overall_soundscape / non_diegetic_music); the prompt MUST use every staged photo/audio via its <Picture N>/<Audio N> tag (define <Subject N> from them in subject_definitions) - prose alone does not bind to a photo, and the host refuses reference actions whose prompts skip a staged reference's tag. Plain Reference To Video is already turbo; Quality = 20-step; there is NO Cache reference variant - never invent preset names. A video with no source at all is generate_movie territory. A Movie #N is not an image source: use video_to_video, except one explicit current frame with movie_frame="true". Put prompt as the LAST attribute in the action tag.
+summary: Animate a STILL image into a short video. Default to Image To Video (MiniMax H3 Turbo Cache) 5s (native audio/dialog, 8-step turbo + Spectrum cache; progress shows 16 steps - 8 real + 8 cheap replay ticks, that is normal); use the 15s preset only for explicit long clips; duration="N" (seconds) works on EVERY H3 preset for any length. "High quality" requests use the 20-step (MiniMax H3 Quality) presets; plain Image To Video (MiniMax H3) 5s is the cache-free variant. EVERY H3 prompt is the official structured multi-line DOCUMENT, not a short paragraph (H3 trained on it; thin prompts render flat): integrated_multimodal_description: ([Shot 1] style + scene + actions + dialog; start-frame prompts re-anchor the source as <Picture 1> in Shot 1), overall_soundscape: (1-4 sentences of ambience/physical sound), non_diegetic_music: (instruments/tempo, or N/A). TARGET 150-250 words for a 5s clip, 250-450 for 10-15s/multi-shot, and the document RE-DESCRIBES THE WHOLE SCENE every render - H3 carries nothing over between videos, so never write delta prompts ("same scene but..."). Dialog is plain prose with the exact words quoted and the voice described around them - she says 'We open in five minutes.' in English with a warm calm voice - NEVER <d>[English]...</d> blocks or (S1) speaker IDs: that official-API markup renders as off-screen NARRATION with a closed mouth under ComfyUI (lip-sync A/B 2026-08-31). DIALOG TIMING (transcription-measured 2026-09-12): ~2.5 spoken words per second, and the quoted words must FILL the clip - 10-13 words per 5s, as one line or, with two people on screen, a two-line EXCHANGE (the most reliable shape); a lone 5-7 word line leaves a gap that H3 fills with looped or invented speech (that is the "garbage audio"). One speaker at a time (overlapping lines render as garbage), the speaker's mouth in frame while they talk, plain `says 'line' in English with a <voice> voice` phrasing. `No dialog; nobody speaks.` is unreliable with people on screen - prefer giving them words. Camera moves are natural sentences: motion type + amplitude + speed ("the camera pushes in with small amplitude at slow speed"). Reference To Video presets REQUIRE a photo source and use the SIX-SECTION reference document instead (subject_definitions / summary / retention_analysis / detailed_description 350-500 words / overall_soundscape / non_diegetic_music); the prompt MUST use every staged photo/audio via its <Picture N>/<Audio N> tag (define <Subject N> from them in subject_definitions) - prose alone does not bind to a photo, and the host refuses reference actions whose prompts skip a staged reference's tag. Plain Reference To Video is already turbo; Quality = 20-step; there is NO Cache reference variant - never invent preset names. A video with no source at all is generate_movie territory. A Movie #N is not an image source: use video_to_video, except one explicit current frame with movie_frame="true". Put prompt as the LAST attribute in the action tag.
 inputs: attachment
 autoload: true
 triggers: animate, animation, image to video, image-to-video, image to movie, image-to-movie, animate this, animate it, make this move, make it move, make a video, make a movie, make a clip, create a video, create a movie, generate a video, generate a movie, video starring, movie starring, video of, movie of, second video, second movie, reference to video, minimax, mini max, minmax, minimax h3, minmax h3, h3, hailuo, spectrum, turbo cache, spectrum cache
@@ -160,15 +160,41 @@ re-invented from scratch.
   ComfyUI's encoder that markup renders the line as off-screen NARRATION -
   correct audio, closed mouth (lip-sync A/B 2026-08-31: 4/4 `<d>` clips
   failed, 3/3 prose clips synced). NEVER "she says something" - unwritten
-  lines come out as gibberish in a random language. **~2.5 spoken words fit
-  per second** (5s = one ~12-word line; 10s = 20-25 words); BUDGET THE
-  SECONDS - dialog plus described silent action must cover the whole
-  duration or H3 invents mumbled filler in the gaps, so long clips end with
-  an explicit silent tail ("then she reads quietly; no further dialog"). If
-  nobody should talk, SAY SO: `No dialog; nobody speaks.` For deliberate
+  lines come out as gibberish in a random language. For deliberate
   narration say it in prose: `says in an off-screen voiceover '...' while
   her lips remain completely closed`. Dialog continuing across a cut is
   prose too: "her line continues seamlessly across the cut".
+- **Dialog timing - FILL the clip** (measured 2026-09-12 by transcribing
+  twelve rendered 5s clips): ~2.5 spoken words per second, and the quoted
+  words must cover nearly the whole duration. Budget **10-13 words per
+  5 s**, 22-26 per 10 s, 32-38 per 15 s. A lone 5-7 word line in a 5 s clip
+  leaves 2-3 unscripted seconds that H3 fills by itself: it loops the line
+  (`It's on the shelf! It's on the shelf! Go buy your own!...`), prepends an
+  invented line, or replaces yours with gibberish. That IS the "garbage
+  audio" - not a render bug. With two people on screen the most reliable
+  shape is a short EXCHANGE: two sequential lines of ~5-7 words, each with
+  its speaker named - `<Subject 2> points at her and says 'You cheated with
+  the dragon glitch!' in English, voice cracking with contempt. <Subject 1>
+  snaps back 'That's not cheating!'` came back word-perfect. A lone speaker
+  gets one ~12-word line. Long clips end with an explicit silent tail
+  ("then she reads quietly; no further dialog").
+- **What breaks dialog** (same measurement): (1) SIMULTANEOUS speech -
+  "both speak at once", "snaps '...' over her", overlapping voices -
+  renders as garbage; one speaker at a time, always in sequence. (2) The
+  speaker's MOUTH OUT OF FRAME while the line plays - a tight shot on hands,
+  on eyes only, a back-of-head angle: H3 lip-syncs to a visible mouth and
+  without one it loops or invents the audio; keep the talking face in frame
+  for the line, then move the camera. (3) Expression verbs standing in for
+  the speech verb (`sneering 'line'`, `protests 'line'`, `grunts 'line'`)
+  and stacked vocal-performance adjectives (`raw, incredulous`, `quavering
+  with outrage`) went with the replaced or unintelligible lines; the
+  verified pattern is a plain speech verb + the line + `in English with a
+  <pitch/pace/emotion> voice`, with the emotion shown in the face and body.
+  (4) Explicit silence is UNRELIABLE when people are on screen in a charged
+  moment: `No dialog; nobody speaks.` on a chest-to-chest standoff still
+  produced an invented line. Prefer giving on-screen people words; when a
+  beat must be silent, say their lips stay closed and keep the soundscape
+  to ambience.
 - **On-screen text** (signs, labels, titles) is spelled out verbatim in
   double quotes - inside the action attribute write them as `&quot;`
   (`a neon sign reading &quot;OPEN ALL NIGHT&quot;`; the host decodes them
@@ -269,9 +295,10 @@ non_diegetic_music: <or N/A>.
   all come from this text, so "the same scene as the last video" describes
   nothing. All base-format rules apply: shot/timestamp headers, one camera
   move per shot with amplitude + speed, prose-quoted dialog with the voice
-  described around it (never `<d>`/`(S1)` markup - narration bug),
-  second-budgeting with an explicit silent tail on long clips. Refer to
-  people as `<Subject N>` after defining them.
+  described around it (never `<d>`/`(S1)` markup - narration bug) that
+  FILLS the clip (10-13 words per 5 s; a sequential two-line exchange when
+  two people are on screen; mouth in frame), an explicit silent tail on
+  long clips. Refer to people as `<Subject N>` after defining them.
 - **Audio refs** (`audio="N"`, then `audio2`, `audio3` - Audio bubbles or
   Movies with sound; up to 3 standalone refs): each becomes an `<Audio N>`
   tag. Define it in subject_definitions bound to its speaker (`<Audio 1> is
@@ -331,8 +358,10 @@ numbers. EVERY clip's prompt is a full structured document that stands alone
 ONCE - for reference clips the `subject_definitions` + `retention_analysis`
 sections, for base clips the Shot 1 re-anchor sentences - and paste it
 VERBATIM into every clip's document, varying only the actions, dialog, and
-camera. "Same diner as before" renders a different diner. Full recipe: the
-`stitch_video` skill.
+camera. Every clip's dialog fills its 5 s (10-13 words; an exchange when
+two people are on screen) - one short line per clip is what produced the
+garbage-audio clips. "Same diner as before" renders a different diner.
+Full recipe: the `stitch_video` skill.
 
 If the cast are REAL / NAMED / anchored people, each clip is ONE reference
 action (never a Z-Image lookalike still); invented characters use the
@@ -424,8 +453,10 @@ and put the result on both actions:
   must NOT be combined with the others - the chained step inherits the prior
   step's output automatically.
 - One camera move with magnitude per shot. Two competing moves fight.
-- Every prompt covers all three audio layers: prose-quoted dialog lines
-  (never `<d>`/`(S1)` markup - it kills lip sync; or an explicit `No dialog;
-  nobody speaks.`), overall_soundscape, and non_diegetic_music (or N/A).
-  15s preset only on explicit request.
+- Every prompt covers all three audio layers: prose-quoted dialog that
+  FILLS the clip (10-13 words per 5 s, one speaker at a time, the speaker's
+  mouth in frame; never `<d>`/`(S1)` markup - it kills lip sync),
+  overall_soundscape, and non_diegetic_music (or N/A). Explicit silence is
+  a last resort when people are on screen. 15s preset only on explicit
+  request.
 - User asked to animate → just do it.

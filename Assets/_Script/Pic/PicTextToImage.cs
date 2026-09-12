@@ -871,6 +871,7 @@ public class PicTextToImage : MonoBehaviour
         if (m_scheduledEvent != null)
         {
             RTConsole.Log("ComfyUI: Running workflow "+m_scheduledEvent.workflow+" on " + finalURL + " local GPU ID " + m_gpu);
+            m_picScript.ClearLastRenderError();
 
         }
 
@@ -1224,6 +1225,10 @@ public class PicTextToImage : MonoBehaviour
                     }
                     SetStatusAdditionalMessage($"Error: {errorMsg}");
                     RTConsole.Log($"ComfyUI execution error: {errorMsg}");
+                    {
+                        string nodeType = data.HasKey("data") && data["data"].HasKey("node_type") ? data["data"]["node_type"].Value : null;
+                        m_picScript.SetLastRenderError(FormatExecutionErrorDetail(nodeType, errorMsg), m_gpu);
+                    }
                     break;
 
                 case "status":
@@ -1489,6 +1494,14 @@ public class PicTextToImage : MonoBehaviour
                         string errorMsg = "ComfyUI reports a failed render (try dragging check comfyui_json_to_send.json to it to check)";
                         RTQuickMessageManager.Get().ShowMessage(errorMsg);
                         Debug.Log(errorMsg);
+                        // The websocket may already be gone by now, so pull the real cause from the
+                        // history entry itself and remember it on the Pic (AI Chat forwards it to the model).
+                        string errorDetail = ExtractExecutionErrorDetail(statusNode);
+                        if (!string.IsNullOrEmpty(errorDetail))
+                        {
+                            RTConsole.Log("ComfyUI execution error on server " + m_gpu + ": " + errorDetail);
+                            m_picScript.SetLastRenderError(errorDetail, m_gpu);
+                        }
                         if (Config.Get().IsValidGPU(m_gpu) && m_bIsGenerating)
                         {
                             m_bIsGenerating = false;
@@ -1515,6 +1528,36 @@ public class PicTextToImage : MonoBehaviour
 
             yield return new WaitForSeconds(0.5f);
         }
+    }
+
+    // ComfyUI's /history entry lists the execution_error event under status.messages as
+    // ["execution_error", {node_id, node_type, exception_message, exception_type, traceback, ...}].
+    // Returns "<node_type>: <first line of exception_message>" or null when there is none.
+    static string ExtractExecutionErrorDetail(JSONNode statusNode)
+    {
+        if (statusNode == null || !statusNode.HasKey("messages")) return null;
+        var messages = statusNode["messages"];
+        for (int i = 0; i < messages.Count; i++)
+        {
+            var m = messages[i];
+            if (m == null || m.Count < 2 || m[0].Value != "execution_error") continue;
+            var d = m[1];
+            string msg = d.HasKey("exception_message") ? d["exception_message"].Value : null;
+            if (string.IsNullOrEmpty(msg))
+                msg = d.HasKey("exception_type") ? d["exception_type"].Value : "execution error";
+            string nodeType = d.HasKey("node_type") ? d["node_type"].Value : null;
+            return FormatExecutionErrorDetail(nodeType, msg);
+        }
+        return null;
+    }
+
+    static string FormatExecutionErrorDetail(string nodeType, string message)
+    {
+        if (message == null) message = "execution error";
+        int nl = message.IndexOf('\n');
+        if (nl > 0) message = message.Substring(0, nl);
+        message = message.Trim();
+        return string.IsNullOrEmpty(nodeType) ? message : nodeType + ": " + message;
     }
 
     private void CloseWebSocket()

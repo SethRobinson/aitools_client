@@ -272,6 +272,26 @@ public class PicMain : MonoBehaviour
     public bool m_stopAfterScript = false; // Set by @stopjob command - tells callback not to add more jobs
     public int m_requestedServerID = -1; // When >= 0, this pic will only use this specific server (waits if busy, unless m_requestedServerIsPreference)
     public bool m_requestedServerIsPreference = false; // When true, m_requestedServerID is a SOFT hint: if that server is busy/unavailable, fall back to any free GPU instead of waiting. Used by AI Chat's gpu="N" hint (Adventure leaves this false for a hard per-server pin).
+
+    // Last ComfyUI execution error of this Pic's most recent workflow run ("<node type>: <exception message>")
+    // and the GPU it ran on. PicTextToImage captures it from the websocket execution_error event or from the
+    // /history status messages, and clears it when the next workflow is submitted. AI Chat forwards it to the
+    // model when a stitch_video / set_video_audio source finishes without a clip, so the model sees the real
+    // cause (e.g. a wedged CUDA context on one server) instead of guessing at prompt/size problems.
+    public string m_lastRenderError = null;
+    public int m_lastRenderErrorGPU = -1;
+
+    public void SetLastRenderError(string error, int gpu)
+    {
+        m_lastRenderError = error;
+        m_lastRenderErrorGPU = gpu;
+    }
+
+    public void ClearLastRenderError()
+    {
+        m_lastRenderError = null;
+        m_lastRenderErrorGPU = -1;
+    }
     public bool m_skipIgnoredServers = false; // When true, GetFreeGPU skips servers with _ignoredByExtraGenerators
     public string m_gpuNameMatchFilter = ""; // When non-empty AND m_requestedServerID < 0 AND m_ownedServerID < 0, restrict free-GPU lookup to servers whose _name contains this substring (case-insensitive)
     public bool m_autoPicOverridePreApplied = false; // When true, skip per-server AutoPic override (already applied at creation)

@@ -133,7 +133,8 @@ CHEAT SHEET (read this first, the long version is below):
   document that stands alone (clips render independently - "same diner as
   before" renders a different diner): write the shared
   subject_definitions/setting/style block ONCE and paste it VERBATIM into
-  every clip's document, varying only actions, quoted dialog, and camera.
+  every clip's document, varying only actions, quoted dialog (10-13 words
+  per 5 s clip - an exchange when two people are on screen), and camera.
   An explicit count/length overrides the idle-GPU pacing rule. Existing
   clips on a later turn: chat_images="4,6,8" / "3-12" / "all". Detail:
   stitch_video skill.
@@ -369,11 +370,16 @@ Personality and style:
   murmurs "I told him I was done" in English with a soft New York accent.
   NEVER as <d>[English]...</d> blocks or (S1) speaker IDs - that markup
   renders the line as off-screen narration with a closed mouth (lip-sync
-  A/B 2026-08-31). ~2.5 spoken words fit per second (one ~12-word line at
-  5s). H3 generates real audio; a visible person with no quoted line mouths
-  gibberish. Skip ONLY when the scene has no plausible speaker, and then
-  SAY so ("No dialog; nobody speaks."). Never "she says something" - write
-  the EXACT words.
+  A/B 2026-08-31). ~2.5 spoken words per second, and the words must FILL
+  the clip: 10-13 quoted words per 5 s - one line for a lone speaker, a
+  sequential two-line exchange (one speaker at a time, never overlapping)
+  when two people are on screen, the speaker's mouth in frame. A lone 5-7
+  word line leaves seconds H3 fills with looped or invented speech
+  (transcription-measured 2026-09-12). H3 generates real audio; a visible
+  person with no quoted line mouths gibberish, and explicit silence is
+  unreliable with people on screen - skip dialog only when nobody is on
+  screen, and then SAY so ("No dialog; nobody speaks."). Never "she says
+  something" - write the EXACT words.
 
 Composition skills (posters, books, storyboards, comics, magazine
 covers, info graphics):

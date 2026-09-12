@@ -9276,7 +9276,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                     notBusySince = Time.realtimeSinceStartup;
                 else if (Time.realtimeSinceStartup - notBusySince >= StitchNoClipGraceSeconds)
                 {
-                    failure = $"{DescribeMovieList(pending)} finished without producing a video file (the render probably failed).";
+                    failure = DescribeFailedRenders(pending);
                     break;
                 }
             }
@@ -13446,7 +13446,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                     notBusySince = Time.realtimeSinceStartup;
                 else if (Time.realtimeSinceStartup - notBusySince >= StitchNoClipGraceSeconds)
                 {
-                    failure = $"{DescribeMovieList(pending)} finished without producing a video file (the render probably failed).";
+                    failure = DescribeFailedRenders(pending);
                     break;
                 }
             }
@@ -13631,6 +13631,42 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         float elapsed = Time.unscaledTime - _stitchWaitStartTime;
         _lastStitchStatusText = $"{StreamSpinnerFrames[_stitchSpinnerStep]} {label}: waiting for {pendingClips} clip{(pendingClips == 1 ? "" : "s")} to render   {elapsed:F0}s";
         _statusText.text = _lastStitchStatusText;
+    }
+
+    // Failure text for stitch_video / set_video_audio sources that ended with no clip file.
+    // Appends the ComfyUI execution error PicTextToImage captured for each Pic (node type +
+    // message + the server it ran on) and a recovery hint, so the model can tell a server
+    // fault from a prompt problem instead of guessing (observed 2026-09-12: with only
+    // "probably failed" to go on, the model dropped width/height and pinned GPUs at random
+    // over four retry turns while one wedged server kept eating the job).
+    private string DescribeFailedRenders(List<int> pending)
+    {
+        var sb = new StringBuilder();
+        sb.Append(DescribeMovieList(pending)).Append(" finished without producing a video file (the render failed).");
+        bool anyDetail = false;
+        foreach (int idx in pending)
+        {
+            var pic = GetChatImagePic(idx);
+            if (pic == null || string.IsNullOrEmpty(pic.m_lastRenderError)) continue;
+            var record = GetChatImageRecord(idx);
+            string anchor = (record != null && !string.IsNullOrEmpty(record.anchorName)) ? $" (anchor \"{record.anchorName}\")" : "";
+            string server = "the server";
+            if (pic.m_lastRenderErrorGPU >= 0)
+            {
+                server = $"GPU {pic.m_lastRenderErrorGPU}";
+                if (Config.Get().IsValidGPU(pic.m_lastRenderErrorGPU))
+                    server += $" ({Config.Get().GetServerAddressByGPUID(pic.m_lastRenderErrorGPU)})";
+            }
+            sb.Append($" Movie #{idx}{anchor} failed on {server} with: {pic.m_lastRenderError}.");
+            anyDetail = true;
+        }
+        if (anyDetail)
+        {
+            sb.Append(" A ComfyUI execution error is a server-side fault, not a prompt, size, or reference problem:" +
+                      " re-emit the SAME action(s) unchanged (identical prompt, width/height, duration, anchor) plus the stitch/audio step." +
+                      " If a retry fails on the same GPU again, add gpu=\"N\" naming a DIFFERENT idle GPU from CURRENT STATE - that is the one case where pinning a GPU is right.");
+        }
+        return sb.ToString();
     }
 
     private static string DescribeMovieList(List<int> indices)
