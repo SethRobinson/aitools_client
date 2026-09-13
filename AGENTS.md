@@ -34,10 +34,12 @@ Scope policy: this file holds cross-cutting rules, workflows, and gotchas that m
 ## Git
 
 - Never add OpenAI/Codex/Claude etc as a co-author on git commits.
-- NEVER `git commit` unless explicitly told to commit.
-- NEVER `git push` unless explicitly told to push. "Commit" means commit
-  locally only; committing is not permission to push.
+- Committing locally is allowed and expected (Seth, 2026-09-13): commit each self-contained change once it compiles, one logical change per commit with a descriptive message, instead of one big mixed commit that is hard to follow. Never commit secrets or the ignored local files (see Security).
+- NEVER `git push` (and do not `git pull`) unless explicitly told to. "Commit" means commit
+  locally only; committing is never permission to push.
 
+
+## Keeping this file current
 
 Update this file when a change touches any of:
 - Build/run commands, build scripts, or what they copy/produce (the "Essential Commands" section).
@@ -69,7 +71,7 @@ Use the current date for README date strings. The download zip size changes per 
 
 ## Hard Rules
 
-- Never automatically commit, push, or pull from git without explicit user directions.
+- Never push to or pull from git without explicit user directions. Local commits are allowed and expected (see "Git").
 - Do not read or edit files starting with `test_`, `Test_`, or `TEST_` unless the user explicitly names them or asks to work with test files.
 - Treat ignored config and debug files as local/private unless the user explicitly asks for them. This includes `config.txt`, `config_llm.txt`, `config_preferences.txt`, `log.txt`, generated `*_json_*` files, `comfyui_workflow_to_send_api.json`, and cached ComfyUI API files.
 - Do not revert unrelated work. This repo may already contain user edits in many files.
