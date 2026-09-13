@@ -2394,7 +2394,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                     ? $"inspect_image: LLM #{targetId} failed for {req.sourceLabel}: {failureDetail}"
                     : $"inspect_image: LLM #{targetId} returned no content for {req.sourceLabel}.");
             CompleteInspectImageJob(job, instanceMgr, message, includeInLLMRecap: true);
-        }, "InspectImage", "inspect_image_sent.json");
+        }, "InspectImage", "inspect_image_sent.json", replicaIndex: replicaIndex);
 
         RecomputeSendInteractable();
         UpdateInspectImageStatus(force: true);
@@ -5234,7 +5234,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // legitimately run long, and thinking models also
         // burn part of the budget inside <think> before any visible summary appears.
         SkillActionExecutor.DispatchOneShot(this, inst, lines, onDone, "CompactSummary", "compact_summary_sent.json",
-            maxNewTokens: LLMRequestProfile.NoExplicitOutputTokenCap, onStreamChunk: onStreamChunk);
+            maxNewTokens: LLMRequestProfile.NoExplicitOutputTokenCap, onStreamChunk: onStreamChunk, replicaIndex: capReplica);
     }
 
     private IEnumerator CompactSummaryWatchdog(float timeoutSeconds, Func<bool> isDone, Action release)
@@ -7839,7 +7839,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             finally { safeResult(result); }
         };
 
-        SkillActionExecutor.DispatchOneShot(this, inst, lines, onDone, jobName, debugFileName);
+        SkillActionExecutor.DispatchOneShot(this, inst, lines, onDone, jobName, debugFileName, replicaIndex: capturedReplicaIndex);
 
         // Watchdog: if the request never returns (hung local model), force-release
         // the LLM slot after CAPTION_TIMEOUT_SECONDS so the user isn't stuck.

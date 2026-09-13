@@ -85,7 +85,7 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
         }
         else
         {
-            StartCoroutine(GetRequest(jsonRequest, myCallback, db, serverAddress, apiCommandURL, sentJsonFilename, debugJobSize));
+            StartCoroutine(GetRequest(jsonRequest, myCallback, db, serverAddress, apiCommandURL, sentJsonFilename, debugJobSize, apiKey));
         }
         return true;
     }
@@ -645,7 +645,7 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
         }
     }
     IEnumerator GetRequest(string json, Action<RTDB, JSONObject, string> myCallback, RTDB db, string serverAddress, string apiCommandURL,
-        string sentJsonFilename, LLMDebugLog.JobSize debugJobSize)
+        string sentJsonFilename, LLMDebugLog.JobSize debugJobSize, string apiKey = "none")
     {
 
         LLMDebugLog.LogRequest(json, debugJobSize);
@@ -658,6 +658,11 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
             byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
             _currentRequest.uploadHandler = (UploadHandler)new UploadHandlerRaw(bodyRaw);
             _currentRequest.SetRequestHeader("Content-Type", "application/json");
+            // The streaming path always sent the instance key; this one never did, so every
+            // non-streaming sidecar (captions, summaries, delegate, applystyle) got 401 from a
+            // llama.cpp launched with --api-key while the main chat turn worked.
+            if (!string.IsNullOrEmpty(apiKey) && apiKey != "none")
+                _currentRequest.SetRequestHeader("Authorization", "Bearer " + apiKey);
 
          
             yield return _currentRequest.SendWebRequest();

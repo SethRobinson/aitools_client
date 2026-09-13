@@ -3722,7 +3722,7 @@ namespace AITools.AIChat.Skills
                     $"Result from delegated {callerLabel} ({inst.providerType} {inst.settings.selectedModel}):\n{clean}");
             };
 
-            DispatchOneShot(runner, inst, lines, onDone, callerLabel);
+            DispatchOneShot(runner, inst, lines, onDone, callerLabel, replicaIndex: capturedReplicaIndex);
         }
 
         /// <summary>
@@ -3945,7 +3945,7 @@ namespace AITools.AIChat.Skills
             };
 
             _host?.AddLocalInfoBubble($"(/applystyle: restyling the render prompt via small LLM #{capturedTargetId}...)");
-            DispatchOneShot(runner, inst, lines, onDone, callerLabel);
+            DispatchOneShot(runner, inst, lines, onDone, callerLabel, replicaIndex: capturedReplicaIndex);
             return true;
         }
 
@@ -3995,7 +3995,8 @@ namespace AITools.AIChat.Skills
             string callerLabel,
             string sentJsonFilename = "text_completion_sent.json",
             int maxNewTokens = LLMRequestProfile.NoExplicitOutputTokenCap,
-            Action<string> onStreamChunk = null)
+            Action<string> onStreamChunk = null,
+            int replicaIndex = 0)
         {
             var settings = inst.settings;
             var db = new RTDB();
@@ -4021,7 +4022,7 @@ namespace AITools.AIChat.Skills
                 case LLMProvider.Ollama:
                 {
                     var mgr = runner.gameObject.AddComponent<TexGenWebUITextCompletionManager>();
-                    string serverAddress = settings.endpoint ?? "";
+                    string serverAddress = LLMInstanceManager.ApplyReplicaPortOffset(settings.endpoint ?? "", replicaIndex);
                     string suggestedEndpoint;
                     string json = mgr.BuildForInstructJSON(lines, out suggestedEndpoint, maxNewTokens, 0.4f, "chat-instruct", stream, null, true, false);
                     mgr.SpawnChatCompleteRequest(json, (rtdb, jn, str) =>
@@ -4034,7 +4035,7 @@ namespace AITools.AIChat.Skills
                 case LLMProvider.LlamaCpp:
                 {
                     var mgr = runner.gameObject.AddComponent<TexGenWebUITextCompletionManager>();
-                    string serverAddress = settings.endpoint ?? "";
+                    string serverAddress = LLMInstanceManager.ApplyReplicaPortOffset(settings.endpoint ?? "", replicaIndex);
                     string suggestedEndpoint;
                     var llmParms = BuildLLMParmsForInstance(inst);
                     string json = mgr.BuildForInstructJSON(lines, out suggestedEndpoint, maxNewTokens, 0.4f, "chat-instruct", stream, llmParms, false, true);
@@ -4048,7 +4049,7 @@ namespace AITools.AIChat.Skills
                 case LLMProvider.OpenAICompatible:
                 {
                     var mgr = runner.gameObject.AddComponent<OpenAITextCompletionManager>();
-                    string serverAddress = settings.endpoint ?? "";
+                    string serverAddress = LLMInstanceManager.ApplyReplicaPortOffset(settings.endpoint ?? "", replicaIndex);
                     string endpoint = LLMModelNotFound.BuildChatCompletionsUrl(serverAddress);
                     string model = settings.selectedModel ?? "";
                     bool isDeepSeek = LLMRequestProfile.IsDeepSeekModel(model);
