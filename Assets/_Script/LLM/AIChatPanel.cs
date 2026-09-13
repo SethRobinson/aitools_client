@@ -2432,8 +2432,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         RecomputeSendInteractable();
         ProcessInspectImageQueue();
         UpdateInspectImageStatus(force: true);
-        TryScheduleInspectAutoResume();
-        TryScheduleSkillLoadAutoResume();
+        // All three schedulers: a model "continue" that TryScheduleGenericContinue declined
+        // while this inspection counted as pending sidecar work was otherwise never re-poked
+        // (Stop stayed enabled, the continue never fired).
+        PokeAutoResumeSchedulers();
 
         if (_autoContinueToggle != null && _autoContinueToggle.isOn
             && !_inspectAutoResumePending && !_skillLoadAutoResumePending
@@ -2717,7 +2719,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     {
         if (_sendButton == null) return;
         bool sidecarPending = HasPendingSidecarWork();
-        _sendButton.interactable = !_isStreaming && !_waitingForForcedMainLLM && !sidecarPending;
+        _sendButton.interactable = !_isStreaming && !_waitingForForcedMainLLM && !sidecarPending && !_compactSummaryInFlight;
         if (_stopButton != null)
             _stopButton.interactable = ShouldStopBeInteractable();
     }
@@ -2735,10 +2737,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         return _isStreaming
             || _waitingForForcedMainLLM
             || CountPendingInspectImageJobs() > 0
+            || HasInspectAutoResumePendingForCurrentTurn()
             || HasSkillLoadAutoResumePendingForCurrentTurn()
             || HasGenericContinuePendingForCurrentTurn()
             || HasPendingWebWork()
-            || HasPendingAudioGeneration();
+            || HasPendingAudioGeneration()
+            || _compactSummaryInFlight
+            || _stitchWaitCount > 0;
     }
 
     private void UpdateAttachmentCaptionStatus(bool force = false)
@@ -4612,19 +4617,38 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private bool OnStopClicked()
     {
         bool inspectPending = CountPendingInspectImageJobs() > 0;
+        bool inspectResumePending = HasInspectAutoResumePendingForCurrentTurn();
         bool skillResumePending = HasSkillLoadAutoResumePendingForCurrentTurn();
         bool genericContinuePending = HasGenericContinuePendingForCurrentTurn();
         bool forcedWaitPending = _waitingForForcedMainLLM;
         bool webPending = HasPendingWebWork();
         bool audioPending = HasPendingAudioGeneration();
-        if (!_isStreaming && !inspectPending && !skillResumePending && !genericContinuePending && !forcedWaitPending && !webPending && !audioPending) return false;
+        bool compactPending = _compactSummaryInFlight;
+        bool stitchPending = _stitchWaitCount > 0;
+        if (!_isStreaming && !inspectPending && !inspectResumePending && !skillResumePending && !genericContinuePending
+            && !forcedWaitPending && !webPending && !audioPending && !compactPending && !stitchPending) return false;
         // Stop fully ends auto-repeat: uncheck the box (its handler also zeroes the
         // counter) so it doesn't quietly resume on the next reply.
         _autoContinueRemaining = 0;
         if (_autoContinueToggle != null) _autoContinueToggle.isOn = false;
         CancelSkillLoadAutoResume();
         CancelGenericContinue();
+        CancelInspectAutoResume();
         _consecutiveSelfContinues = 0;
+
+        if (compactPending)
+        {
+            // Drops the summary (the in-flight request's result is ignored when it lands) and
+            // frees the LLM slot. Before this the only way out of a slow compact was Clear,
+            // for up to thirty minutes.
+            _compactSummaryCancel?.Invoke();
+            AddSystemMessage("Compact cancelled.");
+        }
+        if (stitchPending)
+        {
+            _stitchCancelEpoch++;
+            AddSystemMessage("stitch_video: the wait for the source clips was cancelled.");
+        }
 
         if (inspectPending)
             CancelAllInspectImageJobs(showBubble: true);
@@ -4648,9 +4672,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             // next epoch check, and ResumePumpAfterDeferredComplete would then run the REST of
             // the reply's queued actions (the render that was waiting on the fetch). Stop means
             // the whole reply, so clear the queue now, before that callback lands.
-            if (webPending || audioPending)
+            if (webPending || audioPending || stitchPending)
                 ResetPerTurnExecutionState();
-            SetBusyUI(false, inspectPending ? "Stopped inspection" : (forcedWaitPending ? "Stopped waiting" : (webPending ? "Stopped web fetch" : (audioPending ? "Stopped audio generation" : "Stopped"))));
+            SetBusyUI(false, compactPending ? "Stopped compact" : stitchPending ? "Stopped stitch wait" : inspectPending ? "Stopped inspection" : (forcedWaitPending ? "Stopped waiting" : (webPending ? "Stopped web fetch" : (audioPending ? "Stopped audio generation" : "Stopped"))));
             return true;
         }
 
@@ -7278,6 +7302,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             CancelGenericContinue();
         }
         else if (!explicitResumePendingForTurn && _actionExecutor != null && _actionExecutor.TurnHadOnlyPreparatoryActions)
+            // An inspect resume whose vision result landed while the reply was still streaming
+            // is not covered by CancelAllInspectImageJobs (no job pending any more); left alone,
+            // the bottom of this method scheduled it and a synthetic continue fired right after
+            // Stop or an LLM error.
+            CancelInspectAutoResume();
         {
             // Unfinished-plan safety net: the reply fetched/extracted/cut media ("First, let me
             // grab a frame, then generate the video...") and ended without the render it
@@ -7741,6 +7770,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             try { onResult?.Invoke(r); } catch { }
         };
 
+            // Same re-poke for captions (attachments, video, web): next frame, so the caller's
+            // pending-caption bookkeeping has settled before the schedulers look at it.
+            try { StartCoroutine(PokeAutoResumeSchedulersNextFrame()); } catch { }
         if (png == null || png.Length == 0) { job.completed = true; safeResult(default); return job; }
 
         var instanceMgr = LLMInstanceManager.Get();
@@ -9131,7 +9163,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             {
                 FinishVideoImport();
                 host.AddSystemInjectionAndBubble($"{skill}: ref_voice #{refIdx} has no sound file to clone from (use an Audio #N or a Movie with audio).");
-                host.RequestContinueTurn();
+                if (turnEpoch == _chatTurnEpoch) host.RequestContinueTurn();
                 onDone?.Invoke(false);
                 yield break;
             }
@@ -9143,7 +9175,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             {
                 FinishVideoImport();
                 host.AddSystemInjectionAndBubble($"{skill}: could not extract the voice sample from #{refIdx}: {(cut != null ? cut.Error : "unknown error")}");
-                host.RequestContinueTurn();
+                if (turnEpoch == _chatTurnEpoch) host.RequestContinueTurn();
                 onDone?.Invoke(false);
                 yield break;
             }
@@ -9154,7 +9186,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             {
                 FinishVideoImport();
                 host.AddSystemInjectionAndBubble($"{skill}: the voice sample from #{refIdx} came out empty.");
-                host.RequestContinueTurn();
+                if (turnEpoch == _chatTurnEpoch) host.RequestContinueTurn();
                 onDone?.Invoke(false);
                 yield break;
             }
@@ -9180,7 +9212,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             string err = result != null ? result.Error : "unknown error";
             AIChatLog.Note(skill, "failed: " + err);
             host.AddSystemInjectionAndBubble($"{skill} failed: {err}");
-            host.RequestContinueTurn();
+            if (turnEpoch == _chatTurnEpoch) host.RequestContinueTurn();
             onDone?.Invoke(false);
             yield break;
         }
@@ -9193,7 +9225,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         {
             FinishVideoImport();
             host.AddSystemInjectionAndBubble($"{skill}: the gateway's file could not be read as audio: {probeError ?? "no audio stream"} ({result.OutputPath})");
-            host.RequestContinueTurn();
+            if (turnEpoch == _chatTurnEpoch) host.RequestContinueTurn();
             onDone?.Invoke(false);
             yield break;
         }
@@ -9229,7 +9261,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         AddSystemMessage(summary);
         AIChatLog.Note(skill, summary);
         if (action != null && action.Resume)
-            host.RequestContinueTurn();
+            if (turnEpoch == _chatTurnEpoch) host.RequestContinueTurn();
         FinishVideoImport();
         onDone?.Invoke(true);
     }
@@ -9259,10 +9291,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         BeginStitchWait();
         float waitStart = Time.realtimeSinceStartup;
+        int stitchCancelEpoch = _stitchCancelEpoch;
         float notBusySince = -1f;
         while (failure == null)
         {
-            if (importEpoch != _videoImportEpoch)
+            if (importEpoch != _videoImportEpoch || stitchCancelEpoch != _stitchCancelEpoch)
             {
                 EndStitchWait();
                 onDone?.Invoke(false);
@@ -9304,7 +9337,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         {
             AIChatLog.Note("set_video_audio", "failed: " + failure);
             host.AddSystemInjectionAndBubble("set_video_audio could not run: " + failure);
-            host.RequestContinueTurn();
+            if (turnEpoch == _chatTurnEpoch) host.RequestContinueTurn();
             onDone?.Invoke(false);
             yield break;
         }
@@ -9319,7 +9352,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         {
             FinishVideoImport();
             host.AddSystemInjectionAndBubble($"set_video_audio: could not find the files behind Movie #{videoIdx} / #{audioIdx}.");
-            host.RequestContinueTurn();
+            if (turnEpoch == _chatTurnEpoch) host.RequestContinueTurn();
             onDone?.Invoke(false);
             yield break;
         }
@@ -9332,7 +9365,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         {
             FinishVideoImport();
             host.AddSystemInjectionAndBubble($"set_video_audio could not inspect Movie #{videoIdx}: {videoError ?? "no video stream"}");
-            host.RequestContinueTurn();
+            if (turnEpoch == _chatTurnEpoch) host.RequestContinueTurn();
             onDone?.Invoke(false);
             yield break;
         }
@@ -9345,7 +9378,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         {
             FinishVideoImport();
             host.AddSystemInjectionAndBubble($"set_video_audio: #{audioIdx} has no audio stream ({audioError ?? "silent"}).");
-            host.RequestContinueTurn();
+            if (turnEpoch == _chatTurnEpoch) host.RequestContinueTurn();
             onDone?.Invoke(false);
             yield break;
         }
@@ -9366,7 +9399,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             string err = result != null ? result.Error : "unknown error";
             AIChatLog.Note("set_video_audio", "ffmpeg failed: " + err);
             host.AddSystemInjectionAndBubble($"set_video_audio failed on Movie #{videoIdx}: {err}");
-            host.RequestContinueTurn();
+            if (turnEpoch == _chatTurnEpoch) host.RequestContinueTurn();
             onDone?.Invoke(false);
             yield break;
         }
@@ -9416,7 +9449,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         AddSystemMessage(summary);
         AIChatLog.Note("set_video_audio", summary + "\n" + (result.Command ?? ""));
         if (action != null && action.Resume)
-            host.RequestContinueTurn();
+            if (turnEpoch == _chatTurnEpoch) host.RequestContinueTurn();
         FinishVideoImport();
         onDone?.Invoke(true);
     }
@@ -9502,6 +9535,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     private void CancelAllWebFetches(bool showBubble)
     {
+    private IEnumerator PokeAutoResumeSchedulersNextFrame()
+    {
+        yield return null;
+        PokeAutoResumeSchedulers();
+    }
+
         bool hadWork = HasPendingWebWork();
         _webFetchEpoch++;
         for (int i = 0; i < _webDownloadHandles.Count; i++)
@@ -12545,6 +12584,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (HasSkillLoadAutoResumePendingForCurrentTurn()) return false;
         if (_actionExecutor != null && !_actionExecutor.IsIdle) return false;
         if (_chatImagePics != null)
+        if (HasGenericContinuePendingForCurrentTurn()) return false;
         {
             for (int i = 0; i < _chatImagePics.Count; i++)
             {
@@ -13429,6 +13469,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         BeginStitchWait();
         float waitStart = Time.realtimeSinceStartup;
+    private int _stitchCancelEpoch = 0; // bumped by Stop: parked stitch_video / set_video_audio source waits exit on their next poll
         float notBusySince = -1f;
         while (failure == null)
         {
@@ -13460,6 +13501,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                     notBusySince = Time.realtimeSinceStartup;
                 else if (Time.realtimeSinceStartup - notBusySince >= StitchNoClipGraceSeconds)
                 {
+        int stitchCancelEpoch = _stitchCancelEpoch;
                     failure = DescribeFailedRenders(pending);
                     break;
                 }
@@ -13474,7 +13516,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         {
             AIChatLog.Note("stitch_video", "failed: " + failure);
             host.AddSystemInjectionAndBubble("stitch_video could not run: " + failure);
-            host.RequestContinueTurn();
+            if (turnEpoch == _chatTurnEpoch) host.RequestContinueTurn();
             onDone?.Invoke(false);
             yield break;
         }
@@ -13491,7 +13533,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             string error = null;
             yield return FfmpegTool.ProbeVideo(path, (i, e) => { info = i; error = e; });
 
-            if (importEpoch != _videoImportEpoch)
+            if (importEpoch != _videoImportEpoch || stitchCancelEpoch != _stitchCancelEpoch)
             {
                 onDone?.Invoke(false);
                 yield break;
@@ -13500,7 +13542,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             {
                 FinishVideoImport();
                 host.AddSystemInjectionAndBubble($"stitch_video could not inspect Movie #{idx}: {error ?? "no video stream"}");
-                host.RequestContinueTurn();
+                if (turnEpoch == _chatTurnEpoch) host.RequestContinueTurn();
                 onDone?.Invoke(false);
                 yield break;
             }
@@ -13523,7 +13565,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             string err = result != null ? result.Error : "unknown error";
             AIChatLog.Note("stitch_video", "ffmpeg failed: " + err);
             host.AddSystemInjectionAndBubble($"stitch_video failed while joining {DescribeMovieList(sources)}: {err}");
-            host.RequestContinueTurn();
+            if (turnEpoch == _chatTurnEpoch) host.RequestContinueTurn();
             onDone?.Invoke(false);
             yield break;
         }
@@ -13557,7 +13599,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         AddSystemMessage(summary);
         AIChatLog.Note("stitch_video", summary + "\n" + (result.Command ?? ""));
         if (action != null && action.Resume)
-            host.RequestContinueTurn();
+            if (turnEpoch == _chatTurnEpoch) host.RequestContinueTurn();
         FinishVideoImport();
         onDone?.Invoke(true);
     }
