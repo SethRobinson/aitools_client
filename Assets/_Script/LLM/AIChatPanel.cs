@@ -3379,8 +3379,22 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     /// </summary>
     private static void HookEditingTo(TMP_InputField input, GTPChatLine interaction)
     {
+        // Text the field held when it last gained focus. TMP fires onEndEdit on EVERY
+        // deactivation (a plain click in, then a click elsewhere), and the round trip below
+        // (markdown -> TMP tags -> strip tags) is lossy for bold / lists / headings, so
+        // comparing the stripped display text against the raw markdown reported "edited"
+        // for any formatted bubble: its history line was rewritten with marker text in
+        // place of the tool-call XML and its prompt cache thrown away, on a mere click.
+        // Only a field whose text actually changed while focused counts as an edit.
+        string textAtFocus = null;
+        input.onSelect.AddListener(_ => textAtFocus = input.text);
         input.onEndEdit.AddListener(text =>
         {
+            bool unchangedSinceFocus = textAtFocus != null && string.Equals(text, textAtFocus, StringComparison.Ordinal);
+            textAtFocus = null;
+            if (unchangedSinceFocus)
+                return;
+
             // Reverse the display-only escapes ConvertMarkdownToTMP applied to the
             // bubble text (fullwidth '＜' / '＞' substitution). Without this, when
             // the user edits an assistant bubble - or even when the bubble loses

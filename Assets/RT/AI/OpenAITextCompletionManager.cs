@@ -222,6 +222,16 @@ public class OpenAITextCompletionManager : MonoBehaviour
             line = Regex.Replace(line, @"<link=[^>]*>", "", RegexOptions.IgnoreCase);
             line = Regex.Replace(line, @"</link>", "", RegexOptions.IgnoreCase);
             line = Regex.Replace(line, @"</?u>", "", RegexOptions.IgnoreCase);
+
+            // Heading / inline-code styling from AIChatPanel.ConvertMarkdownToTMP (<size=120%>,
+            // <mark=#...>, <font="...">); a genuine edit of such a bubble used to write these
+            // tags into the LLM history.
+            line = Regex.Replace(line, @"<size=[^>]*>", "", RegexOptions.IgnoreCase);
+            line = Regex.Replace(line, @"</size>", "", RegexOptions.IgnoreCase);
+            line = Regex.Replace(line, @"<mark=[^>]*>", "", RegexOptions.IgnoreCase);
+            line = Regex.Replace(line, @"</mark>", "", RegexOptions.IgnoreCase);
+            line = Regex.Replace(line, @"<font=[^>]*>", "", RegexOptions.IgnoreCase);
+            line = Regex.Replace(line, @"</font>", "", RegexOptions.IgnoreCase);
         }
         catch
         {
