@@ -60,8 +60,9 @@ public class PicTextToImage : MonoBehaviour
             }
             else
             {
-                // If the object is being destroyed, use immediate cancellation
-                CancelRenderImmediate();
+                // The object is inactive / being destroyed: a coroutine started on it would die
+                // at its first yield, so hand the requests to a surviving runner.
+                CancelRenderDetached();
             }
         }
     }
@@ -103,7 +104,7 @@ public class PicTextToImage : MonoBehaviour
 
         if (!string.IsNullOrEmpty(promptID))
         {
-            string json = JsonUtility.ToJson(new { delete = new[] { promptID } });
+            string json = BuildQueueDeleteJson(promptID);
             using (var queueRequest = UnityWebRequest.PostWwwForm(url + "/queue", "POST"))
             {
                 byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
@@ -115,55 +116,40 @@ public class PicTextToImage : MonoBehaviour
         }
     }
 
-    private void CancelRenderImmediate()
+    // Cancel for a Pic that is inactive or being destroyed. The old CancelRenderImmediate
+    // disposed each UnityWebRequest right after SendWebRequest() (nothing left the building)
+    // and never closed the websocket, leaking the ClientWebSocket, its pending ReceiveAsync
+    // and the CancellationTokenSource until finalization. Close the socket here and let a
+    // surviving runner (GameLogic) fire /interrupt and the queue delete.
+    private void CancelRenderDetached()
     {
         if (!m_bIsGenerating || m_gpu == -1)
             return;
 
-        //is gpu valid?
-        if (Config.Get().IsValidGPU(m_gpu))
-        {
+        string url = null;
+        if (Config.Get() != null && Config.Get().IsValidGPU(m_gpu))
+            url = Config.Get().GetGPUInfo(m_gpu).remoteURL;
+        string promptID = m_comfyUIPromptID;
 
-            var gpuInfo = Config.Get().GetGPUInfo(m_gpu);
-            string url = gpuInfo.remoteURL;
-
-            // Send interrupt request synchronously
-            using (var interruptRequest = new UnityWebRequest(url + "/interrupt", "POST"))
-            {
-                Config.Get().ApplyComfyAuth(interruptRequest);
-                interruptRequest.SendWebRequest();
-            }
-
-            // If we have a prompt ID, try to remove it from queue
-            if (!string.IsNullOrEmpty(m_comfyUIPromptID))
-            {
-                string json = JsonUtility.ToJson(new { delete = new[] { m_comfyUIPromptID } });
-
-                using (var queueRequest = UnityWebRequest.PostWwwForm(url + "/queue", "POST"))
-                {
-                    byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
-                    queueRequest.uploadHandler = new UploadHandlerRaw(bodyRaw);
-                    queueRequest.SetRequestHeader("Content-Type", "application/json");
-                    Config.Get().ApplyComfyAuth(queueRequest);
-                    queueRequest.SendWebRequest();
-                }
-            }
-        }
-
-
-        // Close the websocket connection if it exists
         CloseWebSocket();
-
-        // Clean up state
-        if (Config.Get().IsValidGPU(m_gpu))
-        {
+        if (Config.Get() != null && Config.Get().IsValidGPU(m_gpu))
             Config.Get().SetGPUBusy(m_gpu, false);
-        }
-
         m_bIsGenerating = false;
-        m_picScript.SetStatusMessage("Cancelled");
         m_comfyUIPromptID = null;
         m_scheduledEvent = null;
+
+        var runner = GameLogic.Get();
+        if (!string.IsNullOrEmpty(url) && runner != null)
+            runner.StartCoroutine(SendComfyCancelRequests(url, promptID));
+    }
+
+    // POST /queue {"delete": ["<id>"]} removes a PENDING prompt from the server queue.
+    // JsonUtility.ToJson on an anonymous type serialized as "{}", so a Stop on a queued
+    // render never removed it: ComfyUI rendered it anyway while the app already treated the
+    // server as free.
+    static string BuildQueueDeleteJson(string promptID)
+    {
+        return "{\"delete\":[" + new JSONString(promptID ?? "").ToString() + "]}";
     }
 
 
@@ -254,8 +240,11 @@ public class PicTextToImage : MonoBehaviour
     {
         if (m_bIsGenerating)
         {
-            SetForceFinish(true);
-            Config.Get().SetGPUBusy(m_gpu, false);
+            // Never StartCoroutine from here: Unity drops coroutines started on an object that
+            // is being destroyed, which is how the websocket used to leak and only /interrupt
+            // ever reached the server.
+            try { m_picScript?.ClearRenderingCallbacks(); } catch { }
+            CancelRenderDetached();
         }
     }
 
@@ -1833,7 +1822,7 @@ public class PicTextToImage : MonoBehaviour
         // If we have a prompt ID, remove it from queue
         if (!string.IsNullOrEmpty(m_comfyUIPromptID))
         {
-            string json = JsonUtility.ToJson(new { delete = new[] { m_comfyUIPromptID } });
+            string json = BuildQueueDeleteJson(m_comfyUIPromptID);
 
             using (var queueRequest = UnityWebRequest.PostWwwForm(url + "/queue", "POST"))
             {
@@ -1866,7 +1855,7 @@ public class PicTextToImage : MonoBehaviour
         m_comfyUIPromptID = null;
         m_picScript.OnFinishedRenderingWorkflow(false);
 
-        CleanComfyUITempFiles(url);
+        StartCoroutine(CleanComfyUITempFiles(url));
     }
 
     void FinishUpEverything(bool bSuccess = true)
@@ -1962,6 +1951,12 @@ public class PicTextToImage : MonoBehaviour
                 File.WriteAllBytes(tempPath, getRequest.downloadHandler.data);
                 m_picScript.SetStatusMessage("");
                 m_picScript.m_picMovie.PlayMovie(tempPath);
+                // The Pic now has its own movie: a later chained action (rife_video or another
+                // video_to_video with chain="true") must operate on THIS result. The staged
+                // source path was never cleared before, so @upload|video| kept re-uploading the
+                // ORIGINAL clip and "smooth the video you just made" interpolated the pre-edit
+                // footage while reporting success.
+                m_picScript.m_pendingVideoUploadPath = null;
                 StartCoroutine(CleanComfyUITempFiles(url));
 
                 FinishUpEverything();
