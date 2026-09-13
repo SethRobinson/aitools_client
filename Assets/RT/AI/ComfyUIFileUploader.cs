@@ -132,7 +132,12 @@ public class ComfyUIFileUploader : MonoBehaviour
             }
             catch (Exception ex)
             {
+                // Exiting without releasing the reservation or calling back left the server
+                // marked busy until reconnect and the Pic on "Uploading to ComfyUI..." forever
+                // (a stale pending video/audio path is enough to get here).
                 Debug.LogError("Error reading file: " + ex.Message);
+                FailAndFinish(myCallback, "could not read " + filePath + ": " + ex.Message);
+                Destroy(gameObject);
                 yield break;
             }
         }
@@ -157,14 +162,7 @@ public class ComfyUIFileUploader : MonoBehaviour
             if (www.result == UnityWebRequest.Result.ConnectionError || www.result == UnityWebRequest.Result.ProtocolError)
             {
                 Debug.LogError("Upload Error: " + www.error);
-
-                RTDB db = new RTDB();
-                db.Set("success", 0);
-                db.Set("error", www.error);
-                db.Set("serverID", m_lastGPUID);
-                ReleaseGPUIfNeeded();
-
-                myCallback.Invoke(db);
+                FailAndFinish(myCallback, www.error);
             }
             else
             {
@@ -178,6 +176,7 @@ public class ComfyUIFileUploader : MonoBehaviour
                 if (json == null)
                 {
                     Debug.LogError("Failed to parse JSON response.");
+                    FailAndFinish(myCallback, "unparseable upload reply from the server");
                 }
                 else
                 {
@@ -198,11 +197,25 @@ public class ComfyUIFileUploader : MonoBehaviour
                     db.Set("subfolder", subfolder);
                     db.Set("type", type);
                     myCallback.Invoke(db);
-
-
                 }
             }
         }
+
+        // One helper GameObject per upload; nothing else ever destroyed it.
+        Destroy(gameObject);
+    }
+
+    // Report an upload failure to the caller and drop the server reservation. Every failure
+    // path must come through here: PicMain clears its job line when success == 0, and a
+    // reservation that is never released keeps the server "busy" until the next reconnect.
+    void FailAndFinish(Action<RTDB> myCallback, string error)
+    {
+        RTDB db = new RTDB();
+        db.Set("success", 0);
+        db.Set("error", string.IsNullOrEmpty(error) ? "upload failed" : error);
+        db.Set("serverID", m_lastGPUID);
+        ReleaseGPUIfNeeded();
+        myCallback?.Invoke(db);
     }
 
 

@@ -343,7 +343,11 @@ public class PicTextToImage : MonoBehaviour
 
         if (Config.Get().IsGPUBusy(m_gpu))
         {
+            // Returning here used to leave PicMain.m_waitingForPicJob set forever (the job
+            // was already dequeued), so the Pic reported busy until "Clear jobs".
             Debug.LogError("Why is GPU busy?!");
+            m_picScript.SetStatusMessage("GPU was busy,\njob dropped");
+            m_picScript.OnFinishedRenderingWorkflow(false);
             return;
         }
         Config.Get().SetGPUBusy(m_gpu, true);
@@ -812,15 +816,11 @@ public class PicTextToImage : MonoBehaviour
             RTConsole.Log($"Failed to parse JSON: {ex.Message}");
             //write out .json to "json_error.json" for debugging
             File.WriteAllText("json_error.json", comfyUIGraphJSon);
-            m_bIsGenerating = false;
             m_picScript.SetStatusMessage("Bad json, can't parse reply. Check json_error.json for more info.");
             CloseWebSocket();
-
-            // Clean up state
-            if (Config.Get().IsValidGPU(m_gpu))
-            {
-                Config.Get().SetGPUBusy(m_gpu, false);
-            }
+            // Frees the GPU AND tells PicMain the job is over; clearing the flags by hand
+            // left m_waitingForPicJob set, so the Pic stayed busy until "Clear jobs".
+            FinishUpEverything(false);
             yield break;
         }
 
@@ -1280,8 +1280,11 @@ public class PicTextToImage : MonoBehaviour
         // First connect to WebSocket for progress
         yield return StartCoroutine(ConnectWebSocket(url));
 
+        float lastQueueProbe = Time.realtimeSinceStartup;
+        int queueMisses = 0;
         while (true)
         {
+            bool historyEmpty = false;
             // Check history for completion
             using (UnityWebRequest historyRequest = UnityWebRequest.Get(historyURL))
             {
@@ -1295,11 +1298,12 @@ public class PicTextToImage : MonoBehaviour
                     RTQuickMessageManager.Get().ShowMessage(msg);
                     Debug.Log(historyRequest.downloadHandler.text);
 
-                    Config.Get().SetGPUBusy(m_gpu, false);
-                    m_bIsGenerating = false;
                     m_picScript.SetStatusMessage("Generate error");
-
                     CloseWebSocket();
+                    // Frees the GPU AND tells PicMain the job is over; clearing the flags by
+                    // hand left m_waitingForPicJob set, so a transient connection error mid-
+                    // render wedged the Pic (IsBusy forever) until "Clear jobs".
+                    FinishUpEverything(false);
                     yield break;
                 }
 
@@ -1327,6 +1331,7 @@ public class PicTextToImage : MonoBehaviour
                     CloseWebSocket();
                     yield break;
                 }
+                historyEmpty = rootNode.Count == 0;
 
               
                 if (rootNode.Count > 0)
@@ -1526,8 +1531,79 @@ public class PicTextToImage : MonoBehaviour
                 }
             }
 
+            // /history stays {} while the job runs, but also forever when ComfyUI was
+            // restarted or dropped the job: this loop used to spin on that with the GPU
+            // marked busy. Every QueueProbeIntervalSeconds with no history entry, ask
+            // /queue whether the prompt is still running or pending; two consecutive "not
+            // listed" answers (so a just-finished job has time to reach /history) mean the
+            // server lost it.
+            if (historyEmpty && Time.realtimeSinceStartup - lastQueueProbe > QueueProbeIntervalSeconds)
+            {
+                lastQueueProbe = Time.realtimeSinceStartup;
+                bool? stillQueued = null;
+                yield return StartCoroutine(ProbeComfyQueueForPrompt(url, m_comfyUIPromptID, v => stillQueued = v));
+                if (stillQueued == false) queueMisses++; else queueMisses = 0;
+                if (queueMisses >= 2)
+                {
+                    string lostMsg = "ComfyUI no longer lists this job in its queue or history (server restarted or the job was dropped) - " + Config.Get().GetGPUName(m_gpu);
+                    Debug.LogWarning(lostMsg);
+                    RTConsole.Log(lostMsg);
+                    RTQuickMessageManager.Get().ShowMessage(lostMsg);
+                    m_picScript.SetLastRenderError("ComfyUI lost the job (server restarted or the job was dropped)", m_gpu);
+                    m_picScript.SetStatusMessage("Comfy lost job");
+                    CloseWebSocket();
+                    FinishUpEverything(false);
+                    yield break;
+                }
+            }
+
             yield return new WaitForSeconds(0.5f);
         }
+    }
+
+    const float QueueProbeIntervalSeconds = 30f;
+
+    // ComfyUI's GET /queue answers {"queue_running": [...], "queue_pending": [...]} where each
+    // entry is [number, prompt_id, prompt, extra_data, outputs_to_execute]. Reports true when
+    // the prompt is listed, false when the server answered without it, null when it could not
+    // be asked (connection error / bad JSON), which the caller treats as "unknown".
+    IEnumerator ProbeComfyQueueForPrompt(string url, string promptID, Action<bool?> onDone)
+    {
+        bool? listed = null;
+        using (UnityWebRequest req = UnityWebRequest.Get(url + "/queue"))
+        {
+            Config.Get().ApplyComfyAuth(req);
+            req.timeout = 10;
+            yield return req.SendWebRequest();
+            if (req.result == UnityWebRequest.Result.Success)
+            {
+                try
+                {
+                    listed = QueueListsPrompt(JSON.Parse(req.downloadHandler.text), promptID);
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning("ComfyUI /queue reply could not be parsed: " + ex.Message);
+                }
+            }
+        }
+        onDone?.Invoke(listed);
+    }
+
+    static bool QueueListsPrompt(JSONNode root, string promptID)
+    {
+        if (root == null || string.IsNullOrEmpty(promptID)) return false;
+        foreach (string key in new[] { "queue_running", "queue_pending" })
+        {
+            if (!root.HasKey(key)) continue;
+            JSONNode list = root[key];
+            for (int i = 0; i < list.Count; i++)
+            {
+                JSONNode item = list[i];
+                if (item != null && item.Count > 1 && item[1].Value == promptID) return true;
+            }
+        }
+        return false;
     }
 
     // ComfyUI's /history entry lists the execution_error event under status.messages as
@@ -1655,9 +1731,9 @@ public class PicTextToImage : MonoBehaviour
                 RTQuickMessageManager.Get().ShowMessage(msg);
                 Debug.Log(getRequest.downloadHandler.text);
 
-                Config.Get().SetGPUBusy(m_gpu, false);
-                m_bIsGenerating = false;
                 m_picScript.SetStatusMessage("Generate error");
+                // Frees the GPU AND tells PicMain the job is over (see GetComfyUIHistory).
+                FinishUpEverything(false);
             }
             else
             {
@@ -1859,9 +1935,9 @@ public class PicTextToImage : MonoBehaviour
                 RTQuickMessageManager.Get().ShowMessage(msg);
                 Debug.Log(getRequest.downloadHandler.text);
 
-                Config.Get().SetGPUBusy(m_gpu, false);
-                m_bIsGenerating = false;
                 m_picScript.SetStatusMessage("Generate error");
+                // Frees the GPU AND tells PicMain the job is over (see GetComfyUIHistory).
+                FinishUpEverything(false);
             }
             else
             {

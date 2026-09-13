@@ -270,6 +270,7 @@ public class PicMain : MonoBehaviour
     public int m_ownedServerID = -1; // When >= 0, this pic owns this server exclusively for AutoPic override
     public string m_autoPicScriptName = ""; // Tracks which AutoPic script was used for this pic
     public bool m_stopAfterScript = false; // Set by @stopjob command - tells callback not to add more jobs
+    int m_uploadPinnedServerID = -1; // ComfyUI server that took this job line's first upload_to_comfy; the rest of the line (more uploads, then run_workflow) must use it - see UpdateJobs
     public int m_requestedServerID = -1; // When >= 0, this pic will only use this specific server (waits if busy, unless m_requestedServerIsPreference)
     public bool m_requestedServerIsPreference = false; // When true, m_requestedServerID is a SOFT hint: if that server is busy/unavailable, fall back to any free GPU instead of waiting. Used by AI Chat's gpu="N" hint (Adventure leaves this false for a hard per-server pin).
 
@@ -735,6 +736,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         m_jobList.Clear();
         m_waitingForPicJob = false;
         m_requirements = m_default_requirements;
+        m_uploadPinnedServerID = -1;
 
         // Drop any captured input PNGs that never made it onto a run_workflow job, so
         // they can't leak into the next unrelated job.
@@ -3673,6 +3675,13 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
     // Availability probe for @upload|source|inputN|optional| slots - mirrors what the
     // upload_to_comfy execution stage can actually deliver for each source token.
+    // A staged path whose file has since been deleted (a tempCache sweep, a pasted_media
+    // snapshot gone) must count as unavailable, or the upload stage reads it and fails.
+    static bool PendingUploadFileExists(string path)
+    {
+        return !string.IsNullOrEmpty(path) && System.IO.File.Exists(path);
+    }
+
     bool IsUploadSourceAvailable(string source)
     {
         switch (source)
@@ -3681,16 +3690,16 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 PicMain slotPic = GetPicMainForSlot(source);
                 return slotPic != null && slotPic.m_pic.sprite != null && slotPic.m_pic.sprite.texture != null;
             case "video": case "video1":
-                return !string.IsNullOrEmpty(m_pendingVideoUploadPath)
+                return PendingUploadFileExists(m_pendingVideoUploadPath)
                     || (m_picMovie != null && IsMovie() && !string.IsNullOrEmpty(m_picMovie.GetProcessingFileName()));
-            case "video2": return !string.IsNullOrEmpty(m_pendingVideoUploadPath2);
+            case "video2": return PendingUploadFileExists(m_pendingVideoUploadPath2);
             default:
                 // "image2".."image10" - extra input slots
                 if (TryParseExtraImageSlot(source, out int extraSlot))
                     return m_extraInputImages[extraSlot] != null;
                 // "audio1".."audio3" - standalone audio reference slots
                 if (TryParseAudioUploadSlot(source, out int audioSlot))
-                    return !string.IsNullOrEmpty(m_pendingAudioUploadPaths[audioSlot]);
+                    return PendingUploadFileExists(m_pendingAudioUploadPaths[audioSlot]);
                 return false;
         }
     }
@@ -4156,6 +4165,37 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             serverID = Config.Get().GetFreeGPU(neededRenderer, false, m_skipIgnoredServers, m_gpuNameMatchFilter);
         }
 
+        // A multi-input job line (N x upload_to_comfy, then run_workflow) must stay on ONE
+        // ComfyUI server: the uploads land in that server's temp folder and the workflow
+        // references them by name. Every UpdateJobs pass re-runs the selection above, and the
+        // uploader only reserves the server for the duration of one upload, so a busier
+        // server freeing up mid-sequence used to take inputs 2..N and the prompt while
+        // input 1 sat on another server ("Invalid image file"). The first upload pins the
+        // server for the rest of the line; if it is busy again we wait rather than switch.
+        if (m_uploadPinnedServerID >= 0 && m_picJobs.Count > 0
+            && (m_picJobs[0]._job == "upload_to_comfy" || m_picJobs[0]._job == "run_workflow"))
+        {
+            GPUInfo pinnedInfo = Config.Get().IsValidGPU(m_uploadPinnedServerID) ? Config.Get().GetGPUInfo(m_uploadPinnedServerID) : null;
+            if (pinnedInfo == null || !pinnedInfo._bIsActive)
+            {
+                int lostServer = m_uploadPinnedServerID;
+                m_uploadPinnedServerID = -1;
+                ClearErrorsAndJobs();
+                SetStatusMessage("Upload server\nwent away");
+                RTConsole.Log("Error: ComfyUI server " + lostServer + " became unavailable mid-upload sequence, aborting the job");
+                ReportWorkflowAbortOnce(
+                    "Workflow aborted: the ComfyUI server that received this job's uploaded inputs became unavailable before the workflow ran. Re-emit the action unchanged.");
+                return;
+            }
+            if (Config.Get().IsGPUBusy(m_uploadPinnedServerID)
+                || (m_ownedServerID != m_uploadPinnedServerID && PicMain.IsServerOwnedByAnyPic(m_uploadPinnedServerID)))
+            {
+                SetStatusMessage("Waiting for\n" + Config.Get().GetGPUName(m_uploadPinnedServerID) + "...");
+                return;
+            }
+            serverID = m_uploadPinnedServerID;
+        }
+
         if (serverID == -1 && m_requirements == "gpu")
         {
             SetStatusMessage("Waiting for GPU...");
@@ -4239,12 +4279,14 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 {
                     ImageGenerator.Get().ScheduleGPURequest(e);
                 }
+                m_uploadPinnedServerID = -1; // the uploads' consumer has been handed to the server
 
             }
             else  if (job._job == "upload_to_comfy")
             {
                 //add a file to the ComfyUI server
                 // New format: "source|inputIndex|filename" where source is image1, temp1, temp2, etc.
+                if (serverID >= 0) m_uploadPinnedServerID = serverID; // keep the rest of this line on this server
                 ComfyUIFileUploader uploaderScript = ComfyUIFileUploader.CreateObject();
                 SetStatusMessage("Uploading to\nComfyUI...");
                 
