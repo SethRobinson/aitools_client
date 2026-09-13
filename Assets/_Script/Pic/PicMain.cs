@@ -2646,12 +2646,20 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         var varMatch = System.Text.RegularExpressions.Regex.Match(token, @"^%([A-Za-z0-9_]+)%$");
         if (varMatch.Success && lines != null)
         {
+            string varName = System.Text.RegularExpressions.Regex.Escape(varMatch.Groups[1].Value);
+            // Raw preset form: %name%="123". GameLogic.ProcessLinesWithMultiLineSupport has
+            // normally already compiled that into command @set|%name%|123| by the time the
+            // joblist reaches here, so match both; matching only the raw form made every
+            // %var% replacement fall through to the workflow literal below.
             var assignRx = new System.Text.RegularExpressions.Regex(
-                @"^\s*%" + System.Text.RegularExpressions.Regex.Escape(varMatch.Groups[1].Value) + @"%\s*=\s*""(\d+)""");
+                @"^\s*%" + varName + @"%\s*=\s*""(\d+)""");
+            var compiledRx = new System.Text.RegularExpressions.Regex(
+                @"^\s*command\s+@set\|%" + varName + @"%\|(\d+)\|", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             foreach (string l in lines)
             {
                 if (string.IsNullOrEmpty(l)) continue;
                 var m = assignRx.Match(l);
+                if (!m.Success) m = compiledRx.Match(l);
                 if (m.Success && int.TryParse(m.Groups[1].Value, out value))
                     return value > 0;
             }
