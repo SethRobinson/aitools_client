@@ -12,6 +12,20 @@ public class GeminiStreamingDownloadHandler : DownloadHandlerScript
 {
     private Action<string> m_textChunkUpdateCallback;
     private StringBuilder stringBuilder = new StringBuilder();
+    // Unity hands ReceiveData 1 KB slices cut at arbitrary byte offsets, so a multi-byte
+    // UTF-8 sequence (curly quotes, accents, CJK, emoji) can straddle two calls. A stateful
+    // Decoder carries the partial bytes over; decoding each slice on its own turned every
+    // straddling character into U+FFFD on both sides.
+    private readonly Decoder _utf8Decoder = Encoding.UTF8.GetDecoder();
+
+    private string DecodeChunk(byte[] data, int dataLength)
+    {
+        int charCount = _utf8Decoder.GetCharCount(data, 0, dataLength, false);
+        if (charCount == 0) return "";
+        char[] chars = new char[charCount];
+        int n = _utf8Decoder.GetChars(data, 0, dataLength, chars, 0, false);
+        return new string(chars, 0, n);
+    }
     private StringBuilder incompleteChunk = new StringBuilder();
     private bool isErrorResponse = false;
 
@@ -28,7 +42,8 @@ public class GeminiStreamingDownloadHandler : DownloadHandlerScript
             return false;
         }
 
-        string text = Encoding.UTF8.GetString(data, 0, dataLength);
+        string text = DecodeChunk(data, dataLength);
+        if (text.Length == 0) return true; // the slice ended inside a multi-byte character; wait for the rest
 
         // Check if this might be an error response (only check first chunk)
         if (stringBuilder.Length == 0 && text.TrimStart().StartsWith("{\"error"))
@@ -50,16 +65,22 @@ public class GeminiStreamingDownloadHandler : DownloadHandlerScript
         return true;
     }
 
+    // Only newline-terminated lines are parsed; the tail stays buffered until its newline
+    // arrives (CompleteContent feeds a final "\n"). The old version parsed the unterminated
+    // tail too and then kept it as the incomplete chunk, and since SimpleJSON returns a
+    // partial tree for input cut outside a string, a line split after "text":"Hello"
+    // delivered "Hello" twice.
     protected void ProcessChunk(string chunk)
     {
         incompleteChunk.Append(chunk);
-        string fullChunk = incompleteChunk.ToString();
-        string[] events = fullChunk.Split(new[] { "\n" }, StringSplitOptions.RemoveEmptyEntries);
-
-        for (int i = 0; i < events.Length; i++)
+        string buffered = incompleteChunk.ToString();
+        int start = 0;
+        int newline;
+        while ((newline = buffered.IndexOf('\n', start)) >= 0)
         {
-            string event_data = events[i].Trim();
-            
+            string event_data = buffered.Substring(start, newline - start).Trim();
+            start = newline + 1;
+
             // SSE format: "data: {...}"
             if (event_data.StartsWith("data: "))
             {
@@ -78,17 +99,9 @@ public class GeminiStreamingDownloadHandler : DownloadHandlerScript
             }
         }
 
-        // Keep any remaining incomplete data
-        int lastNewLineIndex = fullChunk.LastIndexOf("\n");
-        if (lastNewLineIndex >= 0 && lastNewLineIndex < fullChunk.Length - 1)
-        {
-            incompleteChunk.Clear();
-            incompleteChunk.Append(fullChunk.Substring(lastNewLineIndex + 1));
-        }
-        else
-        {
-            incompleteChunk.Clear();
-        }
+        incompleteChunk.Clear();
+        if (start < buffered.Length)
+            incompleteChunk.Append(buffered, start, buffered.Length - start);
     }
 
     protected void ProcessJsonChunk(string jsonChunk)

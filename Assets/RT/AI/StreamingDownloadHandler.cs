@@ -8,6 +8,20 @@ public class StreamingDownloadHandler : DownloadHandlerScript
 {
     private Action<string> m_textChunkUpdateCallback;
     private StringBuilder stringBuilder = new StringBuilder();
+    // Unity hands ReceiveData 1 KB slices cut at arbitrary byte offsets, so a multi-byte
+    // UTF-8 sequence (curly quotes, accents, CJK, emoji) can straddle two calls. A stateful
+    // Decoder carries the partial bytes over; decoding each slice on its own turned every
+    // straddling character into U+FFFD on both sides.
+    private readonly Decoder _utf8Decoder = Encoding.UTF8.GetDecoder();
+
+    private string DecodeChunk(byte[] data, int dataLength)
+    {
+        int charCount = _utf8Decoder.GetCharCount(data, 0, dataLength, false);
+        if (charCount == 0) return "";
+        char[] chars = new char[charCount];
+        int n = _utf8Decoder.GetChars(data, 0, dataLength, chars, 0, false);
+        return new string(chars, 0, n);
+    }
     private string incompleteChunk = "";
     private bool isErrorResponse = false;
     private bool _inReasoningBlock = false;
@@ -41,7 +55,8 @@ public class StreamingDownloadHandler : DownloadHandlerScript
             return false;
         }
 
-        string text = Encoding.UTF8.GetString(data, 0, dataLength);
+        string text = DecodeChunk(data, dataLength);
+        if (text.Length == 0) return true; // the slice ended inside a multi-byte character; wait for the rest
 
         // Check if this might be an error response (only check first chunk)
         if (stringBuilder.Length == 0 && text.TrimStart().StartsWith("{\"error"))
