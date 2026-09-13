@@ -578,6 +578,14 @@ public class Config : MonoBehaviour
         if (!string.IsNullOrEmpty(_audioGenAPIKey))
             sb.Append("set_audio_gen_api_key|").Append(CleanConfigField(_audioGenAPIKey)).AppendLine("|");
 
+        if (m_preservedConfigLines.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("# Settings the Settings window does not manage, kept from the previous file:");
+            for (int i = 0; i < m_preservedConfigLines.Count; i++)
+                sb.AppendLine(m_preservedConfigLines[i]);
+        }
+
         return sb.ToString();
     }
 
@@ -1343,6 +1351,38 @@ set_default_audio_negative_prompt|music|
         var mgr = LLMSettingsManager.Get();
         return mgr != null && mgr.GetActiveProvider() == LLMProvider.LlamaCpp;
     }
+    // Lines from config.txt that the Settings window does not manage (set_jpg_save_quality,
+    // set_default_steps, add_generic_llm_parm, enable_safety_filter, set_max_fps, ...). The parser
+    // still applies them; BuildModernConfigText appends them verbatim, so a Settings Apply (which
+    // regenerates the whole file) no longer wipes them. A key becomes "managed" by adding it here.
+    readonly List<string> m_preservedConfigLines = new List<string>();
+    static readonly HashSet<string> s_modernEmittedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "add_server", "set_gpu_vram", "set_image_editor",
+        "set_default_audio_prompt", "set_default_audio_negative_prompt", "set_default_negative_audio_prompt",
+        "set_text_to_speech_provider",
+        "set_elevenlabs_api_key", "set_eleven_labs_api_key",
+        "set_elevenlabs_voice_id", "set_eleven_labs_voice_id", "set_elevenlabs_voice", "set_eleven_labs_voice",
+        "set_web_search_safesearch", "set_web_search_safe_search",
+        "set_brave_search_api_key", "set_brave_api_key",
+        "set_ytdlp_cookies_browser", "set_yt_dlp_cookies_browser",
+        "set_stt_endpoint", "set_speech_to_text_endpoint",
+        "set_stt_api_key", "set_speech_to_text_api_key",
+        "set_stt_model", "set_speech_to_text_model",
+        "set_audio_gen_endpoint", "set_audio_generation_endpoint",
+        "set_audio_gen_api_key", "set_audio_generation_api_key",
+    };
+
+    static bool IsPreservableConfigLine(string[] words)
+    {
+        if (words == null || words.Length == 0) return false;
+        string key = words[0];
+        if (string.IsNullOrEmpty(key) || key.StartsWith("#")) return false;
+        if (!(key.StartsWith("add_") || key.StartsWith("set_") || key.StartsWith("enable_") || key.StartsWith("-enable_")))
+            return false;
+        return !s_modernEmittedKeys.Contains(key);
+    }
+
     public void ProcessConfigString(string newConfig)
     {
         SetDefaults();
@@ -1356,6 +1396,7 @@ set_default_audio_negative_prompt|music|
         CrazyCamLogic.Get().ClearSnapshotPresets();
 
         m_configText = newConfig;
+        m_preservedConfigLines.Clear();
 
         //process it line by line
 
@@ -1368,6 +1409,8 @@ set_default_audio_negative_prompt|music|
                 
                 // Do something with the line
                 string[] words = line.Trim().Split('|');
+                if (IsPreservableConfigLine(words))
+                    m_preservedConfigLines.Add(line.Trim());
                 if (words[0] == "-enable_safety_filter" || words[0] == "enable_safety_filter")
                 {
                     //another way to disable the safety filter, possibly the only way when it comes to say,
