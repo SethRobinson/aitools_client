@@ -194,6 +194,15 @@ public static class AutomationBridge
         return _driver.Save(index, path, out error);
     }
 
+    /// <summary>Cancel a chat image's render through its Pic's clear-jobs path; see AutomationDriver.CancelRender.</summary>
+    public static bool CancelRender(int index, out string error, out bool wasBusy)
+    {
+        error = "no driver";
+        wasBusy = false;
+        if (_driver == null) return false;
+        return _driver.CancelRender(index, out error, out wasBusy);
+    }
+
     /// <summary>Set while a bridge click dispatch asked for a held ALT modifier, so UI
     /// that checks alt (e.g. the clip chooser's alt-click marker snap) honors synthetic
     /// clicks - the editor may lack OS keyboard focus during scripted tests, making

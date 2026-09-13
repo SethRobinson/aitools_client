@@ -339,6 +339,12 @@ public class AutomationDriver : MonoBehaviour
         return AIChatPanel.AutomationSave(index, path, out error);
     }
 
+    /// <summary>Cancel a chat image's render (the Pic's "clear jobs and errors" path). index &lt;= 0 means latest.</summary>
+    public bool CancelRender(int index, out string error, out bool wasBusy)
+    {
+        return AIChatPanel.AutomationCancelRender(index, out error, out wasBusy);
+    }
+
     /// <summary>
     /// Capture the game view to a PNG. A non-positive width or height captures the full
     /// screen; otherwise (x,y,w,h) is a top-left-origin pixel region. Runs as a coroutine

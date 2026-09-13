@@ -5025,6 +5025,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         instanceMgr.SetLLMBusy(targetId, replicaIndex, true);
         _compactSummaryInFlight = true;
+        RecomputeSendInteractable();
         _compactSummaryStartTime = Time.unscaledTime;
         _compactSummaryMsgCount = from;
         _compactStatusNextRefresh = 0f;
@@ -5156,6 +5157,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             instanceMgr.SetLLMBusy(capId, capReplica, false);
             _compactSummaryInFlight = false;
             _compactSummaryCancel = null;
+            RecomputeSendInteractable();
             // Hand the status line back; Update() stops repainting it the moment
             // the in-flight flag drops, so it would otherwise freeze mid-spinner.
             if (!_isStreaming && _statusText != null) _statusText.text = "Idle";
@@ -7300,13 +7302,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             _autoContinueRemaining = 0;
             CancelSkillLoadAutoResume();
             CancelGenericContinue();
-        }
-        else if (!explicitResumePendingForTurn && _actionExecutor != null && _actionExecutor.TurnHadOnlyPreparatoryActions)
             // An inspect resume whose vision result landed while the reply was still streaming
             // is not covered by CancelAllInspectImageJobs (no job pending any more); left alone,
             // the bottom of this method scheduled it and a synthetic continue fired right after
             // Stop or an LLM error.
             CancelInspectAutoResume();
+        }
+        else if (!explicitResumePendingForTurn && _actionExecutor != null && _actionExecutor.TurnHadOnlyPreparatoryActions)
         {
             // Unfinished-plan safety net: the reply fetched/extracted/cut media ("First, let me
             // grab a frame, then generate the video...") and ended without the render it
@@ -7768,11 +7770,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             // could confuse the host's state.
             if (job.cancelled) return;
             try { onResult?.Invoke(r); } catch { }
-        };
-
             // Same re-poke for captions (attachments, video, web): next frame, so the caller's
             // pending-caption bookkeeping has settled before the schedulers look at it.
             try { StartCoroutine(PokeAutoResumeSchedulersNextFrame()); } catch { }
+        };
+
         if (png == null || png.Length == 0) { job.completed = true; safeResult(default); return job; }
 
         var instanceMgr = LLMInstanceManager.Get();
@@ -9289,9 +9291,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             AIChatLog.Note("set_video_audio", "waiting for " + DescribeMovieList(pending));
         }
 
+        int stitchCancelEpoch = _stitchCancelEpoch;
         BeginStitchWait();
         float waitStart = Time.realtimeSinceStartup;
-        int stitchCancelEpoch = _stitchCancelEpoch;
         float notBusySince = -1f;
         while (failure == null)
         {
@@ -9533,14 +9535,14 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         TryScheduleGenericContinue();
     }
 
-    private void CancelAllWebFetches(bool showBubble)
-    {
     private IEnumerator PokeAutoResumeSchedulersNextFrame()
     {
         yield return null;
         PokeAutoResumeSchedulers();
     }
 
+    private void CancelAllWebFetches(bool showBubble)
+    {
         bool hadWork = HasPendingWebWork();
         _webFetchEpoch++;
         for (int i = 0; i < _webDownloadHandles.Count; i++)
@@ -12582,9 +12584,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (HasPendingSidecarWork()) return false;
         if (HasInspectAutoResumePendingForCurrentTurn()) return false;
         if (HasSkillLoadAutoResumePendingForCurrentTurn()) return false;
+        if (HasGenericContinuePendingForCurrentTurn()) return false;
         if (_actionExecutor != null && !_actionExecutor.IsIdle) return false;
         if (_chatImagePics != null)
-        if (HasGenericContinuePendingForCurrentTurn()) return false;
         {
             for (int i = 0; i < _chatImagePics.Count; i++)
             {
@@ -12847,6 +12849,24 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     /// Save a chat image to <paramref name="path"/> as PNG. <paramref name="index"/> is
     /// 1-based; index &lt;= 0 means the latest (newest) chat image.
     /// </summary>
+    public bool AutomationCancelChatImageRender(int index, out string error, out bool wasBusy)
+    {
+        error = null;
+        wasBusy = false;
+        if (_chatImagePics == null || _chatImagePics.Count == 0) { error = "no chat images"; return false; }
+        int idx = index <= 0 ? _chatImagePics.Count - 1 : index - 1;
+        if (idx < 0 || idx >= _chatImagePics.Count)
+        {
+            error = $"index {index} out of range (1..{_chatImagePics.Count})";
+            return false;
+        }
+        var pic = _chatImagePics[idx];
+        if (pic == null) { error = "chat image pic was destroyed"; return false; }
+        wasBusy = pic.IsBusy();
+        pic.ClearErrorsAndJobs();
+        return true;
+    }
+
     public bool AutomationSaveChatImage(int index, string path, out string error)
     {
         error = null;
@@ -12987,6 +13007,19 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         error = "no chat panel";
         if (_instance == null) return false;
         return _instance.AutomationSaveChatImage(index, path, out error);
+    }
+
+    /// <summary>
+    /// Automation: cancel chat image <paramref name="index"/>'s render (0 = latest) through the
+    /// Pic's own "clear jobs and errors" path (ComfyUI /interrupt + queue delete), which the
+    /// chat Stop button deliberately never touches. wasBusy = a render was running or queued.
+    /// </summary>
+    public static bool AutomationCancelRender(int index, out string error, out bool wasBusy)
+    {
+        error = "no chat panel";
+        wasBusy = false;
+        if (_instance == null) return false;
+        return _instance.AutomationCancelChatImageRender(index, out error, out wasBusy);
     }
 
     /// <summary>
@@ -13436,6 +13469,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // failed, or the clip is still landing) gets this long before the stitch gives up.
     private const float StitchNoClipGraceSeconds = 30f;
     private int _stitchWaitCount = 0;
+    private int _stitchCancelEpoch = 0; // bumped by Stop: parked stitch_video / set_video_audio source waits exit on their next poll
     private float _stitchWaitStartTime = 0f;
     private int _stitchSpinnerStep = 0;
     private string _lastStitchStatusText;
@@ -13467,13 +13501,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             AIChatLog.Note("stitch_video", "waiting for " + DescribeMovieList(pending));
         }
 
+        int stitchCancelEpoch = _stitchCancelEpoch;
         BeginStitchWait();
         float waitStart = Time.realtimeSinceStartup;
-    private int _stitchCancelEpoch = 0; // bumped by Stop: parked stitch_video / set_video_audio source waits exit on their next poll
         float notBusySince = -1f;
         while (failure == null)
         {
-            if (importEpoch != _videoImportEpoch)
+            if (importEpoch != _videoImportEpoch || stitchCancelEpoch != _stitchCancelEpoch)
             {
                 EndStitchWait();
                 onDone?.Invoke(false);
@@ -13501,7 +13535,6 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                     notBusySince = Time.realtimeSinceStartup;
                 else if (Time.realtimeSinceStartup - notBusySince >= StitchNoClipGraceSeconds)
                 {
-        int stitchCancelEpoch = _stitchCancelEpoch;
                     failure = DescribeFailedRenders(pending);
                     break;
                 }
@@ -13533,7 +13566,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             string error = null;
             yield return FfmpegTool.ProbeVideo(path, (i, e) => { info = i; error = e; });
 
-            if (importEpoch != _videoImportEpoch || stitchCancelEpoch != _stitchCancelEpoch)
+            if (importEpoch != _videoImportEpoch)
             {
                 onDone?.Invoke(false);
                 yield break;

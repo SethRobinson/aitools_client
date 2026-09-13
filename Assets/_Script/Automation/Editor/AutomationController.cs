@@ -90,6 +90,7 @@ public static class AutomationController
     static readonly object _snapLock = new object();
     static bool _snapPlaying, _snapCompiling, _snapDriverReady, _snapIdle, _snapChatActive, _snapFocused;
     static string _snapStage = kStageNone;
+    static bool _snapCompileFailed;
 
     static AutomationController()
     {
@@ -541,6 +542,24 @@ public static class AutomationController
                     break;
                 }
 
+                case "/pic_cancel":
+                {
+                    // Body: index=<n|latest> (default latest). Cancels that chat image's render
+                    // through the Pic's own "clear jobs and errors" path (ComfyUI /interrupt +
+                    // the queue delete), which the chat Stop button deliberately never touches.
+                    var kv = ParseKeyValues(body);
+                    int cancelIndex = ParseIndex(kv);
+                    string result = RunOnMainAndWait(() =>
+                    {
+                        bool ok = AutomationBridge.CancelRender(cancelIndex, out string err, out bool wasBusy);
+                        return ok
+                            ? $"{{\"ok\":true,\"cancelled\":{(wasBusy ? "true" : "false")}}}"
+                            : $"{{\"ok\":false,\"error\":{JsonStr(err)}}}";
+                    }, "{\"ok\":false,\"error\":\"timed out\"}");
+                    WriteJson(stream, 200, result);
+                    break;
+                }
+
                 case "/click":
                 {
                     // Body: x=<px>, y=<px> (top-left game-view pixels, the same frame as
@@ -648,13 +667,13 @@ public static class AutomationController
 
     static string StatusJson()
     {
-        bool playing, compiling, driverReady, idle, chatActive, focused;
+        bool playing, compiling, driverReady, idle, chatActive, focused, compileFailed;
         string stage;
         lock (_snapLock)
         {
             playing = _snapPlaying; compiling = _snapCompiling;
             driverReady = _snapDriverReady; idle = _snapIdle; stage = _snapStage;
-            chatActive = _snapChatActive; focused = _snapFocused;
+            chatActive = _snapChatActive; focused = _snapFocused; compileFailed = _snapCompileFailed;
         }
         bool busy = stage != kStageNone;
         // "ready" = settled and drivable: playing, compiled, driver registered, not mid-rebuild.
@@ -666,6 +685,7 @@ public static class AutomationController
         sb.Append("\"playing\":").Append(playing ? "true" : "false").Append(",");
         sb.Append("\"focused\":").Append(focused ? "true" : "false").Append(",");
         sb.Append("\"compiling\":").Append(compiling ? "true" : "false").Append(",");
+        sb.Append("\"compileFailed\":").Append(compileFailed ? "true" : "false").Append(",");
         sb.Append("\"driverReady\":").Append(driverReady ? "true" : "false").Append(",");
         sb.Append("\"idle\":").Append(idle ? "true" : "false").Append(",");
         sb.Append("\"chatActive\":").Append(chatActive ? "true" : "false").Append(",");
@@ -836,6 +856,7 @@ public static class AutomationController
             // to see it to know whether those systems are actually ticking.
             _snapFocused = UnityEngine.Application.isFocused;
             _snapStage = SessionState.GetString(kStageKey, kStageNone);
+            _snapCompileFailed = EditorUtility.scriptCompilationFailed;
         }
     }
 
@@ -903,19 +924,37 @@ public static class AutomationController
                     CompilationPipeline.RequestScriptCompilation();
                     return;
                 }
-                // Safety net for the rare case where no reload occurs: advance once enough
-                // idle time has elapsed with nothing compiling.
                 if (!compiling && double.TryParse(SessionState.GetString(kCompileSinceKey, "0"),
                         System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture, out double since)
-                    && EditorApplication.timeSinceStartup - since > kCompileFallbackSeconds)
+                        System.Globalization.CultureInfo.InvariantCulture, out double since))
                 {
-                    SessionState.SetString(kStageKey, kStagePlay);
+                    double idleFor = EditorApplication.timeSinceStartup - since;
+                    // A failed compile produces no domain reload, and play mode refuses to start
+                    // while scripts have errors: end the rebuild here (the old fallback advanced
+                    // to "play" and sat there forever) and let /status report compileFailed.
+                    // The 2 s grace skips the frame right after the request, when the flag can
+                    // still describe the previous compile.
+                    if (idleFor > 2.0 && EditorUtility.scriptCompilationFailed)
+                    {
+                        Debug.LogWarning("[Automation] Rebuild stopped: script compilation failed (see the Console).");
+                        SessionState.SetString(kStageKey, kStageNone);
+                        return;
+                    }
+                    // Safety net for the rare case where no reload occurs: advance once enough
+                    // idle time has elapsed with nothing compiling.
+                    if (idleFor > kCompileFallbackSeconds)
+                        SessionState.SetString(kStageKey, kStagePlay);
                 }
                 return;
 
             case kStagePlay:
                 if (compiling) return;
+                if (EditorUtility.scriptCompilationFailed)
+                {
+                    Debug.LogWarning("[Automation] Rebuild stopped before play: script compilation failed (see the Console).");
+                    SessionState.SetString(kStageKey, kStageNone);
+                    return;
+                }
                 if (!EditorApplication.isPlaying && !EditorApplication.isPlayingOrWillChangePlaymode)
                 {
                     EditorApplication.isPlaying = true;
