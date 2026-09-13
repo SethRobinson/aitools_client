@@ -106,7 +106,7 @@ namespace AITools.AIChat.Skills
         // posters, books, storyboards, comic panels, magazine covers, etc. None
         // of these touch ComfyUI; they all run as coroutines on the spawned
         // PicMain (or stack onto a prior Pic via chain="true"). See
-        // aichat/skills/composition_recipes.md for worked examples.
+        // aichat/skills/posters.md / layouts.md / comics.md / books.md for worked examples.
         public const string DrawText = "draw_text";
         public const string AddBorder = "add_border";
         public const string PasteImage = "paste_image";

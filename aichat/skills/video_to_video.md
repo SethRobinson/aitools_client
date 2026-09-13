@@ -32,9 +32,9 @@ two distinct modes - pick by what the user wants:
    voices/score", "sounds like the clip"). For an explicitly LONG result
    ("15 second video like this clip") use
    `{{Reference Video To Video (MiniMax H3) 15s.txt}}` (~3x render time).
-   For a specific in-between duration ("10 second video like this clip"),
-   keep the 5s preset and add `duration="10"` (seconds; snapped to H3's frame
-   grid, ~5-15s range). `duration` is ignored on the 15s preset.
+   For a specific duration ("10 second video like this clip"), keep the 5s
+   preset and add `duration="10"` (seconds; snapped to H3's 17k+5 frame grid,
+   any length from ~1s up; it works on EVERY H3 preset, the 15s one included).
    A silent source clip is fine: the host detects it, drops the audio
    reference automatically, and H3 synthesizes a soundtrack from the prompt
    (there is then no `<Audio 1>` to reference).

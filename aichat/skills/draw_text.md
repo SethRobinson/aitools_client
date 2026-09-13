@@ -2,6 +2,7 @@
 id: draw_text
 summary: Render text into a rect on an image (titles, captions, labels, dialog). Composes with add_border / new_canvas / paste_image to build posters, books, comic panels, magazine covers. Coordinates are top-left, in pixels OR percent of the canvas (e.g. y="80%"). Use chat_image="N" / attachment="N" / chain="true" to pick the canvas. For a legibility band behind the text on a busy/photographic background, use the attribute name `bg_color` (e.g. `bg_color="#000000AA"`) - the attribute is NOT called background_color / backgroundColor / bgcolor. When redoing overlays on a composed image, use clean_base="true" with chat_image="N" if CHAT IMAGES says clean_base=available. When labeling SEVERAL existing chat images in a single new reply, give EACH draw_text its own `chat_image="N"` - do NOT use `chain="true"` on the first one (chain only works within the same reply, anchored to a Pic spawned earlier in THAT reply).
 inputs: attachment
+autoload: true
 triggers: name them, name each, label, label them, label each, caption, captions, add text, add a caption, add a label, add labels, watermark, title each, write a name on, write text on, put text on, put a label on, give each a name, give them names, named labels
 template: <aitools_action skill="draw_text" chat_image="N" text="HELLO" x="0" y="80%" width="100%" height="20%" font_size="120" color="#FFFFFF" bg_color="#000000AA" bold="true" align="center" valign="middle"/>
 ---
@@ -13,8 +14,9 @@ reply, no new bubble). The original bubble is never modified.
 
 Useful for poster titles, motivational poster body text, captions under
 storyboard panels, page numbers in books, magazine cover headlines,
-comic-book speech text, watermarks, etc. See `read_skill id="composition_recipes"`
-for full worked examples.
+comic-book speech text, watermarks, etc. Full worked examples live in the
+`posters`, `layouts`, `comics` and `books` skills (they auto-load on their
+keywords; otherwise `read_skill id="posters"` etc.).
 
 ## Coordinate convention
 
