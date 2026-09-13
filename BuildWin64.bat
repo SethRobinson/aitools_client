@@ -32,6 +32,7 @@ del build\win\ComfyUI\TEST*.json
 del build\win\ComfyUI\workflow\test*.json
 del build\win\Presets\TEST*.txt
 del /S /Q build\win\aichat\test_*
+del /Q build\win\aichat\skills\local_*.md
 
 rd /s /q build\win\ComfyUI\Unused
 
