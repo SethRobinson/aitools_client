@@ -1,6 +1,6 @@
 ---
 id: image_to_movie
-summary: Animate a STILL image into a short video. Default to Image To Video (MiniMax H3 Turbo Cache) 5s (native audio/dialog, 8-step turbo + Spectrum cache; progress shows 16 steps - 8 real + 8 cheap replay ticks, that is normal); use the 15s preset only for explicit long clips; duration="N" (seconds) works on EVERY H3 preset for any length. "High quality" requests use the 20-step (MiniMax H3 Quality) presets; plain Image To Video (MiniMax H3) 5s is the cache-free variant. EVERY H3 prompt is the official structured multi-line DOCUMENT, not a short paragraph (H3 trained on it; thin prompts render flat): integrated_multimodal_description: ([Shot 1] style + scene + actions + dialog; start-frame prompts re-anchor the source as <Picture 1> in Shot 1), overall_soundscape: (1-4 sentences of ambience/physical sound), non_diegetic_music: (instruments/tempo, or N/A). TARGET 150-250 words for a 5s clip, 250-450 for 10-15s/multi-shot, and the document RE-DESCRIBES THE WHOLE SCENE every render - H3 carries nothing over between videos, so never write delta prompts ("same scene but..."). Dialog is plain prose with the exact words quoted and the voice described around them - she says 'We open in five minutes.' in English with a warm calm voice - NEVER <d>[English]...</d> blocks or (S1) speaker IDs: that official-API markup renders as off-screen NARRATION with a closed mouth under ComfyUI (lip-sync A/B 2026-08-31). DIALOG TIMING (transcription-measured 2026-09-12): ~2.5 spoken words per second, and the quoted words must FILL the clip - 10-13 words per 5s, as one line or, with two people on screen, a two-line EXCHANGE (the most reliable shape); a lone 5-7 word line leaves a gap that H3 fills with looped or invented speech (that is the "garbage audio"). One speaker at a time (overlapping lines render as garbage), the speaker's mouth in frame while they talk, plain `says 'line' in English with a <voice> voice` phrasing. `No dialog; nobody speaks.` is unreliable with people on screen - prefer giving them words. Camera moves are natural sentences: motion type + amplitude + speed ("the camera pushes in with small amplitude at slow speed"). Reference To Video presets REQUIRE a photo source and use the SIX-SECTION reference document instead (subject_definitions / summary / retention_analysis / detailed_description 350-500 words / overall_soundscape / non_diegetic_music); the prompt MUST use every staged photo/audio via its <Picture N>/<Audio N> tag (define <Subject N> from them in subject_definitions) - prose alone does not bind to a photo, and the host refuses reference actions whose prompts skip a staged reference's tag. Plain Reference To Video is already turbo; Quality = 20-step; there is NO Cache reference variant - never invent preset names. A video with no source at all is generate_movie territory. A Movie #N is not an image source: use video_to_video, except one explicit current frame with movie_frame="true". Put prompt as the LAST attribute in the action tag.
+summary: Animate a STILL image into a short video. DEFAULT preset Image To Video (MiniMax H3 Turbo Cache) 5s (native audio/dialog, turbo + Spectrum cache; its 16 progress steps are 8 real + 8 replay ticks); the 15s preset only for explicit long clips; duration="N" (seconds) works on EVERY H3 preset for any length; "high quality" -> the 20-step (MiniMax H3 Quality) presets; plain Image To Video (MiniMax H3) 5s is the cache-free variant. EVERY H3 prompt is the official structured DOCUMENT, never a short paragraph (thin prompts render flat): integrated_multimodal_description: ([Shot 1] style + the WHOLE scene + actions + ONE camera move written as motion type + amplitude + speed; start-frame prompts re-anchor the source as <Picture 1>), overall_soundscape: (1-4 sentences), non_diegetic_music: (instruments/tempo or N/A); 150-250 words at 5s, 250-450 for 10-15s/multi-shot; the document re-describes the WHOLE scene every render (H3 carries nothing over - never a delta prompt); dialog exactly per the VIDEO DIALOG RULE in the main prompt. Reference To Video presets REQUIRE a photo source and use the SIX-SECTION reference document instead (subject_definitions / summary / retention_analysis / detailed_description 350-500 words / overall_soundscape / non_diegetic_music), addressing every staged photo/audio by its <Picture N>/<Audio N> tag (define <Subject N> from them) - the host refuses reference actions that skip a tag; plain Reference To Video is already turbo, Quality = 20-step, there is NO Cache reference variant - never invent preset names. A video with no source at all is generate_movie territory. A Movie #N is not an image source: use video_to_video, except one explicit current frame with movie_frame="true". Put prompt as the LAST attribute in the action tag.
 inputs: attachment
 autoload: true
 triggers: animate, animation, image to video, image-to-video, image to movie, image-to-movie, animate this, animate it, make this move, make it move, make a video, make a movie, make a clip, create a video, create video, create a movie, generate a video, generate video, generate a movie, generate a clip, video starring, movie starring, video of, movie of, second video, second movie, reference to video, minimax, mini max, minmax, minimax h3, minmax h3, h3, hailuo, spectrum, turbo cache, spectrum cache
@@ -294,11 +294,9 @@ non_diegetic_music: <or N/A>.
   the references pin identity ONLY; the setting, wardrobe, light, and action
   all come from this text, so "the same scene as the last video" describes
   nothing. All base-format rules apply: shot/timestamp headers, one camera
-  move per shot with amplitude + speed, prose-quoted dialog with the voice
-  described around it (never `<d>`/`(S1)` markup - narration bug) that
-  FILLS the clip (10-13 words per 5 s; a sequential two-line exchange when
-  two people are on screen; mouth in frame), an explicit silent tail on
-  long clips. Refer to people as `<Subject N>` after defining them.
+  move per shot with amplitude + speed, dialog per "Speakers & dialog" and
+  "Dialog timing" above, an explicit silent tail on long clips. Refer to
+  people as `<Subject N>` after defining them.
 - **Audio refs** (`audio="N"`, then `audio2`, `audio3` - Audio bubbles or
   Movies with sound; up to 3 standalone refs): each becomes an `<Audio N>`
   tag. Define it in subject_definitions bound to its speaker (`<Audio 1> is
@@ -453,10 +451,7 @@ and put the result on both actions:
   must NOT be combined with the others - the chained step inherits the prior
   step's output automatically.
 - One camera move with magnitude per shot. Two competing moves fight.
-- Every prompt covers all three audio layers: prose-quoted dialog that
-  FILLS the clip (10-13 words per 5 s, one speaker at a time, the speaker's
-  mouth in frame; never `<d>`/`(S1)` markup - it kills lip sync),
-  overall_soundscape, and non_diegetic_music (or N/A). Explicit silence is
-  a last resort when people are on screen. 15s preset only on explicit
-  request.
+- Every prompt covers all three audio layers: dialog per "Speakers & dialog"
+  and "Dialog timing" above, overall_soundscape, and non_diegetic_music (or
+  N/A). 15s preset only on explicit request.
 - User asked to animate → just do it.

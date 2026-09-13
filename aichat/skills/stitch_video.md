@@ -1,6 +1,6 @@
 ---
 id: stitch_video
-summary: Join two or more existing Movie bubbles into ONE video, back to back, in the order listed (local FFmpeg, no GPU; mixed sizes letterboxed, audio kept). MULTI-CLIP FILM / EPISODE RECIPE ("make N clips that tell a story, then stitch them", "a 1 minute episode"): do it in ONE reply - emit every clip's action, put anchor="sceneN" on each movie-producing action, and END the reply with ONE stitch_video chat_images="scene1,...,sceneN". The host parks the stitch until every clip has rendered: never wait a turn, never emit continue to "check on" the clips, never guess Movie numbers. HOW EACH CLIP IS MADE depends on the cast - (a) REAL / NAMED / EXISTING people (web_image anchors or any anchors listed in ANCHORS): ONE action per clip, image_to_movie preset="Reference To Video (MiniMax H3) 5s.txt" with every person's photo in chat_image, chat_image2.. (they are <Picture 1>, <Picture 2>.. in the prompt), or video_to_video preset="Reference Video To Video (MiniMax H3) 5s.txt" with a talking web_video clip of the speaker as chat_image (<Video 1>/<Audio 1> = a voice-STYLE source: write "styled like <Audio 1>", never "matches"/"the voice from" - copy wording splices the sample's audio verbatim) plus the photos in chat_image2+; NEVER a generate_image still of a lookalike. (b) Invented characters only: generate_image -> image_to_movie chain="true" pairs. EVERY clip's prompt is a FULL structured H3 document that stands alone (see image_to_movie; the renders share no memory - "same diner as before" or "<Picture 1> again" renders a DIFFERENT diner and a changed outfit): write the shared text ONCE - subject_definitions + retention_analysis for reference clips, the Shot 1 style/scene re-anchor sentences for base clips - and paste it VERBATIM into every clip's document, varying only detailed_description's actions, quoted dialog, and camera - and every clip still re-describes the WHOLE scene (H3 carries nothing between renders; dialog is prose-quoted, never <d>/(S1) markup which kills lip sync, and FILLS each clip: 10-13 words per 5s clip, as a sequential two-line exchange when two people are on screen, one speaker at a time - a lone 5-word line per clip gets looped or padded with invented speech). Per clip target ~250-350 words (reference) / 150-250 (base i2v). LENGTH MATH: total = clips x duration, with duration="5" on every clip action as the DEFAULT - H3 quality/identity degrades on long single generations, so more 5s clips ALWAYS beats fewer long ones: "about a minute" = 12 clips x duration="5", "~2 minutes" = 24 x duration="5"; use duration="10"/"15" ONLY when the user explicitly asks for longer individual clips. Optional crossfade="0.5" for dissolves instead of hard cuts.
+summary: Join two or more existing Movie bubbles into ONE video, back to back, in the order listed (local FFmpeg, no GPU; mixed sizes letterboxed, audio kept). MULTI-CLIP FILM / EPISODE RECIPE ("make N clips that tell a story, then stitch them", "a 1 minute episode"): do it in ONE reply - emit every clip's action with anchor="sceneN" on each movie-producing action, and END the reply with ONE stitch_video chat_images="scene1,...,sceneN". The host parks the stitch until every clip has rendered: never wait a turn, never emit continue to "check on" the clips, never guess Movie numbers. HOW EACH CLIP IS MADE depends on the cast: (a) REAL / NAMED / EXISTING people (web_image anchors or anything in ANCHORS): ONE reference action per clip - image_to_movie preset="Reference To Video (MiniMax H3) 5s.txt" with every person's photo in chat_image, chat_image2.. (<Picture 1>, <Picture 2>..), or video_to_video preset="Reference Video To Video (MiniMax H3) 5s.txt" with a talking web_video clip of the speaker as chat_image (<Video 1>/<Audio 1> = a voice-STYLE source: "styled like <Audio 1>", never "matches"/"the voice from") plus the photos in chat_image2+; NEVER a generate_image still of a lookalike (fetch recipe: the REAL people rule in the main prompt / the web_image skill). (b) Invented characters only: generate_image -> image_to_movie chain="true" pairs. EVERY clip's prompt is a FULL structured H3 document that stands alone (see image_to_movie; the renders share no memory - "same diner as before" or "<Picture 1> again" renders a DIFFERENT diner and a changed outfit): write the shared text ONCE - subject_definitions + retention_analysis for reference clips, the Shot 1 style/scene re-anchor sentences for base clips - and paste it VERBATIM into every clip's document, varying only detailed_description's actions, quoted dialog (per the VIDEO DIALOG RULE, filling each clip) and camera. Per clip ~250-350 words (reference) / 150-250 (base i2v). LENGTH MATH: total = clips x duration, with duration="5" on every clip action as the DEFAULT - H3 quality/identity degrades on long single generations, so more 5s clips ALWAYS beats fewer long ones: "about a minute" = 12 clips x duration="5", "~2 minutes" = 24 x duration="5"; duration="10"/"15" ONLY when the user explicitly asks for longer individual clips. Optional crossfade="0.5" for dissolves instead of hard cuts.
 inputs: none
 autoload: true
 triggers: stitch, stitched, stitching, concatenate, concat, join the clips, join the videos, join them together, join them into, combine the clips, combine the videos, combine them into one, combine the movies, merge the clips, merge the videos, merge the movies, into one video, into one movie, into one long, into a single video, into a single movie, one long video, one long movie, one continuous video, back to back, back-to-back, put them together, put the clips together, sequence of clips, series of clips, series of videos, clips that tell a story, videos that tell a story, short film, mini movie, mini-movie, full movie, feature, episode, an episode of, multi-clip, multiple clips, several clips, 10 videos, ten videos, 5 videos, five videos, 10 clips, ten clips, 5 clips, five clips, each 10 seconds, each 5 seconds, minute long, 1 minute, one minute, 2 minute, two minute, 30 second, thirty second
@@ -132,12 +132,11 @@ or "continuing from clip 2" - the render cannot see clip 2. Per-clip length:
 ~250-350 words for a 5s reference clip, 150-250 for a base-mode clip
 (consistency beats bulk; the copied block does most of the work).
 
-Every clip's dialog FILLS its 5 seconds: 10-13 quoted words per clip, as a
-short sequential two-line exchange when two people are on screen (one
-speaker at a time, the speaker's mouth in frame while the line plays). A
-film of twelve 5 s clips that gave each clip one 5-7 word line came back
-with half the clips looped, padded with invented lines, or gibberish
-(transcribed 2026-09-12); the clips written as exchanges were word-perfect.
+Every clip's dialog FILLS its 5 seconds exactly as the VIDEO DIALOG RULE in
+the main prompt says (10-13 quoted words per clip; a sequential two-line
+exchange when two people are on screen). A film of twelve 5 s clips that
+gave each clip one 5-7 word line came back half looped or gibberish; the
+clips written as exchanges were word-perfect.
 
 ## Worked example - real cast, photos only
 
@@ -238,13 +237,11 @@ Why this shape works:
   SAME full setting/palette/wardrobe text goes into EVERY prompt and invented
   characters get their complete appearance restated every time (the models
   have no memory between clips). Vary the camera and the beat, not the look.
-- Every clip document covers all three audio layers: prose-quoted dialog
-  per speaker that fills the clip (~2.5 words/sec = 10-13 words per 5 s,
-  an exchange when two people are on screen, one speaker at a time; never
-  `<d>`/`(S1)` markup - it kills lip sync; explicit silence is a last resort
-  with people on screen), `overall_soundscape:`, and `non_diegetic_music:`
-  (or N/A) - kept consistent across scenes so the stitched film's soundtrack
-  doesn't lurch. Unstated audio is invented and people mouth gibberish.
+- Every clip document covers all three audio layers: dialog per the VIDEO
+  DIALOG RULE (filling the clip), `overall_soundscape:`, and
+  `non_diegetic_music:` (or N/A) - kept consistent across scenes so the
+  stitched film's soundtrack doesn't lurch. Unstated audio is invented and
+  people mouth gibberish.
 
 Say in the chat text that the finished film will appear as a new Movie once
 all clips are rendered; the host posts the stitched Movie bubble by itself.

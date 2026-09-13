@@ -1,6 +1,6 @@
 ---
 id: generate_movie
-summary: Make a new video from a text description. DEFAULT recipe is two actions: generate a Z-Image still, then animate it with image_to_movie chain="true" using `Image To Video (MiniMax H3 Turbo Cache) 5s.txt`. Use direct text-to-video (`skill="generate_movie"`) only when the user explicitly asks for direct/text-to-video or no still-image base. Every H3 movie prompt is the official structured multi-line DOCUMENT (see image_to_movie): integrated_multimodal_description: with [Shot 1] style + the WHOLE scene re-described + actions, dialog as plain prose with the exact words quoted and the voice described around them - she says 'exact line.' in English with a warm calm voice - NEVER <d>[English]...</d> blocks or (S1) IDs (that markup renders as narration with a closed mouth; ~2.5 words/sec and the words FILL the clip: 10-13 quoted words per 5s, one speaker at a time, mouth in frame - a lone short line or a silent on-screen person gets looped or invented speech), then overall_soundscape: (1-4 sentences) and non_diegetic_music: (instruments/tempo or N/A). 150-250 words for 5s, 250-450 for 10-15s/multi-shot; chained i2v prompts refer to the chained still as <Picture 1> inside Shot 1. Put prompt LAST in the tag. BEFORE picking the recipe, check ANCHORS / CHAT IMAGES for existing references of the requested subject: photo anchors AND any Audio #N voice sample of a SPEAKING character (a web_audio fetch, an imported .wav). When either exists, route through image_to_movie with a Reference To Video preset instead of this default recipe, staging the photos (chat_image=) and the voice sample (audio="N", voice styled via its <Audio N> tag) - rendering a character speaking while their voice sample sits unused in chat is a routing error.
+summary: Make a new video from a text description. DEFAULT recipe is two actions: generate a Z-Image still, then animate it with image_to_movie chain="true" using `Image To Video (MiniMax H3 Turbo Cache) 5s.txt`. Use direct text-to-video (`skill="generate_movie"`) only when the user explicitly asks for direct/text-to-video or no still-image base. The movie prompt is the official H3 DOCUMENT per image_to_movie: integrated_multimodal_description: ([Shot 1] style + the WHOLE scene re-described + actions + one camera move; a chained i2v prompt refers to the chained still as <Picture 1> inside Shot 1), overall_soundscape: (1-4 sentences), non_diegetic_music: (instruments/tempo or N/A); 150-250 words for 5s, 250-450 for 10-15s/multi-shot; dialog per the VIDEO DIALOG RULE in the main prompt. Put prompt LAST in the tag. BEFORE picking the recipe, check ANCHORS / CHAT IMAGES for existing references of the requested subject: photo anchors AND any Audio #N voice sample of a SPEAKING character (a web_audio fetch, an imported .wav). When either exists, route through image_to_movie with a Reference To Video preset instead of this default recipe, staging the photos (chat_image=) and the voice sample (audio="N", voice styled via its <Audio N> tag) - rendering a character speaking while their voice sample sits unused in chat is a routing error.
 inputs: none
 autoload: true
 triggers: prompt to video, text to video, text-to-video, direct video, direct from text, no still first, minimax video, minimax movie, minmax video, h3 video
@@ -148,11 +148,7 @@ format". In short: `integrated_multimodal_description:` ([Shot 1] style, the
 WHOLE scene described - for a chained i2v, re-anchor the still as "the woman
 shown in <Picture 1>"; never a delta like "the same scene but..." - then
 concrete actions, ONE camera move as motion type + amplitude + speed, and
-dialog as plain prose with the exact words quoted and the voice described
-around them - `she says 'exact line.' in English with a warm calm voice` -
-NEVER `<d>` blocks or `(S1)` IDs, which render as closed-mouth narration;
-~2.5 words/sec, FILLING the clip with 10-13 words per 5 s - one speaker at
-a time, mouth in frame; silence is a last resort with people on screen),
+dialog written exactly per the VIDEO DIALOG RULE in the main prompt),
 `overall_soundscape:` (1-4 sentences), `non_diegetic_music:` (instruments/
 tempo, or N/A). **150-250 words at 5s; 250-450 for 10-15s/multi-shot** (a 5s
 clip is ONE shot, two at most; later shots start `[Shot N] At MM:SS.mmm`).
@@ -179,11 +175,9 @@ unless asked. See `image_to_movie` -> "Sizing" for details.
 
 - User asked for a new video -> spawn it, no confirmation.
 - EVERY H3 movie prompt is the structured document with all three audio
-  layers: prose-quoted dialog per speaker that fills the clip (10-13 words
-  per 5 s, one speaker at a time; never `<d>`/`(S1)` markup - it kills lip
-  sync),
-  `overall_soundscape:`, and `non_diegetic_music:` (or N/A). 150-250 words
-  at 5s, the whole scene re-described. `prompt` LAST in the tag.
+  layers: dialog per the VIDEO DIALOG RULE, `overall_soundscape:`, and
+  `non_diegetic_music:` (or N/A). 150-250 words at 5s, the whole scene
+  re-described. `prompt` LAST in the tag.
 - Default is Z-Image still -> `image_to_movie chain="true"` with
   `{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}`.
 - ALWAYS put the same `width`/`height` on both actions. Use the size the user
