@@ -6408,7 +6408,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 string serverAddress = LLMInstanceManager.ApplyReplicaPortOffset(activeSettings.endpoint, llmReplicaIndex);
                 string apiKey = activeSettings.apiKey;
                 string model = activeSettings.selectedModel ?? "";
-                string endpoint = serverAddress.TrimEnd('/') + "/v1/chat/completions";
+                string endpoint = LLMModelNotFound.BuildChatCompletionsUrl(serverAddress);
 
                 var normalizedLines = OpenAITextCompletionManager.NormalizeForStrictAlternation(lines);
                 bool isDeepSeek = LLMRequestProfile.IsDeepSeekModel(model);

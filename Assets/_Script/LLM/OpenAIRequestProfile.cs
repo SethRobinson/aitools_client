@@ -155,10 +155,7 @@ public static class OpenAIRequestProfileResolver
                 profile.useResponsesAPI = false;
                 profile.enableThinking = settings.enableThinking;
                 string customEndpoint = LLMInstanceManager.ApplyReplicaPortOffset(settingsEndpoint, replicaIndex);
-                customEndpoint = customEndpoint.TrimEnd('/');
-                if (!customEndpoint.EndsWith("/v1/chat/completions"))
-                    customEndpoint += "/v1/chat/completions";
-                profile.endpoint = customEndpoint;
+                profile.endpoint = LLMModelNotFound.BuildChatCompletionsUrl(customEndpoint);
             }
         }
 

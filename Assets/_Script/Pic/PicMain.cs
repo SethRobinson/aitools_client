@@ -4678,7 +4678,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                             string model = activeSettings.selectedModel ?? "";
                             
                             // Build endpoint URL for OpenAI compatible server
-                            string endpoint = serverAddress.TrimEnd('/') + "/v1/chat/completions";
+                            string endpoint = LLMModelNotFound.BuildChatCompletionsUrl(serverAddress);
                             
                             RTConsole.Log($"PicMain: Contacting OpenAI Compatible server at {endpoint} with model {model}");
                             

@@ -650,8 +650,7 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
 
         LLMDebugLog.LogRequest(json, debugJobSize);
         string url;
-        //        url = serverAddress + "/v1/chat/completions";
-        url = serverAddress + apiCommandURL;
+        url = LLMModelNotFound.JoinApiPath(serverAddress, apiCommandURL);
         m_connectionActive = true;
         using (_currentRequest = UnityWebRequest.PostWwwForm(url, "POST"))
         {
@@ -703,7 +702,7 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
     {
         LLMDebugLog.LogRequest(json, debugJobSize);
 
-        string url = serverAddress + apiCommandURL;
+        string url = LLMModelNotFound.JoinApiPath(serverAddress, apiCommandURL);
         m_connectionActive = true;
 
         using (_currentRequest = UnityWebRequest.PostWwwForm(url, "POST"))

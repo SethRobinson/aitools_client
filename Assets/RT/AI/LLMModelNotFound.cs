@@ -192,6 +192,39 @@ public static class LLMModelNotFound
     }
 
     /// <summary>
+    /// Builds the Chat Completions URL for an OpenAI-compatible server from whatever the user
+    /// typed as the endpoint: "http://host:1234" -> ".../v1/chat/completions";
+    /// "http://host:1234/v1" (the form LM Studio, OpenRouter and Groq document, or Z.ai's
+    /// ".../api/paas/v4") keeps its version segment once and gets "/chat/completions"; a full
+    /// ".../chat/completions" is returned as is. Blindly appending "/v1/chat/completions"
+    /// produced ".../v1/v1/chat/completions" (404) for the versioned form.
+    /// </summary>
+    public static string BuildChatCompletionsUrl(string endpoint)
+    {
+        if (string.IsNullOrEmpty(endpoint)) return "";
+        string url = endpoint.Trim().TrimEnd('/');
+        if (url.Length == 0) return "";
+        if (url.EndsWith("/chat/completions", StringComparison.OrdinalIgnoreCase)) return url;
+        if (Regex.IsMatch(url, @"/v\d+$", RegexOptions.IgnoreCase)) return url + "/chat/completions";
+        return url + "/v1/chat/completions";
+    }
+
+    /// <summary>
+    /// Joins a server base and an API path without doubling a version segment:
+    /// ("http://host:8080/v1", "/v1/chat/completions") -> "http://host:8080/v1/chat/completions".
+    /// </summary>
+    public static string JoinApiPath(string serverAddress, string apiPath)
+    {
+        string baseUrl = (serverAddress ?? "").Trim().TrimEnd('/');
+        string path = apiPath ?? "";
+        if (path.Length > 0 && path[0] != '/') path = "/" + path;
+        var m = Regex.Match(baseUrl, @"/(v\d+)$", RegexOptions.IgnoreCase);
+        if (m.Success && path.StartsWith("/" + m.Groups[1].Value + "/", StringComparison.OrdinalIgnoreCase))
+            path = path.Substring(m.Groups[1].Value.Length + 1);
+        return baseUrl + path;
+    }
+
+    /// <summary>
     /// True when two endpoint strings name the same server base (scheme/host/port/
     /// path prefix), ignoring case, trailing slashes, and a "/v1/chat/completions"
     /// or "/v1" suffix on either side.

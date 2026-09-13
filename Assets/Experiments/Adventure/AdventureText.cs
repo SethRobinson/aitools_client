@@ -1472,7 +1472,7 @@ public class AdventureText : MonoBehaviour
                     string model = settings?.selectedModel ?? "";
 
                     // Build endpoint URL for OpenAI compatible server
-                    string endpoint = serverAddress.TrimEnd('/') + "/v1/chat/completions";
+                    string endpoint = LLMModelNotFound.BuildChatCompletionsUrl(serverAddress);
 
                     RTConsole.Log($"Adventure: Contacting OpenAI Compatible server at {endpoint} with model {model}");
 

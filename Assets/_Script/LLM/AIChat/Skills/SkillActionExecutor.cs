@@ -4044,7 +4044,7 @@ namespace AITools.AIChat.Skills
                 {
                     var mgr = runner.gameObject.AddComponent<OpenAITextCompletionManager>();
                     string serverAddress = settings.endpoint ?? "";
-                    string endpoint = serverAddress.TrimEnd('/') + "/v1/chat/completions";
+                    string endpoint = LLMModelNotFound.BuildChatCompletionsUrl(serverAddress);
                     string model = settings.selectedModel ?? "";
                     bool isDeepSeek = LLMRequestProfile.IsDeepSeekModel(model);
                     var compatReasoning = LLMRequestProfile.ResolveCompatReasoning(model, settings);

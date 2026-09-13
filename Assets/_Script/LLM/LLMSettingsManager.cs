@@ -700,11 +700,7 @@ public class LLMSettingsManager : MonoBehaviour
 
             case LLMProvider.LlamaCpp:
                 // llama.cpp uses /v1/chat/completions
-                if (!endpoint.EndsWith("/v1/chat/completions"))
-                {
-                    endpoint = endpoint.TrimEnd('/') + "/v1/chat/completions";
-                }
-                return endpoint;
+                return LLMModelNotFound.BuildChatCompletionsUrl(endpoint);
 
             case LLMProvider.Ollama:
                 // Return base URL only - endpoint path (/api/chat) is set by BuildForInstructJSON
@@ -716,11 +712,7 @@ public class LLMSettingsManager : MonoBehaviour
 
             case LLMProvider.OpenAICompatible:
                 // OpenAI Compatible uses /v1/chat/completions (standard OpenAI format)
-                if (!endpoint.EndsWith("/v1/chat/completions"))
-                {
-                    endpoint = endpoint.TrimEnd('/') + "/v1/chat/completions";
-                }
-                return endpoint;
+                return LLMModelNotFound.BuildChatCompletionsUrl(endpoint);
 
             default:
                 return endpoint;
@@ -1121,11 +1113,7 @@ public class LLMSettingsManager : MonoBehaviour
             case LLMProvider.Anthropic:
                 return endpoint;
             case LLMProvider.LlamaCpp:
-                if (!endpoint.EndsWith("/v1/chat/completions"))
-                {
-                    endpoint = endpoint.TrimEnd('/') + "/v1/chat/completions";
-                }
-                return endpoint;
+                return LLMModelNotFound.BuildChatCompletionsUrl(endpoint);
             case LLMProvider.Ollama:
                 return endpoint.TrimEnd('/');
             case LLMProvider.Gemini:
@@ -1133,11 +1121,7 @@ public class LLMSettingsManager : MonoBehaviour
                 return endpoint.TrimEnd('/');
             case LLMProvider.OpenAICompatible:
                 // OpenAI Compatible uses /v1/chat/completions (standard OpenAI format)
-                if (!endpoint.EndsWith("/v1/chat/completions"))
-                {
-                    endpoint = endpoint.TrimEnd('/') + "/v1/chat/completions";
-                }
-                return endpoint;
+                return LLMModelNotFound.BuildChatCompletionsUrl(endpoint);
             default:
                 return endpoint;
         }
