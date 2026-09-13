@@ -193,16 +193,35 @@ public static class AutomationController
             string[] parts = requestLine.Split(' ');
             string rawPath = parts.Length > 1 ? parts[1] : "/";
 
-            // Drain the headers, capturing Content-Length so we can read a request body.
+            // Drain the headers, capturing Content-Length so we can read a request body, plus
+            // Origin / Host for the cross-site check below.
             int contentLength = 0;
+            string origin = null;
+            string host = null;
             string headerLine;
             while (!string.IsNullOrEmpty(headerLine = ReadLine(stream)))
             {
                 int colon = headerLine.IndexOf(':');
-                if (colon > 0 && headerLine.Substring(0, colon).Trim().ToLowerInvariant() == "content-length")
-                    int.TryParse(headerLine.Substring(colon + 1).Trim(), out contentLength);
+                if (colon <= 0) continue;
+                string name = headerLine.Substring(0, colon).Trim().ToLowerInvariant();
+                string value = headerLine.Substring(colon + 1).Trim();
+                if (name == "content-length") int.TryParse(value, out contentLength);
+                else if (name == "origin") origin = value;
+                else if (name == "host") host = value;
             }
             string body = ReadBody(stream, contentLength);
+
+            // Loopback-only is not the same as local-tool-only: a web page open in the user's
+            // browser can fetch() http://127.0.0.1:8772/... as a CORS "simple request" (no
+            // preflight), and /screenshot, /save, /chat_import_* and /chat would act on it.
+            // Browsers always send Origin on cross-site requests, and a DNS-rebinding page
+            // arrives with a Host naming the attacker's domain, while curl / PowerShell /
+            // scripts send neither, so refusing those two shapes closes the browser path.
+            if (origin != null || !IsLoopbackHostHeader(host))
+            {
+                WriteJson(stream, 403, "{\"ok\":false,\"error\":\"the automation bridge only answers local tools (no browser or cross-site requests)\"}");
+                return;
+            }
 
             int q = rawPath.IndexOf('?');
             if (q >= 0) rawPath = rawPath.Substring(0, q);
@@ -598,6 +617,19 @@ public static class AutomationController
                     break;
             }
         }
+    }
+
+    // Host header as sent by a local tool to the loopback listener. Missing is fine (HTTP/1.0
+    // clients); anything but a loopback name means the request was routed here through a
+    // public DNS name pointing at 127.0.0.1 (DNS rebinding) and is refused.
+    static bool IsLoopbackHostHeader(string host)
+    {
+        if (string.IsNullOrEmpty(host)) return true;
+        string h = host.Trim().ToLowerInvariant();
+        int colon = h.LastIndexOf(':');
+        if (colon > 0 && h.IndexOf(']') < colon) h = h.Substring(0, colon);
+        h = h.Trim('[', ']');
+        return h == "127.0.0.1" || h == "localhost" || h == "::1" || h.StartsWith("127.");
     }
 
     // Read a single CRLF-terminated line from the stream as ASCII. Returns "" on a bare
