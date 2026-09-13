@@ -3266,6 +3266,11 @@ namespace AITools.AIChat.Skills
             {
                 capturedHost.AddSystemInjectionAndBubble(
                     $"Skill '{skillId}' (preset '{presetName}'): {msg}");
+                // The note only reaches the model with its NEXT request; a render that died
+                // minutes after the reply ended would otherwise sit silent until the user
+                // typed something. Same bounded self-continue path as the other correction
+                // turns (MaxConsecutiveSelfContinues).
+                capturedHost.RequestContinueTurn();
             };
         }
 

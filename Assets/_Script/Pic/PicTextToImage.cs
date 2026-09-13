@@ -816,6 +816,7 @@ public class PicTextToImage : MonoBehaviour
             RTConsole.Log($"Failed to parse JSON: {ex.Message}");
             //write out .json to "json_error.json" for debugging
             File.WriteAllText("json_error.json", comfyUIGraphJSon);
+            m_picScript.ReportRenderFailure("the workflow JSON could not be parsed before submit (see json_error.json)", m_gpu);
             m_picScript.SetStatusMessage("Bad json, can't parse reply. Check json_error.json for more info.");
             CloseWebSocket();
             // Frees the GPU AND tells PicMain the job is over; clearing the flags by hand
@@ -1298,6 +1299,7 @@ public class PicTextToImage : MonoBehaviour
                     RTQuickMessageManager.Get().ShowMessage(msg);
                     Debug.Log(historyRequest.downloadHandler.text);
 
+                    m_picScript.ReportRenderFailure("could not reach the server while waiting for the result (" + historyRequest.error + ")", m_gpu);
                     m_picScript.SetStatusMessage("Generate error");
                     CloseWebSocket();
                     // Frees the GPU AND tells PicMain the job is over; clearing the flags by
@@ -1503,10 +1505,10 @@ public class PicTextToImage : MonoBehaviour
                         // history entry itself and remember it on the Pic (AI Chat forwards it to the model).
                         string errorDetail = ExtractExecutionErrorDetail(statusNode);
                         if (!string.IsNullOrEmpty(errorDetail))
-                        {
                             RTConsole.Log("ComfyUI execution error on server " + m_gpu + ": " + errorDetail);
-                            m_picScript.SetLastRenderError(errorDetail, m_gpu);
-                        }
+                        m_picScript.ReportRenderFailure(string.IsNullOrEmpty(errorDetail)
+                            ? "ComfyUI reported a failed render (no execution_error detail in /history)"
+                            : errorDetail, m_gpu);
                         if (Config.Get().IsValidGPU(m_gpu) && m_bIsGenerating)
                         {
                             m_bIsGenerating = false;
@@ -1549,7 +1551,7 @@ public class PicTextToImage : MonoBehaviour
                     Debug.LogWarning(lostMsg);
                     RTConsole.Log(lostMsg);
                     RTQuickMessageManager.Get().ShowMessage(lostMsg);
-                    m_picScript.SetLastRenderError("ComfyUI lost the job (server restarted or the job was dropped)", m_gpu);
+                    m_picScript.ReportRenderFailure("ComfyUI lost the job (server restarted or the job was dropped)", m_gpu);
                     m_picScript.SetStatusMessage("Comfy lost job");
                     CloseWebSocket();
                     FinishUpEverything(false);
@@ -1731,6 +1733,7 @@ public class PicTextToImage : MonoBehaviour
                 RTQuickMessageManager.Get().ShowMessage(msg);
                 Debug.Log(getRequest.downloadHandler.text);
 
+                m_picScript.ReportRenderFailure("the finished result could not be downloaded from the server (" + getRequest.error + ")", m_gpu);
                 m_picScript.SetStatusMessage("Generate error");
                 // Frees the GPU AND tells PicMain the job is over (see GetComfyUIHistory).
                 FinishUpEverything(false);
@@ -1935,6 +1938,7 @@ public class PicTextToImage : MonoBehaviour
                 RTQuickMessageManager.Get().ShowMessage(msg);
                 Debug.Log(getRequest.downloadHandler.text);
 
+                m_picScript.ReportRenderFailure("the finished result could not be downloaded from the server (" + getRequest.error + ")", m_gpu);
                 m_picScript.SetStatusMessage("Generate error");
                 // Frees the GPU AND tells PicMain the job is over (see GetComfyUIHistory).
                 FinishUpEverything(false);

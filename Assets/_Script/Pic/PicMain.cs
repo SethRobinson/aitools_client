@@ -282,6 +282,20 @@ public class PicMain : MonoBehaviour
     public string m_lastRenderError = null;
     public int m_lastRenderErrorGPU = -1;
 
+    /// <summary>
+    /// A render died after submit (server unreachable, ComfyUI lost or rejected the job, the
+    /// result could not be downloaded): remember the detail for stitch waits AND tell the AI
+    /// Chat host once (abort reporter + a continue turn) so the model hears about it instead
+    /// of waiting on a black placeholder. A no-op for Pics with no reporter wired (manual use).
+    /// </summary>
+    public void ReportRenderFailure(string detail, int gpu)
+    {
+        SetLastRenderError(detail, gpu);
+        string server = Config.Get() != null && Config.Get().IsValidGPU(gpu) ? Config.Get().GetGPUName(gpu) : ("server " + gpu);
+        ReportWorkflowAbortOnce("Render FAILED on " + server + ": " + detail +
+            ". The Pic has been released and produced no image or clip. If the cause looks transient, re-emit the same action unchanged; pin a different gpu only if the same server fails twice.");
+    }
+
     public void SetLastRenderError(string error, int gpu)
     {
         m_lastRenderError = error;
