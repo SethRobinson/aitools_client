@@ -1589,10 +1589,45 @@ namespace AITools.AIChat.Video
             return System.IO.Path.GetFullPath(System.IO.Path.Combine(Application.dataPath.Replace('/', '\\'), ".."));
         }
 
+        /// <summary>
+        /// Quotes one argument for a Windows command line the way CommandLineToArgvW / the
+        /// C runtime parse it: backslashes are literal EXCEPT when they precede a double
+        /// quote (each pair is one backslash, \" is a literal quote), so a backslash run
+        /// before a quote or before the closing quote must be doubled. The old version only
+        /// turned " into \" and never doubled backslashes, so a value ending in backslash +
+        /// quote closed the argument early and everything after it became extra options
+        /// (a model-supplied yt-dlp URL could smuggle --exec). Trailing backslashes on a
+        /// directory path ("C:\dir\") are handled correctly now too.
+        /// </summary>
         internal static string QuoteArg(string s)
         {
             if (s == null) return "\"\"";
-            return "\"" + s.Replace("\"", "\\\"") + "\"";
+            var sb = new StringBuilder(s.Length + 8);
+            sb.Append('"');
+            int i = 0;
+            while (i < s.Length)
+            {
+                int backslashes = 0;
+                while (i < s.Length && s[i] == '\\') { backslashes++; i++; }
+                if (i == s.Length)
+                {
+                    sb.Append('\\', backslashes * 2); // before the closing quote
+                    break;
+                }
+                if (s[i] == '"')
+                {
+                    sb.Append('\\', backslashes * 2 + 1);
+                    sb.Append('"');
+                }
+                else
+                {
+                    sb.Append('\\', backslashes);
+                    sb.Append(s[i]);
+                }
+                i++;
+            }
+            sb.Append('"');
+            return sb.ToString();
         }
 
         internal static string SanitizeFileStem(string s)

@@ -183,7 +183,9 @@ namespace AITools.AIChat.Web
             sb.Append(" -o ").Append(FfmpegTool.QuoteArg(outputTemplate));
             if (!string.IsNullOrWhiteSpace(cookiesBrowser))
                 sb.Append(" --cookies-from-browser ").Append(FfmpegTool.QuoteArg(cookiesBrowser.Trim()));
-            sb.Append(" ").Append(FfmpegTool.QuoteArg(url.Trim()));
+            // "--" ends option parsing so the URL can never be read as a flag, whatever it
+            // contains (the URL gate also rejects quotes/backslashes/whitespace outright).
+            sb.Append(" -- ").Append(FfmpegTool.QuoteArg(url.Trim()));
             return sb.ToString();
         }
 

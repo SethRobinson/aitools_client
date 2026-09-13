@@ -86,11 +86,24 @@ namespace AITools.AIChat.Web
         {
             reason = null;
             if (string.IsNullOrWhiteSpace(url)) { reason = "empty URL"; return false; }
+            string trimmed = url.Trim();
+            // Characters that never appear in a real URL (browsers percent-encode them). A raw
+            // quote, backslash, whitespace or control character can only be a copy-paste
+            // accident or an attempt to break out of a command-line argument (yt-dlp gets the
+            // URL on its command line), and System.Uri is lenient enough to accept them.
+            for (int i = 0; i < trimmed.Length; i++)
+            {
+                char c = trimmed[i];
+                if (c == '"' || c == '\\' || c < 0x21 || c == 0x7f)
+                { reason = "URL contains an illegal character (quote, backslash, whitespace or control code)"; return false; }
+            }
             Uri uri;
-            if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out uri)) { reason = "not an absolute URL"; return false; }
+            if (!Uri.TryCreate(trimmed, UriKind.Absolute, out uri)) { reason = "not an absolute URL"; return false; }
             if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) { reason = "only http/https URLs are allowed (got " + uri.Scheme + ")"; return false; }
             if (!string.IsNullOrEmpty(uri.UserInfo)) { reason = "URLs with embedded credentials are not allowed"; return false; }
-            string host = uri.Host ?? "";
+            // A trailing dot ("localhost.") names the same host to the resolver but slipped
+            // past the string checks below.
+            string host = (uri.Host ?? "").TrimEnd('.');
             if (host.Length == 0) { reason = "missing host"; return false; }
             if (string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase) || host.EndsWith(".localhost", StringComparison.OrdinalIgnoreCase) || host.EndsWith(".local", StringComparison.OrdinalIgnoreCase))
             { reason = "local hosts are not allowed"; return false; }
@@ -143,70 +156,91 @@ namespace AITools.AIChat.Web
             }
 
             float started = Time.realtimeSinceStartup;
-            using (var req = UnityWebRequest.Get(url.Trim()))
+            string currentUrl = url.Trim();
+            for (int hop = 0; ; hop++)
             {
-                req.downloadHandler = new DownloadHandlerBuffer();
-                ApplyCommonHeaders(req, string.IsNullOrEmpty(accept) ? ImageAccept : accept);
-                req.timeout = Mathf.Max(1, Mathf.RoundToInt(timeoutSeconds));
-                if (handle != null) handle.Request = req;
-
-                var op = req.SendWebRequest();
-                while (!op.isDone)
+                string nextUrl = null;
+                using (var req = UnityWebRequest.Get(currentUrl))
                 {
-                    if (handle != null && handle.Cancelled) break;
-                    if (maxBytes > 0 && (long)req.downloadedBytes > maxBytes)
+                    req.downloadHandler = new DownloadHandlerBuffer();
+                    ApplyCommonHeaders(req, string.IsNullOrEmpty(accept) ? ImageAccept : accept);
+                    req.timeout = Mathf.Max(1, Mathf.RoundToInt(timeoutSeconds));
+                    req.redirectLimit = 0; // hops are followed by hand below so every target passes the URL gate
+                    if (handle != null) handle.Request = req;
+
+                    var op = req.SendWebRequest();
+                    while (!op.isDone)
                     {
-                        try { req.Abort(); } catch { }
-                        result.Error = "skipped (over " + FormatBytes(maxBytes) + ")";
-                        break;
+                        if (handle != null && handle.Cancelled) break;
+                        if (maxBytes > 0 && (long)req.downloadedBytes > maxBytes)
+                        {
+                            try { req.Abort(); } catch { }
+                            result.Error = "skipped (over " + FormatBytes(maxBytes) + ")";
+                            break;
+                        }
+                        onProgress?.Invoke(req.downloadProgress);
+                        yield return null;
                     }
-                    onProgress?.Invoke(req.downloadProgress);
-                    yield return null;
-                }
 
-                result.ElapsedSeconds = Time.realtimeSinceStartup - started;
-                result.HttpStatus = (int)req.responseCode;
-                string rawContentType = req.GetResponseHeader("Content-Type");
-                result.ContentType = NormalizeContentType(rawContentType);
-                result.Charset = ExtractCharset(rawContentType);
-                if (handle != null) { handle.Request = null; result.Cancelled = handle.Cancelled; }
+                    result.ElapsedSeconds = Time.realtimeSinceStartup - started;
+                    result.HttpStatus = (int)req.responseCode;
+                    string rawContentType = req.GetResponseHeader("Content-Type");
+                    result.ContentType = NormalizeContentType(rawContentType);
+                    result.Charset = ExtractCharset(rawContentType);
+                    if (handle != null) { handle.Request = null; result.Cancelled = handle.Cancelled; }
 
-                if (result.Cancelled)
-                {
-                    result.Error = "cancelled";
-                    onDone?.Invoke(result);
-                    yield break;
-                }
-                if (!string.IsNullOrEmpty(result.Error))
-                {
-                    onDone?.Invoke(result);
-                    yield break;
-                }
+                    if (result.Cancelled)
+                    {
+                        result.Error = "cancelled";
+                        onDone?.Invoke(result);
+                        yield break;
+                    }
+                    if (!string.IsNullOrEmpty(result.Error))
+                    {
+                        onDone?.Invoke(result);
+                        yield break;
+                    }
 
-                byte[] data = req.downloadHandler != null ? req.downloadHandler.data : null;
-                result.Bytes = data != null ? data.Length : 0;
-                if (req.result != UnityWebRequest.Result.Success || result.HttpStatus < 200 || result.HttpStatus >= 300)
-                {
-                    result.Error = DescribeFailure(req, result.HttpStatus, timeoutSeconds);
-                    onDone?.Invoke(result);
-                    yield break;
-                }
-                if (data == null || data.Length == 0)
-                {
-                    result.Error = "HTTP " + result.HttpStatus + " but the body was empty";
-                    onDone?.Invoke(result);
-                    yield break;
-                }
-                if (maxBytes > 0 && data.Length > maxBytes)
-                {
-                    result.Error = "skipped (over " + FormatBytes(maxBytes) + ")";
-                    onDone?.Invoke(result);
-                    yield break;
-                }
+                    if (IsRedirectStatus(result.HttpStatus))
+                    {
+                        string why;
+                        if (!TryResolveRedirect(currentUrl, req.GetResponseHeader("Location"), hop, out nextUrl, out why))
+                        {
+                            result.Error = why;
+                            onDone?.Invoke(result);
+                            yield break;
+                        }
+                    }
+                    else
+                    {
+                        byte[] data = req.downloadHandler != null ? req.downloadHandler.data : null;
+                        result.Bytes = data != null ? data.Length : 0;
+                        if (req.result != UnityWebRequest.Result.Success || result.HttpStatus < 200 || result.HttpStatus >= 300)
+                        {
+                            result.Error = DescribeFailure(req, result.HttpStatus, timeoutSeconds);
+                            onDone?.Invoke(result);
+                            yield break;
+                        }
+                        if (data == null || data.Length == 0)
+                        {
+                            result.Error = "HTTP " + result.HttpStatus + " but the body was empty";
+                            onDone?.Invoke(result);
+                            yield break;
+                        }
+                        if (maxBytes > 0 && data.Length > maxBytes)
+                        {
+                            result.Error = "skipped (over " + FormatBytes(maxBytes) + ")";
+                            onDone?.Invoke(result);
+                            yield break;
+                        }
 
-                result.Data = data;
-                result.Kind = SniffMagic(data);
-                result.Success = true;
+                        result.Data = data;
+                        result.Kind = SniffMagic(data);
+                        result.Success = true;
+                    }
+                }
+                if (nextUrl == null) break;
+                currentUrl = nextUrl;
             }
             onDone?.Invoke(result);
         }
@@ -225,55 +259,76 @@ namespace AITools.AIChat.Web
             try { Directory.CreateDirectory(Path.GetDirectoryName(path)); } catch { }
 
             float started = Time.realtimeSinceStartup;
-            using (var req = UnityWebRequest.Get(url.Trim()))
+            string currentUrl = url.Trim();
+            for (int hop = 0; ; hop++)
             {
-                var fileHandler = new DownloadHandlerFile(path);
-                fileHandler.removeFileOnAbort = true;
-                req.downloadHandler = fileHandler;
-                ApplyCommonHeaders(req, "video/*,image/gif,*/*;q=0.8");
-                req.timeout = Mathf.Max(1, Mathf.RoundToInt(timeoutSeconds));
-                if (handle != null) handle.Request = req;
-
-                var op = req.SendWebRequest();
-                while (!op.isDone)
+                string nextUrl = null;
+                using (var req = UnityWebRequest.Get(currentUrl))
                 {
-                    if (handle != null && handle.Cancelled) break;
-                    if (maxBytes > 0 && (long)req.downloadedBytes > maxBytes)
+                    var fileHandler = new DownloadHandlerFile(path);
+                    fileHandler.removeFileOnAbort = true;
+                    req.downloadHandler = fileHandler;
+                    ApplyCommonHeaders(req, "video/*,image/gif,*/*;q=0.8");
+                    req.timeout = Mathf.Max(1, Mathf.RoundToInt(timeoutSeconds));
+                    req.redirectLimit = 0; // hops are followed by hand below so every target passes the URL gate
+                    if (handle != null) handle.Request = req;
+
+                    var op = req.SendWebRequest();
+                    while (!op.isDone)
                     {
-                        try { req.Abort(); } catch { }
-                        result.Error = "skipped (over " + FormatBytes(maxBytes) + ")";
-                        break;
+                        if (handle != null && handle.Cancelled) break;
+                        if (maxBytes > 0 && (long)req.downloadedBytes > maxBytes)
+                        {
+                            try { req.Abort(); } catch { }
+                            result.Error = "skipped (over " + FormatBytes(maxBytes) + ")";
+                            break;
+                        }
+                        onProgress?.Invoke(req.downloadProgress);
+                        yield return null;
                     }
-                    onProgress?.Invoke(req.downloadProgress);
-                    yield return null;
-                }
 
-                result.ElapsedSeconds = Time.realtimeSinceStartup - started;
-                result.HttpStatus = (int)req.responseCode;
-                result.ContentType = NormalizeContentType(req.GetResponseHeader("Content-Type"));
-                result.Bytes = (long)req.downloadedBytes;
-                if (handle != null) { handle.Request = null; result.Cancelled = handle.Cancelled; }
+                    result.ElapsedSeconds = Time.realtimeSinceStartup - started;
+                    result.HttpStatus = (int)req.responseCode;
+                    result.ContentType = NormalizeContentType(req.GetResponseHeader("Content-Type"));
+                    result.Bytes = (long)req.downloadedBytes;
+                    if (handle != null) { handle.Request = null; result.Cancelled = handle.Cancelled; }
 
-                if (result.Cancelled)
-                {
-                    result.Error = "cancelled";
-                    TryDelete(path);
-                    onDone?.Invoke(result);
-                    yield break;
+                    if (result.Cancelled)
+                    {
+                        result.Error = "cancelled";
+                        TryDelete(path);
+                        onDone?.Invoke(result);
+                        yield break;
+                    }
+                    if (!string.IsNullOrEmpty(result.Error))
+                    {
+                        TryDelete(path);
+                        onDone?.Invoke(result);
+                        yield break;
+                    }
+                    if (IsRedirectStatus(result.HttpStatus))
+                    {
+                        string why;
+                        if (!TryResolveRedirect(currentUrl, req.GetResponseHeader("Location"), hop, out nextUrl, out why))
+                        {
+                            result.Error = why;
+                            TryDelete(path);
+                            onDone?.Invoke(result);
+                            yield break;
+                        }
+                    }
+                    else if (req.result != UnityWebRequest.Result.Success || result.HttpStatus < 200 || result.HttpStatus >= 300)
+                    {
+                        result.Error = DescribeFailure(req, result.HttpStatus, timeoutSeconds);
+                        TryDelete(path);
+                        onDone?.Invoke(result);
+                        yield break;
+                    }
                 }
-                if (!string.IsNullOrEmpty(result.Error))
-                {
-                    TryDelete(path);
-                    onDone?.Invoke(result);
-                    yield break;
-                }
-                if (req.result != UnityWebRequest.Result.Success || result.HttpStatus < 200 || result.HttpStatus >= 300)
-                {
-                    result.Error = DescribeFailure(req, result.HttpStatus, timeoutSeconds);
-                    TryDelete(path);
-                    onDone?.Invoke(result);
-                    yield break;
-                }
+                if (nextUrl == null) break;
+                // The file handler wrote the redirect response's body (if any); start the next hop clean.
+                TryDelete(path);
+                currentUrl = nextUrl;
             }
 
             // The file handler has closed its stream now; sniff the header.
@@ -308,6 +363,35 @@ namespace AITools.AIChat.Web
                 TryDelete(path);
             }
             onDone?.Invoke(result);
+        }
+
+        /// <summary>Redirect hops followed by hand; UnityWebRequest's own following is disabled so every target is re-gated.</summary>
+        public const int MaxRedirects = 5;
+
+        static bool IsRedirectStatus(int code)
+        {
+            return code == 301 || code == 302 || code == 303 || code == 307 || code == 308;
+        }
+
+        /// <summary>
+        /// Resolves a redirect's Location against the URL that answered it and runs the target
+        /// through the public-host gate. UnityWebRequest used to follow redirects itself after
+        /// the gate had only seen the first URL, so a public URL that 302'd to loopback or LAN
+        /// (a ComfyUI server, the editor automation bridge) was fetched anyway.
+        /// </summary>
+        static bool TryResolveRedirect(string currentUrl, string location, int hop, out string nextUrl, out string error)
+        {
+            nextUrl = null;
+            error = null;
+            if (hop >= MaxRedirects) { error = "too many redirects (more than " + MaxRedirects + ")"; return false; }
+            if (string.IsNullOrWhiteSpace(location)) { error = "redirect without a Location header"; return false; }
+            Uri baseUri, target;
+            if (!Uri.TryCreate(currentUrl, UriKind.Absolute, out baseUri) || !Uri.TryCreate(baseUri, location.Trim(), out target))
+            { error = "unparseable redirect target"; return false; }
+            string reason;
+            if (!IsAllowedPublicHttpUrl(target.AbsoluteUri, out reason)) { error = "redirect blocked: " + reason; return false; }
+            nextUrl = target.AbsoluteUri;
+            return true;
         }
 
         private static void ApplyCommonHeaders(UnityWebRequest req, string accept)
