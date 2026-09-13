@@ -9470,6 +9470,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     private static readonly Color WebLabelColor = new Color(0.10f, 0.38f, 0.52f);
     private static readonly Color WebBubbleBg = new Color(0.90f, 0.95f, 0.97f, 1f);
+    // The clickable "[details]" marker at the end of a Web bubble's title line (link id
+    // "webtrace"; AIChatBubbleContextClickHandler -> ToggleWebTraceDetails). Web label colour.
+    private const string WebDetailsMarkerMarkup = "<link=\"webtrace\"><color=#1A6185><u>[details]</u></color></link>";
 
     private int _webFetchCount = 0;
     private int _webFetchEpoch = 0;
@@ -9558,11 +9561,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         for (int i = 0; i < _activeWebTraces.Count; i++)
         {
             var trace = _activeWebTraces[i];
-            if (trace != null && trace.IsAlive && hadWork)
+            if (trace == null || !trace.IsAlive) continue;
+            if (hadWork)
             {
                 trace.ClearStatus();
-                trace.AppendLine("Cancelled.");
+                trace.AppendSummaryLine("Cancelled.");
             }
+            trace.Finish();
         }
         _activeWebTraces.Clear();
         _webCaptionInFlight.Clear();
@@ -9637,7 +9642,14 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         return text.Replace('<', '＜').Replace('>', '＞');
     }
 
-    private WebTraceBubble BeginWebTrace(string headerLine)
+    /// <summary>
+    /// Open a Web bubble. <paramref name="headerLine"/> (the raw action line with every
+    /// attribute) is the first line of the FULL trace; the bubble shows
+    /// <paramref name="compactTitle"/> instead when one is given (null = a one-line notice,
+    /// shown as-is). The bubble only ever shows the title, AppendSummaryLine outcome lines,
+    /// the status line and the thumbnails; a "[details]" marker opens the full trace.
+    /// </summary>
+    private WebTraceBubble BeginWebTrace(string headerLine, string compactTitle = null)
     {
         var field = AppendBubble("Web", WebLabelColor, "", WebBubbleBg);
         // Command lines and file paths contain backslash-n / backslash-t sequences
@@ -9649,18 +9661,70 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         var trace = new WebTraceBubble(field, EscapePlainTextForTMP,
             () => IsScrollAtBottom(_chatScroll),
             () => StartCoroutine(ScrollToBottomDeferred()),
-            bubble != null ? (Func<WebThumbStrip>)(() => WebThumbStrip.Create(bubble, _font, BaseFontSize * _fontSizeMultiplier, OnWebThumbClicked)) : null);
+            bubble != null ? (Func<WebThumbStrip>)(() => WebThumbStrip.Create(bubble, _font, BaseFontSize * _fontSizeMultiplier, OnWebThumbClicked)) : null,
+            WebDetailsMarkerMarkup,
+            RefreshOpenWebTraceWindow);
+        // The "[details]" click finds the trace through the bubble root; gone with the bubble.
+        if (bubble != null)
+            bubble.gameObject.AddComponent<WebTraceHolder>().Trace = trace;
         _activeWebTraces.Add(trace);
-        if (!string.IsNullOrEmpty(headerLine))
-            trace.AppendLine(headerLine);
+        trace.SetHeader(headerLine, compactTitle);
         return trace;
     }
 
     private void EndWebTrace(WebTraceBubble trace)
     {
         if (trace == null) return;
+        trace.Finish();
         _activeWebTraces.Remove(trace);
         AIChatLog.Note("web_trace", trace.GetRawText());
+    }
+
+    /// <summary>
+    /// A click on a Web bubble's "[details]" marker opens the FULL fetch trace (every
+    /// search hit, download attempt, HTTP result, vision verdict and tool line; the bubble
+    /// itself only keeps the title, the outcome lines and the thumbnails) in the floating
+    /// ChatThinkingWindow, live while the fetch still runs: WebTraceBubble's change hook
+    /// pushes every new line through RefreshOpenWebTraceWindow. Clicking the marker of the
+    /// bubble the window already shows closes it; another bubble's marker retargets it.
+    /// </summary>
+    private void ToggleWebTraceDetails(TMP_InputField field)
+    {
+        var trace = FindWebTrace(field);
+        if (trace == null) return;
+        var win = ChatThinkingWindow.Current;
+        if (win != null && win.IsShowing(field))
+        {
+            win.Close();
+            return;
+        }
+        ChatThinkingWindow.Show(_font, Mathf.Max(9f, (BaseFontSize - 1f) * _fontSizeMultiplier), field,
+            trace.GetRawText(), !trace.IsFinished, ChatThinkingWindow.WindowKind.WebTrace);
+    }
+
+    private static WebTraceBubble FindWebTrace(TMP_InputField field)
+    {
+        if (field == null) return null;
+        var bubble = field.transform.parent;
+        var holder = bubble != null ? bubble.GetComponent<WebTraceHolder>() : null;
+        return holder != null ? holder.Trace : null;
+    }
+
+    /// <summary>WebTraceBubble change hook: mirror the full trace into the details window while it shows that bubble.</summary>
+    private void RefreshOpenWebTraceWindow(WebTraceBubble trace)
+    {
+        if (trace == null || !trace.IsAlive) return;
+        var win = ChatThinkingWindow.Current;
+        if (win == null || !win.IsShowing(trace.Field)) return;
+        win.SetText(trace.GetRawText(), live: !trace.IsFinished);
+    }
+
+    /// <summary>The one-line source in a compact Web bubble title: host/path of a url=, "result S1:3", or the quoted query.</summary>
+    private static string WebCompactSource(string url, string resultToken, string query)
+    {
+        if (!string.IsNullOrEmpty(url)) return ShortUrlForProvenance(url, 90);
+        if (!string.IsNullOrEmpty(resultToken)) return "result " + resultToken.Trim();
+        return Q(query);
     }
 
     /// <summary>
@@ -9760,10 +9824,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     }
 
     /// <summary>
-    /// One line per search in the bubble: the terms actually sent and the hit count. The full
-    /// numbered result list is only shown in the bubble for the list-only web_search skill
-    /// (<paramref name="listResults"/>); web_image / web_video write it to the editor log instead,
-    /// since their per-download lines already name every URL that was actually tried.
+    /// One line per search in the trace: the terms actually sent and the hit count. The full
+    /// numbered result list only goes into the trace for the list-only web_search skill
+    /// (<paramref name="listResults"/>, where the hit-count line is also shown in the bubble);
+    /// web_image / web_video write it to the editor log instead, since their per-download
+    /// lines already name every URL that was actually tried. A failed search is always
+    /// shown in the bubble.
     /// </summary>
     private string BuildWebSearchTraceLines(WebTraceBubble trace, WebSearchKind kind, string query, BraveSearchClient.SearchResponse resp, bool listResults)
     {
@@ -9773,14 +9839,15 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             string line = "Searched Brave " + kindLabel + " for " + Q(query) + ": FAILED - " + (resp != null ? (resp.Error ?? "failed") : "no response");
             if (resp != null && !string.IsNullOrEmpty(resp.BodyExcerpt))
                 line += "\n  body: " + resp.BodyExcerpt;
-            trace.AppendLine(line);
+            trace.AppendSummaryLine(line);
             AIChatLog.Note("web_request", resp != null ? resp.RequestUrlForDisplay ?? "" : "");
             return null;
         }
         int n = resp.ResultCount(kind);
         string ok = "Searched Brave " + kindLabel + " for " + Q(query) + ": " + n + (n == 1 ? " hit" : " hits") + " (" + FormatSeconds(resp.ElapsedSeconds) + ")"
             + (string.IsNullOrEmpty(resp.AlteredQuery) ? "" : "   [spellcheck changed it to " + Q(resp.AlteredQuery) + "]");
-        trace.AppendLine(ok);
+        if (listResults) trace.AppendSummaryLine(ok);
+        else trace.AppendLine(ok);
         var lines = BraveSearchClient.FormatResultLines(kind, resp);
         if (listResults)
         {
@@ -9860,7 +9927,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private IEnumerator WebSearchCoroutine(SkillAction action, WebSearchRequest req, int epoch, Action<bool> onDone)
     {
         string safe = req.SafeSearch ?? (Config.Get() != null ? Config.Get().GetWebSearchSafeSearch() : "strict");
-        var trace = BeginWebTrace("web_search  kind=" + BraveSearchClient.KindLabel(req.Kind) + "  query=" + Q(req.Query) + "  count=" + req.Count + "  safesearch=" + safe);
+        var trace = BeginWebTrace("web_search  kind=" + BraveSearchClient.KindLabel(req.Kind) + "  query=" + Q(req.Query) + "  count=" + req.Count + "  safesearch=" + safe,
+            "web_search " + BraveSearchClient.KindLabel(req.Kind) + " " + Q(req.Query));
 
         BraveSearchClient.SearchResponse resp = null;
         yield return BraveSearchClient.Search(req.Kind, req.Query, req.Count, req.SafeSearch, r => resp = r);
@@ -10061,7 +10129,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             : !string.IsNullOrEmpty(req.ResultToken) ? "result=" + Q(req.ResultToken)
             : "query=" + Q(req.Query);
         var trace = BeginWebTrace("web_page  " + sourceText + "  max_chars=" + req.MaxChars + "  images=" + (req.Images ? "true" : "false")
-            + (req.Images ? "  max_images=" + req.MaxImages : ""));
+            + (req.Images ? "  max_images=" + req.MaxImages : ""),
+            "web_page " + WebCompactSource(req.Url, req.ResultToken, req.Query));
         float started = Time.realtimeSinceStartup;
         bool queryMode = string.IsNullOrEmpty(req.Url) && string.IsNullOrEmpty(req.ResultToken);
 
@@ -10070,7 +10139,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // already zeroed the counters and written "Cancelled." into the bubble.
         void Fail(string traceLine, string modelNote)
         {
-            if (!string.IsNullOrEmpty(traceLine)) trace.AppendLine(traceLine);
+            if (!string.IsNullOrEmpty(traceLine)) trace.AppendSummaryLine(traceLine);
             if (!string.IsNullOrEmpty(modelNote)) _infoMessages.Add(new InfoMessage(modelNote));
             // The streamed reply usually already promised the page; without the auto-resume
             // slot one bounded continue lets the model tell the user what actually happened.
@@ -10182,10 +10251,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 string hint = WebMediaDownloader.IsImageKind(r.Kind) ? "use web_image url=\"...\" for it"
                     : WebMediaDownloader.IsVideoKind(r.Kind) ? "use web_video url=\"...\" for it"
                     : ct == "application/pdf" ? "PDFs cannot be read" : "only HTML / plain-text pages can be read";
-                trace.AppendLine("  -> HTTP " + r.HttpStatus + " " + what + " " + r.Bytes.ToString("N0", System.Globalization.CultureInfo.InvariantCulture) + " bytes: not a readable page; " + hint);
+                string notPage = "  -> HTTP " + r.HttpStatus + " " + what + " " + r.Bytes.ToString("N0", System.Globalization.CultureInfo.InvariantCulture) + " bytes: not a readable page; " + hint;
                 lastFailure = "that URL is " + what + "; " + hint;
-                if (queryMode && i + 1 < urls.Count) { trace.AppendLine("  trying the next result"); continue; }
-                Fail(null, "(web_page " + sourceText + ": that URL is " + what + "; " + hint + ".)");
+                if (queryMode && i + 1 < urls.Count) { trace.AppendLine(notPage); trace.AppendLine("  trying the next result"); continue; }
+                Fail(notPage, "(web_page " + sourceText + ": that URL is " + what + "; " + hint + ".)");
                 yield break;
             }
             dl = r;
@@ -10262,24 +10331,25 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             AudioLinks = ex.AudioLinks ?? new List<WebPageAudioLink>()
         };
         _webPageSessions[page.Id] = page;
-        trace.AppendLine("Title: " + page.Title);
-        trace.AppendLine("Extracted " + ex.TotalChars.ToString("N0", System.Globalization.CultureInfo.InvariantCulture) + " chars from <" + ex.Scope + ">; sending "
+        trace.AppendSummaryLine("Title: " + page.Title);
+        trace.AppendSummaryLine("Extracted " + ex.TotalChars.ToString("N0", System.Globalization.CultureInfo.InvariantCulture) + " chars from <" + ex.Scope + ">; sending "
             + ex.Text.Length.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
             + (ex.Truncated ? " (truncated, " + ex.TruncatedChars.ToString("N0", System.Globalization.CultureInfo.InvariantCulture) + " more)" : ""));
         if (req.Images)
         {
             if (page.Images.Count == 0)
-                trace.AppendLine("Images: none usable (" + ex.ImageTagsSeen + " img tags seen).");
+                trace.AppendSummaryLine("Images: none usable (" + ex.ImageTagsSeen + " img tags seen).");
             else
             {
-                trace.AppendLine("Images (" + page.Images.Count + " of " + ex.ImageCandidatesTotal + " candidates; fetch one with web_image result=\"" + page.Id + ":N\"):");
+                // The count is the bubble's line; the list itself is details only.
+                trace.AppendSummaryLine("Images: " + page.Images.Count + " of " + ex.ImageCandidatesTotal + " candidates listed (fetch one with web_image result=\"" + page.Id + ":N\")");
                 for (int i = 0; i < page.Images.Count; i++)
                     trace.AppendLine("  " + WebPageReader.FormatImageLine(page.Id, i + 1, page.Images[i]));
             }
         }
         if (page.AudioLinks.Count > 0)
         {
-            trace.AppendLine("Audio links (" + page.AudioLinks.Count + (ex.AudioLinkCandidatesTotal > page.AudioLinks.Count ? " of " + ex.AudioLinkCandidatesTotal : "") + "; fetch one with web_audio result=\"" + page.Id + ":aN\"):");
+            trace.AppendSummaryLine("Audio links: " + page.AudioLinks.Count + (ex.AudioLinkCandidatesTotal > page.AudioLinks.Count ? " of " + ex.AudioLinkCandidatesTotal : "") + " listed (fetch one with web_audio result=\"" + page.Id + ":aN\")");
             for (int i = 0; i < page.AudioLinks.Count; i++)
                 trace.AppendLine("  " + WebPageReader.FormatAudioLine(page.Id, i + 1, page.AudioLinks[i]));
         }
@@ -10310,7 +10380,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         sb.Append("\n(This page was fetched once; links inside it were NOT followed. Quote or summarize from the text above only. Page ids expire on Clear.)");
         _infoMessages.Add(new InfoMessage(sb.ToString()));
 
-        trace.AppendLine("Done in " + FormatSeconds(Time.realtimeSinceStartup - started) + ".");
+        trace.AppendSummaryLine("Done in " + FormatSeconds(Time.realtimeSinceStartup - started) + ".");
         EndWebTrace(trace);
         FinishWebFetch();
         onDone?.Invoke(true);
@@ -10560,7 +10630,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             : !string.IsNullOrEmpty(req.ResultToken) ? "result=" + Q(req.ResultToken)
             : "query=" + Q(req.Query);
         var trace = BeginWebTrace("web_image  " + sourceText + "  count=" + req.Count + "  min_width=" + req.MinWidth + "  safesearch=" + safe
-            + (string.IsNullOrEmpty(req.Anchor) ? "" : "  anchor=" + Q(req.Anchor)));
+            + (string.IsNullOrEmpty(req.Anchor) ? "" : "  anchor=" + Q(req.Anchor)),
+            "web_image " + WebCompactSource(req.Url, req.ResultToken, req.Query) + (req.Count > 1 ? "  x" + req.Count : "")
+            + (string.IsNullOrEmpty(req.Anchor) ? "" : "  anchor " + Q(req.Anchor)));
         float started = Time.realtimeSinceStartup;
         string queryForProvenance = req.Query;
 
@@ -10578,7 +10650,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             WebPageSession page; int pIndex; string pError;
             if (!TryResolveWebPageToken(req.ResultToken, out page, out pIndex, out pError))
             {
-                trace.AppendLine("Result lookup failed: " + pError);
+                trace.AppendSummaryLine("Result lookup failed: " + pError);
                 _infoMessages.Add(new InfoMessage("(web_image result=" + Q(req.ResultToken) + " failed: " + pError + ".)"));
                 EndWebTrace(trace); FinishWebFetch(); onDone?.Invoke(true); yield break;
             }
@@ -10603,7 +10675,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             WebSearchSession session; int index; string tokenError;
             if (!TryResolveWebSearchToken(req.ResultToken, out session, out index, out tokenError))
             {
-                trace.AppendLine("Result lookup failed: " + tokenError);
+                trace.AppendSummaryLine("Result lookup failed: " + tokenError);
                 _infoMessages.Add(new InfoMessage("(web_image result=" + Q(req.ResultToken) + " failed: " + tokenError + ".)"));
                 EndWebTrace(trace); FinishWebFetch(); onDone?.Invoke(true); yield break;
             }
@@ -10620,7 +10692,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             }
             else
             {
-                trace.AppendLine("Result " + req.ResultToken + " is a web page, not an image. Read it with web_page result=\"" + req.ResultToken + "\" and pick one of its P-images, or use web_search kind=\"images\".");
+                trace.AppendSummaryLine("Result " + req.ResultToken + " is a web page, not an image. Read it with web_page result=\"" + req.ResultToken + "\" and pick one of its P-images, or use web_search kind=\"images\".");
                 _infoMessages.Add(new InfoMessage("(web_image result=" + Q(req.ResultToken) + " is a page result, not an image. Use web_page result=\"" + req.ResultToken + "\" first, then web_image result=\"P<n>:<i>\" from its image list.)"));
                 EndWebTrace(trace); FinishWebFetch(); onDone?.Invoke(true); yield break;
             }
@@ -10669,13 +10741,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         bool verify = req.Verify && HasVisionLLM();
         if (req.Verify && !verify)
-            trace.AppendLine("No vision-capable LLM is active: downloads will NOT be checked for suitability.");
+            trace.AppendSummaryLine("No vision-capable LLM is active: downloads will NOT be checked for suitability.");
         else if (verify)
             trace.AppendLine("Each download is checked by the vision LLM for suitability" + (string.IsNullOrWhiteSpace(req.Criteria) ? "" : " (criteria: " + req.Criteria.Trim() + ")") + "; unsuitable ones are skipped.");
 
         if (candidates.Count == 0)
         {
-            trace.AppendLine("No image results.");
+            trace.AppendSummaryLine("No image results.");
             _infoMessages.Add(new InfoMessage("(web_image " + Q(req.Query) + ": no results. Try a different query or a direct url=.)"));
             EndWebTrace(trace); FinishWebFetch(); onDone?.Invoke(true); yield break;
         }
@@ -10908,7 +10980,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             sb.Append("Done: ").Append(added.Count).Append(" of ").Append(req.Count).Append(added.Count == 1 ? " image" : " images").Append(" added (");
             for (int i = 0; i < added.Count; i++) { if (i > 0) sb.Append(", "); sb.Append('#').Append(added[i]); }
             sb.Append(") in ").Append(FormatSeconds(elapsed)).Append('.');
-            trace.AppendLine(sb.ToString());
+            trace.AppendSummaryLine(sb.ToString());
             if (added.Count < req.Count)
                 _infoMessages.Add(new InfoMessage("(web_image only found " + added.Count + " usable of the " + req.Count + " requested.)"));
         }
@@ -10916,7 +10988,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         {
             string why = "(" + (failUnsuitable > 0 ? "rejected by vision check x" + failUnsuitable + " " : "") + (failHttp > 0 ? "download failed x" + failHttp + " " : "") + (failNotImage > 0 ? "not an image x" + failNotImage + " " : "")
                 + (failSmall > 0 ? "too small x" + failSmall + " " : "") + (failOther > 0 ? "other x" + failOther + " " : "") + ")";
-            trace.AppendLine("No usable image in " + attempts + " attempt" + (attempts == 1 ? "" : "s") + " " + why + " in " + FormatSeconds(elapsed) + ".");
+            trace.AppendSummaryLine("No usable image in " + attempts + " attempt" + (attempts == 1 ? "" : "s") + " " + why + " in " + FormatSeconds(elapsed) + ".");
             _infoMessages.Add(new InfoMessage("(web_image " + (string.IsNullOrEmpty(req.Query) ? sourceText : Q(req.Query)) + ": no usable image in " + attempts + " attempts " + why + ". Try a more specific query (add the person's full name, 'official portrait', the show/film name), a lower min_width, or a direct url=.)"));
         }
 
@@ -11179,7 +11251,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         string durText = req.DurationSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
         var trace = BeginWebTrace("web_video  " + sourceText + "  start=" + startText + "  duration=" + durText + "  audio=" + (req.IncludeAudio ? "true" : "false")
             + (req.RequireSpeech ? "  speech=true" : "")
-            + (string.IsNullOrEmpty(req.Anchor) ? "" : "  anchor=" + Q(req.Anchor)));
+            + (string.IsNullOrEmpty(req.Anchor) ? "" : "  anchor=" + Q(req.Anchor)),
+            "web_video " + WebCompactSource(req.Url, req.ResultToken, req.Query) + "  " + durText + "s" + (req.RequireSpeech ? "  speech" : "")
+            + (string.IsNullOrEmpty(req.Anchor) ? "" : "  anchor " + Q(req.Anchor)));
         float started = Time.realtimeSinceStartup;
         string queryForProvenance = req.Query;
 
@@ -11193,7 +11267,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             WebSearchSession session; int index; string tokenError;
             if (!TryResolveWebSearchToken(req.ResultToken, out session, out index, out tokenError))
             {
-                trace.AppendLine("Result lookup failed: " + tokenError);
+                trace.AppendSummaryLine("Result lookup failed: " + tokenError);
                 _infoMessages.Add(new InfoMessage("(web_video result=" + Q(req.ResultToken) + " failed: " + tokenError + ".)"));
                 EndWebTrace(trace); FinishWebFetch(); onDone?.Invoke(true); yield break;
             }
@@ -11210,7 +11284,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             }
             else
             {
-                trace.AppendLine("Result " + req.ResultToken + " is an image result, not a video.");
+                trace.AppendSummaryLine("Result " + req.ResultToken + " is an image result, not a video.");
                 _infoMessages.Add(new InfoMessage("(web_video result=" + Q(req.ResultToken) + " is an image result, not a video.)"));
                 EndWebTrace(trace); FinishWebFetch(); onDone?.Invoke(true); yield break;
             }
@@ -11246,7 +11320,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         bool verifyClips = req.Verify && HasVisionLLM();
         if (req.Verify && !verifyClips)
-            trace.AppendLine("No vision-capable LLM is active: clips will NOT be checked for suitability.");
+            trace.AppendSummaryLine("No vision-capable LLM is active: clips will NOT be checked for suitability.");
         else if (verifyClips)
             trace.AppendLine("Each cut clip is checked by the vision LLM for suitability" + (string.IsNullOrWhiteSpace(req.Criteria) ? "" : " (criteria: " + req.Criteria.Trim() + ")") + "; unsuitable cuts try a later offset, then the next result.");
         bool speechToolAvailable = false;
@@ -11254,16 +11328,17 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         {
             string sttReason;
             speechToolAvailable = SpeechCheck.HasSpeechToText(out sttReason);
-            trace.AppendLine(speechToolAvailable
-                ? "The clip must contain the subject speaking: each cut's audio is checked with ffmpeg + Whisper; music-only or silent cuts are rejected."
-                : "The clip should contain speech, but the speech check is unavailable (" + sttReason + "): only silent cuts can be rejected.");
+            if (speechToolAvailable)
+                trace.AppendLine("The clip must contain the subject speaking: each cut's audio is checked with ffmpeg + Whisper; music-only or silent cuts are rejected.");
+            else
+                trace.AppendSummaryLine("The clip should contain speech, but the speech check is unavailable (" + sttReason + "): only silent cuts can be rejected.");
         }
         // Speech checks can retry offsets even without vision verification.
         bool retryOffsets = (verifyClips || req.RequireSpeech) && string.IsNullOrEmpty(req.Url);
 
         if (candidates.Count == 0)
         {
-            trace.AppendLine("No video results.");
+            trace.AppendSummaryLine("No video results.");
             _infoMessages.Add(new InfoMessage("(web_video " + Q(req.Query) + ": no results. Try a different query or a direct url=.)"));
             EndWebTrace(trace); FinishWebFetch(); onDone?.Invoke(true); yield break;
         }
@@ -11333,7 +11408,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 string exe, toolError;
                 if (!YtDlpTool.TryGetToolPath(out exe, out toolError))
                 {
-                    trace.AppendLine("yt-dlp: " + toolError);
+                    trace.AppendSummaryLine("yt-dlp: " + toolError);
                     _infoMessages.Add(new InfoMessage("(web_video cannot download page-hosted videos: " + toolError + " Tell the user; do not retry.)"));
                     EndWebTrace(trace); FinishWebFetch(); onDone?.Invoke(true); yield break;
                 }
@@ -11521,7 +11596,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                     record.provenanceSteps.Add("web video: " + (string.IsNullOrEmpty(cand.Title) ? "" : Q(BraveSearchClient.Clip(cand.Title, 60)) + " ") + ShortUrlForProvenance(cand.Url) + " " + rangeText);
                 }
                 _webFetchedUrlToPic[cand.Url] = pic;
-                trace.AppendLine("Added as Movie #" + addedIndex + (string.IsNullOrEmpty(action?.AnchorName) ? "" : " (anchor " + Q(action.AnchorName) + ")") + (captionFromVerdict ? "" : ", captioning..."));
+                trace.AppendSummaryLine("Added as Movie #" + addedIndex + (string.IsNullOrEmpty(action?.AnchorName) ? "" : " (anchor " + Q(action.AnchorName) + ")") + (captionFromVerdict ? "" : ", captioning..."));
                 if (captionFromVerdict)
                 {
                     var cap = verdict.Caption;
@@ -11548,14 +11623,14 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         float elapsed = Time.realtimeSinceStartup - started;
         if (addedIndex > 0)
         {
-            trace.AppendLine("Done in " + FormatSeconds(elapsed) + ".");
+            trace.AppendSummaryLine("Done in " + FormatSeconds(elapsed) + ".");
             _infoMessages.Add(new InfoMessage("(web_video added Movie #" + addedIndex + ": " + (string.IsNullOrEmpty(addedTitle) ? "" : Q(BraveSearchClient.Clip(addedTitle, 80)) + " ") + SafeHost(addedUrl)
                 + " from " + startText + "s for " + durText + "s" + (verifyClips ? ", vision-checked as footage of the requested subject" : "") + "." + addedSpeechNote
                 + " Reference it via chat_image=\"" + addedIndex + "\"" + (string.IsNullOrEmpty(action?.AnchorName) ? "" : " or its anchor " + Q(action.AnchorName)) + "; its full description follows separately - describe the people in your render prompt from that (appearance), not from outside knowledge. If you were fetching it to make a video, emit that render action NOW.)"));
         }
         else
         {
-            trace.AppendLine("No usable video in " + attempts + " attempt" + (attempts == 1 ? "" : "s") + " in " + FormatSeconds(elapsed) + ".");
+            trace.AppendSummaryLine("No usable video in " + attempts + " attempt" + (attempts == 1 ? "" : "s") + " in " + FormatSeconds(elapsed) + ".");
             _infoMessages.Add(new InfoMessage("(web_video " + (string.IsNullOrEmpty(req.Query) ? sourceText : Q(req.Query)) + ": no usable clip in " + attempts + " sources; the Web bubble shows each failure" + (verifyClips ? " (cuts judged not to show the subject are rejected" + (req.RequireSpeech ? ", and cuts without speech too" : "") + ")" : "") + ". Try a more specific query naming the scene or episode" + (req.RequireSpeech ? " with dialogue (\"interview\" is fine for a voice reference if the face matches)" : "") + ", a different url=, or tell the user if yt-dlp reported a sign-in / bot check.)"));
         }
 
@@ -11592,7 +11667,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             + (req.StartSeconds > 0f ? "  start=" + req.StartSeconds.ToString("0.###", inv) : "")
             + (req.DurationSeconds > 0f ? "  duration=" + req.DurationSeconds.ToString("0.###", inv) : "")
             + (req.RequireSpeech ? "  speech=true" : "")
-            + (string.IsNullOrEmpty(req.Anchor) ? "" : "  anchor=" + Q(req.Anchor)));
+            + (string.IsNullOrEmpty(req.Anchor) ? "" : "  anchor=" + Q(req.Anchor)),
+            "web_audio " + WebCompactSource(req.Url, req.ResultToken, null) + (req.RequireSpeech ? "  speech" : "")
+            + (string.IsNullOrEmpty(req.Anchor) ? "" : "  anchor " + Q(req.Anchor)));
         float started = Time.realtimeSinceStartup;
 
         // Every non-cancel exit funnels through here; cancel exits (epoch mismatch after a
@@ -11600,7 +11677,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // wrote "Cancelled." into the bubble.
         void Fail(string traceLine, string modelNote)
         {
-            if (!string.IsNullOrEmpty(traceLine)) trace.AppendLine(traceLine);
+            if (!string.IsNullOrEmpty(traceLine)) trace.AppendSummaryLine(traceLine);
             if (!string.IsNullOrEmpty(modelNote)) _infoMessages.Add(new InfoMessage(modelNote));
             EndWebTrace(trace);
             FinishWebFetch();
@@ -11838,7 +11915,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             record.provenanceSteps.Add("web audio: " + (string.IsNullOrEmpty(label) ? "" : Q(BraveSearchClient.Clip(label, 60)) + " ") + ShortUrlForProvenance(url) + (rangeText != null ? " " + rangeText : ""));
         }
         _webFetchedUrlToPic[url] = pic;
-        trace.AppendLine("Added as Audio #" + idx + (string.IsNullOrEmpty(action?.AnchorName) ? "" : " (anchor " + Q(action.AnchorName) + ")") + ".");
+        trace.AppendSummaryLine("Added as Audio #" + idx + (string.IsNullOrEmpty(action?.AnchorName) ? "" : " (anchor " + Q(action.AnchorName) + ")") + ".");
         if (hasTranscript)
             trace.AppendLine("Audio #" + idx + " transcript: " + Q(BraveSearchClient.Clip(speech.Transcript, 300)));
 
@@ -11850,7 +11927,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             + " Besides set_video_audio, use it as the H3 VOICE/audio reference: audio=\"" + idx + "\" on a Reference To Video / Reference Video To Video action, referenced as its <Audio N> tag in the prompt (STYLE conditioning - the voice character is nudged toward the sample). That is the assumed path for making someone sound right; do not offer other voice options."
             + (string.IsNullOrEmpty(action?.AnchorName) ? "" : " Anchor " + Q(action.AnchorName) + " points at it.") + ")"));
 
-        trace.AppendLine("Done in " + FormatSeconds(Time.realtimeSinceStartup - started) + ".");
+        trace.AppendSummaryLine("Done in " + FormatSeconds(Time.realtimeSinceStartup - started) + ".");
         EndWebTrace(trace);
         FinishWebFetch();
         onDone?.Invoke(true);
@@ -12958,14 +13035,82 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         sb.Append("{\"ok\":true,\"open\":").Append(w != null ? "true" : "false");
         if (w != null)
         {
-            sb.Append(",\"live\":").Append(w.IsLive ? "true" : "false");
-            sb.Append(",\"title\":\"").Append(AutomationJsonEscape(w.TitleText)).Append('"');
-            sb.Append(",\"chars\":").Append(w.TextLength);
-            sb.Append(",\"showingLatest\":").Append(field != null && w.IsShowing(field) ? "true" : "false");
-            sb.Append(",\"layout\":\"").Append(AutomationJsonEscape(w.LayoutDebug())).Append('"');
+            AppendFloatingWindowStateJson(sb, w, field);
         }
         sb.Append(",\"hasAssistantBubble\":").Append(field != null ? "true" : "false");
         sb.Append(",\"streaming\":").Append(_streamingAssistantField != null ? "true" : "false");
+        sb.Append('}');
+        return sb.ToString();
+    }
+
+    /// <summary>The shared floating window's state for the bridge: kind, live, title, chars, whether it shows <paramref name="latestField"/>, layout.</summary>
+    private static void AppendFloatingWindowStateJson(StringBuilder sb, ChatThinkingWindow w, TMP_InputField latestField)
+    {
+        sb.Append(",\"kind\":\"").Append(w.Kind == ChatThinkingWindow.WindowKind.WebTrace ? "webtrace" : "thinking").Append('"');
+        sb.Append(",\"live\":").Append(w.IsLive ? "true" : "false");
+        sb.Append(",\"title\":\"").Append(AutomationJsonEscape(w.TitleText)).Append('"');
+        sb.Append(",\"chars\":").Append(w.TextLength);
+        sb.Append(",\"showingLatest\":").Append(latestField != null && w.IsShowing(latestField) ? "true" : "false");
+        sb.Append(",\"layout\":\"").Append(AutomationJsonEscape(w.LayoutDebug())).Append('"');
+    }
+
+    /// <summary>
+    /// Bridge: drive the floating details window for the LATEST Web bubble exactly like a
+    /// click on its "[details]" marker (see the automation /chat_web_trace endpoint).
+    /// action = open | close | toggle | status. Reports the window state plus the bubble's
+    /// compact text, whether its fetch finished, its thumbnail count and how many lines
+    /// the full trace holds versus the bubble.
+    /// </summary>
+    public static string AutomationWebTrace(string action)
+    {
+        return _instance != null
+            ? _instance.AutomationWebTraceImpl(action)
+            : "{\"ok\":false,\"error\":\"no chat panel\"}";
+    }
+
+    private string AutomationWebTraceImpl(string action)
+    {
+        action = (action ?? "status").Trim().ToLowerInvariant();
+        if (action.Length == 0) action = "status";
+        WebTraceBubble trace = null;
+        if (_chatContent != null)
+        {
+            for (int i = _chatContent.childCount - 1; i >= 0 && trace == null; i--)
+            {
+                var holder = _chatContent.GetChild(i).GetComponent<WebTraceHolder>();
+                if (holder != null && holder.Trace != null && holder.Trace.IsAlive) trace = holder.Trace;
+            }
+        }
+        TMP_InputField field = trace != null ? trace.Field : null;
+        if (action != "status")
+        {
+            if (trace == null)
+                return "{\"ok\":false,\"error\":\"no web bubble\"}";
+            var win = ChatThinkingWindow.Current;
+            bool showing = win != null && win.IsShowing(field);
+            if (action == "open") { if (!showing) ToggleWebTraceDetails(field); }
+            else if (action == "close") { if (showing) ToggleWebTraceDetails(field); }
+            else if (action == "toggle") ToggleWebTraceDetails(field);
+            else return "{\"ok\":false,\"error\":\"unknown action '" + AutomationJsonEscape(action) + "' (open|close|toggle|status)\"}";
+        }
+
+        var w = ChatThinkingWindow.Current;
+        var sb = new StringBuilder();
+        sb.Append("{\"ok\":true,\"open\":").Append(w != null ? "true" : "false");
+        if (w != null)
+        {
+            AppendFloatingWindowStateJson(sb, w, field);
+        }
+        sb.Append(",\"hasWebBubble\":").Append(trace != null ? "true" : "false");
+        if (trace != null)
+        {
+            sb.Append(",\"finished\":").Append(trace.IsFinished ? "true" : "false");
+            sb.Append(",\"hasDetails\":").Append(trace.HasHiddenDetails ? "true" : "false");
+            sb.Append(",\"lines\":").Append(trace.LineCount);
+            sb.Append(",\"summaryLines\":").Append(trace.SummaryLineCount);
+            sb.Append(",\"thumbs\":").Append(trace.Thumbs != null ? trace.Thumbs.Count : 0);
+            sb.Append(",\"compact\":\"").Append(AutomationJsonEscape(trace.GetCompactText())).Append('"');
+        }
         sb.Append('}');
         return sb.ToString();
     }
@@ -14562,6 +14707,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                     _panel.ToggleThinkingDetails(_field, _interaction);
                     return;
                 }
+                if (linkId == "webtrace")
+                {
+                    // A Web bubble's "[details]" marker: the full fetch trace in the same window.
+                    _panel.ToggleWebTraceDetails(_field);
+                    return;
+                }
                 if (linkId != "skill") return;
                 // Ordinal among "skill" links only - the "[thinking]" link (which sits
                 // before the first action marker) must not shift the marker -> action
@@ -14593,6 +14744,16 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     {
         public readonly HashSet<int> Expanded = new HashSet<int>();
         public TextMeshProUGUI Text;
+    }
+
+    /// <summary>
+    /// Lives on a Web bubble's root: the trace behind it, so a "[details]" marker click
+    /// (and the automation /chat_web_trace endpoint) can open the full text. Destroyed
+    /// with the bubble, so Clear / Rewind / Compact rebuilds leave nothing behind.
+    /// </summary>
+    private class WebTraceHolder : MonoBehaviour
+    {
+        public WebTraceBubble Trace;
     }
 }
 

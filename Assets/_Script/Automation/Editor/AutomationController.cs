@@ -51,6 +51,8 @@ using UnityEngine;
 //   POST /movie_state -> body: index=<n|latest>; PicMovie playback telemetry for a Movie bubble
 //   POST /chat_thinking -> body: action=<open|close|toggle|status> (default status); drives the floating Thinking
 //                        window for the latest assistant bubble like a click on its "[thinking]" marker, reports its state
+//   POST /chat_web_trace -> body: action=<open|close|toggle|status> (default status); same window for the latest Web
+//                        bubble's FULL fetch trace like a click on its "[details]" marker; reports the bubble's compact text too
 //   POST /save        -> body: index=<n|latest>, path=<file>; save chat image PNG
 //   POST /screenshot  -> body: path=<file> [x,y,w,h top-left region]; capture game view
 //   POST /click       -> body: x=<px>, y=<px> [button=right] [alt=true]; pointer click on the UI under that point
@@ -507,6 +509,19 @@ public static class AutomationController
                     var kv = ParseKeyValues(body);
                     string action = kv.TryGetValue("action", out var ta) ? ta : "status";
                     string result = RunOnMainAndWait(() => AutomationBridge.ChatThinkingJson(action),
+                        "{\"ok\":false,\"error\":\"timed out\"}");
+                    WriteJson(stream, 200, result);
+                    break;
+                }
+
+                case "/chat_web_trace":
+                {
+                    // Body: action=<open|close|toggle|status> (default status). Same code
+                    // path as a click on the latest Web bubble's "[details]" marker, plus the
+                    // window state and the bubble's compact text / line counts.
+                    var kv = ParseKeyValues(body);
+                    string action = kv.TryGetValue("action", out var ta) ? ta : "status";
+                    string result = RunOnMainAndWait(() => AutomationBridge.ChatWebTraceJson(action),
                         "{\"ok\":false,\"error\":\"timed out\"}");
                     WriteJson(stream, 200, result);
                     break;

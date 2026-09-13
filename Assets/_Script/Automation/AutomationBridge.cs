@@ -187,6 +187,12 @@ public static class AutomationBridge
         return AIChatPanel.AutomationThinking(action);
     }
 
+    /// <summary>Drive / inspect the floating details window for the latest Web bubble's full trace (action = open|close|toggle|status).</summary>
+    public static string ChatWebTraceJson(string action)
+    {
+        return AIChatPanel.AutomationWebTrace(action);
+    }
+
     public static bool Save(int index, string path, out string error)
     {
         error = "no driver";

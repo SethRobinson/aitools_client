@@ -15,7 +15,7 @@ the MiniMax H3 Reference To Video preset or Klein edits, and reference clips as
 | Image normalizer | `WebImageConverter` (same file) | PNG/JPEG decode-check with a throwaway `Texture2D.LoadImage` (real pixel size); webp/gif/avif/bmp/tiff or oversized (>2048 px) originals go through `FfmpegTool.ConvertImageToPng` |
 | yt-dlp wrapper | `Web/YtDlpTool.cs` | resolves `utils/yt-dlp/yt-dlp.exe` (then PATH), auto-detects a JS runtime (deno / node / bun on PATH, passed as `--js-runtimes`), builds the exact command line (URL last, after a `--` end-of-options marker, quoted per Windows CRT rules by `FfmpegTool.QuoteArg`), runs it via `FfmpegTool.RunProcessCancellable`, progress lines drained on the main thread. Downloads the WHOLE video capped at 480p (`--match-filters "duration<?N"`, `--max-filesize 250m`); the host cuts the section locally |
 | Page reader | `Web/WebPageReader.cs` | pure C# (no Unity usings, compiles in a plain dotnet console app): charset decode (BOM > HTTP charset > `<meta charset>` > strict UTF-8 with windows-1252 fallback), single-pass HTML tag scanner -> readable text + candidate image list; see "web_page" below |
-| Trace bubble | `Web/WebTraceBubble.cs` + `AIChatPanel.BeginWebTrace` | the always-visible "Web" bubble; plain text (only TMP angle brackets escaped, NO markdown pass), throttled status line, every line mirrored to `llm_aichat_log.json` as `note/web` |
+| Trace bubble | `Web/WebTraceBubble.cs` + `AIChatPanel.BeginWebTrace` | the always-visible "Web" bubble, COMPACT since 2026-09-13: a one-line title, `AppendSummaryLine` outcome lines, the throttled status line and the thumbnails; every other line (`AppendLine`) only goes to the FULL trace that the bubble's `[details]` marker opens in the floating `ChatThinkingWindow` (kind `WebTrace`, live while the fetch runs). Plain text (only TMP angle brackets escaped, NO markdown pass); every line mirrored to `llm_aichat_log.json` as `note/web` |
 | Thumbnail strip | `Web/WebThumbStrip.cs` + `WebTraceBubble.AddThumb/SetThumbVerdict/SetThumbPic` | wrapping row of 72 px thumbnails under the Web bubble, one per image the vision check examined (accepted and rejected; see "Thumbnails of everything the vision check saw") |
 | Host | `AIChatPanel.cs` "Web media fetch" region | busy gate (`_webFetchCount`, `_webCaptionInFlight`), epoch-based cancellation, the five coroutines, `AppendWebStillBubble`, caption tracking, search sessions `S1..`, page sessions `P1..` (images + audio links) |
 | Executor | `SkillActionExecutor.cs` `ExecuteWebSearch/Image/Video/Page` | argument parsing + aliases, Web-toggle / key / URL pre-flight (`WebPreflight`), defers the pump like `extract_still` |
@@ -33,7 +33,7 @@ version). `UpdateBuildDirConfigFiles.bat` already copies `utils`, so builds ship
 | `web_search` | `query`, `kind=images\|videos\|web` (default images), `count` (max 20), `safesearch`, `resume` (default TRUE) | list only; stored as `S1`, `S2`... for `result="S1:3"`; auto-continues with the list |
 | `web_image` | one of `query` / `url` / `result`; `count` (max 4), `anchor` (count>1 -> `name`, `name_2`...), `min_width` (256), `criteria` (extra vision-check requirements), `verify` (default true), `safesearch`, `resume` (default false) | assistant still bubble(s) `#N`, kind `web image`, provenance `web image: "query" -> host/path`, vision-verified and captioned |
 | `web_video` | one of `query` / `url` / `result`; `start`, `duration` (0.5..15, default 5), `max_source_minutes` (20), `criteria`, `verify` (default true), `audio`, `anchor`, `resume` (default TRUE) | `Movie #N` via yt-dlp whole-video download at <=480p (page URLs) or direct file download, then `FfmpegTool.CreateClip` cuts `start`..`start+duration` (soundtrack loudness-normalized to -16 LUFS when the AI Chat "Normalize imported clip audio" setting is on, the default; the trace line shows the `AudioNote`); each cut is vision-checked via a contact sheet, rejects retry +30 s / +90 s in the same source, then the next ranked result (4 sources max) |
-| `web_page` | one of `url` / `result` (a `kind="web"` hit) / `query`; `max_chars` (500..20000, default 6000), `images` (default true), `max_images` (1..40, default 12), `safesearch`, `resume` (default TRUE) | no bubble: the page's readable text goes to the model via the info-recap tail, its image candidates are stored as `P1`, `P2`... for `web_image result="P1:3"`, and its bare sound-file links (`<a href="....wav">`, `<audio src>`) as `P1:a1`... for `web_audio result="P1:a2"`; the Web bubble shows URL / HTTP status / bytes / char counts / the image and audio-link lists |
+| `web_page` | one of `url` / `result` (a `kind="web"` hit) / `query`; `max_chars` (500..20000, default 6000), `images` (default true), `max_images` (1..40, default 12), `safesearch`, `resume` (default TRUE) | no bubble: the page's readable text goes to the model via the info-recap tail, its image candidates are stored as `P1`, `P2`... for `web_image result="P1:3"`, and its bare sound-file links (`<a href="....wav">`, `<audio src>`) as `P1:a1`... for `web_audio result="P1:a2"`; the Web bubble shows the page title, char counts and the image / audio-link COUNTS, its `[details]` trace the URL / HTTP status / bytes and the lists themselves |
 | `web_audio` | one of `url` (a direct sound-file URL) / `result` (`"P1:a2"` page audio link, or an `S` web hit whose URL is itself a sound file); `start`, `duration` (0 = whole file, cap 300 s), `speech` (reject silent/music-only), `anchor`, `resume` (default TRUE) | playable `Audio #N` bubble via the same landing as dropped/generated audio (waveform preview MP4 + lossless `audioPath`); no vision check - ffprobe gate (real audio, no video stream) + the web_video-style SpeechCheck for the caption transcript. No `query=` mode (no audio search engine exists): finding sounds is `web_search kind="web"` -> `web_page` -> `result="P1:aN"` |
 
 Aliases (`NormalizeSkillId`): `search_web`, `image_search`, `brave_search`... -> `web_search`;
@@ -138,10 +138,12 @@ unavailable. A pure signal heuristic (envelope modulation, spectral flatness, pa
 prototyped on real clips and rejected: the Seinfeld bass theme scored like speech. A bigger vision
 model would not help either; vision never hears the track.
 
-Trace compaction (same change): the bubble shows `Searched Brave images for "...": 20 hits (0.9s)`
+Trace compaction (same change): the trace shows `Searched Brave images for "...": 20 hits (0.9s)`
 instead of the GET line + HTTP status + the full numbered list; the list and the ranking order go
 to `llm_aichat_log.json` as `web_results` / `web_ranking` notes. Only the list-only `web_search`
-skill still prints the numbered results in the bubble.
+skill still puts the numbered results in its trace (and shows the hit-count line in the bubble).
+Since 2026-09-13 the bubble itself is compact and the hit line, download attempts and verdicts
+live behind its `[details]` marker (see "Trace bubble format").
 
 ## Thumbnails of everything the vision check saw (since 2026-09-06)
 
@@ -264,7 +266,8 @@ pictures it contained. `web_page` (since 2026-08-24) fetches ONE page and:
    `ExecuteWebImage` no longer demands a Brave key for `result=` tokens (`needsSearch` is false for both S and P
    tokens). An S-token that points at a `kind="web"` hit now says "read it with web_page result=... first".
 
-Trace bubble:
+Full trace (behind the bubble's `[details]` marker; the bubble itself shows the title, the
+`Title:` / `Extracted` / `Images:` count lines and `Done`):
 ```
 web_page  url="https://en.wikipedia.org/wiki/Atari_2600"  max_chars=6000  images=true  max_images=12
 GET https://en.wikipedia.org/wiki/Atari_2600
@@ -421,6 +424,34 @@ online feature off at a glance. When it is OFF:
   `[skill: web_image]` marker leaks into the transcript.
 
 ## Trace bubble format
+
+Since 2026-09-13 the Web bubble is COMPACT (Seth: "just show the images it looks at"). It renders
+only: a one-line title built per skill (`web_image "Seinfeld Cosmo Kramer scene still"  x2  anchor
+"kramer"`, `web_video "..."  5s  anchor "clip1"`, `web_page en.wikipedia.org/wiki/Atari_2600`,
+`web_search images "..."`, `web_audio host/path`; `WebCompactSource` = host/path of a `url=`,
+`result S1:3`, or the quoted query), a clickable `[details]` marker at the end of that line (TMP link
+id `webtrace`, shown as soon as the full trace holds a line the bubble hides), the OUTCOME lines
+written with `WebTraceBubble.AppendSummaryLine` (`Done: 2 of 2 images added (#3, #4) in 12.3s.`,
+`No usable image in N attempts (...)`, `Added as Movie #10 (anchor "clip1")`, `Added as Audio #N`,
+`Title:` / `Extracted N chars` / `Images: 12 of 40 candidates listed` for web_page, the hit-count line
+for list-only `web_search`, `Result lookup failed`, `No vision-capable LLM is active`, the
+speech-check-unavailable warning, a failed Brave search, `yt-dlp: <tool error>`, `Cancelled.`), the
+throttled status line (`downloading 63%`, `checking suitability with the vision LLM...`) and the
+thumbnail strip. Everything else (`AppendLine`: the raw action line with every attribute, the
+`Searched Brave ... N hits` line for image/video fetches, `Skip` / `Download N/M` / HTTP lines, vision
+verdicts, captions, the yt-dlp command line + output, the web_page image/audio lists) is in the
+FULL trace only. Clicking `[details]` opens the full trace in the floating `ChatThinkingWindow`
+(kind `WebTrace`, teal header, title `Web trace (working...)` until `EndWebTrace` / cancel calls
+`WebTraceBubble.Finish()`); `WebTraceBubble`'s change hook (`AIChatPanel.RefreshOpenWebTraceWindow`)
+pushes every new line into the window while it shows that bubble, so it streams like reasoning.
+The trace is found through a `WebTraceHolder` component on the bubble root (destroyed with the
+bubble). One-line notices (`AddWebTraceNotice`, e.g. Web access OFF) have no hidden lines and no
+marker. `AppendSummaryLine` is the ONLY way to put text in the bubble: when adding a trace line,
+decide whether it is an outcome the user must see without clicking. `llm_aichat_log.json` and the
+`web_trace` note still get the full text. Bridge: `POST /chat_web_trace action=open|close|toggle|status`
+(the latest Web bubble; reports `compact`, `lines`, `summaryLines`, `thumbs`, `finished`).
+
+The FULL trace (what `[details]` shows):
 
 ```
 web_image  query="Jerry Seinfeld portrait photo"  count=1  min_width=256  safesearch=strict  anchor="jerry"

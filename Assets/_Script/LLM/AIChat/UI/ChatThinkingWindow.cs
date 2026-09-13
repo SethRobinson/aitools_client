@@ -23,18 +23,36 @@ namespace AITools.AIChat.UI
     /// Lives on its own ScreenSpaceOverlay canvas above the chat panel but below the
     /// modal dialogs (clip chooser), with the shared PanelDragHandler header and a
     /// bottom-right resize grip; size and position persist for the session.
+    ///
+    /// The same window (kind <see cref="WindowKind.WebTrace"/>) shows a Web bubble's FULL
+    /// fetch trace when its "[details]" marker is clicked: the bubble only keeps the
+    /// title, the outcome lines and the thumbnails (WebTraceBubble), and the host pushes
+    /// every new trace line in here while the fetch still runs, exactly like reasoning.
     /// </summary>
     public class ChatThinkingWindow : MonoBehaviour
     {
+        /// <summary>What the window is showing; it changes the titles, placeholders and the header tint.</summary>
+        public enum WindowKind { Thinking, WebTrace }
+
         private const string CanvasName = "ChatThinkingWindowCanvas";
         private const int CanvasSortingOrder = 4000;   // chat panel 100 / settings 110 < this < clip chooser 5000
         private const float HeaderHeight = 32f;
         private const float MinWidth = 320f;
         private const float MinHeight = 200f;
         private const float RefreshIntervalSeconds = 0.12f;
-        private const string TitleLive = "Thinking (streaming...)";
-        private const string TitleDone = "Thinking";
-        private const string TitleGone = "Thinking (bubble no longer in chat)";
+
+        private static readonly Color HeaderTintThinking = new Color(0.80f, 0.78f, 0.88f, 1f);
+        private static readonly Color HeaderTintWebTrace = new Color(0.74f, 0.85f, 0.90f, 1f);
+        private static readonly Color TitleColorThinking = new Color(0.30f, 0.20f, 0.45f);
+        private static readonly Color TitleColorWebTrace = new Color(0.10f, 0.38f, 0.52f);
+
+        private WindowKind _kind = WindowKind.Thinking;
+        private string TitleLive => _kind == WindowKind.WebTrace ? "Web trace (working...)" : "Thinking (streaming...)";
+        private string TitleDone => _kind == WindowKind.WebTrace ? "Web trace" : "Thinking";
+        private string TitleGone => _kind == WindowKind.WebTrace ? "Web trace (bubble no longer in chat)" : "Thinking (bubble no longer in chat)";
+        private string PlaceholderLive => _kind == WindowKind.WebTrace ? "(waiting for the first trace line...)" : "(waiting for reasoning...)";
+        private string PlaceholderEmpty => _kind == WindowKind.WebTrace ? "(empty trace)" : "(no reasoning captured)";
+        private string CopyToast => _kind == WindowKind.WebTrace ? "Web trace copied to clipboard" : "Reasoning copied to clipboard";
 
         private static ChatThinkingWindow _instance;
         private static Vector2 _lastSize = new Vector2(600f, 460f);
@@ -45,6 +63,7 @@ namespace AITools.AIChat.UI
         private TMP_FontAsset _font;
         private float _fontSize;
         private TextMeshProUGUI _title;
+        private Image _headerImg;
         private TextMeshProUGUI _text;
         private ScrollRect _scroll;
         private RectTransform _content;
@@ -60,10 +79,13 @@ namespace AITools.AIChat.UI
         /// <summary>The open window, or null.</summary>
         public static ChatThinkingWindow Current => _instance;
 
-        /// <summary>True while the window still expects more reasoning from the stream.</summary>
+        /// <summary>True while the window still expects more reasoning from the stream (or more trace lines from a running fetch).</summary>
         public bool IsLive => _live;
 
-        /// <summary>Current header text ("Thinking (streaming...)" / "Thinking" / bubble-gone).</summary>
+        /// <summary>Reasoning of an assistant bubble, or the full trace of a Web bubble.</summary>
+        public WindowKind Kind => _kind;
+
+        /// <summary>Current header text ("Thinking (streaming...)" / "Thinking" / "Web trace" / bubble-gone).</summary>
         public string TitleText => _title != null ? _title.text : "";
 
         /// <summary>Length of the reasoning text handed to the window (pending or shown).</summary>
@@ -94,6 +116,16 @@ namespace AITools.AIChat.UI
         /// </summary>
         public static ChatThinkingWindow Show(TMP_FontAsset font, float fontSize, TMP_InputField sourceField, string text, bool live)
         {
+            return Show(font, fontSize, sourceField, text, live, WindowKind.Thinking);
+        }
+
+        /// <summary>
+        /// Open (or retarget) the window for a bubble of the given <paramref name="kind"/>:
+        /// an assistant bubble's reasoning, or a Web bubble's full trace (live while the
+        /// fetch still runs; the host feeds SetText per trace line).
+        /// </summary>
+        public static ChatThinkingWindow Show(TMP_FontAsset font, float fontSize, TMP_InputField sourceField, string text, bool live, WindowKind kind)
+        {
             if (_instance == null)
             {
                 var parent = ResolveCanvasParent();
@@ -102,7 +134,7 @@ namespace AITools.AIChat.UI
                 _instance = go.AddComponent<ChatThinkingWindow>();
                 _instance.Build(font, fontSize);
             }
-            _instance.Retarget(sourceField, text, live);
+            _instance.Retarget(sourceField, text, live, kind);
             _instance.transform.SetAsLastSibling();
             return _instance;
         }
@@ -130,21 +162,29 @@ namespace AITools.AIChat.UI
             Destroy(gameObject);
         }
 
-        private void Retarget(TMP_InputField sourceField, string text, bool live)
+        private void Retarget(TMP_InputField sourceField, string text, bool live, WindowKind kind)
         {
-            bool sameBubble = IsShowing(sourceField);
+            bool sameBubble = IsShowing(sourceField) && _kind == kind;
             _sourceField = sourceField;
+            _kind = kind;
             _pendingText = text ?? "";
             _live = live;
             _dirty = true;
+            ApplyKindVisuals();
             if (!sameBubble)
             {
-                // A different bubble: show its reasoning from the top (a finished block) or
-                // follow the bottom (still streaming), without waiting for the throttle.
+                // A different bubble: show its text from the top (a finished block) or
+                // follow the bottom (still streaming / fetching), without waiting for the throttle.
                 _nextRefreshAt = 0f;
                 ApplyPending(forceScroll: live ? ScrollTarget.Bottom : ScrollTarget.Top);
             }
             UpdateTitle();
+        }
+
+        private void ApplyKindVisuals()
+        {
+            if (_headerImg != null) _headerImg.color = _kind == WindowKind.WebTrace ? HeaderTintWebTrace : HeaderTintThinking;
+            if (_title != null) _title.color = _kind == WindowKind.WebTrace ? TitleColorWebTrace : TitleColorThinking;
         }
 
         private void Update()
@@ -168,7 +208,7 @@ namespace AITools.AIChat.UI
             _nextRefreshAt = Time.unscaledTime + RefreshIntervalSeconds;
             if (_text == null) return;
             string t = _pendingText.Trim();
-            if (t.Length == 0) t = _live ? "(waiting for reasoning...)" : "(no reasoning captured)";
+            if (t.Length == 0) t = _live ? PlaceholderLive : PlaceholderEmpty;
             if (string.Equals(t, _shownText, System.StringComparison.Ordinal) && forceScroll == ScrollTarget.KeepOrFollow)
                 return;
 
@@ -206,7 +246,7 @@ namespace AITools.AIChat.UI
             try
             {
                 GUIUtility.systemCopyBuffer = _pendingText ?? "";
-                global::RTQuickMessageManager.Get().ShowMessage("Reasoning copied to clipboard");
+                global::RTQuickMessageManager.Get().ShowMessage(CopyToast);
             }
             catch (System.Exception ex)
             {
@@ -295,8 +335,9 @@ namespace AITools.AIChat.UI
             rt.sizeDelta = new Vector2(0f, HeaderHeight);
             rt.anchoredPosition = Vector2.zero;
             var img = header.AddComponent<Image>();
-            img.color = new Color(0.80f, 0.78f, 0.88f, 1f);
+            img.color = HeaderTintThinking;
             img.raycastTarget = true;
+            _headerImg = img;
             header.AddComponent<global::PanelDragHandler>().SetTarget(_root, HeaderHeight);
 
             var titleGo = new GameObject("Title");
@@ -310,7 +351,7 @@ namespace AITools.AIChat.UI
             if (_font != null) _title.font = _font;
             _title.fontSize = 14f;
             _title.fontStyle = FontStyles.Bold;
-            _title.color = new Color(0.30f, 0.20f, 0.45f);
+            _title.color = TitleColorThinking;
             _title.alignment = TextAlignmentOptions.MidlineLeft;
             _title.textWrappingMode = TextWrappingModes.NoWrap;
             _title.overflowMode = TextOverflowModes.Ellipsis;
