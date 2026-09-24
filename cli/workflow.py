@@ -147,7 +147,7 @@ def prune_unfilled_inputs(api_workflow, verbose=False):
     """Remove loader nodes whose inputs still hold an <AITOOLS_INPUT_N>
     placeholder (an optional @upload slot with no source), cascade-remove
     inputs that referenced them, and renumber ComfyUI autogrow list inputs
-    ("group.item_N") so indices stay contiguous from 0. Mirrors
+    ("group.item_N") so indices stay contiguous from each group's base. Mirrors
     PicTextToImage.PruneWorkflowInputs in the Unity app. Call BEFORE the
     blank-by-default placeholder pass, which would otherwise erase the
     markers this detection relies on."""
@@ -168,10 +168,11 @@ def prune_unfilled_inputs(api_workflow, verbose=False):
             continue
         doomed = [k for k, v in inputs.items()
                   if isinstance(v, list) and len(v) == 2 and str(v[0]) in removed]
+        bases = _autogrow_group_bases(inputs)
         for k in doomed:
             del inputs[k]
         if doomed:
-            _renumber_autogrow_inputs(inputs)
+            _renumber_autogrow_inputs(inputs, bases)
     if removed and verbose:
         print(f"pruned unused loader node(s): {', '.join(removed)}")
     return api_workflow
@@ -196,23 +197,23 @@ def prune_named_inputs(api_workflow, names, verbose=False):
             inputs = node.get("inputs") if isinstance(node, dict) else None
             if not isinstance(inputs, dict) or name not in inputs:
                 continue
+            if not any(c[0] is inputs for c in changed):
+                changed.append((inputs, _autogrow_group_bases(inputs)))
             del inputs[name]
-            if not any(inputs is c for c in changed):
-                changed.append(inputs)
             hit = True
         if hit:
             if verbose:
                 print(f"pruned input '{name}'")
         else:
             print(f"warning: @prune_input '{name}' matched no node input")
-    for inputs in changed:
-        _renumber_autogrow_inputs(inputs)
+    for inputs, bases in changed:
+        _renumber_autogrow_inputs(inputs, bases)
     return api_workflow
 
 
-def _renumber_autogrow_inputs(inputs):
-    """ComfyUI autogrow inputs are named "group.item_N"; after pruning, each
-    group's remaining indices must be contiguous from 0."""
+def _autogrow_groups(inputs):
+    """ComfyUI autogrow inputs are named "group.item_N"; returns
+    {"group.item_": [(N, key), ...]}."""
     groups = {}
     for key in list(inputs.keys()):
         dot = key.find(".")
@@ -223,13 +224,30 @@ def _renumber_autogrow_inputs(inputs):
         if not tail.isdigit():
             continue
         groups.setdefault(key[:us + 1], []).append((int(tail), key))
-    for stem, entries in groups.items():
+    return groups
+
+
+def _autogrow_group_bases(inputs):
+    """Lowest index per autogrow group. Capture it BEFORE pruning: removing a
+    group's first item would otherwise hide where its numbering started."""
+    return {stem: min(idx for idx, _key in entries)
+            for stem, entries in _autogrow_groups(inputs).items()}
+
+
+def _renumber_autogrow_inputs(inputs, bases=None):
+    """After pruning, each group's remaining indices must be contiguous from
+    the group's ORIGINAL base: 0 for H3's ref_images.ref_image_0.., 1 for
+    Qwen-Image 2.1's images.image_1.. (renumbering those from 0 produced an
+    images.image_0 input the node doesn't declare). Mirrors
+    PicTextToImage.RenumberAutogrowInputs."""
+    for stem, entries in _autogrow_groups(inputs).items():
+        start = (bases or {}).get(stem, 0)
         entries.sort()
-        if all(idx == i for i, (idx, _key) in enumerate(entries)):
+        if all(idx == start + i for i, (idx, _key) in enumerate(entries)):
             continue
         values = [inputs.pop(key) for _idx, key in entries]
         for i, value in enumerate(values):
-            inputs[f"{stem}{i}"] = value
+            inputs[f"{stem}{start + i}"] = value
 
 
 def override_seeds(node, seed):

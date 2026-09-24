@@ -499,13 +499,17 @@ public class PicTextToImage : MonoBehaviour
                 if (refsRemovedNode || pruneInputNames.Contains(key))
                     doomed.Add(key);
             }
+            // Each autogrow group's first index (0 for H3's ref_image_0.., 1 for Qwen-Image
+            // 2.1's images.image_1..) must be read BEFORE the removal - pruning a group's
+            // first item would otherwise hide where it started.
+            Dictionary<string, int> groupBases = GetAutogrowGroupBases(inputs);
             foreach (string key in doomed)
             {
                 inputs.Remove(key);
                 removedInputs.Add(nodeId + ":" + key);
             }
             if (doomed.Count > 0)
-                RenumberAutogrowInputs(inputs);
+                RenumberAutogrowInputs(inputs, groupBases);
         }
 
         if (removedNodes.Count > 0 || removedInputs.Count > 0)
@@ -516,8 +520,8 @@ public class PicTextToImage : MonoBehaviour
     }
 
     // ComfyUI autogrow list inputs are named "group.item_N" (e.g. "ref_images.ref_image_0");
-    // after pruning, the remaining indices of each group must be contiguous from 0.
-    static void RenumberAutogrowInputs(JSONNode inputs)
+    // returns the group stem ("ref_images.ref_image_") -> its (index, key) items.
+    static Dictionary<string, List<KeyValuePair<int, string>>> GetAutogrowGroups(JSONNode inputs)
     {
         Dictionary<string, List<KeyValuePair<int, string>>> groups = new Dictionary<string, List<KeyValuePair<int, string>>>();
         foreach (string key in inputs.Keys)
@@ -534,22 +538,46 @@ public class PicTextToImage : MonoBehaviour
             }
             list.Add(new KeyValuePair<int, string>(idx, key));
         }
+        return groups;
+    }
 
-        foreach (KeyValuePair<string, List<KeyValuePair<int, string>>> group in groups)
+    // Lowest index of each autogrow group, i.e. where the node's numbering starts.
+    static Dictionary<string, int> GetAutogrowGroupBases(JSONNode inputs)
+    {
+        Dictionary<string, int> bases = new Dictionary<string, int>();
+        foreach (KeyValuePair<string, List<KeyValuePair<int, string>>> group in GetAutogrowGroups(inputs))
         {
+            int min = int.MaxValue;
+            foreach (KeyValuePair<int, string> item in group.Value) min = Math.Min(min, item.Key);
+            bases[group.Key] = min;
+        }
+        return bases;
+    }
+
+    // After pruning, the remaining indices of each group must be contiguous from the
+    // group's ORIGINAL base (groupBases, captured before the removal): 0-based groups
+    // like H3's ref_images stay 0-based, 1-based ones like Qwen-Image 2.1's
+    // images.image_1..16 stay 1-based (renumbering those from 0 produced an
+    // "images.image_0" input the node doesn't declare). Groups without a recorded
+    // base fall back to 0.
+    static void RenumberAutogrowInputs(JSONNode inputs, Dictionary<string, int> groupBases)
+    {
+        foreach (KeyValuePair<string, List<KeyValuePair<int, string>>> group in GetAutogrowGroups(inputs))
+        {
+            int start = groupBases != null && groupBases.TryGetValue(group.Key, out int b) ? b : 0;
             List<KeyValuePair<int, string>> list = group.Value;
-            list.Sort((a, b) => a.Key.CompareTo(b.Key));
+            list.Sort((a, b2) => a.Key.CompareTo(b2.Key));
             bool contiguous = true;
             for (int i = 0; i < list.Count; i++)
             {
-                if (list[i].Key != i) { contiguous = false; break; }
+                if (list[i].Key != start + i) { contiguous = false; break; }
             }
             if (contiguous) continue;
 
             List<JSONNode> values = new List<JSONNode>();
             foreach (KeyValuePair<int, string> item in list) values.Add(inputs[item.Value]);
             foreach (KeyValuePair<int, string> item in list) inputs.Remove(item.Value);
-            for (int i = 0; i < values.Count; i++) inputs[group.Key + i] = values[i];
+            for (int i = 0; i < values.Count; i++) inputs[group.Key + (start + i)] = values[i];
         }
     }
 
