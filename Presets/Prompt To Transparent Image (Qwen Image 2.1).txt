@@ -1,0 +1,13 @@
+COMMAND_START|joblist
+#Generate a TRANSPARENT-background image (native RGBA, no mask pass) using Qwen-Image 2.1
+#Wrap the prompt as "This is an RGBA format image with transparency. <description>. The image has an alpha channel and a transparent background."
+%width%="1024"
+%height%="1024"
+%steps%="25"
+
+text_to_img_qwen21_rgba.json @replace|"width": 1024|"width": %width%| @replace|"height": 1024|"height": %height%| @replace|"steps": 25|"steps": %steps%|
+COMMAND_END
+COMMAND_START|default_negative_prompt
+COMMAND_END
+COMMAND_START|default_pre_prompt
+COMMAND_END

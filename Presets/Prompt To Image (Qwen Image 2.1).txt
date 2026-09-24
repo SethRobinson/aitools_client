@@ -1,0 +1,14 @@
+COMMAND_START|joblist
+#Generate image using Qwen-Image 2.1 (7B MMDiT, native up to 2048x2048, strong text/typography rendering)
+#Transparent background: wrap the prompt as "This is an RGBA format image with transparency. <description>. The image has an alpha channel and a transparent background."
+#Official pipeline uses 40-50 euler steps; 25 is the ComfyUI template default (cfg 1, so no negative prompt)
+%width%="1024"
+%height%="1024"
+%steps%="25"
+
+text_to_img_qwen21.json @replace|"width": 1024|"width": %width%| @replace|"height": 1024|"height": %height%| @replace|"steps": 25|"steps": %steps%|
+COMMAND_END
+COMMAND_START|default_negative_prompt
+COMMAND_END
+COMMAND_START|default_pre_prompt
+COMMAND_END

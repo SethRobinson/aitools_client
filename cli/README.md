@@ -78,12 +78,12 @@ aitools_cli.py "a giant pig riding a dolphin" pig.png
 Use a preset from `../Presets/` - name resolution accepts the bare file
 stem, with or without `.txt`:
 ```
-aitools_cli.py "a cat" cat.png -p "Prompt To Image (Z-Image)"
+aitools_cli.py "a cat" cat.png -p "Prompt To Image (Qwen Image 2.1)"
 ```
 
 Override the preset's negative prompt and pin a server:
 ```
-aitools_cli.py "a cat" cat.png -p "Prompt To Image (Z-Image)" \
+aitools_cli.py "a cat" cat.png -p "Prompt To Image (Qwen Image 2.1)" \
     -n "ugly, blurry" --server http://gpu-box.lan:7861
 ```
 
@@ -103,7 +103,7 @@ aitools_cli.py "a cat" cat.png \
 Verbose mode shows server probe, effective prompt, every applied `@replace`,
 seed, prompt id, and live per-step progress:
 ```
-aitools_cli.py "a cat" cat.png -p "Prompt To Image (Z-Image)" -v
+aitools_cli.py "a cat" cat.png -p "Prompt To Image (Qwen Image 2.1)" -v
 ```
 
 Image-input preset (auto-mask the subject, returning an RGBA PNG with the
@@ -114,11 +114,22 @@ aitools_cli.py "" subject_masked.png \
     -i photo.jpg
 ```
 
-Single-image edit using the Klein 9B model:
+Single-image edit using Qwen-Image 2.1 (the output follows the input's
+aspect at ~1MP):
 ```
 aitools_cli.py "make her hair red" edited.png \
-    -p "Image To Image Klein Edit 1 Input" \
+    -p "Image To Image (Qwen Image 2.1)" \
     -i portrait.jpg
+```
+
+Qwen-Image 2.1 multi-reference (1-10 inputs, repeat `-i`; the prompt calls
+them `<image1>`, `<image2>`, ...). Input 1 sets the canvas; `--width` /
+`--height` switch to a custom canvas instead (the preset's
+`%custom_canvas%`), e.g. for a new group scene:
+```
+aitools_cli.py "Create a wide photo of the man from <image1> and the woman from <image2> at a beach cafe" out.png \
+    -p "Image To Image (Qwen Image 2.1)" \
+    -i man.png -i woman.png --width 1248 --height 832
 ```
 
 Two-image preset - combine/edit using two source images. Use `-i2` for the
@@ -154,7 +165,7 @@ and clips) has its own section below: "Generating movies (MiniMax H3)".
 | `--video2 PATH` | Video bound to the second reference clip slot |
 | `--audio PATH` | Standalone audio reference (H3 reference presets); repeatable (fills `audio1`..`audio3`) |
 | `--audio2 PATH`, `--audio3 PATH` | Audio bound to that exact standalone audio slot |
-| `--width N`, `--height N` | Render-size override for size-controllable (video) presets; snapped to /32, clamped 256..2048 |
+| `--width N`, `--height N` | Render-size override for size-controllable presets (`%width%`/`%vid_width%`, or the preset's own variable in its `"width":` @replace; flips `%custom_canvas%` when declared); snapped to /32, clamped 256..2048; the ~1MP budget warning prints only for H3 presets |
 | `--duration SECONDS` | Video length override (any MiniMax H3 preset; snapped to the nearest 24fps 17k+5 grid step, min ~0.2s, no upper clamp) |
 | `--no-aspect-fit` | Disable the automatic start-frame aspect fit (see the movies section) |
 | `--dry-run` | Build and validate the final API JSON with no server contact; writes `<output>.api.json` |

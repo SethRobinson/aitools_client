@@ -135,14 +135,14 @@ A small Python CLI in `cli/` lets you generate images straight from a terminal, 
 On Windows (the `.bat` auto-creates a venv and installs dependencies on first run):
 
 ```bat
-cli\aitools_cli.bat "a cat playing a guitar" out.png -p "Prompt To Image (Z-Image)"
-cli\aitools_cli.bat "make the sky red" out.png -p "Image To Image Klein Edit 1 Input" -i input.png
+cli\aitools_cli.bat "a cat playing a guitar" out.png -p "Prompt To Image (Qwen Image 2.1)"
+cli\aitools_cli.bat "make the sky red" out.png -p "Image To Image (Qwen Image 2.1)" -i input.png
 ```
 
 On Linux/macOS:
 
 ```bash
-python cli/aitools_cli.py "a cat playing a guitar" out.png -p "Prompt To Image (Z-Image)"
+python cli/aitools_cli.py "a cat playing a guitar" out.png -p "Prompt To Image (Qwen Image 2.1)"
 ```
 
 `-p` picks a preset (any text-to-image or single-step image-to-image preset works; pass an input image with `-i`). Add `-v` for verbose output. It reads `cli/config.txt` for server settings - see `cli/README.md` for details.

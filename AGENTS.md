@@ -101,7 +101,7 @@ For editor development, open `Assets/Main.unity` in Unity and enter Play mode.
 For the Python CLI subset:
 
 ```bash
-python cli/aitools_cli.py "<prompt>" output.png -p "Prompt To Image (Z-Image)"
+python cli/aitools_cli.py "<prompt>" output.png -p "Prompt To Image (Qwen Image 2.1)"
 ```
 
 On Windows, use `cli\aitools_cli.bat` instead - the first run creates `cli\venv\` and installs dependencies automatically.
@@ -111,8 +111,9 @@ The CLI uses `cli/config.txt`, `../ComfyUI`, and `../Presets`. Dependencies are 
 AI agents (Claude, Codex, etc.) can and should use this CLI themselves - on Windows or Linux - to generate images and verify workflow/preset changes end-to-end against the user's ComfyUI servers, e.g.:
 
 ```bat
-cli\aitools_cli.bat "a cat" out.png -p "Prompt To Image (Z-Image)" -v
-cli\aitools_cli.bat "make the sky red" out.png -p "Image To Image Klein Edit 1 Input" -i input.png
+cli\aitools_cli.bat "a cat" out.png -p "Prompt To Image (Qwen Image 2.1)" -v
+cli\aitools_cli.bat "make the sky red" out.png -p "Image To Image (Qwen Image 2.1)" -i input.png
+cli\aitools_cli.bat "put the woman from <image2> into <image1>" out.png -p "Image To Image (Qwen Image 2.1)" -i scene.png -i person.png
 cli\aitools_cli.bat "she waves and says hi" out.mp4 -p "Image To Video (MiniMax H3) 5s" -i start.png --duration 8
 cli\aitools_cli.bat "<Picture 1> dances like <Video 1>" out.mp4 -p "Reference Video To Video (MiniMax H3) 5s" --video clip.mp4 -i face.png
 cli\aitools_cli.bat "test" out.mp4 -p "Prompt To Video (MiniMax H3) 5s" --width 1152 --height 640 --dry-run
@@ -159,6 +160,7 @@ ComfyUI servers must be reachable over HTTP and should be started with `--listen
 - `Presets/*.txt` contains job scripts and default prompt settings. AutoPic presets are named `AutoPic*.txt` and are used by Adventure/AI-assisted flows.
 - Placeholders `<AITOOLS_PROMPT>`, `<AITOOLS_NEGATIVE_PROMPT>`, `<AITOOLS_AUDIO_PROMPT>`, `<AITOOLS_SEGMENTATION_PROMPT>`, `<AITOOLS_INPUT_1..14>` (`PicJob.MAX_INPUT_SLOTS`), `<AITOOLS_PROMPT_1..8>` and the per-render `AITOOLS_UNIQUE_ID` token (put it in save-node `filename_prefix`es so concurrent renders can't collide); directives `@replace`, `@upload` (sources `image`/`image1..image10`, `temp1..3`, `video`/`video1`, `video2`, `audio1..3`, trailing `|optional|` prunes the loader when the source is missing), `@resize`, `@resize_if_larger`, `@copy`, `@add`, `@set`, `@setimage`, `@clear`, `@fill_mask_if_blank`, `@invert_alpha`, `@no_undo`, `@stopjob`, `@lock_gpu`, `@llm_*`, `@llm_add_image`, `@parse_llm_prompts`, `@prune_input`; `@start`/`@end` blocks; built-in variables such as `%video_fps%` / `%rife_output_fps%`. Full reference: `docs/workflows.md` and `cli/README.md` ("Preset support", the most complete human-facing list; the root `README.md` no longer documents directives). Verify against `PicMain.cs` when behavior matters.
 - Two pitfalls every preset author must know (mechanism and history in `docs/workflows.md`): job-script variables are per-PicMain and SHARED by chained presets, so any preset that can be chained after another needs uniquely prefixed variables (`%vid_width%`, never `%width%`, which `Prompt To Image (Z-Image).txt` sets to 1024); and host dimension/frame-count overrides target the preset `@replace`'s REPLACEMENT half (raw `%var%="N"` or the compiled `command @set|%var%|N|` form), so PREFER a preset default equal to the workflow literal. Range-clamping model-supplied numbers is a forbidden gate (see AI Chat).
+- Qwen-Image 2.1 (since 2026-09-24) is the default still model: `Prompt To Image (Qwen Image 2.1)` for text-to-image (main GUI fallback + AI Chat `generate_image`) and `Image To Image (Qwen Image 2.1)` for AI Chat `image_to_image` (edits AND new scenes from existing people, 1-10 inputs, `<imageN>` prompt tags); Z-Image / Klein / Bernini / H3 Reference To Image run only when named. Non-obvious: its VAE decodes a slightly noisy alpha, so the default workflows output RGB (the `Prompt To Transparent Image` preset keeps alpha); autogrow slots are 1-based and the pruner keeps each group's base index; a preset declaring `%custom_canvas%="false"` is flipped to true by the host on an explicit width/height. Details: `docs/workflows.md`.
 - Model-specific workflow notes (Bernini-R image/video edit, `Video Remove Background (BiRefNet)`, WAN/RIFE interpolation and the `rife_video` utility preset): `docs/workflows.md`. MiniMax H3 (AI Chat's default video route, FL2VA vs Ref2VA reference presets, turbo/cache variants, 9 photo + 2 clip + 3 audio reference slots, the official prompt format minus the `<d>` dialog markup, costs): `docs/minimax_h3.md`. Non-obvious constraints: the executor keys H3 reference behavior on preset-name substrings ("Reference Video To Video", "Reference To Video", "Reference To Image"), H3 has no negative-prompt path, `duration="N"` is UNCLAMPED on every H3 preset (nearest 17k+5 grid), and H3 models may be installed on only some servers (`agents_secret.md`).
 
 ### LLM Systems

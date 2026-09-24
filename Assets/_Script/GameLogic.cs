@@ -1943,7 +1943,7 @@ public string GetPrompt() { return m_prompt; }
 
     /// <summary>
     /// Apply saved preset preferences from UserPreferences.
-    /// Main Job Script defaults to "Prompt To Image (Z-Image).txt" if not saved or not found.
+    /// Main Job Script defaults to "Prompt To Image (Qwen Image 2.1).txt" (then Z-Image) if not saved or not found.
     /// Loads the preset contents (job list, prompts, etc.) into the main GUI as well.
     /// </summary>
     private void ApplyPresetPreferences()
@@ -1962,11 +1962,17 @@ public string GetPrompt() { return m_prompt; }
             mainJobApplied = true;
         }
 
-        // Fallback to "Prompt To Image (Z-Image).txt" if not applied
-        if (!mainJobApplied &&
-            PresetManager.Get().DoesPresetExistByNameNotCaseSensitive("Prompt To Image (Z-Image).txt"))
+        // Fallback to the default text-to-image preset if not applied
+        if (!mainJobApplied)
         {
-            ApplyMainPreset("Prompt To Image (Z-Image).txt");
+            foreach (string fallback in new[] { "Prompt To Image (Qwen Image 2.1).txt", "Prompt To Image (Z-Image).txt" })
+            {
+                if (PresetManager.Get().DoesPresetExistByNameNotCaseSensitive(fallback))
+                {
+                    ApplyMainPreset(fallback);
+                    break;
+                }
+            }
         }
 
         // Apply Temp Job Script preference (label only - temp preset is loaded on demand)

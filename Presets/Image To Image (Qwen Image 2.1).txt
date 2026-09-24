@@ -1,0 +1,14 @@
+COMMAND_START|joblist
+#Edit / multi-reference image using Qwen-Image 2.1. Input 1 is the edit target (and sets the canvas),
+#inputs 2-10 are optional references. Address them in the prompt as <image1>, <image2>, ... <image10>.
+#Canvas: by default the output follows input 1's aspect at ~1MP. %custom_canvas% flips to true when
+#AI Chat passes an explicit width/height (the host rewrites it), switching to the width/height below.
+%qwen21_edit_width%="1024"
+%qwen21_edit_height%="1024"
+%qwen21_edit_steps%="25"
+%custom_canvas%="false"
+
+img_to_img_qwen21_edit.json @upload|image1|input1| @upload|image2|input2|optional| @upload|image3|input3|optional| @upload|image4|input4|optional| @upload|image5|input5|optional| @upload|image6|input6|optional| @upload|image7|input7|optional| @upload|image8|input8|optional| @upload|image9|input9|optional| @upload|image10|input10|optional| @replace|"width": 1024|"width": %qwen21_edit_width%| @replace|"height": 1024|"height": %qwen21_edit_height%| @replace|"steps": 25|"steps": %qwen21_edit_steps%| @replace|"switch": false|"switch": %custom_canvas%|
+COMMAND_END
+COMMAND_START|default_negative_prompt
+COMMAND_END
