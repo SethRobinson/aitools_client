@@ -1,13 +1,19 @@
 ---
 id: image_to_image
-summary: Two still-image modes. (1) NEW image FEATURING existing chat people/anchors/references ("them together", group shots, variations, re-poses) - DEFAULT preset {{Reference To Image (MiniMax H3).txt}}, up to 9 refs via chat_image + chat_image2..9; the prompt is the six-section H3 reference document (subject_definitions defining <Subject N> from every staged <Picture N> / summary / retention_analysis / detailed_description ~120-250 words, no dialog / overall_soundscape: N/A / non_diegetic_music: N/A) and MUST address every staged photo by its <Picture N> tag (use {{Reference To Image (MiniMax H3 Quality).txt}} for explicit high/maximum quality; prompt LAST in the tag). (2) In-place EDIT of one image - delta changes that preserve the source's exact composition - Klein/Flux 2 by INPUT COUNT (1-5), 40-70 words of narrative prose, slot-number references, concise identity locks; Bernini-R only when explicitly named. A Movie #N is NOT a still source by default: scene/motion/dialogue/audio edits use video_to_video. Only when the user explicitly requests one still/current frame may image_to_image target a Movie, and the action must include movie_frame="true". Result spawns as a new still; originals remain unchanged.
+summary: Still-image edits AND new stills featuring existing chat people/anchors/references. DEFAULT preset {{Image To Image (Qwen Image 2.1).txt}} for both, up to 10 inputs via chat_image + chat_image2..10. (1) In-place EDIT of one image (delta that keeps the source's composition): chat_image = the image to edit, omit width/height, prompt = an instruction that leads with the operation and names what stays fixed (single image: say "the image", no tags). (2) NEW scene FEATURING existing people/anchors ("them together", group shots, variations, re-poses): every person's anchor in its own slot, prompt calls them <image1>, <image2>... and points at the images for identity (never re-describe faces), and pass width/height for the new frame (1248x832 group/landscape, 832x1248 portrait). Output canvas = chat_image's aspect unless width/height are given, so the image being edited (the scene/canvas) goes in chat_image. Klein, Bernini and H3 Reference To Image only when the user names them. A Movie #N is NOT a still source by default: scene/motion/dialogue/audio edits use video_to_video. Only when the user explicitly requests one still/current frame may image_to_image target a Movie, and the action must include movie_frame="true". Result spawns as a new still; originals remain unchanged.
 inputs: attachment
 autoload: true
 triggers: edit the image, edit this image, modify the image, alter the image, change the image, tweak the image, adjust the image, retouch, refine the image, transform the image, restyle, restyle as, redraw, repaint, change the pose, change her pose, change his pose, new pose, different pose, dress her, dress him, undress, replace the, swap the, swap out, remove from the image, in the style of, them together, all together, side by side, group photo of them, group shot of, all three of them, all four of them, all five of them, both of them in, the two of them in, in one image, all in one, use them as anchors, use these as anchors, combine them, combine these, put them together, put them all, put all of them, scene with them, scene with all, posing together, line them up, hanging out together
 exclude_triggers: generate a brand new, brand new image, fresh image of a, fresh image from scratch, picture from scratch
-template: <aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 1 Input.txt}}" prompt="<narrative prose, 40-70 words. For multi-input: name each subject by slot, give each a placement, end with scene + lighting.>" chat_image="N"/>  # STILL sources only. attachment= works only in the very message the user pasted the image in; on later turns use chat_image="N" (the paste's bubble number). A Movie source is allowed only for an explicit single-frame/current-frame request and requires movie_frame="true". Klein is the EDIT path; for a NEW scene FEATURING existing people/anchors use preset="{{Reference To Image (MiniMax H3).txt}}" with chat_image + chat_image2..chat_image9 and every staged photo addressed as <Picture N> in the prompt.
+template: <aitools_action skill="image_to_image" preset="{{Image To Image (Qwen Image 2.1).txt}}" chat_image="N" prompt="<instruction: lead with the operation, name what stays fixed. 1 input: 'the image'. 2+ inputs: <image1>, <image2>... with each image's role.>"/>  # STILL sources only. attachment= works only in the very message the user pasted the image in; on later turns use chat_image="N" (the paste's bubble number). A Movie source is allowed only for an explicit single-frame/current-frame request and requires movie_frame="true". For a NEW scene featuring existing people add chat_image2..chat_image10 (one per person, anchors by name) plus width/height for the new frame.
 ---
-# Image-to-image (Klein / Flux 2 edit family)
+# Image-to-image (Qwen Image 2.1 edit / multi-reference)
+
+`{{Image To Image (Qwen Image 2.1).txt}}` is the default for every still-image
+job that starts from existing images: in-place edits, and new scenes that star
+people or things already in chat. It takes up to TEN inputs: `chat_image` (or
+`attachment`) is `<image1>`, `chat_image2..chat_image10` (or
+`attachment2..10`) are `<image2>..<image10>`.
 
 ## ANCHOR DISCIPLINE - reference recurring characters BY NAME
 
@@ -21,7 +27,7 @@ the drift every turn until the characters stop looking like themselves.
 as a portrait, tag that action with `anchor="Name"`:
 
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full portrait of the clockmaker>" anchor="Elias"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" width="832" height="1248" prompt="<full portrait of the clockmaker>" anchor="Elias"/>
 ```
 
 From then on, refer to that character by name in any `chat_image` slot -
@@ -33,239 +39,156 @@ drifted composite. The live name->slot map is printed every turn in the
 
 WRONG (drift trap - points at the composite, and guesses a number):
 > User: "now show them at the beach"
-> `<aitools_action skill="image_to_image" preset="{{Reference To Image (MiniMax H3).txt}}"
->   prompt="Move them to a sunny beach scene..." chat_image="5"/>`
+> `<aitools_action skill="image_to_image" preset="{{Image To Image (Qwen Image 2.1).txt}}"
+>   prompt="Move them to a sunny beach..." chat_image="5"/>`
 
-RIGHT (reference each character by anchor name; the prompt is the
-six-section H3 document - see "H3 REFERENCE RENDER" below):
+RIGHT (each character by anchor name, new frame size given):
 > User: "now show them at the beach"
-> `<aitools_action skill="image_to_image" preset="{{Reference To Image (MiniMax H3).txt}}"
+> `<aitools_action skill="image_to_image" preset="{{Image To Image (Qwen Image 2.1).txt}}"
 >   chat_image="Elias" chat_image2="Mei" chat_image3="Jonah" chat_image4="Layla"
->   width="1152" height="640"
->   prompt="subject_definitions: <Subject 1> is the man in <Picture 1>, ...
->   <Subject 4> is the woman in <Picture 4>, ... / summary + retention_analysis
->   / detailed_description: the four on a sunny tropical beach, <Subject 1> on
->   the left holding a coconut, ... golden hour light - the full document as
->   specified below"/>`
+>   width="1248" height="832"
+>   prompt="Create a wide realistic photograph of the four people from <image1>,
+>   <image2>, <image3> and <image4> together on a sunny tropical beach ...
+>   - the full new-scene pattern below"/>`
 
-Note the `prompt=` binds people to photos ONLY through slot-order tags -
-`<Picture 1>` is whichever name you put in `chat_image`, `<Picture 2>` is
-`chat_image2`, and so on (Klein edits use "image N" the same way). Names are
-ONLY for the `chat_image*` attributes; the prose never says "Elias".
+The `prompt=` binds people to photos ONLY through slot-order tags -
+`<image1>` is whichever name you put in `chat_image`, `<image2>` is
+`chat_image2`, and so on. Names are ONLY for the `chat_image*` attributes;
+the prose never says "Elias".
 
 If a character has no anchor name yet (older session, or a user-supplied
 reference), fall back to the numeric slot from the `ANCHORS:` / `CHAT
 IMAGES:` lines - same rule, just feed the canonical portrait's number,
 never a composite.
 
-**Updating a character's look** (new outfit, haircut, scar): generate a
-fresh image of them FROM their current anchor and re-tag the SAME name -
-`anchor="Elias"` - which re-points the name to the new image. Every later
-`chat_image="Elias"` then uses the updated look:
+**Updating a character's look** (new outfit, haircut, scar): edit their
+current anchor and re-tag the SAME name - `anchor="Elias"` - which re-points
+the name to the new image. Every later `chat_image="Elias"` then uses the
+updated look:
 
 ```
-<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 1 Input.txt}}" prompt="Keep his face, white beard, and ~60s age exactly as is. Change his outfit to a charcoal three-piece suit." chat_image="Elias" anchor="Elias"/>
+<aitools_action skill="image_to_image" preset="{{Image To Image (Qwen Image 2.1).txt}}" chat_image="Elias" anchor="Elias" prompt="Change the man's outfit to a charcoal three-piece suit with a white shirt and a dark green tie. Keep his face, white beard, hair, pose, the background and the lighting exactly as in the image."/>
 ```
 
 Single-character variation series follow the same rule: feed
 `chat_image="Elias"` (the anchor) for every "show him doing X" follow-up,
 NOT the previous variant's bubble.
 
-## H3 REFERENCE RENDER - the DEFAULT for new scenes FEATURING existing people
+## The two modes
 
-When the request is a NEW image STARRING people/subjects who already exist in
-chat - "make an image of them together", "group photo", "show her at the
-beach", "use these as anchors/references" - do NOT edit an existing image.
-Render fresh from references with H3 Ref2VA (the same reference engine as the
-H3 video presets, single-still output):
+Decide first which one the user wants - it changes the prompt, the canvas and
+how much you build.
 
-- `{{Reference To Image (MiniMax H3).txt}}` - the DEFAULT (8-step turbo).
-- `{{Reference To Image (MiniMax H3 Quality).txt}}` - only for explicit
-  "high quality" / "maximum quality" requests (20 steps, ~2x slower).
+**EDIT - "change this picture"**: a local object/attribute/background change,
+text change, style change, relighting, removal ("change the sky", "add a hat",
+"remove the car", "make it night"). The output keeps the source's composition.
+`chat_image` = the image being edited; extra slots only for material to bring
+in (a garment, a logo, a second person). Omit width/height: the canvas follows
+`chat_image`.
 
-Slots: `chat_image` (or `attachment`) is `<Picture 1>`, `chat_image2..9` /
-`attachment2..9` are `<Picture 2>..<Picture 9>` - up to NINE references
-(Klein tops out at 5). Anchors by name work in every slot.
+**NEW SCENE - "a new picture of these subjects"**: people/things already in
+chat placed in a new setting, a group shot, a variation, a re-pose, a photo
+shoot. Every subject gets its own slot; there is no canvas image, so pass
+width/height for the new frame: `1248x832` group / landscape scene,
+`832x1248` portrait / single figure, `1344x768` wide cinematic, `1024x1024`
+square. You design the scene, lighting and composition to a professional
+standard here.
 
-The prompt is the official six-section H3 reference document (DIFFERENT from
-Klein prose; same structure as the H3 video reference presets, minus dialog):
+If a scene image IS the canvas ("put her into this cafe photo" with the cafe
+as a chat image), that is an EDIT of the cafe: the cafe goes in `chat_image`,
+the person in `chat_image2`, no width/height.
 
-- **subject_definitions**: one line per referenced person/thing, DEFINED from
-  its `<Picture N>` tag - `<Subject 1> is the man in <Picture 1>, with short
-  gray hair and a charcoal suit.` Address EVERY staged photo by its tag here,
-  in slot order; the host BLOCKS the render and bounces the action back if
-  any staged photo goes untagged or a tag has no photo behind it. Several
-  photos of the SAME person strengthen the lock - define them as ONE subject
-  (`<Subject 1> is the man in <Picture 1> and <Picture 2>`).
-- **summary**: one sentence, opening `[reference generation]`.
-- **retention_analysis**: one line per subject, normally `fully_preserved`
-  (a deliberate wardrobe/hair change is `partially_preserved - <what
-  changes>`).
-- **detailed_description**: the NEW scene as observable prose, ~120-250
-  words, described COMPLETELY from scratch - placement (left to right for
-  groups), pose, action, environment, lighting, style. H3 regenerates fresh
-  every time and carries nothing over except what the tags pin, so never
-  write a delta ("same as the last image but...") - that is Klein EDIT
-  phrasing. The tags ARE the identity lock: describe each person ONLY
-  as they appear in their reference (brief traits at most); invented details
-  ("auburn hair") OVERRIDE the photo and drift identity. No dialog, no
-  `(Sx)` IDs - the output is a still.
-- **overall_soundscape: N/A** and **non_diegetic_music: N/A** - always, for
-  stills.
-- Chat names never appear in `prompt=` (H3 has no chat history either).
-- Canvas: default 864x480. For identity-critical faces, group shots, or
-  "high quality" requests raise it - `width="1152" height="640"` landscape,
-  640x1152 portrait, 896x896 square (trained cap 1344x768). Omitting dims
-  inherits <Picture 1>'s aspect at the default pixel budget.
-- Put `prompt` LAST in the action tag.
+## Prompt rules (from Qwen's official edit prompt enhancer)
 
-Example - two anchored characters in one new scene:
+- **An instruction, not a caption.** Lead with the operation ("Replace the
+  daytime sky with ...", "Place the woman from <image2> ...", "Create a wide
+  realistic photograph of ..."), written as someone holding only the input
+  images. One English paragraph, no line breaks.
+- **Tags.** With ONE input, never use tags - say "the image", "the man in the
+  image". With TWO OR MORE inputs, every reference is `<image1>`, `<image2>`,
+  ... - never "image 1", "the first image", "picture A". State each image's
+  role (the canvas whose composition survives vs. the material or identity
+  taken from it) and describe every referenced image individually.
+- **Name what changes concretely and push it to an unmistakable degree.** A
+  faint edit that could be mistaken for the input is a failure.
+- **Hold everything else with ONE blanket preservation clause** that names
+  kept content by type and role, not appearance: "Keep the people, their
+  faces, poses and clothing, the background and the lighting exactly as in
+  the image." Re-describing something you meant to keep makes the model
+  regenerate it, and it drifts.
+- **Identity comes from the image, not from words.** Point at the reference
+  ("the woman from <image2>", "keep his face exactly as in <image1>") instead
+  of describing facial features; verbal descriptions make the model redraw the
+  face and lose the likeness.
+- **Only what was asked.** Don't add operations or clean up unmentioned
+  clutter. When something is removed or moved, say what now fills the exposed
+  area.
+- **Text is literal.** Any readable text in the output gets its exact
+  characters, written as `&quot;...&quot;` inside the action tag. Match the
+  typography the image already uses unless asked otherwise.
+- **Length.** EDIT: ~30-80 words. NEW SCENE: ~120-250 words - design the
+  placement (left to right for groups), pose, action, setting, lighting and
+  style, but still no face descriptions.
+- Never write sizes or ratios in the prompt; that is width/height.
 
-```
-<aitools_action skill="image_to_image" preset="{{Reference To Image (MiniMax H3).txt}}" chat_image="Elias" chat_image2="Mei" width="1152" height="640" prompt="subject_definitions:
-<Subject 1> is the man in <Picture 1>, with short gray hair and a trimmed white beard.
-<Subject 2> is the woman in <Picture 2>, with a dark bob and round glasses.
+## IDENTITY LOCK - anchoring MEANS "keep their identity" BY DEFAULT
 
-summary:
-[reference generation] The target image shows <Subject 1> and <Subject 2> laughing over coffee at an outdoor cafe at dusk.
+Using an anchor, or editing an existing person via `chat_image`, IS the
+instruction to keep their face / height / build - that is the entire point of
+anchoring. The user does NOT have to say "don't change their faces"; assume
+it. Include the lock on EVERY anchored / `chat_image` edit by default, unless
+the user EXPLICITLY asks to change their face, age, or body. Lock hard on the
+FIRST attempt, not after a complaint: faces AND heights, proportions, stance
+and left-to-right spacing are what slip on full-body and group images.
 
-retention_analysis:
-<Subject 1> (main subject): fully_preserved - his face, gray hair, and beard are retained.
-<Subject 2> (main subject): fully_preserved - her face, bob, and glasses are retained.
+- EDIT: "Keep every person's face, hairstyle, height, body proportions, pose
+  and position exactly as in the image."
+- NEW SCENE: "Keep each person's face, hairstyle, build and clothing exactly as
+  in their reference image" (plus "<image1>'s man is noticeably taller than
+  <image2>'s woman" style notes when relative height matters).
 
-detailed_description:
-A live-action photographic style at dusk with warm streetlight from the left. <Subject 1> sits on the left side of a small round marble cafe table, one hand around an espresso cup, leaning back mid-laugh; <Subject 2> sits on the right, elbows on the table, grinning at him over her raised cappuccino. Between them a shared plate of biscotti, a folded newspaper, and a small tealight. Behind the table, a cobbled street falls out of focus into warm city-light bokeh, with a bicycle leaning against a lamppost and awning stripes catching the last violet of the sky. Shallow depth of field at 50mm, natural skin tones, gentle film grain.
-
-overall_soundscape: N/A
-
-non_diegetic_music: N/A"/>
-```
-
-Use KLEIN instead (see below) when the task is an in-place EDIT: the output
-must keep the source image's exact composition/pixels with a delta applied
-("change the sky", "add a hat", "remove the car"), the logo paste/integration
-flows, building an exact start frame for a video, or when the user explicitly
-names Klein/Flux/Bernini. H3 REGENERATES a fresh scene from references; it
-does not preserve the source's composition.
+RELOCATION edits (costume swap + new setting on an existing composite, e.g.
+"put them at the North Pole") are the highest-drift EDIT case: keep the people
+clause strong and describe the change as a tight delta ("replace the duck
+onesies with penguin costumes and the background with Arctic ice") rather than
+a full from-scratch scene. If the user really wants a NEW scene, use the NEW
+SCENE mode from their anchors instead.
 
 ## "DO N MORE VERSIONS" - keep it image_to_image, emit them all at once
 
 When the user asks for several variations of someone already in chat -
 "now as an elephant, a bee, and a dragon", "give me three more versions",
 "same boys but at the beach / in space / as superheroes" - EVERY variation
-is another `image_to_image` action with
-`{{Reference To Image (MiniMax H3).txt}}`, NOT a `generate_image`. Rules:
+is another `image_to_image` action, NOT a `generate_image`. Rules:
 
 - Feed the SAME ORIGINAL source on every variation (`chat_image="1"` or the
-  anchor name) as `<Picture 1>` - the canonical face, never the previous
-  variation's output (chaining off the last variant compounds drift).
-- NEVER use `generate_image` / Z-Image for a variation of an existing person.
+  anchor name) - the canonical face, never the previous variation's output
+  (chaining off the last variant compounds drift).
+- NEVER use `generate_image` for a variation of an existing person.
   Re-describing them from text produces a stranger no matter how detailed -
   that is the exact failure this skill exists to prevent.
 - The variations are INDEPENDENT of each other, so emit ALL of them in ONE
   reply (one `image_to_image` tag per variation). You do NOT need `continue`
   for independent variations - only use `continue` when a later step needs an
   earlier step's OUTPUT image. Do not stop after one or two and trail off.
-- Each variation's prompt uses the `<Picture 1>` tag and describes the new
-  scene/costume; a tight in-place delta on the ORIGINAL image ("same picture,
-  just add a hat") is a Klein edit instead.
-
-## IDENTITY LOCK (KLEIN EDITS) - anchoring MEANS "keep their identity" BY DEFAULT
-
-(On the H3 reference path above, identity rides the `<Picture N>` tags and
-prose traits stay MINIMAL - the clause below is for KLEIN edit prompts.)
-
-Using an anchor, or editing an existing person via `chat_image`, IS the
-instruction to keep their face / height / build - that is the entire point of
-anchoring. The user does NOT have to say "don't change their faces"; assume
-it. Include the lock clause on EVERY anchored / `chat_image` edit by default,
-unless the user EXPLICITLY asks to change their face, age, or body. Don't wait
-to be asked, and don't wait for a second complaint to make it strong.
-
-The #1 quality complaint is faces and HEIGHTS drifting on an edit. Lock
-identity hard on the FIRST attempt:
-
-> "preserving exact faces, exact hairstyles, exact heights, exact body
->  proportions, exact poses, and exact relative positioning - do NOT change
->  their faces, heights, or stances at all"
-
-"face, hair, and build" alone is too weak for full-body or multi-person
-shots - HEIGHT, proportions, stance, and left-to-right spacing are exactly
-what slip. Name them explicitly the first time, not only after a complaint.
-
-RELOCATION edits (costume swap + new setting, e.g. "put them at the North
-Pole") are the HIGHEST-drift case: the more of a fresh scene you describe,
-the more the model re-renders the people and loses their likeness. Keep the
-people clause as the hard lock above, and describe the change as a tight
-DELTA - "only swap the duck onesie for a penguin costume; background becomes
-Arctic ice with real penguins" - NEVER a full from-scratch scene description
-("They stand on ice floes, aurora overhead, photorealistic daylight..."). A
-full scene re-description is what made identity drift on the first pass.
+- A new setting/costume/pose is a NEW SCENE (pass width/height); "same
+  picture, just add a hat" is an EDIT (omit them).
 
 ## NEVER use chat character names in the prompt - HARDEST RULE
 
-Neither model has chat history. H3 sees the photos only through `<Picture N>`
-tags; Klein sees only the numbered input
-images (image 1, image 2, ...) and the literal `prompt=` text. A name
-like "Mei-Lin", "Elias Thorne", "the heroine" is just an unresolvable
-token. Refer to each subject by SLOT NUMBER ("image 1's subject", "the
-woman from image 2") plus a brief visual tag (ethnicity + age).
+The model has no chat history. It sees only the numbered input images and
+the literal `prompt=` text. A name like "Mei-Lin", "Elias Thorne", "the
+heroine" is just an unresolvable token. Refer to each subject by its tag
+(`<image1>`, or "the man in the image" for a single input), plus at most a
+brief role word.
 
 WRONG (bare name): `"Place Elias and Mara at the fireplace..."`
-WRONG (slot + name hybrid, common failure): `"Image 1's clockmaker Elias
-(white beard) is on the left next to image 2's scientist Mei (lab coat)"`
-RIGHT: `"Image 1's clockmaker (Caucasian man, ~60s, white beard) on the
-left next to image 2's scientist (East Asian woman, ~28, lab coat)"`
-
-The slot-plus-name hybrid is the trap to watch for. Once you've used
-"image 1's", the slot already tells Klein who you mean - adding the
-chat name after it is pure noise. Write the description directly inside
-the parenthetical, not the name.
+WRONG (tag + name hybrid, common failure): `"<image1>'s clockmaker Elias next
+to <image2>'s scientist Mei"`
+RIGHT: `"the man from <image1> on the left next to the woman from <image2>"`
 
 Chat prose can still use names freely. This rule applies ONLY to the
 `prompt=` attribute.
-
-## Prompt style - NARRATIVE PROSE, ~40-70 WORDS
-
-Klein wants flowing prose like a novelist describing a scene, NOT
-keyword soup and NOT long lists of "Keep X 100% identical" boilerplate.
-
-- Total length 40-70 words for most edits. Even multi-person scenes
-  rarely need more.
-- Front-load the subjects: open the sentence with "image 1's <subject>"
-  rather than burying it after a scene description.
-- One concise identity clause per slot, not three separate ones. The
-  phrase "maintaining exact likeness of image N's face, hair, and build"
-  does the same job as the verbose triple-clause pattern.
-- Skip "8k", "high-resolution", "ultra-detailed", "masterpiece" - those
-  are Flux.1 / SDXL habits and add no value on Klein.
-- Lighting matters: one short clause about light direction / warmth /
-  source helps a lot.
-
-## Klein multi-input scene composition - canonical pattern
-
-(Default for 2+ recurring people in a NEW scene is the H3 REFERENCE RENDER
-above; use this Klein pattern when the composite must preserve existing
-pixels/composition or Klein was explicitly requested.)
-
-For 2+ recurring people in one composed scene, use this 4-part structure:
-
-1. **Anchor list** (one sentence): "The N people from images 1, 2,
-   ..., N, maintaining exact likeness of each face, hair, and build."
-2. **Left-to-right ordering**: "arranged left to right in that order"
-   (or whatever ordering you choose - just be explicit).
-3. **Per-subject placement** (one short phrase per slot): "image 1's
-   man on the left holding a mug, image 2's woman next to him laughing,
-   image 3's man on the right with an arm around image 4's woman".
-4. **Scene + lighting** (one short clause): "in a warm wood-paneled
-   living room, Christmas tree behind them, fireplace glow from the
-   left, soft evening atmosphere".
-
-The PER-SUBJECT PLACEMENT clause is the part most often missed and is
-what makes Klein actually distinguish each subject. "All four standing
-together smiling" produces a generic clump where the model loses track
-of who is who; "image 1's man on the left ... image 4's woman on the
-right" forces it to place each one distinctly.
 
 ## Source selection
 
@@ -286,9 +209,11 @@ explicitly asks for a single still/current frame may `image_to_image` point at
 the Movie; add `movie_frame="true"` to make that opt-in explicit. The executor
 rejects an unmarked Movie-to-still action instead of silently grabbing a frame.
 
-Extra slots (for N-Input presets) go in `chat_image2`..`chat_image5` or
-`attachment2`..`attachment5` (each may be a number or an anchor name).
-`chat_image{N}` wins over `attachment{N}`.
+Extra slots go in `chat_image2`..`chat_image10` or `attachment2`..`attachment10`
+(each may be a number or an anchor name). `chat_image{N}` wins over
+`attachment{N}`. Never put the same image in two slots. Newly-invented people
+stay in the prompt text - only feed a slot per person you want to lock to a
+specific past appearance.
 
 ## New subject + logo/reference on its surface
 
@@ -316,16 +241,16 @@ or any wording that rejects a pasted look, use the integration flow:
 2. `paste_image` places the real logo in the intended area as a visible
    placement guide only. Use `chain="true"` if it immediately follows the base
    render; otherwise use `chat_image="BaseAnchor"` as the canvas.
-3. `image_to_image` with `{{Image To Image Klein Edit 2 Input.txt}}` uses the
-   guide composite as input 1 (`chain="true"` when adjacent) and the original
-   logo as input 2 (`attachment2="N"` / `chat_image2="N"`). The prompt must
-   say image 1 is only the placement guide and image 2 is the logo source.
-   Ask for the mark to be painted/inlaid/embossed/tattooed/formed into the
-   material, following curvature, lighting, shadows, and texture; preserve the
-   logo's geometry and colors as much as possible; do not make it glowing,
-   white, or a generic letter unless the source is. Anchor this final Klein
-   result with the same subject anchor name, then use that final anchor for
-   later edits, dangerous variants, and videos.
+3. `image_to_image` with `{{Image To Image (Qwen Image 2.1).txt}}` uses the
+   guide composite as `<image1>` (`chain="true"` when adjacent) and the
+   original logo as `<image2>` (`attachment2="N"` / `chat_image2="N"`). The
+   prompt says `<image1>` is the canvas with only a placement guide and
+   `<image2>` is the logo source, and asks for the mark to be
+   painted/inlaid/embossed/tattooed/formed into the material, following
+   curvature, lighting, shadows, and texture; preserve the logo's geometry and
+   colors; do not make it glowing, white, or a generic letter unless the
+   source is. Anchor this final result with the same subject anchor name, then
+   use that final anchor for later edits, dangerous variants, and videos.
 
 Never use the logo/reference as the primary `chat_image`; that edits the logo
 itself into the requested scene instead of applying it to the subject.
@@ -333,138 +258,68 @@ itself into the requested scene instead of applying it to the subject.
 Integrated same-reply example:
 
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full visual prompt for a realistic baby dragon, no logo yet>" anchor="Dragon"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" width="1248" height="832" prompt="<full visual prompt for a realistic baby dragon, no logo yet>" anchor="Dragon"/>
 <aitools_action skill="paste_image" chain="true" source_attachment="1" x="43%" y="45%" width="14%" height="14%" mode="fit" opacity="1"/>
-<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 2 Input.txt}}" prompt="Image 1 is a realistic baby dragon with a temporary logo placement guide on its chest. Integrate image 2's logo geometry and colors into the dragon's chest scales as a natural inlaid scale pattern following the body curvature and forest lighting, not a flat pasted overlay. Preserve the dragon pose and make the logo readable; do not make it glowing or white unless the source logo is glowing or white." chain="true" attachment2="1" anchor="Dragon"/>
+<aitools_action skill="image_to_image" preset="{{Image To Image (Qwen Image 2.1).txt}}" chain="true" attachment2="1" anchor="Dragon" prompt="Integrate the logo from <image2> into the chest scales of the baby dragon in <image1>, replacing the flat placement guide on its chest with a natural inlaid scale pattern that follows the body curvature, scale texture and forest lighting. Keep the logo's exact geometry and colors from <image2> and keep it readable, not glowing or white. Keep the dragon's pose, body, the background and the lighting of <image1> exactly as they are."/>
 ```
 
 ## Presets
 
-H3 reference render (NEW scene featuring existing people - the composite
-default, up to 9 refs):
+- `{{Image To Image (Qwen Image 2.1).txt}}` - DEFAULT for edits and new
+  scenes, 1-10 inputs. Qwen-Image 2.1 (strong identity from references,
+  legible text, native up to 2048x2048).
 
-- `{{Reference To Image (MiniMax H3).txt}}` - DEFAULT (8-step turbo).
-- `{{Reference To Image (MiniMax H3 Quality).txt}}` - explicit high/maximum
-  quality only (20 steps, ~2x slower).
+Only when the user explicitly names the model:
 
-Klein edit family - pick by INPUT COUNT:
-
-- `{{Image To Image Klein Edit 1 Input.txt}}` - 1 input. EDIT DEFAULT.
-- `{{Image To Image Klein Edit 2 Input.txt}}` - 2 inputs.
-- `{{Image To Image Klein Edit 3 Input.txt}}` - 3 inputs.
-- `{{Image To Image Klein Edit 4 Input.txt}}` - 4 inputs.
-- `{{Image To Image Klein Edit 5 Input.txt}}` - 5 inputs. ABSOLUTE MAX.
-  (Klein officially tops out at 4 reference images; the 5-Input preset
-  is available for forward-compat with future edit models but quality
-  may degrade at 5 on current Klein - prefer 4 when possible.)
-
-Pick N = EXACTLY the count of references you're feeding (primary +
-extras). 4 people -> 4 Input, NOT 5 Input. Picking a larger preset than
-you have inputs for fails the workflow.
-
-## Bernini - EXPLICIT OPT-IN ONLY
-
-- `{{Image To Image (Bernini).txt}}` - 1 input. ByteDance Bernini-R
-  instruction edit.
-
-Use this preset ONLY when the user EXPLICITLY names "Bernini" (e.g. "edit
-this with Bernini", "use Bernini"). For every other image edit, default to
-the Klein presets above - do NOT pick Bernini on your own. Bernini is a
-single-image edit path here (one input via `chat_image` / `attachment` /
-`chain`); it does not take multiple reference slots, so use it only for
-single-source edits. Same narrative-prose, identity-lock, and
-describe-the-delta rules apply.
-
-## Multi-person heuristic
-
-For a scene with 2+ previously-shown people:
-
-1. Count the recurring people who exist as chat-image bubbles.
-2. Default: `{{Reference To Image (MiniMax H3).txt}}` - feed each person's
-   bubble/anchor as `chat_image` / `chat_image2` / ... / `chat_image9` and
-   tag each as `<Picture N>` in the prompt (H3 REFERENCE RENDER above).
-3. Klein N-Input instead only when the composite must preserve existing
-   pixels/composition (then N = exact reference count, max 5, canonical
-   4-part Klein pattern above).
-
-Never duplicate the same chat_image into two slots. Newly-invented
-people stay in the prompt text - only feed a slot per person you want
-to lock to a specific past appearance.
-
-## Single-input edit pattern (1-Input preset)
-
-Single-subject edits don't need the multi-input structure. Just open
-with a brief identity clause ("Keep her face and hair exactly as is,
-~32, Latina") then state the delta:
-
-```
-<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 1 Input.txt}}" prompt="Keep her face and hair exactly as is, ~32, Latina. Add a wide-brimmed black straw sunhat with a faded pink ribbon, tilted slightly over her right brow." chat_image="1"/>
-```
-
-Drop the identity clause ONLY if the user explicitly asked to change
-the face/hair/age/ethnicity. When changing one of those, anchor the
-OTHERS explicitly so only the requested attribute moves.
-
-The brief "face and hair" clause is enough only for tight head-and-shoulders
-edits. For full-body or multi-person subjects, or any edit that also moves
-them to a new setting, use the stronger lock from IDENTITY LOCK above
-(exact heights, body proportions, poses, relative positioning) on the FIRST
-attempt and keep the setting change a tight delta.
+- Klein / Flux 2 ("Klein", "Flux"): `{{Image To Image Klein Edit 1 Input.txt}}`
+  .. `{{Image To Image Klein Edit 5 Input.txt}}`, picked by EXACT input count
+  (4 people -> 4 Input). Klein wants 40-70 words of narrative prose that
+  refers to slots as "image 1", "image 2" instead of tags.
+- MiniMax H3 ("H3", "MiniMax" still): `{{Reference To Image (MiniMax H3).txt}}`
+  (`... (MiniMax H3 Quality).txt` for high quality), up to 9 refs. Its prompt is
+  the six-section H3 reference document (subject_definitions / summary /
+  retention_analysis / detailed_description / overall_soundscape: N/A /
+  non_diegetic_music: N/A) and every staged photo MUST be addressed as
+  `<Picture N>` - the host blocks the render otherwise. The same format as the
+  H3 video reference presets (see image_to_movie).
+- Bernini ("Bernini"): `{{Image To Image (Bernini).txt}}` - 1 input,
+  ByteDance Bernini-R instruction edit; same instruction-style prompt.
 
 ## Invocation examples
 
+Single-input edit (no tags, no size):
+```
+<aitools_action skill="image_to_image" preset="{{Image To Image (Qwen Image 2.1).txt}}" chat_image="1" prompt="Add a wide-brimmed black straw sunhat with a faded pink ribbon to the woman, tilted slightly over her right brow and casting a soft shadow across her forehead. Keep her face, hair, expression, clothing, pose, the background and the lighting exactly as in the image."/>
+```
+
 Same-reply generate then edit (chain):
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full Z-Image scene>"/>
-<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 1 Input.txt}}" prompt="Keep everything as is except change the time of day to dusk, warm orange light from the west." chain="true"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" width="1248" height="832" prompt="<full Qwen Image scene>"/>
+<aitools_action skill="image_to_image" preset="{{Image To Image (Qwen Image 2.1).txt}}" chain="true" prompt="Change the time of day to dusk: a deep orange sky with long warm light from the left and lit windows. Keep every person, object and the composition exactly as in the image."/>
 ```
 
-Subject + scene combine (2-Input):
+Person into an existing scene photo (the scene is the canvas):
 ```
-<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 2 Input.txt}}" prompt="Image 1's subject (Latina woman, ~32) seated at the cafe table in the scene from image 2, maintaining exact likeness, soft afternoon window light from the right." chat_image="1" chat_image2="2"/>
-```
-
-Group photo, 4 people (H3 reference render - the default):
-```
-<aitools_action skill="image_to_image" preset="{{Reference To Image (MiniMax H3).txt}}" chat_image="1" chat_image2="2" chat_image3="3" chat_image4="4" width="1152" height="640" prompt="subject_definitions:
-<Subject 1> is the man in <Picture 1>, <a few caption traits>. <Subject 2> is the woman in <Picture 2>, ... <Subject 3> is the man in <Picture 3>, ... <Subject 4> is the woman in <Picture 4>, ...
-
-summary:
-[reference generation] The target image shows all four together in a cozy Christmas living room.
-
-retention_analysis:
-<Subject 1> / <Subject 2> / <Subject 3> / <Subject 4>: fully_preserved - faces, hair, and wardrobe retained.
-
-detailed_description:
-A warm photographic evening style lit by fireplace glow from the left. Left to right: <Subject 1> holding a steaming mug, <Subject 2> next to him laughing, <Subject 3> leaning on the mantle with an arm around <Subject 4>. A decorated Christmas tree glows behind them... <complete the scene to ~120-250 words>
-
-overall_soundscape: N/A
-
-non_diegetic_music: N/A"/>
+<aitools_action skill="image_to_image" preset="{{Image To Image (Qwen Image 2.1).txt}}" chat_image="2" chat_image2="Mei" prompt="Place the woman from <image2> seated at the empty cafe table in <image1>, facing the camera with a coffee cup in her hands. Keep her face, hairstyle and clothing exactly as in <image2>, and match her lighting and colour to the soft afternoon window light of <image1>. Keep the cafe, the furniture and the composition of <image1> exactly as they are."/>
 ```
 
-Same scene as a Klein 4-Input composite (only when preserving existing
-pixels/composition, or Klein was requested): swap the preset, use "image N"
-phrasing plus visual tags and the likeness clause instead of <Picture N>.
-For 2-3 subjects target 50-65 words.
+Group photo, 4 anchored people (new scene - width/height given):
+```
+<aitools_action skill="image_to_image" preset="{{Image To Image (Qwen Image 2.1).txt}}" chat_image="Elias" chat_image2="Mei" chat_image3="Jonah" chat_image4="Layla" width="1248" height="832" prompt="Create a wide realistic photograph of the man from <image1>, the woman from <image2>, the man from <image3> and the woman from <image4> together in a cozy wood-paneled living room on Christmas evening. Left to right: the man from <image1> holds a steaming mug, the woman from <image2> stands next to him laughing, the man from <image3> leans on the stone mantle with an arm around the woman from <image4>. Behind them a decorated fir tree glows with warm white lights, stockings hang from the mantle and snow is visible through a frosted window on the right. Keep each person's face, hairstyle, build, relative height and clothing exactly as in their reference image. The lighting is warm firelight from the left with soft amber fill and gentle shadows, shallow depth of field, natural skin tones."/>
+```
 
 ## Rules summary
 
-- NEW scene FEATURING existing people/anchors -> `{{Reference To Image
-  (MiniMax H3).txt}}` (Quality variant only on explicit high-quality asks),
-  `<Picture N>` tag per staged photo, up to 9 refs. In-place EDITS ->
-  Klein by input count.
-- Pick exactly ONE primary source.
+- DEFAULT `{{Image To Image (Qwen Image 2.1).txt}}`, 1-10 inputs; Klein /
+  H3 / Bernini only when named.
+- EDIT: the edited image in `chat_image`, no width/height, instruction +
+  one blanket preservation clause, ~30-80 words.
+- NEW SCENE featuring existing people: one slot per person (anchors by
+  name), width/height for the new frame, `<image1>..` tags, identity pointed
+  at the images, ~120-250 words.
+- 1 input: no tags. 2+ inputs: `<imageN>` tags only, never chat names.
+- Pick exactly ONE primary source; never the same image in two slots.
 - Movie sources require an explicit still/current-frame request plus
   `movie_frame="true"`; all other Movie edits use video_to_video.
-- Recurring characters: feed them by anchor NAME in `chat_image*`
-  (`chat_image="Elias"`); the prose says `<Picture N>` (H3) / "image N"
-  (Klein), never the chat name.
 - Never feed a downstream composite as the anchor; names already prevent
   this. Update a look by re-tagging `anchor="Name"` on a fresh edit.
-- Klein prompts: open with a concise per-slot identity clause, include
-  per-subject placement + left-to-right ordering on multi-person scenes,
-  and describe the CHANGE, not the whole image. H3 prompts: the six-section
-  document - tags carry identity in subject_definitions,
-  detailed_description (~120-250 words) describes the new scene, both audio
-  sections N/A.

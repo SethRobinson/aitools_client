@@ -43,7 +43,7 @@ illustration, and graphic image ideas.
 ## Rules
 
 - Use Krea only when the user explicitly asks for Krea/Krea 2/Krea Turbo.
-  Otherwise the normal default remains Z-Image.
+  Otherwise the normal default remains Qwen Image 2.1.
 - Do not rely on chat-image memory. If an exact existing person/object must
   recur, use `image_to_image` with a chat image reference instead.
 - Avoid negative prompts for this preset unless a future tested recipe proves

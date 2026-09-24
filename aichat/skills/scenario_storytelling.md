@@ -27,8 +27,8 @@ DO:
 - Interleave the image tags with the fiction: write a short prose/dialog beat
   (usually 1-3 sentences), then immediately emit the `generate_image` tag for
   that exact moment, then continue with the next beat.
-- Copy preset filenames exactly from the examples. Keep `Z-Image` hyphenated
-  inside `preset=`.
+- Copy preset filenames exactly from the examples, including the parentheses
+  and the dot in `(Qwen Image 2.1)`.
 - Use ordinary names freely in chat prose, but in EVERY `prompt=` describe
   people by appearance, not by name. The image/video model has no chat memory.
 
@@ -57,10 +57,10 @@ Pattern (two illustrated beats per turn):
 
 ```
 <short prose/dialog beat>
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full self-contained Z-Image prompt for this exact moment>"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" width="1248" height="832" prompt="<full self-contained Qwen Image prompt for this exact moment>"/>
 
 <short prose/dialog beat>
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full self-contained Z-Image prompt for this exact moment>"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" width="1248" height="832" prompt="<full self-contained Qwen Image prompt for this exact moment>"/>
 ```
 
 Every `generate_image` prompt must stand alone: visible identities,
@@ -104,7 +104,7 @@ as a still beat:
 
 ```
 <short prose/dialog beat>
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" width="864" height="480" prompt="<full self-contained Z-Image scene prompt>"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" width="864" height="480" prompt="<full self-contained Qwen Image scene prompt>"/>
 <aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" chain="true" width="864" height="480" prompt="<the full three-field H3 document, 150-250 words (see image_to_movie): integrated_multimodal_description: [Shot 1] the whole scene re-described + actions + one camera move + dialog per the VIDEO DIALOG RULE + overall_soundscape: + non_diegetic_music:>"/>
 ```
 
@@ -125,36 +125,20 @@ When anchors are requested, mint one canonical portrait per character with
 `anchor="Name"`:
 
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full Z-Image portrait of the swordswoman>" anchor="Reya"/>
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full Z-Image portrait of the old mage>" anchor="Doran"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" width="832" height="1248" prompt="<full Qwen Image portrait of the swordswoman>" anchor="Reya"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" width="832" height="1248" prompt="<full Qwen Image portrait of the old mage>" anchor="Doran"/>
 ```
 
-Later anchored scenes use `image_to_image` with the H3 reference preset and
-reference those names in the `chat_image*` attributes:
+Later anchored scenes use `image_to_image` with `{{Image To Image (Qwen Image 2.1).txt}}`, one slot per
+character by name, width/height for the new frame:
 
 ```
-<aitools_action skill="image_to_image" preset="{{Reference To Image (MiniMax H3).txt}}" chat_image="Reya" chat_image2="Doran" width="1152" height="640" prompt="subject_definitions:
-<Subject 1> is the woman in <Picture 1>, with her sword and travel leathers.
-<Subject 2> is the man in <Picture 2>, with his staff and gray robes.
-
-summary:
-[reference generation] The target image shows <Subject 1> and <Subject 2> together in a torch-lit stone hall.
-
-retention_analysis:
-<Subject 1> / <Subject 2>: fully_preserved - faces, hair, and wardrobe retained.
-
-detailed_description:
-A live-action fantasy style with warm torchlight from the left. <Subject 1> stands on the left, hand resting on her sword hilt; <Subject 2> stands on the right, leaning on his staff. <the rest of the scene: hall detail, light, composition - ~120-250 words, no dialog>
-
-overall_soundscape: N/A
-
-non_diegetic_music: N/A"/>
+<aitools_action skill="image_to_image" preset="{{Image To Image (Qwen Image 2.1).txt}}" chat_image="Reya" chat_image2="Doran" width="1248" height="832" prompt="Create a wide live-action fantasy photograph of the woman from <image1> and the man from <image2> together in a torch-lit stone hall. The woman from <image1> stands on the left with one hand resting on her sword hilt; the man from <image2> stands on the right leaning on his staff. <the rest of the scene: hall detail, props, composition - ~120-250 words> Keep each person's face, hairstyle, build and clothing exactly as in their reference image. The lighting is warm torchlight from the left with deep soft shadows."/>
 ```
 
 The `prompt=` binds each person to their photo ONLY via the slot-order
-`<Picture N>` tag in subject_definitions (a Klein edit uses "image N" the
-same way). Names belong only in `chat_image*` attributes; the still output
-needs no dialog and both audio sections are `N/A`.
+`<image1>`, `<image2>` tags; identity comes from the images, so do not
+re-describe faces. Names belong only in `chat_image*` attributes.
 
 For movies of anchored characters, use `image_to_movie` with
 `{{Reference To Video (MiniMax H3) 5s.txt}}`, feeding the anchors directly

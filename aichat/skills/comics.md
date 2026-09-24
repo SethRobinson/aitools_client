@@ -19,7 +19,7 @@ in one layout-aware pass.
   = one bubble).
 - Default for a NEW whole comic strip, comic page, manga page, or finished
   multi-panel comic: emit ONE `generate_image` action per requested page/strip
-  using `{{Prompt To Image (Ideogram 4).txt}}`. Do not generate loose Z-Image
+  using `{{Prompt To Image (Ideogram 4).txt}}`. Do not generate loose Qwen Image
   panels and assemble them unless one of the fallback cases below applies.
 - Use local composition (`new_canvas` / `paste_image` / `draw_shape` /
   `draw_text`) instead of Ideogram when the user is adding a bubble to an
@@ -27,7 +27,7 @@ in one layout-aware pass.
   anchor/reference identity across separately edited panels, asks for separate
   panel source images, or is repairing/replacing text on an already-composed
   image.
-- If the user explicitly asks for Z-Image, Krea, local assembly, or existing
+- If the user explicitly asks for Qwen Image, Z-Image, Krea, local assembly, or existing
   chat-image panels, honor that explicit request instead of the Ideogram
   default.
 - Ideogram comic prompts are structured JSON captions in the `prompt`
@@ -165,8 +165,8 @@ Steps:
 4. `draw_shape` + `draw_text` per panel - speech bubbles, all chained.
 
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<panel A - full self-contained Z-Image prompt, not just the topic>" anchor="comic_panel_a"/>
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<panel B - full self-contained Z-Image prompt with the punchline/action>" anchor="comic_panel_b"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" prompt="<panel A - full self-contained Qwen Image prompt, not just the topic>" anchor="comic_panel_a"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" prompt="<panel B - full self-contained Qwen Image prompt with the punchline/action>" anchor="comic_panel_b"/>
 <aitools_action skill="new_canvas" width="2400" height="1200" color="#FFFFFF" anchor="comic_canvas"/>
 <aitools_action skill="paste_image" chain="true" source_chat_image="comic_panel_a" x="2%" y="4%" width="46%" height="78%" mode="fill"/>
 <aitools_action skill="paste_image" chain="true" source_chat_image="comic_panel_b" x="52%" y="4%" width="46%" height="78%" mode="fill"/>
@@ -205,9 +205,9 @@ Steps:
 4. `draw_shape` + `draw_text` per panel - speech bubbles, all chained.
 
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<panel A - establishing>" anchor="comic_panel_a"/>
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<panel B - twist>" anchor="comic_panel_b"/>
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<panel C - punchline>" anchor="comic_panel_c"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" prompt="<panel A - establishing>" anchor="comic_panel_a"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" prompt="<panel B - twist>" anchor="comic_panel_b"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" prompt="<panel C - punchline>" anchor="comic_panel_c"/>
 <aitools_action skill="new_canvas" width="3000" height="1100" color="#FFFFFF" anchor="comic_canvas"/>
 <aitools_action skill="paste_image" chain="true" source_chat_image="comic_panel_a" x="1%" y="3%" width="32%" height="80%" mode="fill"/>
 <aitools_action skill="paste_image" chain="true" source_chat_image="comic_panel_b" x="34%" y="3%" width="32%" height="80%" mode="fill"/>
@@ -227,9 +227,9 @@ If panel B/C are image edits rather than fresh text-to-image renders, the
 pattern is:
 
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<panel A - establishing>" anchor="comic_panel_a"/>
-<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 1 Input.txt}}" prompt="<panel B edit, keeping the recurring subject consistent>" chat_image="OldMan" anchor="comic_panel_b"/>
-<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 1 Input.txt}}" prompt="<panel C edit, keeping the recurring subject consistent>" chat_image="OldMan" anchor="comic_panel_c"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" prompt="<panel A - establishing>" anchor="comic_panel_a"/>
+<aitools_action skill="image_to_image" preset="{{Image To Image (Qwen Image 2.1).txt}}" chat_image="OldMan" anchor="comic_panel_b" prompt="<panel B: new scene of the man from the image, keeping his face and clothing exactly as in the image>"/>
+<aitools_action skill="image_to_image" preset="{{Image To Image (Qwen Image 2.1).txt}}" chat_image="OldMan" anchor="comic_panel_c" prompt="<panel C: new scene of the man from the image, keeping his face and clothing exactly as in the image>"/>
 ```
 
 Never paste `source_chat_image="comic_panel_b"` or
@@ -249,10 +249,10 @@ local editable overlays. For a normal new 2x2 comic page, use the Ideogram
 default recipe above.
 
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<panel 1>" anchor="comic_page_1"/>
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<panel 2>" anchor="comic_page_2"/>
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<panel 3>" anchor="comic_page_3"/>
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<panel 4>" anchor="comic_page_4"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" prompt="<panel 1>" anchor="comic_page_1"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" prompt="<panel 2>" anchor="comic_page_2"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" prompt="<panel 3>" anchor="comic_page_3"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" prompt="<panel 4>" anchor="comic_page_4"/>
 <aitools_action skill="new_canvas" width="2048" height="1152" color="#FFFFFF" anchor="comic_page_canvas"/>
 <aitools_action skill="paste_image" chain="true" source_chat_image="comic_page_1" x="2%" y="3%" width="47%" height="44%" mode="fill"/>
 <aitools_action skill="paste_image" chain="true" source_chat_image="comic_page_2" x="51%" y="3%" width="47%" height="44%" mode="fill"/>
@@ -311,7 +311,7 @@ draw a second title over the flawed composite.
 
 - For a new whole comic strip/page/manga page, default to one Ideogram 4
   `generate_image` action per finished page/strip using structured JSON.
-- Do not use several Z-Image panel renders for a normal new comic; that is a
+- Do not use several separate panel renders for a normal new comic; that is a
   fallback for existing images, exact anchor workflows, separately requested
   source panels, or local editable overlays.
 - Speech bubbles always pair `draw_shape` (background rect) with a

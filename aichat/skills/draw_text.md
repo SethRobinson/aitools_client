@@ -109,7 +109,7 @@ Caption strip across the bottom of a freshly-generated image (chained,
 same-reply):
 
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full scene description>"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" prompt="<full scene description>"/>
 <aitools_action skill="draw_text" chain="true" text="In an alternate 1985..." x="0" y="88%" width="100%" height="10%" font_size="180" color="#FFFFFF" bg_color="#00000099" align="center" valign="middle"/>
 ```
 

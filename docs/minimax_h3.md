@@ -26,7 +26,7 @@ native stereo audio (dialog in 11 languages), no RIFE in the output path.
     reference ONE job (video = motion/camera, audio = voice/music style, picture =
     identity/setting).
   - "Exact start frame + specific person" therefore needs the two-stage recipe
-    (Klein 2-input person insert -> `Image To Video (MiniMax H3)`); documented in
+    (Qwen Image 2.1 2-input person insert -> `Image To Video (MiniMax H3)`); documented in
     `aichat/skills/image_to_movie.md`.
 - Shared: `CLIPLoader` `qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors` (type
   `minimax`), `minimax_h3_video_vae_fp16` + `minimax_h3_audio_vae_fp32`,
@@ -256,7 +256,7 @@ Six reference presets, split across the universal workflow pair (since
 - `Reference To Image (MiniMax H3).txt` (+ `Quality`, + `test_` pair, since
   2026-08-30/31): a STILL IMAGE from 1-9 photo refs via the 5-frame packet
   workflows above - H3 as a reference-conditioned image generator (the
-  reference capability Z-Image lacks until Z-Image-Edit ships). Same r2v slot
+  reference capability Z-Image lacks). Same r2v slot
   layout (photo 1 required -> input3, photos 2-9 + audio1..3 optional),
   `%vid_width%`/`%vid_height%` (CLI --width/--height apply; no `%vid_length%`,
   duration overrides can't attach by design). Default canvas 864x480 since
@@ -271,12 +271,12 @@ Six reference presets, split across the universal workflow pair (since
   packet are near-identical, so the first saved frame is the output (the CLI
   writes the rest as `_2.._5`). 5 frames is out of distribution for H3
   (trained on ~5-15s clips) - watch harder prompts for degradation.
-  **AI Chat wiring**: this is the DEFAULT `image_to_image` preset for a NEW
-  image FEATURING existing chat people/anchors/references ("them together",
-  group photos, variations, re-poses; "high/maximum quality" -> the Quality
-  preset); Klein N-Input remains for in-place edits that must preserve the
-  source's composition, logo flows, and exact start-frame builds (rules:
-  `aichat/skills/image_to_image.md`, cheat sheet in `main_prompt.txt`).
+  **AI Chat wiring**: from 2026-08-31 to 2026-09-24 this was the DEFAULT
+  `image_to_image` preset for a NEW image FEATURING existing chat
+  people/anchors/references; since 2026-09-24 that default is
+  `Image To Image (Qwen Image 2.1)` (docs/workflows.md) and the H3 still
+  presets are used only when the user names H3/MiniMax (rules:
+  `aichat/skills/image_to_image.md`).
   `SkillActionExecutor.IsReferencePhotoPreset` matches BOTH "Reference To
   Video" and "Reference To Image", so the still presets get the reference-tag
   gate, `audio=` slots, and exact-dims pass-through on image_to_image exactly

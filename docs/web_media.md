@@ -3,7 +3,7 @@
 AI Chat can search the web for images and short video clips and pull them into chat
 as ordinary `#N` / `Movie #N` bubbles, so the model can use real reference photos
 (people, characters, places, products, logos) as `chat_image2..9` photo references for
-the MiniMax H3 Reference To Video preset or Klein edits, and reference clips as
+the MiniMax H3 Reference To Video preset or Qwen Image 2.1 image edits, and reference clips as
 `<Video 1>` for Reference Video To Video.
 
 ## Pieces

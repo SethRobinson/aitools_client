@@ -39,7 +39,7 @@ Steps per poster:
 4. `draw_text` - body sentence (below the title, smaller, wrapped)
 
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full Z-Image scene description - the ILLUSTRATION ONLY. Do NOT ask the image model to render the poster's title/caption/quote text; that text is drawn cleanly by draw_text below. Baked-in diffusion text comes out garbled/overlapping.>"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" width="832" height="1248" prompt="<full Qwen Image scene description - the ILLUSTRATION ONLY. Do NOT ask the image model to render the poster's title/caption/quote text; that text is drawn cleanly by draw_text below. Baked-in diffusion text comes out garbled/overlapping.>"/>
 <aitools_action skill="add_border" chain="true" left="6%" right="6%" top="6%" bottom="25%" color="#FFFFFF"/>
 <aitools_action skill="draw_text" chain="true" text="PERSEVERANCE" x="10%" y="82%" width="80%" height="8%" font_size="12%" color="#000000" bold="true" align="center" valign="middle"/>
 <aitools_action skill="draw_text" chain="true" text="The only way through is through." x="10%" y="91%" width="80%" height="7%" font_size="9%" color="#222222" align="center" valign="middle"/>
@@ -89,7 +89,7 @@ Steps:
 5. `draw_text` - 2-3 cover lines lower down
 
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full portrait subject description, magazine cover style>"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" width="832" height="1248" prompt="<full portrait subject description, magazine cover style>"/>
 <aitools_action skill="draw_shape" chain="true" shape="rect" x="0" y="0" width="100%" height="22%" fill_color="#00000080"/>
 <aitools_action skill="draw_text" chain="true" text="HOWL" x="0" y="2%" width="100%" height="16%" font_size="220" color="#FFFFFF" bold="true" align="center" valign="middle"/>
 <aitools_action skill="draw_text" chain="true" text="WINTER 2026  -  NO. 47" x="0" y="18%" width="100%" height="3%" font_size="28" color="#EAEAEA" align="center" valign="middle"/>
@@ -122,7 +122,7 @@ User says: "make a meme about X", "add a funny caption".
 Top-and-bottom Impact-style caption over an image.
 
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full scene description>"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" prompt="<full scene description>"/>
 <aitools_action skill="draw_text" chain="true" text="WHEN YOU SAID YOU'D" x="0" y="3%" width="100%" height="14%" font_size="14%" color="#FFFFFF" outline_color="#000000" outline_width="6" bold="true" align="center" valign="middle"/>
 <aitools_action skill="draw_text" chain="true" text="BE READY IN FIVE MINUTES" x="0" y="83%" width="100%" height="14%" font_size="14%" color="#FFFFFF" outline_color="#000000" outline_width="6" bold="true" align="center" valign="middle"/>
 ```

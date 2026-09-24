@@ -42,10 +42,10 @@ Steps:
 4. `draw_text chain="true"` x4 - caption strip per panel.
 
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<scene 1 - establishing shot>" anchor="panel_1"/>
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<scene 2 - action begins>" anchor="panel_2"/>
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<scene 3 - climax>" anchor="panel_3"/>
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<scene 4 - resolution>" anchor="panel_4"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" prompt="<scene 1 - establishing shot>" anchor="panel_1"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" prompt="<scene 2 - action begins>" anchor="panel_2"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" prompt="<scene 3 - climax>" anchor="panel_3"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" prompt="<scene 4 - resolution>" anchor="panel_4"/>
 <aitools_action skill="new_canvas" width="2048" height="1152" color="#1a1a1a" anchor="storyboard_canvas"/>
 <aitools_action skill="paste_image" chain="true" source_chat_image="panel_1" x="2%" y="3%" width="47%" height="44%" mode="fill"/>
 <aitools_action skill="paste_image" chain="true" source_chat_image="panel_2" x="51%" y="3%" width="47%" height="44%" mode="fill"/>
@@ -88,9 +88,9 @@ the user is referring to (CHAT IMAGES tells you the count).
 User says: "make a filmstrip", "show 3 stages side by side".
 
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<panel A>" anchor="film_a"/>
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<panel B>" anchor="film_b"/>
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<panel C>" anchor="film_c"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" prompt="<panel A>" anchor="film_a"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" prompt="<panel B>" anchor="film_b"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" prompt="<panel C>" anchor="film_c"/>
 <aitools_action skill="new_canvas" width="3000" height="1000" color="#000000" anchor="filmstrip_canvas"/>
 <aitools_action skill="paste_image" chain="true" source_chat_image="film_a" x="1%" y="5%" width="32%" height="90%" mode="fill"/>
 <aitools_action skill="paste_image" chain="true" source_chat_image="film_b" x="34%" y="5%" width="32%" height="90%" mode="fill"/>

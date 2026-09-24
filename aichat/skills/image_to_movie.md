@@ -13,7 +13,7 @@ video clip. The source can be either freshly pasted or already in chat.
 
 If the user asks for a NEW text-described video with no source image
 ("make a video of X", "generate a MiniMax video of X"),
-first emit `generate_image` with `{{Prompt To Image (Z-Image).txt}}`, then emit
+first emit `generate_image` with `{{Prompt To Image (Qwen Image 2.1).txt}}`, then emit
 this skill with `chain="true"`. Do NOT use direct `generate_movie` /
 text-to-video unless the user explicitly asks for direct text-to-video, "no
 still first", or a named `Prompt To Video ...` preset.
@@ -76,7 +76,7 @@ DEFAULT - stack onto the image you JUST generated in this same reply (chain="tru
 Size BOTH actions to the video canvas (see "Sizing" below), and put `prompt`
 LAST in each tag:
 ```
-<aitools_action skill="generate_image" preset="Prompt To Image (Z-Image).txt" width="864" height="480" prompt="<full Z-Image scene description>"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" width="864" height="480" prompt="<full Qwen Image scene description>"/>
 <aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" chain="true" width="864" height="480" prompt="<full three-field H3 document - see format below>"/>
 ```
 This stacks the video onto the SAME Pic as the image you just made, so the
@@ -84,7 +84,7 @@ chat shows ONE bubble that updates from still -> playing video. Do NOT also pass
 attachment / chat_image when you set chain="true" - the prior step's output is
 inherited automatically. chain="true" only works as a follow-up to a generate
 action emitted earlier in the same reply. This is the right form for any
-"<image-model> + <video-model>" combo (e.g. Z-Image + MiniMax H3).
+"<image-model> + <video-model>" combo (e.g. Qwen Image + MiniMax H3).
 
 Animate a freshly-pasted image: `attachment="1"`. Animate an image already in
 the chat from earlier: `chat_image="N"`. Same prompt format either way.
@@ -124,7 +124,7 @@ between videos - there is no "the model already knows the scene". Even when
 the request is "the same scene but she laughs", or references are staged,
 the document describes the complete scene again: setting, every visible
 person and their outfit, light, and all three audio layers. Delta-style
-prompts ("only change...", "same as before but...") are a Klein/Bernini
+prompts ("only change...", "same as before but...") are an image_to_image
 EDIT convention and render wrong on H3 - anything undescribed is
 re-invented from scratch.
 
@@ -237,7 +237,7 @@ portrait, and it is **THE way to make a video STARRING several existing
 people**: one action, each person's photo(s) in their own slots (`chat_image`,
 `chat_image2`..`chat_image9` or `attachment2`.. - up to 9 photos, `<Picture
 1>`..`<Picture 9>` in slot order; unused slots are pruned). Do NOT build a
-Klein composite still first and animate it - that is only for pinning an
+composite still first and animate it - that is only for pinning an
 exact start frame (see the two-stage recipe below).
 
 Reference prompts use the official SIX-SECTION document, in this order:
@@ -332,8 +332,9 @@ frames are the i2v model; references are a different checkpoint). When the
 user wants the video to open on an exact frame but with a specific person in
 it, build the frame first, then animate it:
 
-1. `image_to_image` with `{{Image To Image Klein Edit 2 Input.txt}}` - insert
-   the person (photo in slot 2) into the desired start frame.
+1. `image_to_image` with `{{Image To Image (Qwen Image 2.1).txt}}` - insert the person into the
+   desired start frame (frame in `chat_image` = `<image1>`, which also sets the
+   canvas; the person's photo in `chat_image2` = `<image2>`).
 2. `image_to_movie` with `{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}` and
    `chain="true"` in the same reply - animates that exact composed frame.
 
@@ -362,7 +363,7 @@ garbage-audio clips. "Same diner as before" renders a different diner.
 Full recipe: the `stitch_video` skill.
 
 If the cast are REAL / NAMED / anchored people, each clip is ONE reference
-action (never a Z-Image lookalike still); invented characters use the
+action (never a generate_image lookalike still); invented characters use the
 still -> movie pair per clip.
 
 ## Sizing
@@ -440,7 +441,7 @@ and put the result on both actions:
   `prompt` LAST in the tag.
 - Reference To Video / Reference Video To Video always need at least one
   photo/clip source. A brand-new video with NO source: default recipe is
-  Z-Image still + chained image_to_movie onto the DEFAULT
+  Qwen Image 2.1 still + chained image_to_movie onto the DEFAULT
   `{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}`; explicit direct
   text-to-video -> generate_movie with a `Prompt To Video ...` preset.
 - Chained still -> movie: put the SAME `width`/`height` on BOTH actions

@@ -59,7 +59,7 @@ Black mat for a gallery look:
 Chained right after a generate_image (one final bubble):
 
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full scene description>"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" prompt="<full scene description>"/>
 <aitools_action skill="add_border" chain="true" left="6%" right="6%" top="6%" bottom="6%" color="#000000"/>
 ```
 

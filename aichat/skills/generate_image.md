@@ -1,8 +1,8 @@
 ---
 id: generate_image
-summary: Generate a brand-new still image from a text prompt. Use when the user asks for a picture of a NEW subject. Do NOT use this when the user wants a scene featuring people / things that already exist as numbered chat-image bubbles - that's image_to_image with the Reference To Image (MiniMax H3) preset, feeding each existing bubble as a chat_image reference and tagging each as <Picture N> in the prompt. generate_image cannot reproduce a specific past face from text alone; it will produce strangers no matter how detailed the description.
+summary: Generate a brand-new still image from a text prompt. Use when the user asks for a picture of a NEW subject. Do NOT use this when the user wants a scene featuring people / things that already exist as numbered chat-image bubbles - that's image_to_image with the Image To Image (Qwen Image 2.1) preset, feeding each existing bubble as a chat_image reference and calling each <image1>, <image2>... in the prompt. generate_image cannot reproduce a specific past face from text alone; it will produce strangers no matter how detailed the description.
 inputs: none
-template: <aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="vivid visual description of the scene"/>
+template: <aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" width="1248" height="832" prompt="one English paragraph describing the finished image as an observer, ~300-500 words"/>
 ---
 # Generate an image
 
@@ -11,9 +11,9 @@ of a brand-new subject with no input reference (no chat-image character
 to preserve, no pasted image to transform). If the user wants to put
 previously-shown chat-image characters together in a new scene - even
 if their wording is "create / make / generate an image of them" - that
-is **image_to_image** with the `Reference To Image (MiniMax H3)` preset
-(each person's bubble/anchor in a chat_image slot, tagged `<Picture N>`
-in the prompt), not this skill.
+is **image_to_image** with the `Image To Image (Qwen Image 2.1)` preset
+(each person's bubble/anchor in a chat_image slot, called `<image1>`,
+`<image2>`... in the prompt), not this skill.
 generate_image cannot reproduce a specific past face from text.
 
 Same trap for "do N more versions / variations" of a person already in
@@ -31,15 +31,24 @@ with `paste_image` using the actual uploaded art as the final step. For
 "fit it onto the chest/back/body/object", tattoo, engraving, embroidery,
 painted scales, branded hide, inlaid metal, or any request that says it should
 look physically part of the subject, follow with a placement guide paste and a
-2-input Klein integration pass as described in `image_to_image`. Do not try to
+2-input Qwen Image 2.1 integration pass as described in `image_to_image`. Do not try to
 draw a specific attached logo from text alone.
 
 ## Available presets
 
 Pick the preset whose strengths best match the user's request. If unsure,
-default to `{{Prompt To Image (Z-Image).txt}}` (high-quality general purpose).
+default to `{{Prompt To Image (Qwen Image 2.1).txt}}`.
 
-- `{{Prompt To Image (Z-Image).txt}}` - balanced quality/speed
+- `{{Prompt To Image (Qwen Image 2.1).txt}}` - DEFAULT. Qwen-Image 2.1: high
+  quality general purpose, strong prompt adherence, and it renders legible
+  text (signs, labels, short headlines) well.
+- `{{Prompt To Transparent Image (Qwen Image 2.1).txt}}` - the same model with a
+  real alpha channel: use it for a transparent-background asset (sprite, icon,
+  sticker, cut-out subject, logo art). Wrap the prompt: `This is an RGBA format
+  image with transparency. <description>. The image has an alpha channel and a
+  transparent background.` Describe the subject only, no scenery.
+- `{{Prompt To Image (Z-Image).txt}}` - Z-Image Turbo, faster. Use ONLY when
+  the user says "Z-Image" / "zimage" or asks for the fast/old model.
 - `{{Prompt To Image (Krea 2 Turbo).txt}}` - fast aesthetic-focused image
   generation and strong visual/art-direction variety. Use ONLY when the user
   says "krea", "krea2", or "krea 2" - the `krea` skill auto-loads with
@@ -55,97 +64,119 @@ default to `{{Prompt To Image (Z-Image).txt}}` (high-quality general purpose).
 ## Invocation
 
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="vivid visual description of the scene"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" width="1248" height="832" prompt="The image is a wide realistic photograph of ..."/>
 ```
 
-## Writing good Z-Image prompts
+## Canvas (width / height)
 
-Source: the official Tongyi-MAI prompting guidance on the Z-Image-Turbo
-HuggingFace discussion (Nov 2025) and the model card.
+Pick the frame from the subject and always pass it (the preset's own default
+is a 1024x1024 square):
 
-### What the authors actually say
+- horizontal scene, landscape, group, interior: `width="1248" height="832"` (3:2)
+- vertical portrait, full-body figure, poster: `width="832" height="1248"` (2:3)
+- wide cinematic frame, wallpaper: `width="1344" height="768"` (16:9)
+- phone screen, tall banner: `width="768" height="1344"` (9:16)
+- square icon, badge, album cover, single centred emblem: `1024x1024`
 
-> "Z-Image-Turbo works best with long and detailed prompts. You may
-> consider first manually writing the prompt and then feeding it to an
-> LLM to enhance it." (You ARE that LLM in this chat - so write the
-> already-enhanced version directly.)
+The user's own size wins ("1080p" -> 1920x1080). The model is native up to
+2048x2048 (e.g. 2048x1360 for 3:2): use that range only for explicit
+"high quality" / "2K" / print / poster-size requests, it is ~3-4x slower.
+When the still feeds a chained video, use the VIDEO's canvas instead (see
+Stacking below).
 
- The description should be very detailed, up to 500 words.
+## Writing good Qwen Image 2.1 prompts
 
-### What to actually include
+Source: the system prompt of Qwen's official prompt enhancer for this model
+(Qwen-Image-2.1-PE-T2I). You ARE that enhancer here: write its output
+directly, never the user's short request.
 
-The PE template the authors ship covers these axes - decide every one
-of them yourself rather than leaving them blank:
+### Shape
 
-1. **Subject identity** - apparent age, ethnicity, build, complexion,
-   distinguishing features, eyes, hair (colour / length / style /
-   condition), facial hair / makeup, expression / microexpression.
-2. **Wardrobe** - top + bottom + footwear + accessories, with fabric
-   and condition for each piece.
-3. **Pose + body language** - exact hand / weight / head / shoulder
-   positions; gaze direction.
-4. **Setting** - specific place (not "city"), concrete props,
-   foreground / mid / background detail, season, weather, time of day.
-5. **Lighting** - direction, source, colour temperature, hardness, mood.
-6. **Camera** - shot type, lens length, height, angle, depth of field.
-7. **Style** - a specific visual reference (e.g. "1980s neo-noir film",
-   "Roger Deakins colour palette", "Studio Ghibli watercolour", "Portra
-   400 film grain") rather than vague words like "cinematic".
+ONE English paragraph that describes the FINISHED image as if you were
+looking at it: present tense, third person, declarative. About twenty
+sentences, ~300-500 words, the same size whether the user wrote three words
+or three hundred - a thin request means you invent most of the frame.
 
-### Don'ts
+1. **Opening sentence** (~20 words): medium, style, subject, background or
+   palette, usually the orientation: `The image is a wide realistic
+   photograph of ..., set against ...`. Name the style once here (realistic,
+   cinematic, watercolour, flat-vector, isometric, 3D-rendered, editorial...).
+2. **Walk the frame** in order. For a scene or layout: background and the
+   surface things sit on first, then the top band, then left / centre / right,
+   then the bottom band. For one subject filling the frame: background and how
+   it falls off, pose and placement, head and face, body and each garment,
+   what they hold, the edges. Use 8-14 positional phrases that reach the
+   corners and edges ("In the upper-left corner, ...", "Across the lower
+   third, ..."); about a third of the sentences should open on one.
+3. **Text**: only if something is meant to be read. Give every string exactly,
+   in its own script, in reading order, with where it sits and its weight /
+   colour / case / size: `a bold black headline across the top reads
+   &quot;OPEN LATE&quot;`. Inside the action tag write those quotes as `&quot;`
+   (see the action protocol rules). Distant or unimportant text is "blurred"
+   or "too small to read" - never invent letters for it.
+4. **Lighting sentence**: `The lighting is ...` - source, direction, quality,
+   and the shadows/highlights it leaves.
+5. **Closing sentence**: exactly one that steps back - `The overall
+   composition ...` covering balance, palette, style and mood.
 
-- No quality boosters ("masterpiece, 8k, best quality")
-- No negative_prompt content for this preset (ignored).
-- No synonym repetition ("a woman, a female, a girl") - pick one.
-- No vague aesthetic words ("beautiful", "epic"). Replace each with a
-  concrete observation.
-- Don't leave the user's vagueness in. If they say "a girl on the
-  beach", YOU pick age, ethnicity, build, hair, clothes, pose, time
-  of day, weather, etc.
-- Be direct and factual and use common, clear words to describe things, don't be poetic or vague
+### Rules
+
+- Observe, don't instruct: no "you", "create", "make sure", no quality
+  boosters ("masterpiece, 8k, highly detailed, award-winning").
+- Name colours with a modifier (deep navy, muted olive, warm terracotta) and
+  give materials (brushed metal, coarse linen, weathered wood).
+- Enumerate, never summarise: say what each item is; write small counts as
+  words ("three candles").
+- People: build, posture, gaze, expression, hair, skin tone, each garment with
+  colour and material. Age as a life stage or decade ("in her thirties"),
+  never a number of years.
+- Objects by class, not brand, unless the user named the brand.
+- Keep it physically coherent: shadows fall away from the light, scale is
+  consistent, reflections match.
+- Never write the ratio or pixel size into the prompt - that is width/height.
+- No negative_prompt content (unused by this preset).
 
 ### Example
 
-User asked: "a woman smoking on a rooftop". Ship something like:
+User asked: "a woman smoking on a rooftop". Ship something like (with
+`width="832" height="1248"`):
 
-> a candid medium close-up of a woman in her early 30s, half-Korean
-> half-French, slim athletic build with broad shoulders, sun-warmed
-> skin with a faint dusting of freckles across her cheekbones, sharp
-> jawline, a small mole below her left eye, dark brown almond eyes
-> with a hint of sleepy puffiness, full lips slightly parted around
-> an unfiltered cigarette, no makeup; her hair is a messy chest-length
-> bob in deep espresso brown, swept across her forehead by the wind,
-> a few strands stuck to her cheek; she wears an oversized vintage
-> Nirvana t-shirt tucked loosely into faded high-waisted Levis, a
-> worn denim jacket draped over her shoulders, scuffed black leather
-> Doc Martens, a thin silver chain on her neck, three small stud
-> earrings in her left ear; she stands at a low concrete parapet of
-> a Brooklyn rooftop at golden hour, weight on her right leg, left
-> foot crossed behind, right hand holding the cigarette near her
-> mouth, left forearm resting on the parapet, head tilted slightly
-> back, gaze just above the camera, a faint smirk; behind her the
-> Manhattan skyline glows in warm amber backlight, the sun a low
-> blowout behind a water tower on the next roof, a thin coil of
-> cigarette smoke catching the light, soft haze from city pollution;
-> key light is the warm low sun behind her acting as a rim light
-> around her hair and shoulders, fill from the warm-grey bounced
-> light off the rooftop concrete, overall warm-honey colour palette
-> with deep cool shadows; medium close-up, 50mm equivalent, camera
-> at her chest height, very shallow depth of field with the skyline
-> rendered as soft hexagonal bokeh; shot in the style of a mid-2010s
-> Vogue editorial / Annie Leibovitz, Portra 400 film grain, natural
-> skin tones, no retouching
+> The image is a vertical realistic photograph of a woman in her early thirties
+> smoking at the edge of a Brooklyn rooftop at golden hour, framed against a
+> warm amber skyline. She stands in the centre-right of the frame at a low
+> concrete parapet, weight on her right leg, her left forearm resting on the
+> rough grey ledge. She has a slim athletic build, sun-warmed olive skin with a
+> faint dusting of freckles across her cheekbones, and dark brown almond eyes
+> gazing just above the camera with a faint smirk. Her chest-length espresso
+> brown bob is swept across her forehead by the wind, a few strands caught on
+> her cheek. She wears an oversized faded black band t-shirt tucked loosely into
+> high-waisted light-wash jeans, a worn indigo denim jacket draped over her
+> shoulders, and scuffed black leather boots. Her right hand holds a thin
+> cigarette near her mouth, and a pale coil of smoke drifts toward the upper
+> left of the frame. Behind her, across the upper half of the frame, the
+> Manhattan skyline is rendered as soft out-of-focus towers in muted gold and
+> blue-grey, and a squat wooden water tower sits on a neighbouring roof on the
+> far left. In the lower-left corner, the parapet recedes toward a rusted
+> metal vent and a folded canvas chair. Along the bottom edge, the tar-paper
+> roof surface shows scuffs and a few scattered bottle caps. The lighting is a
+> low warm sun behind her acting as a rim light along her hair and shoulders,
+> with warm-grey fill bounced from the concrete and deep cool shadows under
+> her jaw. The overall composition is an intimate off-centre editorial
+> portrait with a warm honey palette, shallow depth of field and a relaxed,
+> slightly defiant mood.
 
 ## Stacking with a follow-up step (chain="true")
 
-If the user asks for something like "make a movie with Z-Image and MiniMax H3" or
+If the user asks for something like "make a movie with Qwen Image and MiniMax H3" or
 "image-to-image change the weather, then animate it" - emit `generate_image`
 first, then a follow-up action with `chain="true"` (image_to_movie /
 image_to_image) IN THE SAME REPLY. Both steps run on the SAME Pic, so the
 chat shows ONE bubble that updates from still -> edited / animated as each
 stage finishes. See `image_to_movie` / `image_to_image` for the chained
 syntax. The chained step inherits this image's output automatically - do
-not pass attachment / chat_image alongside chain="true".
+not pass attachment / chat_image alongside chain="true". When the chained
+step is a video, put the SAME width/height (the video's canvas, e.g.
+864x480) on both actions.
 
 ## Scenario / recurring characters
 
@@ -154,14 +185,14 @@ workflows live in `scenario_storytelling`. If that skill is auto-loaded,
 follow it for story prose, visual pacing, reference characters, and
 GPU-aware multi-shot planning.
 
-Still keep every Z-Image prompt self-contained: visible identity,
+Still keep every generate_image prompt self-contained: visible identity,
 setting, pose/action, lighting, mood, camera, and style.
 
 ## Rules
 
 - If the user asked for an image - or one would obviously help - just spawn
   it. Don't ask for confirmation.
-- Write the prompt as English natural-language prose covering all 7
-  axes above. Decide every detail the user left out. Don't pass the
-  user's 1-liner to the model verbatim.
+- Write the prompt as one English observer paragraph in the shape above.
+  Decide every detail the user left out. Don't pass the user's 1-liner to
+  the model verbatim.
 - `gpu="N"` is optional - omit to let the scheduler pick the best free GPU.

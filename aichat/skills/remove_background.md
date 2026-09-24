@@ -35,7 +35,7 @@ Image pasted this turn:
 Same-reply generated image -> transparent cutout:
 
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<full prompt for the subject on a simple clean background>"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" prompt="<full prompt for the subject on a simple clean background>"/>
 <aitools_action skill="image_to_image" preset="{{Image To Image Mask Subject.txt}}" prompt="Remove the background and keep the foreground subject unchanged as a transparent-background cutout." chain="true"/>
 ```
 
@@ -52,7 +52,7 @@ Brand-new transparent sprite/cutout from scratch:
   anchor name.
 - If you just generated the source earlier in the same reply, use
   `chain="true"` on the remove-background step.
-- Do not use Klein / Flux edit presets for background removal. This is a mask
+- Do not use image edit presets (Qwen Image / Klein / Flux) for background removal. This is a mask
   operation, not a creative redraw.
 
 ## Prompt guidance

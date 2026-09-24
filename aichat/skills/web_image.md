@@ -1,6 +1,6 @@
 ---
 id: web_image
-summary: Search the web (Brave) for a photo and add it to chat as a normal image bubble #N. Main use - reference photos of REAL people, named characters, places, products, or logos BEFORE an H3 Reference To Video or Klein edit (the image models cannot render real likenesses from memory); also when the user asks to find / fetch / download a picture. One action per subject, ALWAYS anchor="name", then reference the anchor via chat_image2..9 (<Picture N>). DEFAULT for a named show/film cast when WEB ACCESS is on (no need for the user to ask): count="2" per person with query "<show> <character> scene still" and criteria="in-character scene frame from the show itself, in costume on set - not an interview, talk show, premiere, red carpet, award show, photoshoot, or headshot", plus one web_video speech="true" clip per SPEAKING character for the voice. The host ranks results by source quality and VISION-CHECKS every download (wrong subject, AI art, paintings, photos of screens/framed pictures, crowds are rejected automatically and the next result is tried), so an added image is already verified and captioned; add resume="true" only when you must read the captions before deciding. Every search, download and verdict is shown in a Web bubble.
+summary: Search the web (Brave) for a photo and add it to chat as a normal image bubble #N. Main use - reference photos of REAL people, named characters, places, products, or logos BEFORE an H3 Reference To Video or a Qwen Image 2.1 image_to_image (the image models cannot render real likenesses from memory); also when the user asks to find / fetch / download a picture. One action per subject, ALWAYS anchor="name", then reference the anchor via chat_image2..9 (<Picture N>). DEFAULT for a named show/film cast when WEB ACCESS is on (no need for the user to ask): count="2" per person with query "<show> <character> scene still" and criteria="in-character scene frame from the show itself, in costume on set - not an interview, talk show, premiere, red carpet, award show, photoshoot, or headshot", plus one web_video speech="true" clip per SPEAKING character for the voice. The host ranks results by source quality and VISION-CHECKS every download (wrong subject, AI art, paintings, photos of screens/framed pictures, crowds are rejected automatically and the next result is tried), so an added image is already verified and captioned; add resume="true" only when you must read the captions before deciding. Every search, download and verdict is shown in a Web bubble.
 inputs: none
 autoload: true
 triggers: find a photo, find a picture, find an image, find photos, find pictures, find images, search for a photo, search for a picture, search for an image, search the web, search the internet, web search, look up a photo, look up a picture, look up an image, download a photo, download a picture, download an image, download photos, download images, fetch a photo, fetch a picture, fetch an image, grab a photo, grab a picture, get a photo of, get a picture of, get an image of, photo from the internet, picture from the internet, image from the internet, photo from the web, picture from the web, image from the web, from google, google images, real photo of, actual photo of, reference photo, reference photos, reference image, reference images, what he looks like, what she looks like, what they look like, look like the real, looks like the real, the real actor, the real actress, celebrity, celebrities, famous person, real person, movie character, tv character, tv show, sitcom
@@ -10,7 +10,7 @@ template: <aitools_action skill="web_image" query="Jerry Seinfeld portrait photo
 
 Search the web with the Brave Search API and download a photo into chat as a
 normal still bubble `#N`. It is captioned automatically, gets the anchor you
-name, and works everywhere a pasted image works: `chat_image` slots, Klein
+name, and works everywhere a pasted image works: `chat_image` slots,
 `image_to_image`, `image_to_movie`, `inspect_image`, local composition.
 
 ## When to use it
@@ -18,8 +18,8 @@ name, and works everywhere a pasted image works: `chat_image` slots, Klein
 1. **Reference photos for real / named subjects.** The image and video models
    cannot draw Jerry Seinfeld, the Eiffel Tower at night, a specific product, or a
    brand logo faithfully from a text prompt. Fetch a photo first, then use it as
-   a `<Picture N>` reference (H3 Reference To Image for stills, Reference To
-   Video for movies) or a Klein edit input.
+   an `image_to_image` reference (`<imageN>` on Image To Image (Qwen Image 2.1)
+   for stills) or a `<Picture N>` reference (Reference To Video for movies).
 2. **The user asks for a picture from the web**: "find a photo of a 1986 Honda
    Civic", "grab a picture of the Mona Lisa", "show me what Kramer looks like".
 

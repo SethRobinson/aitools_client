@@ -77,7 +77,7 @@ when it will be a voice reference).
 3. `web_image result="P1:3" anchor="console"` for each picture you want as a
    reference (one action per image, ALWAYS an anchor). The host downloads,
    vision-checks and captions it like any web image.
-4. Render from the anchors (Klein edit, H3 Reference To Video `<Picture N>`),
+4. Render from the anchors (Qwen Image 2.1 `image_to_image` `<imageN>`, H3 Reference To Video `<Picture N>`),
    describing each subject only from its fetched photo's caption.
 
 Facts you quote must come from the fetched text, not from memory; say which page

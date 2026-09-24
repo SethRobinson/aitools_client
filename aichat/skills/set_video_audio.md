@@ -75,7 +75,7 @@ IMAGES (`864x480 @24fps, 5.2s`) and size the music a little longer than that
 render lands, so never wait a turn to "check on" the clip:
 
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="..." width="864" height="480"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" prompt="..." width="864" height="480"/>
 <aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" prompt="..." chain="true" anchor="banana_clip"/>
 <aitools_action skill="generate_music" prompt="..." duration="12" anchor="banana_song"/>
 <aitools_action skill="set_video_audio" chat_image="banana_clip" audio="banana_song" mode="replace"/>

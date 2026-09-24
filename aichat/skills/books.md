@@ -61,18 +61,19 @@ character / same character every page" = recurring character = anchor.)
    per page, all referencing the SAME pristine anchor. Emit the anchor AND
    every page in ONE reply - the app waits for the anchor to render before
    each page reads it, so no follow-up turn is needed.
-4. Always restate the full visual identity in each page's prompt and add
-   a "keep ... recognizably consistent" preservation clause. (See
-   `scenario_storytelling` patterns C / D for the full identity-anchor
-   rules.)
+4. Point each page's prompt at the anchor for identity ("the fox from the
+   image") and add a "keep ... exactly as in the image" preservation clause;
+   do not re-describe the character's features (that makes the model redraw
+   them). (See `scenario_storytelling` patterns C / D for the full
+   identity-anchor rules.)
 5. Do not merely say the text was added - emit the `draw_text` actions.
 
 **Why a separate anchor bubble?** `chain="true"` mutates the previous
 step's texture in place. If page 1 is `generate_image` followed by
 chained border/text, page 1's Pic has been overwritten with a
 portrait-aspect bordered + texted image. Reusing that as
-`chat_image="1"` for page 2 feeds the bordered page back into Klein,
-which preserves the input aspect, and the next `add_border` adds
+`chat_image="1"` for page 2 feeds the bordered page back into the edit
+model, which preserves the input aspect, and the next `add_border` adds
 ANOTHER 60%-of-height band on top. The page gets narrower every
 iteration. A standalone anchor bubble (no chain) avoids this entirely.
 
@@ -124,22 +125,22 @@ page 1 reads it, so this whole block is a single reply.)
 # anchor portrait - generate_image with NO chain. Becomes Image #A.
 # Never chain border or text onto this bubble - it stays pristine so
 # every page can use it as the input reference.
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="A small russet-orange fox with a fluffy white-tipped tail, large amber eyes, soft black ear tips, a single white chest patch, and a curious tilted-head expression. He sits in three-quarter view in a soft neutral pine-grove background, dappled gold light filtering through the trees, storybook illustration style with warm watercolor textures, soft edges, hand-drawn ink linework. Full-body character reference portrait." anchor="Fen"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" width="1024" height="1024" prompt="The image is a square storybook watercolor illustration of a small russet-orange fox sitting in three-quarter view, set against a soft neutral pine-grove background. <continue the full observer paragraph: fluffy white-tipped tail, large amber eyes, soft black ear tips, a single white chest patch, curious tilted-head expression, dappled gold light, warm watercolor textures, hand-drawn ink linework, a full-body character reference portrait>" anchor="Fen"/>
 
 # page 1 - image_to_image from the anchor, then chain border + text.
-<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 1 Input.txt}}" prompt="Use the fox from the reference image: a small russet-orange fox with fluffy white-tipped tail, large amber eyes, soft black ear tips, single white chest patch, curious tilted-head expression; keep the fox's coat color, markings, eye color, and proportions recognizably consistent. He stands on a mossy log at the edge of a sunlit pine forest in early autumn, dappled gold light filtering through the trees, low camera angle, warm watercolor storybook style, hand-drawn ink linework." chat_image="Fen"/>
+<aitools_action skill="image_to_image" preset="{{Image To Image (Qwen Image 2.1).txt}}" chat_image="Fen" prompt="Create a warm watercolor storybook illustration of the fox from the image standing on a mossy log at the edge of a sunlit pine forest in early autumn, seen from a low camera angle, with dappled gold light filtering through the trees and hand-drawn ink linework. Keep the fox's face, coat color, markings, eye color and proportions exactly as in the image."/>
 <aitools_action skill="add_border" chain="true" left="6%" right="6%" top="6%" bottom="60%" color="#FBF7EE"/>
 <aitools_action skill="draw_text" chain="true" text="Once upon a time, in a pine forest at the edge of the world, there lived a small russet fox named Fen. Fen had always wondered what it would be like to fly." x="10%" y="68%" width="80%" height="28%" font_size="10%" color="#2A1F12" align="left" valign="top" wrap="true"/>
 <aitools_action skill="draw_text" chain="true" text="1" x="92%" y="95%" width="6%" height="4%" font_size="8%" color="#777777" align="right" valign="middle"/>
 
 # page 2 - same anchor, new scene
-<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 1 Input.txt}}" prompt="Use the fox from the reference image: a small russet-orange fox with fluffy white-tipped tail, large amber eyes, soft black ear tips, single white chest patch, curious tilted-head expression; keep the fox's coat color, markings, eye color, and proportions recognizably consistent. Place him at the top of a tall pine tree, paws gripping a swaying branch, looking down at the forest floor far below, wind ruffling his fur, late afternoon golden light, slightly nervous expression. Same warm watercolor storybook style, hand-drawn ink linework." chat_image="Fen"/>
+<aitools_action skill="image_to_image" preset="{{Image To Image (Qwen Image 2.1).txt}}" chat_image="Fen" prompt="Create a warm watercolor storybook illustration of the fox from the image at the top of a tall pine tree, paws gripping a swaying branch and looking down at the forest floor far below with a slightly nervous expression, wind ruffling his fur, in late afternoon golden light with hand-drawn ink linework. Keep the fox's face, coat color, markings, eye color and proportions exactly as in the image."/>
 <aitools_action skill="add_border" chain="true" left="6%" right="6%" top="6%" bottom="60%" color="#FBF7EE"/>
 <aitools_action skill="draw_text" chain="true" text="One blustery morning, Fen climbed to the very top of the tallest pine. The wind tugged at his fur and the world looked very small below." x="10%" y="68%" width="80%" height="28%" font_size="10%" color="#2A1F12" align="left" valign="top" wrap="true"/>
 <aitools_action skill="draw_text" chain="true" text="2" x="92%" y="95%" width="6%" height="4%" font_size="8%" color="#777777" align="right" valign="middle"/>
 
 # page 3 - same anchor, mid-flight
-<aitools_action skill="image_to_image" preset="{{Image To Image Klein Edit 1 Input.txt}}" prompt="Use the fox from the reference image: a small russet-orange fox with fluffy white-tipped tail, large amber eyes, soft black ear tips, single white chest patch; keep the fox's coat color, markings, eye color, and proportions recognizably consistent. Show him airborne in a graceful arc, all four paws spread wide, tail streaming, wide delighted eyes and an open-mouthed grin, sailing past pine boughs with autumn leaves swirling around him, low golden sun behind him casting a warm rim light. Same warm watercolor storybook style, hand-drawn ink linework." chat_image="Fen"/>
+<aitools_action skill="image_to_image" preset="{{Image To Image (Qwen Image 2.1).txt}}" chat_image="Fen" prompt="Create a warm watercolor storybook illustration of the fox from the image airborne in a graceful arc, all four paws spread wide and tail streaming, with wide delighted eyes and an open-mouthed grin, sailing past pine boughs as autumn leaves swirl around him and a low golden sun behind him casts a warm rim light, hand-drawn ink linework. Keep the fox's face, coat color, markings, eye color and proportions exactly as in the image."/>
 <aitools_action skill="add_border" chain="true" left="6%" right="6%" top="6%" bottom="60%" color="#FBF7EE"/>
 <aitools_action skill="draw_text" chain="true" text="And just like that - leaves spinning, wind in his ears - Fen was flying. Or falling. He decided it didn't matter which." x="10%" y="68%" width="80%" height="28%" font_size="10%" color="#2A1F12" align="left" valign="top" wrap="true"/>
 <aitools_action skill="draw_text" chain="true" text="3" x="92%" y="95%" width="6%" height="4%" font_size="8%" color="#777777" align="right" valign="middle"/>
@@ -147,17 +148,18 @@ page 1 reads it, so this whole block is a single reply.)
 
 Final state: 1 raw anchor bubble + 3 page bubbles. Every page is
 generated from the SAME pristine anchor, so aspects match and the fox
-is recognizably the same on all three. The anchor's aspect (square Z-
-Image 1024x1024) sets the aspect for the whole book.
+is recognizably the same on all three. The pages omit width/height, so the
+anchor's aspect (the square 1024x1024 portrait) sets the aspect for the whole
+book.
 
 ## Variations
 
 - **User pasted a character anchor** (e.g. their dog photo) - use that
   as the anchor on every page (`chat_image="<their image #>"`), no
   initial `generate_image`. Page 1 also uses `image_to_image`.
-- **Two recurring characters** - use the 2-input preset
-  (`{{Image To Image Klein Edit 2 Input.txt}}`) with
-  `chat_image="<charA>"` and `chat_image2="<charB>"`. The result IS the
+- **Two recurring characters** - the same preset (`{{Image To Image (Qwen Image 2.1).txt}}`) with
+  `chat_image="<charA>"` and `chat_image2="<charB>"`, called `<image1>` and
+  `<image2>` in the prompt. The result IS the
   finished page illustration with BOTH characters already in the scene -
   chain `add_border` + `draw_text` straight onto it, exactly like the
   1-character pattern. Do NOT `new_canvas` + `paste_image` it (that detour is
@@ -176,7 +178,7 @@ If the user asks for just one book page (no recurring character needed),
 this short form is enough:
 
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Z-Image).txt}}" prompt="<illustration scene description>"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" width="832" height="1248" prompt="<illustration scene description>"/>
 <aitools_action skill="add_border" chain="true" left="6%" right="6%" top="6%" bottom="60%" color="#FBF7EE"/>
 <aitools_action skill="draw_text" chain="true" text="Once upon a time, in a small village at the edge of the forest..." x="10%" y="68%" width="80%" height="28%" font_size="10%" color="#2A1F12" align="left" valign="top" wrap="true"/>
 <aitools_action skill="draw_text" chain="true" text="3" x="92%" y="95%" width="6%" height="4%" font_size="8%" color="#777777" align="right" valign="middle"/>

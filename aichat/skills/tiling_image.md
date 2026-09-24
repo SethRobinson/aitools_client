@@ -51,7 +51,7 @@ Vertical-only tile:
 
 ## Prompt guidance
 
-Write SDXL-style texture prompts, not Z-Image character-sheet prompts. Be
+Write SDXL-style texture prompts, not long Qwen Image observer paragraphs. Be
 specific about material, scale, pattern structure, lighting, and view angle.
 
 Good details:
@@ -76,5 +76,6 @@ for a sparse pattern.
 - Use `generate_image`, not `image_to_image`, unless the user supplied a source
   image and explicitly wants it transformed into a tileable texture. There is
   no dedicated image-to-image tiling preset documented here.
-- Do not use `Prompt To Image (Z-Image).txt` for tileable textures; it does not
-  enable SDXL tiling.
+- Do not use `Prompt To Image (Qwen Image 2.1).txt` or other general
+  generate_image presets for tileable textures; they do not enable SDXL
+  tiling.
