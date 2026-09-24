@@ -2296,7 +2296,8 @@ namespace AITools.AIChat.Skills
                 bool pinsStartFrame = useAttachment && srcW > 0 && srcH > 0
                     && videoSrcW <= 0
                     && !isH3RefVideoPreset
-                    && !IsReferencePhotoPreset(resolved);
+                    && !IsReferencePhotoPreset(resolved)
+                    && !PresetDeclaresCustomCanvas(resolved);
                 if (pinsStartFrame)
                     ApplyBudgetDimensionOverride(picMain, action.Width.Value, action.Height.Value, srcW, srcH);
                 else
@@ -2629,6 +2630,7 @@ namespace AITools.AIChat.Skills
                 bool chainPinsStartFrame = !chainSourceIsMovie
                     && !chainIsH3RefVideo
                     && !IsReferencePhotoPreset(resolved)
+                    && !PresetDeclaresCustomCanvas(resolved)
                     && chainSrcW > 0 && chainSrcH > 0;
                 if (chainPinsStartFrame)
                     ApplyBudgetDimensionOverride(prevPic, action.Width.Value, action.Height.Value, chainSrcW, chainSrcH);
@@ -2702,6 +2704,31 @@ namespace AITools.AIChat.Skills
         /// Returns null when the preset has no block (so callers can fall back to
         /// GameLogic's value via the existing <c>RunPresetByName</c> null-coalesce).
         /// </summary>
+        /// <summary>
+        /// True when the preset's job list declares <c>%custom_canvas%</c>: its workflow
+        /// sizes the canvas from input 1 by default and switches to the replaced
+        /// width/height only for an explicit request (PicMain.EnableCustomCanvas). Such
+        /// presets pin no start frame, so explicit dims must pass through exactly rather
+        /// than be refit to the source's aspect (ApplyBudgetDimensionOverride).
+        /// </summary>
+        private static bool PresetDeclaresCustomCanvas(string resolvedPresetName)
+        {
+            try
+            {
+                var pm = PresetManager.Get();
+                if (pm == null || string.IsNullOrEmpty(resolvedPresetName)) return false;
+                var extractor = new PresetFileConfigExtractor();
+                pm.LoadPreset(resolvedPresetName, extractor);
+                return extractor.JobList != null
+                       && extractor.JobList.IndexOf("%custom_canvas%", StringComparison.OrdinalIgnoreCase) >= 0;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("SkillActionExecutor.PresetDeclaresCustomCanvas: " + ex.Message);
+                return false;
+            }
+        }
+
         private static string ReadPresetDefaultNegativePrompt(string resolvedPresetName)
         {
             try

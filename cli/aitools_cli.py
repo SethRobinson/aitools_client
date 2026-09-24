@@ -628,17 +628,33 @@ def main():
             all_vars[name] = str(value)
             critical_vars[name] = flag_label
 
+    # Presets with their own dimension variable names (e.g. %qwen21_edit_width%)
+    # are found through their "width": / "height": @replaces.
+    replaces = preset.replaces if preset else []
+    width_names = ("width", "vid_width") + tuple(sorted(
+        presets.vars_replacing_key(replaces, "width") - {"width", "vid_width"}))
+    height_names = ("height", "vid_height") + tuple(sorted(
+        presets.vars_replacing_key(replaces, "height") - {"height", "vid_height"}))
     eff_width = eff_height = None
     if args.width is not None:
         eff_width = snap_dim(args.width, "--width")
-        add_dim_override("--width", eff_width, ("width", "vid_width"))
+        add_dim_override("--width", eff_width, width_names)
     if args.height is not None:
         eff_height = snap_dim(args.height, "--height")
-        add_dim_override("--height", eff_height, ("height", "vid_height"))
+        add_dim_override("--height", eff_height, height_names)
+    # Mirrors PicMain.EnableCustomCanvas: a preset whose workflow sizes its
+    # canvas from input 1 declares %custom_canvas%="false"; explicit dims flip
+    # it so the workflow switches to the replaced width/height.
+    if (eff_width or eff_height) and "custom_canvas" in all_vars and "custom_canvas" not in overrides:
+        all_vars["custom_canvas"] = "true"
+        if args.verbose:
+            print("explicit size: %custom_canvas% = true")
     if eff_width or eff_height:
         w = eff_width or _int_or_none(all_vars.get("vid_width") or all_vars.get("width"))
         h = eff_height or _int_or_none(all_vars.get("vid_height") or all_vars.get("height"))
-        if w and h:
+        # The ~1MP budget is MiniMax H3's; other models (Qwen-Image 2.1 is
+        # native 2K) have their own limits.
+        if w and h and preset and "H3" in preset.source_path.name:
             warn_pixel_budget(w, h)
 
     if args.duration is not None:

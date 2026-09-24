@@ -2580,6 +2580,14 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                     newH = Mathf.Clamp((newH / 32) * 32, 256, 2048);
                     if (newW <= 0 || newH <= 0) return;
 
+                    // Presets whose workflow sizes its own canvas from input 1 by default
+                    // (Qwen-Image 2.1 edit) declare %custom_canvas%="false"; an EXPLICIT
+                    // width/height request flips it so the workflow switches to the
+                    // replaced width/height. Aspect-only refits leave it alone - the
+                    // workflow already follows input 1's aspect by itself.
+                    if (hasExplicit && EnableCustomCanvas(lines))
+                        touched = true;
+
                     // Record what we're queueing so the next chain step can read it.
                     LastQueuedWorkflowWidth = newW;
                     LastQueuedWorkflowHeight = newH;
@@ -2618,6 +2626,34 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             m_workflowFrameCountOverride = 0;
             m_workflowAppendDirectives.Clear();
         }
+    }
+
+    // Rewrites the joblist's %custom_canvas% assignment (raw %custom_canvas%="false" or
+    // the compiled command @set|%custom_canvas%|false| form, see TryResolveReplaceValue)
+    // to true. Returns false when the preset doesn't declare the variable.
+    private static readonly System.Text.RegularExpressions.Regex CustomCanvasRawRx =
+        new System.Text.RegularExpressions.Regex(@"^(\s*%custom_canvas%\s*=\s*"")[^""]*("")",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex CustomCanvasCompiledRx =
+        new System.Text.RegularExpressions.Regex(@"^(\s*command\s+@set\|%custom_canvas%\|)[^|]*(\|)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static bool EnableCustomCanvas(List<string> lines)
+    {
+        bool found = false;
+        for (int i = 0; i < lines.Count; i++)
+        {
+            string l = lines[i];
+            if (string.IsNullOrEmpty(l) || l.IndexOf("%custom_canvas%", StringComparison.OrdinalIgnoreCase) < 0) continue;
+            string replaced = CustomCanvasRawRx.Replace(l, "${1}true${2}", 1);
+            if (replaced == l) replaced = CustomCanvasCompiledRx.Replace(l, "${1}true${2}", 1);
+            if (replaced != l || CustomCanvasRawRx.IsMatch(l) || CustomCanvasCompiledRx.IsMatch(l))
+            {
+                lines[i] = replaced;
+                found = true;
+            }
+        }
+        return found;
     }
 
     private static bool TryAppendFrameCountOverride(ref string line, int frameCount)

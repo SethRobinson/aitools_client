@@ -449,6 +449,18 @@ def vars_used_in_replaces(replaces) -> set:
     return used
 
 
+def vars_replacing_key(replaces, key) -> set:
+    """%var% names used in the replacement half of @replaces whose find half
+    targets a JSON key, e.g. key="width" matches @replace|"width": 1024|"width": %qwen21_edit_width%|.
+    Lets --width/--height reach presets with their own dimension variable names."""
+    used = set()
+    for (f, w) in replaces:
+        if f.lstrip().startswith(f'"{key}":'):
+            for m in VAR_PATTERN.finditer(w):
+                used.add(m.group(1))
+    return used
+
+
 def _short(s, n=80):
     s = s.replace("\n", "\\n")
     return s if len(s) <= n else s[:n - 1] + "…"
