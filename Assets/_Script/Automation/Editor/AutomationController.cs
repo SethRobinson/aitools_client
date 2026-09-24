@@ -100,6 +100,12 @@ public static class AutomationController
         AssemblyReloadEvents.beforeAssemblyReload += StopServer;
         AssemblyReloadEvents.afterAssemblyReload += OnAfterAssemblyReload;
         EditorApplication.quitting += StopServer;
+        // Unity's background AssetImportWorker processes (and batchmode builds) load editor
+        // assemblies too. With ReuseAddress they would each bind :8772 as well and Windows
+        // routes requests to whichever listener it likes - a worker that never plays, so the
+        // bridge reported playing:false/driverReady:false forever (2026-09-24).
+        if (AssetDatabase.IsAssetImportWorkerProcess() || Application.isBatchMode)
+            return;
         if (IsEnabled)
             StartServer();
     }
