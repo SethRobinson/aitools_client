@@ -679,23 +679,23 @@ public class PresetPickerDialog : MonoBehaviour
 
     private void Update()
     {
-        if (Input.GetKeyDown(KeyCode.Escape))
+        if (RTInput.GetKeyDown(KeyCode.Escape))
         {
             Cancel();
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.DownArrow))
+        if (RTInput.GetKeyDown(KeyCode.DownArrow))
         {
             int next = Mathf.Min((_highlightedIndex < 0 ? -1 : _highlightedIndex) + 1, _rows.Count - 1);
             if (next >= 0) SetHighlight(next, scrollIntoView: true);
         }
-        else if (Input.GetKeyDown(KeyCode.UpArrow))
+        else if (RTInput.GetKeyDown(KeyCode.UpArrow))
         {
             int next = Mathf.Max((_highlightedIndex < 0 ? _rows.Count : _highlightedIndex) - 1, 0);
             if (_rows.Count > 0) SetHighlight(next, scrollIntoView: true);
         }
-        else if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+        else if (RTInput.GetKeyDown(KeyCode.Return) || RTInput.GetKeyDown(KeyCode.KeypadEnter))
         {
             // Submit even if focus left the input
             ConfirmHighlighted();

@@ -925,7 +925,7 @@ namespace AITools.AIChat.UI
 
         private void Update()
         {
-            if (Input.GetKeyDown(KeyCode.Escape))
+            if (RTInput.GetKeyDown(KeyCode.Escape))
                 SaveAndClose();
         }
 

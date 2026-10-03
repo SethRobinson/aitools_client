@@ -132,6 +132,10 @@ Text-to-image, single-step image presets, and all four MiniMax H3 movie modes wo
 - `Assets/_Script/PresetManager.cs` reads and writes `Presets/*.txt` files using `COMMAND_START|...COMMAND_END` blocks and `COMMAND_SET|...` lines.
 - `Assets/_Script/VariableManager.cs` implements `%variable%` substitution for job scripts. Variables are local to a `PicMain` unless prefixed with `global_`.
 
+### Input
+
+- Input System 1.20.0 is an explicit dependency; project settings AND both build profiles use `activeInputHandler: 1` (new system only). `Assets/RT/Input/` is the `RT.Input` assembly: `RTInput` provides null-safe polling while retaining serialized `KeyCode` bindings, and `RTInputManager` keeps four logical gamepad players. Do not add legacy `UnityEngine.Input` reads. Input System 1.20 already normalizes wheel ticks, so do not divide wheel values by 120. Architecture, virtual-device tests, restart requirement and smoke checks: `docs/input.md`.
+
 ### Per-Image Pipeline
 
 - `Assets/_Script/Pic/PicMain.cs` is the main per-image controller. It stores textures, masks, temp images, job queues, job history, undo state, LLM manager references, and the job-script interpreter.
@@ -252,4 +256,4 @@ Generated or local-only folders include `Library/`, `Temp/`, `Logs/`, `build/`, 
 - When adding or moving Unity assets, keep `.meta` files with them.
 - Normal ComfyUI workflow files are the source of truth; cached API JSON files are generated artifacts and should generally not be hand-edited.
 - Build scripts and packaging scripts are Windows-oriented and may delete/recreate build output directories.
-- No reliable automated test command was found. If validation is needed, prefer focused C# compile/build checks or targeted Unity editor validation requested by the user.
+- Input migration has isolated virtual-device EditMode tests in `RT.Input.EditorTests`; commands and coverage are in `docs/input.md`. No general app-wide automated test command is established. Otherwise prefer focused C# compile/build checks or targeted Unity editor validation requested by the user.

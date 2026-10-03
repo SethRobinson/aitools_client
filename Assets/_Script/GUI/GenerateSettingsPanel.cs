@@ -1125,7 +1125,7 @@ public class GenerateSettingsPanel : MonoBehaviour
         }
 
         // Close on Escape
-        if (Input.GetKeyDown(KeyCode.Escape))
+        if (RTInput.GetKeyDown(KeyCode.Escape))
         {
             Hide();
         }

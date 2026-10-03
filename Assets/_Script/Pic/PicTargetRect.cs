@@ -263,7 +263,7 @@ public class PicTargetRect : MonoBehaviour
         */
         if (m_bMovingRect)
         {
-            if (Input.GetMouseButtonUp(0))
+            if (RTInput.GetMouseButtonUp(0))
             {
                 OnClickRelease();
             }

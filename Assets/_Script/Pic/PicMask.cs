@@ -69,7 +69,7 @@ public class PicMask : MonoBehaviour
     {
         color = new Color();
         vTexPos = new Vector2();
-        Vector2 mousePos = Input.mousePosition;
+        Vector2 mousePos = RTInput.mousePosition;
         Vector2 viewportPos = m_cam.ScreenToViewportPoint(mousePos);
         if (viewportPos.x < 0.0f || viewportPos.x > 1.0f || viewportPos.y < 0.0f || viewportPos.y > 1.0f) return false; // out of viewport bounds
                                                                                                                         // Cast a ray from viewport point into world
@@ -350,7 +350,7 @@ public class PicMask : MonoBehaviour
 
        
         //If Ctrl key is down, exit now
-        if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
+        if (RTInput.GetKey(KeyCode.LeftControl) || RTInput.GetKey(KeyCode.RightControl))
         {
             return;
         }
@@ -392,7 +392,7 @@ public class PicMask : MonoBehaviour
                         //Debug.Log("Texpos 1: " + vTexPos1+" Textpos2: "+vTexPos2+" Ratio: "+ratio);
                         float radius = (GameLogic.Get().GetPenSize() * 0.1f) / ratio;
 
-                        Vector3 vClickWorldPos = m_cam.ScreenToWorldPoint(Input.mousePosition);
+                        Vector3 vClickWorldPos = m_cam.ScreenToWorldPoint(RTInput.mousePosition);
                         var vTempPos = m_brushSizeLineRenderer.gameObject.transform.position;
                         vTempPos.x = vClickWorldPos.x;
                         vTempPos.y = vClickWorldPos.y;
@@ -414,7 +414,7 @@ public class PicMask : MonoBehaviour
 
       
 
-        if ((Input.GetMouseButton(0) || Input.GetMouseButtonUp(0)) && !EventSystem.current.IsPointerOverGameObject())
+        if ((RTInput.GetMouseButton(0) || RTInput.GetMouseButtonUp(0)) && !EventSystem.current.IsPointerOverGameObject())
         {
             // Don't paint mask while dragging a selection rectangle
             if (SelectionManager.Get() != null && SelectionManager.Get().IsDragging())
@@ -424,7 +424,7 @@ public class PicMask : MonoBehaviour
             if (go != gameObject) return;
 
             Vector2 vTexPos;
-            Vector3 vClickWorldPos = m_cam.ScreenToWorldPoint(Input.mousePosition);
+            Vector3 vClickWorldPos = m_cam.ScreenToWorldPoint(RTInput.mousePosition);
             Vector2 vWorldClickPos = new Vector2(vClickWorldPos.x, vClickWorldPos.y);
             Color color;
 
@@ -441,7 +441,7 @@ public class PicMask : MonoBehaviour
 
                 Vector2 clickedPos = new Vector2(vTexPos.x, m_spriteMask.sprite.texture.height - vTexPos.y);
 
-                if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
+                if (RTInput.GetKey(KeyCode.LeftControl) || RTInput.GetKey(KeyCode.RightControl))
                 {
                     //move target rect if possible
                     var vCenteredRectPos = new Vector2(vTexPos.x - (m_targetRectScript.GetWidth() / 2), (m_spriteMask.sprite.texture.height - vTexPos.y) - (m_targetRectScript.GetHeight() / 2));
@@ -450,12 +450,12 @@ public class PicMask : MonoBehaviour
                     return;
                 }
 
-                if (Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt))
+                if (RTInput.GetKey(KeyCode.LeftAlt) || RTInput.GetKey(KeyCode.RightAlt))
                 {
                     //hold alt for erase mask
                     drawColor = new Color(0, 0, 0, 0);
                 }
-                if (Input.GetMouseButtonDown(0))
+                if (RTInput.GetMouseButtonDown(0))
                 {
                     m_targetRectScript.OnClickedPos(clickedPos);
                 } else

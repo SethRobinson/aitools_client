@@ -80,7 +80,7 @@ public class TexturePreviewManager : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        if (Input.GetKeyUp(KeyCode.T))
+        if (RTInput.GetKeyUp(KeyCode.T))
         { 
             SetPreviewActive(false);
         }
@@ -88,7 +88,7 @@ public class TexturePreviewManager : MonoBehaviour
 
         if (!GameLogic.Get().GUIIsBeingUsed())
         {
-            if (Input.GetKeyDown(KeyCode.T))
+            if (RTInput.GetKeyDown(KeyCode.T))
             {
                 SetPreviewActive(true);
             }

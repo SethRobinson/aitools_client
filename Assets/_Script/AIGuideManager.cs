@@ -175,7 +175,7 @@ public class AIGuideManager : MonoBehaviour
         _pendingUIFlush = true;
 
         // Only auto-scroll if the user isn't dragging
-        if (!Input.GetMouseButton(0))
+        if (!RTInput.GetMouseButton(0))
         {
             _autoScrollPending = true;
         }

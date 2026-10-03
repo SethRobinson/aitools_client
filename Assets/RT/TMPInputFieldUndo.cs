@@ -129,17 +129,17 @@ public class TMPInputFieldUndo : MonoBehaviour
         if (inputField == null || !inputField.isFocused || !IsUserEditable(inputField))
             return;
 
-        bool ctrl = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+        bool ctrl = RTInput.GetKey(KeyCode.LeftControl) || RTInput.GetKey(KeyCode.RightControl);
         if (!ctrl) return;
 
-        bool shift = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+        bool shift = RTInput.GetKey(KeyCode.LeftShift) || RTInput.GetKey(KeyCode.RightShift);
 
-        if (Input.GetKeyDown(KeyCode.Z))
+        if (RTInput.GetKeyDown(KeyCode.Z))
         {
             if (shift) Redo();
             else Undo();
         }
-        else if (Input.GetKeyDown(KeyCode.Y))
+        else if (RTInput.GetKeyDown(KeyCode.Y))
         {
             Redo();
         }

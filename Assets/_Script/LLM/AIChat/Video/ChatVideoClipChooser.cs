@@ -661,7 +661,7 @@ namespace AITools.AIChat.Video
         // OS keyboard focus during automation, so real Alt key state is unreliable.
         private static bool IsAltHeld()
         {
-            return Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt)
+            return RTInput.GetKey(KeyCode.LeftAlt) || RTInput.GetKey(KeyCode.RightAlt)
                 || global::AutomationBridge.SyntheticAltHeld;
         }
 

@@ -10,7 +10,7 @@ public class QuitOnRightMouseButton : MonoBehaviour
   
     void Update()
     {
-        if (Input.GetMouseButtonDown(1))
+        if (RTInput.GetMouseButtonDown(1))
         {
             Debug.Log("Quitting app because right mouse button was pressed!");
 #if UNITY_EDITOR

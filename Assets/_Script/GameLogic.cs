@@ -1048,7 +1048,7 @@ public class GameLogic : MonoBehaviour
         //OPTIMIZE - set to cache results for entire frame
         var camera = RTUtil.FindObjectOrCreate("Camera").GetComponent<Camera>();
 
-        Vector2 ray = new Vector2(camera.ScreenToWorldPoint(Input.mousePosition).x, camera.ScreenToWorldPoint(Input.mousePosition).y);
+        Vector2 ray = new Vector2(camera.ScreenToWorldPoint(RTInput.mousePosition).x, camera.ScreenToWorldPoint(RTInput.mousePosition).y);
         RaycastHit2D hit = Physics2D.Raycast(ray, Vector2.zero);
         if (hit.collider != null)
         {
@@ -1359,13 +1359,13 @@ public class GameLogic : MonoBehaviour
     {
 
         //if either control button is held down, run KillPicsThatAreWaitingForGPU instead
-        if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
+        if (RTInput.GetKey(KeyCode.LeftControl) || RTInput.GetKey(KeyCode.RightControl))
         {
             KillPicsThatAreWaitingForGPU();
             return;
         }
 
-        KillAllPics(Input.GetKey(KeyCode.LeftShift)|| Input.GetKey(KeyCode.RightShift), false);
+        KillAllPics(RTInput.GetKey(KeyCode.LeftShift)|| RTInput.GetKey(KeyCode.RightShift), false);
     }
 
     public void OnClearButton()
@@ -2315,14 +2315,14 @@ public string GetPrompt() { return m_prompt; }
         //if we wanted to be able to zoom in/out with keys (I used it for a video once)
 
         /*
-        if (Input.GetKey(KeyCode.Minus))
+        if (RTInput.GetKey(KeyCode.Minus))
         {
         
                 SlowZoomChange(-zoomSpeed);
          
         }
 
-        if (Input.GetKey(KeyCode.Equals))
+        if (RTInput.GetKey(KeyCode.Equals))
         {
             SlowZoomChange(zoomSpeed);
 
@@ -2330,7 +2330,7 @@ public string GetPrompt() { return m_prompt; }
         */
 
 
-        if (Input.GetKeyDown(KeyCode.M) && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)))
+        if (RTInput.GetKeyDown(KeyCode.M) && (RTInput.GetKey(KeyCode.LeftControl) || RTInput.GetKey(KeyCode.RightControl)))
         {
             m_bGlobalMute = !m_bGlobalMute;
             AudioListener.pause = m_bGlobalMute;
@@ -2347,8 +2347,8 @@ public string GetPrompt() { return m_prompt; }
         // from an Explorer copy / Snipping Tool) as new pics - same as the Paste button.
         // Skipped while any input field is focused so text paste keeps working (AI Chat's
         // attachment zone runs its own Ctrl+V while its input is focused).
-        if (Input.GetKeyDown(KeyCode.V)
-            && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
+        if (RTInput.GetKeyDown(KeyCode.V)
+            && (RTInput.GetKey(KeyCode.LeftControl) || RTInput.GetKey(KeyCode.RightControl))
             && !IsAnyInputFieldFocused())
         {
             OnAddPicFromClipboard();
@@ -2356,18 +2356,18 @@ public string GetPrompt() { return m_prompt; }
 
         const float penAdjustmentSize = 7.0f;
 
-        if (Input.GetKeyDown(KeyCode.RightBracket))
+        if (RTInput.GetKeyDown(KeyCode.RightBracket))
         {
             m_penSlider.value += penAdjustmentSize;
         }
-        if (Input.GetKeyDown(KeyCode.LeftBracket))
+        if (RTInput.GetKeyDown(KeyCode.LeftBracket))
         {
             m_penSlider.value -= penAdjustmentSize;
         }
         
-        if (Input.GetKeyDown(KeyCode.Backslash))
+        if (RTInput.GetKeyDown(KeyCode.Backslash))
         {
-            if (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
+            if (RTInput.GetKey(KeyCode.LeftShift) || RTInput.GetKey(KeyCode.RightShift))
             {
                 //| (Shift+Backslash) pauses playback without unloading anything
                 PauseAllMoviePics();
@@ -2379,17 +2379,17 @@ public string GetPrompt() { return m_prompt; }
         }
 
 
-        if (Input.GetKeyDown(KeyCode.U)
+        if (RTInput.GetKeyDown(KeyCode.U)
             ||
-            Input.GetKeyDown(KeyCode.M)
+            RTInput.GetKeyDown(KeyCode.M)
             ||
-            Input.GetKeyDown(KeyCode.Alpha1)
+            RTInput.GetKeyDown(KeyCode.Alpha1)
             ||
-                Input.GetKeyDown(KeyCode.I)
+                RTInput.GetKeyDown(KeyCode.I)
                 ||
-                Input.GetKeyDown(KeyCode.P)
+                RTInput.GetKeyDown(KeyCode.P)
             ||
-               Input.GetKeyDown(KeyCode.H)
+               RTInput.GetKeyDown(KeyCode.H)
              
             )
         {
@@ -2404,17 +2404,17 @@ public string GetPrompt() { return m_prompt; }
                 PicMask picMaskScript = go.GetComponent<PicMask>();
                 PicMovie picMovieScript = go.GetComponent<PicMovie>();
 
-                if (Input.GetKeyDown(KeyCode.U))
+                if (RTInput.GetKeyDown(KeyCode.U))
                 {
                     picScript.UndoImage();
                 }
 
-                if (Input.GetKeyDown(KeyCode.M) && !Input.GetKey(KeyCode.LeftControl) && !Input.GetKey(KeyCode.RightControl))
+                if (RTInput.GetKeyDown(KeyCode.M) && !RTInput.GetKey(KeyCode.LeftControl) && !RTInput.GetKey(KeyCode.RightControl))
                 {
                     picMaskScript.OnToggleMaskViewButton();
                 }
 
-                if (Input.GetKeyDown(KeyCode.H))
+                if (RTInput.GetKeyDown(KeyCode.H))
                 {
                     if (picScript.IsMovie())
                     {
@@ -2423,15 +2423,15 @@ public string GetPrompt() { return m_prompt; }
                 }
 
 
-                if (Input.GetKeyDown(KeyCode.P))
+                if (RTInput.GetKeyDown(KeyCode.P))
                 {
                         picMovieScript.TogglePlay(showMessage: true);
                   
                 }
 
-                if (Input.GetKeyDown(KeyCode.I))
+                if (RTInput.GetKeyDown(KeyCode.I))
                 {
-                    if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
+                    if (RTInput.GetKey(KeyCode.LeftControl) || RTInput.GetKey(KeyCode.RightControl))
                     {
                         picScript.InvertMask();
                     }
@@ -2442,7 +2442,7 @@ public string GetPrompt() { return m_prompt; }
                 }
              
 
-                if (Input.GetKey(KeyCode.Alpha1) &&  (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)))
+                if (RTInput.GetKey(KeyCode.Alpha1) &&  (RTInput.GetKey(KeyCode.LeftShift) || RTInput.GetKey(KeyCode.RightShift)))
                 {
                     picScript.m_picGeneratorScript.OnInpaintGeneratorButton();
                 }

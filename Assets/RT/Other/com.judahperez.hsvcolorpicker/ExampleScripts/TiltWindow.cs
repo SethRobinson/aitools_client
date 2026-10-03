@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 namespace HSVPickerExamples
 {
 	public class TiltWindow : MonoBehaviour
@@ -17,7 +18,7 @@ namespace HSVPickerExamples
 
 		void Update ()
 		{
-			Vector3 pos = Input.mousePosition;
+			Vector3 pos = Mouse.current != null ? (Vector3)Mouse.current.position.ReadValue() : Vector3.zero;
 
 			float halfWidth = Screen.width * 0.5f;
 			float halfHeight = Screen.height * 0.5f;

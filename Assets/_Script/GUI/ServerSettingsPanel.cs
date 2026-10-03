@@ -176,7 +176,7 @@ public class ServerSettingsPanel : MonoBehaviour
 
     private void Update()
     {
-        if (Input.GetKeyDown(KeyCode.Escape))
+        if (RTInput.GetKeyDown(KeyCode.Escape))
         {
             Hide(_serverID);
         }

@@ -110,7 +110,7 @@ public class TMProURLHandler : MonoBehaviour, IPointerDownHandler, IPointerUpHan
 
     private int GetLinkIndex()
     {
-        return TMP_TextUtilities.FindIntersectingLink(textMeshPro, Input.mousePosition, mainCamera);
+        return TMP_TextUtilities.FindIntersectingLink(textMeshPro, RTInput.mousePosition, mainCamera);
     }
 
     private List<Color32[]> SetLinkColor(int linkIndex, Color32 color)

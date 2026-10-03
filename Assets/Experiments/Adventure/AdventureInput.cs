@@ -3,7 +3,6 @@ using System.Collections;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
-using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 /// <summary>
@@ -152,27 +151,8 @@ public class AdventureInput : MonoBehaviour
 
     private void Update()
     {
-        _shiftHeldThisFrame = false;
-        if (Keyboard.current != null)
-        {
-            _shiftHeldThisFrame = Keyboard.current.leftShiftKey.isPressed ||
-                                   Keyboard.current.rightShiftKey.isPressed;
-        }
-        if (!_shiftHeldThisFrame)
-        {
-            _shiftHeldThisFrame = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
-        }
-
-        bool enterCurrentlyPressed = false;
-        if (Keyboard.current != null)
-        {
-            enterCurrentlyPressed = Keyboard.current.enterKey.isPressed ||
-                                    Keyboard.current.numpadEnterKey.isPressed;
-        }
-        if (!enterCurrentlyPressed)
-        {
-            enterCurrentlyPressed = Input.GetKey(KeyCode.Return) || Input.GetKey(KeyCode.KeypadEnter);
-        }
+        _shiftHeldThisFrame = RTInput.GetKey(KeyCode.LeftShift) || RTInput.GetKey(KeyCode.RightShift);
+        bool enterCurrentlyPressed = RTInput.GetKey(KeyCode.Return) || RTInput.GetKey(KeyCode.KeypadEnter);
 
         // Manually handle Shift+Enter since it doesn't reach onValidateInput.
         if (inputField != null && inputField.isFocused && _shiftHeldThisFrame && enterCurrentlyPressed)

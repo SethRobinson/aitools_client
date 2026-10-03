@@ -90,7 +90,7 @@ public class GetStringDialog : MonoBehaviour
     }
     void Update()
     {
-        if (Input.GetMouseButtonDown(0) && !EventSystem.current.IsPointerOverGameObject())
+        if (RTInput.GetMouseButtonDown(0) && !EventSystem.current.IsPointerOverGameObject())
         {
             OnCloseWindow();
         }

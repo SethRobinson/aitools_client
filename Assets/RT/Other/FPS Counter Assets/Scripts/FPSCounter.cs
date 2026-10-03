@@ -161,24 +161,24 @@ public class FPSCounter : MonoBehaviour {
         // 
 
         /*
-             if ( (Input.GetKey(KeyCode.LeftShift)|| Input.GetKey(KeyCode.RightShift)) && Input.GetKeyDown(m_keyActivation))      // Activation Key
+             if ( (RTInput.GetKey(KeyCode.LeftShift)|| RTInput.GetKey(KeyCode.RightShift)) && RTInput.GetKeyDown(m_keyActivation))      // Activation Key
             {
                 m_isRunning = !m_isRunning;
 
                 gameObject.GetComponentInChildren<Camera>().enabled = m_isRunning;
             }
-            else if (Input.GetKeyDown(m_keyReset))          // Reset Key
+            else if (RTInput.GetKeyDown(m_keyReset))          // Reset Key
             {
                 m_lowFPS = 1000;
                 m_highFPS = 0;
                 ResetFPSCounter();
             }
-            else if (Input.GetKeyDown(m_keyPause) &&         // Pause Key. Only works if camera is enabled
+            else if (RTInput.GetKeyDown(m_keyPause) &&         // Pause Key. Only works if camera is enabled
                     gameObject.GetComponentInChildren<Camera>().enabled)
             {
                 m_isRunning = !m_isRunning;
             }
-            else if (Input.GetKeyDown(KeyCode.KeypadMinus)) // Decrease Buffer Key
+            else if (RTInput.GetKeyDown(KeyCode.KeypadMinus)) // Decrease Buffer Key
             {
                 if (m_displayColumns >= m_minFrameBuffer)
                 {
@@ -186,7 +186,7 @@ public class FPSCounter : MonoBehaviour {
                     ResetFPSCounter();
                 }
             }
-            else if (Input.GetKeyDown(KeyCode.KeypadPlus))   // Increase Buffer Key
+            else if (RTInput.GetKeyDown(KeyCode.KeypadPlus))   // Increase Buffer Key
             {
                 if (m_displayColumns <= m_maxFrameBuffer)
                 {

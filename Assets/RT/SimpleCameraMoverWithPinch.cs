@@ -6,8 +6,7 @@ using UnityEngine.EventSystems;
 
 // MouseWheelPassthrough lives in the same RT assembly so no extra using is needed.
 
-//this class handles pan and zoom controls for desktops + webgl.  I'm still using the older input
-//controls for the mouse wheel input as I couldn't get that to work with the 1.3 new input system.
+// Pan and zoom for desktop + WebGL. RTInput preserves normalized wheel ticks.
 
 //To add/change controls, you should double click the InputActions.inputactions file and use Unity's
 //system to make changes there.
@@ -67,7 +66,7 @@ public class SimpleCameraMoverWithPinch : MonoBehaviour
         float maxZoom = 150;
      
         //Read the mousewheel and zoom in/out
-        float wheel = Input.mouseScrollDelta.y;
+        float wheel = RTInput.mouseScrollDelta.y;
         if (wheel != 0)
         {
             //RTConsole.Log("Mouse wheel: " + wheel);
@@ -93,7 +92,7 @@ public class SimpleCameraMoverWithPinch : MonoBehaviour
      
 
         //Read the mousewheel and zoom in/out
-        float wheel = Input.mouseScrollDelta.y;
+        float wheel = RTInput.mouseScrollDelta.y;
         if (wheel != 0)
         {
             //RTConsole.Log("Mouse wheel: " + wheel);
@@ -116,13 +115,16 @@ public class SimpleCameraMoverWithPinch : MonoBehaviour
     void Update()
     {
 
-        if (!RTUtil.IsMouseOverGameWindow) return;
+        // Touchscreens do not synthesize a Mouse in the Input System. Keep the
+        // existing touch/pinch actions usable on devices without a mouse.
+        bool touchActive = UnityEngine.InputSystem.Touchscreen.current?.primaryTouch.press.isPressed ?? false;
+        if (!touchActive && !RTUtil.IsMouseOverGameWindow) return;
 
         //ignore clicks if we're over a GUI element
         bool bOverGUI = EventSystem.current.IsPointerOverGameObject();
         
         //if not mobile and the right mouse is held down, set bOverGUI to false
-        if (Input.GetMouseButton(1))
+        if (RTInput.GetMouseButton(1))
         {
             bOverGUI = false;
         }
@@ -227,7 +229,7 @@ public class SimpleCameraMoverWithPinch : MonoBehaviour
     {
         var es = EventSystem.current;
         if (es == null) return false;
-        var pd = new PointerEventData(es) { position = Input.mousePosition };
+        var pd = new PointerEventData(es) { position = RTInput.mousePosition };
         s_uiRaycastResults.Clear();
         es.RaycastAll(pd, s_uiRaycastResults);
         if (s_uiRaycastResults.Count == 0) return false;

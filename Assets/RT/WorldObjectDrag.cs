@@ -35,15 +35,15 @@ public class WorldObjectDrag : MonoBehaviour
 
     void Update()
     {
-        if (_RequireControlKeyToo && !Input.GetKey(KeyCode.LeftControl) && !Input.GetKey(KeyCode.RightControl))
+        if (_RequireControlKeyToo && !RTInput.GetKey(KeyCode.LeftControl) && !RTInput.GetKey(KeyCode.RightControl))
         {
             return;
         }
 
-        Vector3 mousePosition = _camera.ScreenToWorldPoint(Input.mousePosition);
+        Vector3 mousePosition = _camera.ScreenToWorldPoint(RTInput.mousePosition);
         mousePosition.z = 0f;
 
-        if (Input.GetMouseButtonDown((int)dragButton))
+        if (RTInput.GetMouseButtonDown((int)dragButton))
         {
             if (boxCollider2D.OverlapPoint(mousePosition))
             {
@@ -55,7 +55,7 @@ public class WorldObjectDrag : MonoBehaviour
             }
         }
 
-        if (_dragging && Input.GetMouseButton((int)dragButton))
+        if (_dragging && RTInput.GetMouseButton((int)dragButton))
         {
             // If we're the active dragger for a multi-selection, move all targets
             if (_activeDragger == this && _multiDragTargets.Count > 0)
@@ -75,7 +75,7 @@ public class WorldObjectDrag : MonoBehaviour
             }
         }
 
-        if (Input.GetMouseButtonUp((int)dragButton))
+        if (RTInput.GetMouseButtonUp((int)dragButton))
         {
             if (_dragging)
             {

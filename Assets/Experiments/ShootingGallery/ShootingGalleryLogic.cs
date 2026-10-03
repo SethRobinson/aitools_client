@@ -225,7 +225,7 @@ public class ShootingGalleryLogic : MonoBehaviour
     {
         var camera = Camera.allCameras[0];
 
-        Vector2 ray = new Vector2(camera.ScreenToWorldPoint(Input.mousePosition).x, camera.ScreenToWorldPoint(Input.mousePosition).y);
+        Vector2 ray = new Vector2(camera.ScreenToWorldPoint(RTInput.mousePosition).x, camera.ScreenToWorldPoint(RTInput.mousePosition).y);
         RaycastHit2D[] hits = Physics2D.RaycastAll(ray, Vector2.zero, 0.0f, ~0);
         
         if (hits.Length > 0)
@@ -281,7 +281,7 @@ public class ShootingGalleryLogic : MonoBehaviour
     void HandleInput()
     {
 
-        if (Input.GetMouseButton(0))
+        if (RTInput.GetMouseButton(0))
         {
             if (m_coolDownTimer < Time.time)
             {

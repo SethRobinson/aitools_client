@@ -44,7 +44,7 @@ public class CloseGUIWindowButton : MonoBehaviour
         if (m_closeWindowIfClickedOutsideOfGUI)
         {
             // Check if Left Mouse Button is pressed and not over a UI element
-            if (Input.GetMouseButtonDown(0) && !EventSystem.current.IsPointerOverGameObject())
+            if (RTInput.GetMouseButtonDown(0) && !EventSystem.current.IsPointerOverGameObject())
             {
                 OnCloseWindow();
             }

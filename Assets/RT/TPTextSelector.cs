@@ -43,17 +43,17 @@ public class TMPTextSelector : MonoBehaviour
 
     void Update()
     {
-        if (Input.GetMouseButtonDown(0))
+        if (RTInput.GetMouseButtonDown(0))
         {
             startIndex = GetCharacterIndex();
             endIndex = startIndex;
         }
-        else if (Input.GetMouseButton(0))
+        else if (RTInput.GetMouseButton(0))
         {
             endIndex = GetCharacterIndex();
             HighlightText();
         }
-        else if (Input.GetMouseButtonUp(0))
+        else if (RTInput.GetMouseButtonUp(0))
         {
             if (startIndex != -1 && endIndex != -1)
             {
@@ -64,7 +64,7 @@ public class TMPTextSelector : MonoBehaviour
 
     int GetCharacterIndex()
     {
-        Ray ray = mainCamera.ScreenPointToRay(Input.mousePosition);
+        Ray ray = mainCamera.ScreenPointToRay(RTInput.mousePosition);
         RaycastHit hit;
 
         if (Physics.Raycast(ray, out hit))

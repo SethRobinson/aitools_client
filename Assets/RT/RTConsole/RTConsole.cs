@@ -204,8 +204,7 @@ public class RTConsole : MonoBehaviour
 
     public void OnEndEdit(string text)
     {
-        //if (!Input.GetKeyDown(KeyCode.Return)) return; //probably not wanted/needed on touch screens...
-        if (!UnityEngine.InputSystem.Keyboard.current.enterKey.isPressed) return; //new input system
+        if (!RTInput.GetKey(KeyCode.Return)) return; //new input system
         
         SetFocusOnInput("");
         if (text.Length == 0) return;

@@ -57,7 +57,7 @@ public class ModelModGUIItem : MonoBehaviour, IPointerClickHandler
 
 
         //if Alt is being held down, then we'll also add a random example
-        if (Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt))
+        if (RTInput.GetKey(KeyCode.LeftAlt) || RTInput.GetKey(KeyCode.RightAlt))
         {
             //add a random example
             if (_item.exampleList.Count > 0)

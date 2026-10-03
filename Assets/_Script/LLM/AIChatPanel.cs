@@ -1332,11 +1332,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             tv.offsetMax = new Vector2(tv.offsetMax.x - 16f, tv.offsetMax.y);
         }
 
-        // Note: Enter / Shift+Enter handling is in LateUpdate() below. Using onValidateInput
-        // is unreliable because Input.GetKey(Shift) can return false from inside that
-        // callback (it runs during TMP's text-event processing, not the regular Update
-        // phase). Detecting in LateUpdate reads shift state when it's guaranteed valid
-        // AND runs after TMP has already consumed the keystroke.
+        // Handle Enter / Shift+Enter in LateUpdate() below, after TMP has processed
+        // this frame's text. Sending inside validation or an earlier Update can let
+        // TMP insert its newline into the input after the send has cleared it.
 
         // Status text along the top of the right side
         var statusObj = new GameObject("Status");
@@ -4268,8 +4266,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     private void HandlePromptHistoryArrowKeys()
     {
-        bool up = Input.GetKeyDown(KeyCode.UpArrow);
-        bool down = Input.GetKeyDown(KeyCode.DownArrow);
+        bool up = RTInput.GetKeyDown(KeyCode.UpArrow);
+        bool down = RTInput.GetKeyDown(KeyCode.DownArrow);
         if (!up && !down)
             return;
 
@@ -4304,9 +4302,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     private static bool HasPromptHistoryNavigationModifier()
     {
-        return Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)
-            || Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)
-            || Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt);
+        return RTInput.GetKey(KeyCode.LeftShift) || RTInput.GetKey(KeyCode.RightShift)
+            || RTInput.GetKey(KeyCode.LeftControl) || RTInput.GetKey(KeyCode.RightControl)
+            || RTInput.GetKey(KeyCode.LeftAlt) || RTInput.GetKey(KeyCode.RightAlt);
     }
 
     private static bool InputFieldHasSelection(TMP_InputField field)
@@ -14444,7 +14442,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private bool IsMouseOverChatPanel()
     {
         if (_mainPanel == null) return false;
-        return RectTransformUtility.RectangleContainsScreenPoint(_mainPanel, Input.mousePosition);
+        return RectTransformUtility.RectangleContainsScreenPoint(_mainPanel, RTInput.mousePosition);
     }
 
     private void Update()
@@ -14456,7 +14454,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // pops the panel back open.
         if (_isVisible)
         {
-            if (Input.GetKeyDown(KeyCode.Escape) && !_isStreaming)
+            if (RTInput.GetKeyDown(KeyCode.Escape) && !_isStreaming)
             {
                 if (_bubbleContextMenuRoot != null || _rewindConfirmRoot != null)
                 {
@@ -14472,9 +14470,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             // Ctrl+MouseWheel anywhere over the chat panel adjusts chat font size.
             // The chat ScrollRect (ChatScrollRectCtrlAware) already swallows its own
             // scroll while Ctrl is held, so this never fights the conversation scroll.
-            if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
+            if (RTInput.GetKey(KeyCode.LeftControl) || RTInput.GetKey(KeyCode.RightControl))
             {
-                float wheel = Input.mouseScrollDelta.y;
+                float wheel = RTInput.mouseScrollDelta.y;
                 if (Mathf.Abs(wheel) > 0.001f && IsMouseOverChatPanel())
                     AdjustChatFontSize(wheel);
             }
@@ -14582,9 +14580,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         {
             HandlePromptHistoryArrowKeys();
 
-            if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+            if (RTInput.GetKeyDown(KeyCode.Return) || RTInput.GetKeyDown(KeyCode.KeypadEnter))
             {
-                bool shift = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+                bool shift = RTInput.GetKey(KeyCode.LeftShift) || RTInput.GetKey(KeyCode.RightShift);
                 if (!shift)
                 {
                     // Plain Enter: lineType=MultiLineNewline inserted a '\n' AT THE CARET
@@ -14661,7 +14659,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         {
             if (_suppressCacheUntilLeftReleased)
             {
-                if (Input.GetMouseButton(0))
+                if (RTInput.GetMouseButton(0))
                     return;
                 _suppressCacheUntilLeftReleased = false;
             }
@@ -15248,7 +15246,7 @@ public class ChatScrollRectCtrlAware : ScrollRect
 {
     public override void OnScroll(PointerEventData data)
     {
-        if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
+        if (RTInput.GetKey(KeyCode.LeftControl) || RTInput.GetKey(KeyCode.RightControl))
         {
             data.Use();
             return;
@@ -15271,7 +15269,7 @@ public class AIChatCtrlWheelScrollSuppressor : MonoBehaviour
 
     private void Update()
     {
-        if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
+        if (RTInput.GetKey(KeyCode.LeftControl) || RTInput.GetKey(KeyCode.RightControl))
             SuppressScrolling();
         else
             RestoreScrolling();
@@ -15415,7 +15413,7 @@ public class ChatScrollForwarder : MonoBehaviour, IScrollHandler
 
     public void OnScroll(PointerEventData data)
     {
-        if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
+        if (RTInput.GetKey(KeyCode.LeftControl) || RTInput.GetKey(KeyCode.RightControl))
         {
             data.Use();
             return;

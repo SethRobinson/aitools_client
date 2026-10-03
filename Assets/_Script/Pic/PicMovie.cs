@@ -407,7 +407,7 @@ public class PicMovie : MonoBehaviour
 
         if (_bIsHidden)
         {
-            if (!Input.GetKey(KeyCode.H))
+            if (!RTInput.GetKey(KeyCode.H))
             {
                 //no longer hidden
                 _renderer.enabled = true;
@@ -460,7 +460,7 @@ public class PicMovie : MonoBehaviour
 
     private static bool IsPointerInsideAppWindow()
     {
-        Vector3 pointer = Input.mousePosition;
+        Vector3 pointer = RTInput.mousePosition;
         return pointer.x >= 0f && pointer.y >= 0f
             && pointer.x < Screen.width && pointer.y < Screen.height;
     }
@@ -500,7 +500,7 @@ public class PicMovie : MonoBehaviour
         if (es == null) return false;
         if (!es.IsPointerOverGameObject()) return false;
 
-        var ped = new PointerEventData(es) { position = Input.mousePosition };
+        var ped = new PointerEventData(es) { position = RTInput.mousePosition };
         s_uiRaycastResults.Clear();
         es.RaycastAll(ped, s_uiRaycastResults);
         if (s_uiRaycastResults.Count == 0) return false;

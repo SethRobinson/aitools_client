@@ -88,14 +88,14 @@ public class SelectionManager : MonoBehaviour
     private void HandleSelectionInput()
     {
         // Check for left mouse button down to start drag
-        if (Input.GetMouseButtonDown(0) && !_isDragging)
+        if (RTInput.GetMouseButtonDown(0) && !_isDragging)
         {
             // Don't start selection if over UI
             if (EventSystem.current.IsPointerOverGameObject())
                 return;
 
             // Check for Ctrl+Click to toggle selection on items
-            bool ctrlHeld = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+            bool ctrlHeld = RTInput.GetKey(KeyCode.LeftControl) || RTInput.GetKey(KeyCode.RightControl);
             
             if (ctrlHeld)
             {
@@ -129,22 +129,22 @@ public class SelectionManager : MonoBehaviour
         }
 
         // Update drag
-        if (_isDragging && Input.GetMouseButton(0))
+        if (_isDragging && RTInput.GetMouseButton(0))
         {
             UpdateDrag();
         }
 
         // End drag on mouse up
-        if (_isDragging && Input.GetMouseButtonUp(0))
+        if (_isDragging && RTInput.GetMouseButtonUp(0))
         {
             EndDrag();
         }
 
         // Clear selection on click elsewhere (when not starting a new drag)
         // Don't clear if Ctrl is held (allows Ctrl+Click on empty space without clearing)
-        if (Input.GetMouseButtonDown(0) && !_isDragging && _selectedItems.Count > 0)
+        if (RTInput.GetMouseButtonDown(0) && !_isDragging && _selectedItems.Count > 0)
         {
-            bool ctrlHeld = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+            bool ctrlHeld = RTInput.GetKey(KeyCode.LeftControl) || RTInput.GetKey(KeyCode.RightControl);
             if (ctrlHeld)
                 return;
                 
@@ -192,8 +192,8 @@ public class SelectionManager : MonoBehaviour
     private void StartDrag()
     {
         _isDragging = true;
-        _dragStartScreenPos = Input.mousePosition;
-        _dragStartWorldPos = _camera.ScreenToWorldPoint(new Vector3(Input.mousePosition.x, Input.mousePosition.y, 0));
+        _dragStartScreenPos = RTInput.mousePosition;
+        _dragStartWorldPos = _camera.ScreenToWorldPoint(new Vector3(RTInput.mousePosition.x, RTInput.mousePosition.y, 0));
         _dragCurrentWorldPos = _dragStartWorldPos;
 
         // Clear previous selection when starting new drag
@@ -205,7 +205,7 @@ public class SelectionManager : MonoBehaviour
 
     private void UpdateDrag()
     {
-        _dragCurrentWorldPos = _camera.ScreenToWorldPoint(new Vector3(Input.mousePosition.x, Input.mousePosition.y, 0));
+        _dragCurrentWorldPos = _camera.ScreenToWorldPoint(new Vector3(RTInput.mousePosition.x, RTInput.mousePosition.y, 0));
         UpdateSelectionRectUI();
     }
 
@@ -215,7 +215,7 @@ public class SelectionManager : MonoBehaviour
         _selectionRectImage.enabled = false;
 
         // Only select if we dragged a meaningful distance
-        Vector2 dragDistance = (Vector2)Input.mousePosition - _dragStartScreenPos;
+        Vector2 dragDistance = (Vector2)RTInput.mousePosition - _dragStartScreenPos;
         if (dragDistance.magnitude < 5f)
         {
             return; // Too small, treat as click not drag
@@ -229,7 +229,7 @@ public class SelectionManager : MonoBehaviour
     {
         // Convert world positions to screen positions
         Vector2 startScreen = _dragStartScreenPos;
-        Vector2 currentScreen = Input.mousePosition;
+        Vector2 currentScreen = RTInput.mousePosition;
 
         // Calculate rect in screen space
         float minX = Mathf.Min(startScreen.x, currentScreen.x);
@@ -415,7 +415,7 @@ public class SelectionManager : MonoBehaviour
     private void HandleDeleteInput()
     {
         // Check for Delete key with selected items
-        if (Input.GetKeyDown(KeyCode.Delete) && _selectedItems.Count > 0)
+        if (RTInput.GetKeyDown(KeyCode.Delete) && _selectedItems.Count > 0)
         {
             // Don't delete if typing in an input field
             // Note: We only check for focused input fields, not mouse-over-UI,
@@ -517,8 +517,8 @@ public class SelectionManager : MonoBehaviour
     private GameObject GetPicUnderMouse()
     {
         Vector2 ray = new Vector2(
-            _camera.ScreenToWorldPoint(Input.mousePosition).x,
-            _camera.ScreenToWorldPoint(Input.mousePosition).y
+            _camera.ScreenToWorldPoint(RTInput.mousePosition).x,
+            _camera.ScreenToWorldPoint(RTInput.mousePosition).y
         );
         RaycastHit2D hit = Physics2D.Raycast(ray, Vector2.zero);
         if (hit.collider != null)
@@ -544,7 +544,7 @@ public class SelectionManager : MonoBehaviour
         var adventuresParent = RTUtil.FindObjectOrCreate("Adventures").transform;
         var adventureTexts = adventuresParent.GetComponentsInChildren<AdventureText>();
 
-        Vector3 mouseWorldPos = _camera.ScreenToWorldPoint(Input.mousePosition);
+        Vector3 mouseWorldPos = _camera.ScreenToWorldPoint(RTInput.mousePosition);
 
         foreach (var adventureText in adventureTexts)
         {

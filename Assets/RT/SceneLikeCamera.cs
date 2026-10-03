@@ -65,15 +65,15 @@ public class SceneLikeCamera : MonoBehaviour
             return;
 
         //Double click for focus 
-        if (cooldown > 0 && Input.GetKeyDown(KeyCode.Mouse0))
+        if (cooldown > 0 && RTInput.GetKeyDown(KeyCode.Mouse0))
             FocusObject();
-        if (Input.GetKeyDown(KeyCode.Mouse0))
+        if (RTInput.GetKeyDown(KeyCode.Mouse0))
             cooldown = doubleClickTime;
 
         //--------UNDO FOCUS---------
-        if (Input.GetKey(firstUndoKey)) 
+        if (RTInput.GetKey(firstUndoKey))
         {
-            if (Input.GetKeyDown(secondUndoKey))
+            if (RTInput.GetKeyDown(secondUndoKey))
                 GoBackToLastPosition();
         }
 
@@ -104,17 +104,17 @@ public class SceneLikeCamera : MonoBehaviour
         
         //Move and rotate the camera
     
-        if (Input.GetKey(forwardKey) || Input.GetKey(forwardKey2))
+        if (RTInput.GetKey(forwardKey) || RTInput.GetKey(forwardKey2))
             move += Vector3.forward * moveSpeed;
-        if (Input.GetKey(backKey) || Input.GetKey(backKey2))
+        if (RTInput.GetKey(backKey) || RTInput.GetKey(backKey2))
             move += Vector3.back * moveSpeed;
-        if (Input.GetKey(leftKey)|| Input.GetKey(leftKey2))
+        if (RTInput.GetKey(leftKey)|| RTInput.GetKey(leftKey2))
             move += Vector3.left * moveSpeed;
-        if (Input.GetKey(rightKey)|| Input.GetKey(rightKey2))
+        if (RTInput.GetKey(rightKey)|| RTInput.GetKey(rightKey2))
             move += Vector3.right * moveSpeed;
 
         //By far the simplest solution I could come up with for moving only on the Horizontal plane - no rotation, just cache y
-        if (Input.GetKey(flatMoveKey))
+        if (RTInput.GetKey(flatMoveKey))
         {
             float origY = transform.position.y;
 
@@ -124,18 +124,18 @@ public class SceneLikeCamera : MonoBehaviour
             return;
         }
 
-        float mouseMoveY = Input.GetAxis(mouseY);
-        float mouseMoveX = Input.GetAxis(mouseX);
+        float mouseMoveY = RTInput.GetMouseAxis(mouseY);
+        float mouseMoveX = RTInput.GetMouseAxis(mouseX);
 
         //Move the camera when anchored
-        if (Input.GetKey(anchoredMoveKey)) 
+        if (RTInput.GetKey(anchoredMoveKey))
         {
             move += Vector3.up * mouseMoveY * -moveSpeed;
             move += Vector3.right * mouseMoveX * -moveSpeed;
         }
 
         //Rotate the camera when anchored
-        if (Input.GetKey(anchoredRotateKey)) 
+        if (RTInput.GetKey(anchoredRotateKey))
         {
             transform.RotateAround(transform.position, transform.right, mouseMoveY * -rotationSpeed);
             transform.RotateAround(transform.position, Vector3.up, mouseMoveX * rotationSpeed);
@@ -144,7 +144,7 @@ public class SceneLikeCamera : MonoBehaviour
         transform.Translate(move);
         
         //Scroll to zoom
-        float mouseScroll = Input.GetAxis(zoomAxis);
+        float mouseScroll = RTInput.GetMouseAxis(zoomAxis);
         transform.Translate(Vector3.forward * mouseScroll * zoomSpeed);
     }
 
@@ -154,7 +154,7 @@ public class SceneLikeCamera : MonoBehaviour
         SavePosAndRot();
 
         //If we double-clicked an object in the scene, go to its position
-        Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+        Ray ray = Camera.main.ScreenPointToRay(RTInput.mousePosition);
         RaycastHit hit;
 
         if (Physics.Raycast(ray, out hit, focusLimit))

@@ -152,7 +152,7 @@ public class RTSimpleNavBar : MonoBehaviour
 
         if (_menuIsExpanded)
         {
-            if (Input.GetMouseButtonDown(0))
+            if (RTInput.GetMouseButtonDown(0))
             {
                 RTMessageManager.Get().Schedule(0.2f, CloseMenu);
               

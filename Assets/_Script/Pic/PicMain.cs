@@ -5499,11 +5499,11 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
     void UpdateStatusTextOverlayVisibility()
     {
-        // Global toggle. Every PicMain sees the same Input.GetKeyDown frame, so guard
+        // Global toggle. Every PicMain sees the same RTInput.GetKeyDown frame, so guard
         // by frame count to prevent multiple Pics from flipping the state repeatedly.
-        bool ctrl = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+        bool ctrl = RTInput.GetKey(KeyCode.LeftControl) || RTInput.GetKey(KeyCode.RightControl);
         if (!ctrl
-            && Input.GetKeyDown(KeyCode.Z)
+            && RTInput.GetKeyDown(KeyCode.Z)
             && !IsTypingInInputField()
             && s_lastOverlayToggleFrame != Time.frameCount)
         {

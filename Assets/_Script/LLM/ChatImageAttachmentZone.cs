@@ -301,8 +301,8 @@ public class ChatImageAttachmentZone : MonoBehaviour
         // own text paste in parallel; if the clipboard had only media then no text is
         // pasted and only the import happens.
         if (_pasteField != null && _pasteField.isFocused
-            && Input.GetKeyDown(KeyCode.V)
-            && (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)))
+            && RTInput.GetKeyDown(KeyCode.V)
+            && (RTInput.GetKey(KeyCode.LeftControl) || RTInput.GetKey(KeyCode.RightControl)))
         {
             PasteFromClipboard();
         }

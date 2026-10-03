@@ -1,0 +1,5 @@
+{
+    "name": "RT.Input",
+    "references": ["Unity.InputSystem"],
+    "autoReferenced": true
+}

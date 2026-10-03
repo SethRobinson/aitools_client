@@ -52,7 +52,7 @@ public class ObjectDrag : MonoBehaviour
     bool IsMouseOverUs()
     {
         // Create a ray from the mouse position in the direction of the camera
-        Ray ray = _cam.ScreenPointToRay(Input.mousePosition);
+        Ray ray = _cam.ScreenPointToRay(RTInput.mousePosition);
         // Perform a raycast against the quad's collider
         RaycastHit hit;
 
@@ -80,11 +80,11 @@ public class ObjectDrag : MonoBehaviour
 
       
         // If the right mouse button is pressed, start resizing
-        if (Input.GetMouseButtonDown(0) && !dragging && !resizing && !EventSystem.current.IsPointerOverGameObject())
+        if (RTInput.GetMouseButtonDown(0) && !dragging && !resizing && !EventSystem.current.IsPointerOverGameObject())
         {
             //are they going to drag or resize something?
 
-            Ray ray = _cam.ScreenPointToRay(Input.mousePosition);
+            Ray ray = _cam.ScreenPointToRay(RTInput.mousePosition);
             // Perform a raycast against the entity's collider
             RaycastHit hit;
             if (entityCollider.Raycast(ray, out hit, Mathf.Infinity))
@@ -111,7 +111,7 @@ public class ObjectDrag : MonoBehaviour
                 } else
                 {
                     //treat like a position move and drag
-                    mousePosition = _cam.ScreenToWorldPoint(Input.mousePosition);
+                    mousePosition = _cam.ScreenToWorldPoint(RTInput.mousePosition);
                     // Calculate the offset between the mouse position and the entity's position
                     mouseOffset = transform.position - mousePosition;
                     // Set the dragging flag to true
@@ -121,7 +121,7 @@ public class ObjectDrag : MonoBehaviour
             }
         }
 
-          if (Input.GetMouseButtonUp(0))
+          if (RTInput.GetMouseButtonUp(0))
           {
                 // Set the dragging flag to false
                 dragging = false;
@@ -132,7 +132,7 @@ public class ObjectDrag : MonoBehaviour
         if (dragging)
         {
             // Get the mouse position in world space
-            mousePosition = _cam.ScreenToWorldPoint(Input.mousePosition);
+            mousePosition = _cam.ScreenToWorldPoint(RTInput.mousePosition);
             // Calculate the new position for the entity using the mouse offset
             newPosition = mousePosition + mouseOffset;
             // Update the entity's position
@@ -143,7 +143,7 @@ public class ObjectDrag : MonoBehaviour
         if (resizing)
         {
             // Create a ray from the mouse position in the direction of the camera
-            Ray ray = _cam.ScreenPointToRay(Input.mousePosition);
+            Ray ray = _cam.ScreenPointToRay(RTInput.mousePosition);
             // Calculate the new distance between the mouse and the corner
             float newDistance = Vector3.Distance(m_topLeftInitial, ray.origin);
 
