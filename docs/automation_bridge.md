@@ -12,6 +12,8 @@ Moved verbatim from AGENTS.md on 2026-09-13 (bullet style kept); update this fil
 
 ## Endpoints
 
+`POST /render_validation` with `label=<letters-digits-hyphens>` runs the opt-in local rendering fixtures in a fresh Play session with no pictures. With no body, it returns the current report. PNGs and `report.json` are written beneath `build/render-validation/<label>/`. Supply `build/render-validation/fixture.mp4` (an eight-second local color/motion clip); the harness copies it before passing ownership to `PicMovie`. It checks exact PNG saves, text alpha, resizing, video playback/pause/seek/resume and captures the workspace and active panels without LLM/generation requests. Use a disposable Play session: the harness opens/closes panels and creates/removes its own pictures. `-render-validation` runs the same fixtures once in a standalone player and exits with 0 for pass, 1 for failed checks, or 2 if startup was refused. The existing `-enable_automation` flag creates a runtime driver, not a standalone HTTP listener.
+
 `POST /pic_cancel` (body `index=<n|latest>`, default latest) cancels that chat image's render through the Pic's own "clear jobs and errors" path (ComfyUI `/interrupt` plus the queue delete) and reports `cancelled:true` when a render was running or queued. AI Chat's Stop button deliberately never touches canvas renders, so this is the way to test render cancellation.
 
 `GET /status` also carries `compileFailed` (true while the editor's scripts have compile errors). A `/rebuild` whose compile fails ends with `rebuilding:false`, `playing:false` and `compileFailed:true` instead of sitting in the `play` stage forever; fix the error and POST `/rebuild` again.

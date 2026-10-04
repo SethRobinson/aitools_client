@@ -248,6 +248,19 @@ public static class AutomationController
                     WriteJson(stream, 200, "{\"ok\":true,\"accepted\":\"rebuild\"}");
                     break;
 
+                case "/render_validation":
+                {
+                    var args = ParseKeyValues(body);
+                    string result = RunOnMainAndWait(() =>
+                    {
+                        if (args.TryGetValue("label", out string label))
+                            return RenderValidation.Begin(label) ? "{\"ok\":true,\"accepted\":\"render_validation\"}" : "{\"ok\":false,\"error\":\"requires fresh play session and simple label\"}";
+                        return RenderValidation.StatusJson();
+                    }, "{\"ok\":false,\"error\":\"timed out\"}");
+                    WriteJson(stream, 200, result);
+                    break;
+                }
+
                 case "/play":
                     EnqueueMain(() => { if (!EditorApplication.isPlaying) EditorApplication.isPlaying = true; });
                     WriteJson(stream, 200, "{\"ok\":true,\"accepted\":\"play\"}");
