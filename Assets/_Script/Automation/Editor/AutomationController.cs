@@ -261,6 +261,32 @@ public static class AutomationController
                     break;
                 }
 
+                case "/configure_urp":
+                    WriteJson(stream, 200, RunOnMainAndWait(() =>
+                    {
+                        try { URPProjectSetup.Configure(); return "{\"ok\":true}"; }
+                        catch (Exception e) { return "{\"ok\":false,\"error\":" + JsonStr(e.Message) + "}"; }
+                    }, "{\"ok\":false,\"error\":\"timed out\"}", 30000));
+                    break;
+
+                case "/windows_render_validation":
+                    if (body.Trim() == "run-visible")
+                    {
+                        WriteJson(stream, 200, RunOnMainAndWait(() =>
+                        {
+                            try { WindowsRenderValidationBuild.RunVisible(); return "{\"ok\":true}"; }
+                            catch (Exception e) { return "{\"ok\":false,\"error\":" + JsonStr(e.Message) + "}"; }
+                        }, "{\"ok\":false,\"error\":\"timed out\"}"));
+                    }
+                    else if (body.Trim() == "build")
+                    {
+                        EnqueueMain(WindowsRenderValidationBuild.Request);
+                        WriteJson(stream, 200, "{\"ok\":true,\"accepted\":\"windows_render_validation\"}");
+                    }
+                    else WriteJson(stream, 200, System.IO.File.Exists(WindowsRenderValidationBuild.ReportPath)
+                        ? System.IO.File.ReadAllText(WindowsRenderValidationBuild.ReportPath) : "{\"state\":\"idle\"}");
+                    break;
+
                 case "/play":
                     EnqueueMain(() => { if (!EditorApplication.isPlaying) EditorApplication.isPlaying = true; });
                     WriteJson(stream, 200, "{\"ok\":true,\"accepted\":\"play\"}");
@@ -772,17 +798,17 @@ public static class AutomationController
     // timeoutValue if the main thread doesn't service the queue in time.
     static T RunOnMainAndWait<T>(Func<T> fn, T timeoutValue, int timeoutMs = 5000)
     {
-        using (var done = new ManualResetEventSlim(false))
+        // A shader import/build can outlive the HTTP timeout. A queued callback must
+        // not signal a disposed wait handle when the editor finally services it.
+        var completion = new System.Threading.Tasks.TaskCompletionSource<T>();
+        EnqueueMain(() =>
         {
             T result = timeoutValue;
-            EnqueueMain(() =>
-            {
-                try { result = fn(); }
-                catch (Exception e) { Debug.LogError($"[Automation] {e}"); }
-                finally { done.Set(); }
-            });
-            return done.Wait(timeoutMs) ? result : timeoutValue;
-        }
+            try { result = fn(); }
+            catch (Exception e) { Debug.LogError($"[Automation] {e}"); }
+            finally { completion.TrySetResult(result); }
+        });
+        return completion.Task.Wait(timeoutMs) ? completion.Task.Result : timeoutValue;
     }
 
     // Parse a "key=value" newline-separated request body into a case-insensitive map.

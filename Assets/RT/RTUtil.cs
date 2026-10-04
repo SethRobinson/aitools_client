@@ -7,6 +7,7 @@ using UnityEngine.SceneManagement;
 using System.Runtime.InteropServices;
 using System.IO;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using UnityEngine.Assertions;
@@ -2624,97 +2625,86 @@ public class RTUtil
     /// </summary>
     public static Texture2D RenderTextToTexture2D(string text, int width, int height, TMP_FontAsset font, float fontSize, Color color, bool bAutoSize, Vector2 vTextRectSizeMod, FontStyles fontStyles, TextAlignmentOptions alignment, bool wordWrap, float fontSizeMax, float fontSizeMin)
     {
-        //Debug.Log("Creating tex sized " + width + "x" + height);
-        // Create GameObject and TextMeshPro components
-        GameObject go = new GameObject();
-        go.layer = 31; // Use an unused layer
-        TextMeshPro tmp = go.AddComponent<TextMeshPro>();
-
-        // Setup TextMeshPro settings
-        tmp.text = text;
-        tmp.font = font;
-        tmp.fontSize = fontSize;
-        tmp.color = color;
-        tmp.alignment = alignment;
-        tmp.rectTransform.pivot = new Vector2(0.5f, 0.5f);
-        tmp.rectTransform.anchoredPosition3D = Vector3.zero;
-
-        //text wrap size
-
-        tmp.rectTransform.sizeDelta = new Vector2(width * vTextRectSizeMod.x, height * vTextRectSizeMod.y);
-
-        tmp.enableAutoSizing = bAutoSize;
-        // When fontSizeMax > 0, treat it as a "don't grow above this" cap during
-        // auto-sizing. Lets the AI Chat draw_text skill default to auto_size=true
-        // (so text fills small rects nicely) while still respecting the LLM's
-        // font_size as an upper bound (so a "small caption" call doesn't blow up
-        // to fill an oversized rect). Passing 0 = unbounded (legacy behaviour).
-        tmp.fontSizeMax = fontSizeMax > 0f ? fontSizeMax : 9999999;
-        // Raise the auto-size lower bound when fontSizeMin > 0. Stops poster body
-        // text from shrinking past readability when the rect is small relative to
-        // the text length. TMP's default min is 18; use bigger when you'd rather
-        // overflow than render unreadably small.
-        if (fontSizeMin > 0f) tmp.fontSizeMin = fontSizeMin;
-        //set the font to be bold
-        tmp.fontStyle = fontStyles;
-        tmp.name = "TextMeshProATemp";
-        tmp.textWrappingMode = wordWrap ? TextWrappingModes.Normal : TextWrappingModes.NoWrap;
-        //set largest allowed font size
-        // Create a RenderTexture
-        RenderTexture renderTexture = new RenderTexture(width, height, 24);
-
-        // Create a new temporary Camera
-        GameObject tempCameraObject = new GameObject();
-        Camera tempCamera = tempCameraObject.AddComponent<Camera>();
-
-        // Position the camera to capture the text object
-        tempCamera.transform.position = Vector3.zero;
-        tempCamera.transform.position -= new Vector3(0, 0, 10);  // move back a bit
-        tempCamera.clearFlags = CameraClearFlags.Color;
-        tempCamera.backgroundColor = Color.clear; // transparent background
-        tempCamera.orthographic = true;
-
-        float maxSize = width;
-        if (height > maxSize)
+        var previousTarget = RenderTexture.active;
+        GameObject textObject = null;
+        GameObject cameraObject = null;
+        RenderTexture target = null;
+        Texture2D result = null;
+        try
         {
-            maxSize = height;
-        }
+            textObject = new GameObject("TextMeshProATemp");
+            textObject.layer = 31;
+            var tmp = textObject.AddComponent<TextMeshPro>();
+            tmp.text = text;
+            tmp.font = font;
+            tmp.fontSize = fontSize;
+            tmp.color = color;
+            tmp.alignment = alignment;
+            tmp.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+            tmp.rectTransform.anchoredPosition3D = Vector3.zero;
+            tmp.rectTransform.sizeDelta = new Vector2(width * vTextRectSizeMod.x, height * vTextRectSizeMod.y);
+            tmp.enableAutoSizing = bAutoSize;
+            tmp.fontSizeMax = fontSizeMax > 0f ? fontSizeMax : 9999999;
+            if (fontSizeMin > 0f) tmp.fontSizeMin = fontSizeMin;
+            tmp.fontStyle = fontStyles;
+            tmp.textWrappingMode = wordWrap ? TextWrappingModes.Normal : TextWrappingModes.NoWrap;
 
-        float minSize = width;
-        if (height < minSize)
+            // Explicit RGBA target preserves the alpha used by image composition.
+            target = new RenderTexture(width, height, 24, RenderTextureFormat.ARGB32);
+            target.Create();
+            cameraObject = new GameObject("TextCamera");
+            var camera = cameraObject.AddComponent<Camera>();
+            camera.enabled = false;
+            camera.transform.position = new Vector3(0, 0, -10);
+            camera.clearFlags = CameraClearFlags.SolidColor;
+            camera.backgroundColor = Color.clear;
+            camera.orthographic = true;
+            camera.orthographicSize = Mathf.Min(width, height) / 2f;
+            camera.targetTexture = target;
+            camera.cullingMask = 1 << 31;
+            camera.allowHDR = false;
+            camera.allowMSAA = false;
+            tmp.ForceMeshUpdate(true, true);
+
+            if (GraphicsSettings.currentRenderPipeline is UniversalRenderPipelineAsset)
+            {
+                var data = camera.GetUniversalAdditionalCameraData();
+                data.renderPostProcessing = false;
+                data.renderShadows = false;
+                data.requiresColorOption = CameraOverrideOption.Off;
+                data.requiresDepthOption = CameraOverrideOption.Off;
+                data.antialiasing = AntialiasingMode.None;
+                var request = new UniversalRenderPipeline.SingleCameraRequest { destination = target };
+                if (!RenderPipeline.SupportsRenderRequest(camera, request))
+                    throw new System.InvalidOperationException("The active renderer does not support text capture.");
+                RenderPipeline.SubmitRenderRequest(camera, request);
+            }
+            else if (GraphicsSettings.currentRenderPipeline == null)
+            {
+                // Keep this reusable RT helper usable in Built-In projects too.
+                camera.Render();
+            }
+            else throw new System.NotSupportedException("Text capture requires URP or the Built-In pipeline.");
+
+            RenderTexture.active = target;
+            result = new Texture2D(width, height, TextureFormat.RGBA32, false);
+            result.ReadPixels(new Rect(0, 0, width, height), 0, 0);
+            result.Apply();
+            return result;
+        }
+        catch
         {
-            minSize = height;
+            if (result != null) Object.Destroy(result);
+            throw;
         }
-
-        tempCamera.orthographicSize = minSize / 2;  // set orthographic size
-        tempCamera.targetTexture = renderTexture;  // set target texture
-        tempCamera.cullingMask = 1 << 31;  // Set camera to only render layer 31
-        tempCamera.name = "TextCamera";
-        //tempCamera.nearClipPlane = 0;
-        //tempCamera.farClipPlane = 100000;
-
-        tmp.ForceMeshUpdate(true, true);
-
-        // Wait for the camera to finish rendering
-        tempCamera.Render();
-
-        // Create a Texture2D to hold the captured image
-        Texture2D tex2D = new Texture2D(width, height, TextureFormat.RGBA32, false);
-
-        // Copy from the RenderTexture to the Texture2D
-        RenderTexture.active = renderTexture;
-        tex2D.ReadPixels(new Rect(0, 0, renderTexture.width, renderTexture.height), 0, 0);
-        tex2D.Apply();
-
-        // Deactivate the render texture
-        RenderTexture.active = null;
-
-        // Clean up objects.  To debug positions, comment out below so you can see then in the scene
-        
-        GameObject.Destroy(tempCameraObject);
-        GameObject.Destroy(go);
-
-        return tex2D;
+        finally
+        {
+            RenderTexture.active = previousTarget;
+            // Disable immediately: Destroy is deferred until the end of this frame.
+            if (textObject != null) { textObject.SetActive(false); Object.Destroy(textObject); }
+            if (cameraObject != null) { cameraObject.SetActive(false); Object.Destroy(cameraObject); }
+            if (target != null) { target.Release(); Object.Destroy(target); }
+        }
     }
 
    public static bool IsMemoryLow()

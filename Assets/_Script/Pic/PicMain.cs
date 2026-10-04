@@ -321,6 +321,7 @@ public class PicMain : MonoBehaviour
     bool m_hasOriginalPicColor = false; // Track if we've captured the original color
     static readonly Color SELECTION_TINT = new Color(0.7f, 0.85f, 1f, 1f); // Light blue tint when selected
     LineRenderer m_selectionFrame; // Visual selection frame
+    public Material m_selectionFrameMaterial; // Serialized so the player includes its unlit vertex-color shader.
     static bool s_hideStatusTextOverlays = false;
     static int s_lastOverlayToggleFrame = -1;
 
@@ -808,7 +809,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 m_selectionFrame.sortingOrder = 100; // Above the pic
                 
                 // Create a simple unlit material for the line
-                m_selectionFrame.material = new Material(Shader.Find("Sprites/Default"));
+                m_selectionFrame.sharedMaterial = m_selectionFrameMaterial != null ? m_selectionFrameMaterial : m_pic.sharedMaterial;
                 m_selectionFrame.startColor = new Color(0.2f, 0.6f, 1f, 1f); // Bright blue
                 m_selectionFrame.endColor = new Color(0.2f, 0.6f, 1f, 1f);
             }

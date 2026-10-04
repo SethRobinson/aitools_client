@@ -55,6 +55,7 @@ Current local facts:
 - Unity editor version: `6000.6.0f1` (`ProjectSettings/ProjectVersion.txt`)
 - App version in code/version metadata: `3.06`
 - Main scene: `Assets/Main.unity`
+- Rendering: URP 17.6.0, Forward/Render Graph, Gamma; Windows Ultra retains 8x MSAA. Configuration and validation: `docs/rendering.md`.
 - Primary platform: Windows desktop; a limited Python CLI (Windows + Linux) also exists under `cli/`
 
 ### Bumping the app version
@@ -131,6 +132,10 @@ Text-to-image, single-step image presets, and all four MiniMax H3 movie modes wo
 - `Assets/_Script/GUI/AppSettingsPanel.cs` is the unified Settings window (General, ComfyUI Settings = `AppSettingsTab.Configuration`, Audio, Web; the "LLM Settings" tab is a launcher that opens the standalone `LLMSettingsPanel` dialog). Its tabs write the modern subset of `config.txt` through `Config.BuildModernConfigText`, which REGENERATES the whole file: every parsed `set_*` / `add_server` key must be re-emitted there or Settings Apply wipes it (the Brave, STT and audio-gateway keys included). Tabs, keys, server priority order, forced reconnect and the compact/manual Tools panel controller: `docs/settings.md`.
 - `Assets/_Script/PresetManager.cs` reads and writes `Presets/*.txt` files using `COMMAND_START|...COMMAND_END` blocks and `COMMAND_SET|...` lines.
 - `Assets/_Script/VariableManager.cs` implements `%variable%` substitution for job scripts. Variables are local to a `PicMain` unless prefixed with `global_`.
+
+### Rendering
+
+- Active app rendering uses the assets in `Assets/Settings/Rendering/`; all quality levels explicitly select URP. Keep image/movie surfaces unlit and post-processing off. `RTUtil.RenderTextToTexture2D` uses synchronous URP `SingleCameraRequest` and must preserve immediate RGBA output. Migration scope, excluded legacy experiments, bridge validation/build commands and rollback: `docs/rendering.md`.
 
 ### Input
 
