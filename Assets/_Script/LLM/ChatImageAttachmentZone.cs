@@ -46,6 +46,7 @@ public class ChatImageAttachmentZone : MonoBehaviour
         public byte[] pngBytes;
         public int width;
         public int height;
+        public string sourceFileName;
         // Two captions returned by the host's vision pass: a one-line summary
         // for cramped UI labels, and a detailed paragraph for the LLM payload.
         // Either or both may be null if no vision LLM was available.
@@ -66,6 +67,7 @@ public class ChatImageAttachmentZone : MonoBehaviour
         public byte[] bytes;
         public int width;
         public int height;
+        public string sourceFileName;   // original basename, null for bitmap-only clipboard images
         public string captionShort;     // null/empty if no caption is available
         public string captionLong;      // null/empty if no caption is available
         public CaptionState captionState;
@@ -147,6 +149,7 @@ public class ChatImageAttachmentZone : MonoBehaviour
                 bytes = att.pngBytes,
                 width = att.width,
                 height = att.height,
+                sourceFileName = att.sourceFileName,
                 captionShort = att.captionShort,
                 captionLong = att.captionLong,
                 captionState = att.captionState,
@@ -350,8 +353,10 @@ public class ChatImageAttachmentZone : MonoBehaviour
     /// Add an image (raw PNG/JPEG/BMP bytes) as an attachment. Decodes into a Texture2D
     /// thumbnail and re-encodes to PNG so the bytes we ship match the
     /// <c>data:image/png;base64</c> mime advertised in the multimodal JSON builders.
+    /// Keeps the original filename separately from the converted image bytes. Only the
+    /// basename is retained; bitmap-only clipboard pastes have no source filename.
     /// </summary>
-    public void AddAttachment(byte[] imgBytes)
+    public void AddAttachment(byte[] imgBytes, string sourceFileName = null)
     {
         if (imgBytes == null || imgBytes.Length == 0) return;
 
@@ -415,6 +420,7 @@ public class ChatImageAttachmentZone : MonoBehaviour
             pngBytes = pngBytes,
             width = tex.width,
             height = tex.height,
+            sourceFileName = string.IsNullOrEmpty(sourceFileName) ? null : Path.GetFileName(sourceFileName),
             captionShort = null,
             captionLong = null,
             captionState = CaptionState.Queued,
@@ -428,6 +434,7 @@ public class ChatImageAttachmentZone : MonoBehaviour
             bytes = newAttachment.pngBytes,
             width = newAttachment.width,
             height = newAttachment.height,
+            sourceFileName = newAttachment.sourceFileName,
             captionShort = null,
             captionLong = null,
             captionState = newAttachment.captionState,
@@ -785,7 +792,7 @@ public class ChatImageAttachmentZone : MonoBehaviour
             try
             {
                 byte[] bytes = File.ReadAllBytes(f);
-                AddAttachment(bytes);
+                AddAttachment(bytes, sourceFileName: f);
                 addedAny = true;
             }
             catch (Exception ex)

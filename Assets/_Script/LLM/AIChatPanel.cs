@@ -161,6 +161,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         public string kind;
         public string anchorName;
         public string dimensions;
+        public string sourceFileName;
         public byte[] cleanBasePngBytes;
         public string cleanBaseDimensions;
         public readonly List<string> provenanceSteps = new List<string>();
@@ -4156,6 +4157,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 // silently killing the action on later turns.
                 metadataBlock.Append("[Attached Image chat_image=\"").Append(chatIdx)
                     .Append("\" (attachment=\"").Append(attachIdx).Append("\" this message only)");
+                if (!string.IsNullOrEmpty(info.sourceFileName))
+                    metadataBlock.Append(", source_filename=").Append(new SimpleJSON.JSONString(info.sourceFileName).ToString());
                 if (info.width > 0 && info.height > 0)
                     metadataBlock.Append(", ").Append(info.width).Append('x').Append(info.height);
                 metadataBlock.Append(", PNG");
@@ -6806,6 +6809,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                         ? record.kind
                         : (userAttachment ? "user attachment" : "generated image")),
                 AnchorName = record != null ? record.anchorName : null,
+                SourceFileName = record != null ? record.sourceFileName : null,
                 Dimensions = dimensions,
                 Caption = caption,
                 Provenance = record != null ? BuildRecordProvenance(record) : "",
@@ -8429,7 +8433,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             if (pic == null) { _lastPasteGroupPics.Add(null); continue; }
             _lastPasteGroupPics.Add(pic);
             string dims = info.width > 0 && info.height > 0 ? $"{info.width}x{info.height}" : null;
-            AppendUserAttachmentBubble(pic, info.captionShort, info.captionLong, dims);
+            AppendUserAttachmentBubble(pic, info.captionShort, info.captionLong, dims, info.sourceFileName);
         }
     }
 
@@ -8784,7 +8788,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         catch (Exception ex) { error = "read failed: " + ex.Message; return false; }
 
         int before = _instance._attachmentZone.GetAttachmentInfo().Count;
-        _instance._attachmentZone.AddAttachment(bytes);
+        _instance._attachmentZone.AddAttachment(bytes, sourceFileName: path);
         if (_instance._attachmentZone.GetAttachmentInfo().Count <= before)
         {
             error = "attachment zone rejected the image (decode failure or max attachments)";
@@ -12394,12 +12398,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     /// reuse, visible in the media column, and live-mirrored from a real PicMain
     /// (which the user can also see / edit in the world gallery).
     /// </summary>
-    private void AppendUserAttachmentBubble(PicMain pic, string preCaptionShort = null, string preCaptionLong = null, string dimensions = null)
+    private void AppendUserAttachmentBubble(PicMain pic, string preCaptionShort = null, string preCaptionLong = null, string dimensions = null, string sourceFileName = null)
     {
         if (pic == null || _mediaContent == null) return;
         _chatImagePics.Add(pic);
         int chatImageNumber = _chatImagePics.Count;
         RegisterChatImageRecord(pic, null, isUserAttachment: true, isMovie: false, dimensions: dimensions);
+        GetChatImageRecord(chatImageNumber).sourceFileName = sourceFileName;
         string label = $"#{chatImageNumber} (you)";
         AppendImageBubbleInternal(pic, label, isMovie: false);
 

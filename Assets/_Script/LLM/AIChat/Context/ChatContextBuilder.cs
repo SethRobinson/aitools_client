@@ -16,6 +16,7 @@ namespace AITools.AIChat.Context
         public bool IncludeCaption;
         public string Kind;
         public string AnchorName;
+        public string SourceFileName;
         public string Dimensions;
         public string Caption;
         public string Provenance;
@@ -266,6 +267,8 @@ namespace AITools.AIChat.Context
                             sb.Append(", not reusable");
                         if (!string.IsNullOrEmpty(state.AnchorName))
                             sb.Append(", anchor=\"").Append(state.AnchorName).Append('"');
+                        if (!string.IsNullOrEmpty(state.SourceFileName))
+                            sb.Append(", source_filename=").Append(new SimpleJSON.JSONString(state.SourceFileName).ToString());
                         if (!string.IsNullOrEmpty(state.Dimensions))
                             sb.Append(", ").Append(state.Dimensions);
                         if (state.HasCleanBase)
