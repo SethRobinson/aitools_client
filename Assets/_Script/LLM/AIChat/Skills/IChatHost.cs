@@ -299,6 +299,13 @@ namespace AITools.AIChat.Skills
         bool IsChatImageMovie(int oneBasedIndex);
 
         /// <summary>
+        /// True while the slot's world Pic still exists. False for a slot whose Pic was
+        /// deleted (by the user, or by stitch_video consuming it), which CHAT IMAGES
+        /// lists as "not reusable"; list expansions such as "all" must skip those.
+        /// </summary>
+        bool IsChatImageReusable(int oneBasedIndex);
+
+        /// <summary>
         /// Same movie test for a Pic reference (e.g. a chain target) instead of a slot
         /// number: spawn-time record flag OR live PicMovie state.
         /// </summary>

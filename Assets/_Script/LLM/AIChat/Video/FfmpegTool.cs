@@ -560,6 +560,13 @@ namespace AITools.AIChat.Video
             public bool IncludeAudio = true;
             /// <summary>Seconds of dissolve between consecutive clips; 0 = hard cuts. Each junction shortens the film by this much.</summary>
             public float CrossfadeSeconds;
+            /// <summary>
+            /// After a successful stitch, destroy the chat-generated source clips (their
+            /// world Pics, which deletes the clip files) because the film now holds their
+            /// pixels. The host keeps user imports, web clips, Audio bubbles, locked Pics
+            /// and Pics that still serve as a named anchor. keep_sources="true" clears it.
+            /// </summary>
+            public bool DeleteSources = true;
         }
 
         public static string GetStitchOutputPath()

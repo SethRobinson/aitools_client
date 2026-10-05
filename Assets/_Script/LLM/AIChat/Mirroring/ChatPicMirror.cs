@@ -61,7 +61,42 @@ namespace AITools.AIChat.Mirroring
         private string _lastStatus = "";
         private bool _hasSyncedStatus = false;
         private bool _picWentMissingNotified = false;
+        private bool _sourceDeleted = false;
         private const float ScrollBottomPixelEpsilon = 12f;
+
+        /// <summary>
+        /// The host deleted the world Pic on purpose (a stitch consumed the clip): show
+        /// the reason instead of the generic "was deleted" text, drop the preview
+        /// texture (it is destroyed with the Pic; a RawImage holding a dead texture
+        /// paints a solid white block) and collapse the preview to a thin strip so a
+        /// dozen consumed pieces don't fill the media column with blanks.
+        /// </summary>
+        public void MarkSourceDeleted(string statusText)
+        {
+            _sourceDeleted = true;
+            _picWentMissingNotified = true;
+            if (statusLabel != null && !string.IsNullOrEmpty(statusText))
+                statusLabel.text = statusText;
+            _lastBoundTexture = null;
+            _sourceAspect = 0f;
+            if (targetImage != null)
+            {
+                targetImage.texture = null;
+                targetImage.color = new Color(1f, 1f, 1f, 0.08f);
+            }
+            const float collapsedHeight = 24f;
+            if (imageLayoutElement != null)
+            {
+                imageLayoutElement.minWidth = 0f;
+                imageLayoutElement.minHeight = 0f;
+                imageLayoutElement.preferredHeight = collapsedHeight;
+            }
+            if (containerLayoutElement != null)
+            {
+                containerLayoutElement.minHeight = 0f;
+                containerLayoutElement.preferredHeight = collapsedHeight;
+            }
+        }
 
         private void OnEnable()
         {
@@ -160,6 +195,7 @@ namespace AITools.AIChat.Mirroring
         {
             if (imageLayoutElement == null || containerLayoutElement == null
                 || containerRT == null) return;
+            if (_sourceDeleted) return; // MarkSourceDeleted owns the layout from here on
 
             // Collapsed-while-generating mode. Doesn't depend on _sourceAspect being
             // known yet (that only gets set when the first texture frame arrives).

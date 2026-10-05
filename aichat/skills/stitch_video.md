@@ -4,7 +4,7 @@ summary: Join two or more existing Movie bubbles into ONE video, back to back, i
 inputs: none
 autoload: true
 triggers: stitch, stitched, stitching, concatenate, concat, join the clips, join the videos, join them together, join them into, combine the clips, combine the videos, combine them into one, combine the movies, merge the clips, merge the videos, merge the movies, into one video, into one movie, into one long, into a single video, into a single movie, one long video, one long movie, one continuous video, back to back, back-to-back, put them together, put the clips together, sequence of clips, series of clips, series of videos, clips that tell a story, videos that tell a story, short film, mini movie, mini-movie, full movie, feature, episode, an episode of, multi-clip, multiple clips, several clips, 10 videos, ten videos, 5 videos, five videos, 10 clips, ten clips, 5 clips, five clips, each 10 seconds, each 5 seconds, minute long, 1 minute, one minute, 2 minute, two minute, 30 second, thirty second
-template: <aitools_action skill="stitch_video" chat_images="scene1,scene2,scene3" anchor="film"/>  # chat_images = comma list, in playback order (min 2, max 60): Movie numbers ("3,5,7"), ranges ("3-12"), anchor names, or "all". Same-reply clips: give each movie-producing action an anchor="sceneN" (real people: image_to_movie with Reference To Video (MiniMax H3) 5s.txt + the photo anchors in chat_image..chat_image9, duration="5"; invented characters: generate_image -> image_to_movie chain="true") and list those names here - the host waits for their renders. Optional: crossfade="0.5" (seconds; default hard cuts), audio="false", width/height/fps overrides, resume="true" to get a turn once the film is done.
+template: <aitools_action skill="stitch_video" chat_images="scene1,scene2,scene3" anchor="film"/>  # chat_images = comma list, in playback order (min 2, max 60): Movie numbers ("3,5,7"), ranges ("3-12"), anchor names, or "all". Same-reply clips: give each movie-producing action an anchor="sceneN" (real people: image_to_movie with Reference To Video (MiniMax H3) 5s.txt + the photo anchors in chat_image..chat_image9, duration="5"; invented characters: generate_image -> image_to_movie chain="true") and list those names here - the host waits for their renders. Optional: crossfade="0.5" (seconds; default hard cuts), audio="false", width/height/fps overrides, resume="true" to get a turn once the film is done, keep_sources="true" to keep the generated pieces (by default the host deletes them once the film exists; user imports, web clips, audio and named character anchors are always kept).
 ---
 # Stitch video (join clips into one film)
 
@@ -40,9 +40,28 @@ the user can save it from its bubble.
 - `resume="true"` - optional; the host gives you one automatic `(continue)`
   turn after the film lands, if you want to comment on it. Otherwise the
   finished Movie simply appears and CHAT IMAGES describes it next turn.
+- `keep_sources="true"` - optional; keep the generated pieces after the
+  stitch. See "After the stitch" below for the default.
 
 Slot form also works for a few clips: `chat_image="3" chat_image2="5"
 chat_image3="7"`. Prefer `chat_images` for anything longer.
+
+## After the stitch: the pieces are deleted
+
+The film holds every piece, so by default the host DELETES the generated
+clips that went into it once the stitched Movie exists (their world Pics and
+clip files go; a dozen 5 s pieces would only clutter the canvas). Their
+`Movie #N` entries stay in CHAT IMAGES, marked "not reusable", so no other
+number shifts. The host never deletes: clips the user imported, `web_video`
+downloads, Audio bubbles, locked Pics, a clip that is still busy, or a Pic
+that is still a NAMED character anchor beyond its own scene name (a
+`generate_image anchor="keeper"` that was animated in place stays). The
+stitch summary says what was deleted and what was kept.
+
+Consequences for you: do not reference the consumed pieces afterwards (clip
+them, extract stills, re-stitch them in another order). To re-cut a film
+differently, re-render the clips, or pass `keep_sources="true"` on the stitch
+when the user says they want to keep the individual clips.
 
 ## Planning a film: length math first
 
@@ -273,3 +292,5 @@ list the anchor instead.
   Later actions in the same reply MAY chain onto the finished film (for
   example `rife_video chain="true"`).
 - Crossfades are opt-in (`crossfade="S"`), hard cuts are the default.
+- The generated pieces are deleted after the stitch (see "After the stitch");
+  `keep_sources="true"` keeps them. Never list a consumed piece again.

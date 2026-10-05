@@ -668,7 +668,9 @@ namespace AITools.AIChat.Skills
                 int added = 0;
                 for (int i = 1; i <= count; i++)
                 {
-                    if (_host.IsChatImageMovie(i))
+                    // Skip slots whose Pic is gone (a piece an earlier stitch consumed,
+                    // or a Pic the user deleted): listing one would only fail the wait.
+                    if (_host.IsChatImageMovie(i) && _host.IsChatImageReusable(i))
                     {
                         sources.Add(i);
                         added++;
@@ -676,7 +678,7 @@ namespace AITools.AIChat.Skills
                 }
                 if (added == 0)
                 {
-                    error = "\"all\" matched no Movie bubbles - there are no movies in this chat yet.";
+                    error = "\"all\" matched no live Movie bubbles - there are no (undeleted) movies in this chat yet.";
                     return false;
                 }
                 return true;
@@ -804,6 +806,12 @@ namespace AITools.AIChat.Skills
             if (transition == "cut" || transition == "none" || transition == "hard")
                 crossfade = 0f;
             req.CrossfadeSeconds = Mathf.Clamp(crossfade, 0f, 5f);
+
+            // The pieces are discarded once the film exists (the joined MP4 holds them);
+            // keep_sources="true" (or delete_sources="false") keeps them for a re-cut.
+            bool keepSources = ParseBool(FirstArg(action, "keep_sources", "keep_clips", "keep_inputs"), false)
+                || !ParseBool(FirstArg(action, "delete_sources", "delete_clips"), true);
+            req.DeleteSources = !keepSources;
 
             _host?.MarkChainTargetStale();
             int epoch = _turnEpoch;

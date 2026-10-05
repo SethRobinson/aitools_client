@@ -13776,6 +13776,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         string fadeNote = request.CrossfadeSeconds > 0 ? $", {request.CrossfadeSeconds:0.##}s crossfades" : "";
         string summary = $"Stitched {sources.Count} clips ({DescribeMovieList(sources)}) into Movie #{newIndex}: " +
                          $"{outSeconds:0.#}s, {request.Width}x{request.Height} @{request.Fps:0.##}fps{fadeNote}.";
+        // The film holds every piece now, so the generated pieces go (default). Done
+        // AFTER the film's bubble exists so the pieces' numbers never shift.
+        if (request.DeleteSources)
+        {
+            string cleanup = DeleteStitchedSourcePieces(sources, newIndex);
+            if (!string.IsNullOrEmpty(cleanup)) summary += " " + cleanup;
+        }
         // Recap-eligible so the model knows which clips make up the new Movie.
         AddSystemMessage(summary);
         AIChatLog.Note("stitch_video", summary + "\n" + (result.Command ?? ""));
@@ -13783,6 +13790,100 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             if (turnEpoch == _chatTurnEpoch) host.RequestContinueTurn();
         FinishVideoImport();
         onDone?.Invoke(true);
+    }
+
+    /// <summary>
+    /// After a successful stitch, destroy the chat-generated clips that went into the
+    /// film: the world Pic goes (which deletes its clip file through
+    /// <c>PicMovie.KillMovie</c>, unless autosave keeps files), because the joined MP4
+    /// already holds those pixels and a dozen 5 s pieces only clutter the canvas. The
+    /// media bubble and its chat_image number STAY (collapsed, listed "not reusable"
+    /// like any deleted Pic) so later numbers don't shift. Never deleted: user-imported
+    /// clips, web_video downloads, Audio bubbles, locked or still-busy Pics, and a Pic
+    /// that is still registered under a named anchor OTHER than its own scene name (a
+    /// generate_image anchor="keeper" that was animated in place is a character
+    /// reference, not just a piece). Returns a one-sentence recap for the summary.
+    /// </summary>
+    private string DeleteStitchedSourcePieces(List<int> sources, int filmIndex)
+    {
+        if (sources == null || sources.Count == 0) return "";
+        var deleted = new List<int>();
+        var kept = new List<string>();
+        var seen = new HashSet<int>();
+        foreach (int idx in sources)
+        {
+            if (!seen.Add(idx)) continue; // a clip listed twice is one Pic
+            var pic = GetChatImagePic(idx);
+            var record = GetChatImageRecord(idx);
+            if (pic == null || record == null) continue;
+
+            string keepReason = DescribeStitchSourceKeepReason(pic, record);
+            if (keepReason != null)
+            {
+                kept.Add($"#{idx} ({keepReason})");
+                continue;
+            }
+
+            // Relabel the bubble so the placeholder explains itself, and stop the async
+            // caption plumbing from touching the dead Pic.
+            if (_captionLabels.TryGetValue(pic, out var entry) && entry.label != null)
+                entry.label.text = entry.baseText + $" (deleted: stitched into Movie #{filmIndex})";
+            _captionLabels.Remove(pic);
+            _videoCaptionInFlight.Remove(pic);
+            _forwardedDescriptions.Remove(pic);
+            record.provenanceSteps.Add($"deleted after stitching into Movie #{filmIndex}");
+
+            // Destroy() is end-of-frame, so drop the anchor entries by reference now
+            // rather than waiting for PruneAnchorsToLiveChatImages to see a null.
+            var deadNames = new List<string>();
+            foreach (var kv in _anchors)
+                if (ReferenceEquals(kv.Value, pic)) deadNames.Add(kv.Key);
+            foreach (string name in deadNames) _anchors.Remove(name);
+
+            if (_mediaContent != null)
+            {
+                foreach (var mirror in _mediaContent.GetComponentsInChildren<ChatPicMirror>(true))
+                    if (mirror != null && ReferenceEquals(mirror.sourcePic, pic))
+                        mirror.MarkSourceDeleted($"(Clip deleted: stitched into Movie #{filmIndex})");
+            }
+
+            pic.SafelyKillThisPic();
+            deleted.Add(idx);
+        }
+
+        if (deleted.Count == 0 && kept.Count == 0) return "";
+        var sb = new StringBuilder();
+        if (deleted.Count > 0)
+        {
+            sb.Append($"The {deleted.Count} source clip{(deleted.Count == 1 ? "" : "s")} ({DescribeMovieList(deleted)}) ")
+              .Append(deleted.Count == 1 ? "was" : "were")
+              .Append(" deleted now that the film holds them; their numbers stay listed as not reusable.");
+        }
+        if (kept.Count > 0)
+        {
+            if (sb.Length > 0) sb.Append(' ');
+            sb.Append("Kept: ").Append(string.Join(", ", kept)).Append('.');
+        }
+        AIChatLog.Note("stitch_video", "cleanup: " + sb);
+        return sb.ToString();
+    }
+
+    // Why a stitch source must survive the post-stitch cleanup, or null when it is a
+    // plain generated piece the film has absorbed.
+    private string DescribeStitchSourceKeepReason(PicMain pic, ChatImageRecord record)
+    {
+        if (record.isUserAttachment) return "your import";
+        if (record.isAudio) return "audio";
+        if (!string.IsNullOrEmpty(record.kind) && record.kind.StartsWith("web", StringComparison.OrdinalIgnoreCase)) return "web download";
+        if (pic.GetLocked()) return "locked";
+        if (pic.IsBusy()) return "still busy";
+        foreach (var kv in _anchors)
+        {
+            if (!ReferenceEquals(kv.Value, pic)) continue;
+            if (!string.Equals(kv.Key, record.anchorName, StringComparison.OrdinalIgnoreCase))
+                return $"still anchor \"{kv.Key}\"";
+        }
+        return null;
     }
 
     /// <summary>
@@ -14014,6 +14115,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     {
         var record = GetChatImageRecord(oneBasedIndex);
         return record != null && record.isUserAttachment;
+    }
+
+    bool IChatHost.IsChatImageReusable(int oneBasedIndex)
+    {
+        return GetChatImagePic(oneBasedIndex) != null;
     }
 
     bool IChatHost.IsChatImageMovie(int oneBasedIndex)
