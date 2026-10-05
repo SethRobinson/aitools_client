@@ -2,6 +2,8 @@
 
 The app uses Input System 1.20.0 exclusively. `Packages/manifest.json` pins it directly, and `activeInputHandler: 1` is set in the project settings and the embedded player settings in BOTH Development and Release build profiles. Changing the active backend requires restarting the Unity editor. Updating only the project setting leaves builds using the old profile override.
 
+Gotcha (2026-10-05): the editor's "This project uses Input Manager, which is marked for deprecation" warning came back because `ReleaseBuildProfile.asset` had drifted to `activeInputHandler: 2` (Both) in a later unrelated commit, most likely re-saved by the Build Profiles window while that profile was active. The warning fires whenever the ACTIVE profile's embedded player settings say 0 or 2, regardless of `ProjectSettings.asset`. After any Build Profiles / Player Settings edit, re-check all three with `grep -rn activeInputHandler ProjectSettings/ProjectSettings.asset "Assets/Settings/Build Profiles/"` and expect `1` everywhere; then restart the editor for it to take effect.
+
 ## Runtime code
 
 - `Assets/RT/Input/RTInput.cs` and `RTInputManager.cs` live in the small, automatically referenced `RT.Input` assembly. The manager's existing MonoScript GUID is preserved across its move into this folder. This assembly also lets the editor tests reference the implementation without depending on Assembly-CSharp.
