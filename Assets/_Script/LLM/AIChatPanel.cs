@@ -13851,6 +13851,13 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             deleted.Add(idx);
         }
 
+        // Same compaction as the Organize button, so the canvas has no holes where the
+        // pieces were. SafelyKillThisPic marks IsDestroyed() immediately, so the just-
+        // killed Pics are already skipped. Camera stays put: this can land minutes after
+        // the request, while the user is looking at something else.
+        if (deleted.Count > 0)
+            ImageGenerator.Get()?.ReorganizePics(bResetCamera: false);
+
         if (deleted.Count == 0 && kept.Count == 0) return "";
         var sb = new StringBuilder();
         if (deleted.Count > 0)
