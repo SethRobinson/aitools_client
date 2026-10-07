@@ -1,6 +1,9 @@
-call ..\base_setup.bat
+if "%~dp0"=="" exit /b 1
+if not exist "%~dp0..\base_setup.bat" exit /b 1
+call "%~dp0..\base_setup.bat"
+if errorlevel 1 exit /b 1
 SET APP_NAME=aitools_client
-SET APP_PATH=%cd%
+SET "APP_PATH=%~dp0"
 :Package names are used in Android builds.  It needs to match the Unity project setting
 SET APP_PACKAGE_NAME=com.rtsoft.%APP_NAME%
 

@@ -1752,12 +1752,11 @@ public string GetPrompt() { return m_prompt; }
         DOTween.Init(true, true, LogBehaviour.Verbose).SetCapacity(200, 20);
         // RTAudioManager.Get().SetDefaultMusicVol(0.4f);
 
-        string dir = @"tempCache";
-        // If directory does not exist, create it
-        if (!Directory.Exists(dir))
+        try
         {
-            Directory.CreateDirectory(dir);
+            Directory.CreateDirectory(Path.Combine(RTSafeFileSystem.GetAppRoot(Application.dataPath), "tempCache"));
         }
+        catch (Exception ex) { Debug.LogWarning("Temp cache creation skipped: " + ex.Message); }
 
 
 #if RT_NOAUDIO
@@ -2096,8 +2095,14 @@ public string GetPrompt() { return m_prompt; }
         // Save user preferences (preset selections)
         SaveUserPreferences();
 
-        DirectoryInfo di = new DirectoryInfo("tempCache");
-        di.Delete(true);
+        try
+        {
+            RTSafeFileSystem.DeleteTempCache(RTSafeFileSystem.GetAppRoot(Application.dataPath));
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("Temp cache cleanup skipped: " + ex.Message);
+        }
         //        NetworkTransport.Shutdown();
         print("QUITTING!");
 

@@ -340,12 +340,10 @@ namespace AITools.AIChat.Web
         {
             try
             {
-                foreach (string f in Directory.GetFiles(dir, stem + "*"))
-                {
-                    try { File.Delete(f); } catch { }
-                }
+                RTSafeFileSystem.DeleteYtDlpPartials(
+                    RTSafeFileSystem.GetAppRoot(Application.dataPath), dir, stem);
             }
-            catch { }
+            catch (Exception ex) { UnityEngine.Debug.LogWarning("yt-dlp cleanup skipped: " + ex.Message); }
         }
 
         /// <summary>

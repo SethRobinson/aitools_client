@@ -1,0 +1,2 @@
+# These scripts are sent directly to a Linux shell, including over SSH stdin.
+scripts/*.sh text eol=lf

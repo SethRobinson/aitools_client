@@ -1,2 +1,5 @@
+@echo off
+setlocal
 SET BUILDMODE=RELEASE
-call UploadWebGLRSync.bat
+call "%~dp0UploadWebGLRSync.bat"
+exit /b %errorlevel%

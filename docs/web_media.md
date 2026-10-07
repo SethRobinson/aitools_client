@@ -503,6 +503,13 @@ normalized clip in `tempCache/aichat_video_clips/` (auto-deleted with the Pic), 
 preview in `tempCache/aichat_audio_previews/`. `tempCache` is wiped on quit; save a bubble to keep it
 (an Audio bubble's S saves the sound file next to the preview movie).
 
+Bulk cleanup uses `RTSafeFileSystem`: quit cleanup resolves the fixed `tempCache` child from
+`Application.dataPath`, never the process working directory, and skips deletion with a warning
+if the root or cache tree contains a symlink/junction. yt-dlp failure cleanup accepts only
+`ytdlp_<8 lowercase hex digits>.*` in that application's `tempCache/aichat_web_videos`, so a blank
+or malformed stem cannot widen the sweep. Missing directories are harmless; unsafe paths are
+left intact and reported. Offline safety fixtures: `scripts/VerifyDeleteSafety.ps1`.
+
 ## Edge cases
 
 - **Same URL, different subject (fixed 2026-08-31).** `_webFetchedUrlToPic`

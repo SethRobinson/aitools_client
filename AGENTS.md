@@ -30,6 +30,16 @@ Scope policy: this file holds cross-cutting rules, workflows, and gotchas that m
 - Do not put secrets in commit messages, logs, issue text, pull request descriptions, generated docs, or other tracked files.
 - Before committing, review staged changes for accidental secrets.
 
+## Safety
+
+**Destructive deletes: fail closed.** This applies to scripts, application code, remote commands, and commands run by agents, including `deltree`, `rmdir /s`, `rd /s`, `del` wildcards, `rm -rf`, `Remove-Item -Recurse`, `Directory.Delete(..., true)`, and loops that delete wildcard matches.
+
+- Never assume the current working directory and never pass only an unchecked path variable. Anchor cleanup to the script location or the application's absolute root. Check every contributing variable for unset, empty, or whitespace-only values BEFORE constructing or normalizing paths; reject relative paths, filesystem roots, variable-supplied traversal, and unexpected destinations.
+- Keep a literal directory or filename component at the destructive call whenever possible, such as `build\win`, `tempCache`, or `${HOME:?}/www/${web_sub_dir:?}/Build`. Checking that a variable is nonblank is necessary but is not enough: validate the final absolute target belongs to the intended directory. Quote paths, use literal-path APIs, and keep shell options separate from path arguments.
+- Check ancestors and recursive contents for symlinks/junctions before bulk deletion. Refuse unsafe paths instead of following links. Wildcard cleanup must use a fixed, validated directory and a narrow pattern; validate any variable part of the pattern, enumerate only inside that directory, and delete the checked individual files with literal APIs.
+- A failed validation or directory change must stop the operation. Never continue to cleanup, packaging, or upload after a failed guard. Agent-issued recursive deletes must spell out a checked full literal target.
+- Windows build cleanup is centralized in `scripts/CleanBuildOutput.ps1` (`Reset` / `Package`); remote WebGL cleanup is in `scripts/CleanWebGL.sh`, preceded by `scripts/ValidateWebGLUpload.ps1`. Runtime bulk cleanup uses `Assets/RT/RTSafeFileSystem.cs` for the fixed `tempCache` tree and validated `ytdlp_<8 hex digits>.*` files. Offline checks: `pwsh -File scripts/VerifyDeleteSafety.ps1` (Windows, PowerShell 7) and `sh scripts/VerifyWebGLCleanup.sh` (Linux/WSL). Both retain disposable fixtures and do not upload anything.
+
 ## Git
 
 - Never add OpenAI/Codex/Claude etc as a co-author on git commits.
@@ -83,7 +93,7 @@ Use the current date for README date strings. The download zip size changes per 
 BuildWin64.bat
 ```
 
-Builds the Windows release. It calls `app_info_setup.bat`, deletes/recreates `build/win`, invokes Unity with `Win64Builder.BuildRelease` and `Assets/Settings/Build Profiles/ReleaseBuildProfile.asset`, copies runtime folders with `UpdateBuildDirConfigFiles.bat`, signs binaries, and creates `SethsAIToolsWindows.zip`.
+Builds the Windows release from its own script directory. It calls `app_info_setup.bat`, uses `scripts/CleanBuildOutput.ps1 -Phase Reset` to validate and recreate `build/win`, invokes Unity with `Win64Builder.BuildRelease` and `Assets/Settings/Build Profiles/ReleaseBuildProfile.asset`, copies runtime folders with `UpdateBuildDirConfigFiles.bat`, prunes private/test files with `-Phase Package`, signs binaries, and creates `SethsAIToolsWindows.zip`. Cleanup refuses linked paths or a missing project marker; failures stop packaging.
 
 Build timestamps are stamped automatically by `Assets/RT/Editor/BuildTimestampWriter.cs` (`IPreprocessBuildWithReport`), which writes `Assets/Resources/build_date.txt` (gitignored, folder auto-created) at the start of every player build regardless of build path (editor Build menu, Build Profiles window, batchmode). `RTBuildInfo.Timestamp` loads it at runtime and falls back to the current time in the editor. There is no `GenerateBuildDate.bat` anymore.
 
@@ -93,7 +103,7 @@ UpdateBuildDirConfigFiles.bat
 
 `UpdateBuildDirConfigFiles.bat` copies `utils`, `web`, `Adventure`, `AIGuide`, `ComfyUI`, `Presets`, `aichat`, and local config files into `build/win`. `utils` includes runtime helper EXEs such as `RTClip` and the bundled FFmpeg/ffprobe helpers under `utils/ffmpeg/bin/`; those third-party FFmpeg binaries are copied as data and are not signed by the build scripts.
 
-AI-harness note for running `BuildWin64.bat` from a tool shell: run it from the repo root, clear `NoDefaultCurrentDirectoryInExePath` first (Claude Code sets it to 1, which makes cmd's bare `call app_info_setup.bat` lines fail with "not recognized" even in the right directory), set `NO_PAUSE=1` so the final `pause` doesn't hang a background run, and disable sandboxing (the script needs the parent-folder `..\base_setup.bat`, registry queries to find Unity, and the `%RT_UTIL%` / `%RT_PROJECTS%` tool folders; local specifics live in `agents_secret.md`). Working invocation from PowerShell in the repo root: `Remove-Item Env:\NoDefaultCurrentDirectoryInExePath; $env:NO_PAUSE='1'; cmd /c .\BuildWin64.bat`. On failure the script pops notepad with `log.txt` and pauses; check `build\win\aitools_client.exe` exists to confirm success. Do not run it while the editor automation bridge is active (a second Unity instance fights the project lock).
+AI-harness note for running `BuildWin64.bat` from a tool shell: the script anchors itself to its own directory and calls its helper scripts by absolute path. Set `NO_PAUSE=1` so a background run cannot hang at `pause`. The build needs the parent-folder `..\base_setup.bat`, registry queries to find Unity, and the `%RT_UTIL%` / `%RT_PROJECTS%` tool folders (local specifics live in `agents_secret.md`). Working invocation from PowerShell in the repo root: `$env:NO_PAUSE='1'; cmd /c .\BuildWin64.bat`. Check the exit code as well as `build\win\aitools_client.exe`; setup, cleanup, or Unity failures stop packaging. Do not run it while the editor automation bridge is active (a second Unity instance fights the project lock).
 
 There is no current root `BuildWebGL.bat`. WebGL build support is present in `Assets/RT/Editor/WebGLBuilder.cs`, and upload scripts exist (`UploadWebGLRSync*.bat`), but do not document or call a missing WebGL build script unless it is reintroduced.
 
