@@ -4,6 +4,8 @@ Run `BuildWin64.bat` from the checkout with `NO_PAUSE=1` for unattended builds. 
 
 `scripts/ReleasePackage.ps1` anchors all paths to the checkout, refuses linked inputs/output and uses `git ls-files` to choose runtime inputs. It copies current working-tree bytes, so version/changelog edits are included before a commit. New runtime files must be added to the Git index before building. Filesystem copies of the project without Git metadata are not supported by this release script.
 
+The root `UpdateBuildDirConfigFiles.bat` is a gitignored local helper for syncing a developer test build (it also copies private configs and test files). `BuildWin64.bat` calls `ReleasePackage.ps1 -Phase Stage` directly and must never depend on that bat.
+
 ## Contents
 
 The package includes Unity's release player plus tracked files in `utils`, `web`, `Adventure`, `AIGuide`, `ComfyUI`, `Presets` and `aichat`; the Python CLI's top-level Python/BAT files, README, requirements and example config; and root `config_cam.txt`, `model_data.json`, `README.md` and `LICENSE.md`. README screenshots stay online and the `Media` folder is excluded from the download. The public camera preset config is intentional. The application creates personal configuration on first launch.

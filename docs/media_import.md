@@ -11,7 +11,7 @@ Moved verbatim from AGENTS.md on 2026-09-13 (bullet style kept); update this fil
 
 ## yt-dlp
 
-- `utils/yt-dlp/yt-dlp.exe` (Unlicense; version in `utils/yt-dlp/README.txt`) is the bundled downloader behind AI Chat's `web_video` skill: `Assets/_Script/LLM/AIChat/Web/YtDlpTool.cs` resolves it from the app root (PATH fallback), runs it through `FfmpegTool.RunProcessCancellable` (whole video at <=480p, NOT `--download-sections`: YouTube throttles ffmpeg-driven section fetches to KiB/s; the host cuts the section locally), auto-detects a JS runtime (deno/node/bun on PATH -> `--js-runtimes`, needed for YouTube), and the chat Web bubble shows the exact command line plus output tail. It is copied with `utils` by `UpdateBuildDirConfigFiles.bat` and is not signed. Update by replacing the exe.
+- `utils/yt-dlp/yt-dlp.exe` (Unlicense; version in `utils/yt-dlp/README.txt`) is the bundled downloader behind AI Chat's `web_video` skill: `Assets/_Script/LLM/AIChat/Web/YtDlpTool.cs` resolves it from the app root (PATH fallback), runs it through `FfmpegTool.RunProcessCancellable` (whole video at <=480p, NOT `--download-sections`: YouTube throttles ffmpeg-driven section fetches to KiB/s; the host cuts the section locally), auto-detects a JS runtime (deno/node/bun on PATH -> `--js-runtimes`, needed for YouTube), and the chat Web bubble shows the exact command line plus output tail. It is copied with `utils` by release staging (`scripts/ReleasePackage.ps1`) and is not signed. Update by replacing the exe.
 
 ## FFmpeg, ffprobe and PicMovie playback
 

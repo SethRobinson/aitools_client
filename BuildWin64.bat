@@ -26,7 +26,7 @@ echo See "%~dp0log.txt" for Unity diagnostics.
 goto failed
 )
 
-call "%~dp0UpdateBuildDirConfigFiles.bat"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\ReleasePackage.ps1" -Phase Stage
 if errorlevel 1 goto failed
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\CleanBuildOutput.ps1" -Phase Package
 if errorlevel 1 goto failed

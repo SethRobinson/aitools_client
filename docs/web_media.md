@@ -24,7 +24,7 @@ the MiniMax H3 Reference To Video preset or Qwen Image 2.1 image edits, and refe
 | Prompts | `aichat/skills/web_image.md`, `web_video.md`, `web_search.md`, `web_page.md`, `main_prompt.txt` | routing, the Seinfeld-style multi-reference recipe, the RESEARCH recipe |
 
 Bundled helper: `utils/yt-dlp/yt-dlp.exe` (Unlicense, `utils/yt-dlp/README.txt` has the
-version). `UpdateBuildDirConfigFiles.bat` already copies `utils`, so builds ship it.
+version). Release staging (`scripts/ReleasePackage.ps1`) already copies `utils`, so builds ship it.
 
 ## Model-facing actions
 

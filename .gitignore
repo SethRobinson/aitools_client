@@ -84,3 +84,6 @@ agents_secret.md
 
 # AI Chat skills that describe machine-local generation servers (see docs/audio_generation.md)
 aichat/skills/local_*.md
+
+# Local dev staging helper: copies private configs and test files into build\win. Never commit it.
+UpdateBuildDirConfigFiles.bat

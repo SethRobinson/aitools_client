@@ -83,7 +83,8 @@ try {
         Copy-Item -LiteralPath (Join-Path $verificationRepo $script) -Destination (Join-Path $batch $script)
     }
     [IO.File]::WriteAllText((Join-Path $batchContainer 'base_setup.bat'), "@echo off`r`nset UNITY_EXE=cmd /c exit 9`r`nset RT_UTIL=unused`r`nset RT_PROJECTS=unused`r`nexit /b 0`r`n")
-    [IO.File]::WriteAllText((Join-Path $batch 'UpdateBuildDirConfigFiles.bat'), "@echo off`r`necho failure>unexpected-copy.txt`r`nexit /b 0`r`n")
+    [IO.File]::WriteAllText((Join-Path $batch 'scripts\ReleasePackage.ps1'),
+        (@('param($Phase)', 'Set-Content -LiteralPath (Join-Path $PSScriptRoot ''..\unexpected-copy.txt'') -Value failure', 'exit 0') -join "`r`n"))
     Write-Fixture (Join-Path $batch 'build\win\old.txt')
     $start = [Diagnostics.ProcessStartInfo]::new('cmd.exe')
     $start.UseShellExecute = $false
