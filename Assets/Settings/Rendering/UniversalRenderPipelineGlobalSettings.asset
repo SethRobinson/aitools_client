@@ -93,21 +93,21 @@ MonoBehaviour:
   m_RenderingLayerNames:
   - Default
   m_ValidRenderingLayers: 0
-  lightLayerName0:
-  lightLayerName1:
-  lightLayerName2:
-  lightLayerName3:
-  lightLayerName4:
-  lightLayerName5:
-  lightLayerName6:
-  lightLayerName7:
+  lightLayerName0: 
+  lightLayerName1: 
+  lightLayerName2: 
+  lightLayerName3: 
+  lightLayerName4: 
+  lightLayerName5: 
+  lightLayerName6: 
+  lightLayerName7: 
   apvScenesData:
     obsoleteSceneBounds:
       m_Keys: []
       m_Values: []
     obsoleteHasProbeVolumes:
       m_Keys: []
-      m_Values:
+      m_Values: 
   references:
     version: 2
     RefIds:
@@ -407,7 +407,7 @@ MonoBehaviour:
         m_version: 0
         m_IncludeReferencedInScenes: 0
         m_IncludeAssetsByLabel: 0
-        m_LabelToInclude:
+        m_LabelToInclude: 
     - rid: 7391669328859889757
       type: {class: RenderingDebuggerRuntimeResources, ns: UnityEngine.Rendering, asm: Unity.RenderPipelines.Core.Runtime}
       data:

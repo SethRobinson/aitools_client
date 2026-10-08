@@ -12,7 +12,9 @@ Project operating instructions for AI assistants working in this repository.
 - Keep this file accurate and current. Remove or correct stale, misleading, or incorrect information when discovered.
 - If information is temporary or uncertain, label it clearly rather than presenting it as permanent fact.
 
-Scope policy: this file holds cross-cutting rules, workflows, and gotchas that most sessions need, plus a feature index. Keep it around 30 KB. Feature deep-dives live in `docs/<topic>.md` (`aichat.md`, `automation_bridge.md`, `llm_providers.md`, `media_import.md`, `settings.md`, `workflows.md`, `minimax_h3.md`, `web_media.md`, `audio_generation.md`): before working on a feature listed in the index, read its doc; when finishing feature work, update that doc and keep the index entry here to one or two lines (where it lives + the non-obvious constraint). Cross-cutting rules and new gotchas still land here directly. When a change makes anything stale, here or in a linked doc, update it in the same change.
+Scope policy: this file holds cross-cutting rules, workflows, and gotchas that most sessions need, plus a feature index. Keep it around 30 KB. Feature deep-dives live in `docs/<topic>.md`: before working on a feature listed in the index, read its doc; when finishing feature work, update that doc and keep the index entry here to one or two lines (where it lives + the non-obvious constraint). Cross-cutting rules and new gotchas still land here directly. When a change makes anything stale, here or in a linked doc, update it in the same change.
+
+Also open and read agents_local.md (if it exists) - this should be used for useful info that pertains to this specific checkout/developer, like info on which systems it can ssh into and use for building or whatever.  This should not be checked in to git.
 
 ## Testing
 
@@ -25,8 +27,6 @@ Scope policy: this file holds cross-cutting rules, workflows, and gotchas that m
 - Never commit sensitive data, including credentials, tokens, passwords, private keys, cookies, customer data, personal data, or machine-specific authentication material.
 - If an AI assistant needs authentication data or other secrets for local work, use `agents_secret.md` for those notes.
 - `agents_secret.md` must stay ignored by git and must not be committed.
-- `aichat/skills/local_*.md` is gitignored on purpose: AI Chat skill files that describe a machine-local generation server (the `generate_music` / `generate_sfx` / `generate_speech` prompting rules and voice list for the audio gateway). Keep server-specific skill text there; the generic code, Settings fields, and `docs/audio_generation.md` are what the repo ships. `BuildWin64.bat` deletes `build\win\aichat\skills\local_*.md` before zipping (added 2026-09-13 after the 3.06 zip shipped them; `UpdateBuildDirConfigFiles.bat` copies the whole `aichat` folder).
-- Server- and machine-specific facts are local-only too, not just credentials: hostnames, ports, GPU/cluster layout, SSH targets, server-side file paths, restart/launcher scripts, and which servers have which models installed. Keep them in `agents_secret.md`, never in tracked files (AGENTS.md, docs/, READMEs, code comments, workflow JSON). Tracked docs must stay generic ("the ComfyUI server", "the wedged instance") - other people don't have this hardware. Example hostnames in docs use placeholders like `gpu-box.lan`.
 - Do not put secrets in commit messages, logs, issue text, pull request descriptions, generated docs, or other tracked files.
 - Before committing, review staged changes for accidental secrets.
 
@@ -39,6 +39,20 @@ Scope policy: this file holds cross-cutting rules, workflows, and gotchas that m
 - Check ancestors and recursive contents for symlinks/junctions before bulk deletion. Refuse unsafe paths instead of following links. Wildcard cleanup must use a fixed, validated directory and a narrow pattern; validate any variable part of the pattern, enumerate only inside that directory, and delete the checked individual files with literal APIs.
 - A failed validation or directory change must stop the operation. Never continue to cleanup, packaging, or upload after a failed guard. Agent-issued recursive deletes must spell out a checked full literal target.
 - Windows build cleanup is centralized in `scripts/CleanBuildOutput.ps1` (`Reset` / `Package`); remote WebGL cleanup is in `scripts/CleanWebGL.sh`, preceded by `scripts/ValidateWebGLUpload.ps1`. Runtime bulk cleanup uses `Assets/RT/RTSafeFileSystem.cs` for the fixed `tempCache` tree and validated `ytdlp_<8 hex digits>.*` files. Offline checks: `pwsh -File scripts/VerifyDeleteSafety.ps1` (Windows, PowerShell 7) and `sh scripts/VerifyWebGLCleanup.sh` (Linux/WSL). Both retain disposable fixtures and do not upload anything.
+
+## Computer Control
+- MCP server operations within the user's requested task do not require an
+  additional permission question, including using an application's MCP to
+  inspect, create, edit, validate, or export its content.
+- Taking screenshots of the desktop or controlling the desktop still requires
+  express permission in the current request. This includes Computer Use,
+  desktop UI automation, SendInput, clicking, and typing. Using MCP as a wrapper
+  for those desktop actions does not bypass this requirement.
+- Permission to complete a task, inspect an app, compare behavior, or proceed
+  autonomously does not imply permission for desktop screenshots or control.
+- Driving applications through their own scripting interfaces (for example Adobe
+  Photoshop via COM `DoJavaScript`) is always allowed; it does not see or control
+  the desktop. Only desktop screenshots and desktop input control need permission.
 
 ## Git
 
@@ -54,8 +68,6 @@ Update this file when a change touches any of:
 - App version, Unity version, main scene, or other "Current local facts".
 - Architecture: renamed/added/removed core scripts, renderers (`RTRendererType`), LLM providers (`LLMProvider`), job-script directives/placeholders, AI Chat flow, automation control endpoints, or experiment folders.
 - Hard rules, directory layout, or CLI capabilities/limits.
-
-When the user asks to commit, or when you finish a task, do a quick self-check: "did anything I changed make a statement in AGENTS.md wrong?" If yes, fix it here (and keep `CLAUDE.md` consistent). If you are unsure whether a fact is still true, verify against the code rather than copying the old claim forward. Keep edits concise and factual - this file is read at the start of every task, so brevity matters.
 
 ## Project Overview
 
