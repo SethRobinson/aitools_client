@@ -56,6 +56,7 @@ $rules = @(
     @('Adventure', 'test*.txt', $false),
     @('AIGuide', 'TEST*.txt', $false),
     @('ComfyUI', 'test*.json', $false),
+    @('ComfyUI', '*_cached_api*.json', $true),
     @('ComfyUI\workflow', 'test*.json', $false),
     @('Presets', 'TEST*.txt', $false),
     @('aichat', 'test_*', $true),
@@ -86,6 +87,15 @@ if (Test-Path -LiteralPath (Join-Path $repoRoot 'build\win\ComfyUI\Unused')) {
 }
 if (Test-Path -LiteralPath (Join-Path $repoRoot "build\win\Seth's AI Tools_BurstDebugInformation_DoNotShip")) {
     Remove-Item -LiteralPath (Join-Path $repoRoot "build\win\Seth's AI Tools_BurstDebugInformation_DoNotShip") -Recurse -Force
+}
+if (Test-Path -LiteralPath (Join-Path $repoRoot "build\win\Seth's AI Tools_BackUpThisFolder_ButDontShipItWithYourGame")) {
+    Remove-Item -LiteralPath (Join-Path $repoRoot "build\win\Seth's AI Tools_BackUpThisFolder_ButDontShipItWithYourGame") -Recurse -Force
+}
+if (Test-Path -LiteralPath (Join-Path $repoRoot 'build\win\aitools_client_BackUpThisFolder_ButDontShipItWithYourGame')) {
+    Remove-Item -LiteralPath (Join-Path $repoRoot 'build\win\aitools_client_BackUpThisFolder_ButDontShipItWithYourGame') -Recurse -Force
+}
+if (Test-Path -LiteralPath (Join-Path $repoRoot 'build\win\aitools_client_BurstDebugInformation_DoNotShip')) {
+    Remove-Item -LiteralPath (Join-Path $repoRoot 'build\win\aitools_client_BurstDebugInformation_DoNotShip') -Recurse -Force
 }
 if (Test-Path -LiteralPath (Join-Path $repoRoot 'build\win\autosave')) {
     Remove-Item -LiteralPath (Join-Path $repoRoot 'build\win\autosave') -Recurse -Force

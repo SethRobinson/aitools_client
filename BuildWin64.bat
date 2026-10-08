@@ -22,19 +22,25 @@ if errorlevel 1 goto failed
 echo Finished building.
 if not exist "build\win\%APP_NAME%.exe" (
 echo Error with build!
-start notepad.exe log.txt
-%RT_UTIL%\beeper.exe /p
+echo See "%~dp0log.txt" for Unity diagnostics.
 goto failed
 )
 
 call "%~dp0UpdateBuildDirConfigFiles.bat"
+if errorlevel 1 goto failed
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\CleanBuildOutput.ps1" -Phase Package
 if errorlevel 1 goto failed
 
 
 call "%RT_PROJECTS%\Signing\sign.bat" "build/win/%APP_NAME%.exe" "Seth's AI Tools" "rtsoft.com"
+if errorlevel 1 goto failed
 call "%RT_PROJECTS%\Signing\sign.bat" "build/win/utils/RTClip.exe" "RTClip" "rtsoft.com"
+if errorlevel 1 goto failed
 call "%RT_PROJECTS%\Signing\sign.bat" "build/win/utils/RTClip.dll" "RTClip" "rtsoft.com"
+if errorlevel 1 goto failed
+
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\ReleasePackage.ps1" -Phase Verify
+if errorlevel 1 goto failed
 
 
 :create the archive
@@ -42,11 +48,14 @@ set ZIP_FNAME=SethsAIToolsWindows.zip
 if exist "%~dp0SethsAIToolsWindows.zip" del /Q "%~dp0SethsAIToolsWindows.zip"
 cd /d "%~dp0build" || goto failed
 
-"%RT_UTIL%\7za.exe" a -r -tzip "%~dp0SethsAIToolsWindows.zip" win
+"%RT_UTIL%\7za.exe" a -tzip "%~dp0SethsAIToolsWindows.zip" .\win\
 if errorlevel 1 goto failed
 cd /d "%~dp0" || goto failed
 :Rename the root folder
 "%RT_UTIL%\7z.exe" rn "%~dp0SethsAIToolsWindows.zip" win\ aitools_client\
+if errorlevel 1 goto failed
+
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\ReleasePackage.ps1" -Phase VerifyArchive
 if errorlevel 1 goto failed
 
 if "%NO_PAUSE%"=="" pause

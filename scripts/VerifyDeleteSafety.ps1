@@ -104,9 +104,12 @@ try {
 
     $package = New-BuildFixture 'package'
     $removed = @('Adventure\testing.txt', 'AIGuide\TESTdraft.txt', 'ComfyUI\testing.json',
-        'ComfyUI\workflow\testing.json', 'Presets\TESTdraft.txt', 'aichat\skills\local_fixture.md',
+        'ComfyUI\workflow\testing.json', 'ComfyUI\example_cached_api_version.json', 'Presets\TESTdraft.txt', 'aichat\skills\local_fixture.md',
         'config.txt', 'config_llm.txt', 'config_preferences.txt', 'utils\RTClip.zip',
         'ComfyUI\Unused\old.txt', "Seth's AI Tools_BurstDebugInformation_DoNotShip\old.txt",
+        "Seth's AI Tools_BackUpThisFolder_ButDontShipItWithYourGame\old.txt",
+        'aitools_client_BackUpThisFolder_ButDontShipItWithYourGame\old.txt',
+        'aitools_client_BurstDebugInformation_DoNotShip\old.txt',
         'autosave\old.txt', 'tempCache\old.txt')
     foreach ($file in $removed) { Write-Fixture (Join-Path $package ('build\win\' + $file)) }
     Write-Fixture (Join-Path $package 'build\win\Presets\keep.txt')

@@ -1,20 +1,7 @@
-:Add a few more files we need
-mkdir build
-mkdir build\win
-mkdir build\win\utils
-mkdir build\win\output
-
-xcopy /c utils build\win\utils\ /E /F /Y
-xcopy /c web build\win\web\ /E /F /Y
-xcopy /c Adventure build\win\Adventure\ /E /F /Y
-xcopy /c AIGuide build\win\AIGuide\ /E /F /Y
-xcopy /c ComfyUI build\win\ComfyUI\ /E /F /Y
-xcopy /c Presets build\win\Presets\ /E /F /Y
-xcopy /c aichat build\win\aichat\ /E /F /Y
-copy config.txt build\win
-copy config_llm.txt build\win
-copy config_cam.txt build\win
-copy config_preferences.txt build\win
-copy model_data.json build\win
-copy README.md build\win
+@echo off
+setlocal DisableDelayedExpansion
+if "%~dp0"=="" exit /b 1
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\ReleasePackage.ps1" -Phase Stage
+if errorlevel 1 exit /b 1
 if "%NO_PAUSE%"=="" pause
+exit /b 0
