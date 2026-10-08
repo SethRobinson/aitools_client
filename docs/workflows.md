@@ -47,3 +47,7 @@ Moved verbatim from AGENTS.md on 2026-09-13 (bullet style kept); update this fil
 ## WAN fast video, RIFE interpolation and the rife_video utility
 
 - Production WAN fast image/text-to-video workflows keep their legacy built-in `FL_RIFE` 4x interpolation and save at 64 fps; the default size path stays no-upscale unless a preset explicitly raises width/height. Bernini v2v does not include default RIFE. `ComfyUI/video_to_video_rife.json` and `Presets/Video To Video (RIFE Interpolation).txt` remain a separate optional utility for arbitrary Movie bubbles: they load a source video, run `FL_RIFE` 2x, preserve audio, and save MP4 with output fps from `%rife_output_fps%` (source fps x2). AI Chat exposes this as the `rife_video` action/skill for smoothing or FPS interpolation; content edits/restyles still use `video_to_video`/Bernini.
+
+## Release preset integrity
+
+The release package validates every workflow filename used by its preset/job-script files. The October 2026 audit corrected old `_api` references in Flux outpaint and MMAudio, the old Qwen two-image `_2509` filename, and the SAM2 masking reference to the shipped SAM3 workflow. Four presets tied to deliberately retired SDXL/WAN workflows remain in source but are excluded from the release; see `docs/release_packaging.md`. Server-side model/node availability still needs separate verification.

@@ -9,7 +9,7 @@ text_to_img_zimage.json @replace|"width": 1024|"width": %width%| @replace|"heigh
 #Picture taken - now do headswap with temp1
 command @copy|Change the persons head in image 1 to the woman's head in image 2.  Don't change anything else.|prompt|
 
-img2_to_img_qwen_edit_2509.json @upload|image1|input1| @upload|temp1|input2|
+img2_to_img_qwen_edit.json @upload|image1|input1| @upload|temp1|input2|
 COMMAND_END
 COMMAND_START|default_negative_prompt
 cropped. lowres. poorly drawn face. out of frame. poorly drawn hands. double, blurred. disfigured. deformed. repetitive. black and white
