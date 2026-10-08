@@ -43,7 +43,7 @@ foreach ($path in @('cli/aitools_cli.py', 'cli/config.example.txt', 'LICENSE.md'
 foreach ($path in @('config.txt', 'config_llm.txt', 'config_preferences.txt', 'cli/config.txt',
     'aichat/skills/local_fixture.md', 'aichat/skills/untracked-private.md', 'aichat/test_prompt.txt',
     'ComfyUI/sample_cached_api_version.json', 'Presets/test_fixture.txt', 'cli/venv/private.txt',
-    'cli/__pycache__/private.pyc', 'utils/RTClip.zip', 'cli/codex_imagegen.sh',
+    'cli/__pycache__/private.pyc', 'utils/RTClip.zip', 'cli/codex_imagegen.sh', 'Media',
     'Presets/Image To Image Inpaint (SDXL).txt')) {
     Check (-not (Test-Path -LiteralPath (Join-Path $fixture ('build/win/' + $path)))) "Leaked $path"
 }

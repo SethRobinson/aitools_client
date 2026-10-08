@@ -110,7 +110,7 @@ try {
         "Seth's AI Tools_BackUpThisFolder_ButDontShipItWithYourGame\old.txt",
         'aitools_client_BackUpThisFolder_ButDontShipItWithYourGame\old.txt',
         'aitools_client_BurstDebugInformation_DoNotShip\old.txt',
-        'autosave\old.txt', 'tempCache\old.txt')
+        'autosave\old.txt', 'tempCache\old.txt', 'Media\readme.png')
     foreach ($file in $removed) { Write-Fixture (Join-Path $package ('build\win\' + $file)) }
     Write-Fixture (Join-Path $package 'build\win\Presets\keep.txt')
     Write-Fixture (Join-Path $package 'build\win\aichat\skills\keep.md')

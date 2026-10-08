@@ -4,7 +4,7 @@ License:  BSD style attribution, see LICENSE.md
 
 # Download
 
-Download the latest: V3.07 (Oct 8th, 2026) [AI Tools Client (Windows, 181.5 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) (codesigned by me)
+Download the latest: V3.07 (Oct 8th, 2026) [AI Tools Client (Windows, 158.9 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) (codesigned by me)
 
 ## Features
 
@@ -84,21 +84,21 @@ Download the latest: V3.07 (Oct 8th, 2026) [AI Tools Client (Windows, 181.5 MB)]
 
 # Screenshots
 
-<a href="Media/aitools_ai_generate_example.png"><img src="Media/aitools_ai_generate_example.png" width="420"></a>
-<a href="Media/aitools_ai_edit_example.png"><img src="Media/aitools_ai_edit_example.png" width="420"></a>
+<a href="https://raw.githubusercontent.com/SethRobinson/aitools_client/main/Media/aitools_ai_generate_example.png"><img src="https://raw.githubusercontent.com/SethRobinson/aitools_client/main/Media/aitools_ai_generate_example.png" width="420"></a>
+<a href="https://raw.githubusercontent.com/SethRobinson/aitools_client/main/Media/aitools_ai_edit_example.png"><img src="https://raw.githubusercontent.com/SethRobinson/aitools_client/main/Media/aitools_ai_edit_example.png" width="420"></a>
 
-<a href="Media/ai_tools_dungeons_generate.png"><img src="Media/ai_tools_dungeons_generate.png" width="300"></a>
-<a href="Media/ait_dungeon_twine_export.png"><img src="Media/ait_dungeon_twine_export.png" width="300"></a>
-<a href="Media/ait_twine_stored_html2.png"><img src="Media/ait_twine_stored_html2.png" width="300"></a>
-<a href="Media/ait_quiz_kyoto.png"><img src="Media/ait_quiz_kyoto.png" width="300"></a>
+<a href="https://raw.githubusercontent.com/SethRobinson/aitools_client/main/Media/ai_tools_dungeons_generate.png"><img src="https://raw.githubusercontent.com/SethRobinson/aitools_client/main/Media/ai_tools_dungeons_generate.png" width="300"></a>
+<a href="https://raw.githubusercontent.com/SethRobinson/aitools_client/main/Media/ait_dungeon_twine_export.png"><img src="https://raw.githubusercontent.com/SethRobinson/aitools_client/main/Media/ait_dungeon_twine_export.png" width="300"></a>
+<a href="https://raw.githubusercontent.com/SethRobinson/aitools_client/main/Media/ait_twine_stored_html2.png"><img src="https://raw.githubusercontent.com/SethRobinson/aitools_client/main/Media/ait_twine_stored_html2.png" width="300"></a>
+<a href="https://raw.githubusercontent.com/SethRobinson/aitools_client/main/Media/ait_quiz_kyoto.png"><img src="https://raw.githubusercontent.com/SethRobinson/aitools_client/main/Media/ait_quiz_kyoto.png" width="300"></a>
 
 # Media (mostly old outdated videos of the app of features that don't even exist anymore, but hey) #
 
-<a href="https://www.youtube.com/watch?v=2TB4f8ojKYo"><img align="top" src="Media/apple_youtube_thumbnail.png" width=300></a>
-<a href="https://www.youtube.com/watch?v=3PmZ_9QfrE0"><img align="top" src="Media/remove_bg_youtube.png" width=300></a>
-<a href="https://www.youtube.com/watch?v=FoYY_90KlyE"><img align="top" src="Media/ai_paintball_youtube.png" width=300></a>
-<a href="https://www.youtube.com/watch?v=VKj-x25-04E"><img align="top" src="Media/live_webcam_test.png" width=300></a>
-<a href="https://www.youtube.com/watch?v=YQMWflU1v-U"><img align="top" src="Media/aiguide_youtube.png" width=300></a>
+<a href="https://www.youtube.com/watch?v=2TB4f8ojKYo"><img align="top" src="https://raw.githubusercontent.com/SethRobinson/aitools_client/main/Media/apple_youtube_thumbnail.png" width=300></a>
+<a href="https://www.youtube.com/watch?v=3PmZ_9QfrE0"><img align="top" src="https://raw.githubusercontent.com/SethRobinson/aitools_client/main/Media/remove_bg_youtube.png" width=300></a>
+<a href="https://www.youtube.com/watch?v=FoYY_90KlyE"><img align="top" src="https://raw.githubusercontent.com/SethRobinson/aitools_client/main/Media/ai_paintball_youtube.png" width=300></a>
+<a href="https://www.youtube.com/watch?v=VKj-x25-04E"><img align="top" src="https://raw.githubusercontent.com/SethRobinson/aitools_client/main/Media/live_webcam_test.png" width=300></a>
+<a href="https://www.youtube.com/watch?v=YQMWflU1v-U"><img align="top" src="https://raw.githubusercontent.com/SethRobinson/aitools_client/main/Media/aiguide_youtube.png" width=300></a>
 # Setup #
 
 Your ComfyUI server needs to be started using the --listen parm, so the API can be accessed.

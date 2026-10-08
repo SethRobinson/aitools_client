@@ -52,7 +52,7 @@ $retiredPresets = @(
     'Presets/Image To Image Inpaint Mask Subject (SDXL).txt',
     'Presets/Image to Video (VLLM, LLM, Wan) 20s 4p.txt'
 )
-$runtimeRoots = @('utils', 'web', 'Adventure', 'AIGuide', 'ComfyUI', 'Presets', 'aichat', 'Media')
+$runtimeRoots = @('utils', 'web', 'Adventure', 'AIGuide', 'ComfyUI', 'Presets', 'aichat')
 $rootFiles = @('config_cam.txt', 'model_data.json', 'README.md', 'LICENSE.md')
 $tracked = @(& git -C $repoRoot -c core.quotepath=false ls-files)
 if ($LASTEXITCODE -ne 0) { throw 'Could not enumerate tracked release inputs.' }
@@ -115,7 +115,7 @@ foreach ($file in $files) {
         $relative -match '(^|/)(config(?:_llm|_preferences)?\.txt|log\.txt|.*_cached_api.*|.*\.pdb|.*\.meta|RTClip\.zip)$' -or
         $relative -in $retiredPresets) { throw "Private or development artifact in release: $relative" }
     $root = ($relative -split '/')[0]
-    if (($root -in ($runtimeRoots + @('cli'))) -and $relative -notin $runtimeFiles) {
+    if (($root -in ($runtimeRoots + @('cli', 'Media'))) -and $relative -notin $runtimeFiles) {
         throw "Unexpected runtime file in release: $relative"
     }
 }

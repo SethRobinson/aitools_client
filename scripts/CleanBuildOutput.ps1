@@ -103,3 +103,6 @@ if (Test-Path -LiteralPath (Join-Path $repoRoot 'build\win\autosave')) {
 if (Test-Path -LiteralPath (Join-Path $repoRoot 'build\win\tempCache')) {
     Remove-Item -LiteralPath (Join-Path $repoRoot 'build\win\tempCache') -Recurse -Force
 }
+if (Test-Path -LiteralPath (Join-Path $repoRoot 'build\win\Media')) {
+    Remove-Item -LiteralPath (Join-Path $repoRoot 'build\win\Media') -Recurse -Force
+}
