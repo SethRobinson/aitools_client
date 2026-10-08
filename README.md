@@ -4,7 +4,7 @@ License:  BSD style attribution, see LICENSE.md
 
 # Download
 
-Download the latest: V3.06 (Aug 30th, 2026) [AI Tools Client (Windows, 150 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) (codesigned by me)
+Download the latest: V3.07 (Oct 8th, 2026) [AI Tools Client (Windows, 181.5 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) (codesigned by me)
 
 ## Features
 
@@ -20,6 +20,15 @@ Download the latest: V3.06 (Aug 30th, 2026) [AI Tools Client (Windows, 150 MB)](
 - Privacy respected - does not phone home or collect any statistics, purely local usage. (it does check a single file on github.com to check for newer versions, but that's it)
 
 ## Recent changes
+
+### V3.07 (Oct 8th, 2026)
+
+* Qwen-Image 2.1 is now the default for still images and image editing, with up to ten reference images and optional transparent output
+* Upgraded to Unity 6.6, URP rendering and the new Input System, with automated input and rendering regression checks
+* More reliable ComfyUI uploads, cancellation and failure reporting; fixed chained preset sizes and H3 duration overrides
+* AI Chat improvements: compact web results, persistent thinking details, attachment filenames, better Stop handling and automatic cleanup after stitching clips
+* Improved LLM streaming, prompt caching, provider endpoints, reasoning controls and default sampling; Settings Apply preserves all configured options
+* Audited Windows packaging, including the Python CLI and licenses, with private configuration, generated caches and obsolete presets excluded
 
 ### V3.06 (Aug 30th, 2026)
 
@@ -116,9 +125,9 @@ Then install my [Workflow to API Converter Endpoint](https://github.com/SethRobi
 
 This node allows us to only work with normal workflow json files, and never have to export "API" versions.  The API conversions will happen under the hood automatically when needed, makes life much better.  Click its page above for help.
 
-It will work if you don't, but this allows modified or new workflows to work as it can convert them to "API" versions on the fly when needed.
+The included normal workflow JSON files require this endpoint. Install it on each ComfyUI server you use. Workflows already exported in API format can run without it. Generated API caches stay local and are not included in the download.
 
-Next, just for a test to make sure the workflows included with AITools are going to work, inside ComfyUI's web GUI, drag in aitools_client/ComfyUI/FullWorkflowVersions/text_to_img_flux.json or any others.  The neat thing about ComfyUI is it will read this and convert it to its visual workflow format, ready to run.  (you might want to change the prompt from <AITOOLS_PROMPT> to something else during testing here) - Click Queue.  Does it work?  Oh, if you see an Image Loader set to the file "<AITOOLS_INPUT_1>" you'll need to change that to a file on your ComfyUI server if you want to test.
+Next, just for a test to make sure the workflows included with AITools are going to work, inside ComfyUI's web GUI, drag in aitools_client/ComfyUI/text_to_img_flux.json or any others.  The neat thing about ComfyUI is it will read this and convert it to its visual workflow format, ready to run.  (you might want to change the prompt from <AITOOLS_PROMPT> to something else during testing here) - Click Queue.  Does it work?  Oh, if you see an Image Loader set to the file "<AITOOLS_INPUT_1>" you'll need to change that to a file on your ComfyUI server if you want to test.
 
 You'll probably see a bunch of red nodes and errors - no problem!  Make sure you have ComfyUI-Manager installed, you can use it to install any missing nodes.  You'll probably have to track down various model files though, but at least when you try to render it will shows exactly the filenames that are missing. (look for red boxes around certain nodes)
 

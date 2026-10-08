@@ -2,7 +2,7 @@
 
 ## Configuration
 
-The active app uses the editor-bundled Universal Render Pipeline 17.6.0 with Unity 6000.6.0f1. Shader Graph and render-pipeline core remain at 17.6.0. App version remains 3.06.
+The active app uses the editor-bundled Universal Render Pipeline 17.6.0 with Unity 6000.6.0f1. Shader Graph and render-pipeline core remain at 17.6.0. App version is tracked in `AGENTS.md` and `Assets/_Script/Config.cs`.
 
 `Assets/Settings/Rendering/ForwardRenderer.asset` uses the Universal Renderer's Forward path with Render Graph. There are no renderer features or post-processing effects. Gamma color space, camera framing, transparent sorting and render scale 1 are retained. URP 17.6 runs Render Graph without the old compatibility-mode switch.
 
