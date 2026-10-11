@@ -371,8 +371,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     // models occasionally hang on a particular input or after long uptime; without
     // a force-release the LLM slot stays marked busy forever and the user can't
     // get the slot back. After this timeout we decrement the busy count and treat
-    // the caption as failed.
-    private const float CAPTION_TIMEOUT_SECONDS = 60f;
+    // the caption as failed (a reply that arrives later is dropped). Keep it
+    // generous: a thinking-enabled vision model can spend 10k+ reasoning tokens on
+    // one caption, and parallel captions share the server's decode throughput.
+    // At 60s, a 3-image drop on DeepSeek-V4-Flash-Vision (reasoning high, ~14k
+    // reasoning tokens each, 90-150s per reply) lost every caption (2026-10-11).
+    private const float CAPTION_TIMEOUT_SECONDS = 300f;
     private const float INSPECT_IMAGE_TIMEOUT_SECONDS = 300f;
     // Describe-first, anti-sycophancy QA prompt. Verified live 2026-08-30 against
     // Qwen3.8-Flash-Next on the "human head, dog body" test image: the old prompt
