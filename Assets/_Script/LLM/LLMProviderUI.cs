@@ -42,6 +42,14 @@ public class LLMProviderUI
     private bool _enableThinking = true;
     private LLMReasoningEffort _reasoningEffort = LLMReasoningEffort.High;
     private bool _isRouterMode = false;
+
+    // Vision sidecar thinking level (LLMProviderSettings.visionReasoningEffort):
+    // "" = same as the text setting, else a config value (off/low/high/...).
+    // Options follow the selected model's family like the Reasoning dropdown.
+    private TMP_Dropdown _visionEffortDropdown;
+    private GameObject _visionEffortRow;
+    private readonly List<string> _visionEffortValues = new List<string>();
+    private string _visionReasoningEffort = "";
     
     // llama.cpp sampling parameter controls
     private Toggle _temperatureToggle;
@@ -160,6 +168,7 @@ public class LLMProviderUI
             _isRouterMode = settings.isRouterMode;
             CreateServerModeRow(sectionRoot.transform, settings);
             CreateReasoningEffortRow(sectionRoot.transform, settings);
+            CreateVisionEffortRow(sectionRoot.transform, settings);
             UpdateThinkingModeVisibility();
             
             // Sampling parameters
@@ -194,8 +203,10 @@ public class LLMProviderUI
                 // level dropdown instead of the on/off checkbox; both rows exist and
                 // UpdateThinkingModeVisibility picks per selected model.
                 CreateReasoningEffortRow(sectionRoot.transform, settings);
-                UpdateThinkingModeVisibility();
             }
+            CreateVisionEffortRow(sectionRoot.transform, settings);
+            if (_provider == LLMProvider.OpenAICompatible)
+                UpdateThinkingModeVisibility();
         }
 
         // Sampling parameters (temperature, top_p, top_k, min_p, repetition penalty) for OpenAI Compatible
@@ -227,6 +238,7 @@ public class LLMProviderUI
         {
             _enableThinking = settings.enableThinking;
             CreateGeminiThinkingModeRow(sectionRoot.transform, settings);
+            CreateVisionEffortRow(sectionRoot.transform, settings);
         }
 
         return sectionRoot;
@@ -433,6 +445,7 @@ public class LLMProviderUI
             endpointInput.text = settings.endpoint;
             TMPInputFieldUndo.ResetHistory(endpointInput);
         }
+        _visionReasoningEffort = settings.visionReasoningEffort ?? "";
         if (modelDropdown != null)
             UpdateModelDropdown(settings.availableModels, settings.selectedModel);
         
@@ -525,6 +538,8 @@ public class LLMProviderUI
             if (thinkingModeToggle != null)
                 thinkingModeToggle.isOn = settings.enableThinking;
         }
+
+        RebuildVisionEffortOptions();
     }
 
     public void ApplyToSettings(LLMProviderSettings settings)
@@ -617,6 +632,9 @@ public class LLMProviderUI
         {
             settings.enableThinking = _enableThinking;
         }
+
+        if (_visionEffortDropdown != null)
+            settings.visionReasoningEffort = _visionReasoningEffort ?? "";
     }
 
     public void UpdateModelDropdown(List<string> models, string selectedModel)
@@ -1312,6 +1330,7 @@ public class LLMProviderUI
         {
             if (_thinkingModeRow != null) _thinkingModeRow.SetActive(false);
             if (_reasoningEffortRow != null) _reasoningEffortRow.SetActive(false);
+            if (_visionEffortRow != null) _visionEffortRow.SetActive(false);
             return;
         }
 
@@ -1340,6 +1359,115 @@ public class LLMProviderUI
 
         if (_reasoningEffortRow != null && _reasoningEffortRow.activeSelf)
             RebuildReasoningEffortOptions();
+
+        if (_visionEffortRow != null)
+        {
+            _visionEffortRow.SetActive(supportsThinking);
+            if (supportsThinking)
+                RebuildVisionEffortOptions();
+        }
+    }
+
+    private void CreateVisionEffortRow(Transform parent, LLMProviderSettings settings)
+    {
+        var row = CreateRowContainer(parent, "VisionReasoningEffort");
+        _visionEffortRow = row;
+        CreateRowLabel(row.transform, "Vision reasoning:");
+
+        var ddGo = TMP_DefaultControls.CreateDropdown(_tmpResources);
+        ddGo.name = "VisionReasoningEffortDropdown";
+        ddGo.transform.SetParent(row.transform, false);
+        _styleApplier?.Invoke(ddGo);
+
+        var ddRootImg = ddGo.GetComponent<Image>();
+        if (ddRootImg != null) ddRootImg.color = InputBg;
+
+        var ddRt = ddGo.GetComponent<RectTransform>();
+        ddRt.anchorMin = new Vector2(0, 0);
+        ddRt.anchorMax = new Vector2(1, 1);
+        ddRt.offsetMin = new Vector2(LabelWidth + 16, 5);
+        ddRt.offsetMax = new Vector2(-6, -5);
+
+        _visionEffortDropdown = ddGo.GetComponent<TMP_Dropdown>();
+        if (_visionEffortDropdown == null) return;
+
+        _visionReasoningEffort = settings.visionReasoningEffort ?? "";
+        RebuildVisionEffortOptions();
+        _visionEffortDropdown.onValueChanged.AddListener(OnVisionEffortChanged);
+
+        if (_visionEffortDropdown.captionText != null)
+        {
+            _visionEffortDropdown.captionText.font = _font;
+            _visionEffortDropdown.captionText.fontSize = 14;
+            _visionEffortDropdown.captionText.color = TextDark;
+        }
+        if (_visionEffortDropdown.itemText != null)
+        {
+            _visionEffortDropdown.itemText.font = _font;
+            _visionEffortDropdown.itemText.fontSize = 14;
+            _visionEffortDropdown.itemText.color = TextDark;
+        }
+        if (_visionEffortDropdown.template != null)
+            _visionEffortDropdown.template.sizeDelta = new Vector2(_visionEffortDropdown.template.sizeDelta.x, 140f);
+    }
+
+    private void OnVisionEffortChanged(int value)
+    {
+        _visionReasoningEffort = (value >= 0 && value < _visionEffortValues.Count) ? _visionEffortValues[value] : "";
+        _onSettingsChanged?.Invoke();
+    }
+
+    // "Same as text" plus the levels the selected model accepts: the Reasoning
+    // dropdown's family list when this provider/model uses effort levels, else a
+    // plain No-think / Think pair for checkbox-style thinking.
+    private void RebuildVisionEffortOptions()
+    {
+        if (_visionEffortDropdown == null) return;
+
+        string model = GetCurrentModelName();
+        bool usesEffortLevels = _provider == LLMProvider.LlamaCpp
+            || (_provider == LLMProvider.OpenAICompatible && LLMRequestProfile.HasConfigurableReasoningEffort(model));
+
+        _visionEffortValues.Clear();
+        var options = new List<TMP_Dropdown.OptionData>();
+        _visionEffortValues.Add("");
+        options.Add(new TMP_Dropdown.OptionData("Same as text"));
+
+        if (usesEffortLevels && reasoningEffortDropdown != null)
+        {
+            RebuildReasoningEffortOptions(); // refresh the family list for the current model
+            for (int i = 0; i < _effortDropdownValues.Count && i < reasoningEffortDropdown.options.Count; i++)
+            {
+                _visionEffortValues.Add(LLMReasoningEffortUtil.ToConfigValue(_effortDropdownValues[i]));
+                options.Add(new TMP_Dropdown.OptionData(reasoningEffortDropdown.options[i].text));
+            }
+        }
+        else
+        {
+            _visionEffortValues.Add(LLMReasoningEffortUtil.OffValue);
+            _visionEffortValues.Add(LLMReasoningEffortUtil.HighValue);
+            options.Add(new TMP_Dropdown.OptionData("No-think"));
+            options.Add(new TMP_Dropdown.OptionData("Think"));
+        }
+
+        _visionEffortDropdown.ClearOptions();
+        _visionEffortDropdown.AddOptions(options);
+
+        // Like the Reasoning dropdown, show the nearest entry for a saved level the
+        // family lacks but keep the stored value (the request-time clamp applies).
+        int idx = 0;
+        if (!string.IsNullOrWhiteSpace(_visionReasoningEffort))
+        {
+            var saved = LLMReasoningEffortUtil.Parse(_visionReasoningEffort, LLMReasoningEffort.High);
+            idx = _visionEffortValues.IndexOf(LLMReasoningEffortUtil.ToConfigValue(saved));
+            if (idx < 0)
+                idx = _visionEffortValues.IndexOf(saved == LLMReasoningEffort.Off
+                    ? LLMReasoningEffortUtil.OffValue
+                    : LLMReasoningEffortUtil.HighValue);
+            if (idx < 0) idx = 0;
+        }
+        _visionEffortDropdown.SetValueWithoutNotify(idx);
+        _visionEffortDropdown.RefreshShownValue();
     }
     
     /// <summary>

@@ -2397,7 +2397,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                     ? $"inspect_image: LLM #{targetId} failed for {req.sourceLabel}: {failureDetail}"
                     : $"inspect_image: LLM #{targetId} returned no content for {req.sourceLabel}.");
             CompleteInspectImageJob(job, instanceMgr, message, includeInLLMRecap: true);
-        }, "InspectImage", "inspect_image_sent.json", replicaIndex: replicaIndex);
+        }, "InspectImage", "inspect_image_sent.json", replicaIndex: replicaIndex, visionJob: true);
 
         RecomputeSendInteractable();
         UpdateInspectImageStatus(force: true);
@@ -7879,7 +7879,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             finally { safeResult(result); }
         };
 
-        SkillActionExecutor.DispatchOneShot(this, inst, lines, onDone, jobName, debugFileName, replicaIndex: capturedReplicaIndex);
+        SkillActionExecutor.DispatchOneShot(this, inst, lines, onDone, jobName, debugFileName, replicaIndex: capturedReplicaIndex, visionJob: true);
 
         // Watchdog: if the request never returns (hung local model), force-release
         // the LLM slot after CAPTION_TIMEOUT_SECONDS so the user isn't stuck.

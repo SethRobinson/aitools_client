@@ -4022,6 +4022,8 @@ namespace AITools.AIChat.Skills
         // onStreamChunk: optional delta-text callback; when provided the request is
         // sent streaming and chunks arrive as they generate (used by the compact
         // summary's live preview). The completion callback still fires at the end.
+        // visionJob: build the request from the instance's vision thinking level
+        // (LLMProviderSettings.ForVisionJob) instead of its text one.
         public static void DispatchOneShot(
             MonoBehaviour runner,
             LLMInstanceInfo inst,
@@ -4031,9 +4033,10 @@ namespace AITools.AIChat.Skills
             string sentJsonFilename = "text_completion_sent.json",
             int maxNewTokens = LLMRequestProfile.NoExplicitOutputTokenCap,
             Action<string> onStreamChunk = null,
-            int replicaIndex = 0)
+            int replicaIndex = 0,
+            bool visionJob = false)
         {
-            var settings = inst.settings;
+            var settings = visionJob ? inst.settings.ForVisionJob() : inst.settings;
             var db = new RTDB();
             string apiKey = settings.apiKey ?? "";
             bool stream = onStreamChunk != null;
@@ -4072,7 +4075,7 @@ namespace AITools.AIChat.Skills
                     var mgr = runner.gameObject.AddComponent<TexGenWebUITextCompletionManager>();
                     string serverAddress = LLMInstanceManager.ApplyReplicaPortOffset(settings.endpoint ?? "", replicaIndex);
                     string suggestedEndpoint;
-                    var llmParms = BuildLLMParmsForInstance(inst);
+                    var llmParms = BuildLLMParmsForSettings(settings);
                     string json = mgr.BuildForInstructJSON(lines, out suggestedEndpoint, maxNewTokens, 0.4f, "chat-instruct", stream, llmParms, false, true);
                     mgr.SpawnChatCompleteRequest(json, (rtdb, jn, str) =>
                     {
@@ -4185,24 +4188,24 @@ namespace AITools.AIChat.Skills
 
         // ---------- Helpers ----------
 
-        private static List<LLMParm> BuildLLMParmsForInstance(LLMInstanceInfo inst)
+        private static List<LLMParm> BuildLLMParmsForSettings(LLMProviderSettings settings)
         {
             var result = new List<LLMParm>();
-            if (inst == null || inst.settings == null) return result;
+            if (settings == null) return result;
 
-            if (!string.IsNullOrEmpty(inst.settings.selectedModel))
-                result.Add(new LLMParm { _key = "model", _value = inst.settings.selectedModel });
+            if (!string.IsNullOrEmpty(settings.selectedModel))
+                result.Add(new LLMParm { _key = "model", _value = settings.selectedModel });
 
-            bool hasEffortLevels = LLMRequestProfile.HasConfigurableReasoningEffort(inst.settings.selectedModel);
+            bool hasEffortLevels = LLMRequestProfile.HasConfigurableReasoningEffort(settings.selectedModel);
             if (hasEffortLevels)
             {
-                var effort = inst.settings.GetReasoningEffort();
+                var effort = settings.GetReasoningEffort();
                 result.Add(new LLMParm { _key = "reasoning_effort", _value = LLMReasoningEffortUtil.ToConfigValue(effort) });
                 result.Add(new LLMParm { _key = "enable_thinking", _value = effort != LLMReasoningEffort.Off ? "true" : "false" });
             }
             else
             {
-                result.Add(new LLMParm { _key = "enable_thinking", _value = inst.settings.enableThinking ? "true" : "false" });
+                result.Add(new LLMParm { _key = "enable_thinking", _value = settings.enableThinking ? "true" : "false" });
             }
 
             return result;

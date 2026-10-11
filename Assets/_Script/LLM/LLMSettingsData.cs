@@ -388,7 +388,11 @@ public class LLMProviderSettings
     // llama.cpp-specific: thinking mode settings (for GLM and similar models)
     public bool enableThinking = true; // User preference for thinking mode (default: enabled)
     public string reasoningEffort = ""; // "", off, high, max. Empty migrates from enableThinking.
-    
+    // Thinking level for AI Chat vision sidecars (image/video captions, web media
+    // checks, inspect_image). "" = same as the text setting above; otherwise
+    // off/low/medium/high/max. Lets a thinking-heavy main model caption quickly.
+    public string visionReasoningEffort = "";
+
     // llama.cpp-specific: sampling parameters (optional overrides)
     public bool overrideTemperature = false;
     public float temperature = 0.8f; // Controls randomness (0.0-2.0, default: 0.8)
@@ -446,6 +450,22 @@ public class LLMProviderSettings
         enableThinking = effort != LLMReasoningEffort.Off;
     }
 
+    public bool HasVisionReasoningOverride()
+    {
+        return !string.IsNullOrWhiteSpace(visionReasoningEffort);
+    }
+
+    // The settings a vision sidecar request should be built from: this object
+    // when no vision override is set, else a clone whose text thinking level is
+    // replaced by the vision one, so every provider path reads it unchanged.
+    public LLMProviderSettings ForVisionJob()
+    {
+        if (!HasVisionReasoningOverride()) return this;
+        var clone = Clone();
+        clone.SetReasoningEffort(LLMReasoningEffortUtil.Parse(visionReasoningEffort, GetReasoningEffort()));
+        return clone;
+    }
+
     public LLMProviderSettings Clone()
     {
         var clone = new LLMProviderSettings
@@ -461,6 +481,7 @@ public class LLMProviderSettings
             maxContextLength = this.maxContextLength,
             enableThinking = this.enableThinking,
             reasoningEffort = this.reasoningEffort,
+            visionReasoningEffort = this.visionReasoningEffort,
             isRouterMode = this.isRouterMode,
             // Sampling parameters
             overrideTemperature = this.overrideTemperature,
