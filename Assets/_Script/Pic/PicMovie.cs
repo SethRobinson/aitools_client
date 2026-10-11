@@ -38,6 +38,7 @@ public class PicMovie : MonoBehaviour
     bool _playbackProxyConversionInFlight = false;
     FfmpegTool.CancelToken _playbackProxyCancelToken;
     const float PROGRESS_BAR_HEIGHT = 8f;
+    const float MOVIE_BOX_SIZE = 5.12f; // pic box size in local units, matches PicMain's sprite fit
 
     // Play/seek intent model. Unity 6 + Media Foundation is unreliable around seeks:
     // it halts an audio-clocked player while a seek resolves, reports stale/zero
@@ -1535,10 +1536,21 @@ public class PicMovie : MonoBehaviour
             newMaterial.mainTexture = _renderTexture;
             _renderer.material = newMaterial;
             m_movieSize = new Vector2Int((int)source.width, (int)source.height);
+            // Fit the longest side to the pic box (5.12 units, same as still sprites) so
+            // tall videos letterbox horizontally instead of overflowing the box.
             float videoWidth = source.width;
             float videoHeight = source.height;
             Vector3 scale = _movieObject.transform.localScale;
-            scale.y = scale.x * ((float)videoHeight / videoWidth);
+            if (videoHeight > videoWidth)
+            {
+                scale.y = MOVIE_BOX_SIZE;
+                scale.x = MOVIE_BOX_SIZE * (videoWidth / videoHeight);
+            }
+            else
+            {
+                scale.x = MOVIE_BOX_SIZE;
+                scale.y = MOVIE_BOX_SIZE * (videoHeight / videoWidth);
+            }
             _movieObject.transform.localScale = scale;
 
             // Stop() flips isPrepared back to false so Prepare() actually re-runs and
