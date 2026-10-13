@@ -11,8 +11,10 @@ public class MainToolPanelModeController : MonoBehaviour
     private const string CompactControlsName = "CompactToolControls";
     private const string ManualControlsName = "ManualToolControls";
     private const string ManualButtonName = "ManualModeButton";
-    private const string ShowManualText = "Show Advanced";
-    private const string ShowSimpleText = "Hide Advanced";
+    // One fixed label; the expanded state shows as the same cyan accent the AI Chat button
+    // uses, so the button can stay half-width next to the Settings button.
+    private const string ManualButtonLabel = "Advanced";
+    private static readonly Color ManualActiveColor = new Color(0.5424528f, 0.920235f, 1f, 1f);
     private const float CompactPanelPadding = 6f;
 
     private RectTransform _panel;
@@ -20,6 +22,7 @@ public class MainToolPanelModeController : MonoBehaviour
     private RectTransform _manualControls;
     private RectLayoutSnapshot _manualPanelLayout;
     private TMP_Text _manualButtonText;
+    private Graphic _manualButtonGraphic;
     private bool _initialized;
     private bool _isManualMode;
 
@@ -106,7 +109,7 @@ public class MainToolPanelModeController : MonoBehaviour
         else
             FitPanelToCompactControls();
 
-        UpdateManualButtonText();
+        UpdateManualButtonVisuals();
         if (modeChanged)
             ManualModeChanged?.Invoke(_isManualMode);
     }
@@ -129,14 +132,17 @@ public class MainToolPanelModeController : MonoBehaviour
             return;
         }
 
+        _manualButtonGraphic = button.targetGraphic;
         button.onClick.RemoveListener(ToggleManualMode);
         button.onClick.AddListener(ToggleManualMode);
     }
 
-    private void UpdateManualButtonText()
+    private void UpdateManualButtonVisuals()
     {
         if (_manualButtonText != null)
-            _manualButtonText.text = _isManualMode ? ShowSimpleText : ShowManualText;
+            _manualButtonText.text = ManualButtonLabel;
+        if (_manualButtonGraphic != null)
+            _manualButtonGraphic.color = _isManualMode ? ManualActiveColor : Color.white;
     }
 
     private static void DisableDecorativeRaycasts(RectTransform root)
