@@ -194,8 +194,14 @@ public class OllamaModelInfoFetcher : MonoBehaviour
         JSONNode modelInfoNode = rootNode["model_info"];
         if (modelInfoNode != null)
         {
+            // Ollama prefixes these keys with the model architecture ("qwen3.context_length",
+            // "gemma3.context_length"), so only checking "llama." left most models at 8K.
+            string arch = modelInfoNode["general.architecture"] != null ? modelInfoNode["general.architecture"].Value : "";
+
             // Context length - try multiple possible field names
-            if (modelInfoNode["llama.context_length"] != null)
+            if (!string.IsNullOrEmpty(arch) && modelInfoNode[arch + ".context_length"] != null)
+                info.contextLength = modelInfoNode[arch + ".context_length"].AsLong;
+            else if (modelInfoNode["llama.context_length"] != null)
                 info.contextLength = modelInfoNode["llama.context_length"].AsLong;
             else if (modelInfoNode["context_length"] != null)
                 info.contextLength = modelInfoNode["context_length"].AsLong;
@@ -203,7 +209,9 @@ public class OllamaModelInfoFetcher : MonoBehaviour
                 info.contextLength = modelInfoNode["general.context_length"].AsLong;
 
             // Embedding length
-            if (modelInfoNode["llama.embedding_length"] != null)
+            if (!string.IsNullOrEmpty(arch) && modelInfoNode[arch + ".embedding_length"] != null)
+                info.embeddingLength = modelInfoNode[arch + ".embedding_length"].AsLong;
+            else if (modelInfoNode["llama.embedding_length"] != null)
                 info.embeddingLength = modelInfoNode["llama.embedding_length"].AsLong;
             else if (modelInfoNode["embedding_length"] != null)
                 info.embeddingLength = modelInfoNode["embedding_length"].AsLong;
