@@ -144,8 +144,11 @@ public class GeminiTextCompletionManager : MonoBehaviour
         // Check if model supports thinking (gemini-2.5 and gemini-3 models)
         string modelLower = model.ToLowerInvariant();
         bool supportsThinking = modelLower.Contains("gemini-2.5") || modelLower.Contains("gemini-3");
-        
-        if (supportsThinking && !enableThinking)
+        // Pro models only run in thinking mode and reject thinkingBudget 0 with a 400
+        // ("only works in thinking mode"), so "thinking off" leaves them at their default.
+        bool canDisableThinking = !modelLower.Contains("-pro");
+
+        if (supportsThinking && !enableThinking && canDisableThinking)
         {
             // Only include thinkingConfig when disabling thinking. When thinking is
             // enabled, omit thinkingBudget so Gemini can use its model-default budget.
