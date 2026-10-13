@@ -2042,7 +2042,7 @@ public class LLMSettingsPanel : MonoBehaviour
                 modelName = _ollamaUI.modelDropdown.options[_ollamaUI.modelDropdown.value].text;
         }
         
-        if (string.IsNullOrEmpty(modelName) || modelName == "(no models)")
+        if (string.IsNullOrEmpty(modelName) || modelName == LLMProviderUI.NoModelsPlaceholder)
             return;
         
         OllamaModelInfoFetcher.Fetch(endpoint, modelName, (info, error) =>

@@ -9,6 +9,9 @@ using UnityEngine.UI;
 /// </summary>
 public class LLMProviderUI
 {
+    // Shown in the model dropdown when the list is empty; never a real model name.
+    public const string NoModelsPlaceholder = "(no models)";
+
     public GameObject sectionRoot;
 
     public TMP_InputField apiKeyInput;
@@ -548,7 +551,10 @@ public class LLMProviderUI
             settings.apiKey = apiKeyInput.text;
         if (endpointInput != null)
             settings.endpoint = endpointInput.text;
-        if (modelDropdown != null && modelDropdown.options != null && modelDropdown.options.Count > 0)
+        // "(no models)" is the empty-list placeholder (server offline when the panel opened),
+        // not a model name: keep the saved model instead of persisting the placeholder.
+        if (modelDropdown != null && modelDropdown.options != null && modelDropdown.options.Count > 0
+            && modelDropdown.options[modelDropdown.value].text != NoModelsPlaceholder)
             settings.selectedModel = modelDropdown.options[modelDropdown.value].text;
         
         // Ollama-specific
@@ -644,7 +650,7 @@ public class LLMProviderUI
         modelDropdown.ClearOptions();
         if (models == null || models.Count == 0)
         {
-            modelDropdown.AddOptions(new List<string> { "(no models)" });
+            modelDropdown.AddOptions(new List<string> { NoModelsPlaceholder });
             modelDropdown.value = 0;
             
             // Update thinking mode visibility for providers with reasoning-effort controls.
@@ -674,7 +680,7 @@ public class LLMProviderUI
             return;
         
         string modelName = modelDropdown.options[index].text;
-        if (modelName != "(no models)")
+        if (modelName != NoModelsPlaceholder)
         {
             // Clear cached model info when model changes
             _cachedModelInfo = null;
@@ -1479,7 +1485,7 @@ public class LLMProviderUI
             return "";
         
         string modelName = modelDropdown.options[modelDropdown.value].text;
-        return modelName == "(no models)" ? "" : modelName;
+        return modelName == NoModelsPlaceholder ? "" : modelName;
     }
 
     /// <summary>
