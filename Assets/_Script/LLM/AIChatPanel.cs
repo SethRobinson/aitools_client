@@ -1293,6 +1293,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // handle it ourselves.)
         _inputField.lineType = TMP_InputField.LineType.MultiLineNewline;
         _inputField.contentType = TMP_InputField.ContentType.Standard;
+        // Plain text: the message is sent raw, and TMP's rich-text parser throws
+        // IndexOutOfRangeException in ValidateHtmlTag on any '<...>' longer than its fixed
+        // tag buffer (a pasted <aitools_action .../> line), then again on every redraw.
+        _inputField.richText = false;
         _inputField.onFocusSelectAll = false;
         _inputField.textComponent.alignment = TextAlignmentOptions.TopLeft;
         _inputField.textComponent.color = TextDark;
