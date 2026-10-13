@@ -6246,19 +6246,17 @@ namespace AITools.AIChat.Skills
         /// </summary>
         private static Color ParseColor(string s, Color fallback)
         {
-            if (string.IsNullOrEmpty(s)) return fallback;
-            s = s.Trim();
-            if (!s.StartsWith("#")) s = "#" + s;
-            if (ColorUtility.TryParseHtmlString(s, out Color c)) return c;
-            return fallback;
+            return ParseColorOpt(s) ?? fallback;
         }
 
         private static Color? ParseColorOpt(string s)
         {
             if (string.IsNullOrEmpty(s)) return null;
             string trimmed = s.Trim();
-            if (!trimmed.StartsWith("#")) trimmed = "#" + trimmed;
+            // Named colors ("red") parse as-is; bare hex ("ff0000") needs the '#'. Always
+            // prefixing turned every named color into "#red", which fails.
             if (ColorUtility.TryParseHtmlString(trimmed, out Color c)) return c;
+            if (!trimmed.StartsWith("#") && ColorUtility.TryParseHtmlString("#" + trimmed, out c)) return c;
             return null;
         }
 
