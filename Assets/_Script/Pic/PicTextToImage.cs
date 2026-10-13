@@ -924,11 +924,13 @@ public class PicTextToImage : MonoBehaviour
                 Debug.Log(responseText);
                 RTConsole.Log(responseText);
 
-                Config.Get().SetGPUBusy(m_gpu, false);
-                m_bIsGenerating = false;
+                // The common real-world failure (model or custom node missing on this server,
+                // input validation): tell AI Chat with ComfyUI's own reason, like every other
+                // post-submit failure, instead of only clearing flags by hand.
+                m_picScript.ReportRenderFailure("ComfyUI rejected the workflow (" + postRequest.error + ")" + SummarizePromptRejection(responseText), m_gpu);
                 m_picScript.SetStatusMessage("Generate error");
-                m_picScript.OnFinishedRenderingWorkflow(false);
-
+                CloseWebSocket();
+                FinishUpEverything(false);
             }
             else
             {
@@ -947,18 +949,20 @@ public class PicTextToImage : MonoBehaviour
                 catch (Exception ex)
                 {
                     RTConsole.Log($"Failed to parse JSON: {ex.Message}");
-                    m_bIsGenerating = false;
+                    m_picScript.ReportRenderFailure("the server's reply to the job submit could not be parsed", m_gpu);
                     m_picScript.SetStatusMessage("Bad json, can't parse reply");
-                    m_picScript.OnFinishedRenderingWorkflow(false);
-
                     CloseWebSocket();
-
-                    // Clean up state
-                    if (Config.Get().IsValidGPU(m_gpu))
-                    {
-                        Config.Get().SetGPUBusy(m_gpu, false);
-                    }
+                    FinishUpEverything(false);
                     //had an error, so let's return early
+                    yield break;
+                }
+
+                if (rootNode == null || string.IsNullOrEmpty(rootNode["prompt_id"]))
+                {
+                    m_picScript.ReportRenderFailure("the server accepted the submit but returned no prompt_id", m_gpu);
+                    m_picScript.SetStatusMessage("Generate error (no prompt_id)");
+                    CloseWebSocket();
+                    FinishUpEverything(false);
                     yield break;
                 }
 
@@ -1696,11 +1700,15 @@ public class PicTextToImage : MonoBehaviour
     }
 
     //this deletes the movies from the servers memory, I think there is some kind of bug where as they stack up, the server finally crashes if you don't do this?
-    IEnumerator CleanComfyUITempFiles(string url)
+    IEnumerator CleanComfyUITempFiles(string url, string promptID)
     {
-        string clearJson = $@"{{""clear"": true}}";
+        // Delete only THIS job's history entry. {"clear": true} wipes the server's whole
+        // history (the query string is ignored), so another app instance or the CLI on the
+        // same server lost its finished job and then reported it as lost.
+        if (string.IsNullOrEmpty(promptID)) yield break;
+        string clearJson = "{\"delete\": [\"" + SimpleJSON.JSONNode.Escape(promptID) + "\"]}";
 
-        string clearURL = url + "/history?" + m_comfyUIPromptID;
+        string clearURL = url + "/history";
         using (var postRequest = UnityWebRequest.PostWwwForm(clearURL, "POST"))
         {
             byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(clearJson);
@@ -1824,8 +1832,9 @@ public class PicTextToImage : MonoBehaviour
 
                     //we're done, can delete us from ComfyUI, may fix comfyui bug with it crashing after too many generations?
                     //dostuff later...
+                // Before FinishUpEverything, which may start this Pic's next job.
+                StartCoroutine(CleanComfyUITempFiles(url, m_comfyUIPromptID));
                 FinishUpEverything();
-                StartCoroutine(CleanComfyUITempFiles(url));
 
                 yield return null; // wait a frame to lessen the jerkiness
             }
@@ -1839,6 +1848,7 @@ public class PicTextToImage : MonoBehaviour
 
         var gpuInfo = Config.Get().GetGPUInfo(m_gpu);
         string url = gpuInfo.remoteURL;
+        string promptID = m_comfyUIPromptID; // cleared below before the history cleanup runs
 
         // First send interrupt request
         using (var interruptRequest = UnityWebRequest.PostWwwForm(url + "/interrupt", ""))
@@ -1888,7 +1898,43 @@ public class PicTextToImage : MonoBehaviour
         m_comfyUIPromptID = null;
         m_picScript.OnFinishedRenderingWorkflow(false);
 
-        StartCoroutine(CleanComfyUITempFiles(url));
+        StartCoroutine(CleanComfyUITempFiles(url, promptID));
+    }
+
+    // ComfyUI answers a rejected /prompt with {"error":{"message":...},"node_errors":{id:{"errors":[{"message","details"}]}}}.
+    // Keep only the human-readable reasons so the AI Chat report stays short.
+    static string SummarizePromptRejection(string responseText)
+    {
+        if (string.IsNullOrEmpty(responseText)) return "";
+        try
+        {
+            JSONNode root = JSON.Parse(responseText);
+            if (root == null) return "";
+            var parts = new List<string>();
+            string top = root["error"]?["message"];
+            if (!string.IsNullOrEmpty(top)) parts.Add(top);
+            JSONNode nodeErrors = root["node_errors"];
+            if (nodeErrors != null && nodeErrors.IsObject)
+            {
+                foreach (var kv in nodeErrors.AsObject)
+                {
+                    JSONNode errs = kv.Value["errors"];
+                    if (errs == null) continue;
+                    for (int i = 0; i < errs.Count && parts.Count < 4; i++)
+                    {
+                        string msg = errs[i]["message"];
+                        string details = errs[i]["details"];
+                        if (!string.IsNullOrEmpty(msg))
+                            parts.Add(string.IsNullOrEmpty(details) ? msg : msg + ": " + details);
+                    }
+                }
+            }
+            if (parts.Count == 0) return "";
+            string joined = string.Join("; ", parts);
+            if (joined.Length > 400) joined = joined.Substring(0, 397) + "...";
+            return ": " + joined;
+        }
+        catch { return ""; }
     }
 
     void FinishUpEverything(bool bSuccess = true)
@@ -1990,7 +2036,7 @@ public class PicTextToImage : MonoBehaviour
                 // ORIGINAL clip and "smooth the video you just made" interpolated the pre-edit
                 // footage while reporting success.
                 m_picScript.m_pendingVideoUploadPath = null;
-                StartCoroutine(CleanComfyUITempFiles(url));
+                StartCoroutine(CleanComfyUITempFiles(url, m_comfyUIPromptID));
 
                 FinishUpEverything();
 
