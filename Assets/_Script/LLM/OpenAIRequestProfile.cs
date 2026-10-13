@@ -85,7 +85,18 @@ public static class OpenAIRequestProfileResolver
 
         string m = model ?? "";
 
-        if (m.Contains("gpt-5"))
+        if (m.Contains("gpt-6"))
+        {
+            // gpt-6-astra / gpt-6.1-sol / gpt-6-luna (and later 6.x): reasoning models on the
+            // Responses API (low..max effort, default medium; only Luna accepts "none"), no
+            // temperature. Without this branch they fell through to Chat Completions + temperature.
+            profile.useResponsesAPI = true;
+            profile.endpoint = OpenAIResponsesEndpoint;
+            profile.isReasoningModel = true;
+            profile.includeTemperature = false;
+            profile.reasoningEffort = "medium";
+        }
+        else if (m.Contains("gpt-5"))
         {
             // Default for the gpt-5 line: Responses API, no reasoning, with temperature.
             // Specific subfamilies override below.
@@ -171,6 +182,7 @@ public static class OpenAIRequestProfileResolver
     public static bool UsesResponsesAPI(string model)
     {
         string m = model ?? "";
+        if (m.Contains("gpt-6")) return true;
         if (m.Contains("gpt-5"))
         {
             if (m.Contains("gpt-5-mini") || m.Contains("gpt-5-nano")) return false;

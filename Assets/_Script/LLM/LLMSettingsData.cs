@@ -343,8 +343,11 @@ public static class LLMRequestProfile
     public static int GetAnthropicMaxOutputTokens(string model)
     {
         string normalized = (model ?? "").ToLowerInvariant();
+        // The whole 5.x generation (Opus 5 / 5.5, Sonnet 5 / 5.5, Haiku 5.5, Fable / Mythos)
+        // has a 128K ceiling; without the -5 checks they fell through to the 8K legacy cap.
         if (normalized.Contains("opus-4-7") || normalized.Contains("opus-4-8") ||
-            normalized.Contains("fable") || normalized.Contains("mythos"))
+            normalized.Contains("fable") || normalized.Contains("mythos") ||
+            normalized.Contains("opus-5") || normalized.Contains("sonnet-5") || normalized.Contains("haiku-5"))
             return AnthropicOpus47MaxOutputTokens;
         if (normalized.Contains("claude-4") || normalized.Contains("opus-4") ||
             normalized.Contains("sonnet-4") || normalized.Contains("haiku-4"))
