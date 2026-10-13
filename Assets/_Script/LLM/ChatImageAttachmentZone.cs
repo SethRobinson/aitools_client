@@ -370,8 +370,16 @@ public class ChatImageAttachmentZone : MonoBehaviour
         if (!tex.LoadImage(imgBytes))
         {
             UnityEngine.Object.Destroy(tex);
-            RTQuickMessageManager.Get().ShowMessage("Could not decode dropped image");
-            return;
+            // LoadImage only decodes PNG/JPG; .bmp drops go through the same BMPLoader the
+            // workspace uses (the bytes are re-encoded to PNG below either way).
+            tex = imgBytes.Length > 2 && imgBytes[0] == 'B' && imgBytes[1] == 'M'
+                ? new B83.Image.BMP.BMPLoader().LoadBMP(imgBytes)?.ToTexture2D()
+                : null;
+            if (tex == null)
+            {
+                RTQuickMessageManager.Get().ShowMessage("Could not decode dropped image");
+                return;
+            }
         }
 
         Texture2D orientedTex = tex.ApplyJpegExifOrientation(imgBytes);
@@ -832,10 +840,18 @@ public class ChatImageAttachmentZone : MonoBehaviour
                 CreateNoWindow = true,
                 UseShellExecute = false
             };
-            var proc = System.Diagnostics.Process.Start(psi);
-            if (proc == null) return;
-            proc.WaitForExit();
-            proc.Close();
+            using (var proc = System.Diagnostics.Process.Start(psi))
+            {
+                if (proc == null) return;
+                // This runs on the main thread: a clipboard owner that never answers RTClip's
+                // delayed-render request must not freeze the app.
+                if (!proc.WaitForExit(5000))
+                {
+                    try { proc.Kill(); } catch { /* already gone */ }
+                    Debug.LogWarning("ChatImageAttachmentZone: RTClip.exe timed out reading the clipboard");
+                    return;
+                }
+            }
 
             if (File.Exists(tmpPng))
             {
