@@ -4089,7 +4089,12 @@ namespace AITools.AIChat.Skills
                     var mgr = runner.gameObject.AddComponent<TexGenWebUITextCompletionManager>();
                     string serverAddress = LLMInstanceManager.ApplyReplicaPortOffset(settings.endpoint ?? "", replicaIndex);
                     string suggestedEndpoint;
-                    string json = mgr.BuildForInstructJSON(lines, out suggestedEndpoint, maxNewTokens, 0.4f, "chat-instruct", stream, null, true, false);
+                    // Ollama's /api/chat rejects a request with no "model"; the builder only
+                    // emits it from parms, so null parms failed every Ollama sidecar call.
+                    var ollamaParms = new List<LLMParm>();
+                    if (!string.IsNullOrEmpty(settings.selectedModel))
+                        ollamaParms.Add(new LLMParm { _key = "model", _value = settings.selectedModel });
+                    string json = mgr.BuildForInstructJSON(lines, out suggestedEndpoint, maxNewTokens, 0.4f, "chat-instruct", stream, ollamaParms, true, false);
                     mgr.SpawnChatCompleteRequest(json, (rtdb, jn, str) =>
                     {
                         try { onDone(rtdb, jn, str); }

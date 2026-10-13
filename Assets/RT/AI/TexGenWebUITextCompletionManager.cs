@@ -302,8 +302,28 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
                     msg += ",\n";
                 }
                 
+                // Ollama's native /api/chat (the endpoint used when bIsOllama) rejects the
+                // OpenAI content array with a 400: content must be a string and images go in
+                // a separate base64 "images" array. Keep the [Image #N] labels, in image
+                // order, in the text so the chat_image mapping survives.
+                if (obj.HasImages() && bIsOllama)
+                {
+                    var labels = new System.Text.StringBuilder();
+                    var images = new System.Text.StringBuilder();
+                    for (int i = 0; i < obj._images.Count; i++)
+                    {
+                        int idx = (obj._imageChatIndices != null && i < obj._imageChatIndices.Count)
+                            ? obj._imageChatIndices[i]
+                            : -1;
+                        labels.Append("[Image #").Append(idx >= 0 ? idx : (i + 1)).Append("] ");
+                        if (i > 0) images.Append(", ");
+                        images.Append('"').Append(obj._images[i]).Append('"');
+                    }
+                    string text = labels.ToString().TrimEnd() + (string.IsNullOrEmpty(obj._content) ? "" : "\n" + obj._content);
+                    msg += "{\"role\": \"" + obj._role + "\", \"content\": \"" + SimpleJSON.JSONNode.Escape(text) + "\", \"images\": [" + images + "]}";
+                }
                 // Check if this message has images attached (vision LLM support)
-                if (obj.HasImages())
+                else if (obj.HasImages())
                 {
                     // Build multimodal content array: per-image label, then image, ..., then text
                     // Format: [{"type":"text","text":"[Image #N]"}, {"type":"image_url",...}, ..., {"type":"text","text":"..."}]
