@@ -236,6 +236,18 @@ public static class AutomationController
             if (q >= 0) rawPath = rawPath.Substring(0, q);
             string path = rawPath.TrimEnd('/').ToLowerInvariant();
 
+            // A browser sends no Origin on no-cors GETs (<img src=...>, link navigation), so
+            // the gate above cannot see them. Only the read-only endpoints answer GET; every
+            // endpoint with a side effect requires POST, which a browser can only send
+            // cross-site with an Origin header.
+            string method = parts[0].ToUpperInvariant();
+            bool readOnly = path == "" || path == "/status" || path == "/chat_images";
+            if (method != "POST" && !(readOnly && method == "GET"))
+            {
+                WriteJson(stream, 405, "{\"ok\":false,\"error\":\"use POST for this endpoint (GET is only allowed for /status and /chat_images)\"}");
+                return;
+            }
+
             switch (path)
             {
                 case "":
@@ -708,7 +720,10 @@ public static class AutomationController
         int colon = h.LastIndexOf(':');
         if (colon > 0 && h.IndexOf(']') < colon) h = h.Substring(0, colon);
         h = h.Trim('[', ']');
-        return h == "127.0.0.1" || h == "localhost" || h == "::1" || h.StartsWith("127.");
+        // Parse rather than prefix-match: "127.attacker.example" starts with "127." but is a
+        // DNS name a rebinding page controls.
+        if (h == "localhost") return true;
+        return System.Net.IPAddress.TryParse(h, out var ip) && System.Net.IPAddress.IsLoopback(ip);
     }
 
     // Read a single CRLF-terminated line from the stream as ASCII. Returns "" on a bare
@@ -801,14 +816,26 @@ public static class AutomationController
         // A shader import/build can outlive the HTTP timeout. A queued callback must
         // not signal a disposed wait handle when the editor finally services it.
         var completion = new System.Threading.Tasks.TaskCompletionSource<T>();
+        // 0 = queued, 1 = running, 2 = abandoned by a timed-out caller. A caller that got
+        // "timed out" will usually retry, so an abandoned action must never run later
+        // (a late /chat would send a duplicate turn).
+        var state = new int[1];
         EnqueueMain(() =>
         {
+            if (System.Threading.Interlocked.CompareExchange(ref state[0], 1, 0) != 0)
+            {
+                completion.TrySetResult(timeoutValue);
+                return;
+            }
             T result = timeoutValue;
             try { result = fn(); }
             catch (Exception e) { Debug.LogError($"[Automation] {e}"); }
             finally { completion.TrySetResult(result); }
         });
-        return completion.Task.Wait(timeoutMs) ? completion.Task.Result : timeoutValue;
+        if (completion.Task.Wait(timeoutMs)) return completion.Task.Result;
+        if (System.Threading.Interlocked.CompareExchange(ref state[0], 2, 0) == 0) return timeoutValue;
+        // It started just as the wait expired: report what it actually did.
+        return completion.Task.Result;
     }
 
     // Parse a "key=value" newline-separated request body into a case-insensitive map.
