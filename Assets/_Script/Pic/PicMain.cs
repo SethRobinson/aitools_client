@@ -2107,9 +2107,13 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         var blurFilter = new ConvFilter.BoxBlurFilter();
         var processor = new ConvFilter.ConvolutionProcessor(m_pic.sprite.texture);
 
+        Texture2D intermediate = null;
         for (int i = 0; i < 2; i++)
         {
             yield return StartCoroutine(processor.ComputeWith(blurFilter));
+            // Each pass allocates a new texture; free the previous pass's output.
+            if (intermediate != null) Destroy(intermediate);
+            intermediate = processor.m_originalMap;
             processor = new ConvFilter.ConvolutionProcessor(processor.m_originalMap);
         }
 

@@ -20,7 +20,7 @@ namespace ConvFilter {
         {
             var result = new Texture2D(m_originalMap.width, m_originalMap.height, TextureFormat.RGBA32, false);
             var offset = filter.Size / 2;
-            int takeABreakEveryNX = m_originalMap.width / 60;
+            int takeABreakEveryNX = Math.Max(1, m_originalMap.width / 60); // images under 60 px wide made this 0 (x % 0 threw)
 
             for (int x = 0; x < m_originalMap.width; x++) 
             {
