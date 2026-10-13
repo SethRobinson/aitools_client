@@ -829,7 +829,14 @@ public static class AutomationController
             }
             T result = timeoutValue;
             try { result = fn(); }
-            catch (Exception e) { Debug.LogError($"[Automation] {e}"); }
+            catch (Exception e)
+            {
+                Debug.LogError($"[Automation] {e}");
+                // Report the exception rather than the caller's "timed out" value, which
+                // sent debugging toward the main-thread queue instead of the real fault.
+                if (typeof(T) == typeof(string))
+                    result = (T)(object)("{\"ok\":false,\"error\":" + JsonStr("exception: " + e.GetType().Name + ": " + e.Message) + "}");
+            }
             finally { completion.TrySetResult(result); }
         });
         if (completion.Task.Wait(timeoutMs)) return completion.Task.Result;
