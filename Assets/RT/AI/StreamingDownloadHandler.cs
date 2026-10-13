@@ -17,7 +17,9 @@ public class StreamingDownloadHandler : DownloadHandlerScript
     private string DecodeChunk(byte[] data, int dataLength)
     {
         int charCount = _utf8Decoder.GetCharCount(data, 0, dataLength, false);
-        if (charCount == 0) return "";
+        // No early return when charCount is 0: GetCharCount does not store state, so a slice
+        // holding only part of a multi-byte character must still go through GetChars or
+        // those bytes are lost (the character decoded as garbage once the rest arrived).
         char[] chars = new char[charCount];
         int n = _utf8Decoder.GetChars(data, 0, dataLength, chars, 0, false);
         return new string(chars, 0, n);
