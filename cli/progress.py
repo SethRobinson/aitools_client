@@ -53,7 +53,10 @@ def watch_progress(ws, prompt_id, node_titles, label, verbose=False):
             msg = ws.recv()
         except websocket.WebSocketTimeoutException:
             continue
-        except (websocket.WebSocketConnectionClosedException, ConnectionResetError):
+        except (websocket.WebSocketException, OSError):
+            # Any drop (closed socket, WinError 10053 abort, broken pipe, SSL error,
+            # no route after sleep/resume): fall back to /history polling, which the
+            # caller does on WS_LOST, instead of dying with a traceback mid-render.
             status.write("", final=True)
             return WS_LOST
 

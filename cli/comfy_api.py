@@ -10,6 +10,9 @@ import requests
 import auth
 from util import die
 
+# Consecutive /history request failures tolerated by the WS-drop poll fallback (x3 s).
+MAX_POLL_REQUEST_FAILURES = 20
+
 HTTP_TIMEOUT = 30
 # /view downloads can be a whole multi-minute H3 mp4 - allow far more than
 # the general request timeout.
@@ -81,12 +84,22 @@ def poll_history_until_done(server_url, prompt_id, label, verbose=False,
     but bails out if the job vanishes from both the queue and history."""
     missing_checks = 0
     polls = 0
+    request_failures = 0
     while True:
         try:
             r = requests.get(f"{server_url}/history/{prompt_id}",
                              headers=auth.headers_for(server_url), timeout=HTTP_TIMEOUT)
+            request_failures = 0
         except requests.RequestException as e:
-            return f"history poll failed: {e}"
+            # The blip that dropped the WebSocket usually fails the first polls too;
+            # the job is still rendering, so only give up on a sustained outage.
+            request_failures += 1
+            if request_failures >= MAX_POLL_REQUEST_FAILURES:
+                return f"history poll failed: {e}"
+            if verbose:
+                print(f"[{label}] history poll error ({e}), retrying...")
+            time.sleep(poll_interval)
+            continue
         try:
             entry = (r.json().get(prompt_id) or {}) if r.status_code == 200 else {}
         except ValueError:
@@ -99,7 +112,9 @@ def poll_history_until_done(server_url, prompt_id, label, verbose=False,
                     if isinstance(m, list) and len(m) >= 2 and m[0] == "execution_error":
                         msgs.append(str(m[1].get("exception_message", m[1])))
                 return f"generation reported error: {'; '.join(msgs) or 'unknown'}"
-            if entry.get("outputs"):
+            if entry.get("outputs") or status.get("completed") or status.get("status_str") == "success":
+                # Finished. A job with no UI outputs is reported by fetch_outputs; waiting
+                # for outputs that will never appear looped here forever.
                 print(f"[{label}] done (via history poll)")
                 return None
         polls += 1
@@ -166,10 +181,12 @@ def save_image(data, src_filename, out_path: Path):
 
 
 def cleanup(server_url, prompt_id):
+    # Delete only this job's entry: ComfyUI ignores prompt_id next to "clear" and wipes
+    # the whole history, which loses other clients' (and parallel CLI runs') results.
     try:
         requests.post(
             f"{server_url}/history",
-            json={"clear": True, "prompt_id": prompt_id},
+            json={"delete": [prompt_id]},
             headers=auth.headers_for(server_url),
             timeout=5,
         )
