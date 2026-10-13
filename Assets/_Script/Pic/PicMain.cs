@@ -856,6 +856,19 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
    
 
+    // Free a sprite this Pic just replaced, unless the undo slot still owns it (a plain
+    // AddImageUndo() stores the current sprite by reference and frees it itself on the next
+    // undo push). Destroying it anyway made Undo restore a blank, destroyed texture.
+    void DestroyReplacedSprite(Sprite old)
+    {
+        if (old == null) return;
+        if (m_undoevent != null && (ReferenceEquals(m_undoevent.m_sprite, old)
+            || (old.texture != null && ReferenceEquals(m_undoevent.m_texture, old.texture))))
+            return;
+        if (old.texture != null) Destroy(old.texture);
+        Destroy(old);
+    }
+
     void KillUndoImageBuffers()
     {
         if (m_undoevent.m_sprite != null && m_undoevent.m_sprite.texture != null)
@@ -1161,13 +1174,11 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
           
             newSprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f), biggestSize / 5.12f, 0, SpriteMeshType.FullRect);
 
-            if (m_pic.sprite != null && m_pic.sprite.texture != null)
-            {
-                Destroy(m_pic.sprite.texture);
-            }
+            Sprite oldSprite = m_pic.sprite;
             m_pic.sprite = newSprite;
+            DestroyReplacedSprite(oldSprite); // AddImageUndo above usually keeps it for Undo
             MovePicUpIfNeeded();
-          
+
             SetStatusMessage("");
             m_picMaskScript.ResizeMaskIfNeeded();
             m_targetRectScript.UpdatePoints();
@@ -1239,10 +1250,12 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         defaultTex.Apply();
         yield return null;
 
+        Sprite oldSprite = m_pic.sprite;
         m_pic.sprite = newSprite;
+        DestroyReplacedSprite(oldSprite); // was leaked on every add_border
         MovePicUpIfNeeded();
         m_picMaskScript.ResizeMaskIfNeeded();
-      
+
         if (bSetMaskToBorder)
         {
             int overlayPixel = 4; // It helps to go one extra when outpainting?
@@ -4539,6 +4552,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                     {
                         Texture2D finalTexture = Tex2DExtension.CombineTexturesForAlpha(sourceTexture, sourceMask);
                         pngBytes = finalTexture.EncodeToPNG();
+                        Destroy(finalTexture); // a fresh full-size texture per upload; only the PNG bytes are kept
                     }
                     else
                     {
@@ -5455,7 +5469,9 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             {
                 //Readable and its size has stopped changing -> the write finished, safe to reload.
                 m_editReloadArmed = false;
-                AddImageUndo();
+                // No AddImageUndo() here: LoadImageByFilename pushes its own, and a second push
+                // frees the sprite the first one just stored (the displayed image), so Undo
+                // then restored a destroyed texture.
                 LoadImageByFilename(m_editFilename, false, true, bInvertLoadedMask: true); //invert the externally-edited mask back to internal polarity
                 RTConsole.Log("Reloaded edited file (" + size + " bytes).");
             }
