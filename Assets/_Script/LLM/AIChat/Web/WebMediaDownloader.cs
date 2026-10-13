@@ -114,6 +114,11 @@ namespace AITools.AIChat.Web
             {
                 if (IsPrivateOrLocal(ip)) { reason = "private / loopback / link-local addresses are not allowed (" + host + ")"; return false; }
             }
+            else if (host.IndexOf('.') < 0)
+            {
+                // A single-label name ("gpubox", "comfy") only resolves on the LAN.
+                reason = "single-label (LAN) host names are not allowed (" + host + ")"; return false;
+            }
             return true;
         }
 
