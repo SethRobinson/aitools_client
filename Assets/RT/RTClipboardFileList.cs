@@ -236,10 +236,18 @@ public static class RTClipboardFileList
             UseShellExecute = false,
             WorkingDirectory = root
         };
-        var proc = System.Diagnostics.Process.Start(psi);
-        if (proc == null) return;
-        proc.WaitForExit();
-        proc.Close();
+        using (var proc = System.Diagnostics.Process.Start(psi))
+        {
+            if (proc == null) return;
+            // Main thread (Ctrl+V): a source app that stalls its FileContents stream
+            // (Outlook attachments, a hung shell extension) must not freeze the app.
+            if (!proc.WaitForExit(15000))
+            {
+                try { proc.Kill(); } catch { /* already gone */ }
+                Debug.LogWarning("RTClipboardFileList: RTClip.exe timed out reading clipboard files");
+                return;
+            }
+        }
 
         if (!File.Exists(listFile)) return;
         try

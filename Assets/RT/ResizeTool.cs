@@ -45,6 +45,7 @@ public class ResizeTool
         RenderTexture rt = RenderTexture.GetTemporary(width, height, 0,
             RenderTextureFormat.ARGB32, RenderTextureReadWrite.Default);
 
+        RenderTexture prevActive = RenderTexture.active;
         RenderTexture.active = rt;
 
         var vScale = new Vector2(1, 1);
@@ -74,6 +75,9 @@ public class ResizeTool
             Debug.LogError("Read/Write is not enabled on texture " + texture2D.name);
         }
 
+        // Restore the caller's target before handing rt back to the pool: leaving the
+        // released RT active let a later GetTemporary user (or ReadPixels) see stale data.
+        RenderTexture.active = prevActive;
         RenderTexture.ReleaseTemporary(rt);
     }
 
@@ -143,6 +147,7 @@ public class ResizeTool
         RenderTexture rt = RenderTexture.GetTemporary(targetX, targetY, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Default);
 
         //set the active RenderTexture to the temporary texture so we can read from it
+        RenderTexture prevActive = RenderTexture.active;
         RenderTexture.active = rt;
         texture2D.filterMode = filter;
 
@@ -164,6 +169,9 @@ public class ResizeTool
             Debug.LogError("Read/Write is not enabled on texture " + texture2D.name);
         }
 
+        // Restore the caller's target before handing rt back to the pool: leaving the
+        // released RT active let a later GetTemporary user (or ReadPixels) see stale data.
+        RenderTexture.active = prevActive;
         RenderTexture.ReleaseTemporary(rt);
     }
 
