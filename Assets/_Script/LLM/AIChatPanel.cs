@@ -4808,7 +4808,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         {
             for (int i = _mediaContent.childCount - 1; i >= 0; i--)
             {
-                Destroy(_mediaContent.GetChild(i).gameObject);
+                // Unparent first: Destroy is deferred, so UpdateMediaHeader below still
+                // counted the children and kept showing the old "Media (N)".
+                var child = _mediaContent.GetChild(i);
+                child.SetParent(null, false);
+                Destroy(child.gameObject);
             }
         }
         UpdateMediaHeader();
@@ -13405,6 +13409,14 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private void OnClearMediaClicked()
     {
         if (_mediaContent == null) return;
+        // Trimming renumbers every chat_image. A parked action, or a stitch_video /
+        // set_video_audio wait, still holds the old numbers and would then join, re-score
+        // or DELETE the wrong clips, so wait until the AI's work has settled.
+        if (IsAIChatProcessBusy())
+        {
+            RTQuickMessageManager.Get().ShowMessage("Media Clear waits until AI Chat finishes its current work (it renumbers chat images)");
+            return;
+        }
         int keep = GetKeepLastNMedia();
         TrimMediaToKeepLastN(keep);
         UpdateMediaHeader();
@@ -13452,6 +13464,16 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             // Drop any character anchors whose Pic just fell out of the numbered list,
             // so the ANCHORS line never advertises a name that can no longer resolve.
             PruneAnchorsToLiveChatImages();
+
+            // Rewind checkpoints are absolute "media count after this line" values; shift
+            // them down with the head trim, or a later Rewind keeps media made after the
+            // rewind point (and removes the wrong bubbles).
+            if (_interactionMediaCheckpoints.Count > 0)
+            {
+                var keys = new List<GTPChatLine>(_interactionMediaCheckpoints.Keys);
+                foreach (var key in keys)
+                    _interactionMediaCheckpoints[key] = Math.Max(0, _interactionMediaCheckpoints[key] - popN);
+            }
         }
     }
 
