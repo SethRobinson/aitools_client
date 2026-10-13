@@ -3286,6 +3286,8 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
             RTConsole.Log("Error uploading file: " + db.GetString("error")+" canceling other jobs");
 
             SetStatusMessage("Failed to send\nfile to Server "+db.GetInt32("serverID"));
+            // Every other upload abort tells AI Chat; this one only went idle silently.
+            ReportRenderFailure("uploading an input file to the server failed (" + db.GetString("error") + ")", db.GetInt32("serverID"));
             ClearJobs();
         }
         else
@@ -4031,6 +4033,15 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
     public void SetLLMActive(bool bActive, int instanceID = -1, int replicaIndex = 0)
     {
+        // Track pending server LLM work (for server-specific LLM-first presets). Released
+        // BEFORE the early return: a Pic cleared while still "Waiting for LLM slot..." never
+        // went active, so the release below the guard never ran and the server stayed busy.
+        if (!bActive && _pendingServerID >= 0)
+        {
+            Config.Get().DecrementPendingLLM(_pendingServerID);
+            _pendingServerID = -1;
+        }
+
         if (bActive == _llmIsActive && (bActive || _activeLLMInstanceID == instanceID)) return;
         _llmIsActive = bActive;
         
@@ -4051,14 +4062,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 _activeLLMReplicaIndex = 0;
             }
         }
-        
-        // Track pending server LLM work (for server-specific LLM-first presets)
-        if (!bActive && _pendingServerID >= 0)
-        {
-            Config.Get().DecrementPendingLLM(_pendingServerID);
-            _pendingServerID = -1;
-        }
-        
+
         // Track LLM requests in Adventure mode to honor the "LLMs at once" limit
         if (AdventureLogic.Get().IsActive())
         {
