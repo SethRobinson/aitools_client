@@ -259,6 +259,21 @@ public class LLMInstanceManager : MonoBehaviour
     /// </summary>
     public void ApplyConfig(LLMInstancesConfig newConfig)
     {
+        // The incoming config is usually a settings-panel Clone(), which zeroes the runtime
+        // task counters. Carry them over by instanceID: otherwise a busy single-slot instance
+        // reads as free after Apply and gets a second job, and the first job's decrement
+        // then zeroes the count while the second is still running.
+        if (_config?.instances != null && newConfig?.instances != null)
+        {
+            foreach (var inst in newConfig.instances)
+            {
+                if (inst == null) continue;
+                var live = _config.instances.Find(o => o != null && o.instanceID == inst.instanceID);
+                if (live == null || ReferenceEquals(live, inst)) continue;
+                inst.activeTasks = live.activeTasks;
+                inst.replicaActiveTasks = live.replicaActiveTasks != null ? (int[])live.replicaActiveTasks.Clone() : null;
+            }
+        }
         _config = newConfig;
         SaveConfig();
         NotifyInstancesChanged();
