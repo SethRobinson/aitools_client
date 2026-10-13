@@ -52,7 +52,12 @@ def watch_progress(ws, prompt_id, node_titles, label, verbose=False):
         try:
             msg = ws.recv()
         except websocket.WebSocketTimeoutException:
-            continue
+            # WS_RECV_TIMEOUT of total silence: a half-open socket (server lost power or
+            # network, no FIN) or a job deleted from the queue elsewhere never raises, so
+            # waiting here could hang forever. Hand over to the /history poll fallback,
+            # which also handles long silent renders and detects vanished jobs.
+            status.write("", final=True)
+            return WS_LOST
         except (websocket.WebSocketException, OSError):
             # Any drop (closed socket, WinError 10053 abort, broken pipe, SSL error,
             # no route after sleep/resume): fall back to /history polling, which the

@@ -827,7 +827,7 @@ def main():
             pass
 
     if err == progress.WS_LOST:
-        print("websocket dropped - falling back to /history polling")
+        print("websocket dropped or went silent - falling back to /history polling")
         err = comfy_api.poll_history_until_done(server_url, prompt_id, label,
                                                 args.verbose)
     if err:

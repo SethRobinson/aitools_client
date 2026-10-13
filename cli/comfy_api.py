@@ -41,13 +41,18 @@ def submit(server_url, api_workflow, client_id, verbose=False):
 def fetch_outputs(server_url, prompt_id):
     deadline = time.time() + HISTORY_TIMEOUT
     while time.time() < deadline:
+        # A network blip right after a long (possibly paid) render must not throw the
+        # finished result away: retry request / JSON errors until the deadline.
         try:
             r = requests.get(f"{server_url}/history/{prompt_id}",
                              headers=auth.headers_for(server_url), timeout=HTTP_TIMEOUT)
-        except requests.RequestException as e:
-            die(f"history request failed: {e}", 2)
-        if r.status_code == 200:
-            data = r.json()
+            data = r.json() if r.status_code == 200 else None
+        except (requests.RequestException, ValueError) as e:
+            if time.time() + HISTORY_POLL_INTERVAL >= deadline:
+                die(f"history request failed: {e}", 2)
+            time.sleep(HISTORY_POLL_INTERVAL)
+            continue
+        if data is not None:
             entry = data.get(prompt_id)
             if entry:
                 status = entry.get("status") or {}

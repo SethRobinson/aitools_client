@@ -108,7 +108,9 @@ def apply_replaces(api_workflow, replaces, verbose=False):
     Returns the (possibly re-parsed) workflow dict."""
     if not replaces:
         return api_workflow
-    text = json.dumps(api_workflow)
+    # ensure_ascii=False: Unity matches on raw UTF-8, and the default escaping of
+    # non-ASCII characters made any non-ASCII find string miss in the CLI.
+    text = json.dumps(api_workflow, ensure_ascii=False)
     for op in replaces:
         if op.find not in text:
             if op.required_by:

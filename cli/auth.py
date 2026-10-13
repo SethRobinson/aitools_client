@@ -31,9 +31,10 @@ def token_for(any_url):
     best = None
     for base in _TOKENS:
         # Prefix must end at a URL boundary: http://10.0.0.1 is not a prefix of
-        # http://10.0.0.12:8188, whose requests must not carry .1's token.
+        # http://10.0.0.12:8188, and a token for a host without a port must not go to
+        # another port (another service) on that host either.
         rest = any_url[len(base):] if any_url.startswith(base) else None
-        if rest is None or (rest and not base.endswith("/") and rest[0] not in "/?#:"):
+        if rest is None or (rest and not base.endswith("/") and rest[0] not in "/?#"):
             continue
         if best is None or len(base) > len(best):
             best = base
