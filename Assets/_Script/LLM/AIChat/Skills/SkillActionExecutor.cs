@@ -86,6 +86,12 @@ namespace AITools.AIChat.Skills
         private bool _lastActionDeferred = false;
         // The action currently blocking the pump (diagnostics + resume match).
         private SkillAction _blockingAction = null;
+        // The action the drain loop is executing right now, and whether its "deferred"
+        // completion callback already fired synchronously (host Start*Action coroutines run
+        // to their first yield inline, so an early failure calls onDone before the executor
+        // even marks the action deferred).
+        private SkillAction _executingAction = null;
+        private bool _executingCompletedSync = false;
         // Incremented every turn reset. A deferred coroutine captures the epoch
         // at start and bails if it changed, so a previous turn's book page can
         // never spawn into a new turn.
@@ -162,6 +168,8 @@ namespace AITools.AIChat.Skills
                 {
                     var action = _actionQueue.Peek(); // keep at head until it completes
                     _lastActionDeferred = false;
+                    _executingAction = action;
+                    _executingCompletedSync = false;
                     try
                     {
                         ExecuteInternal(action);
@@ -173,8 +181,12 @@ namespace AITools.AIChat.Skills
                         // Swallow: treat as completed so one bad action can't wedge
                         // the whole queue (matches the old per-action isolation).
                     }
+                    finally
+                    {
+                        _executingAction = null;
+                    }
 
-                    if (_lastActionDeferred)
+                    if (_lastActionDeferred && !_executingCompletedSync)
                     {
                         // Action parked itself on a coroutine. Leave it at the
                         // head and stop draining; the coroutine resumes us.
@@ -232,6 +244,18 @@ namespace AITools.AIChat.Skills
         /// </summary>
         private void ResumePumpAfterDeferredComplete(SkillAction completed)
         {
+            // Completed before it ever parked: let the drain loop dequeue it and move on.
+            // Dequeuing here and then parking (the old behavior) left the pump Blocked with
+            // nothing to resume it, silently dropping the rest of the reply's actions.
+            if (_executingAction != null && ReferenceEquals(_executingAction, completed))
+            {
+                _executingCompletedSync = true;
+                return;
+            }
+            // A stale callback (e.g. a set_video_audio wait that outlived its turn) must not
+            // unpark a newer turn's pump while that turn waits on a different action.
+            if (_pumpState == PumpState.Blocked && _blockingAction != null && !ReferenceEquals(_blockingAction, completed))
+                return;
             if (_actionQueue.Count > 0 && ReferenceEquals(_actionQueue.Peek(), completed))
                 _actionQueue.Dequeue();
             _blockingAction = null;
