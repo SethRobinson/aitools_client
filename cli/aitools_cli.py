@@ -509,6 +509,12 @@ def main():
     if args.preset and args.workflow:
         die("use one of -p/--preset or -w/--workflow, not both", 1)
 
+    # A missing output folder only failed at write time, after the render (and any
+    # paid API time) was spent and the result was lost.
+    out_dir = Path(args.output).resolve().parent
+    if not out_dir.is_dir():
+        die(f"output folder does not exist: {out_dir}", 1)
+
     # Validate transparency flags before any GPU time is spent.
     if args.alpha_key and args.alpha_from_luma:
         die("--alpha-key and --alpha-from-luma are mutually exclusive", 1)

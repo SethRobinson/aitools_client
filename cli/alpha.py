@@ -46,7 +46,7 @@ def _run_ffmpeg(cmd, verbose=False):
         print("  ffmpeg " + " ".join(str(c) for c in cmd[1:]))
     try:
         r = subprocess.run([str(c) for c in cmd], capture_output=True,
-                           text=True, timeout=CONVERT_TIMEOUT)
+                           text=True, encoding="utf-8", errors="replace", timeout=CONVERT_TIMEOUT)
     except (OSError, subprocess.TimeoutExpired) as e:
         die(f"ffmpeg failed to run: {e}", 1)
     if r.returncode != 0:
@@ -66,7 +66,7 @@ def probe_video(path: Path):
              "-show_entries", "stream=width,height,r_frame_rate",
              "-show_entries", "format=duration",
              "-of", "default=noprint_wrappers=1", str(path)],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
         )
     except (OSError, subprocess.TimeoutExpired) as e:
         die(f"ffprobe failed on {path}: {e}", 1)

@@ -13,7 +13,7 @@ import uuid
 from pathlib import Path
 
 import requests
-from PIL import Image
+from PIL import Image, ImageOps
 
 import auth
 from util import die
@@ -45,7 +45,7 @@ def video_has_audio(path: Path, verbose: bool = False):
         r = subprocess.run(
             [ffprobe, "-v", "error", "-select_streams", "a",
              "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(path)],
-            capture_output=True, text=True, timeout=15,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15,
         )
     except (OSError, subprocess.TimeoutExpired) as e:
         if verbose:
@@ -64,7 +64,15 @@ def read_image_size(path: Path):
         die(f"input image not found: {path}", 1)
     try:
         with Image.open(path) as img:
-            return img.size
+            w, h = img.size
+            # EXIF orientations 5-8 are rotated 90 degrees: the upload is transposed
+            # (load_input_image), so report the size the server will actually see.
+            try:
+                if img.getexif().get(0x0112) in (5, 6, 7, 8):
+                    return h, w
+            except Exception:
+                pass
+            return w, h
     except Exception as e:
         die(f"could not read input image {path}: {e}", 1)
 
@@ -75,10 +83,13 @@ def load_input_image(path: Path) -> Image.Image:
     try:
         img = Image.open(path)
         img.load()
+        # The PNG re-encode drops EXIF, so apply the orientation now or phone photos
+        # upload sideways.
+        img = ImageOps.exif_transpose(img)
     except Exception as e:
         die(f"could not read input image {path}: {e}", 1)
-    # Keep alpha if present, else stay RGB.
-    if img.mode == "RGBA" or "A" in img.getbands():
+    # Keep alpha if present (including palette / tRNS transparency), else stay RGB.
+    if img.mode == "RGBA" or "A" in img.getbands() or "transparency" in img.info:
         return img.convert("RGBA")
     return img.convert("RGB")
 

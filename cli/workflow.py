@@ -1,6 +1,7 @@
 """Load workflow JSON, convert to API format (with on-disk cache), apply
 @replace directives, substitute <AITOOLS_*> placeholders, override seeds."""
 import json
+import os
 import secrets
 import time
 from pathlib import Path
@@ -79,10 +80,23 @@ def load_or_convert_workflow(workflow_dir: Path, workflow_name: str,
             2,
         )
     api_text = r.text
-    cache.write_text(api_text, encoding="utf-8")
+    # Parse before caching: a 200 that isn't JSON (proxy / login page) was cached and
+    # broke every later run until --no-cache. Write via a temp file + atomic replace so a
+    # parallel run never reads a half-written cache.
+    try:
+        api_workflow = json.loads(api_text)
+    except ValueError as e:
+        die(f"workflow conversion returned invalid JSON: {e}\n{api_text[:300]}", 2)
+    tmp = cache.with_name(f"{cache.name}.{secrets.token_hex(4)}.tmp")
+    try:
+        tmp.write_text(api_text, encoding="utf-8")
+        os.replace(tmp, cache)
+    except OSError as e:
+        tmp.unlink(missing_ok=True)
+        print(f"warning: could not write cache {cache.name}: {e}")
     if verbose:
         print(f"cached: {cache.name}")
-    return json.loads(api_text)
+    return api_workflow
 
 
 def apply_replaces(api_workflow, replaces, verbose=False):
