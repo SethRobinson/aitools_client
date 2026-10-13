@@ -8471,7 +8471,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 continue;
             }
             var go = imageGen.AddImageByTexture(tex);
-            if (go == null) { _lastPasteGroupPics.Add(null); continue; }
+            if (go == null) { UnityEngine.Object.Destroy(tex); _lastPasteGroupPics.Add(null); continue; } // no Pic took ownership of tex
             var pic = go.GetComponent<PicMain>();
             if (pic == null) { _lastPasteGroupPics.Add(null); continue; }
             _lastPasteGroupPics.Add(pic);
