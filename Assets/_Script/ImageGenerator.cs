@@ -567,6 +567,9 @@ public class ImageGenerator : MonoBehaviour
 
         for (int i = 0; i < Config.Get().GetGPUCount(); i++)
         {
+            // GetFreeGPU never dispatches to a server another pic owns, so spawning for an
+            // idle-but-owned server would queue a new pic every frame.
+            if (PicMain.IsServerOwnedByAnyPic(i)) continue;
 
             if (!Config.Get().IsGPUBusy(i) && Config.Get().GetGPUInfo(i)._bIsActive)
             {
