@@ -444,7 +444,7 @@ public class OpenAITextCompletionManager : MonoBehaviour
             
             if (includeTemperature)
             {
-                temperaturePart = $@"""temperature"": {temperature},";
+                temperaturePart = $@"""temperature"": {temperature.ToString(System.Globalization.CultureInfo.InvariantCulture)},";
             }
             
             if (instructions.Length > 0)

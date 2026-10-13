@@ -72,7 +72,7 @@ public class OpenAISpeechToTextManager : MonoBehaviour
 
         if (prompt != "")
         {
-            formData.AddField("prompt", model);
+            formData.AddField("prompt", prompt);
         }
 
         formData.AddBinaryData("file", wavData, "openai.wav", "audio/wav");

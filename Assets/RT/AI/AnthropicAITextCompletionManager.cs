@@ -95,6 +95,9 @@ public class AnthropicAITextCompletionManager : MonoBehaviour
         {
             if (obj._role == "system")
             {
+                // Already JSON-escaped, so the separator is the escaped "\n\n" (as Gemini and
+                // the Responses path join system lines); bare concatenation ran sections together.
+                if (systemPrompt.Length > 0) systemPrompt += "\\n\\n";
                 systemPrompt += SimpleJSON.JSONNode.Escape(obj._content);
                 continue;
             }
