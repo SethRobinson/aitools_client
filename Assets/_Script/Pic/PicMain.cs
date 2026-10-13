@@ -4897,8 +4897,18 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                     workFlowNameWithoutTest = workFlowNameWithoutTest.Substring(5);
                 }
 
-                PicJob job = new PicJob();
-                job = m_curEvent.m_picJob.Clone();
+                PicJob job = m_curEvent.m_picJob.Clone();
+
+                // Re-render / starting-info: take the default job BEFORE the per-render reset
+                // below, and as a clone. It is the _jobHistory[0] object itself, and swapping it
+                // in after the reset carried its old _pendingUploads/_data into the new run, so
+                // the Nth re-render uploaded every input N+1 times and replayed stale @replace
+                // entries (and then wrote the same object back into history).
+                if (m_jobDefaultInfo != null)
+                {
+                    job = m_jobDefaultInfo.Clone();
+                    m_jobDefaultInfo = null;
+                }
 
                 //kill anything that shouldn't be carrried to the next render
 
@@ -4918,12 +4928,6 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 job._outputImagePng = null;
                 job._allowInputPruning = false;
 
-
-                if (m_jobDefaultInfo != null)
-                {
-                    job = m_jobDefaultInfo;
-                    m_jobDefaultInfo = null;
-                }
                 job._originalJobString = m_jobList[0];
 
                 job._job = "run_workflow";
