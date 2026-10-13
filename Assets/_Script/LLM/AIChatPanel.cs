@@ -2439,11 +2439,6 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // while this inspection counted as pending sidecar work was otherwise never re-poked
         // (Stop stayed enabled, the continue never fired).
         PokeAutoResumeSchedulers();
-
-        if (_autoContinueToggle != null && _autoContinueToggle.isOn
-            && !_inspectAutoResumePending && !_skillLoadAutoResumePending
-            && !_isStreaming && !_waitingForForcedMainLLM && _autoContinueRemaining > 0 && !HasPendingSidecarWork())
-            StartCoroutine(FireAutoContinueNextFrame());
     }
 
     private void CancelAllInspectImageJobs(bool showBubble)
@@ -3881,10 +3876,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     /// <summary>
     /// Handles the "Auto repeat msg" checkbox. Checking it seeds the repeat counter
-    /// from the N field and starts the loop: if the chat is idle we kick the first
-    /// send next frame, otherwise FinalizeAssistantTurn picks it up once the current
-    /// reply finishes. Unchecking (including the auto-uncheck when the burst ends)
-    /// just drains the counter so no further sends fire.
+    /// from the N field; TickAutoRepeat sends the first repeat as soon as the AI
+    /// process is settled (immediately when idle, otherwise after the current reply
+    /// and every continue it requested). Unchecking (including the auto-uncheck when
+    /// the burst ends) just drains the counter so no further sends fire.
     /// </summary>
     private void OnAutoRepeatToggled(bool on)
     {
@@ -3905,14 +3900,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             // N is 0 (or blank) - nothing to repeat. Drop the check back off so the
             // box never sits checked-but-idle doing nothing.
             if (_autoContinueToggle != null) _autoContinueToggle.isOn = false;
-            return;
         }
-
-        // Only auto-start now if a send is actually possible. If a reply is mid-flight
-        // (or a summary/sidecar job is pending), the loop starts from the next send
-        // opportunity instead.
-        if (!_isStreaming && !_waitingForForcedMainLLM && !_compactSummaryInFlight && !HasPendingSidecarWork())
-            StartCoroutine(FireAutoContinueNextFrame());
     }
 
     /// <summary>
@@ -4101,7 +4089,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _consecutiveSelfContinues = 0;
 
         // The auto-repeat counter is owned by the "Auto repeat msg" toggle handler
-        // and FinalizeAssistantTurn now - a plain Send no longer starts a burst.
+        // and TickAutoRepeat - a plain Send never starts a burst.
         string text = _inputField != null ? _inputField.text : "";
         // Never send outer whitespace - stray newlines have leaked into the field via
         // the Enter-key race (see LateUpdate) and showed up as blank lines in the bubble.
@@ -7285,12 +7273,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _streamingAssistantRT = null;
         ReleaseActiveLLM();
 
-        // Auto-repeat: if this turn finished cleanly and "Auto repeat msg" is still
-        // checked with repeats left, schedule the next Send (the count is consumed
-        // at fire time in FireAutoContinueNextFrame, not here). When the last repeat
-        // has fired, uncheck the box so the burst ends visibly. Aborts (Stop /
-        // errors) drain the counter so it doesn't resume on its own.
-        bool willAutoContinue = false;
+        // Auto-repeat is NOT fired from here: TickAutoRepeat (Update) sends the next repeat
+        // only once the whole AI process has settled, because a reply can request more
+        // turns after it ends (stitch / audio / web / deferred-action continues) and a
+        // repeat fired now would bump the turn epoch, drop that continue and wipe the
+        // parked action queue. Aborts (Stop / errors) drain the counter here; the tick
+        // then unchecks the box.
         bool repeatOn = _autoContinueToggle != null && _autoContinueToggle.isOn;
         bool inspectResumePendingForTurn = !aborted
             && _inspectAutoResumePending
@@ -7332,15 +7320,6 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                     "If the user's request still needs a render or edit, emit that action NOW using the anchors / chat_image numbers in CHAT IMAGES; if the request is already complete, reply in one short sentence.)");
             }
         }
-        else if (repeatOn && !explicitResumePendingForTurn && _autoContinueRemaining > 0 && !HasPendingSidecarWork())
-        {
-            willAutoContinue = true;
-        }
-        else if (repeatOn && !explicitResumePendingForTurn)
-        {
-            // Burst complete - auto-uncheck (its handler zeroes the counter).
-            _autoContinueToggle.isOn = false;
-        }
 
         // Keep the turn's final token/speed numbers on screen instead of snapping
         // straight to Idle - they used to vanish before the user could read them.
@@ -7348,7 +7327,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         string doneStatus;
         if (aborted)
             doneStatus = string.IsNullOrEmpty(stats) ? "Stopped" : $"Stopped   {stats}";
-        else if (willAutoContinue)
+        else if (repeatOn && _autoContinueRemaining > 0 && !explicitResumePendingForTurn && !IsAIChatProcessBusy())
             doneStatus = $"Auto-repeat ({_autoContinueRemaining} left)";
         else if (inspectResumePendingForTurn)
             doneStatus = HasPendingSidecarWork() ? "Waiting for inspection" : "Continuing after inspection";
@@ -7362,38 +7341,77 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (shouldAutoScroll)
             StartCoroutine(ScrollToBottomDeferred());
 
-        if (willAutoContinue)
-        {
-            StartCoroutine(FireAutoContinueNextFrame());
-        }
-        else
-        {
-            TryScheduleInspectAutoResume();
-            TryScheduleSkillLoadAutoResume();
-            TryScheduleGenericContinue();
-            // Re-focus the chat input so the user can immediately type their next message
-            // (unless they're in the middle of editing some other input - e.g. a bubble).
-            FocusInputDeferred();
-        }
+        TryScheduleInspectAutoResume();
+        TryScheduleSkillLoadAutoResume();
+        TryScheduleGenericContinue();
+        // Re-focus the chat input so the user can immediately type their next message
+        // (unless they're in the middle of editing some other input - e.g. a bubble).
+        FocusInputDeferred();
+    }
+
+    // How long the AI process must stay settled before the next auto-repeat fires.
+    // Guards the one-frame handoffs between "work finished" and "continue registered"
+    // (e.g. a caption result re-poking the schedulers next frame).
+    private const float AUTO_REPEAT_SETTLE_SECONDS = 0.5f;
+    private float _autoRepeatIdleSince = -1f;
+
+    /// <summary>
+    /// True while the AI's own multi-step process is unfinished: a reply streaming or
+    /// queued, a continue / resume it asked for, sidecar work it started (captions,
+    /// inspections, web fetches, video imports), its action queue still draining or
+    /// parked on a deferred action (stitch_video / set_video_audio / generate_* /
+    /// web_* / a source image still rendering), or a compact summary. Auto-repeat waits
+    /// for all of it. GPU renders the reply merely queued do NOT count: nothing in the
+    /// AI's turn waits on them unless an action deferred on one (covered by the pump).
+    /// </summary>
+    private bool IsAIChatProcessBusy()
+    {
+        return _isStreaming
+            || _waitingForForcedMainLLM
+            || _compactSummaryInFlight
+            || HasPendingSidecarWork()
+            || HasInspectAutoResumePendingForCurrentTurn()
+            || HasSkillLoadAutoResumePendingForCurrentTurn()
+            || HasGenericContinuePendingForCurrentTurn()
+            || (_actionExecutor != null && !_actionExecutor.IsIdle)
+            || _stitchWaitCount > 0
+            || HasPendingAudioGeneration();
     }
 
     /// <summary>
-    /// Defer the next auto-continue Send by one frame so the previous turn's
-    /// FinalizeAssistantTurn fully unwinds (status text settled, bubble edit
-    /// hookups complete) before we re-enter the send pipeline.
+    /// Called every frame from Update. The single place that fires "Auto repeat msg"
+    /// sends and ends the burst: once the AI process has been settled for
+    /// AUTO_REPEAT_SETTLE_SECONDS, either send the next repeat or, with none left
+    /// (the last repeat ran, or an abort drained the counter), uncheck the box.
     /// </summary>
-    private IEnumerator FireAutoContinueNextFrame()
+    private void TickAutoRepeat()
     {
-        yield return null;
-        // Bail if anything cancelled the burst during the yield (user hit Stop,
-        // toggled Auto off, cleared, or kicked off a manual send themselves).
-        if (_autoContinueToggle == null || !_autoContinueToggle.isOn) yield break;
-        if (_isStreaming) yield break;
-        if (_waitingForForcedMainLLM) yield break;
-        if (HasPendingSidecarWork()) yield break;
-        if (_autoContinueRemaining <= 0) yield break;
-        // Consume one repeat as we fire it, so N counts total sends regardless of
-        // whether this fire came from checking the box or a finishing reply.
+        if (_autoContinueToggle == null || !_autoContinueToggle.isOn || IsAIChatProcessBusy())
+        {
+            _autoRepeatIdleSince = -1f;
+            return;
+        }
+        if (_autoRepeatIdleSince < 0f)
+        {
+            _autoRepeatIdleSince = Time.unscaledTime;
+            return;
+        }
+        if (Time.unscaledTime - _autoRepeatIdleSince < AUTO_REPEAT_SETTLE_SECONDS)
+            return;
+        _autoRepeatIdleSince = -1f;
+
+        if (_autoContinueRemaining <= 0)
+        {
+            // Burst complete - auto-uncheck (its handler zeroes the counter).
+            _autoContinueToggle.isOn = false;
+            return;
+        }
+        FireAutoRepeat();
+    }
+
+    private void FireAutoRepeat()
+    {
+        // Consume one repeat as we fire it, so N counts total sends.
         _autoContinueRemaining--;
         // Reflect the live countdown in the N field.
         SetAutoRepeatCountField(_autoContinueRemaining);
@@ -7406,6 +7424,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         {
             _autoContinueFiring = false;
         }
+        // A send gate refused the message (no LLM configured, vision mismatch, slash
+        // command, ...). End the burst instead of re-firing into the same refusal and
+        // silently burning the remaining count.
+        if (!_isStreaming && !_waitingForForcedMainLLM && _autoContinueToggle != null && _autoContinueToggle.isOn)
+            _autoContinueToggle.isOn = false;
     }
 
     private void ReleaseActiveLLM()
@@ -14667,6 +14690,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         }
 
         UpdateSpeechControls();
+        TickAutoRepeat();
 
         // Attachment captioning can run before the user sends, so give it the same
         // "still working" treatment as chat streaming and compact-summary requests.
