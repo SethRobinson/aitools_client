@@ -289,13 +289,7 @@ public class GeminiTextCompletionManager : MonoBehaviour
                 
                 string errorBody = downloadHandler.GetContent();
                 if (string.IsNullOrEmpty(errorBody))
-                {
-                    try
-                    {
-                        errorBody = _currentRequest.downloadHandler.text;
-                    }
-                    catch { }
-                }
+                    errorBody = downloadHandler.GetRawText(); // pretty-printed error JSON
                 
                 Debug.Log("Gemini Error Response: " + errorBody);
 

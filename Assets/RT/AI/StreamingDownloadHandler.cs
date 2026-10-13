@@ -23,6 +23,9 @@ public class StreamingDownloadHandler : DownloadHandlerScript
         return new string(chars, 0, n);
     }
     private string incompleteChunk = "";
+    // Raw copy of the start of the response, for error bodies the line parser can't read.
+    private const int RawTextCap = 64 * 1024;
+    private readonly StringBuilder _rawText = new StringBuilder();
     private bool isErrorResponse = false;
     private bool _inReasoningBlock = false;
     private bool _reasoningBlockClosed = false;
@@ -57,6 +60,9 @@ public class StreamingDownloadHandler : DownloadHandlerScript
 
         string text = DecodeChunk(data, dataLength);
         if (text.Length == 0) return true; // the slice ended inside a multi-byte character; wait for the rest
+
+        if (_rawText.Length < RawTextCap)
+            _rawText.Append(text, 0, Math.Min(text.Length, RawTextCap - _rawText.Length));
 
         // Check if this might be an error response (only check first chunk)
         if (stringBuilder.Length == 0 && text.TrimStart().StartsWith("{\"error"))
@@ -106,35 +112,12 @@ public class StreamingDownloadHandler : DownloadHandlerScript
             }
         }
 
-        // Handle the last part: it could be a complete or incomplete chunk
-        string lastPart = parts[parts.Length - 1].Trim();
-        if (lastPart.EndsWith("}")) // A simple check to assume completeness
-        {
-            if (lastPart.StartsWith("data: "))
-            {
-                string jsonPart = lastPart.Substring(6); // Remove "data: " prefix
-                if (jsonPart != "[DONE]")
-                {
-                    ProcessJsonChunk(jsonPart);
-                }
-                incompleteChunk = ""; // Reset incomplete chunk as it's now processed
-            }
-            else if (lastPart.StartsWith("{"))
-            {
-                // NDJSON format (Ollama native)
-                ProcessJsonChunk(lastPart);
-                incompleteChunk = ""; // Reset incomplete chunk as it's now processed
-            }
-            else
-            {
-                incompleteChunk = lastPart;
-            }
-        }
-        else
-        {
-            // Last part is incomplete; store it for the next batch
-            incompleteChunk = lastPart;
-        }
+        // The unterminated tail is only complete once its newline arrives (CompleteContent
+        // feeds a final "\n"), matching the Anthropic/Gemini handlers. The old "ends with }"
+        // shortcut parsed slices cut mid-line such as data: {"choices":[{"delta":{"content":"x"}
+        // (SimpleJSON returns the inner node for truncated input) and then dropped the rest of
+        // the line, losing reply tokens. Keep it untrimmed: trailing spaces can be content.
+        incompleteChunk = parts[parts.Length - 1];
     }
 
     protected void ProcessJsonChunk(string jsonChunk)
@@ -368,6 +351,18 @@ public class StreamingDownloadHandler : DownloadHandlerScript
     protected override void CompleteContent()
     {
         Debug.Log("Download complete!");
+        if (!isErrorResponse && incompleteChunk.Length > 0)
+            ProcessChunk("\n"); // the final line may arrive without a trailing newline
+    }
+
+    /// <summary>
+    /// Everything the server sent, undecoded by the stream parser (capped). An HTTP error
+    /// body that is pretty-printed JSON or plain text matches neither the SSE nor the NDJSON
+    /// line shapes, so <see cref="GetContent"/> is empty for it; error surfacing uses this.
+    /// </summary>
+    public string GetRawText()
+    {
+        return _rawText.ToString();
     }
 
     public string GetContent()

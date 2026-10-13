@@ -27,6 +27,11 @@ public class GeminiStreamingDownloadHandler : DownloadHandlerScript
         return new string(chars, 0, n);
     }
     private StringBuilder incompleteChunk = new StringBuilder();
+    // Raw copy of the start of the response: Gemini pretty-prints its HTTP error JSON
+    // (an opening brace on its own line), which matches no stream line shape and left
+    // GetContent empty.
+    private const int RawTextCap = 64 * 1024;
+    private readonly StringBuilder _rawText = new StringBuilder();
     private bool isErrorResponse = false;
 
     public GeminiStreamingDownloadHandler(Action<string> textChunkUpdateCallback) : base(new byte[1024])
@@ -44,6 +49,9 @@ public class GeminiStreamingDownloadHandler : DownloadHandlerScript
 
         string text = DecodeChunk(data, dataLength);
         if (text.Length == 0) return true; // the slice ended inside a multi-byte character; wait for the rest
+
+        if (_rawText.Length < RawTextCap)
+            _rawText.Append(text, 0, Math.Min(text.Length, RawTextCap - _rawText.Length));
 
         // Check if this might be an error response (only check first chunk)
         if (stringBuilder.Length == 0 && text.TrimStart().StartsWith("{\"error"))
@@ -170,6 +178,12 @@ public class GeminiStreamingDownloadHandler : DownloadHandlerScript
     public bool IsError()
     {
         return isErrorResponse;
+    }
+
+    /// <summary>Everything the server sent (capped), for error bodies the line parser can't read.</summary>
+    public string GetRawText()
+    {
+        return _rawText.ToString();
     }
 }
 

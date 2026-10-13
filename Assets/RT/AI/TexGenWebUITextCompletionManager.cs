@@ -753,6 +753,8 @@ public class TexGenWebUITextCompletionManager : MonoBehaviour
             {
                 string msg = _currentRequest.error;
                 string errorResponse = downloadHandler.GetContentAsString();
+                if (string.IsNullOrEmpty(errorResponse))
+                    errorResponse = downloadHandler.GetRawText(); // pretty-printed / plain-text error body
                 Debug.Log($"Error: {msg}");
                 Debug.Log($"Response Code: {_currentRequest.responseCode}");
                 Debug.Log($"Response Body: {errorResponse}");

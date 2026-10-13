@@ -1063,10 +1063,11 @@ public class OpenAITextCompletionManager : MonoBehaviour
 
             // Best-available response body for diagnostics / error surfacing.
             string body = downloadHandler.GetContentAsString();
-            if (string.IsNullOrEmpty(body) && _currentRequest.downloadHandler != null)
-            {
-                try { body = _currentRequest.downloadHandler.text; } catch { }
-            }
+            // A pretty-printed / plain-text error body matches no stream line shape, so the
+            // parsed content is empty; fall back to the raw bytes so the sampler-strip retry,
+            // model-not-found switch and the error bubble can see the server's message.
+            if (string.IsNullOrEmpty(body) && serverError)
+                body = downloadHandler.GetRawText();
 
             if (serverError && !retriedSamplingStrip)
             {
