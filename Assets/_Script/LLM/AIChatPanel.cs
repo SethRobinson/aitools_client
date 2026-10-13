@@ -2475,6 +2475,15 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         return _genericContinuePending && _genericContinueTurnEpoch == _chatTurnEpoch;
     }
 
+    // The reply's actions are still running or parked (e.g. an image_to_image waiting for
+    // the anchor Pic an earlier action is rendering). A synthetic continue resets the
+    // executor for its new turn, which silently dropped those actions, so the auto-resume
+    // schedulers wait for this too; Update re-pokes them once the pump drains.
+    private bool IsActionPumpBusy()
+    {
+        return _actionExecutor != null && !_actionExecutor.IsIdle;
+    }
+
     private static string BuildInspectImagePromptDetails(InspectImageRequest req, LLMInstanceInfo inst, int targetId)
     {
         string source = req != null && !string.IsNullOrWhiteSpace(req.sourceLabel) ? req.sourceLabel : "the image";
@@ -2529,7 +2538,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             CancelInspectAutoResume();
             return;
         }
-        if (_isStreaming || _waitingForForcedMainLLM || _compactSummaryInFlight || HasPendingSidecarWork())
+        if (_isStreaming || _waitingForForcedMainLLM || _compactSummaryInFlight || HasPendingSidecarWork() || IsActionPumpBusy())
             return;
 
         _inspectAutoResumeScheduled = true;
@@ -2544,7 +2553,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             yield break;
         if (_inspectAutoResumeTurnEpoch != turnEpoch || _chatTurnEpoch != turnEpoch)
             yield break;
-        if (_isStreaming || _waitingForForcedMainLLM || _compactSummaryInFlight || HasPendingSidecarWork())
+        if (_isStreaming || _waitingForForcedMainLLM || _compactSummaryInFlight || HasPendingSidecarWork() || IsActionPumpBusy())
         {
             _inspectAutoResumeScheduled = false;
             TryScheduleInspectAutoResume();
@@ -2602,7 +2611,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // synthetic continue; SendChatTurn will cancel this stale skill-load request.
         if (HasInspectAutoResumePendingForCurrentTurn())
             return;
-        if (_isStreaming || _waitingForForcedMainLLM || _compactSummaryInFlight || HasPendingSidecarWork())
+        if (_isStreaming || _waitingForForcedMainLLM || _compactSummaryInFlight || HasPendingSidecarWork() || IsActionPumpBusy())
             return;
 
         _skillLoadAutoResumeScheduled = true;
@@ -2622,7 +2631,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             _skillLoadAutoResumeScheduled = false;
             yield break;
         }
-        if (_isStreaming || _waitingForForcedMainLLM || _compactSummaryInFlight || HasPendingSidecarWork())
+        if (_isStreaming || _waitingForForcedMainLLM || _compactSummaryInFlight || HasPendingSidecarWork() || IsActionPumpBusy())
         {
             _skillLoadAutoResumeScheduled = false;
             TryScheduleSkillLoadAutoResume();
@@ -2676,7 +2685,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // this one (SendChatTurn will have bumped the epoch anyway).
         if (HasInspectAutoResumePendingForCurrentTurn() || HasSkillLoadAutoResumePendingForCurrentTurn())
             return;
-        if (_isStreaming || _waitingForForcedMainLLM || _compactSummaryInFlight || HasPendingSidecarWork())
+        if (_isStreaming || _waitingForForcedMainLLM || _compactSummaryInFlight || HasPendingSidecarWork() || IsActionPumpBusy())
             return;
 
         _genericContinueScheduled = true;
@@ -2696,7 +2705,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             _genericContinueScheduled = false;
             yield break;
         }
-        if (_isStreaming || _waitingForForcedMainLLM || _compactSummaryInFlight || HasPendingSidecarWork())
+        if (_isStreaming || _waitingForForcedMainLLM || _compactSummaryInFlight || HasPendingSidecarWork() || IsActionPumpBusy())
         {
             _genericContinueScheduled = false;
             TryScheduleGenericContinue();
@@ -14691,6 +14700,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
         UpdateSpeechControls();
         TickAutoRepeat();
+
+        // Nothing calls back when the action pump drains, so a resume held by
+        // IsActionPumpBusy is re-poked here (TrySchedule* are no-ops once scheduled).
+        if ((HasInspectAutoResumePendingForCurrentTurn() || HasSkillLoadAutoResumePendingForCurrentTurn()
+             || HasGenericContinuePendingForCurrentTurn()) && !IsActionPumpBusy())
+            PokeAutoResumeSchedulers();
 
         // Attachment captioning can run before the user sends, so give it the same
         // "still working" treatment as chat streaming and compact-summary requests.
