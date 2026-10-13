@@ -1261,7 +1261,7 @@ set_default_audio_negative_prompt|music|
                 else if (words[0] == "set_bat_sound_volume_mod")
                 {
                     float volMod;
-                    float.TryParse(words[1], out volMod);
+                    TryParseConfigFloat(words[1], out volMod);
                     _snapShotBatSoundVolumeMod = volMod;
                 }
             }
@@ -1576,7 +1576,7 @@ set_default_audio_negative_prompt|music|
                 } else if (words[0] == "set_bat_sound_volume_mod")
                 {
                     float volMod;
-                    float.TryParse(words[1], out volMod);
+                    TryParseConfigFloat(words[1], out volMod);
                     _snapShotBatSoundVolumeMod = volMod;
                 }
                 else if (words[0] == "add_generic_llm_parm")

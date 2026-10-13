@@ -176,7 +176,7 @@ public class GamePicManager : MonoBehaviour
         if (gpu == -1)
         {
             Debug.LogError("No GPU available for inpaint");
-            yield return true;
+            yield break;
         }
 
         var gpuInfo = Config.Get().GetGPUInfo(gpu);
