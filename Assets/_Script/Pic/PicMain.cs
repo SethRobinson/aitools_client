@@ -2947,13 +2947,36 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     // is naturally evicted by the reference-equality check. Eliminates the
     // 100-500 ms re-encode hitch when the AI Chat path reads the same
     // chat_image="N" multiple times across follow-up edits.
+    // The reference alone is not enough: an in-place change (non-aspect Resize, @resize,
+    // text labels, tiling) keeps the same Texture2D, and a movie's RenderTexture keeps the
+    // same reference while it plays, so the cache returned the pre-edit image / the first
+    // frame forever. Stills also key on Texture.updateCount (bumped by every Apply/resize);
+    // movie snapshots are only reused within the same rendered frame.
     private byte[] _cachedPng;
     private Texture _cachedPngSourceTex;
+    private uint _cachedPngUpdateCount;
+    private int _cachedPngFrame = -1;
 
     private void InvalidateCachedPng()
     {
         _cachedPng = null;
         _cachedPngSourceTex = null;
+        _cachedPngFrame = -1;
+    }
+
+    private bool IsCachedPngValidFor(Texture tex)
+    {
+        if (_cachedPng == null || !ReferenceEquals(_cachedPngSourceTex, tex)) return false;
+        if (tex is RenderTexture) return _cachedPngFrame == Time.frameCount;
+        return _cachedPngUpdateCount == tex.updateCount;
+    }
+
+    private void StoreCachedPng(byte[] png, Texture tex)
+    {
+        _cachedPng = png;
+        _cachedPngSourceTex = tex;
+        _cachedPngUpdateCount = tex.updateCount;
+        _cachedPngFrame = Time.frameCount;
     }
 
     public bool TryGetImageAsPng(out byte[] pngBytes)
@@ -2962,7 +2985,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         if (!TryGetCurrentTexture(out Texture tex) || tex == null) return false;
 
         // Cache hit: the same texture reference encoded earlier is still live.
-        if (_cachedPng != null && ReferenceEquals(_cachedPngSourceTex, tex))
+        if (IsCachedPngValidFor(tex))
         {
             pngBytes = _cachedPng;
             return pngBytes.Length > 0;
@@ -2975,8 +2998,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 pngBytes = tex2d.EncodeToPNG();
                 if (pngBytes != null && pngBytes.Length > 0)
                 {
-                    _cachedPng = pngBytes;
-                    _cachedPngSourceTex = tex;
+                    StoreCachedPng(pngBytes, tex);
                     return true;
                 }
                 return false;
@@ -3005,8 +3027,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                 pngBytes = snap.EncodeToPNG();
                 if (pngBytes != null && pngBytes.Length > 0)
                 {
-                    _cachedPng = pngBytes;
-                    _cachedPngSourceTex = tex;
+                    StoreCachedPng(pngBytes, tex);
                     return true;
                 }
                 return false;
