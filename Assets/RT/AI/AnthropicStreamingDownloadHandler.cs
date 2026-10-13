@@ -56,6 +56,14 @@ public class AnthropicStreamingDownloadHandler : DownloadHandlerScript
         return rawResponse.ToString();
     }
 
+    private string _streamError;
+
+    /// <summary>"type: message" of an SSE error event received inside a 200 stream, or null.</summary>
+    public string GetStreamError()
+    {
+        return _streamError;
+    }
+
     // Only newline-terminated lines are parsed; the tail stays buffered until its newline
     // arrives (CompleteContent feeds a final "\n"). The old version parsed the unterminated
     // tail too and then kept it as the incomplete chunk, and since SimpleJSON returns a
@@ -93,6 +101,16 @@ public class AnthropicStreamingDownloadHandler : DownloadHandlerScript
         try
         {
             JSONNode rootNode = JSON.Parse(jsonChunk);
+            if (rootNode["type"] == "error")
+            {
+                // Mid-stream failure inside an HTTP 200 (e.g. overloaded_error): without this
+                // the manager reported the truncated text as a successful reply.
+                JSONNode err = rootNode["error"];
+                string errType = err != null ? (string)err["type"] : null;
+                string errMsg = err != null ? (string)err["message"] : null;
+                _streamError = string.IsNullOrEmpty(errType) ? (errMsg ?? jsonChunk) : errType + ": " + (errMsg ?? "");
+                return;
+            }
             if (rootNode["type"] == "content_block_delta" && rootNode["delta"] != null && rootNode["delta"]["text"] != null)
             {
                 string content = rootNode["delta"]["text"];

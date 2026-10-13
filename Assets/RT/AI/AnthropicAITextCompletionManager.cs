@@ -271,9 +271,10 @@ public class AnthropicAITextCompletionManager : MonoBehaviour
                 yield break;
             }
 
-            if (_currentRequest.result != UnityWebRequest.Result.Success)
+            string streamError = downloadHandler != null ? downloadHandler.GetStreamError() : null;
+            if (_currentRequest.result != UnityWebRequest.Result.Success || !string.IsNullOrEmpty(streamError))
             {
-                string msg = _currentRequest.error;
+                string msg = !string.IsNullOrEmpty(streamError) ? "Anthropic stream error: " + streamError : _currentRequest.error;
                 // The streaming handler's .text only exposes SSE-parsed content, which is
                 // empty for non-SSE error responses. Pull the raw bytes instead so we can
                 // see what Anthropic actually said (e.g. parameter rejection messages).
