@@ -621,6 +621,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     public static void Show()
     {
+        // Outside play mode (an editor tool calling in) this would build the panel into the
+        // open edit scene, where it then starts visible in every play session.
+        if (!Application.isPlaying) return;
+
         if (_instance != null)
         {
             _instance.SetVisible(true);

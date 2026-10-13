@@ -248,6 +248,21 @@ public static class AutomationController
                 return;
             }
 
+            // Everything except the editor-level commands drives runtime UI. Run in edit mode,
+            // the procedural panels' static Show() builds their GameObjects INTO THE OPEN
+            // SCENE (a stray AIChatPanel then appeared at the start of every play session
+            // and would be saved into Main.unity), so refuse instead.
+            bool editorLevel = readOnly || path == "/rebuild" || path == "/play" || path == "/stop"
+                || path == "/render_validation" || path == "/configure_urp" || path == "/windows_render_validation"
+                || path == "/screenshot";
+            bool playingNow;
+            lock (_snapLock) { playingNow = _snapPlaying; }
+            if (!editorLevel && !playingNow)
+            {
+                WriteJson(stream, 409, "{\"ok\":false,\"error\":\"not in play mode: POST /play (or /rebuild) first\"}");
+                return;
+            }
+
             switch (path)
             {
                 case "":
