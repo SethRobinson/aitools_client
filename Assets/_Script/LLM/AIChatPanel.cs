@@ -3398,7 +3398,10 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // for any formatted bubble: its history line was rewritten with marker text in
         // place of the tool-call XML and its prompt cache thrown away, on a mere click.
         // Only a field whose text actually changed while focused counts as an edit.
-        string textAtFocus = null;
+        // A bubble already focused when this hooks up (clicked during streaming, e.g. on
+        // its [thinking...] link) never fires onSelect, so take the baseline now; a null
+        // baseline read as "changed" and the next click elsewhere rewrote the reply.
+        string textAtFocus = input.isFocused ? input.text : null;
         input.onSelect.AddListener(_ => textAtFocus = input.text);
         input.onEndEdit.AddListener(text =>
         {
