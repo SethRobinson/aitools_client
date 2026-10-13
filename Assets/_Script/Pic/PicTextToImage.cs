@@ -55,6 +55,11 @@ public class PicTextToImage : MonoBehaviour
 
             if (gameObject.activeInHierarchy)
             {
+                // Stop the submit / history-poll coroutines first (as ForceCancelForReconnect
+                // does). Left running, a submit in flight still posted the job after the
+                // cancel, and a stale poller later hit "missing history" and finished or
+                // failure-reported whatever job this Pic had started next.
+                StopAllCoroutines();
                 // If the object is still active, use the coroutine for smooth cleanup
                 StartCoroutine(CancelRender());
             }
