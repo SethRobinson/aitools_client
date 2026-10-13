@@ -277,6 +277,17 @@ namespace AITools.AIChat.Mirroring
 
         private void NotifyPicMissing()
         {
+            // PicMain.OnDestroy destroys its sprite texture (possibly a frame after the Pic
+            // itself reads as gone); a RawImage bound to a destroyed texture falls back to
+            // solid white, so drop it and dim the slot instead. Checked every frame, not
+            // just once, for that reason.
+            if (targetImage != null && targetImage.texture == null && !ReferenceEquals(targetImage.texture, null))
+            {
+                targetImage.texture = null;
+                targetImage.color = new Color(1f, 1f, 1f, 0.08f);
+                _lastBoundTexture = null;
+            }
+
             if (_picWentMissingNotified) return;
             _picWentMissingNotified = true;
             if (statusLabel != null)

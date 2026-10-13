@@ -2217,6 +2217,7 @@ namespace AITools.AIChat.Skills
             if (picMain == null)
             {
                 _host?.AddInfoBubble("Skill error: spawned object has no PicMain.");
+                UnityEngine.Object.Destroy(picGO);
                 return;
             }
 
@@ -2237,6 +2238,7 @@ namespace AITools.AIChat.Skills
                     UnityEngine.Object.Destroy(tex);
                     _host?.AddSystemInjectionAndBubble(
                         $"Skill '{action.SkillId}': could not decode attachment {action.AttachmentIndex ?? 1} as an image.");
+                    picMain.SafelyKillThisPic(); // don't leave an empty Pic with no chat bubble
                     return;
                 }
             }
@@ -2245,7 +2247,7 @@ namespace AITools.AIChat.Skills
             // upload slots. The Pic takes ownership of each texture and uploads it (no
             // display, no mask).
             for (int slot = 2; slot <= PicMain.MaxExtraInputImageSlot; slot++)
-                if (!TryWireExtraInput(picMain, extraBytes[slot], slot, action.SkillId)) return;
+                if (!TryWireExtraInput(picMain, extraBytes[slot], slot, action.SkillId)) { picMain.SafelyKillThisPic(); return; }
 
             // Standalone audio references -> @upload|audio1..3| (H3 reference presets;
             // resolved + tag-gated above). New Pic, so no stale paths to clear.
@@ -2279,6 +2281,7 @@ namespace AITools.AIChat.Skills
                         $"Skill '{action.SkillId}' needs a SOURCE VIDEO, but chat_image=\"{srcChatN}\" is not a \"Movie #N\" bubble. " +
                         "Point chat_image at an existing movie clip, or to operate on a movie you make in THIS same reply, emit the " +
                         "generate/animate/clip action first and add chain=\"true\" to this action.");
+                    picMain.SafelyKillThisPic();
                     return;
                 }
                 picMain.m_pendingVideoUploadPath = moviePath;
@@ -6105,6 +6108,7 @@ namespace AITools.AIChat.Skills
             if (picMain == null)
             {
                 _host?.AddInfoBubble($"Skill '{skillId}' error: spawned object has no PicMain.");
+                UnityEngine.Object.Destroy(picGO);
                 return;
             }
 
@@ -6114,6 +6118,7 @@ namespace AITools.AIChat.Skills
                 UnityEngine.Object.Destroy(tex);
                 _host?.AddSystemInjectionAndBubble(
                     $"Skill '{skillId}': could not decode the canvas image bytes.");
+                picMain.SafelyKillThisPic(); // don't leave an empty Pic with no chat bubble
                 return;
             }
             picMain.SetImage(tex, false);
