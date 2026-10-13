@@ -937,7 +937,7 @@ public class ServerSettingsPanel : MonoBehaviour
     {
         if (_serverID < 0) return;
 
-        GPUInfo serverInfo = Config.Get().GetGPUInfo(_serverID);
+        GPUInfo serverInfo = Config.Get().IsValidGPU(_serverID) ? Config.Get().GetGPUInfo(_serverID) : null;
         if (!Config.Get().IsValidGPU(_serverID))
         {
             RTConsole.Log("Invalid server ID " + _serverID);
@@ -1066,7 +1066,7 @@ public class ServerSettingsPanel : MonoBehaviour
         _autoPicSelection = fileName ?? "";
         UpdateAutoPicButtonLabel();
 
-        GPUInfo serverInfo = Config.Get().GetGPUInfo(_serverID);
+        GPUInfo serverInfo = Config.Get().IsValidGPU(_serverID) ? Config.Get().GetGPUInfo(_serverID) : null;
         if (!Config.Get().IsValidGPU(_serverID))
         {
             RTConsole.Log("Invalid server ID " + _serverID);
@@ -1077,7 +1077,7 @@ public class ServerSettingsPanel : MonoBehaviour
 
     public void OnJobListChanged()
     {
-        GPUInfo serverInfo = Config.Get().GetGPUInfo(_serverID);
+        GPUInfo serverInfo = Config.Get().IsValidGPU(_serverID) ? Config.Get().GetGPUInfo(_serverID) : null;
         if (!Config.Get().IsValidGPU(_serverID))
         {
             RTConsole.Log("Invalid server ID " + _serverID);
@@ -1089,7 +1089,7 @@ public class ServerSettingsPanel : MonoBehaviour
 
     public void OnRenderCountChanged()
     {
-        GPUInfo serverInfo = Config.Get().GetGPUInfo(_serverID);
+        GPUInfo serverInfo = Config.Get().IsValidGPU(_serverID) ? Config.Get().GetGPUInfo(_serverID) : null;
         if (!Config.Get().IsValidGPU(_serverID)) return;
 
         if (int.TryParse(_renderCountInputField.text, out int count))
@@ -1106,7 +1106,7 @@ public class ServerSettingsPanel : MonoBehaviour
 
     public void OnIgnoredByExtraChanged(bool isOn)
     {
-        GPUInfo serverInfo = Config.Get().GetGPUInfo(_serverID);
+        GPUInfo serverInfo = Config.Get().IsValidGPU(_serverID) ? Config.Get().GetGPUInfo(_serverID) : null;
         if (!Config.Get().IsValidGPU(_serverID)) return;
 
         serverInfo._ignoredByExtraGenerators = isOn;
@@ -1114,7 +1114,7 @@ public class ServerSettingsPanel : MonoBehaviour
 
     public void OnGPULockedChanged(bool isOn)
     {
-        GPUInfo serverInfo = Config.Get().GetGPUInfo(_serverID);
+        GPUInfo serverInfo = Config.Get().IsValidGPU(_serverID) ? Config.Get().GetGPUInfo(_serverID) : null;
         if (!Config.Get().IsValidGPU(_serverID)) return;
 
         serverInfo._gpuLocked = isOn;
@@ -1125,7 +1125,7 @@ public class ServerSettingsPanel : MonoBehaviour
 
     public void OnGPUNameFilterChanged(string text)
     {
-        GPUInfo serverInfo = Config.Get().GetGPUInfo(_serverID);
+        GPUInfo serverInfo = Config.Get().IsValidGPU(_serverID) ? Config.Get().GetGPUInfo(_serverID) : null;
         if (!Config.Get().IsValidGPU(_serverID)) return;
 
         serverInfo._gpuNameMatchFilter = text == null ? "" : text.Trim();
@@ -1133,7 +1133,7 @@ public class ServerSettingsPanel : MonoBehaviour
 
     private void UpdateCheckboxInteractability()
     {
-        GPUInfo serverInfo = Config.Get().GetGPUInfo(_serverID);
+        GPUInfo serverInfo = Config.Get().IsValidGPU(_serverID) ? Config.Get().GetGPUInfo(_serverID) : null;
         if (serverInfo == null) return;
 
         bool hasRenderCount = serverInfo._adventureRenderCount >= 1;
