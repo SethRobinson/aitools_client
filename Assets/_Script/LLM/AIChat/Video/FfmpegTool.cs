@@ -1283,6 +1283,9 @@ namespace AITools.AIChat.Video
                     }
                     else
                     {
+                        // Let the async readers flush: the timed WaitForExit overload does not
+                        // wait for them, and ffprobe JSON / loudnorm stats are the last output.
+                        process.WaitForExit();
                         result.ExitCode = process.ExitCode;
                         result.Success = process.ExitCode == 0;
                     }
@@ -1643,8 +1646,10 @@ namespace AITools.AIChat.Video
             var sb = new StringBuilder(s.Length);
             foreach (char c in s)
             {
-                bool bad = false;
-                for (int i = 0; i < invalid.Length; i++)
+                // '%' is a legal filename char, but ffmpeg's image writers read "%d" in an
+                // output name as a frame-number pattern and write somewhere else.
+                bool bad = c == '%';
+                for (int i = 0; i < invalid.Length && !bad; i++)
                 {
                     if (c == invalid[i]) { bad = true; break; }
                 }
