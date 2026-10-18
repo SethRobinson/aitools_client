@@ -100,7 +100,7 @@ namespace AITools.ScreenCapture.Helper
             _record.Enabled = stage == CaptureStage.Ready || stage == CaptureStage.Countdown || stage == CaptureStage.Recording || stage == CaptureStage.Starting;
             _status.Text = text;
         }
-        protected override void OnShown(EventArgs e) { base.OnShown(e); Native.Exclude(this); }
+        protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); Native.Exclude(this); }
     }
 
     internal sealed class CaptureSettingsDialog : Form
@@ -125,6 +125,6 @@ namespace AITools.ScreenCapture.Helper
             buttons.Controls.AddRange(new Control[] { save, cancel }); layout.Controls.Add(buttons); Controls.Add(layout);
             AcceptButton = save; CancelButton = cancel;
         }
-        protected override void OnShown(EventArgs e) { base.OnShown(e); Native.Exclude(this); }
+        protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); Native.Exclude(this); }
     }
 }

@@ -9,6 +9,7 @@ autosave/*
 *.csproj
 !tools/ScreenCapture/ScreenCapture.csproj
 !tools/ScreenCapture/Checks/Checks.csproj
+!tools/ScreenCapture/Checks/Overlay/OverlayChecks.csproj
 tools/ScreenCapture/**/bin/
 tools/ScreenCapture/**/obj/
 config.txt

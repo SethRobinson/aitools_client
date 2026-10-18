@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>OverlayChecks</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Windows.Forms" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <Compile Include="OverlayChecks.cs" />
+    <Compile Include="../../SelectionOverlay.cs" Link="SelectionOverlay.cs" />
+    <Compile Include="../../Native.cs" Link="Native.cs" />
+    <Compile Include="../../../../Assets/RT/ScreenCaptureContract.cs" Link="ScreenCaptureContract.cs" />
+  </ItemGroup>
+</Project>

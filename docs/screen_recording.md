@@ -14,6 +14,12 @@ monitors left of or above the primary. H.264 dimensions round down to even pixel
 The outline is blue when ready and red when recording; recorder controls and
 outlines use Windows capture exclusion.
 
+While selecting, only the area outside the rectangle is dimmed. The helper renders
+an alpha bitmap before showing each selection window, without an initial opaque
+paint or a desktop screenshot. The dragged interior is fully transparent; a fixed
+box awaiting a click uses 1/255 black alpha to retain Windows mouse hit testing.
+Capture exclusion is set when window handles are created, before they are shown.
+
 The toolbar's **Size** dropdown selects **Custom** or **Fixed**. Custom starts with a
 selection: drag its sides or its coordinate label to move it, and its corner
 handles to resize it. In Custom mode, **Aspect ratio** remembers **Any** (unlocked),
@@ -62,6 +68,12 @@ available. Resizing is deferred to a separate feature.
   marshals events through Update, rejects old-process events, validates completion
   paths, deduplicates session IDs, and queues recordings if its capture trim dialog
   is already open. Preferences use PlayerPrefs `screen_capture_settings_v1`.
+- Recorder creation, default audio-device lookup, device polling, Stop and native
+  disposal run on one serial MTA worker, never the toolbar thread. Starting shows
+  live elapsed preparation time and allows Stop, including cancellation before
+  capture begins. Completion waits for native cleanup, with stale/duplicate events
+  ignored. Driver/encoder initialization can still take time; `diagnostic` events
+  log device lookup, recorder creation and first-frame timings in Unity's log.
 - Startup arguments identify the parent PID/start time and fixed
   `tempCache/screen_recordings` directory. Recordings use `capture_<guid>.mp4` names.
   Paths reject junctions/symlinks. Sources remain for the session so closing a dialog
@@ -123,26 +135,30 @@ It performs no desktop capture, display enumeration, audio recording or UI input
 Normal release builds use the checked-in patched DLL and only require the .NET SDK.
 
 `pwsh -File scripts/VerifyScreenCapture.ps1` runs geometry, shortcut, settings,
-session lifecycle, stale/duplicate completion and path checks plus synthetic-only
+session lifecycle, worker ordering/cancellation, stale/duplicate completion and path checks plus synthetic-only
 FFmpeg audio/video fixtures at all five FPS values. It links production FfmpegTool
 source with minimal Unity math/log stubs, checks native-resolution trimming, leading
 silence and existing export defaults, and retains evidence below `build/capture-checks-*`.
 It never captures the desktop or audio devices. `dotnet build Assembly-CSharp.csproj
 --nologo -v:q` checks Unity C# compilation when Unity-generated projects include the
 new assets.
+The separate .NET Framework `Checks/Overlay` program renders only synthetic memory
+bitmaps to check transparent interiors, outside dimming, moving holes and negative
+monitor origins. It opens no windows and reads no desktop pixels.
 
 Release builds call BuildScreenCapture after Unity builds and before staging,
 sign AIToolsCapture.exe, and verify four first-party signatures. Vendor DLLs retain
 their licenses; the VC runtime retains its original bytes. See `release_packaging.md`.
 
 Validation (2026-10-18): helper/native and Unity C# compilation and
-2359 offline recorder checks passed, including all aspect-ratio choices, all four
+2366 offline recorder checks and 18 synthetic overlay checks passed, including all aspect-ratio choices, all four
 drag/resize directions, monitor-edge clamping, stable pixel rounding, preference
 round trips, fixed-size bounds, movement and zero/fractional countdowns.
 523 synthetic GPU checks cover HDR highlights,
 SDR white normalization, RGB channel order, native sizes, SDR passthrough and renderer
 state preservation. Seth confirmed the original live recording works; the new HDR
-path and interactive rectangle controls still need live acceptance. Mixed-DPI UI,
+path, flash prevention, startup responsiveness and interactive rectangle controls
+still need live acceptance. Mixed-DPI UI,
 hardware encoder fallback, device loss and a clean Windows machine remain manual
 acceptance checks. Automated desktop capture or input requires Seth's explicit
 authorization; compile and synthetic checks do not exercise those paths.

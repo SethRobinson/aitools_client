@@ -1,12 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <OutputType>Exe</OutputType>
     <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
     <NoWarn>CS8981</NoWarn>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Remove="Overlay/**/*.cs" />
     <Compile Include="../../../Assets/RT/ScreenCaptureContract.cs" Link="ScreenCaptureContract.cs" />
+    <Compile Include="../CaptureWorker.cs" Link="CaptureWorker.cs" />
     <Compile Include="../../../Assets/_Script/LLM/AIChat/Video/FfmpegTool.cs" Link="FfmpegTool.cs" />
     <Compile Include="../../../Assets/RT/Other/SimpleJSON-master/SimpleJSON.cs" Link="SimpleJSON.cs" />
   </ItemGroup>

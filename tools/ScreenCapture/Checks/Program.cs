@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -7,6 +8,7 @@ using System.Text.Json;
 using System.Threading;
 using AITools.AIChat.Video;
 using AITools.ScreenCapture;
+using AITools.ScreenCapture.Helper;
 
 internal static class Program
 {
@@ -36,6 +38,7 @@ internal static class Program
             SettingsAndGeometry();
             AspectRatios();
             Sessions();
+            WorkerLifecycle();
             Paths(evidence);
             DependencyCheck(root);
             RejectedStartup(root);
@@ -170,6 +173,43 @@ internal static class Program
         s.Countdown(); string next = s.Id; s.Start(); s.Recording(next);
         Check(!s.Complete(id) && s.Stage == CaptureStage.Recording, "Stale callback interrupted a new recording");
         s.Stop(); Check(!s.Stop() && s.Complete(next), "Repeated Stop must be harmless");
+    }
+    private static void WorkerLifecycle()
+    {
+        var order = new ConcurrentQueue<string>();
+        using (var entered = new ManualResetEventSlim())
+        using (var release = new ManualResetEventSlim())
+        using (var done = new ManualResetEventSlim())
+        using (var cancellation = new CancellationTokenSource())
+        using (var worker = new CaptureWorker(ex => order.Enqueue(ex.Message)))
+        {
+            int caller = Thread.CurrentThread.ManagedThreadId, workerId = 0;
+            ApartmentState apartment = ApartmentState.Unknown;
+            worker.Enqueue(() =>
+            {
+                workerId = Thread.CurrentThread.ManagedThreadId;
+                apartment = Thread.CurrentThread.GetApartmentState();
+                entered.Set();
+                if (!release.Wait(5000)) throw new Exception("Worker fixture release timed out");
+                order.Enqueue(cancellation.IsCancellationRequested ? "cancelled startup" : "record");
+            });
+            try
+            {
+                Check(entered.Wait(5000), "Encoder work did not start");
+                // Submission must return while startup is blocked, just as Stop/close must.
+                cancellation.Cancel();
+                Check(worker.Enqueue(() => order.Enqueue("stop")), "Stop could not be queued during startup");
+                worker.Enqueue(() => { throw new InvalidOperationException("expected failure"); });
+                worker.Enqueue(() => { order.Enqueue("dispose"); done.Set(); });
+                worker.Dispose();
+                Check(!worker.Enqueue(() => order.Enqueue("unexpected")), "Closed worker accepted new work");
+                Check(!done.IsSet, "Concurrent recorder calls escaped serialization");
+            }
+            finally { release.Set(); }
+            Check(done.Wait(5000), "Worker did not drain Stop/disposal after startup");
+            Check(workerId != caller && apartment == ApartmentState.MTA, "Encoder work must use its own MTA thread");
+            Check(string.Join(",", order) == "cancelled startup,stop,expected failure,dispose", "Cancellation/error/shutdown ordering changed");
+        }
     }
     private static void Paths(string root)
     {

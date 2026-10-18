@@ -154,6 +154,7 @@ public sealed class ScreenCaptureController : MonoBehaviour
                     case "state": _status = "Screen recorder: " + message.state; break;
                     case "error": Error(message.message); break;
                     case "notice": RTQuickMessageManager.Get().ShowMessage(message.message); break;
+                    case "diagnostic": UnityEngine.Debug.Log("Screen recorder: " + message.message); break;
                     case "completed":
                         if (!string.IsNullOrEmpty(message.sessionId) && !_completed.Contains(message.sessionId) &&
                             CapturePaths.IsRecording(_cache, message.path) && File.Exists(message.path))

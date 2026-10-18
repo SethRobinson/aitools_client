@@ -1,5 +1,7 @@
 using System;
 using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.Windows.Forms;
 
 namespace AITools.ScreenCapture.Helper
@@ -13,6 +15,7 @@ namespace AITools.ScreenCapture.Helper
         private Point _start;
         private PixelRect _selection;
         private bool _dragging;
+        private Bitmap _surface;
 
         internal SelectionOverlay(Screen screen, CaptureSettings settings, Action<Screen, PixelRect> selected, Action cancel)
         {
@@ -21,11 +24,24 @@ namespace AITools.ScreenCapture.Helper
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.Manual;
             Bounds = screen.Bounds;
-            ShowInTaskbar = false; TopMost = true; DoubleBuffered = true;
-            BackColor = Color.Black; Opacity = 0.35; Cursor = Cursors.Cross;
+            ShowInTaskbar = false; TopMost = true;
+            BackColor = Color.Black; Cursor = Cursors.Cross;
             KeyPreview = true;
         }
-        protected override void OnShown(EventArgs e) { base.OnShown(e); Native.Exclude(this); }
+        protected override CreateParams CreateParams
+        {
+            get { var p = base.CreateParams; p.ExStyle |= 0x80000 | 0x80; return p; } // WS_EX_LAYERED | TOOLWINDOW
+        }
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            Native.Exclude(this);
+            // A layered window stays invisible until its first complete bitmap is installed.
+            // Do this BEFORE Show, without a normal opaque/white background paint.
+            RenderSurface();
+        }
+        protected override void OnPaintBackground(PaintEventArgs e) { }
+        protected override void OnPaint(PaintEventArgs e) { }
         protected override void OnKeyDown(KeyEventArgs e) { if (e.KeyCode == Keys.Escape) _cancel(); base.OnKeyDown(e); }
         protected override void OnMouseDown(MouseEventArgs e)
         {
@@ -43,7 +59,7 @@ namespace AITools.ScreenCapture.Helper
             _selection = _settings.fixedSize
                 ? CaptureGeometry.Move(monitor, new PixelRect(0, 0, _settings.fixedWidth, _settings.fixedHeight), end.X - _settings.fixedWidth / 2, end.Y - _settings.fixedHeight / 2)
                 : CaptureGeometry.Select(monitor, _start.X, _start.Y, end.X, end.Y, _settings.aspectRatio);
-            Invalidate();
+            RenderSurface();
         }
         protected override void OnMouseUp(MouseEventArgs e)
         {
@@ -51,20 +67,51 @@ namespace AITools.ScreenCapture.Helper
             OnMouseMove(e); _dragging = false; Capture = false;
             if (_selection.Width >= 2 && _selection.Height >= 2) _selected(_screen, _selection);
         }
-        protected override void OnPaint(PaintEventArgs e)
+        private void RenderSurface()
         {
-            base.OnPaint(e);
-            using (var brush = new SolidBrush(Color.White))
-                e.Graphics.DrawString(_settings.fixedSize
-                    ? (_settings.fixedWidth > _screen.Bounds.Width || _settings.fixedHeight > _screen.Bounds.Height
-                        ? "Fixed size does not fit this monitor. Choose another monitor, or Esc to change the size."
-                        : "Position the fixed box and release or click to place it. Esc cancels.")
-                    : "Drag an area to record. Esc cancels.", SystemFonts.MessageBoxFont, brush, 24, 24);
-            if (_selection.Width <= 0) return;
+            if (!IsHandleCreated) return;
             Rectangle b = _screen.Bounds;
-            using (var pen = new Pen(Color.White, 3))
-                e.Graphics.DrawRectangle(pen, _selection.X - b.X, _selection.Y - b.Y, _selection.Width, _selection.Height);
-            RegionLabel.Draw(e.Graphics, Font, _selection, b, b.Location);
+            if (_surface == null) _surface = new Bitmap(b.Width, b.Height, PixelFormat.Format32bppPArgb);
+            string instruction = _settings.fixedSize
+                ? (_settings.fixedWidth > b.Width || _settings.fixedHeight > b.Height
+                    ? "Fixed size does not fit this monitor. Choose another monitor, or Esc to change the size."
+                    : "Position the fixed box and release or click to place it. Esc cancels.")
+                : "Drag an area to record. Esc cancels.";
+            using (Graphics g = Graphics.FromImage(_surface))
+                SelectionArtwork.Draw(g, _surface.Size, _selection, b, Font, instruction, !_dragging);
+            Native.PresentLayer(this, _surface);
+        }
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) { _surface?.Dispose(); _surface = null; }
+            base.Dispose(disposing);
+        }
+    }
+
+    // Draws only our own UI into an offscreen bitmap. Never reads desktop pixels.
+    internal static class SelectionArtwork
+    {
+        internal static void Draw(Graphics g, Size size, PixelRect selection, Rectangle monitor, Font font, string instruction, bool needsHitTesting)
+        {
+            g.CompositingMode = CompositingMode.SourceCopy;
+            g.Clear(Color.FromArgb(90, 0, 0, 0));
+            var hole = new Rectangle(selection.X - monitor.X, selection.Y - monitor.Y, selection.Width, selection.Height);
+            if (hole.Width > 0 && hole.Height > 0)
+            {
+                // Alpha zero passes mouse input to underlying apps. During a drag we own
+                // mouse capture, so use a completely clear hole. A hovering fixed box needs
+                // the smallest nonzero alpha (1/255 black) until the user presses the mouse.
+                using (var clear = new SolidBrush(Color.FromArgb(needsHitTesting ? 1 : 0, 0, 0, 0))) g.FillRectangle(clear, hole);
+            }
+            g.CompositingMode = CompositingMode.SourceOver;
+            using (var pen = new Pen(Color.White, 2))
+                if (hole.Width > 0 && hole.Height > 0) g.DrawRectangle(pen, hole.X - 1, hole.Y - 1, hole.Width + 2, hole.Height + 2);
+            // Keep instructions out of the selected pixels, even when selecting full screen.
+            GraphicsState state = g.Save();
+            if (hole.Width > 0 && hole.Height > 0) g.ExcludeClip(hole);
+            g.DrawString(instruction, font, Brushes.White, 24, 24);
+            g.Restore(state);
+            if (hole.Width > 0 && hole.Height > 0) RegionLabel.Draw(g, font, selection, monitor, monitor.Location, true);
         }
     }
 
@@ -148,7 +195,7 @@ namespace AITools.ScreenCapture.Helper
             if (message.Msg == 0x0084 && _locked) { message.Result = new IntPtr(-1); return; }
             base.WndProc(ref message);
         }
-        protected override void OnShown(EventArgs e) { base.OnShown(e); Native.Exclude(this); }
+        protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); Native.Exclude(this); }
         protected override void OnPaint(PaintEventArgs e)
         {
             var color = Recording ? Color.Red : Color.DeepSkyBlue;
@@ -173,11 +220,17 @@ namespace AITools.ScreenCapture.Helper
             if (y + size.Height > monitor.Bottom) y = Math.Max(monitor.Top, rect.Y + rect.Height - size.Height - 8);
             return new Rectangle(x, y, size.Width, size.Height);
         }
-        internal static void Draw(Graphics graphics, Font font, PixelRect rect, Rectangle monitor, Point origin)
+        internal static void Draw(Graphics graphics, Font font, PixelRect rect, Rectangle monitor, Point origin, bool layered = false)
         {
             Rectangle label = Bounds(font, rect, monitor); label.Offset(-origin.X, -origin.Y);
             graphics.FillRectangle(Brushes.Black, label);
-            TextRenderer.DrawText(graphics, CaptureGeometry.Describe(rect), font, label, Color.White, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+            if (layered)
+            {
+                // GDI TextRenderer does not preserve alpha on a per-pixel layered surface.
+                using (var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+                    graphics.DrawString(CaptureGeometry.Describe(rect), font, Brushes.White, label, format);
+            }
+            else TextRenderer.DrawText(graphics, CaptureGeometry.Describe(rect), font, label, Color.White, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
         }
     }
 }
