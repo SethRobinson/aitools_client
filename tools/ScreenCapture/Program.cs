@@ -55,7 +55,7 @@ namespace AITools.ScreenCapture.Helper
                                 throw new InvalidOperationException("Dependency loaded from outside the helper package: " + module.ModuleName);
                         }
                     }
-                    Emit(new CaptureEvent { type = "ready", message = "ScreenRecorderLib 7.0.1 loaded; no capture started." });
+                    Emit(new CaptureEvent { type = "ready", message = "ScreenRecorderLib 7.0.1 with AI Tools HDR support loaded; no capture started." });
                     GC.KeepAlive(options);
                     return 0;
                 }

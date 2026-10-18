@@ -14,7 +14,9 @@ Moved verbatim from AGENTS.md on 2026-09-13 (bullet style kept); update this fil
   by side and stays visible in advanced mode. General Settings has a Screen Recording
   section for enabling/editing the global shortcut (default Ctrl+Alt+F9), opening the
   toolbar and seeing status/errors. Preferences use PlayerPrefs, not config.txt.
-  The floating toolbar remembers FPS/system-audio/cursor settings. Details:
+  The floating toolbar remembers FPS/system-audio/cursor settings, Custom/Fixed size
+  and fixed pixel dimensions. Its Settings button edits the countdown, including
+  zero and fractional seconds. Details:
   `screen_recording.md`.
 
 - `Assets/_Script/GUI/MainToolPanelModeController.cs` toggles the scene-authored `CompactToolControls` and `ManualToolControls` groups on the main Tools panel without changing the underlying `GameLogic` state. It captures the scene-authored manual panel rect at startup, fits the panel to compact controls in compact mode, and restores the captured rect in manual mode. The compact row's top-left pair is two half-width text buttons (2026-10-13; the old gear icon was too easy to miss): `GenerateSettingsButton` labeled "Settings" (opens the Settings window; its gear `Image` child is inactive) and `ManualModeButton` labeled "Advanced", which keeps one label and shows the expanded state with the AI Chat button's cyan accent (`ManualActiveColor`).

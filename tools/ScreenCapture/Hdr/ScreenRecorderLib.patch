@@ -1,0 +1,57 @@
+--- a/ScreenRecorderLibNative/DesktopDuplicationCapture.h
++++ b/ScreenRecorderLibNative/DesktopDuplicationCapture.h
+@@ -4,6 +4,7 @@
+ #include <memory>
+ #include "MouseManager.h"
+ #include "TextureManager.h"
++#include "HdrToneMapper.h"
+ 
+ class DesktopDuplicationCapture : public CaptureBase
+ {
+@@ -19,6 +20,8 @@
+ 	virtual inline std::wstring Name() override { return L"DesktopDuplicationCapture"; };
+ private:
+ 	static const int NUMVERTICES = 6;
++	AIToolsHdr::ToneMapper m_HdrToneMapper;
++	float m_SdrWhite = 1.0f;
+ 	// methods
+ 	HRESULT InitializeDesktopDuplication(std::wstring deviceName);
+ 	HRESULT GetNextFrame(_In_ DWORD timeoutMillis, _Inout_ DUPL_FRAME_DATA *pData);
+--- a/ScreenRecorderLibNative/DesktopDuplicationCapture.cpp
++++ b/ScreenRecorderLibNative/DesktopDuplicationCapture.cpp
+@@ -388,7 +388,21 @@
+ 		CleanDx(&outputAdapterResources);
+ 	}
+ 
+-	hr = DxgiOutput1->DuplicateOutput(duplicationDevice, &m_DeskDupl);
++	// Keep HDR values in scRGB until our GPU tone map, before SRL's BGRA renderer.
++	CComPtr<IDXGIOutput6> hdrOutput;
++	DXGI_OUTPUT_DESC1 hdrDesc{};
++	bool isHdr = SUCCEEDED(DxgiOutput->QueryInterface(IID_PPV_ARGS(&hdrOutput))) &&
++		SUCCEEDED(hdrOutput->GetDesc1(&hdrDesc)) && hdrDesc.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020;
++	m_SdrWhite = 1.0f;
++	if (isHdr) {
++		hr = AIToolsHdr::GetSdrWhite(deviceName.c_str(), &m_SdrWhite);
++		if (FAILED(hr)) return hr;
++		const DXGI_FORMAT formats[] = { DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_B8G8R8A8_UNORM };
++		hr = hdrOutput->DuplicateOutput1(duplicationDevice, 0, ARRAYSIZE(formats), formats, &m_DeskDupl);
++	}
++	else {
++		hr = DxgiOutput1->DuplicateOutput(duplicationDevice, &m_DeskDupl);
++	}
+ 	if (FAILED(hr))
+ 	{
+ 		_com_error err(hr);
+@@ -489,7 +503,11 @@
+ 		pData->MetaData = m_MetaDataBuffer;
+ 	}
+ 
+-	pData->Frame = pAcquiredDesktopImage;
++	ID3D11Texture2D* sdrFrame = nullptr;
++	hr = m_HdrToneMapper.Convert(pAcquiredDesktopImage, m_SdrWhite, &sdrFrame);
++	pAcquiredDesktopImage->Release();
++	if (FAILED(hr)) return hr;
++	pData->Frame = sdrFrame;
+ 	pData->FrameInfo = FrameInfo;
+ 	QueryPerformanceCounter(&m_LastSampleUpdatedTimeStamp);
+ 	return S_OK;

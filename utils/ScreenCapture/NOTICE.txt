@@ -5,10 +5,19 @@ signed during release packaging. Build with scripts/BuildScreenCapture.ps1.
 Requires Windows 10 version 2004 or newer, .NET Framework 4.8, and Media Foundation
 (included in normal supported Windows editions).
 
-ScreenRecorderLib 7.0.1 is distributed unchanged under the MIT license.
+ScreenRecorderLib 7.0.1 includes the AI Tools HDR capture patch (revision 1).
+The upstream library is under the MIT license; our additions use LICENSE.md
+at the application root. This product includes software from developed by
+Seth A. Robinson ( www.rtsoft.com ).
 Source: https://github.com/sskodje/ScreenRecorderLib
 Package: https://www.nuget.org/packages/ScreenRecorderLib/7.0.1
 License: ScreenRecorderLib.LICENSE.txt
+Upstream commit: 646383234187efd3854e6b1069612b80c3ab9981
+Patch and GPU conversion source: tools/ScreenCapture/Hdr in the AI Tools repository.
+Rebuild: pwsh -File scripts/BuildScreenCaptureHdr.ps1 -Stage
+The patch retains floating-point HDR pixels, normalizes the monitor's SDR white
+level, and tone maps on the GPU before converting to 8-bit SDR. It leaves SDR
+capture unchanged. Native build/source hashes are pinned in dependencies.json.
 
 Microsoft Visual C++ runtime 14.44.35211 (x64) is distributed unchanged, app-local.
 Source: https://aka.ms/vs/17/release/vc_redist.x64.exe
@@ -18,6 +27,7 @@ vcRuntimeMinimum_amd64/cab1.cab. No installer runs on the user's machine.
 dependencies.json records the installer and individual file SHA-256 hashes.
 Do not replace these with DLLs copied from a developer's Windows directory.
 
-Third-party binaries retain their vendor bytes and are not signed by AI Tools.
+Microsoft runtime binaries retain their vendor bytes. The patched ScreenRecorderLib
+DLL is built locally; neither it nor Microsoft DLLs are signed by AI Tools.
 Windows system components, including .NET Framework and Media Foundation, are
 not redistributed here. Windows N editions need the Media Feature Pack.

@@ -23,5 +23,7 @@
   </ItemGroup>
   <Target Name="CopyRecorderLicense" AfterTargets="Build">
     <Copy SourceFiles="$(PkgScreenRecorderLib)/LICENSE" DestinationFiles="$(TargetDir)ScreenRecorderLib.LICENSE.txt" />
+    <!-- Reference the pinned public API from NuGet; run the pinned HDR-patched build. -->
+    <Copy SourceFiles="../../utils/ScreenCapture/ScreenRecorderLib.dll" DestinationFolder="$(TargetDir)" />
   </Target>
 </Project>

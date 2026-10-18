@@ -28,6 +28,14 @@ foreach ($file in @('AIToolsCapture.exe', 'AIToolsCapture.exe.config', 'ScreenRe
 # App-local Microsoft runtimes are pinned, original vendor files. Never harvest
 # machine DLLs or download replacements implicitly during a release build.
 $dependencies = Get-Content -LiteralPath (Join-Path $runtime 'dependencies.json') -Raw | ConvertFrom-Json
+foreach ($hdrInput in @(
+    @{ Name = 'ScreenRecorderLib.patch'; Hash = $dependencies.screenRecorderLibPatch.patchSha256 },
+    @{ Name = 'HdrToneMapper.h'; Hash = $dependencies.screenRecorderLibPatch.toneMapperSha256 }
+)) {
+    $path = Join-Path $repo ('tools\ScreenCapture\Hdr\' + $hdrInput.Name)
+    Assert-NoLinks $path
+    if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $hdrInput.Hash) { throw 'HDR source changed: rebuild with scripts/BuildScreenCaptureHdr.ps1 -Stage before packaging.' }
+}
 foreach ($file in $dependencies.files) {
     if ($file.name -notmatch '^[A-Za-z0-9_.-]+$') { throw 'Invalid dependency manifest filename.' }
     $path = Join-Path $runtime $file.name

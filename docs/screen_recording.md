@@ -41,7 +41,7 @@ available. Resizing is deferred to a separate feature.
 ## Implementation and lifetime
 
 - `tools/ScreenCapture` contains the x64 .NET Framework 4.8 WinForms helper. It uses
-  pinned ScreenRecorderLib 7.0.1, Desktop Duplication, H.264 quality-based encoding
+  pinned ScreenRecorderLib 7.0.1 with the AI Tools HDR patch, Desktop Duplication, H.264 quality-based encoding
   (quality 80), and stereo AAC system audio. Hardware encoding is preferred, with one
   software retry for initialization failure. The requested FPS is preserved. This
   library version includes its silent-WASAPI padding fix.
@@ -68,7 +68,27 @@ available. Resizing is deferred to a separate feature.
 - Requires Windows 10 version 2004 or newer, .NET Framework 4.8 and Media Foundation.
   Vendor CRT DLLs are app-local, with no installer. Windows N editions need their
   Media Feature Pack. Output is ordinary SDR MP4; color accuracy on HDR desktops
-  has not yet been validated.
+  requires the bundled patched DLL described below.
+
+## HDR conversion
+
+`tools/ScreenCapture/Hdr/ScreenRecorderLib.patch` applies to upstream **v7.0.1**,
+commit `646383234187efd3854e6b1069612b80c3ab9981`. HDR monitors use
+`IDXGIOutput5::DuplicateOutput1` with floating-point scRGB support instead of the
+old mandatory 8-bit BGRA conversion. `HdrToneMapper.h` uses a GPU shader to divide
+by that monitor's Windows SDR-white multiplier, preserve midtones, smoothly compress
+highlights, and encode sRGB into the existing BGRA/H.264 pipeline. HDR float values
+are converted before cropping/encoding, while SDR capture follows the original path.
+It does not toggle Windows HDR, change monitor settings, or apply a brightness
+filter to already-clipped video. Previously recorded clips cannot recover lost detail.
+
+The shader uses the capture device and restores the existing renderer's state.
+Textures are reused between frames. HDR conversion/setup errors propagate through
+the existing recording-failure path. SDR white is resolved at capture initialization;
+restart recording after changing Windows' HDR/SDR brightness setting.
+
+API references: [DuplicateOutput1](https://learn.microsoft.com/en-us/windows/win32/api/dxgi1_5/nf-dxgi1_5-idxgioutput5-duplicateoutput1),
+[SDR white level](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-displayconfig_sdr_white_level).
 
 ## Build and validation
 
@@ -79,6 +99,19 @@ opens no window or capture device and registers no global shortcut. Vendored
 Microsoft DLLs come from the official signed 14.44.35211 x64 redistributable, with
 installer/file hashes in `dependencies.json`; do not harvest System32 DLLs.
 Helper source and built runtime files are tracked, following the RTClip model.
+The NuGet package supplies the pinned API reference and original license; the
+helper's build output uses the patched DLL from `utils/ScreenCapture`. Patch/header
+hash checks reject stale native builds. `.gitattributes` fixes their line endings
+so source hashes remain stable between checkouts.
+
+To rebuild the native patch, run `pwsh -File scripts/BuildScreenCaptureHdr.ps1 -Stage`,
+then `pwsh -File scripts/BuildScreenCapture.ps1 -Check`. The native script verifies
+and extracts the pinned upstream archive into `build/capture-native`, applies the
+patch, builds with Visual Studio's **v143 14.44.35207** C++/CLI tools and Windows SDK
+**10.0.26100.0**, runs synthetic WARP GPU checks, and stages the DLL with updated
+source/binary hashes in `dependencies.json`. Without `-Stage` it only builds/checks.
+It performs no desktop capture, display enumeration, audio recording or UI input.
+Normal release builds use the checked-in patched DLL and only require the .NET SDK.
 
 `pwsh -File scripts/VerifyScreenCapture.ps1` runs geometry, shortcut, settings,
 session lifecycle, stale/duplicate completion and path checks plus synthetic-only
@@ -91,12 +124,14 @@ new assets.
 
 Release builds call BuildScreenCapture after Unity builds and before staging,
 sign AIToolsCapture.exe, and verify four first-party signatures. Vendor DLLs retain
-their original bytes and licenses. See `release_packaging.md`.
+their licenses; the VC runtime retains its original bytes. See `release_packaging.md`.
 
-Initial implementation validation (2026-10-18): helper and Unity C# compilation and
+Validation (2026-10-18): helper/native and Unity C# compilation and
 123 offline recorder checks passed, including fixed-size bounds, corner anchoring,
-movement and zero/fractional countdowns. Seth confirmed live recording works; HDR
-color still needs correction. Mixed-DPI UI,
+movement and zero/fractional countdowns. 523 synthetic GPU checks cover HDR highlights,
+SDR white normalization, RGB channel order, native sizes, SDR passthrough and renderer
+state preservation. Seth confirmed the original live recording works; the new HDR
+path and interactive rectangle controls still need live acceptance. Mixed-DPI UI,
 hardware encoder fallback, device loss and a clean Windows machine remain manual
 acceptance checks. Automated desktop capture or input requires Seth's explicit
 authorization; compile and synthetic checks do not exercise those paths.

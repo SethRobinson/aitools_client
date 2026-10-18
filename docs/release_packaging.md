@@ -18,6 +18,11 @@ builds the net48/x64 helper from `tools/ScreenCapture`, and refreshes tracked ru
 files under `utils/ScreenCapture`. Its dependency-only check never captures screens
 or sound. Third-party CRT DLLs, the recorder DLL, licenses and hashes are included;
 the build checks dependency hashes and never harvests machine-installed CRT DLLs.
+ScreenRecorderLib is the pinned 7.0.1 build with our HDR patch, not the stock NuGet
+binary. The helper csproj preserves the checked-in patched runtime and the build
+rejects mismatched patch/header hashes. To rebuild it, use
+`pwsh -File scripts/BuildScreenCaptureHdr.ps1 -Stage` with the pinned native toolchain
+listed in `screen_recording.md`; regular release builds need only the .NET SDK.
 Source, build intermediates and vendor PDB/XML files are not packaged. Add new
 runtime files to the index before staging. See `screen_recording.md`.
 

@@ -38,6 +38,7 @@ Write-Fixture 'aichat/skills/untracked-private.md' 'PRIVATE FIXTURE'
 Run-Stage $true
 foreach ($path in @('cli/aitools_cli.py', 'cli/config.example.txt', 'LICENSE.md', 'utils/ffmpeg/licenses/LICENSE',
     'utils/ScreenCapture/AIToolsCapture.exe', 'utils/ScreenCapture/ScreenRecorderLib.dll',
+    'utils/ScreenCapture/dependencies.json', 'utils/ScreenCapture/NOTICE.txt',
     'utils/ScreenCapture/Microsoft.VCRT.LICENSE.rtf', 'utils/ScreenCapture/vcruntime140.dll',
     'utils/yt-dlp/LICENSE', 'config_cam.txt', 'Presets/Prompt To Image (Qwen Image 2.1).txt')) {
     Check (Test-Path -LiteralPath (Join-Path $fixture ('build/win/' + $path))) "Missing $path"
