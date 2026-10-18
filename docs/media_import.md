@@ -6,6 +6,12 @@ Moved verbatim from AGENTS.md on 2026-09-13 (bullet style kept); update this fil
 
 ## Clipboard helper and paste
 
+The built-in Windows region recorder opens this same trim/export dialog after Stop.
+Its sources select their full duration and preserve native dimensions through the
+optional `initialDurationSeconds` / `preserveSourceResolution` arguments to
+`ChatVideoClipChooser.Show`; existing imports retain their defaults. Toolbar, audio,
+hotkey, helper lifecycle and offline checks: `screen_recording.md`.
+
 - `utils/RTClip.*` is a small external clipboard helper already copied with releases (net6.0-windows WinForms; source lives in `utils/RTClip.zip`, rebuild with `dotnet build` and copy the exe/dll/runtimeconfig back). Modes: no args = dump any clipboard image to `winclip_image.png` (preferring the alpha-preserving raw `PNG` format); `set <png>` = put a PNG on the clipboard (bitmap + raw PNG); `files [extractDir]` = write `winclip_files.txt` (UTF-8 path list, working dir) when the clipboard references files, extracting OLE virtual files (`FileGroupDescriptorW`/`FileContents`) into extractDir first. Unity-side clipboard-paste readers: `Assets/RT/RTClipboardFileList.cs` reads real clipboard file lists (CF_HDROP/FileNameW) in-process via P/Invoke and only spawns RTClip `files` mode when virtual files are present; pasted videos are snapshotted into `tempCache/pasted_media` (clipboard sources like Snipping Tool recordings are transient temp files).
 - Clipboard paste accepts videos and files, not just bitmaps (since 2026-08-27): the main-app Paste button and a workspace Ctrl+V hotkey (`GameLogic.Update`, skipped while any input field is focused) route clipboard file references through `DragAndDropHandler.OpenFilesInWorkspace` (same path as drag-drop, so a pasted `.mp4` becomes a movie pic), falling back to the RTClip bitmap path; AI Chat's Ctrl+V (chat input focused; `ChatImageAttachmentZone.PasteFromClipboard`) imports clipboard files exactly like drops - videos through the clip-chooser import flow, audio to Audio bubbles, image files to attachments - before the bitmap fallback. Copying a screen recording from the Windows Snipping Tool then pasting is the motivating flow.
 

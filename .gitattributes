@@ -1,2 +1,6 @@
 # These scripts are sent directly to a Linux shell, including over SSH stdin.
 scripts/*.sh text eol=lf
+
+# Preserve pinned vendor license bytes alongside the recorder dependency hashes.
+utils/ScreenCapture/Microsoft.VCRT.LICENSE.rtf binary
+utils/ScreenCapture/ScreenRecorderLib.LICENSE.txt -text whitespace=cr-at-eol

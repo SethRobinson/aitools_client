@@ -1,0 +1,56 @@
+{
+  "screenRecorderLib": "7.0.1",
+  "visualCppRuntime": "14.44.35211",
+  "visualCppSource": "https://aka.ms/vs/17/release/vc_redist.x64.exe",
+  "visualCppInstallerSha256": "CC0FF0EB1DC3F5188AE6300FAEF32BF5BEEBA4BDD6E8E445A9184072096B713B",
+  "files": [
+    {
+      "name": "concrt140.dll",
+      "sha256": "2405355F0A58067B258F8DF33C327E3A3D716EAAC5A3A5AEBB757842D85BD376"
+    },
+    {
+      "name": "msvcp140.dll",
+      "sha256": "0F885B509A685D2BBFA652FED26B5FB31D88FBDAB0A978C641D1C7B8AA460AA9"
+    },
+    {
+      "name": "msvcp140_1.dll",
+      "sha256": "BFAD5AEF4C63A669E3C140655CDFDF395B6C979B400A447BD5DCB65ED8826C3D"
+    },
+    {
+      "name": "msvcp140_2.dll",
+      "sha256": "3EA06F0EE098B4823CB79599DF3780E7F23CCE52C19AAC31D2A0D47EFE33A5E9"
+    },
+    {
+      "name": "msvcp140_atomic_wait.dll",
+      "sha256": "640B2AEFCED484D0368EEA5BDD06ADDD0658A3A70A49256E560D6923B404A479"
+    },
+    {
+      "name": "msvcp140_codecvt_ids.dll",
+      "sha256": "F2069A52880EC885EE7F0511186100EB7FADA0411A2B4948FAFEA7735B878A18"
+    },
+    {
+      "name": "vcruntime140.dll",
+      "sha256": "D5E4D9A3E835FA679450145D6A7D94E36573A509317111904D9B3712C30D9066"
+    },
+    {
+      "name": "vcruntime140_1.dll",
+      "sha256": "1F2D41C4AA5DB0BC33EBF7B66D72943A817D7CE6CBE880502A9403823633093F"
+    },
+    {
+      "name": "vcruntime140_threads.dll",
+      "sha256": "219915CF20822F34D5E7C1FDD4E21AE7F3396881096C51036225FB8F84B47AFA"
+    },
+    {
+      "name": "Microsoft.VCRT.LICENSE.rtf",
+      "sha256": "8099DC3CF9502C335DA829E5C755948A12E3E6DE490EB492A99DEB673D883D8B"
+    },
+    {
+      "name": "ScreenRecorderLib.dll",
+      "sha256": "6DFA784166A1DAD4E83E74D278E7CFEB92E3CC514170A5508E7209A0769BCFD2"
+    },
+    {
+      "name": "ScreenRecorderLib.LICENSE.txt",
+      "sha256": "53050706F559F3D9526036DE5E795C514A8175A8C773FCA47881AA5E4410BD83"
+    }
+  ]
+}

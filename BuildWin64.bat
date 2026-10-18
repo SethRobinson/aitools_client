@@ -26,6 +26,8 @@ echo See "%~dp0log.txt" for Unity diagnostics.
 goto failed
 )
 
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\BuildScreenCapture.ps1" -Check
+if errorlevel 1 goto failed
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\ReleasePackage.ps1" -Phase Stage
 if errorlevel 1 goto failed
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\CleanBuildOutput.ps1" -Phase Package
@@ -37,6 +39,8 @@ if errorlevel 1 goto failed
 call "%RT_PROJECTS%\Signing\sign.bat" "build/win/utils/RTClip.exe" "RTClip" "rtsoft.com"
 if errorlevel 1 goto failed
 call "%RT_PROJECTS%\Signing\sign.bat" "build/win/utils/RTClip.dll" "RTClip" "rtsoft.com"
+if errorlevel 1 goto failed
+call "%RT_PROJECTS%\Signing\sign.bat" "build/win/utils/ScreenCapture/AIToolsCapture.exe" "AI Tools Screen Recorder" "rtsoft.com"
 if errorlevel 1 goto failed
 
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\ReleasePackage.ps1" -Phase Verify

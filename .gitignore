@@ -7,6 +7,10 @@ build/*
 .vs/*
 autosave/*
 *.csproj
+!tools/ScreenCapture/ScreenCapture.csproj
+!tools/ScreenCapture/Checks/Checks.csproj
+tools/ScreenCapture/**/bin/
+tools/ScreenCapture/**/obj/
 config.txt
 aitools_client.sln
 interrogation.txt

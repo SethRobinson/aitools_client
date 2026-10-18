@@ -32,6 +32,7 @@ public class AppSettingsPanel : MonoBehaviour
     private ScrollRect _contentScrollRect;
     private TextMeshProUGUI _footerStatusText;
     private TextMeshProUGUI _generalStatusText;
+    private TextMeshProUGUI _screenCaptureStatusText;
     private TextMeshProUGUI _configStatusText;
     private TextMeshProUGUI _audioStatusText;
     private TMP_InputField _audioGenEndpointInput;
@@ -401,6 +402,32 @@ public class AppSettingsPanel : MonoBehaviour
             value => GameLogic.Get()?.SetAutoSave(value));
         CreateToggleRow(content, "Auto save generated pics as .png", gl != null && gl.GetAutoSavePNG(),
             value => GameLogic.Get()?.SetAutoSavePNG(value));
+
+        CreateSectionHeader(content, "Screen Recording");
+        CreateToggleRow(content, "Enable global screen recording shortcut", ScreenCaptureController.GetSettings().hotkeyEnabled,
+            value =>
+            {
+                var settings = ScreenCaptureController.GetSettings();
+                settings.hotkeyEnabled = value;
+                ScreenCaptureController.SetSettings(settings, out _);
+            });
+        var captureRow = CreateRow(content, "ScreenCaptureShortcutRow", 34f);
+        CreateLabel(captureRow, "Shortcut", 150f);
+        var shortcutInput = CreateInput(captureRow, ScreenCaptureController.GetSettings().hotkey, 220f);
+        shortcutInput.onEndEdit.AddListener(value =>
+        {
+            var settings = ScreenCaptureController.GetSettings();
+            settings.hotkey = value.Trim();
+            if (!ScreenCaptureController.SetSettings(settings, out string error))
+            {
+                RTQuickMessageManager.Get().ShowMessage(error);
+                shortcutInput.SetTextWithoutNotify(ScreenCaptureController.GetSettings().hotkey);
+            }
+        });
+        CreateButton(captureRow, "OpenScreenRecorder", "Record screen", 140f, ScreenCaptureController.ShowToolbar);
+        var captureStatusRow = CreateRow(content, "ScreenCaptureStatusRow", 46f);
+        _screenCaptureStatusText = CreateText("CaptureStatus", captureStatusRow, ScreenCaptureController.StatusText, 12f, TextMuted, TextAlignmentOptions.TopLeft);
+        _screenCaptureStatusText.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
 
         CreateSectionHeader(content, "External Editor");
         var editorRow = CreateRow(content, "ImageEditorRow", 36f);
@@ -1424,7 +1451,10 @@ public class AppSettingsPanel : MonoBehaviour
     private void Update()
     {
         if (_activeTab == AppSettingsTab.General)
+        {
             RefreshGeneralStatus();
+            if (_screenCaptureStatusText != null) _screenCaptureStatusText.text = ScreenCaptureController.StatusText;
+        }
     }
 
     private RectTransform CreateVerticalBox(Transform parent, string name, float minHeight)

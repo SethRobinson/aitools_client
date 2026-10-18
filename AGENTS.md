@@ -105,7 +105,7 @@ Use the current date for README date strings. The download zip size changes per 
 BuildWin64.bat
 ```
 
-Builds the Windows release from its own script directory. It calls `app_info_setup.bat`, uses `scripts/CleanBuildOutput.ps1 -Phase Reset` to validate and recreate `build/win`, invokes Unity with `Win64Builder.BuildRelease` and `Assets/Settings/Build Profiles/ReleaseBuildProfile.asset`, stages tracked runtime files with `scripts/ReleasePackage.ps1 -Phase Stage`, prunes development output with `-Phase Package`, signs binaries, and creates `SethsAIToolsWindows.zip`. Copy, Unity build-result, cleanup, signing, content and archive validation failures stop packaging. Packaging rules, retired presets and offline checks: `docs/release_packaging.md`.
+Builds the Windows release from its own script directory. It calls `app_info_setup.bat`, uses `scripts/CleanBuildOutput.ps1 -Phase Reset` to validate and recreate `build/win`, invokes Unity with `Win64Builder.BuildRelease` and `Assets/Settings/Build Profiles/ReleaseBuildProfile.asset`, builds/checks the recorder with `scripts/BuildScreenCapture.ps1 -Check`, stages tracked runtime files with `scripts/ReleasePackage.ps1 -Phase Stage`, prunes development output with `-Phase Package`, signs binaries, and creates `SethsAIToolsWindows.zip`. Copy, Unity/helper build-result, cleanup, signing, content and archive validation failures stop packaging. Packaging rules, retired presets and offline checks: `docs/release_packaging.md`.
 
 Build timestamps are stamped automatically by `Assets/RT/Editor/BuildTimestampWriter.cs` (`IPreprocessBuildWithReport`), which writes `Assets/Resources/build_date.txt` (gitignored, folder auto-created) at the start of every player build regardless of build path (editor Build menu, Build Profiles window, batchmode). `RTBuildInfo.Timestamp` loads it at runtime and falls back to the current time in the editor. There is no `GenerateBuildDate.bat` anymore.
 
@@ -185,7 +185,9 @@ ComfyUI servers must be reachable over HTTP and should be started with `--listen
 
 ### Runtime Helpers
 
-- Bundled helper EXEs, copied with `utils` by release staging (`scripts/ReleasePackage.ps1`) and not signed: `utils/RTClip.*` (clipboard image/file helper; source in `utils/RTClip.zip`, with `Assets/RT/RTClipboardFileList.cs` reading real clipboard file lists in-process), `utils/yt-dlp/yt-dlp.exe` (behind `web_video`, `docs/web_media.md`) and `utils/ffmpeg/bin/ffmpeg.exe` + `ffprobe.exe` (GPL v3 with libx264: keep `utils/ffmpeg/NOTICE.txt` and `licenses/` beside them). Clipboard paste (Ctrl+V in the workspace and in AI Chat) accepts files and videos, not just bitmaps. `FfmpegTool`, `PicMovie` and the Media Foundation seek/playback rules (verify with `POST /movie_state`, never screenshots), preview proxies, clip import and the clip chooser: `docs/media_import.md`.
+- Windows region recording: `ScreenCaptureController` connects the Tools panel's Record screen button/global Ctrl+Alt+F9 to the net48/x64 helper in `tools/ScreenCapture`, shipped under `utils/ScreenCapture`. System audio, 16/24/30/60/120 fps, native-size trim exports and lifecycle/build details: `docs/screen_recording.md`. Offline build/check: `pwsh -File scripts/VerifyScreenCapture.ps1`; live desktop capture still requires explicit authorization.
+
+- Bundled helpers, copied with `utils` by release staging (`scripts/ReleasePackage.ps1`); first-party RTClip and AIToolsCapture are signed, vendor binaries retain their original bytes: `utils/RTClip.*` (clipboard image/file helper; source in `utils/RTClip.zip`, with `Assets/RT/RTClipboardFileList.cs` reading real clipboard file lists in-process), `utils/yt-dlp/yt-dlp.exe` (behind `web_video`, `docs/web_media.md`) and `utils/ffmpeg/bin/ffmpeg.exe` + `ffprobe.exe` (GPL v3 with libx264: keep `utils/ffmpeg/NOTICE.txt` and `licenses/` beside them). Clipboard paste (Ctrl+V in the workspace and in AI Chat) accepts files and videos, not just bitmaps. `FfmpegTool`, `PicMovie` and the Media Foundation seek/playback rules (verify with `POST /movie_state`, never screenshots), preview proxies, clip import and the clip chooser: `docs/media_import.md`.
 
 ### Workflows, Presets, and Job Scripts
 
@@ -272,6 +274,7 @@ Do not assume every Unity job-script feature works in the CLI. Multi-step chains
 - `docs/` - feature deep-dives referenced from this file (`aichat.md`, `automation_bridge.md`, `llm_providers.md`, `media_import.md`, `settings.md`, `workflows.md`, `minimax_h3.md`, `web_media.md`, `audio_generation.md`)
 - `aichat/` - editable AI Chat prompts and skill markdown files
 - `cli/` - Python CLI subset (Windows + Linux)
+- `tools/ScreenCapture/` - Windows recorder helper source and offline checks; built runtime files live under `utils/ScreenCapture/`
 - `web/`, `utils/`, `Packaging/` - runtime/package support files, including bundled helper EXEs under `utils` (`RTClip`, `ffmpeg/bin`, `yt-dlp`)
 - `Media/` - README screenshots and media
 

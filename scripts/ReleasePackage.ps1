@@ -67,6 +67,14 @@ $runtimeFiles = @($tracked | Where-Object {
     $path -ne 'utils/RTClip.zip' -and $path -notin $retiredPresets
 })
 foreach ($required in @('utils/RTClip.exe', 'utils/RTClip.dll', 'utils/RTClip.runtimeconfig.json',
+    'utils/ScreenCapture/AIToolsCapture.exe', 'utils/ScreenCapture/AIToolsCapture.exe.config',
+    'utils/ScreenCapture/ScreenRecorderLib.dll', 'utils/ScreenCapture/ScreenRecorderLib.LICENSE.txt',
+    'utils/ScreenCapture/dependencies.json', 'utils/ScreenCapture/Microsoft.VCRT.LICENSE.rtf',
+    'utils/ScreenCapture/NOTICE.txt', 'utils/ScreenCapture/msvcp140.dll',
+    'utils/ScreenCapture/msvcp140_1.dll', 'utils/ScreenCapture/msvcp140_2.dll',
+    'utils/ScreenCapture/msvcp140_atomic_wait.dll', 'utils/ScreenCapture/msvcp140_codecvt_ids.dll',
+    'utils/ScreenCapture/vcruntime140.dll', 'utils/ScreenCapture/vcruntime140_1.dll',
+    'utils/ScreenCapture/vcruntime140_threads.dll', 'utils/ScreenCapture/concrt140.dll',
     'utils/ffmpeg/bin/ffmpeg.exe', 'utils/ffmpeg/bin/ffprobe.exe', 'utils/ffmpeg/NOTICE.txt',
     'utils/ffmpeg/licenses/LICENSE', 'utils/yt-dlp/yt-dlp.exe', 'utils/yt-dlp/LICENSE',
     'cli/aitools_cli.py', 'cli/aitools_cli.bat', 'cli/config.example.txt', 'cli/requirements.txt',
@@ -122,8 +130,8 @@ foreach ($file in $files) {
 foreach ($relative in $runtimeFiles) {
     $destination = Join-Path $buildRoot $relative
     if (-not (Test-Path -LiteralPath $destination -PathType Leaf)) { throw "Missing packaged runtime file: $relative" }
-    # Signing changes these two files after staging; verify their signatures separately.
-    if ($relative -in @('utils/RTClip.exe', 'utils/RTClip.dll')) { continue }
+    # Signing changes first-party helper files after staging; verify signatures separately.
+    if ($relative -in @('utils/RTClip.exe', 'utils/RTClip.dll', 'utils/ScreenCapture/AIToolsCapture.exe')) { continue }
     if ((Get-ReleaseHash (Join-Path $repoRoot $relative)) -ne
         (Get-ReleaseHash $destination)) { throw "Packaged file differs from source: $relative" }
 }
@@ -136,7 +144,7 @@ foreach ($relative in @('aitools_client.exe', 'UnityPlayer.dll', 'aitools_client
 # Use this PowerShell installation's module, even when build/signing setup
 # supplies a PSModulePath containing incompatible PowerShell 7 modules.
 Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Security\Microsoft.PowerShell.Security.psd1') -ErrorAction Stop
-foreach ($relative in @('aitools_client.exe', 'utils/RTClip.exe', 'utils/RTClip.dll')) {
+foreach ($relative in @('aitools_client.exe', 'utils/RTClip.exe', 'utils/RTClip.dll', 'utils/ScreenCapture/AIToolsCapture.exe')) {
     $signature = Get-AuthenticodeSignature -LiteralPath (Join-Path $buildRoot $relative)
     if ($signature.Status -ne 'Valid') { throw "Invalid release signature: $relative ($($signature.Status))" }
 }
@@ -167,4 +175,4 @@ if ($Phase -eq 'VerifyArchive') {
         }
     } finally { $archive.Dispose() }
 }
-Write-Output "PASS: $Phase checked $($files.Count) package files, $($runtimeFiles.Count) runtime inputs, workflow dependencies and three signatures."
+Write-Output "PASS: $Phase checked $($files.Count) package files, $($runtimeFiles.Count) runtime inputs, workflow dependencies and four signatures."

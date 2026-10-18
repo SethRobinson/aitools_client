@@ -66,6 +66,7 @@ namespace AITools.AIChat.Video
         private bool _includeAudio = true;
         private bool _exportToFile;
         private bool _exportToChat = true;
+        private bool _preserveSourceResolution;
         private bool _exportedAnything;
         private bool _exportBusy;
         private bool _prepared;
@@ -131,12 +132,17 @@ namespace AITools.AIChat.Video
             FfmpegTool.VideoInfo info,
             Action<bool> onClose = null,
             string titleText = "Export Video / Audio Clip",
-            float initialStartSeconds = 0f)
+            float initialStartSeconds = 0f,
+            float? initialDurationSeconds = null,
+            bool preserveSourceResolution = false)
         {
             RectTransform dialogParent = ResolveDialogParent(parent);
             var go = new GameObject("AIChatVideoClipChooser");
             go.transform.SetParent(dialogParent, false);
             var chooser = go.AddComponent<ChatVideoClipChooser>();
+            chooser._preserveSourceResolution = preserveSourceResolution;
+            if (initialDurationSeconds.HasValue && initialDurationSeconds.Value > 0 && !float.IsInfinity(initialDurationSeconds.Value))
+                chooser._duration = initialDurationSeconds.Value;
             chooser.Initialize(dialogParent, font, sourcePath, info, onClose, titleText, initialStartSeconds);
             return chooser;
         }
@@ -995,16 +1001,18 @@ namespace AITools.AIChat.Video
         private void ExportVideoClip()
         {
             if (!BeginExport(out bool toFile, out bool toChat)) return;
-            GetExportRunner(this).StartCoroutine(ExportVideoClipRoutine(_sourcePath, BuildSelection(), toFile, toChat));
+            int maxWidth = _preserveSourceResolution && _info.Width > 0 ? _info.Width : FfmpegTool.DefaultMaxWidth;
+            int maxHeight = _preserveSourceResolution && _info.Height > 0 ? _info.Height : FfmpegTool.DefaultMaxHeight;
+            GetExportRunner(this).StartCoroutine(ExportVideoClipRoutine(_sourcePath, BuildSelection(), toFile, toChat, maxWidth, maxHeight));
         }
 
-        private IEnumerator ExportVideoClipRoutine(string sourcePath, ClipSelection sel, bool toFile, bool toChat)
+        private IEnumerator ExportVideoClipRoutine(string sourcePath, ClipSelection sel, bool toFile, bool toChat, int maxWidth, int maxHeight)
         {
             ShowToast("Exporting video clip...");
             string outputPath = FfmpegTool.GetClipOutputPath(sourcePath);
             FfmpegTool.ClipResult result = null;
             yield return FfmpegTool.CreateClip(sourcePath, sel.StartSeconds, sel.DurationSeconds, outputPath, r => result = r,
-                fps: sel.Fps, includeAudio: sel.IncludeAudio, normalizeAudio: sel.NormalizeAudio);
+                fps: sel.Fps, maxWidth: maxWidth, maxHeight: maxHeight, includeAudio: sel.IncludeAudio, normalizeAudio: sel.NormalizeAudio);
             if (result == null || !result.Success)
             {
                 ShowToast("Could not export video clip: " + (result != null ? result.Error : "unknown error"));

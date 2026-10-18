@@ -1111,6 +1111,11 @@ public class GameLogic : MonoBehaviour
         }
     }
 
+    public void OnRecordScreenButton()
+    {
+        ScreenCaptureController.ShowToolbar();
+    }
+
     /// <summary>
     /// True while any input field has keyboard focus, so global hotkeys like Ctrl+V
     /// don't fire while the user is typing/pasting text. (AI Chat's attachment zone
@@ -1846,6 +1851,7 @@ public string GetPrompt() { return m_prompt; }
         UpdateActiveLLMLabel();
 
         _mainToolPanelModeController = MainToolPanelModeController.Install();
+        ScreenCaptureController.EnsureCreated();
         if (_mainToolPanelModeController != null)
             _mainToolPanelModeController.ManualModeChanged += OnMainToolPanelManualModeChanged;
 
@@ -2088,6 +2094,7 @@ public string GetPrompt() { return m_prompt; }
 
     void OnApplicationQuit() 
 	{
+        ScreenCaptureController.Shutdown();
         // Make sure prefs are saved before quitting.
         //PlayerPrefs.Save();
         RTConsole.Log("Application quitting normally");

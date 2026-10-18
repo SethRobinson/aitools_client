@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>AIToolsCapture</AssemblyName>
+    <Platform>x64</Platform>
+    <PlatformTarget>x64</PlatformTarget>
+    <LangVersion>latest</LangVersion>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <DebugType>none</DebugType>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Web.Extensions" />
+    <PackageReference Include="ScreenRecorderLib" Version="[7.0.1]" GeneratePathProperty="true" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <Compile Include="../../Assets/RT/ScreenCaptureContract.cs" Link="ScreenCaptureContract.cs" />
+    <Compile Remove="Checks/**/*.cs" />
+  </ItemGroup>
+  <Target Name="CopyRecorderLicense" AfterTargets="Build">
+    <Copy SourceFiles="$(PkgScreenRecorderLib)/LICENSE" DestinationFiles="$(TargetDir)ScreenRecorderLib.LICENSE.txt" />
+  </Target>
+</Project>

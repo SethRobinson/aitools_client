@@ -10,7 +10,16 @@ The root `UpdateBuildDirConfigFiles.bat` is a gitignored local helper for syncin
 
 The package includes Unity's release player plus tracked files in `utils`, `web`, `Adventure`, `AIGuide`, `ComfyUI`, `Presets` and `aichat`; the Python CLI's top-level Python/BAT files, README, requirements and example config; and root `config_cam.txt`, `model_data.json`, `README.md` and `LICENSE.md`. README screenshots stay online and the `Media` folder is excluded from the download. The public camera preset config is intentional. The application creates personal configuration on first launch.
 
-Excluded before staging: ignored/untracked files, private application and CLI configs, Python environments/caches, generated ComfyUI API caches, test/local-prefixed files, Unity `.meta` files, `Unused` directories, RTClip's source ZIP and the unrelated `cli/codex_imagegen.sh` helper. FFmpeg/ffprobe and yt-dlp ship with their notices/licenses and are copied unchanged. Only the application and RTClip EXE/DLL are signed.
+Excluded before staging: ignored/untracked files, private application and CLI configs, Python environments/caches, generated ComfyUI API caches, test/local-prefixed files, Unity `.meta` files, `Unused` directories, RTClip's source ZIP and the unrelated `cli/codex_imagegen.sh` helper. FFmpeg/ffprobe and yt-dlp ship with their notices/licenses and are copied unchanged. The application, RTClip EXE/DLL and AIToolsCapture.exe are signed.
+
+After Unity builds, `BuildWin64.bat` runs `scripts/BuildScreenCapture.ps1 -Check`.
+This requires the .NET SDK, restores locked ScreenRecorderLib 7.0.1 dependencies,
+builds the net48/x64 helper from `tools/ScreenCapture`, and refreshes tracked runtime
+files under `utils/ScreenCapture`. Its dependency-only check never captures screens
+or sound. Third-party CRT DLLs, the recorder DLL, licenses and hashes are included;
+the build checks dependency hashes and never harvests machine-installed CRT DLLs.
+Source, build intermediates and vendor PDB/XML files are not packaged. Add new
+runtime files to the index before staging. See `screen_recording.md`.
 
 Four source presets are intentionally omitted because their workflows were previously retired:
 
@@ -23,7 +32,7 @@ Do not restore obsolete workflow files just to satisfy these references. When re
 
 ## Validation and failure behavior
 
-Staging parses shipped JSON and checks workflow dependencies in Presets, Adventure and AIGuide before copying. Verification rejects unexpected files in runtime directories, private/development artifacts and missing Unity components; checks staged bytes against source (except the two signed RTClip files); and requires valid Authenticode signatures on all three signed binaries. Archive verification checks unique `aitools_client/` paths, file counts and SHA-256 equality for every archived file against staging.
+Staging parses shipped JSON and checks workflow dependencies in Presets, Adventure and AIGuide before copying. Verification rejects unexpected files in runtime directories, private/development artifacts and missing Unity components; checks staged bytes against source (except the signed RTClip EXE/DLL and AIToolsCapture.exe); and requires valid Authenticode signatures on all four signed binaries. Archive verification checks unique `aitools_client/` paths, file counts and SHA-256 equality for every archived file against staging.
 
 The build stops on a failed Unity BuildReport, copy, cleanup, signing, signature/content check, archive creation or archive comparison. `CleanBuildOutput.ps1` removes Burst diagnostics and Unity backup folders with the same path/link guards as other build cleanup.
 

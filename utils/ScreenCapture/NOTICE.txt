@@ -1,0 +1,23 @@
+AI Tools Windows Screen Recorder
+
+AIToolsCapture.exe is first-party code, built from tools/ScreenCapture. It is
+signed during release packaging. Build with scripts/BuildScreenCapture.ps1.
+Requires Windows 10 version 2004 or newer, .NET Framework 4.8, and Media Foundation
+(included in normal supported Windows editions).
+
+ScreenRecorderLib 7.0.1 is distributed unchanged under the MIT license.
+Source: https://github.com/sskodje/ScreenRecorderLib
+Package: https://www.nuget.org/packages/ScreenRecorderLib/7.0.1
+License: ScreenRecorderLib.LICENSE.txt
+
+Microsoft Visual C++ runtime 14.44.35211 (x64) is distributed unchanged, app-local.
+Source: https://aka.ms/vs/17/release/vc_redist.x64.exe
+License: Microsoft.VCRT.LICENSE.rtf
+The DLLs were extracted from the official, signed redistributable's
+vcRuntimeMinimum_amd64/cab1.cab. No installer runs on the user's machine.
+dependencies.json records the installer and individual file SHA-256 hashes.
+Do not replace these with DLLs copied from a developer's Windows directory.
+
+Third-party binaries retain their vendor bytes and are not signed by AI Tools.
+Windows system components, including .NET Framework and Media Foundation, are
+not redistributed here. Windows N editions need the Media Feature Pack.
