@@ -171,7 +171,7 @@ Text-to-image, single-step image presets, and all four MiniMax H3 movie modes wo
 - `Assets/_Script/Pic/PicTextToImage.cs` loads ComfyUI workflow JSON, calls the ComfyUI workflow-to-API converter when needed, writes cached API JSON, applies `@replace` and placeholder substitution, sends `/prompt`, tracks progress, and writes debug JSON on errors.
 - Every post-submit failure path in `PicTextToImage` must end in `FinishUpEverything(false)` and go through `PicMain.ReportRenderFailure` (frees the GPU, clears `m_waitingForPicJob`, tells the AI Chat model); while `/history` is empty the poll probes `/queue` and gives up on a lost job; a multi-input job line pins its ComfyUI server (`m_uploadPinnedServerID`) from the first upload through `run_workflow`. Details and history: `docs/workflows.md`.
 - `Assets/_Script/Pic/PicGenerator.cs` handles continuous img2img/inpaint generation from an existing pic.
-- Other `Pic/*` components are focused tools: mask editing, inpaint, upscale, interrogation, movie display, text-to-image status, info panels, size/menu nav, and target rectangles.
+- Other `Pic/*` components are focused tools: mask editing, inpaint, upscale, interrogation, movie display, text-to-image status, info panels, size/menu nav, and target rectangles. Info-panel reference previews are captured per upload slot, including `video2`; stage its own frame with `SetPendingVideoUpload2` (see `docs/workflows.md`).
 
 ### Renderers and Servers
 

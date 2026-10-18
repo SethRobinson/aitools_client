@@ -2301,7 +2301,8 @@ namespace AITools.AIChat.Skills
                     {
                         if (secondClipPath != null)
                         {
-                            picMain.m_pendingVideoUploadPath2 = secondClipPath;
+                            picMain.SetPendingVideoUpload2(secondClipPath,
+                                _host?.GetChatImagePngBytes(action.GetExtraChatImageIndex(2) ?? -1));
                             _host?.AddInfoBubble("(chat_image2 is a movie - wiring it as reference clip 2 / <Video 2>)");
                         }
                         AppendSilentClipPruneDirectives(picMain, moviePath, secondClipPath);
@@ -2693,7 +2694,8 @@ namespace AITools.AIChat.Skills
                 {
                     // Unconditional assignment: prevPic is a reused Pic, so a null here
                     // also CLEARS any second clip left over from an earlier action.
-                    prevPic.m_pendingVideoUploadPath2 = chainSecondClipPath;
+                    prevPic.SetPendingVideoUpload2(chainSecondClipPath, chainSecondClipPath == null
+                        ? null : _host?.GetChatImagePngBytes(action.GetExtraChatImageIndex(2) ?? -1));
                     if (chainSecondClipPath != null)
                         _host?.AddInfoBubble("(chat_image2 is a movie - wiring it as reference clip 2 / <Video 2>)");
                     AppendSilentClipPruneDirectives(prevPic, moviePath, chainSecondClipPath);

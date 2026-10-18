@@ -12,6 +12,17 @@ Moved verbatim from AGENTS.md on 2026-09-13 (bullet style kept); update this fil
 - Common directives include `@replace`, `@upload`, `@resize`, `@resize_if_larger`, `@copy`, `@add`, `@set`, `@setimage`, `@clear`, `@fill_mask_if_blank`, `@invert_alpha`, `@no_undo`, `@stopjob`, `@lock_gpu`, `@llm_*`, `@llm_add_image`, `@parse_llm_prompts`, and `@prune_input|<input name>|` (removes that named input from the submitted API JSON; host-appended for silent-clip audio wires). `@upload` sources are `image`/`image1`..`image10` (extras live in `PicMain`'s `m_extraInputImages` array via `SetExtraInputImage(slot, tex)`), `temp1`..`temp3`, `video`/`video1` (pending path or the Pic's own movie), `video2` (`PicMain.m_pendingVideoUploadPath2`, always an explicit path - no movie fallback), and `audio1`..`audio3` (`PicMain.m_pendingAudioUploadPaths` via `SetPendingAudioUpload`, explicit sound-file paths for the H3 standalone audio refs); a trailing `|optional|` flag makes a missing source prune the target loader from the graph at submit time instead of aborting (see `docs/minimax_h3.md` for the pruning mechanism).
 - Built-in job variables include prompt/text buffers plus video helpers such as `%video_fps%`, `%video_fps_2x%`, `%video_fps_3x%`, `%video_fps_4x%`, and `%rife_output_fps%`; these probe the current workflow video source (`m_pendingVideoUploadPath` or loaded `PicMovie`) at job execution time, falling back to 16 fps if probing fails.
 
+## Reference previews in the PicMain info dialog
+
+The `Inputs -> Result` strip snapshots each uploaded image, video or standalone audio
+reference into its workflow input slot before the job enters history. Both `video` /
+`video1` and `video2` use `CaptureVideoInputPreview`; AI Chat stages the second movie's
+own frame with `SetPendingVideoUpload2` in both normal and chained actions. A missing
+or undecodable frame produces a generic play-icon tile instead of hiding the file.
+Audio inputs use waveform tiles. Unused optional inputs remain absent. Clearing a
+staged second clip also clears its preview, so reused chain Pics cannot show a stale
+movie. The preview bytes are display-only; video uploads still send the original file.
+
 ## Chained presets share one variable scope
 
 - **Job-script variables are per-PicMain and SHARED by chained presets.** A chained pair (e.g. AI Chat's `generate_image` -> `image_to_movie chain="true"`) appends the second preset's lines to the SAME Pic, so both presets' `%var%` assignments live in one scope. If both use the same name the still's value can win, silently poisoning the second workflow: `Prompt To Image (Z-Image).txt` sets `%width%="1024"`, so video presets that also used `%width%` rendered every chained clip at 1024x1024 (4x the intended pixels, ~2x the render time) no matter what the preset or the action asked for. Image-to-video/reference-to-video presets therefore use `%vid_width%` / `%vid_height%` / `%vid_length%` / `%vid_frames%` / `%vid_fps%`. **When adding any preset that can be chained after another, give its variables a unique prefix.** Symptom to watch for: the workflow renders at a size that appears in a DIFFERENT preset in the chain. The Python CLI cannot reproduce this (it runs one preset with no shared scope), so verify chained behavior in the app and check `comfyui_workflow_to_send_api.json` for the actually-submitted width/height.

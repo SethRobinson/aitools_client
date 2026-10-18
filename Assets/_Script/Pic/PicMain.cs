@@ -222,7 +222,16 @@ public class PicMain : MonoBehaviour
     // Second reference clip for @upload|video2|...| (multi-reference workflows). Always an
     // explicit file path supplied by AI Chat (a Movie bubble in chat_image2); the Pic's own
     // movie is clip 1 by definition, so video2 has no m_picMovie fallback.
-    public string m_pendingVideoUploadPath2 = null;
+    public string m_pendingVideoUploadPath2 { get; private set; }
+    private byte[] m_pendingVideoUploadPreviewPng2;
+
+    // The second clip is uploaded as a file, but its own frame is kept separately
+    // for the info dialog. Never use this Pic's primary image as clip 2's preview.
+    public void SetPendingVideoUpload2(string path, byte[] previewPng)
+    {
+        m_pendingVideoUploadPath2 = path;
+        m_pendingVideoUploadPreviewPng2 = string.IsNullOrEmpty(path) ? null : previewPng;
+    }
     // Standalone audio reference files for @upload|audio1|..@upload|audio3| (H3 Ref2VA
     // ref_video_audios group, workflow inputs 12-14). Always explicit file paths staged
     // by AI Chat (an Audio bubble's original sound file, or a Movie clip whose soundtrack
@@ -3053,17 +3062,21 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
     /// <summary>
     /// Draw a centered "play" badge (dark translucent disc + white right-pointing
     /// triangle) onto a decoded frame PNG so the "?" info panel can show a video input
-    /// as visibly a CLIP, not a still. Returns null on any failure (caller falls back
-    /// to the bare frame).
+    /// as visibly a CLIP, not a still. If no frame is available, use a plain video
+    /// tile so a successfully uploaded reference never disappears from the strip.
     /// </summary>
     private static byte[] MakeVideoThumbPng(byte[] framePng)
     {
-        if (framePng == null || framePng.Length == 0) return null;
         Texture2D tex = null;
         try
         {
             tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-            if (!tex.LoadImage(framePng)) return null;
+            if (framePng == null || framePng.Length == 0 || !tex.LoadImage(framePng))
+            {
+                Destroy(tex);
+                tex = new Texture2D(160, 120, TextureFormat.RGBA32, false);
+                tex.Fill(new Color(0.13f, 0.13f, 0.16f, 1f));
+            }
             int w = tex.width, h = tex.height;
             if (w < 8 || h < 8) return tex.EncodeToPNG();
             float cx = w * 0.5f, cy = h * 0.5f;
@@ -3107,6 +3120,16 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
         {
             if (tex != null) UnityEngine.Object.Destroy(tex);
         }
+    }
+
+    private void CaptureVideoInputPreview(string inputIndex, bool secondClip)
+    {
+        if (!int.TryParse(inputIndex, out int index)
+            || index < 0 || index >= m_pendingInputImagePngs.Length) return;
+
+        byte[] framePng = m_pendingVideoUploadPreviewPng2;
+        if (!secondClip) TryGetImageAsPng(out framePng);
+        m_pendingInputImagePngs[index] = MakeVideoThumbPng(framePng) ?? framePng;
     }
 
     // Placeholder tile shown in the "?" info panel's inputs row for AUDIO reference
@@ -4480,12 +4503,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                             // Stash a poster frame (with a play badge) for the "?" info panel so the
                             // user can see a VIDEO was fed into this slot - and, on multi-input
                             // presets, a video alongside any still inputs in the same row.
-                            if (int.TryParse(uploadParts[1], out int vIdx)
-                                && vIdx >= 0 && vIdx < m_pendingInputImagePngs.Length
-                                && TryGetImageAsPng(out byte[] framePng) && framePng != null)
-                            {
-                                m_pendingInputImagePngs[vIdx] = MakeVideoThumbPng(framePng) ?? framePng;
-                            }
+                            CaptureVideoInputPreview(uploadParts[1], secondClip: false);
                             uploaderScript.UploadFile(serverID, videoPath, remoteFileName, OnUploadFinished);
                             return; // Video upload handled, exit early
                         }
@@ -4507,6 +4525,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
                         // definition, so there is no m_picMovie fallback here.
                         if (!string.IsNullOrEmpty(m_pendingVideoUploadPath2))
                         {
+                            CaptureVideoInputPreview(uploadParts[1], secondClip: true);
                             uploaderScript.UploadFile(serverID, m_pendingVideoUploadPath2, remoteFileName, OnUploadFinished);
                             return; // Video upload handled, exit early
                         }
