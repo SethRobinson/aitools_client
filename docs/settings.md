@@ -15,7 +15,8 @@ Moved verbatim from AGENTS.md on 2026-09-13 (bullet style kept); update this fil
   section for enabling/editing the global shortcut (default Ctrl+Alt+F9), opening the
   toolbar and seeing status/errors. Preferences use PlayerPrefs, not config.txt.
   The floating toolbar remembers FPS/system-audio/cursor settings, Custom/Fixed size
-  and fixed pixel dimensions. Its Settings button edits the countdown, including
+  and fixed pixel dimensions, plus Custom's aspect-ratio lock (Any by default).
+  Its Settings button edits the countdown, including
   zero and fractional seconds. Details:
   `screen_recording.md`.
 

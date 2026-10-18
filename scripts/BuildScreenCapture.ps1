@@ -22,8 +22,14 @@ $output = Join-Path $repo 'tools\ScreenCapture\bin\x64\Release\net48'
 Assert-NoLinks $output
 New-Item -ItemType Directory -Path $runtime -Force | Out-Null
 foreach ($file in @('AIToolsCapture.exe', 'AIToolsCapture.exe.config', 'ScreenRecorderLib.dll', 'ScreenRecorderLib.LICENSE.txt')) {
-    Assert-NoLinks (Join-Path $runtime $file)
-    Copy-Item -LiteralPath (Join-Path $output $file) -Destination (Join-Path $runtime $file) -Force
+    $sourceFile = Join-Path $output $file
+    $runtimeFile = Join-Path $runtime $file
+    Assert-NoLinks $sourceFile
+    Assert-NoLinks $runtimeFile
+    # Unchanged native dependencies may still be loaded by a running helper.
+    if ((Test-Path -LiteralPath $runtimeFile) -and
+        (Get-FileHash -LiteralPath $sourceFile -Algorithm SHA256).Hash -eq (Get-FileHash -LiteralPath $runtimeFile -Algorithm SHA256).Hash) { continue }
+    Copy-Item -LiteralPath $sourceFile -Destination $runtimeFile -Force
 }
 # App-local Microsoft runtimes are pinned, original vendor files. Never harvest
 # machine DLLs or download replacements implicitly during a release build.

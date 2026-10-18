@@ -17,6 +17,7 @@ namespace AITools.ScreenCapture
         public bool fixedSize;
         public int fixedWidth = 1280;
         public int fixedHeight = 720;
+        public string aspectRatio = "Any";
 
         public static readonly int[] FrameRates = { 16, 24, 30, 60, 120 };
 
@@ -27,6 +28,7 @@ namespace AITools.ScreenCapture
             { error = "Countdown must be between 0 and 3600 seconds."; return false; }
             if (fixedWidth < 2 || fixedHeight < 2 || fixedWidth > 16384 || fixedHeight > 16384 || (fixedWidth & 1) != 0 || (fixedHeight & 1) != 0)
             { error = "Fixed dimensions must be even pixel counts between 2 and 16384."; return false; }
+            if (!CaptureAspectRatio.TryGet(aspectRatio, out _)) { error = "Choose an aspect ratio from the list."; return false; }
             uint modifiers, key;
             return Hotkey.TryParse(hotkey, out modifiers, out key, out error);
         }
@@ -88,6 +90,34 @@ namespace AITools.ScreenCapture
         public PixelRect(int x, int y, int width, int height) { X = x; Y = y; Width = width; Height = height; }
     }
 
+    public struct CaptureAspectRatio
+    {
+        public readonly string Name;
+        public readonly int Width, Height;
+        public bool IsLocked => Width > 0 && Height > 0;
+        private CaptureAspectRatio(string name, int width, int height) { Name = name; Width = width; Height = height; }
+        public static readonly CaptureAspectRatio[] Options =
+        {
+            new CaptureAspectRatio("Any", 0, 0),
+            new CaptureAspectRatio("1:1", 1, 1),
+            new CaptureAspectRatio("16:9", 16, 9), new CaptureAspectRatio("9:16", 9, 16),
+            new CaptureAspectRatio("4:3", 4, 3), new CaptureAspectRatio("3:4", 3, 4),
+            new CaptureAspectRatio("3:2", 3, 2), new CaptureAspectRatio("2:3", 2, 3),
+            new CaptureAspectRatio("4:5", 4, 5), new CaptureAspectRatio("5:4", 5, 4),
+            new CaptureAspectRatio("16:10", 16, 10), new CaptureAspectRatio("10:16", 10, 16),
+            new CaptureAspectRatio("21:9", 21, 9), new CaptureAspectRatio("9:21", 9, 21),
+            new CaptureAspectRatio("32:9", 32, 9),
+            new CaptureAspectRatio("1.85:1", 185, 100),
+            new CaptureAspectRatio("2.35:1", 235, 100), new CaptureAspectRatio("2.39:1", 239, 100)
+        };
+        public static bool TryGet(string name, out CaptureAspectRatio ratio)
+        {
+            foreach (var option in Options)
+                if (option.Name == name) { ratio = option; return true; }
+            ratio = default(CaptureAspectRatio); return false;
+        }
+    }
+
     public static class CaptureGeometry
     {
         public static bool Fits(PixelRect monitor, int width, int height) => width >= 2 && height >= 2 && width <= monitor.Width && height <= monitor.Height;
@@ -100,10 +130,13 @@ namespace AITools.ScreenCapture
         }
 
         // Corner handles keep the opposite corner anchored; sides move the whole region.
-        public static PixelRect Resize(PixelRect monitor, PixelRect rect, bool left, bool top, int x, int y)
+        public static PixelRect Resize(PixelRect monitor, PixelRect rect, bool left, bool top, int x, int y, string aspectRatio = "Any")
         {
             int anchorX = left ? rect.X + rect.Width : rect.X;
             int anchorY = top ? rect.Y + rect.Height : rect.Y;
+            if (CaptureAspectRatio.TryGet(aspectRatio, out var ratio) && ratio.IsLocked)
+                return AnchoredAspect(monitor, anchorX, anchorY, left, top,
+                    Math.Max(0, left ? anchorX - x : x - anchorX), Math.Max(0, top ? anchorY - y : y - anchorY), ratio);
             x = left ? Math.Max(monitor.X, Math.Min(x, anchorX - 2)) : Math.Min(monitor.X + monitor.Width, Math.Max(x, anchorX + 2));
             y = top ? Math.Max(monitor.Y, Math.Min(y, anchorY - 2)) : Math.Min(monitor.Y + monitor.Height, Math.Max(y, anchorY + 2));
             int width = Math.Abs(x - anchorX) / 2 * 2, height = Math.Abs(y - anchorY) / 2 * 2;
@@ -114,8 +147,14 @@ namespace AITools.ScreenCapture
 
         // All inputs are physical desktop pixels, including on mixed-DPI desktops.
         // Keep both corners inside the starting monitor and use even H.264 dimensions.
-        public static PixelRect Select(PixelRect monitor, int startX, int startY, int endX, int endY)
+        public static PixelRect Select(PixelRect monitor, int startX, int startY, int endX, int endY, string aspectRatio = "Any")
         {
+            if (CaptureAspectRatio.TryGet(aspectRatio, out var ratio) && ratio.IsLocked)
+            {
+                if (startX == endX && startY == endY) return default(PixelRect);
+                return AnchoredAspect(monitor, startX, startY, endX < startX, endY < startY,
+                    Math.Abs(endX - startX), Math.Abs(endY - startY), ratio);
+            }
             int left = Math.Max(monitor.X, Math.Min(startX, endX));
             int top = Math.Max(monitor.Y, Math.Min(startY, endY));
             int right = Math.Min(monitor.X + monitor.Width, Math.Max(startX, endX));
@@ -123,6 +162,41 @@ namespace AITools.ScreenCapture
             int width = Math.Max(0, right - left) / 2 * 2;
             int height = Math.Max(0, bottom - top) / 2 * 2;
             return new PixelRect(left, top, width, height);
+        }
+
+        // Apply a new lock to an existing selection. Moving back inside the monitor
+        // is allowed here; dragging a corner instead preserves its opposite anchor.
+        public static PixelRect ApplyAspect(PixelRect monitor, PixelRect rect, string aspectRatio)
+        {
+            if (!CaptureAspectRatio.TryGet(aspectRatio, out var ratio) || !ratio.IsLocked) return rect;
+            var size = AspectSize(monitor.Width, monitor.Height, rect.Width, rect.Height, ratio);
+            return Move(monitor, size, rect.X, rect.Y);
+        }
+
+        private static PixelRect AnchoredAspect(PixelRect monitor, int anchorX, int anchorY, bool left, bool top, int width, int height, CaptureAspectRatio ratio)
+        {
+            int maxWidth = left ? anchorX - monitor.X : monitor.X + monitor.Width - anchorX;
+            int maxHeight = top ? anchorY - monitor.Y : monitor.Y + monitor.Height - anchorY;
+            var size = AspectSize(maxWidth, maxHeight, width, height, ratio);
+            return new PixelRect(left ? anchorX - size.Width : anchorX, top ? anchorY - size.Height : anchorY, size.Width, size.Height);
+        }
+
+        private static PixelRect AspectSize(int maxWidth, int maxHeight, int width, int height, CaptureAspectRatio ratio)
+        {
+            bool landscape = ratio.Width >= ratio.Height;
+            double scale = landscape ? (double)ratio.Width / ratio.Height : (double)ratio.Height / ratio.Width;
+            int maxPrimary = (landscape ? maxWidth : maxHeight) / 2 * 2;
+            int maxSecondary = (landscape ? maxHeight : maxWidth) / 2 * 2;
+            maxPrimary = Math.Min(maxPrimary, (int)Math.Floor(maxSecondary * scale / 2) * 2);
+            int minPrimary = (int)Math.Ceiling(scale) * 2;
+            if (maxPrimary < minPrimary || maxSecondary < 2) return default(PixelRect);
+            // Project the pointer onto the ratio's diagonal, then derive the shorter
+            // side from the longer one, within one pixel of the selected ratio.
+            // Reapplying a lock to rounded dimensions is stable (no size creep).
+            double desired = ((landscape ? width : height) * scale + (landscape ? height : width)) * scale / (scale * scale + 1);
+            int primary = Math.Max(minPrimary, Math.Min(maxPrimary, (int)Math.Round(desired / 2, MidpointRounding.AwayFromZero) * 2));
+            int secondary = (int)Math.Round(primary / scale / 2, MidpointRounding.AwayFromZero) * 2;
+            return landscape ? new PixelRect(0, 0, primary, secondary) : new PixelRect(0, 0, secondary, primary);
         }
 
         public static PixelRect RelativeToMonitor(PixelRect selection, PixelRect monitor)

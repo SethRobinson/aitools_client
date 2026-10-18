@@ -184,6 +184,7 @@ namespace AITools.ScreenCapture.Helper
                 }
                 _region = CaptureGeometry.Move(monitor, new PixelRect(0, 0, _settings.fixedWidth, _settings.fixedHeight), _region.X, _region.Y);
             }
+            else _region = CaptureGeometry.ApplyAspect(MonitorRect(), _region, _settings.aspectRatio);
             _border?.Dispose(); _border = null;
             if (_toolbar.Visible) ShowBorder();
         }
@@ -191,7 +192,7 @@ namespace AITools.ScreenCapture.Helper
         private void ShowBorder()
         {
             if (_screen == null || _border != null) return;
-            _border = new RegionBorder(MonitorRect(), _region, _settings.fixedSize, rect => { _region = rect; Refresh(); });
+            _border = new RegionBorder(MonitorRect(), _region, _settings.fixedSize, _settings.aspectRatio, rect => { _region = rect; Refresh(); });
             _border.SetState(_session.Active, _session.Stage == CaptureStage.Recording || _session.Stage == CaptureStage.Starting);
             _border.Show();
         }

@@ -34,6 +34,7 @@ internal static class Program
             string evidence = Path.Combine(root, "build", "capture-checks-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(evidence);
             SettingsAndGeometry();
+            AspectRatios();
             Sessions();
             Paths(evidence);
             DependencyCheck(root);
@@ -43,6 +44,68 @@ internal static class Program
             return 0;
         }
         catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }
+    }
+    private static void AspectRatios()
+    {
+        Check(new CaptureSettings().aspectRatio == "Any", "Old preferences must default to an unlocked ratio");
+        Check(CaptureAspectRatio.Options.Select(r => r.Name).Distinct().Count() == CaptureAspectRatio.Options.Length, "Duplicate ratio choices");
+        Check(!new CaptureSettings { aspectRatio = "not-a-ratio" }.IsValid(out _), "Unsupported ratio accepted");
+        var oldPreferences = JsonSerializer.Deserialize<CaptureSettings>("{\"fps\":60,\"audio\":false}", new JsonSerializerOptions { IncludeFields = true });
+        Check(oldPreferences.aspectRatio == "Any" && oldPreferences.fps == 60 && !oldPreferences.audio, "Old preferences lost their values or new defaults");
+        foreach (var ratio in CaptureAspectRatio.Options)
+        {
+            Check(new CaptureSettings { aspectRatio = ratio.Name }.IsValid(out _), "Supported ratio rejected: " + ratio.Name);
+            var json = JsonSerializer.Serialize(new CaptureSettings { aspectRatio = ratio.Name, fixedSize = true }, new JsonSerializerOptions { IncludeFields = true });
+            var restored = JsonSerializer.Deserialize<CaptureSettings>(json, new JsonSerializerOptions { IncludeFields = true });
+            Check(restored.aspectRatio == ratio.Name && restored.fixedSize, "Switching modes must retain the Custom ratio");
+            foreach (var monitor in new[] { new PixelRect(0, 0, 1920, 1080), new PixelRect(-2560, -400, 2560, 1440), new PixelRect(3840, -2400, 1440, 2560) })
+            {
+                var original = new PixelRect(monitor.X + 40, monitor.Y + 60, 614, 392);
+                var adjusted = CaptureGeometry.ApplyAspect(monitor, original, ratio.Name);
+                if (!ratio.IsLocked)
+                {
+                    Check(adjusted.Equals(original) && CaptureGeometry.Select(monitor, original.X, original.Y, original.X + 101, original.Y + 33, ratio.Name).Width == 100, "Any changed free selection");
+                    continue;
+                }
+                CheckAspectRect(monitor, adjusted, ratio);
+                Check(CaptureGeometry.ApplyAspect(monitor, adjusted, ratio.Name).Equals(adjusted), "Reapplying ratio moved or resized the box");
+                var moved = CaptureGeometry.Move(monitor, adjusted, monitor.X - 5000, monitor.Y + 5000);
+                Check(moved.Width == adjusted.Width && moved.Height == adjusted.Height, "Moving a locked rectangle changed size");
+                for (int corner = 0; corner < 4; ++corner)
+                {
+                    bool left = (corner & 1) == 0, top = corner < 2;
+                    int x = monitor.X + monitor.Width / 2, y = monitor.Y + monitor.Height / 2;
+                    // Drag well beyond each monitor edge, including negative-coordinate desktops.
+                    var selected = CaptureGeometry.Select(monitor, x, y, x + (left ? -5000 : 5000), y + (top ? -3000 : 3000), ratio.Name);
+                    CheckAspectRect(monitor, selected, ratio);
+                    Check((left ? selected.X + selected.Width : selected.X) == x && (top ? selected.Y + selected.Height : selected.Y) == y, "Selection moved its starting corner");
+                    int anchorX = left ? adjusted.X + adjusted.Width : adjusted.X;
+                    int anchorY = top ? adjusted.Y + adjusted.Height : adjusted.Y;
+                    var resized = CaptureGeometry.Resize(monitor, adjusted, left, top, x + (left ? -5000 : 5000), y + (top ? -3000 : 3000), ratio.Name);
+                    CheckAspectRect(monitor, resized, ratio);
+                    Check((left ? resized.X + resized.Width : resized.X) == anchorX && (top ? resized.Y + resized.Height : resized.Y) == anchorY, "Locked resize moved its opposite corner");
+                    var crossed = CaptureGeometry.Resize(monitor, adjusted, left, top, anchorX + (left ? 10 : -10), anchorY + (top ? 10 : -10), ratio.Name);
+                    CheckAspectRect(monitor, crossed, ratio);
+                    // Even-pixel rounding must not cause a size jump on a stationary corner.
+                    var still = CaptureGeometry.Resize(monitor, adjusted, left, top, left ? adjusted.X : adjusted.X + adjusted.Width, top ? adjusted.Y : adjusted.Y + adjusted.Height, ratio.Name);
+                    Check(still.Equals(adjusted), "Stationary resize changed ratio-rounded dimensions");
+                }
+                var exact = CaptureGeometry.Select(monitor, monitor.X, monitor.Y, monitor.X + ratio.Width * 2, monitor.Y + ratio.Height * 2, ratio.Name);
+                Check(exact.Width == ratio.Width * 2 && exact.Height == ratio.Height * 2, "Exact ratio dimensions must stay exact");
+                var tiny = CaptureGeometry.Select(monitor, monitor.X + monitor.Width - 1, monitor.Y + monitor.Height - 1, monitor.X + monitor.Width + 100, monitor.Y + monitor.Height + 100, ratio.Name);
+                Check(tiny.Width == 0 && tiny.Height == 0, "One pixel at a monitor edge cannot contain an even capture");
+                Check(CaptureGeometry.Select(monitor, original.X, original.Y, original.X, original.Y, ratio.Name).Width == 0, "Click without dragging unexpectedly selected an area");
+            }
+        }
+    }
+    private static void CheckAspectRect(PixelRect monitor, PixelRect rect, CaptureAspectRatio ratio)
+    {
+        Check(rect.Width >= 2 && rect.Height >= 2 && rect.Width % 2 == 0 && rect.Height % 2 == 0 &&
+            rect.X >= monitor.X && rect.Y >= monitor.Y && rect.X + rect.Width <= monitor.X + monitor.Width && rect.Y + rect.Height <= monitor.Y + monitor.Height,
+            "Ratio rectangle must stay inside its monitor with even dimensions: " + ratio.Name);
+        double scale = ratio.Width >= ratio.Height ? (double)ratio.Width / ratio.Height : (double)ratio.Height / ratio.Width;
+        double error = ratio.Width >= ratio.Height ? Math.Abs(rect.Height - rect.Width / scale) : Math.Abs(rect.Width - rect.Height / scale);
+        Check(error <= 1.000001, "Ratio changed beyond pixel rounding: " + ratio.Name + " " + CaptureGeometry.Describe(rect));
     }
     private static void SettingsAndGeometry()
     {

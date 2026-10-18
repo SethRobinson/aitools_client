@@ -15,7 +15,8 @@ Excluded before staging: ignored/untracked files, private application and CLI co
 After Unity builds, `BuildWin64.bat` runs `scripts/BuildScreenCapture.ps1 -Check`.
 This requires the .NET SDK, restores locked ScreenRecorderLib 7.0.1 dependencies,
 builds the net48/x64 helper from `tools/ScreenCapture`, and refreshes tracked runtime
-files under `utils/ScreenCapture`. Its dependency-only check never captures screens
+files under `utils/ScreenCapture` (identical files are skipped so loaded native DLLs
+do not block staging). Its dependency-only check never captures screens
 or sound. Third-party CRT DLLs, the recorder DLL, licenses and hashes are included;
 the build checks dependency hashes and never harvests machine-installed CRT DLLs.
 ScreenRecorderLib is the pinned 7.0.1 build with our HDR patch, not the stock NuGet

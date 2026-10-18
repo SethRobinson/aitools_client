@@ -15,8 +15,14 @@ The outline is blue when ready and red when recording; recorder controls and
 outlines use Windows capture exclusion.
 
 The toolbar's **Size** dropdown selects **Custom** or **Fixed**. Custom starts with a
-free selection: drag its sides or its coordinate label to move it, and its corner
-handles to resize it. Fixed shows remembered width/height inputs and places a box
+selection: drag its sides or its coordinate label to move it, and its corner
+handles to resize it. In Custom mode, **Aspect ratio** remembers **Any** (unlocked),
+1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3, 4:5, 5:4, 16:10, 10:16, 21:9, 9:21, 32:9,
+1.85:1, 2.35:1 or 2.39:1. The lock applies while drawing and resizing, including at
+monitor edges, and changing it adjusts the existing selection immediately. Corner
+resizing anchors the opposite corner. H.264 rounding can change the ideal shorter
+dimension by up to one physical pixel. Any restores free sizing; Fixed ignores the
+remembered Custom ratio. Fixed shows remembered width/height inputs and places a box
 of exactly that size; all handles move it. Oversize fixed boxes cannot be placed on
 a smaller monitor. Both modes stay on the selected monitor. Dimensions are even
 physical pixels. The label shows width, height and desktop X/Y beside the bottom
@@ -99,6 +105,9 @@ opens no window or capture device and registers no global shortcut. Vendored
 Microsoft DLLs come from the official signed 14.44.35211 x64 redistributable, with
 installer/file hashes in `dependencies.json`; do not harvest System32 DLLs.
 Helper source and built runtime files are tracked, following the RTClip model.
+Staging skips identical files so loaded, unchanged DLLs do not prevent a helper
+update. A changed executable can still be locked by a running helper; normally
+close AI Tools or exit Unity Play mode before rebuilding it.
 The NuGet package supplies the pinned API reference and original license; the
 helper's build output uses the patched DLL from `utils/ScreenCapture`. Patch/header
 hash checks reject stale native builds. `.gitattributes` fixes their line endings
@@ -127,8 +136,10 @@ sign AIToolsCapture.exe, and verify four first-party signatures. Vendor DLLs ret
 their licenses; the VC runtime retains its original bytes. See `release_packaging.md`.
 
 Validation (2026-10-18): helper/native and Unity C# compilation and
-123 offline recorder checks passed, including fixed-size bounds, corner anchoring,
-movement and zero/fractional countdowns. 523 synthetic GPU checks cover HDR highlights,
+2359 offline recorder checks passed, including all aspect-ratio choices, all four
+drag/resize directions, monitor-edge clamping, stable pixel rounding, preference
+round trips, fixed-size bounds, movement and zero/fractional countdowns.
+523 synthetic GPU checks cover HDR highlights,
 SDR white normalization, RGB channel order, native sizes, SDR passthrough and renderer
 state preservation. Seth confirmed the original live recording works; the new HDR
 path and interactive rectangle controls still need live acceptance. Mixed-DPI UI,

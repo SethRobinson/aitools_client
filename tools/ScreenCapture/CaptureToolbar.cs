@@ -16,6 +16,8 @@ namespace AITools.ScreenCapture.Helper
         private readonly ComboBox _sizeMode = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 86 };
         private readonly NumericUpDown _width = DimensionInput(1280), _height = DimensionInput(720);
         private readonly FlowLayoutPanel _dimensions = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = Padding.Empty };
+        private readonly ComboBox _aspectRatio = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 94, MaxDropDownItems = 18, IntegralHeight = false, DropDownHeight = 320 };
+        private readonly FlowLayoutPanel _aspectControls = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = Padding.Empty };
         private readonly Label _status = new Label { AutoSize = true, MaximumSize = new Size(640, 0), Padding = new Padding(4) };
         private bool _updating;
         private double _countdownSeconds = 3;
@@ -36,13 +38,16 @@ namespace AITools.ScreenCapture.Helper
             var sizeRow = new FlowLayoutPanel { AutoSize = true, WrapContents = false };
             _sizeMode.Items.AddRange(new object[] { "Custom", "Fixed" });
             _dimensions.Controls.AddRange(new Control[] { _width, Caption("x"), _height, Caption("pixels") });
-            sizeRow.Controls.AddRange(new Control[] { Caption("Size"), _sizeMode, _dimensions });
+            foreach (var ratio in CaptureAspectRatio.Options) _aspectRatio.Items.Add(ratio.Name);
+            _aspectControls.Controls.AddRange(new Control[] { Caption("Aspect ratio"), _aspectRatio });
+            sizeRow.Controls.AddRange(new Control[] { Caption("Size"), _sizeMode, _dimensions, _aspectControls });
             layout.Controls.Add(row); layout.Controls.Add(sizeRow); layout.Controls.Add(_status); Controls.Add(layout);
             foreach (int rate in CaptureSettings.FrameRates) _fps.Items.Add(rate);
             _select.Click += (s, e) => SelectRequested?.Invoke();
             _record.Click += (s, e) => RecordRequested?.Invoke();
             _audio.CheckedChanged += Changed; _cursor.CheckedChanged += Changed; _fps.SelectedIndexChanged += Changed;
             _sizeMode.SelectedIndexChanged += Changed;
+            _aspectRatio.SelectedIndexChanged += Changed;
             _width.ValueChanged += Changed; _height.ValueChanged += Changed;
             _settings.Click += (s, e) =>
             {
@@ -58,6 +63,7 @@ namespace AITools.ScreenCapture.Helper
         private void Changed(object sender, EventArgs e)
         {
             _dimensions.Visible = _sizeMode.SelectedIndex == 1;
+            _aspectControls.Visible = _sizeMode.SelectedIndex == 0;
             if (!_updating)
             {
                 // H.264 4:2:0 requires even dimensions. Show the actual stored value.
@@ -73,6 +79,7 @@ namespace AITools.ScreenCapture.Helper
             _audio.Checked = settings.audio; _cursor.Checked = settings.cursor; _fps.SelectedItem = settings.fps;
             _countdownSeconds = settings.countdownSeconds; _sizeMode.SelectedIndex = settings.fixedSize ? 1 : 0;
             _width.Value = settings.fixedWidth; _height.Value = settings.fixedHeight;
+            _aspectRatio.SelectedItem = settings.aspectRatio;
             _updating = false;
         }
         internal void ReadSettings(CaptureSettings settings)
@@ -81,13 +88,14 @@ namespace AITools.ScreenCapture.Helper
             settings.fps = _fps.SelectedItem is int value ? value : 30;
             settings.countdownSeconds = _countdownSeconds; settings.fixedSize = _sizeMode.SelectedIndex == 1;
             settings.fixedWidth = (int)_width.Value; settings.fixedHeight = (int)_height.Value;
+            settings.aspectRatio = _aspectRatio.SelectedItem as string ?? "Any";
         }
         internal void UpdateState(CaptureStage stage, string text)
         {
             bool busy = stage == CaptureStage.Countdown || stage == CaptureStage.Starting || stage == CaptureStage.Recording || stage == CaptureStage.Finishing;
             _select.Enabled = !busy;
             _audio.Enabled = _cursor.Enabled = _fps.Enabled = !busy;
-            _settings.Enabled = _sizeMode.Enabled = _dimensions.Enabled = !busy;
+            _settings.Enabled = _sizeMode.Enabled = _dimensions.Enabled = _aspectControls.Enabled = !busy;
             _record.Text = stage == CaptureStage.Countdown ? "Cancel" : busy ? "Stop" : "Record";
             _record.Enabled = stage == CaptureStage.Ready || stage == CaptureStage.Countdown || stage == CaptureStage.Recording || stage == CaptureStage.Starting;
             _status.Text = text;

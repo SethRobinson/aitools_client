@@ -42,7 +42,7 @@ namespace AITools.ScreenCapture.Helper
             var monitor = new PixelRect(b.X, b.Y, b.Width, b.Height);
             _selection = _settings.fixedSize
                 ? CaptureGeometry.Move(monitor, new PixelRect(0, 0, _settings.fixedWidth, _settings.fixedHeight), end.X - _settings.fixedWidth / 2, end.Y - _settings.fixedHeight / 2)
-                : CaptureGeometry.Select(monitor, _start.X, _start.Y, end.X, end.Y);
+                : CaptureGeometry.Select(monitor, _start.X, _start.Y, end.X, end.Y, _settings.aspectRatio);
             Invalidate();
         }
         protected override void OnMouseUp(MouseEventArgs e)
@@ -72,6 +72,7 @@ namespace AITools.ScreenCapture.Helper
     {
         private readonly PixelRect _monitor;
         private readonly Action<PixelRect> _changed;
+        private readonly string _aspectRatio;
         private PixelRect _rect, _dragRect;
         private Point _dragStart;
         private bool _dragging, _locked;
@@ -79,9 +80,9 @@ namespace AITools.ScreenCapture.Helper
         internal bool Recording, FixedSize;
         private int HandleSize => Math.Max(8, 8 * DeviceDpi / 96);
         protected override bool ShowWithoutActivation => true;
-        internal RegionBorder(PixelRect monitor, PixelRect rect, bool fixedSize, Action<PixelRect> changed)
+        internal RegionBorder(PixelRect monitor, PixelRect rect, bool fixedSize, string aspectRatio, Action<PixelRect> changed)
         {
-            _monitor = monitor; _rect = rect; FixedSize = fixedSize; _changed = changed;
+            _monitor = monitor; _rect = rect; FixedSize = fixedSize; _aspectRatio = aspectRatio; _changed = changed;
             AutoScaleMode = AutoScaleMode.None;
             FormBorderStyle = FormBorderStyle.None; StartPosition = FormStartPosition.Manual;
             BackColor = Color.Magenta; TransparencyKey = Color.Magenta;
@@ -133,7 +134,7 @@ namespace AITools.ScreenCapture.Helper
                 ? CaptureGeometry.Move(_monitor, _dragRect, _dragRect.X + point.X - _dragStart.X, _dragRect.Y + point.Y - _dragStart.Y)
                 : CaptureGeometry.Resize(_monitor, _dragRect, (_corner & 1) == 0, _corner < 2,
                     ((_corner & 1) == 0 ? _dragRect.X : _dragRect.X + _dragRect.Width) + point.X - _dragStart.X,
-                    (_corner < 2 ? _dragRect.Y : _dragRect.Y + _dragRect.Height) + point.Y - _dragStart.Y);
+                    (_corner < 2 ? _dragRect.Y : _dragRect.Y + _dragRect.Height) + point.Y - _dragStart.Y, _aspectRatio);
             UpdateRegionBounds(); _changed(_rect);
         }
         protected override void OnMouseUp(MouseEventArgs e) { if (e.Button == MouseButtons.Left) { OnMouseMove(e); _dragging = false; Capture = false; } }
