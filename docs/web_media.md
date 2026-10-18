@@ -500,8 +500,10 @@ runtime was detected, and the yt-dlp warning is visible in the trace.
 `tempCache/aichat_web_videos/ytdlp_<id>.mp4` (whole source at <=480p) / `direct_<id>.<ext>` (deleted after the clip is cut), the
 normalized clip in `tempCache/aichat_video_clips/` (auto-deleted with the Pic), and web_audio's
 `tempCache/aichat_audio/web_<id>.<ext>` / `web_cut_<id>.wav` (the bubble's lossless `audioPath`) with its waveform
-preview in `tempCache/aichat_audio_previews/`. `tempCache` is wiped on quit; save a bubble to keep it
-(an Audio bubble's S saves the sound file next to the preview movie).
+preview in `tempCache/aichat_audio_previews/`. `tempCache` is wiped on quit; save a bubble to keep it.
+A Movie bubble's S exports a persistent `output/video_<guid>.<original extension>` copy;
+the working clip keeps its temporary cleanup policy. An Audio bubble's S also saves
+the sound file next to the preview movie. See `media_import.md` "Saving movies".
 
 Bulk cleanup uses `RTSafeFileSystem`: quit cleanup resolves the fixed `tempCache` child from
 `Application.dataPath`, never the process working directory, and skips deletion with a warning

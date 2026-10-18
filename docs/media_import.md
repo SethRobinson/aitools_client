@@ -13,6 +13,19 @@ Moved verbatim from AGENTS.md on 2026-09-13 (bullet style kept); update this fil
 
 - `utils/yt-dlp/yt-dlp.exe` (Unlicense; version in `utils/yt-dlp/README.txt`) is the bundled downloader behind AI Chat's `web_video` skill: `Assets/_Script/LLM/AIChat/Web/YtDlpTool.cs` resolves it from the app root (PATH fallback), runs it through `FfmpegTool.RunProcessCancellable` (whole video at <=480p, NOT `--download-sections`: YouTube throttles ffmpeg-driven section fetches to KiB/s; the host cuts the section locally), auto-detects a JS runtime (deno/node/bun on PATH -> `--js-runtimes`, needed for YouTube), and the chat Web bubble shows the exact command line plus output tail. It is copied with `utils` by release staging (`scripts/ReleasePackage.ps1`) and is not signed. Update by replacing the exe.
 
+## Saving movies
+
+The PicMain toolbar's `S` button (`SaveFileNoReturn` / `SaveFileNoReturn2`) saves movies
+through `PicMovie.SaveMovie` and says "Saving video...". Each save copies the original
+source bytes to a fresh `output/video_<guid>.<original extension>` file, including clips
+downloaded by AI Chat. An empty save-directory argument also defaults to `output/`.
+The saved copy is never registered as the PicMovie's temporary source, so destroying
+the Pic or quitting the app cannot auto-delete it. The working source retains its
+existing cleanup policy; imported originals stay untouched, while disposable clips
+can still be cleaned up. A successful copy shows its saved path; a failed copy reports
+"Could not save video". Audio bubbles also copy their original sound file beside the
+saved preview movie with the same stem and the sound file's extension.
+
 ## FFmpeg, ffprobe and PicMovie playback
 
 The workspace movie quad (`PicMovie.OnVideoPrepared`) fits the video's longest side to the 5.12-unit pic box, the same fit as still sprites, so tall videos pillarbox instead of overflowing the PicMain box.

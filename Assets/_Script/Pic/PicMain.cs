@@ -1914,7 +1914,7 @@ msg += $@" {c1}Mask Rect size X: ``{(int)m_targetRectScript.GetOffsetRect().widt
 
     public void SaveFileNoReturn()
     {
-        RTQuickMessageManager.Get().ShowMessage("Saving image...");
+        RTQuickMessageManager.Get().ShowMessage(IsMovie() ? "Saving video..." : "Saving image...");
 
         RTMessageManager.Get().Schedule(0.01f, this.SaveFileNoReturn2);
     }

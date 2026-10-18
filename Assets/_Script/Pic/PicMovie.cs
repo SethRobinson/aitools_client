@@ -302,31 +302,30 @@ public class PicMovie : MonoBehaviour
 
     public void SaveMovie(string path)
     {
-        string newFileName;
-        if (string.IsNullOrEmpty(path))
+        // AutoSaveImageIfNeeded also calls this for still pictures.
+        if (string.IsNullOrEmpty(m_fileName)) return;
+
+        // Always export a distinct file outside tempCache, including when the source
+        // already lives in output. Reusing its name can copy a file onto itself.
+        string directory = Config.Get().GetBaseFileDir(
+            string.IsNullOrEmpty(path) ? "/" + Config._saveDirName : path);
+        string newFileName = System.IO.Path.Combine(directory,
+            "video_" + System.Guid.NewGuid() + System.IO.Path.GetExtension(m_fileName));
+
+        if (!RTUtil.CopyFile(m_fileName, newFileName))
         {
-            // Original behavior - just remove temp_ prefix
-            newFileName = m_fileName.Replace("temp_", "");
-            RTUtil.CopyFile(m_fileName, newFileName);
+            RTQuickMessageManager.Get().ShowMessage("Could not save video");
+            return;
         }
-        else
-        {
-            // Extract just the filename without the path
-            string fileName = System.IO.Path.GetFileName(m_fileName);
 
-            // Remove temp_ prefix if it exists
-            fileName = fileName.Replace("temp_", "");
-
-            // Combine the provided path with the filename
-            newFileName = System.IO.Path.Combine(Config.Get().GetBaseFileDir(path) + "/", fileName);
-
-            RTUtil.CopyFile(m_fileName, newFileName);
-        }
+        // Keep cleanup ownership on the working source only. The exported copy is
+        // never assigned to m_fileName, so DeleteMovieIfNeeded cannot remove it.
+        RTQuickMessageManager.Get().ShowMessage("Saved video as " + newFileName);
         SaveCompanionAudioNextTo(newFileName);
     }
 
     // Copies the original sound file (audio bubbles) next to the saved preview movie,
-    // same stem, its own extension: "sfx_..._preview.mp4" + "sfx_..._preview.wav".
+    // same stem, its own extension: "video_....mp4" + "video_....wav".
     void SaveCompanionAudioNextTo(string savedMoviePath)
     {
         if (string.IsNullOrEmpty(m_companionAudioFile) || string.IsNullOrEmpty(savedMoviePath)) return;
