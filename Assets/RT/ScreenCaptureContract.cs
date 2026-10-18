@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 
 // Shared with the Windows helper and its offline checks. No Unity or WinForms dependencies.
@@ -21,9 +22,12 @@ namespace AITools.ScreenCapture
 
         public static readonly int[] FrameRates = { 16, 24, 30, 60, 120 };
 
+        public static bool TryParseFrameRate(string text, out int value) =>
+            int.TryParse(text?.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out value) && value > 0;
+
         public bool IsValid(out string error)
         {
-            if (Array.IndexOf(FrameRates, fps) < 0) { error = "Choose 16, 24, 30, 60, or 120 fps."; return false; }
+            if (fps <= 0) { error = "FPS must be a positive whole number."; return false; }
             if (double.IsNaN(countdownSeconds) || double.IsInfinity(countdownSeconds) || countdownSeconds < 0 || countdownSeconds > 3600)
             { error = "Countdown must be between 0 and 3600 seconds."; return false; }
             if (fixedWidth < 2 || fixedHeight < 2 || fixedWidth > 16384 || fixedHeight > 16384 || (fixedWidth & 1) != 0 || (fixedHeight & 1) != 0)

@@ -19,6 +19,7 @@ an alpha bitmap before showing each selection window, without an initial opaque
 paint or a desktop screenshot. The dragged interior is fully transparent; a fixed
 box awaiting a click uses 1/255 black alpha to retain Windows mouse hit testing.
 Capture exclusion is set when window handles are created, before they are shown.
+The surface uses Windows [per-pixel layered windows](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-updatelayeredwindow).
 
 The toolbar's **Size** dropdown selects **Custom** or **Fixed**. Custom starts with a
 selection: drag its sides or its coordinate label to move it, and its corner
@@ -36,7 +37,10 @@ right, moving inside only when the monitor edge leaves no room outside. It remai
 visible during capture and is excluded from the video. Position and size lock at
 countdown start; the outline passes clicks through during capture.
 
-FPS choices are 16, 24, 30, 60, and 120, initially 30. System audio and cursor capture
+FPS is editable: type any positive whole-number target, or choose the 16, 24, 30,
+60 and 120 presets (initially 30). Custom values are remembered. Invalid text
+disables Record and explains the required format; it never silently falls back to
+a preset. ScreenRecorderLib's frame-rate API is integer-only. System audio and cursor capture
 default on. Audio uses the default playback endpoint chosen at recording start,
 including all apps playing through it. There is no microphone input. That endpoint
 stays fixed for the recording; disconnection stops it. No duration cap is imposed.
@@ -45,7 +49,8 @@ refresh rate or hardware throughput.
 
 On completion AI Tools restores its window and opens `ChatVideoClipChooser` for every
 recording, even below five seconds, with the whole clip selected. Captures and their
-trimmed exports keep source resolution. Other callers retain the five-second default
+trimmed exports keep source resolution and frame rate, including custom rates above
+120 FPS. Other callers retain the five-second default
 selection and existing 832x480 export bound. Existing export-to-file/chat controls,
 audio normalization preference, audio-only/still exports and multiple exports remain
 available. Resizing is deferred to a separate feature.
@@ -136,7 +141,7 @@ Normal release builds use the checked-in patched DLL and only require the .NET S
 
 `pwsh -File scripts/VerifyScreenCapture.ps1` runs geometry, shortcut, settings,
 session lifecycle, worker ordering/cancellation, stale/duplicate completion and path checks plus synthetic-only
-FFmpeg audio/video fixtures at all five FPS values. It links production FfmpegTool
+FFmpeg audio/video fixtures at all five preset FPS values and custom 25/50/144 FPS. It links production FfmpegTool
 source with minimal Unity math/log stubs, checks native-resolution trimming, leading
 silence and existing export defaults, and retains evidence below `build/capture-checks-*`.
 It never captures the desktop or audio devices. `dotnet build Assembly-CSharp.csproj
@@ -151,9 +156,9 @@ sign AIToolsCapture.exe, and verify four first-party signatures. Vendor DLLs ret
 their licenses; the VC runtime retains its original bytes. See `release_packaging.md`.
 
 Validation (2026-10-18): helper/native and Unity C# compilation and
-2366 offline recorder checks and 18 synthetic overlay checks passed, including all aspect-ratio choices, all four
+2404 offline recorder checks and 18 synthetic overlay checks passed, including all aspect-ratio choices, all four
 drag/resize directions, monitor-edge clamping, stable pixel rounding, preference
-round trips, fixed-size bounds, movement and zero/fractional countdowns.
+round trips, custom FPS validation/export, fixed-size bounds, movement and zero/fractional countdowns.
 523 synthetic GPU checks cover HDR highlights,
 SDR white normalization, RGB channel order, native sizes, SDR passthrough and renderer
 state preservation. Seth confirmed the original live recording works; the new HDR

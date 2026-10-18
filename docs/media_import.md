@@ -9,7 +9,10 @@ Moved verbatim from AGENTS.md on 2026-09-13 (bullet style kept); update this fil
 The built-in Windows region recorder opens this same trim/export dialog after Stop.
 Its sources select their full duration and preserve native dimensions through the
 optional `initialDurationSeconds` / `preserveSourceResolution` arguments to
-`ChatVideoClipChooser.Show`; existing imports retain their defaults. Toolbar, audio,
+`ChatVideoClipChooser.Show`. Its `preserveSourceFrameRate` option also bypasses the
+legacy 120 FPS cap, passing `preserveRequestedFrameRate` to `FfmpegTool.CreateClip`
+so custom screen recordings such as 144 FPS stay at the chosen rate through export.
+Existing imports retain their defaults. Toolbar, audio,
 hotkey, helper lifecycle and offline checks: `screen_recording.md`.
 
 - `utils/RTClip.*` is a small external clipboard helper already copied with releases (net6.0-windows WinForms; source lives in `utils/RTClip.zip`, rebuild with `dotnet build` and copy the exe/dll/runtimeconfig back). Modes: no args = dump any clipboard image to `winclip_image.png` (preferring the alpha-preserving raw `PNG` format); `set <png>` = put a PNG on the clipboard (bitmap + raw PNG); `files [extractDir]` = write `winclip_files.txt` (UTF-8 path list, working dir) when the clipboard references files, extracting OLE virtual files (`FileGroupDescriptorW`/`FileContents`) into extractDir first. Unity-side clipboard-paste readers: `Assets/RT/RTClipboardFileList.cs` reads real clipboard file lists (CF_HDROP/FileNameW) in-process via P/Invoke and only spawns RTClip `files` mode when virtual files are present; pasted videos are snapshotted into `tempCache/pasted_media` (clipboard sources like Snipping Tool recordings are transient temp files).

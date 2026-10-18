@@ -124,7 +124,16 @@ namespace AITools.ScreenCapture.Helper
             _toolbar.RecordRequested += RecordOrStop;
             _toolbar.CloseRequested += CloseToolbar;
             _toolbar.CancelRequested += Cancel;
-            _toolbar.SettingsChanged += () => { _toolbar.ReadSettings(_settings); ApplyRegionSettings(); EmitSettings(); Refresh(); };
+            _toolbar.SettingsChanged += () =>
+            {
+                bool fixedSize = _settings.fixedSize;
+                int width = _settings.fixedWidth, height = _settings.fixedHeight;
+                string aspect = _settings.aspectRatio;
+                _toolbar.ReadSettings(_settings);
+                if (fixedSize != _settings.fixedSize || width != _settings.fixedWidth || height != _settings.fixedHeight || aspect != _settings.aspectRatio)
+                    ApplyRegionSettings();
+                EmitSettings(); Refresh();
+            };
             _hotkey.Pressed += () => { if (_session.Active) RecordOrStop(); else ShowToolbar(); };
             _hotkey.CancelPressed += Cancel;
             _timer.Tick += Tick; _timer.Start();
@@ -264,6 +273,7 @@ namespace AITools.ScreenCapture.Helper
         {
             if (_session.Stage == CaptureStage.Countdown) { Cancel(); return; }
             if (_session.Active) { Stop(); return; }
+            if (!_toolbar.HasValidFrameRate) return;
             if (!_session.Countdown()) return;
             _recordSettings = new CaptureSettings { fps = _settings.fps, audio = _settings.audio, cursor = _settings.cursor, countdownSeconds = _settings.countdownSeconds };
             _clock.Restart(); _startupWarning = null; EmitState();

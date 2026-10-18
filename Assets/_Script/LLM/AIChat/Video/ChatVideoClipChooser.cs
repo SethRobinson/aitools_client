@@ -67,6 +67,7 @@ namespace AITools.AIChat.Video
         private bool _exportToFile;
         private bool _exportToChat = true;
         private bool _preserveSourceResolution;
+        private bool _preserveSourceFrameRate;
         private bool _exportedAnything;
         private bool _exportBusy;
         private bool _prepared;
@@ -134,13 +135,15 @@ namespace AITools.AIChat.Video
             string titleText = "Export Video / Audio Clip",
             float initialStartSeconds = 0f,
             float? initialDurationSeconds = null,
-            bool preserveSourceResolution = false)
+            bool preserveSourceResolution = false,
+            bool preserveSourceFrameRate = false)
         {
             RectTransform dialogParent = ResolveDialogParent(parent);
             var go = new GameObject("AIChatVideoClipChooser");
             go.transform.SetParent(dialogParent, false);
             var chooser = go.AddComponent<ChatVideoClipChooser>();
             chooser._preserveSourceResolution = preserveSourceResolution;
+            chooser._preserveSourceFrameRate = preserveSourceFrameRate;
             if (initialDurationSeconds.HasValue && initialDurationSeconds.Value > 0 && !float.IsInfinity(initialDurationSeconds.Value))
                 chooser._duration = initialDurationSeconds.Value;
             chooser.Initialize(dialogParent, font, sourcePath, info, onClose, titleText, initialStartSeconds);
@@ -1012,7 +1015,8 @@ namespace AITools.AIChat.Video
             string outputPath = FfmpegTool.GetClipOutputPath(sourcePath);
             FfmpegTool.ClipResult result = null;
             yield return FfmpegTool.CreateClip(sourcePath, sel.StartSeconds, sel.DurationSeconds, outputPath, r => result = r,
-                fps: sel.Fps, maxWidth: maxWidth, maxHeight: maxHeight, includeAudio: sel.IncludeAudio, normalizeAudio: sel.NormalizeAudio);
+                fps: sel.Fps, maxWidth: maxWidth, maxHeight: maxHeight, includeAudio: sel.IncludeAudio, normalizeAudio: sel.NormalizeAudio,
+                preserveRequestedFrameRate: _preserveSourceFrameRate);
             if (result == null || !result.Success)
             {
                 ShowToast("Could not export video clip: " + (result != null ? result.Error : "unknown error"));
@@ -1190,11 +1194,11 @@ namespace AITools.AIChat.Video
                 : new Color(0.18f, 0.24f, 0.32f, 1f);
         }
 
-        private static double ClampFps(double fps)
+        private double ClampFps(double fps)
         {
             if (fps <= 0 || double.IsNaN(fps) || double.IsInfinity(fps))
                 return FfmpegTool.DefaultFps;
-            return Math.Max(1, Math.Min(120, fps));
+            return _preserveSourceFrameRate ? Math.Max(1, fps) : Math.Max(1, Math.Min(120, fps));
         }
 
         private static string FormatNumber(double value)

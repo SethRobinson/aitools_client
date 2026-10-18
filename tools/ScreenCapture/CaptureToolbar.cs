@@ -11,7 +11,7 @@ namespace AITools.ScreenCapture.Helper
         private readonly Button _record = new Button { Text = "Record", AutoSize = true };
         private readonly CheckBox _audio = new CheckBox { Text = "System audio", AutoSize = true };
         private readonly CheckBox _cursor = new CheckBox { Text = "Include cursor", AutoSize = true };
-        private readonly ComboBox _fps = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 66 };
+        private readonly ComboBox _fps = new ComboBox { DropDownStyle = ComboBoxStyle.DropDown, Width = 86 };
         private readonly Button _settings = new Button { Text = "Settings", AutoSize = true };
         private readonly ComboBox _sizeMode = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 86 };
         private readonly NumericUpDown _width = DimensionInput(1280), _height = DimensionInput(720);
@@ -21,6 +21,7 @@ namespace AITools.ScreenCapture.Helper
         private readonly Label _status = new Label { AutoSize = true, MaximumSize = new Size(640, 0), Padding = new Padding(4) };
         private bool _updating;
         private double _countdownSeconds = 3;
+        internal bool HasValidFrameRate => CaptureSettings.TryParseFrameRate(_fps.Text, out _);
         internal bool AllowClose;
 
         internal CaptureToolbar()
@@ -45,7 +46,7 @@ namespace AITools.ScreenCapture.Helper
             foreach (int rate in CaptureSettings.FrameRates) _fps.Items.Add(rate);
             _select.Click += (s, e) => SelectRequested?.Invoke();
             _record.Click += (s, e) => RecordRequested?.Invoke();
-            _audio.CheckedChanged += Changed; _cursor.CheckedChanged += Changed; _fps.SelectedIndexChanged += Changed;
+            _audio.CheckedChanged += Changed; _cursor.CheckedChanged += Changed; _fps.TextChanged += Changed;
             _sizeMode.SelectedIndexChanged += Changed;
             _aspectRatio.SelectedIndexChanged += Changed;
             _width.ValueChanged += Changed; _height.ValueChanged += Changed;
@@ -76,7 +77,7 @@ namespace AITools.ScreenCapture.Helper
         internal void Apply(CaptureSettings settings)
         {
             _updating = true;
-            _audio.Checked = settings.audio; _cursor.Checked = settings.cursor; _fps.SelectedItem = settings.fps;
+            _audio.Checked = settings.audio; _cursor.Checked = settings.cursor; _fps.Text = settings.fps.ToString(System.Globalization.CultureInfo.InvariantCulture);
             _countdownSeconds = settings.countdownSeconds; _sizeMode.SelectedIndex = settings.fixedSize ? 1 : 0;
             _width.Value = settings.fixedWidth; _height.Value = settings.fixedHeight;
             _aspectRatio.SelectedItem = settings.aspectRatio;
@@ -85,7 +86,8 @@ namespace AITools.ScreenCapture.Helper
         internal void ReadSettings(CaptureSettings settings)
         {
             settings.audio = _audio.Checked; settings.cursor = _cursor.Checked;
-            settings.fps = _fps.SelectedItem is int value ? value : 30;
+            // Retain the saved rate while an entry is incomplete; Record is disabled.
+            if (CaptureSettings.TryParseFrameRate(_fps.Text, out int value)) settings.fps = value;
             settings.countdownSeconds = _countdownSeconds; settings.fixedSize = _sizeMode.SelectedIndex == 1;
             settings.fixedWidth = (int)_width.Value; settings.fixedHeight = (int)_height.Value;
             settings.aspectRatio = _aspectRatio.SelectedItem as string ?? "Any";
@@ -97,8 +99,9 @@ namespace AITools.ScreenCapture.Helper
             _audio.Enabled = _cursor.Enabled = _fps.Enabled = !busy;
             _settings.Enabled = _sizeMode.Enabled = _dimensions.Enabled = _aspectControls.Enabled = !busy;
             _record.Text = stage == CaptureStage.Countdown ? "Cancel" : busy ? "Stop" : "Record";
-            _record.Enabled = stage == CaptureStage.Ready || stage == CaptureStage.Countdown || stage == CaptureStage.Recording || stage == CaptureStage.Starting;
-            _status.Text = text;
+            _record.Enabled = (stage == CaptureStage.Ready && HasValidFrameRate) || stage == CaptureStage.Countdown || stage == CaptureStage.Recording || stage == CaptureStage.Starting;
+            _fps.BackColor = HasValidFrameRate ? SystemColors.Window : Color.MistyRose;
+            _status.Text = !busy && !HasValidFrameRate ? "FPS must be a positive whole number, for example 25, 50 or 144." : text;
         }
         protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); Native.Exclude(this); }
     }

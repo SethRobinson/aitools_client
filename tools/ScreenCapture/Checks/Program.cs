@@ -126,7 +126,16 @@ internal static class Program
         settings.fixedWidth = 1279; Check(!settings.IsValid(out _), "Odd fixed size accepted"); settings.fixedWidth = 1280;
         Check(settings.fps == 30 && settings.audio && settings.cursor && settings.hotkeyEnabled, "Capture defaults changed");
         foreach (int fps in CaptureSettings.FrameRates) { settings.fps = fps; Check(settings.IsValid(out _), "Supported frame rate rejected"); }
-        settings.fps = 25; Check(!settings.IsValid(out _), "Invalid frame rate accepted");
+        foreach (int rate in new[] { 1, 25, 50, 144, 240, 1000, int.MaxValue })
+        {
+            settings.fps = rate;
+            Check(settings.IsValid(out _), "Custom FPS rejected or arbitrarily capped");
+            Check(CaptureSettings.TryParseFrameRate(" " + rate + " ", out int parsedRate) && parsedRate == rate, "Custom FPS parsing changed the target");
+        }
+        foreach (string badRate in new[] { "", "0", "-1", "29.97", "NaN", "Infinity", "3e1", "25fps", "2147483648" })
+            Check(!CaptureSettings.TryParseFrameRate(badRate, out _), "Invalid FPS text accepted: " + badRate);
+        foreach (int badRate in new[] { 0, -1, int.MinValue })
+        { settings.fps = badRate; Check(!settings.IsValid(out _), "Invalid FPS setting accepted"); }
         Check(Hotkey.TryParse("Ctrl+Alt+F9", out uint mods, out uint key, out _) && mods == 3 && key == 0x78, "Default shortcut mapping");
         Check(Hotkey.TryParse("shift + alt + r", out mods, out key, out _) && mods == 5 && key == 'R', "Alternate shortcut mapping");
         foreach (string bad in new[] { "", "F9", "Win+F9", "Ctrl+Ctrl+A", "Ctrl+A+B", "Alt+F25", "Ctrl+" })
@@ -158,6 +167,9 @@ internal static class Program
         var parsed = JsonSerializer.Deserialize<CaptureCommand>(json, new JsonSerializerOptions { IncludeFields = true });
         Check(parsed.command == "configure" && !parsed.settings.audio && !parsed.settings.cursor && parsed.settings.fps == 120, "Protocol must retain false and 120 fps");
         Check(parsed.settings.fixedSize && parsed.settings.fixedWidth == 960 && parsed.settings.fixedHeight == 600 && parsed.settings.countdownSeconds == 0.3, "Protocol must retain fixed size and fractional countdown");
+        settings.fps = 144;
+        var savedRate = JsonSerializer.Deserialize<CaptureSettings>(JsonSerializer.Serialize(settings, new JsonSerializerOptions { IncludeFields = true }), new JsonSerializerOptions { IncludeFields = true });
+        Check(savedRate.fps == 144 && savedRate.IsValid(out _), "Saved custom FPS must survive a restart");
     }
     private static void Sessions()
     {
@@ -268,15 +280,15 @@ internal static class Program
         FfmpegTool.VideoInfo original = null;
         Run(FfmpegTool.ProbeVideo(source, (i, error) => original = i));
         Check(original != null && original.Width == 960 && original.Height == 600 && original.HasAudio, "Synthetic source probe");
-        foreach (int rate in CaptureSettings.FrameRates)
+        foreach (int rate in CaptureSettings.FrameRates.Concat(new[] { 25, 50, 144 }))
         {
             string path = Path.Combine(evidence, "native_" + rate + ".mp4");
             FfmpegTool.ClipResult result = null;
-            Run(FfmpegTool.CreateClip(source, 0.3f, 1.5f, path, r => result = r, fps: rate, maxWidth: original.Width, maxHeight: original.Height, includeAudio: true));
+            Run(FfmpegTool.CreateClip(source, 0.3f, 1.5f, path, r => result = r, fps: rate, maxWidth: original.Width, maxHeight: original.Height, includeAudio: true, preserveRequestedFrameRate: true));
             Check(result != null && result.Success, "Native export at " + rate + ": " + result?.Error);
             FfmpegTool.VideoInfo info = null; Run(FfmpegTool.ProbeVideo(path, (i, error) => info = i));
             Check(info != null && info.Width == 960 && info.Height == 600, "Native export was resized");
-            Check(Math.Abs(info.Fps - rate) < 0.01 && Math.Abs(info.DurationSeconds - 1.5) < 0.15 && info.HasAudio, "Frame rate/duration/audio changed");
+            Check(Math.Abs(info.Fps - rate) < 0.01 && Math.Abs(info.DurationSeconds - 1.5) < 0.15 && info.HasAudio, "Frame rate/duration/audio changed at " + rate + " FPS");
             var silence = FfmpegTool.RunProcessCancellable(ffmpeg, "-hide_banner -i " + Q(path) + " -af silencedetect=noise=-40dB:d=0.1 -vn -f null -", 15000, null, null);
             Check(silence.Success && silence.Stderr.Contains("silence_start: 0"), "Leading silence shifted audio");
         }

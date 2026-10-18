@@ -188,7 +188,8 @@ public sealed class ScreenCaptureController : MonoBehaviour
             onClose: exported => _chooser = null,
             titleText: "Trim Screen Recording",
             initialDurationSeconds: (float)info.DurationSeconds,
-            preserveSourceResolution: true);
+            preserveSourceResolution: true,
+            preserveSourceFrameRate: true);
         _openingClip = false;
     }
 

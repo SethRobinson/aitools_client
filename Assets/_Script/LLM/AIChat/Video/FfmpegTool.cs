@@ -410,7 +410,8 @@ namespace AITools.AIChat.Video
             int maxWidth = DefaultMaxWidth,
             int maxHeight = DefaultMaxHeight,
             bool includeAudio = true,
-            bool normalizeAudio = false)
+            bool normalizeAudio = false,
+            bool preserveRequestedFrameRate = false)
         {
             if (!TryGetToolPaths(out string ffmpegPath, out _, out string toolError))
             {
@@ -427,7 +428,7 @@ namespace AITools.AIChat.Video
             durationSeconds = Mathf.Max(durationSeconds <= 0f ? DefaultClipDurationSeconds : durationSeconds, 0.1f);
             if (fps <= 0 || double.IsNaN(fps) || double.IsInfinity(fps))
                 fps = DefaultFps;
-            fps = Math.Max(1, Math.Min(120, fps));
+            fps = preserveRequestedFrameRate ? Math.Max(1, fps) : Math.Max(1, Math.Min(120, fps));
             maxWidth = Mathf.Max(2, maxWidth);
             maxHeight = Mathf.Max(2, maxHeight);
 
