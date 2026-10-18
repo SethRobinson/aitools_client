@@ -13,12 +13,20 @@ namespace AITools.ScreenCapture
         public bool cursor = true;
         public bool hotkeyEnabled = true;
         public string hotkey = "Ctrl+Alt+F9";
+        public double countdownSeconds = 3;
+        public bool fixedSize;
+        public int fixedWidth = 1280;
+        public int fixedHeight = 720;
 
         public static readonly int[] FrameRates = { 16, 24, 30, 60, 120 };
 
         public bool IsValid(out string error)
         {
             if (Array.IndexOf(FrameRates, fps) < 0) { error = "Choose 16, 24, 30, 60, or 120 fps."; return false; }
+            if (double.IsNaN(countdownSeconds) || double.IsInfinity(countdownSeconds) || countdownSeconds < 0 || countdownSeconds > 3600)
+            { error = "Countdown must be between 0 and 3600 seconds."; return false; }
+            if (fixedWidth < 2 || fixedHeight < 2 || fixedWidth > 16384 || fixedHeight > 16384 || (fixedWidth & 1) != 0 || (fixedHeight & 1) != 0)
+            { error = "Fixed dimensions must be even pixel counts between 2 and 16384."; return false; }
             uint modifiers, key;
             return Hotkey.TryParse(hotkey, out modifiers, out key, out error);
         }
@@ -82,6 +90,28 @@ namespace AITools.ScreenCapture
 
     public static class CaptureGeometry
     {
+        public static bool Fits(PixelRect monitor, int width, int height) => width >= 2 && height >= 2 && width <= monitor.Width && height <= monitor.Height;
+
+        public static PixelRect Move(PixelRect monitor, PixelRect rect, int x, int y)
+        {
+            if (!Fits(monitor, rect.Width, rect.Height)) return default(PixelRect);
+            return new PixelRect(Math.Max(monitor.X, Math.Min(x, monitor.X + monitor.Width - rect.Width)),
+                Math.Max(monitor.Y, Math.Min(y, monitor.Y + monitor.Height - rect.Height)), rect.Width, rect.Height);
+        }
+
+        // Corner handles keep the opposite corner anchored; sides move the whole region.
+        public static PixelRect Resize(PixelRect monitor, PixelRect rect, bool left, bool top, int x, int y)
+        {
+            int anchorX = left ? rect.X + rect.Width : rect.X;
+            int anchorY = top ? rect.Y + rect.Height : rect.Y;
+            x = left ? Math.Max(monitor.X, Math.Min(x, anchorX - 2)) : Math.Min(monitor.X + monitor.Width, Math.Max(x, anchorX + 2));
+            y = top ? Math.Max(monitor.Y, Math.Min(y, anchorY - 2)) : Math.Min(monitor.Y + monitor.Height, Math.Max(y, anchorY + 2));
+            int width = Math.Abs(x - anchorX) / 2 * 2, height = Math.Abs(y - anchorY) / 2 * 2;
+            return new PixelRect(left ? anchorX - width : anchorX, top ? anchorY - height : anchorY, width, height);
+        }
+
+        public static string Describe(PixelRect rect) => rect.Width + " x " + rect.Height + " px   X: " + rect.X + "  Y: " + rect.Y;
+
         // All inputs are physical desktop pixels, including on mixed-DPI desktops.
         // Keep both corners inside the starting monitor and use even H.264 dimensions.
         public static PixelRect Select(PixelRect monitor, int startX, int startY, int endX, int endY)
@@ -99,6 +129,12 @@ namespace AITools.ScreenCapture
         {
             return new PixelRect(selection.X - monitor.X, selection.Y - monitor.Y, selection.Width, selection.Height);
         }
+    }
+
+    public static class CaptureCountdown
+    {
+        public static double Remaining(double seconds, double elapsedSeconds) => Math.Max(0, seconds - elapsedSeconds);
+        public static bool Finished(double seconds, double elapsedSeconds) => elapsedSeconds >= seconds;
     }
 
     public enum CaptureStage { Idle, Selecting, Ready, Countdown, Starting, Recording, Finishing }

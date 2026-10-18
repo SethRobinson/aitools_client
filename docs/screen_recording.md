@@ -5,13 +5,24 @@ compact and advanced modes. Record screen or the global **Ctrl+Alt+F9** shortcut
 opens a movable, always-on-top Windows toolbar. General Settings can change or
 disable the shortcut; conflicts are reported without disabling the GUI button.
 
-Select an area on any single monitor, then Record. A three-second countdown precedes
-capture. Escape cancels selection/countdown; Stop, the same shortcut, or closing the
+Select an area on any single monitor, then Record. Toolbar **Settings** remembers
+the countdown in seconds (default 3, including 0 for immediate capture and fractions
+such as 0.3). Escape cancels selection/countdown; Stop, the same shortcut, or closing the
 recording toolbar finishes the recording. The rectangle cannot cross the starting
 monitor. Coordinates are physical pixels with per-monitor DPI awareness, including
 monitors left of or above the primary. H.264 dimensions round down to even pixels.
 The outline is blue when ready and red when recording; recorder controls and
 outlines use Windows capture exclusion.
+
+The toolbar's **Size** dropdown selects **Custom** or **Fixed**. Custom starts with a
+free selection: drag its sides or its coordinate label to move it, and its corner
+handles to resize it. Fixed shows remembered width/height inputs and places a box
+of exactly that size; all handles move it. Oversize fixed boxes cannot be placed on
+a smaller monitor. Both modes stay on the selected monitor. Dimensions are even
+physical pixels. The label shows width, height and desktop X/Y beside the bottom
+right, moving inside only when the monitor edge leaves no room outside. It remains
+visible during capture and is excluded from the video. Position and size lock at
+countdown start; the outline passes clicks through during capture.
 
 FPS choices are 16, 24, 30, 60, and 120, initially 30. System audio and cursor capture
 default on. Audio uses the default playback endpoint chosen at recording start,
@@ -83,7 +94,9 @@ sign AIToolsCapture.exe, and verify four first-party signatures. Vendor DLLs ret
 their original bytes and licenses. See `release_packaging.md`.
 
 Initial implementation validation (2026-10-18): helper and Unity C# compilation and
-67 offline recorder checks passed. Live browser/system-audio capture, mixed-DPI UI,
+123 offline recorder checks passed, including fixed-size bounds, corner anchoring,
+movement and zero/fractional countdowns. Seth confirmed live recording works; HDR
+color still needs correction. Mixed-DPI UI,
 hardware encoder fallback, device loss and a clean Windows machine remain manual
 acceptance checks. Automated desktop capture or input requires Seth's explicit
 authorization; compile and synthetic checks do not exercise those paths.

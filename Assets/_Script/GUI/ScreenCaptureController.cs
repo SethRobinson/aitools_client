@@ -32,8 +32,11 @@ public sealed class ScreenCaptureController : MonoBehaviour
     {
         try
         {
-            var settings = JsonUtility.FromJson<CaptureSettings>(PlayerPrefs.GetString(PreferencesKey, ""));
-            if (settings != null && settings.IsValid(out _)) return settings;
+            // Overwrite an initialized object so older preferences retain new-field defaults.
+            var settings = new CaptureSettings();
+            string json = PlayerPrefs.GetString(PreferencesKey, "");
+            if (!string.IsNullOrEmpty(json)) JsonUtility.FromJsonOverwrite(json, settings);
+            if (settings.IsValid(out _)) return settings;
         }
         catch (Exception) { }
         return new CaptureSettings();

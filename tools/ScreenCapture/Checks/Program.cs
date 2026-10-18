@@ -47,6 +47,17 @@ internal static class Program
     private static void SettingsAndGeometry()
     {
         var settings = new CaptureSettings();
+        Check(settings.countdownSeconds == 3 && !settings.fixedSize && settings.fixedWidth == 1280 && settings.fixedHeight == 720, "Region/countdown defaults");
+        foreach (double seconds in new[] { 0, 0.3, 3.0, 10.25 })
+        {
+            settings.countdownSeconds = seconds;
+            Check(settings.IsValid(out _) && CaptureCountdown.Finished(seconds, seconds) && CaptureCountdown.Remaining(seconds, seconds + 1) == 0, "Countdown boundary " + seconds);
+        }
+        Check(!CaptureCountdown.Finished(0.3, 0.299) && CaptureCountdown.Finished(0, 0), "Fractional/zero countdown timing");
+        foreach (double seconds in new[] { -1, double.NaN, double.PositiveInfinity })
+        { settings.countdownSeconds = seconds; Check(!settings.IsValid(out _), "Invalid countdown accepted"); }
+        settings.countdownSeconds = 3;
+        settings.fixedWidth = 1279; Check(!settings.IsValid(out _), "Odd fixed size accepted"); settings.fixedWidth = 1280;
         Check(settings.fps == 30 && settings.audio && settings.cursor && settings.hotkeyEnabled, "Capture defaults changed");
         foreach (int fps in CaptureSettings.FrameRates) { settings.fps = fps; Check(settings.IsValid(out _), "Supported frame rate rejected"); }
         settings.fps = 25; Check(!settings.IsValid(out _), "Invalid frame rate accepted");
@@ -63,10 +74,24 @@ internal static class Program
             Check(reverse.X == region.X && reverse.Y == region.Y && reverse.Width == region.Width, "Reverse drag mismatch");
             var edge = CaptureGeometry.Select(monitor, monitor.X + 20, monitor.Y + 20, monitor.X - 3000, monitor.Y - 3000);
             Check(edge.X == monitor.X && edge.Y == monitor.Y && edge.Width == 20 && edge.Height == 20, "Cross-monitor drag escaped starting monitor");
+            var moved = CaptureGeometry.Move(monitor, region, monitor.X - 5000, monitor.Y + 5000);
+            Check(moved.X == monitor.X && moved.Y == monitor.Y + monitor.Height - region.Height && moved.Width == region.Width && moved.Height == region.Height, "Move must clamp without resizing");
+            Check(!CaptureGeometry.Fits(monitor, monitor.Width + 2, 100), "Oversize fixed rectangle must be rejected");
+            Check(CaptureGeometry.Move(monitor, new PixelRect(0, 0, monitor.Width + 2, 100), 0, 0).Width == 0, "Fixed dimensions silently shrank");
+            for (int corner = 0; corner < 4; corner++)
+            {
+                bool left = (corner & 1) == 0, top = corner < 2;
+                var resized = CaptureGeometry.Resize(monitor, region, left, top, left ? monitor.X - 200 : monitor.X + monitor.Width + 200, top ? monitor.Y - 200 : monitor.Y + monitor.Height + 200);
+                Check(resized.X >= monitor.X && resized.Y >= monitor.Y && resized.X + resized.Width <= monitor.X + monitor.Width && resized.Y + resized.Height <= monitor.Y + monitor.Height && resized.Width % 2 == 0 && resized.Height % 2 == 0, "Resize escaped monitor or produced odd dimensions");
+                Check((left ? resized.X + resized.Width : resized.X) == (left ? region.X + region.Width : region.X) && (top ? resized.Y + resized.Height : resized.Y) == (top ? region.Y + region.Height : region.Y), "Resize moved the opposite corner");
+                var crossed = CaptureGeometry.Resize(monitor, region, left, top, left ? monitor.X + monitor.Width : monitor.X, top ? monitor.Y + monitor.Height : monitor.Y);
+                Check(crossed.Width == 2 && crossed.Height == 2, "Crossed corner must stop at minimum size");
+            }
         }
-        var json = JsonSerializer.Serialize(new CaptureCommand { command = "configure", settings = new CaptureSettings { audio = false, cursor = false, fps = 120 } }, new JsonSerializerOptions { IncludeFields = true });
+        var json = JsonSerializer.Serialize(new CaptureCommand { command = "configure", settings = new CaptureSettings { audio = false, cursor = false, fps = 120, fixedSize = true, fixedWidth = 960, fixedHeight = 600, countdownSeconds = 0.3 } }, new JsonSerializerOptions { IncludeFields = true });
         var parsed = JsonSerializer.Deserialize<CaptureCommand>(json, new JsonSerializerOptions { IncludeFields = true });
         Check(parsed.command == "configure" && !parsed.settings.audio && !parsed.settings.cursor && parsed.settings.fps == 120, "Protocol must retain false and 120 fps");
+        Check(parsed.settings.fixedSize && parsed.settings.fixedWidth == 960 && parsed.settings.fixedHeight == 600 && parsed.settings.countdownSeconds == 0.3, "Protocol must retain fixed size and fractional countdown");
     }
     private static void Sessions()
     {

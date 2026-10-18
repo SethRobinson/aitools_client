@@ -91,7 +91,7 @@ namespace AITools.ScreenCapture.Helper
         private readonly Control _dispatcher = new Control();
         private readonly CaptureToolbar _toolbar = new CaptureToolbar();
         private readonly HotkeyWindow _hotkey = new HotkeyWindow();
-        private readonly System.Windows.Forms.Timer _timer = new System.Windows.Forms.Timer { Interval = 100 };
+        private readonly System.Windows.Forms.Timer _timer = new System.Windows.Forms.Timer { Interval = 25 };
         private readonly List<SelectionOverlay> _overlays = new List<SelectionOverlay>();
         private readonly CaptureSession _session = new CaptureSession();
         private readonly Stopwatch _clock = new Stopwatch();
@@ -115,7 +115,7 @@ namespace AITools.ScreenCapture.Helper
             _toolbar.RecordRequested += RecordOrStop;
             _toolbar.CloseRequested += CloseToolbar;
             _toolbar.CancelRequested += Cancel;
-            _toolbar.SettingsChanged += () => { _toolbar.ReadSettings(_settings); EmitSettings(); };
+            _toolbar.SettingsChanged += () => { _toolbar.ReadSettings(_settings); ApplyRegionSettings(); EmitSettings(); Refresh(); };
             _hotkey.Pressed += () => { if (_session.Active) RecordOrStop(); else ShowToolbar(); };
             _hotkey.CancelPressed += Cancel;
             _timer.Tick += Tick; _timer.Start();
@@ -158,6 +158,7 @@ namespace AITools.ScreenCapture.Helper
                     string error;
                     if (command.settings == null || !command.settings.IsValid(out error)) { Fail("Invalid screen recorder settings."); return; }
                     _settings = command.settings; _configured = true; _toolbar.Apply(_settings);
+                    if (!_session.Active) ApplyRegionSettings();
                     _startupWarning = _hotkey.Register(_settings);
                     if (_startupWarning != null) Program.Emit(new CaptureEvent { type = "error", message = _startupWarning });
                     EmitSettings(); Refresh(); break;
@@ -169,6 +170,31 @@ namespace AITools.ScreenCapture.Helper
         }
 
         private void EmitSettings() { Program.Emit(new CaptureEvent { type = "settings", settings = _settings }); }
+        private void ApplyRegionSettings()
+        {
+            if (_screen == null) return;
+            if (_settings.fixedSize)
+            {
+                var monitor = MonitorRect();
+                if (!CaptureGeometry.Fits(monitor, _settings.fixedWidth, _settings.fixedHeight))
+                {
+                    _screen = null; CloseOverlays(); _session.Ready(false);
+                    _startupWarning = "Fixed size does not fit the selected monitor. Select another monitor or change the dimensions.";
+                    EmitState(); return;
+                }
+                _region = CaptureGeometry.Move(monitor, new PixelRect(0, 0, _settings.fixedWidth, _settings.fixedHeight), _region.X, _region.Y);
+            }
+            _border?.Dispose(); _border = null;
+            if (_toolbar.Visible) ShowBorder();
+        }
+        private PixelRect MonitorRect() => new PixelRect(_screen.Bounds.X, _screen.Bounds.Y, _screen.Bounds.Width, _screen.Bounds.Height);
+        private void ShowBorder()
+        {
+            if (_screen == null || _border != null) return;
+            _border = new RegionBorder(MonitorRect(), _region, _settings.fixedSize, rect => { _region = rect; Refresh(); });
+            _border.SetState(_session.Active, _session.Stage == CaptureStage.Recording || _session.Stage == CaptureStage.Starting);
+            _border.Show();
+        }
         private void EmitState()
         {
             _hotkey.EnableCancel(_session.Stage == CaptureStage.Selecting || _session.Stage == CaptureStage.Countdown);
@@ -185,11 +211,7 @@ namespace AITools.ScreenCapture.Helper
                 _toolbar.Location = new Point(work.Left + Math.Max(0, (work.Width - _toolbar.Width) / 2), work.Top + 20);
                 _toolbar.Show();
             }
-            if (_screen != null && _border == null)
-            {
-                _border = new RegionBorder(_region);
-                _border.Show();
-            }
+            ShowBorder();
             _toolbar.Activate(); Native.SetForegroundWindow(_toolbar.Handle); Refresh();
         }
 
@@ -199,7 +221,7 @@ namespace AITools.ScreenCapture.Helper
             CloseOverlays(); _toolbar.Hide();
             foreach (Screen screen in Screen.AllScreens)
             {
-                var overlay = new SelectionOverlay(screen, Selected, Cancel);
+                var overlay = new SelectionOverlay(screen, _settings, Selected, Cancel);
                 _overlays.Add(overlay); overlay.Show();
             }
             _overlays.FirstOrDefault(o => o.Bounds.Contains(Cursor.Position))?.Activate();
@@ -233,8 +255,9 @@ namespace AITools.ScreenCapture.Helper
             if (_session.Stage == CaptureStage.Countdown) { Cancel(); return; }
             if (_session.Active) { Stop(); return; }
             if (!_session.Countdown()) return;
-            _recordSettings = new CaptureSettings { fps = _settings.fps, audio = _settings.audio, cursor = _settings.cursor };
+            _recordSettings = new CaptureSettings { fps = _settings.fps, audio = _settings.audio, cursor = _settings.cursor, countdownSeconds = _settings.countdownSeconds };
             _clock.Restart(); _startupWarning = null; EmitState();
+            if (CaptureCountdown.Finished(_recordSettings.countdownSeconds, 0)) BeginRecording();
         }
 
         private void BeginRecording()
@@ -250,8 +273,7 @@ namespace AITools.ScreenCapture.Helper
                 if (device == null) { FailSession("No default playback device is available for system audio."); return; }
                 _audioDevice = device.DeviceName;
             }
-            if (_border == null) { _border = new RegionBorder(_region); _border.Show(); }
-            _border.Recording = true; _border.Invalidate();
+            ShowBorder(); _border.SetState(true, true);
             Native.Exclude(_toolbar);
             StartEncoder(true); EmitState();
         }
@@ -355,7 +377,7 @@ namespace AITools.ScreenCapture.Helper
             {
                 if (!_shutdown && _parent.HasExited) Shutdown();
                 if (_shutdown && _shutdownClock.ElapsedMilliseconds > 10000) { ExitThread(); return; }
-                if (_session.Stage == CaptureStage.Countdown && _clock.ElapsedMilliseconds >= 3000) BeginRecording();
+                if (_session.Stage == CaptureStage.Countdown && CaptureCountdown.Finished(_recordSettings.countdownSeconds, _clock.Elapsed.TotalSeconds)) BeginRecording();
                 if (_session.Stage == CaptureStage.Recording && _clock.ElapsedMilliseconds - _lastDeviceCheck >= 1000)
                 {
                     _lastDeviceCheck = _clock.ElapsedMilliseconds;
@@ -373,13 +395,14 @@ namespace AITools.ScreenCapture.Helper
             string status;
             switch (_session.Stage)
             {
-                case CaptureStage.Countdown: status = "Starting in " + Math.Max(1, 3 - _clock.ElapsedMilliseconds / 1000) + "... Esc cancels."; break;
+                case CaptureStage.Countdown: status = "Starting in " + CaptureCountdown.Remaining(_recordSettings.countdownSeconds, _clock.Elapsed.TotalSeconds).ToString("0.0") + "s... Esc cancels."; break;
                 case CaptureStage.Starting: status = "Starting recorder..."; break;
                 case CaptureStage.Recording: status = "Recording " + _clock.Elapsed.ToString(@"hh\:mm\:ss") + " | " + _recordSettings.fps + " fps" + (_settings.hotkeyEnabled ? " | " + _settings.hotkey + " stops" : ""); break;
                 case CaptureStage.Finishing: status = "Finishing recording..."; break;
                 default: status = _startupWarning ?? (_screen == null ? "Select an area on any monitor." : _region.Width + " x " + _region.Height + " | " + _screen.DeviceName + " | Ready"); break;
             }
             _toolbar.UpdateState(_session.Stage, status);
+            _border?.SetState(_session.Active, _session.Stage == CaptureStage.Recording || _session.Stage == CaptureStage.Starting || _session.Stage == CaptureStage.Finishing);
         }
         private void Shutdown()
         {

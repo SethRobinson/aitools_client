@@ -12,6 +12,8 @@ namespace AITools.ScreenCapture.Helper
         [DllImport("user32.dll")] internal static extern bool SetForegroundWindow(IntPtr window);
         [DllImport("user32.dll")] internal static extern bool AllowSetForegroundWindow(int processId);
         [DllImport("user32.dll")] internal static extern bool SetProcessDpiAwarenessContext(IntPtr context);
+        [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] internal static extern IntPtr GetWindowLongPtr(IntPtr window, int index);
+        [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] internal static extern IntPtr SetWindowLongPtr(IntPtr window, int index, IntPtr value);
 
         internal static void Exclude(Form form)
         {
