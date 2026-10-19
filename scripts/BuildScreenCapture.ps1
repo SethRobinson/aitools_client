@@ -5,6 +5,14 @@ Set-StrictMode -Version Latest
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $project = Join-Path $repo 'tools\ScreenCapture\ScreenCapture.csproj'
 $runtime = Join-Path $repo 'utils\ScreenCapture'
+function Get-RuntimeHash([string] $Path) {
+    # The signing/build environment can replace PowerShell's module search path.
+    # Get-FileHash is a module function; use .NET so this also works in that shell.
+    $stream = [IO.File]::OpenRead($Path)
+    $hash = [Security.Cryptography.SHA256]::Create()
+    try { return [BitConverter]::ToString($hash.ComputeHash($stream)).Replace('-', '') }
+    finally { $stream.Dispose(); $hash.Dispose() }
+}
 function Assert-NoLinks([string] $Path) {
     for ($cursor = [IO.Path]::GetFullPath($Path); $cursor; $cursor = [IO.Path]::GetDirectoryName($cursor)) {
         if ((Test-Path -LiteralPath $cursor) -and ((Get-Item -LiteralPath $cursor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
@@ -28,7 +36,7 @@ foreach ($file in @('AIToolsCapture.exe', 'AIToolsCapture.exe.config', 'ScreenRe
     Assert-NoLinks $runtimeFile
     # Unchanged native dependencies may still be loaded by a running helper.
     if ((Test-Path -LiteralPath $runtimeFile) -and
-        (Get-FileHash -LiteralPath $sourceFile -Algorithm SHA256).Hash -eq (Get-FileHash -LiteralPath $runtimeFile -Algorithm SHA256).Hash) { continue }
+        (Get-RuntimeHash $sourceFile) -eq (Get-RuntimeHash $runtimeFile)) { continue }
     Copy-Item -LiteralPath $sourceFile -Destination $runtimeFile -Force
 }
 # App-local Microsoft runtimes are pinned, original vendor files. Never harvest
@@ -40,13 +48,13 @@ foreach ($hdrInput in @(
 )) {
     $path = Join-Path $repo ('tools\ScreenCapture\Hdr\' + $hdrInput.Name)
     Assert-NoLinks $path
-    if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $hdrInput.Hash) { throw 'HDR source changed: rebuild with scripts/BuildScreenCaptureHdr.ps1 -Stage before packaging.' }
+    if ((Get-RuntimeHash $path) -ne $hdrInput.Hash) { throw 'HDR source changed: rebuild with scripts/BuildScreenCaptureHdr.ps1 -Stage before packaging.' }
 }
 foreach ($file in $dependencies.files) {
     if ($file.name -notmatch '^[A-Za-z0-9_.-]+$') { throw 'Invalid dependency manifest filename.' }
     $path = Join-Path $runtime $file.name
     Assert-NoLinks $path
-    if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $file.sha256) {
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or (Get-RuntimeHash $path) -ne $file.sha256) {
         throw "Screen recorder dependency is missing or changed: $($file.name)"
     }
 }
