@@ -13,12 +13,17 @@ if not defined RT_PROJECTS goto failed
 SET FILENAME=%APP_NAME%
 
 :Actually do the unity build
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\CleanBuildOutput.ps1" -Phase Reset
-if errorlevel 1 goto failed
 echo Building project...
-
-%UNITY_EXE% -quit -batchmode -logFile log.txt -executeMethod Win64Builder.BuildRelease -projectPath "%cd%" -activeBuildProfile "Assets/Settings/Build Profiles/ReleaseBuildProfile.asset"
-if errorlevel 1 goto failed
+if "%~1"=="--editor" (
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\BuildInOpenEditor.ps1"
+  if errorlevel 1 goto failed
+) else (
+  if not "%~1"=="" goto failed
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\CleanBuildOutput.ps1" -Phase Reset
+  if errorlevel 1 goto failed
+  %UNITY_EXE% -quit -batchmode -logFile log.txt -executeMethod Win64Builder.BuildRelease -projectPath "%cd%" -activeBuildProfile "Assets/Settings/Build Profiles/ReleaseBuildProfile.asset"
+  if errorlevel 1 goto failed
+)
 echo Finished building.
 if not exist "build\win\%APP_NAME%.exe" (
 echo Error with build!
@@ -60,6 +65,8 @@ cd /d "%~dp0" || goto failed
 if errorlevel 1 goto failed
 
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\ReleasePackage.ps1" -Phase VerifyArchive
+if errorlevel 1 goto failed
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\SmokeReleaseZip.ps1"
 if errorlevel 1 goto failed
 
 if "%NO_PAUSE%"=="" pause

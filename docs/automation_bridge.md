@@ -12,6 +12,15 @@ Moved verbatim from AGENTS.md on 2026-09-13 (bullet style kept); update this fil
 
 ## Endpoints
 
+`POST /windows_release_build` takes a plain-text 32-digit GUID and queues a Windows
+release build into the fixed `build/win` directory using ReleaseBuildProfile and
+RT_RELEASE. It requires the release profile to be active, refuses Play mode, dirty scenes and concurrent builds, and writes
+the request ID, state and result into `build/release-build.json`. It neither signs
+nor packages files. Use `BuildWin64.bat --editor`, which performs guarded cleanup,
+waits for that exact request, then runs normal signing, packaging and the fresh-ZIP
+smoke check. `/status` includes the editor process ID and project path so the script
+can refuse a different checkout and detect an editor exit. No second editor, desktop input or screenshots are involved.
+
 `POST /configure_urp` repeats the targeted URP asset setup while the editor is stopped and the scene is clean. `POST /windows_render_validation` with body `build` queues an unsigned ReleaseBuildProfile build into `build/urp-validation/` through the open editor. Body `run-visible` launches its one-shot checks in a temporary visible player window, which needs explicit permission before invoking; hidden windows produce blank captures. With no body it reads the build/player status; inspect the separate player report and startup log for acceptance. Fixture generation, paths, scope and rollback are documented in `docs/rendering.md`. These commands do not replace the normal release archive or start a second editor.
 
 `POST /render_validation` with `label=<letters-digits-hyphens>` runs the opt-in local rendering fixtures in a fresh Play session with no pictures. With no body, it returns the current report. PNGs and `report.json` are written beneath `build/render-validation/<label>/`. Supply `build/render-validation/fixture.mp4` (an eight-second local color/motion/tone clip); the harness copies it before passing ownership to `PicMovie`. It checks exact PNG saves, text alpha/cleanup, resizing, mask painting, checkerboard transparency, menus, chat clipping/selection/fallback text, settings scrolling, video playback/pause/seek/resume and audio waveform playback, and captures active panels without LLM/generation requests. Use a disposable Play session: the harness opens/closes panels and creates/removes its own pictures. `-render-validation` runs the same fixtures once in a standalone player and exits with 0 for pass, 1 for failed checks, or 2 if startup was refused. The existing `-enable_automation` flag creates a runtime driver, not a standalone HTTP listener.

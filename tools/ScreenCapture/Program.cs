@@ -39,6 +39,9 @@ namespace AITools.ScreenCapture.Helper
                 if (args.Length == 1 && args[0] == "--check")
                 {
                     var options = RecorderOptions.Default;
+                    // Construct/dispose the native manager too, exercising Media Foundation
+                    // startup and its dependencies without opening any capture source.
+                    using (var recorder = Recorder.CreateRecorder(options)) { }
                     string runtime = Path.GetDirectoryName(typeof(Program).Assembly.Location);
                     var bundled = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
                     {
@@ -55,7 +58,7 @@ namespace AITools.ScreenCapture.Helper
                                 throw new InvalidOperationException("Dependency loaded from outside the helper package: " + module.ModuleName);
                         }
                     }
-                    Emit(new CaptureEvent { type = "ready", message = "ScreenRecorderLib 7.0.1 with AI Tools HDR support loaded; no capture started." });
+                    Emit(new CaptureEvent { type = "ready", message = "ScreenRecorderLib 7.0.1 with AI Tools HDR support and Media Foundation initialized; no capture started." });
                     GC.KeepAlive(options);
                     return 0;
                 }

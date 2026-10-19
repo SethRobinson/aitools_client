@@ -118,7 +118,9 @@ API references: [DuplicateOutput1](https://learn.microsoft.com/en-us/windows/win
 `pwsh -File scripts/BuildScreenCapture.ps1 -Check` restores locked NuGet dependencies,
 builds the helper, stages allowlisted runtime files under `utils/ScreenCapture`,
 checks pinned third-party hashes, and runs a dependency-only `--check`. This mode
-opens no window or capture device and registers no global shortcut. Vendored
+constructs/disposes the native recorder manager (including Media Foundation startup),
+but opens no window or capture device and registers no global shortcut. The release
+ZIP smoke check also runs it from a fresh extraction with a minimal PATH. Vendored
 Microsoft DLLs come from the official signed 14.44.35211 x64 redistributable, with
 installer/file hashes in `dependencies.json`; do not harvest System32 DLLs.
 Helper source and built runtime files are tracked, following the RTClip model.

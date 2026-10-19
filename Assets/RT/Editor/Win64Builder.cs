@@ -54,17 +54,17 @@ using System.Reflection;
 	static void BuildRelease() 
     {
   	    EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.Standalone, BuildTarget.StandaloneWindows64);
-        RTBuildTools.AddDefine(BuildTargetGroup.Standalone, "RT_RELEASE");
-        try
+        var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
         {
-            var report = BuildPipeline.BuildPlayer(GetScenes(), "build\\win\\" + GetProjectName() + ".exe", BuildTarget.StandaloneWindows64, BuildOptions.None);
-            if (report.summary.result != UnityEditor.Build.Reporting.BuildResult.Succeeded)
-                throw new System.InvalidOperationException("Windows release build failed: " + report.summary.result);
-        }
-        finally
-        {
-            RTBuildTools.RemoveDefine(BuildTargetGroup.Standalone, "RT_RELEASE");
-        }
+            scenes = GetScenes(),
+            locationPathName = "build\\win\\" + GetProjectName() + ".exe",
+            target = BuildTarget.StandaloneWindows64,
+            targetGroup = BuildTargetGroup.Standalone,
+            extraScriptingDefines = new[] { "RT_RELEASE" },
+            options = BuildOptions.None
+        });
+        if (report.summary.result != UnityEditor.Build.Reporting.BuildResult.Succeeded)
+            throw new System.InvalidOperationException("Windows release build failed: " + report.summary.result);
      }
 
     static void TrySetLegacyVREnabledDevices(BuildTargetGroup targetGroup, string[] devices)

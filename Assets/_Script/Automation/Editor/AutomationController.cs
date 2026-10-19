@@ -63,6 +63,7 @@ using UnityEngine;
 public static class AutomationController
 {
     const int kPort = 8772;
+    static readonly string ProjectPath = System.IO.Path.GetFullPath(System.IO.Path.Combine(Application.dataPath, ".."));
 
     const string kEnabledPref = "RT_Automation_Enabled";      // EditorPrefs: persists across sessions
     const string kStageKey = "RT_Automation_RebuildStage";     // SessionState: survives domain reload
@@ -254,6 +255,7 @@ public static class AutomationController
             // and would be saved into Main.unity), so refuse instead.
             bool editorLevel = readOnly || path == "/rebuild" || path == "/play" || path == "/stop"
                 || path == "/render_validation" || path == "/configure_urp" || path == "/windows_render_validation"
+                || path == "/windows_release_build"
                 || path == "/screenshot";
             bool playingNow;
             lock (_snapLock) { playingNow = _snapPlaying; }
@@ -294,6 +296,14 @@ public static class AutomationController
                         try { URPProjectSetup.Configure(); return "{\"ok\":true}"; }
                         catch (Exception e) { return "{\"ok\":false,\"error\":" + JsonStr(e.Message) + "}"; }
                     }, "{\"ok\":false,\"error\":\"timed out\"}", 30000));
+                    break;
+
+                case "/windows_release_build":
+                    WriteJson(stream, 200, RunOnMainAndWait(() =>
+                    {
+                        try { WindowsReleaseBuild.Request(body.Trim()); return "{\"ok\":true,\"accepted\":\"windows_release_build\"}"; }
+                        catch (Exception e) { return "{\"ok\":false,\"error\":" + JsonStr(e.Message) + "}"; }
+                    }, "{\"ok\":false,\"error\":\"timed out\"}"));
                     break;
 
                 case "/windows_render_validation":
@@ -772,6 +782,8 @@ public static class AutomationController
         sb.Append("{");
         sb.Append("\"ok\":true,");
         sb.Append("\"enabled\":true,");
+        sb.Append("\"editorProcessId\":").Append(System.Diagnostics.Process.GetCurrentProcess().Id).Append(",");
+        sb.Append("\"projectPath\":").Append(JsonStr(ProjectPath)).Append(",");
         sb.Append("\"playing\":").Append(playing ? "true" : "false").Append(",");
         sb.Append("\"focused\":").Append(focused ? "true" : "false").Append(",");
         sb.Append("\"compiling\":").Append(compiling ? "true" : "false").Append(",");
@@ -982,6 +994,13 @@ public static class AutomationController
     // from other causes (play-mode exit/enter) are ignored here; PumpRebuild handles those.
     static void OnAfterAssemblyReload()
     {
+        // A queued release needs the editor stopped after compilation, even when
+        // /rebuild was used to refresh the bridge itself during setup.
+        if (WindowsReleaseBuild.IsPending)
+        {
+            SessionState.SetString(kStageKey, kStageNone);
+            return;
+        }
         if (SessionState.GetString(kStageKey, kStageNone) == kStageCompile
             && SessionState.GetBool(kCompileRequestedKey, false))
         {
