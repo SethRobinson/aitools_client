@@ -12689,7 +12689,6 @@ GameObject:
   - component: {fileID: 311706021}
   - component: {fileID: 311706022}
   - component: {fileID: 311706023}
-  - component: {fileID: 311706024}
   m_Layer: 0
   m_Name: GameLogic
   m_TagString: Untagged
@@ -12925,18 +12924,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _getStringPrefab: {fileID: 4655156270603788172, guid: 79d743bce64324f4fbf7c72cf3aa257e,
     type: 3}
---- !u!114 &311706024
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 311706009}
-  m_Enabled: 0
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f30dcdf2506cd604693f27c15febd2d4, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::EnterKeyDiagnostic
 --- !u!1 &314388404
 GameObject:
   m_ObjectHideFlags: 0
