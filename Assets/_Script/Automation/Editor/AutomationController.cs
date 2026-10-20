@@ -30,7 +30,7 @@ using UnityEngine;
 //   POST /play       -> enter play mode
 //   POST /stop       -> exit play mode
 //   POST /open_chat   -> open (create if needed) the AI Chat panel
-//   POST /settings    -> body: tab=<general|configuration|comfyui|audio|llm>; open Settings panel
+//   POST /settings    -> body: tab=<general|configuration|comfyui|audio|web|aichat|llm>; open Settings panel
 //   POST /llm_settings -> optional body: instance=<instance-name substring>; open the advanced LLM Settings
 //                        panel (and select/scroll to that instance row, returning its display string)
 //   POST /server_settings -> body: id=<serverID>; open that server's Overrides panel
@@ -503,6 +503,13 @@ public static class AutomationController
                 case "/web_media_validation":
                 {
                     WriteJson(stream, 200, RunOnMainAndWait(WebMediaValidation.Run,
+                        "{\"ok\":false,\"error\":\"timed out\"}"));
+                    break;
+                }
+
+                case "/aichat_settings_validation":
+                {
+                    WriteJson(stream, 200, RunOnMainAndWait(AIChatSettingsValidation.Run,
                         "{\"ok\":false,\"error\":\"timed out\"}"));
                     break;
                 }

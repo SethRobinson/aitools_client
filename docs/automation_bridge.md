@@ -49,3 +49,15 @@ The `idle` flag ANDs every AI Chat busy gate (streaming, forced-main wait, compa
   It forces `resume="false"` to avoid a main-model continuation. Existing Web/URL
   gates still apply; clip caption sidecars can run as usual. Poll `/status` and
   inspect `/chat_web_trace` / `/chat_images`. No desktop input or capture is involved.
+
+## AI Chat settings checks (2026-10-20)
+
+- `POST /aichat_settings_validation` checks the embedded settings page with real
+  TMP/layout components under a disabled fixture canvas. It verifies control
+  availability and bounds, scrollbars, the host action bar, no-op prompt saves,
+  original-path saves across prefix changes and Reload preserving edits.
+  Requires Play mode. Uses only synthetic prompt/skill files under ignored
+  `build/aichat-settings-validation-*`, restores all affected preferences and
+  session text, and does not open user panels, access real prompts/configs,
+  call LLMs, take screenshots or send desktop input.
+  Run `pwsh -File scripts/VerifyAIChatSettings.ps1`; detailed scope: `docs/settings.md`.

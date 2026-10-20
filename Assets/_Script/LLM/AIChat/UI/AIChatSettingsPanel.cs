@@ -21,22 +21,20 @@ namespace AITools.AIChat.UI
     /// in Explorer to add/edit files.</item>
     /// </list>
     ///
-    /// Same procedural-panel pattern as LLMSettingsPanel / AIChatPanel: static Show/Hide,
-    /// own Canvas, draggable header, ESC to close. Pure C# - no scene-side wiring.
+    /// Embedded content for AppSettingsPanel's AI Chat tab. The host owns the window,
+    /// tabs, action bar and save-on-close/tab-change lifecycle.
     /// </summary>
     public class AIChatSettingsPanel : MonoBehaviour
     {
-        private static AIChatSettingsPanel _instance;
-        private static GameObject _panelRoot;
-        private static SkillManager _staticSkillManager;
-        private static Action _staticOnClose;
+        private SkillManager _skillManager;
+        private Action _onSaved;
 
         private TMP_FontAsset _font;
         private RectTransform _mainPanel;
         private TMP_InputField _mainPromptField;
         private TextMeshProUGUI _mainPromptLabelTmp;
         // The main-prompt file the editor loaded from, and the text it loaded, captured
-        // at load time. SaveAndClose writes back to this exact path (so a test_ edit
+        // at load time. SaveChanges writes back to this exact path (so a test_ edit
         // never lands on main_prompt.txt) and only when the text actually changed.
         private string _activeMainPromptPath;
         private string _loadedMainPromptText = "";
@@ -53,133 +51,56 @@ namespace AITools.AIChat.UI
         private Toggle _normalizeClipAudioToggle;
         private Toggle _allowActionsInThinkBlocksToggle;
 
-        private const float DEFAULT_WIDTH = 760f;
-        private const float DEFAULT_HEIGHT = 686f;
-        private const float HEADER_HEIGHT = 40f;
         // Tall enough for the media row, the session reminder row, prompt-slimming
-        // toggles, Compact controls, and one settings row above the bottom button row.
-        private const float FOOTER_HEIGHT = 216f;
+        // toggles, Compact controls, and the size/prefix/clear row. The host supplies
+        // the bottom action bar, so it is not included in this content height.
+        private const float FOOTER_HEIGHT = 176f;
         private const float BaseFontSize = 13f;
 
-        private static readonly Color PanelBg = new Color(0.80f, 0.80f, 0.82f, 1f);
-        private static readonly Color HeaderBg = new Color(0.75f, 0.75f, 0.77f, 1f);
         private static readonly Color FooterBg = new Color(0.75f, 0.75f, 0.77f, 1f);
         private static readonly Color RowBg = new Color(0.92f, 0.92f, 0.94f, 1f);
         private static readonly Color InputFieldBg = Color.white;
         private static readonly Color TextDark = Color.black;
 
-        public static void Show(SkillManager skillManager, Action onCloseReloaded)
+        public string SaveError { get; private set; }
+
+        public static AIChatSettingsPanel CreateEmbedded(RectTransform parent, RectTransform actionBar,
+            TMP_FontAsset font, SkillManager skillManager, Action onSaved)
         {
-            _staticSkillManager = skillManager;
-            _staticOnClose = onCloseReloaded;
-
-            if (_instance != null)
-            {
-                _panelRoot.SetActive(true);
-                _instance.LoadFromManager();
-                return;
-            }
-
-            _panelRoot = new GameObject("AIChatSettingsPanel");
-            _instance = _panelRoot.AddComponent<AIChatSettingsPanel>();
-            _instance.CreateUI();
-        }
-
-        public static void Hide()
-        {
-            if (_panelRoot != null)
-                _panelRoot.SetActive(false);
-        }
-
-        private void OnDestroy()
-        {
-            _instance = null;
-            _panelRoot = null;
-        }
-
-        private TMP_FontAsset FindFont()
-        {
-            var existing = FindAnyObjectByType<TextMeshProUGUI>();
-            return existing != null && existing.font != null ? existing.font : TMP_Settings.defaultFontAsset;
+            var root = new GameObject("AIChatSettingsPage", typeof(RectTransform));
+            root.transform.SetParent(parent, false);
+            var page = root.AddComponent<AIChatSettingsPanel>();
+            page._mainPanel = root.GetComponent<RectTransform>();
+            page._mainPanel.anchorMin = Vector2.zero;
+            page._mainPanel.anchorMax = Vector2.one;
+            page._mainPanel.offsetMin = Vector2.zero;
+            page._mainPanel.offsetMax = Vector2.zero;
+            page._font = font;
+            page._skillManager = skillManager;
+            page._onSaved = onSaved;
+            page.CreateBody();
+            page.CreateFooter(actionBar);
+            page.LoadFromManager();
+            return page;
         }
 
         // ---------- UI construction ----------
 
-        private void CreateUI()
-        {
-            _font = FindFont();
-
-            var canvas = _panelRoot.AddComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvas.sortingOrder = 110; // above the chat panel
-            var scaler = _panelRoot.AddComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920, 1080);
-            scaler.matchWidthOrHeight = 0.5f;
-            _panelRoot.AddComponent<GraphicRaycaster>();
-
-            var main = new GameObject("MainPanel");
-            main.transform.SetParent(_panelRoot.transform, false);
-            _mainPanel = main.AddComponent<RectTransform>();
-            _mainPanel.anchorMin = new Vector2(0.5f, 0.5f);
-            _mainPanel.anchorMax = new Vector2(0.5f, 0.5f);
-            _mainPanel.pivot = new Vector2(0.5f, 0.5f);
-            _mainPanel.sizeDelta = new Vector2(DEFAULT_WIDTH, DEFAULT_HEIGHT);
-            main.AddComponent<Image>().color = PanelBg;
-
-            CreateHeader();
-            CreateBody();
-            CreateFooter();
-
-            LoadFromManager();
-        }
-
-        private void CreateHeader()
-        {
-            var header = new GameObject("Header");
-            header.transform.SetParent(_mainPanel, false);
-            var rt = header.AddComponent<RectTransform>();
-            rt.anchorMin = new Vector2(0, 1);
-            rt.anchorMax = new Vector2(1, 1);
-            rt.pivot = new Vector2(0.5f, 1);
-            rt.sizeDelta = new Vector2(0, HEADER_HEIGHT);
-            rt.anchoredPosition = Vector2.zero;
-            header.AddComponent<Image>().color = HeaderBg;
-            header.AddComponent<PanelDragHandler>().SetTarget(_mainPanel, HEADER_HEIGHT);
-
-            var title = new GameObject("Title");
-            title.transform.SetParent(header.transform, false);
-            var titleRt = title.AddComponent<RectTransform>();
-            titleRt.anchorMin = new Vector2(0, 0);
-            titleRt.anchorMax = new Vector2(1, 1);
-            titleRt.offsetMin = new Vector2(12, 0);
-            titleRt.offsetMax = new Vector2(-36, 0);
-            var titleTmp = title.AddComponent<TextMeshProUGUI>();
-            titleTmp.text = "AI Chat Settings";
-            titleTmp.font = _font;
-            titleTmp.fontSize = 17;
-            titleTmp.fontStyle = FontStyles.Bold;
-            titleTmp.color = TextDark;
-            titleTmp.alignment = TextAlignmentOptions.MidlineLeft;
-
-            RTWindowChrome.CreateCloseButton(rt, SaveAndClose);
-        }
-
         private void CreateBody()
         {
-            // Body region between header (top) and footer (bottom).
+            // The Settings window supplies the header and tabs.
             var body = new GameObject("Body");
             body.transform.SetParent(_mainPanel, false);
             var rt = body.AddComponent<RectTransform>();
             rt.anchorMin = new Vector2(0, 0);
             rt.anchorMax = new Vector2(1, 1);
             rt.offsetMin = new Vector2(8, FOOTER_HEIGHT);
-            rt.offsetMax = new Vector2(-8, -HEADER_HEIGHT - 4f);
+            rt.offsetMax = new Vector2(-8, -4f);
 
             // Top half: main_prompt.txt editor. Label text is finalized in
             // LoadFromManager so it names the file actually in play (main_prompt.txt or,
             // in "test_" preset mode, test_main_prompt.txt).
-            var promptLabel = MakeLabel("Main system prompt (aichat/main_prompt.txt) - edited live; saved when you close this panel:");
+            var promptLabel = MakeLabel("Main system prompt (aichat/main_prompt.txt) - saved on close or tab change:");
             promptLabel.transform.SetParent(body.transform, false);
             _mainPromptLabelTmp = promptLabel.GetComponent<TextMeshProUGUI>();
             var labRt = promptLabel.GetComponent<RectTransform>();
@@ -312,7 +233,7 @@ namespace AITools.AIChat.UI
             return sb;
         }
 
-        private void CreateFooter()
+        private void CreateFooter(RectTransform actionBar)
         {
             var footer = new GameObject("Footer");
             footer.transform.SetParent(_mainPanel, false);
@@ -324,21 +245,25 @@ namespace AITools.AIChat.UI
             rt.anchoredPosition = Vector2.zero;
             footer.AddComponent<Image>().color = FooterBg;
 
-            var reloadBtn = MakeButton(footer.transform, "Reload skills", new Vector2(8, 10), new Vector2(140, 30), () =>
+            var reloadBtn = MakeButton(actionBar, "Reload skills", new Vector2(8, 10), new Vector2(140, 30), () =>
             {
-                _staticSkillManager?.Reload();
+                if (!SaveChanges())
+                {
+                    ShowSaveError();
+                    return;
+                }
                 LoadFromManager();
             });
             reloadBtn.GetComponent<RectTransform>().anchorMin = new Vector2(0, 0);
             reloadBtn.GetComponent<RectTransform>().anchorMax = new Vector2(0, 0);
             reloadBtn.GetComponent<RectTransform>().pivot = new Vector2(0, 0);
 
-            var openBtn = MakeButton(footer.transform, "Open aichat folder", new Vector2(156, 10), new Vector2(180, 30), OpenAIChatFolder);
+            var openBtn = MakeButton(actionBar, "Open aichat folder", new Vector2(156, 10), new Vector2(180, 30), OpenAIChatFolder);
             openBtn.GetComponent<RectTransform>().anchorMin = new Vector2(0, 0);
             openBtn.GetComponent<RectTransform>().anchorMax = new Vector2(0, 0);
             openBtn.GetComponent<RectTransform>().pivot = new Vector2(0, 0);
 
-            var saveBtn = MakeButton(footer.transform, "Save & Close", new Vector2(-8, 10), new Vector2(140, 30), SaveAndClose);
+            var saveBtn = MakeButton(actionBar, "Save & Close", new Vector2(-8, 10), new Vector2(140, 30), SaveAndClose);
             saveBtn.GetComponent<RectTransform>().anchorMin = new Vector2(1, 0);
             saveBtn.GetComponent<RectTransform>().anchorMax = new Vector2(1, 0);
             saveBtn.GetComponent<RectTransform>().pivot = new Vector2(1, 0);
@@ -347,7 +272,7 @@ namespace AITools.AIChat.UI
             // pairs laid out left-to-right (max attachment size, preset prefix,
             // keep last N media). Each pair has a transparent hit-box parent
             // with an RTToolTip explaining what the setting does.
-            const float kSettingsRowY = 46f;
+            const float kSettingsRowY = 6f;
             const float kSettingsLeftPad = 8f;
             const float kSettingsGap = 14f;
 
@@ -428,7 +353,7 @@ namespace AITools.AIChat.UI
             // without deleting any images. "keep last N exchanges" feeds both
             // buttons; Truncate just drops older messages, Summarize replaces
             // them with one LLM-written recap.
-            const float kCompactRowY = 84f;
+            const float kCompactRowY = 44f;
 
             const float kCompactLabelW = 235f;
             const float kCompactInputW = 46f;
@@ -487,7 +412,7 @@ namespace AITools.AIChat.UI
                 icp.alignment = TextAlignmentOptions.Center;
             }
 
-            const float kSlimRowY = 118f;
+            const float kSlimRowY = 78f;
             _keepOldToolCallsToggle = MakeSettingToggle(
                 footer.transform,
                 "Keep old tool calls in prompt",
@@ -512,7 +437,7 @@ namespace AITools.AIChat.UI
                 AIChatPanel.GetShowDebugStuff(),
                 "When enabled, local Info/debug bubbles are shown in the chat. Off hides routine status notes while keeping needed internal reminders available to the next LLM turn.");
 
-            const float kMediaRowY = 182f;
+            const float kMediaRowY = 142f;
             _normalizeClipAudioToggle = MakeSettingToggle(
                 footer.transform,
                 "Normalize imported clip audio",
@@ -527,9 +452,9 @@ namespace AITools.AIChat.UI
                 new Vector2(kSettingsLeftPad + 280f, kMediaRowY),
                 new Vector2(330, 24),
                 AIChatPanel.GetAllowActionsInThinkBlocks(),
-                "Run AI Chat action tags inside the model's <think> blocks. Useful for models that put their tool calls in thinking. Off by default. Also runs draft/example commands there; repeated commands can run again. Applies to the next reply after Save & Close, independently of Strip think tags.");
+                "Run AI Chat action tags inside the model's <think> blocks. Useful for models that put their tool calls in thinking. Off by default. Also runs draft/example commands there; repeated commands can run again. Saved on close or tab change; applies to the next reply, independently of Strip think tags.");
 
-            const float kPostMessageRowY = 150f;
+            const float kPostMessageRowY = 110f;
             BuildSettingPair(
                 footer.transform,
                 "UserPostMessagePair",
@@ -750,12 +675,12 @@ namespace AITools.AIChat.UI
 
         private void LoadFromManager()
         {
-            if (_staticSkillManager == null) return;
+            if (_skillManager == null) return;
             // Capture which file we're editing (main_prompt.txt vs test_main_prompt.txt)
-            // and its text now, so SaveAndClose writes back to the same file and can skip
+            // and its text now, so SaveChanges writes back to the same file and can skip
             // a no-op write.
-            _activeMainPromptPath = _staticSkillManager.ActiveMainPromptPath;
-            _loadedMainPromptText = _staticSkillManager.MainPrompt ?? "";
+            _activeMainPromptPath = _skillManager.ActiveMainPromptPath;
+            _loadedMainPromptText = _skillManager.MainPrompt ?? "";
             if (_mainPromptField != null)
                 _mainPromptField.text = _loadedMainPromptText;
             if (_mainPromptLabelTmp != null)
@@ -763,7 +688,7 @@ namespace AITools.AIChat.UI
                 string file = string.IsNullOrEmpty(_activeMainPromptPath)
                     ? "main_prompt.txt"
                     : Path.GetFileName(_activeMainPromptPath);
-                _mainPromptLabelTmp.text = "Main system prompt (aichat/" + file + ") - edited live; saved when you close this panel:";
+                _mainPromptLabelTmp.text = "Main system prompt (aichat/" + file + ") - saved on close or tab change:";
             }
             if (_keepLastNField != null)
                 _keepLastNField.text = AIChatPanel.GetKeepLastNMedia().ToString();
@@ -798,8 +723,8 @@ namespace AITools.AIChat.UI
             for (int i = _skillsContent.childCount - 1; i >= 0; i--)
                 Destroy(_skillsContent.GetChild(i).gameObject);
 
-            if (_staticSkillManager == null) return;
-            foreach (var s in _staticSkillManager.GetSkills())
+            if (_skillManager == null) return;
+            foreach (var s in _skillManager.GetSkills())
             {
                 var row = new GameObject("Skill_" + s.Id);
                 row.transform.SetParent(_skillsContent, false);
@@ -844,9 +769,20 @@ namespace AITools.AIChat.UI
 
         private void SaveAndClose()
         {
+            AppSettingsPanel.Hide();
+        }
+
+        public void ShowSaveError()
+        {
+            RTQuickMessageManager.Get()?.ShowMessage(SaveError ?? "Could not save AI Chat settings.");
+        }
+
+        public bool SaveChanges()
+        {
+            SaveError = null;
             try
             {
-                if (_staticSkillManager != null && _mainPromptField != null)
+                if (_skillManager != null && _mainPromptField != null)
                 {
                     // Write back to the SAME file the editor loaded from. In "test_"
                     // preset mode that's test_main_prompt.txt, so an experimental prompt
@@ -854,7 +790,7 @@ namespace AITools.AIChat.UI
                     // the text actually changed - this also avoids forking a
                     // test_main_prompt.txt into existence just by opening + closing.
                     string path = string.IsNullOrEmpty(_activeMainPromptPath)
-                        ? _staticSkillManager.ActiveMainPromptPath
+                        ? _skillManager.ActiveMainPromptPath
                         : _activeMainPromptPath;
                     string newText = _mainPromptField.text ?? "";
                     if (!string.IsNullOrEmpty(path) && newText != _loadedMainPromptText)
@@ -863,12 +799,15 @@ namespace AITools.AIChat.UI
                         if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                             Directory.CreateDirectory(dir);
                         File.WriteAllText(path, newText);
+                        _loadedMainPromptText = newText;
                     }
                 }
             }
             catch (Exception ex)
             {
-                Debug.LogError("AIChatSettingsPanel: failed to save the main system prompt: " + ex.Message);
+                SaveError = "Could not save AI Chat prompt: " + ex.Message;
+                Debug.LogError("AIChatSettingsPanel: " + SaveError);
+                return false;
             }
 
             // Persist the keep-last-N setting to PlayerPrefs.
@@ -908,16 +847,15 @@ namespace AITools.AIChat.UI
                 AIChatPanel.SetAllowActionsInThinkBlocks(_allowActionsInThinkBlocksToggle.isOn);
 
             // Trigger the host's reload + UI update.
-            _staticSkillManager?.Reload();
-            try { _staticOnClose?.Invoke(); } catch (Exception ex) { Debug.LogError("AIChatSettingsPanel: onClose threw: " + ex); }
-
-            Hide();
+            _skillManager?.Reload();
+            try { _onSaved?.Invoke(); } catch (Exception ex) { Debug.LogError("AIChatSettingsPanel: onSaved threw: " + ex); }
+            return true;
         }
 
         private void OpenAIChatFolder()
         {
-            if (_staticSkillManager == null) return;
-            string folder = Path.GetDirectoryName(_staticSkillManager.MainPromptPath);
+            if (_skillManager == null) return;
+            string folder = Path.GetDirectoryName(_skillManager.MainPromptPath);
             if (string.IsNullOrEmpty(folder)) return;
 
             try
@@ -934,12 +872,6 @@ namespace AITools.AIChat.UI
             {
                 Debug.LogError("AIChatSettingsPanel: failed to open aichat folder: " + ex.Message);
             }
-        }
-
-        private void Update()
-        {
-            if (RTInput.GetKeyDown(KeyCode.Escape))
-                SaveAndClose();
         }
 
         // ---------- Tiny UI helpers ----------

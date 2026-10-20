@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
+using AITools.AIChat.UI;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -31,6 +32,10 @@ public class AppSettingsPanel : MonoBehaviour
     private RectTransform _mainPanel;
     private RectTransform _contentHost;
     private ScrollRect _contentScrollRect;
+    private RectTransform _footer;
+    private Button _applyReconnectButton;
+    private GameObject _aiChatFooterActions;
+    private AIChatSettingsPanel _aiChatSettingsPage;
     private TextMeshProUGUI _footerStatusText;
     private TextMeshProUGUI _generalStatusText;
     private TextMeshProUGUI _screenCaptureStatusText;
@@ -111,9 +116,17 @@ public class AppSettingsPanel : MonoBehaviour
 
     public static void Hide()
     {
+        if (_instance != null && !_instance.SaveAIChatSettings())
+            return;
+        // Reopening loads fresh files/preferences instead of keeping a saved but
+        // stale draft alive while other settings or prompt files change.
+        if (_instance != null && _instance._aiChatSettingsPage != null)
+            _instance.ClearContent();
         if (_panelRoot != null)
             _panelRoot.SetActive(false);
     }
+
+    public static bool IsVisible => _panelRoot != null && _panelRoot.activeSelf;
 
     public static void Toggle(AppSettingsTab tab = AppSettingsTab.General)
     {
@@ -154,7 +167,7 @@ public class AppSettingsPanel : MonoBehaviour
 
         var canvas = _panelRoot.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.sortingOrder = 100;
+        canvas.sortingOrder = 105; // Above AI Chat (100), below advanced LLM Settings (110).
 
         var scaler = _panelRoot.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
@@ -246,6 +259,7 @@ public class AppSettingsPanel : MonoBehaviour
     private void CreateFooter()
     {
         var footer = CreateRect("Footer", _mainPanel, new Vector2(0, 0), new Vector2(1, 0), new Vector2(0.5f, 0));
+        _footer = footer;
         footer.sizeDelta = new Vector2(0, FooterHeight);
         footer.anchoredPosition = Vector2.zero;
         footer.gameObject.AddComponent<Image>().color = FooterBg;
@@ -257,6 +271,7 @@ public class AppSettingsPanel : MonoBehaviour
         _footerStatusText.rectTransform.offsetMax = new Vector2(-250, 0);
 
         var applyReconnect = CreateButton(footer, "OkApplyReconnect", "Ok (Apply and reconnect)", 220f, ApplyServerConfigurationAndClose);
+        _applyReconnectButton = applyReconnect;
         var applyReconnectRt = applyReconnect.GetComponent<RectTransform>();
         applyReconnectRt.anchorMin = new Vector2(1, 0.5f);
         applyReconnectRt.anchorMax = new Vector2(1, 0.5f);
@@ -266,6 +281,11 @@ public class AppSettingsPanel : MonoBehaviour
 
     private void SetTab(AppSettingsTab tab)
     {
+        // Clicking the current tab must not reload its draft fields.
+        if (tab == AppSettingsTab.AIChat && _activeTab == tab && _aiChatSettingsPage != null)
+            return;
+        if (!SaveAIChatSettings())
+            return;
         _activeTab = tab;
 
         foreach (var kvp in _tabButtons)
@@ -276,6 +296,14 @@ public class AppSettingsPanel : MonoBehaviour
         }
 
         ClearContent();
+        bool isAIChat = tab == AppSettingsTab.AIChat;
+        _footerStatusText.gameObject.SetActive(!isAIChat);
+        _applyReconnectButton.gameObject.SetActive(!isAIChat);
+        if (isAIChat)
+        {
+            BuildAIChatTab();
+            return;
+        }
         var content = CreateScrollContent();
 
         if (tab == AppSettingsTab.Configuration)
@@ -284,8 +312,6 @@ public class AppSettingsPanel : MonoBehaviour
             BuildAudioTab(content);
         else if (tab == AppSettingsTab.Web)
             BuildWebTab(content);
-        else if (tab == AppSettingsTab.AIChat)
-            BuildAIChatTab(content);
         else
             BuildGeneralTab(content);
 
@@ -294,10 +320,27 @@ public class AppSettingsPanel : MonoBehaviour
 
     private void ClearContent()
     {
+        _aiChatSettingsPage = null;
+        _contentScrollRect = null;
+        if (_aiChatFooterActions != null)
+        {
+            _aiChatFooterActions.SetActive(false);
+            Destroy(_aiChatFooterActions);
+            _aiChatFooterActions = null;
+        }
         for (int i = _contentHost.childCount - 1; i >= 0; i--)
         {
+            _contentHost.GetChild(i).gameObject.SetActive(false);
             Destroy(_contentHost.GetChild(i).gameObject);
         }
+    }
+
+    private bool SaveAIChatSettings()
+    {
+        if (_aiChatSettingsPage == null || _aiChatSettingsPage.SaveChanges())
+            return true;
+        _aiChatSettingsPage.ShowSaveError();
+        return false;
     }
 
     private RectTransform CreateScrollContent()
@@ -799,21 +842,14 @@ public class AppSettingsPanel : MonoBehaviour
         return ElevenLabsTextToSpeechManager.DefaultVoicePresets.Length;
     }
 
-    private void BuildAIChatTab(RectTransform content)
+    private void BuildAIChatTab()
     {
-        CreateSectionHeader(content, "AI Chat controls");
-        var toggle = CreateToggleRow(content, "Allow controls in think blocks",
-            AIChatPanel.GetAllowActionsInThinkBlocks(), AIChatPanel.SetAllowActionsInThinkBlocks);
-        toggle.transform.parent.gameObject.AddComponent<RTToolTip>()._text =
-            "Run AI Chat action tags inside the model's thinking. Applies to the next reply and is independent of Strip think tags.";
-        var row = CreateRow(content, "ThinkingControlsHelp", 80f);
-        var text = CreateText("Help", row,
-            "Enable this for models that put their tool calls inside <think> blocks. Off by default.\n" +
-            "Draft/example commands in thinking will also run; repeated commands can run again.\n" +
-            "Saved automatically. Applies to the next AI Chat reply.",
-            BaseFontSize, TextMuted, TextAlignmentOptions.TopLeft);
-        text.richText = false;
-        text.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
+        var actions = CreateRect("AIChatActions", _footer, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f));
+        actions.offsetMin = Vector2.zero;
+        actions.offsetMax = Vector2.zero;
+        _aiChatFooterActions = actions.gameObject;
+        _aiChatSettingsPage = AIChatSettingsPanel.CreateEmbedded(_contentHost, actions, _font,
+            AIChatPanel.GetSettingsSkillManager(), AIChatPanel.NotifySettingsChanged);
     }
 
     // ---------- Web tab (AI Chat web_search / web_image / web_video) ----------
@@ -1494,6 +1530,14 @@ public class AppSettingsPanel : MonoBehaviour
             RefreshGeneralStatus();
             if (_screenCaptureStatusText != null) _screenCaptureStatusText.text = ScreenCaptureController.StatusText;
         }
+    }
+
+    private void LateUpdate()
+    {
+        // AIChatPanel checks IsVisible in Update, so one Escape closes settings
+        // without also closing the conversation underneath it.
+        if (_activeTab == AppSettingsTab.AIChat && RTInput.GetKeyDown(KeyCode.Escape))
+            Hide();
     }
 
     private RectTransform CreateVerticalBox(Transform parent, string name, float minHeight)

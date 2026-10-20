@@ -904,7 +904,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _statusPillText.alignment = TextAlignmentOptions.Center;
         _statusPillText.raycastTarget = false;
 
-        // Settings button - opens AIChatSettingsPanel for editing main_prompt.txt and
+        // Settings button - opens the unified AI Chat tab for editing main_prompt.txt and
         // browsing loaded skills.
         var settingsBtnObj = new GameObject("Settings");
         settingsBtnObj.transform.SetParent(header.transform, false);
@@ -7578,16 +7578,25 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     private void OnSettingsClicked()
     {
-        AIChatSettingsPanel.Show(_skillManager, () =>
-        {
-            // Reload from disk so any user edits to prompt or skill files take
-            // effect on the very next turn (rebuilt by ChatContextBuilder.Build()).
-            _skillManager?.Reload();
-            QueueUpdatedSkillBodiesAfterReload();
-            int n = _skillManager?.GetSkills().Count ?? 0;
-            AddSystemMessage($"Reloaded aichat config: {n} skill{(n == 1 ? "" : "s")}.", includeInLLMRecap: false);
-            AddPromptConfigNotice();
-        });
+        AppSettingsPanel.Show(AppSettingsTab.AIChat);
+    }
+
+    /// <summary>Settings can be opened before the chat itself has ever been shown.</summary>
+    public static SkillManager GetSettingsSkillManager()
+    {
+        var manager = _instance != null && _instance._skillManager != null
+            ? _instance._skillManager : new SkillManager();
+        manager.Reload();
+        return manager;
+    }
+
+    public static void NotifySettingsChanged()
+    {
+        if (_instance == null) return;
+        _instance.ReloadSkillConfigForNextTurn();
+        int n = _instance._skillManager?.GetSkills().Count ?? 0;
+        _instance.AddSystemMessage($"Reloaded aichat config: {n} skill{(n == 1 ? "" : "s")}.", includeInLLMRecap: false);
+        _instance.AddPromptConfigNotice();
     }
 
     /// <summary>
@@ -14742,7 +14751,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         // pops the panel back open.
         if (_isVisible)
         {
-            if (RTInput.GetKeyDown(KeyCode.Escape) && !_isStreaming)
+            if (RTInput.GetKeyDown(KeyCode.Escape) && !_isStreaming && !AppSettingsPanel.IsVisible)
             {
                 if (_bubbleContextMenuRoot != null || _rewindConfirmRoot != null)
                 {
