@@ -1,10 +1,10 @@
 ---
 id: extract_still
-summary: Extract a single frame from an existing Movie #N chat bubble as a new still image (local FFmpeg, no GPU). Main use - grab identity/photo references from a clip before an H3 Reference Video To Video regeneration that must keep the SAME people: extract a close-up frame per person, give each an anchor, then reference them via chat_image2+ (they become <Picture 1>..). Also for the user asking to pull/grab a frame from a video.
+summary: Extract a single frame from an existing Movie #N chat bubble as a new still image (local FFmpeg, no GPU). Main use - grab identity/photo references from a clip before an H3 Reference Video To Video regeneration that must keep the SAME people: extract a close-up frame per person, give each an anchor, then reference them via chat_image2+ (they become <Picture 1>..) while KEEPING the original Movie in chat_image. These stills SUPPLEMENT the full clip and audio; never replace a video reference with image_to_movie or a chain onto the extracted still. Also for the user asking to pull/grab a frame from a video.
 inputs: none
 autoload: true
 triggers: extract a still, extract a frame, extract still, extract frame, grab a frame, grab a still, frame from the video, frame from the clip, frame from the movie, still from the video, still from the clip, still from the movie, freeze frame, screenshot of the video, screenshot from the video, same actors, same actress, same actor, keep the actors, look like the original, look like the actress, look like the actor, keep their faces, same faces, same people as the video, same people as the clip
-template: <aitools_action skill="extract_still" chat_image="N" time="2.5" anchor="face1"/>  # chat_image must be an existing Movie #N bubble; time is seconds into the clip. ALWAYS set anchor="name" so the SAME reply can reference the still (e.g. video_to_video chat_image2="face1"). Extract one frame per action; pick moments where the face is large and frontal. time is a GUESS (captions have no timecodes) - before an H3 render, verify each frame same-reply with inspect_image (last one resume="true") and render on the continue turn, re-extracting any frame that missed.
+template: <aitools_action skill="extract_still" chat_image="N" time="2.5" anchor="face1"/>  # For reference generation keep the ORIGINAL Movie as video_to_video chat_image and use this still only in chat_image2+; never chain the render onto the still. chat_image must be an existing Movie #N bubble; time is seconds into the clip. ALWAYS set anchor="name" so the SAME reply can reference the still (e.g. video_to_video chat_image2="face1"). Extract one frame per action; pick moments where the face is large and frontal. time is a GUESS (captions have no timecodes) - before an H3 render, verify each frame same-reply with inspect_image (last one resume="true") and render on the continue turn, re-extracting any frame that missed.
 ---
 # Extract still frame
 
@@ -19,7 +19,10 @@ Two main uses:
    clip"), the clip alone is a weak identity lock. Extract a close-up frame of
    EACH person first, then run `video_to_video` with the H3 Reference preset,
    staging those stills in `chat_image2+` so they become `<Picture 1>`,
-   `<Picture 2>`, ... photo references.
+   `<Picture 2>`, ... photo references. Keep the ORIGINAL Movie in `chat_image`
+   so the whole short clip and its soundtrack remain available. Extraction
+   SUPPLEMENTS a video reference; it never turns a "use this video as a
+   reference" request into image_to_movie or a still-to-movie chain.
 2. **The user explicitly asks for a frame** ("grab the frame at 12 seconds",
    "give me a still from that clip").
 

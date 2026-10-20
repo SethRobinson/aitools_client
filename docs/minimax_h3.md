@@ -302,6 +302,17 @@ Six reference presets, split across the universal workflow pair (since
 
 ## AI Chat wiring (`SkillActionExecutor.cs`)
 
+- Prompt routing preference (2026-10-20): when a supplied Movie is the reference
+  for a new movie/person/voice anchor, prefer H3 Reference Video To Video with
+  the ORIGINAL Movie in `chat_image`, retaining its full short clip and available
+  soundtrack. "Reference to video" must not route to the photo-only preset.
+  Bind a speaking subject's voice style to the clip's `<Audio 1>` when present,
+  with new dialog quoted; the soundtrack is already wired, so do not duplicate
+  it via `audio=`. Extracted face stills only supplement via `chat_image2+`;
+  never chain onto an extracted still or discard the source video. Source
+  duration and output duration are independent (7s reference + 5s output is
+  valid); select a video segment when a source exceeds the 15s reference limit.
+  These are prompt/skill rules, not new executor gates.
 - Movie-aware routing: when the newest live chat medium is a Movie, deictic
   edit phrases such as "change this scene" and speech/audio edits auto-load
   the full `video_to_video` skill even if the user never says video/clip/movie.

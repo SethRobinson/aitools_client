@@ -1,22 +1,29 @@
 ---
 id: generate_movie
-summary: Make a new video from a text description. DEFAULT recipe is two actions: generate a Qwen Image 2.1 still, then animate it with image_to_movie chain="true" using `Image To Video (MiniMax H3 Turbo Cache) 5s.txt`. Use direct text-to-video (`skill="generate_movie"`) only when the user explicitly asks for direct/text-to-video or no still-image base. The movie prompt is the official H3 DOCUMENT per image_to_movie: integrated_multimodal_description: ([Shot 1] style + the WHOLE scene re-described + actions + one camera move; a chained i2v prompt refers to the chained still as <Picture 1> inside Shot 1), overall_soundscape: (1-4 sentences), non_diegetic_music: (instruments/tempo or N/A); 150-250 words for 5s, 250-450 for 10-15s/multi-shot; dialog per the VIDEO DIALOG RULE in the main prompt. Put prompt LAST in the tag. BEFORE picking the recipe, check ANCHORS / CHAT IMAGES for existing references of the requested subject: photo anchors AND any Audio #N voice sample of a SPEAKING character (a web_audio fetch, an imported .wav). When either exists, route through image_to_movie with a Reference To Video preset instead of this default recipe, staging the photos (chat_image=) and the voice sample (audio="N", voice styled via its <Audio N> tag) - rendering a character speaking while their voice sample sits unused in chat is a routing error.
+summary: Make a new video from a text description. DEFAULT recipe is two actions: generate a Qwen Image 2.1 still, then animate it with image_to_movie chain="true" using `Image To Video (MiniMax H3 Turbo Cache) 5s.txt`. Use direct text-to-video (`skill="generate_movie"`) only when the user explicitly asks for direct/text-to-video or no still-image base. The movie prompt is the official H3 DOCUMENT per image_to_movie: integrated_multimodal_description: ([Shot 1] style + the WHOLE scene re-described + actions + one camera move; a chained i2v prompt refers to the chained still as <Picture 1> inside Shot 1), overall_soundscape: (1-4 sentences), non_diegetic_music: (instruments/tempo or N/A); 150-250 words for 5s, 250-450 for 10-15s/multi-shot; dialog per the VIDEO DIALOG RULE in the main prompt. Put prompt LAST in the tag. BEFORE picking the recipe, check ANCHORS / CHAT IMAGES for existing references of the requested subject: Movie/clip references FIRST (video_to_video + Reference Video To Video with the original clip and its available audio; extracted stills only supplement), then photo anchors AND any Audio #N voice sample of a SPEAKING character (a web_audio fetch, an imported .wav). When photo/audio refs exist WITHOUT a source video, route through image_to_movie with a Reference To Video preset instead of this default recipe, staging the photos (chat_image=) and the voice sample (audio="N", voice styled via its <Audio N> tag) - rendering a character speaking while their voice sample sits unused in chat is a routing error.
 inputs: none
 autoload: true
 triggers: prompt to video, text to video, text-to-video, direct video, direct from text, no still first, minimax video, minimax movie, minmax video, h3 video
 exclude_triggers: edit this video, restyle this video, video to video, video-to-video, animate this image, animate this, animate it, image to video, image-to-video
-template: <aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" width="864" height="480" prompt="full self-contained still-image scene prompt"/><aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" chain="true" prompt="integrated_multimodal_description: [Shot 1] <the whole scene re-described> ... she says 'exact line.' in English with a warm calm voice ... + overall_soundscape: ... + non_diegetic_music: ... (150-250 words)"/>
+template: <aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" width="864" height="480" prompt="full self-contained still-image scene prompt"/><aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" chain="true" prompt="integrated_multimodal_description: [Shot 1] <the whole scene re-described> ... she says 'exact line.' in English with a warm calm voice ... + overall_soundscape: ... + non_diegetic_music: ... (150-250 words)"/>  # Only with no source video: a supplied Movie reference uses video_to_video + Reference Video To Video (MiniMax H3), keeping the original clip and its available soundtrack.
 ---
 # Generate a movie
 
 Use this skill when the user asks for a NEW short video / animation /
-clip / movie from a text description and has not supplied a source image.
+clip / movie from a text description and has not supplied a source image or video.
 
 ## First: check chat for existing references
 
 Before the default recipe below, scan ANCHORS / CHAT IMAGES for material the
 user already staged for this subject:
 
+- **A Movie/clip reference** of the subject: use `video_to_video` with
+  `{{Reference Video To Video (MiniMax H3) 5s.txt}}`, keeping the ORIGINAL
+  Movie in `chat_image`. This takes precedence over the photo-only recipe
+  even if extracted stills also exist: those can supplement the clip via
+  `chat_image2+`. The full short clip supplies motion and its available
+  soundtrack; bind the person's voice style via `<Audio 1>` and quote the
+  new lines. Do not replace it with a frame or a generate_image chain.
 - **Photo anchors** of the subject (web_image fetches, extracted stills):
   route through `image_to_movie` with `{{Reference To Video (MiniMax H3) 5s.txt}}`
   and `<Picture N>` tags instead of generating a text-described lookalike.

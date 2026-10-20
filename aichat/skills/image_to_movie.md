@@ -1,17 +1,28 @@
 ---
 id: image_to_movie
-summary: Animate a STILL image into a short video. DEFAULT preset Image To Video (MiniMax H3 Turbo Cache) 5s (native audio/dialog, turbo + Spectrum cache; its 16 progress steps are 8 real + 8 replay ticks); the 15s preset only for explicit long clips; duration="N" (seconds) works on EVERY H3 preset for any length; "high quality" -> the 20-step (MiniMax H3 Quality) presets; plain Image To Video (MiniMax H3) 5s is the cache-free variant. EVERY H3 prompt is the official structured DOCUMENT, never a short paragraph (thin prompts render flat): integrated_multimodal_description: ([Shot 1] style + the WHOLE scene + actions + ONE camera move written as motion type + amplitude + speed; start-frame prompts re-anchor the source as <Picture 1>), overall_soundscape: (1-4 sentences), non_diegetic_music: (instruments/tempo or N/A); 150-250 words at 5s, 250-450 for 10-15s/multi-shot; the document re-describes the WHOLE scene every render (H3 carries nothing over - never a delta prompt); dialog exactly per the VIDEO DIALOG RULE in the main prompt. Reference To Video presets REQUIRE a photo source and use the SIX-SECTION reference document instead (subject_definitions / summary / retention_analysis / detailed_description 350-500 words / overall_soundscape / non_diegetic_music), addressing every staged photo/audio by its <Picture N>/<Audio N> tag (define <Subject N> from them) - the host refuses reference actions that skip a tag; plain Reference To Video is already turbo, Quality = 20-step, there is NO Cache reference variant - never invent preset names. A video with no source at all is generate_movie territory. A Movie #N is not an image source: use video_to_video, except one explicit current frame with movie_frame="true". Put prompt as the LAST attribute in the action tag.
+summary: Animate a STILL image into a short video. A supplied Movie/clip used as a reference MUST instead stay whole via video_to_video + Reference Video To Video (MiniMax H3), including its available audio; extracted stills only supplement the original clip. DEFAULT preset Image To Video (MiniMax H3 Turbo Cache) 5s (native audio/dialog, turbo + Spectrum cache; its 16 progress steps are 8 real + 8 replay ticks); the 15s preset only for explicit long clips; duration="N" (seconds) works on EVERY H3 preset for any length; "high quality" -> the 20-step (MiniMax H3 Quality) presets; plain Image To Video (MiniMax H3) 5s is the cache-free variant. EVERY H3 prompt is the official structured DOCUMENT, never a short paragraph (thin prompts render flat): integrated_multimodal_description: ([Shot 1] style + the WHOLE scene + actions + ONE camera move written as motion type + amplitude + speed; start-frame prompts re-anchor the source as <Picture 1>), overall_soundscape: (1-4 sentences), non_diegetic_music: (instruments/tempo or N/A); 150-250 words at 5s, 250-450 for 10-15s/multi-shot; the document re-describes the WHOLE scene every render (H3 carries nothing over - never a delta prompt); dialog exactly per the VIDEO DIALOG RULE in the main prompt. Reference To Video presets REQUIRE a photo source and use the SIX-SECTION reference document instead (subject_definitions / summary / retention_analysis / detailed_description 350-500 words / overall_soundscape / non_diegetic_music), addressing every staged photo/audio by its <Picture N>/<Audio N> tag (define <Subject N> from them) - the host refuses reference actions that skip a tag; plain Reference To Video is already turbo, Quality = 20-step, there is NO Cache reference variant - never invent preset names. A video with no source at all is generate_movie territory. A Movie #N is not an image source: use video_to_video, except one explicit current frame with movie_frame="true". Put prompt as the LAST attribute in the action tag.
 inputs: attachment
 autoload: true
 triggers: animate, animation, image to video, image-to-video, image to movie, image-to-movie, animate this, animate it, make this move, make it move, make a video, make a movie, make a clip, create a video, create video, create a movie, generate a video, generate video, generate a movie, generate a clip, video starring, movie starring, video of, movie of, second video, second movie, reference to video, minimax, mini max, minmax, minimax h3, minmax h3, h3, hailuo, spectrum, turbo cache, spectrum cache
-template: <aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" chat_image="N" prompt="integrated_multimodal_description: [Shot 1] <full scene re-described> ... she says 'exact line.' in English with a warm calm voice ... + overall_soundscape: ... + non_diegetic_music: ... (150-250 words; prompt LAST in the tag)"/>  # STILL sources only. attachment= works only in the very message the user pasted the image in; on later turns use chat_image="N". To use an explicit current frame from a Movie add movie_frame="true"; otherwise existing Movies require video_to_video.
+template: <aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" chat_image="N" prompt="integrated_multimodal_description: [Shot 1] <full scene re-described> ... she says 'exact line.' in English with a warm calm voice ... + overall_soundscape: ... + non_diegetic_music: ... (150-250 words; prompt LAST in the tag)"/>  # STILL sources only. For a supplied video, even when the user says reference to video, choose video_to_video + Reference Video To Video (MiniMax H3) with the original Movie; never replace it with an extracted frame. attachment= works only in the very message the user pasted the image in; on later turns use chat_image="N". To use an explicit current frame from a Movie add movie_frame="true"; otherwise existing Movies require video_to_video.
 ---
 # Image-to-movie
 
 Use this skill when the user wants you to ANIMATE an image into a short
 video clip. The source can be either freshly pasted or already in chat.
 
-If the user asks for a NEW text-described video with no source image
+Check the source's MEDIA TYPE before choosing a preset. When the user supplies
+a video and says "reference to video", "make a movie using this person", or
+"use this clip as an anchor", use `video_to_video` with
+`{{Reference Video To Video (MiniMax H3) 5s.txt}}`. Keep the ORIGINAL Movie
+in `chat_image` so its frames, motion, and available soundtrack reach H3.
+This takes precedence over the photo-reference recipe below, even if a
+thumbnail or extracted face still is also available. Such stills may be extra
+`chat_image2+` photo refs; they must not replace the source clip or become a
+still-to-movie chain. Use a single frame only when the user explicitly wants
+that frame animated or an exact start frame.
+
+If the user asks for a NEW text-described video with no source image or video
 ("make a video of X", "generate a MiniMax video of X"),
 first emit `generate_image` with `{{Prompt To Image (Qwen Image 2.1).txt}}`, then emit
 this skill with `chain="true"`. Do NOT use direct `generate_movie` /
@@ -27,8 +38,9 @@ Specify EXACTLY ONE source via:
   conversation. Use when the user says "animate the image you just made";
   the CHAT IMAGES line in the system prompt shows the highest N reachable.
 
-An existing `Movie #N` must use `video_to_video` for scene, motion, dialogue,
-voice, audio, or sound changes. The only exception is an explicit request to
+An existing `Movie #N` must use `video_to_video` for reference generation as
+well as scene, motion, dialogue, voice, audio, or sound changes.
+The only exception is an explicit request to
 animate one single still/current frame from that Movie; add
 `movie_frame="true"`. Unmarked Movie-to-image actions are rejected.
 
@@ -228,6 +240,11 @@ hair, face, wardrobe, expression) - never animate "Mara" or "the same
 person" by name only; the video model has no chat memory.
 
 ## Reference-to-video (`{{Reference To Video (MiniMax H3) 5s.txt}}`)
+
+This is the PHOTO-reference route. A supplied Movie instead uses
+`video_to_video` + `{{Reference Video To Video (MiniMax H3) 5s.txt}}`,
+preserving the clip and its available audio; do not extract a frame to qualify
+for this photo-only preset.
 
 Use INSTEAD of the normal i2v preset when the user wants the PERSON/OBJECT
 from an image doing something new - not that exact frame animated. The output

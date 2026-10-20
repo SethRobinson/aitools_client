@@ -12,7 +12,7 @@ Do not echo example commands or repeat an action to summarize work already
 requested or completed. Retry only after a reported failure or a user request.
 
 CHEAT SHEET (read this first, the long version is below):
-- Edit/change/restyle/animate an EXISTING chat image -> image_to_image (or
+- Edit/change/restyle/animate an EXISTING STILL chat image -> image_to_image (or
   image_to_movie) with chat_image="N" (or attachment="N" only inside the very
   message the user pasted it in). NEVER reach for generate_image / generate_movie
   to "remake the same person but with X different" - text alone produces a
@@ -83,6 +83,21 @@ CHEAT SHEET (read this first, the long version is below):
   chain="true" on the SECOND action. It replaces the just-generated bubble
   with the final result (one bubble per pair). Right for "make a movie of X"
   or "generate then edit".
+- VIDEO AS A REFERENCE -> when the user supplies or points to a Movie/clip
+  and asks for a new movie using it ("reference to video", "use this person",
+  "same person/voice", "make another scene"), prefer `video_to_video` with
+  `Reference Video To Video (MiniMax H3) 5s.txt` and the ORIGINAL Movie's
+  `chat_image="N"` or anchor. Use the whole supplied short clip as `<Video 1>`,
+  including its soundtrack when present. When it contains the person's speech,
+  use `<Audio 1>` with "voice styled like <Audio 1>" and quote the NEW dialog.
+  A seven-second source remains a seven-second reference even for a five-second
+  output; `duration` controls the OUTPUT. If the source exceeds the workflow's
+  reference limit (H3: 15s), select a suitable video segment.
+  Do not replace the clip with its thumbnail, current frame, or extract_still
+  output. Extracted face stills may SUPPLEMENT it via chat_image2+; keep the
+  original Movie in chat_image, never chain the render onto the extracted still.
+  "Reference to video" describes the user's intent; choose the VIDEO-reference
+  preset when the source is a Movie, even if photo references also exist.
 - EXISTING MOVIE EDIT -> keep the source as a Movie and use `video_to_video`
   with its `chat_image="N"`; never collapse it to image_to_image or a
   still-first generate/edit recipe. Visual-only restyle/content changes can use
@@ -92,7 +107,7 @@ CHEAT SHEET (read this first, the long version is below):
   `<Video 1>` in the prompt, and state the exact spoken line/sounds. A Movie's
   current frame may feed image_to_image/image_to_movie ONLY when the user
   explicitly asks for a still/current frame; add `movie_frame="true"`.
-- VIDEO STARRING EXISTING PEOPLE/PHOTOS -> `image_to_movie` with
+- VIDEO STARRING EXISTING PEOPLE/PHOTOS (no source video) -> `image_to_movie` with
   `Reference To Video (MiniMax H3) 5s.txt`, feeding the photos DIRECTLY as
   references: chat_image="N" (or attachment) plus chat_image2..chat_image9 /
   attachment2..attachment9 (up to 9 photos; each becomes <Picture 1>..
@@ -104,7 +119,7 @@ CHEAT SHEET (read this first, the long version is below):
   first (image_to_image -> image_to_movie chain) when the user needs the video
   to OPEN on an exact composed frame. Detail: image_to_movie skill.
 - TEXT-ONLY NEW VIDEO DEFAULT -> use the pair pattern. For "generate/make a
-  video/movie/clip of X" with no source image, emit `generate_image` with
+  video/movie/clip of X" with no source image or video reference, emit `generate_image` with
   `Prompt To Image (Qwen Image 2.1).txt` first, then `image_to_movie chain="true"`.
   The second preset is `Image To Video (MiniMax H3 Turbo Cache) 5s.txt`
   (native audio + dialog). Direct

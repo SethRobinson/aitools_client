@@ -1,16 +1,26 @@
 ---
 id: video_to_video
-summary: Operate on an EXISTING "Movie #N" clip. Two modes: (1) VISUAL-ONLY restyle/edit with Bernini-R (keeps its motion; SILENT output); (2) REFERENCE-generate a brand-NEW MiniMax H3 clip that carries the source's subject/motion/style into a new scene or creates/replaces dialogue, voice, music or sound effects: preset `Reference Video To Video (MiniMax H3) 5s.txt` (already turbo; "high quality" -> the 20-step `Reference Video To Video (MiniMax H3 Quality)` variants; no Cache variant exists; the 15s preset for explicit long clips; duration="N" works on every variant for any length); the source is <Video 1>. H3 also takes up to 9 reference photos (chat_image2+ -> <Picture 1>..), a second clip (<Video 2>) and up to 3 AUDIO refs (audio="N" / audio2 / audio3: Audio bubbles or Movies whose SOUND matters -> <Audio N>, clip soundtracks numbered first). Audio refs are STYLE references (voice character / music / ambience nudged toward the sample; the words still come from the quoted lines): write "his voice styled like <Audio 2>" + retention "reference" - copy wording ("matches <Audio 2>", "the voice from", "reuses", fully_copy) makes H3 splice the sample's actual audio into the clip, so it is only for music/ambience the user asked to keep. Same people as the source: first extract_still an anchored close-up per person and stage the stills via chat_image2+; describe people ONLY as they appear in the clip/caption, never from film or actor knowledge. The H3 prompt is the official SIX-SECTION reference document (spec in image_to_movie): define <Subject N> from the staged assets in subject_definitions and USE every staged reference by its exact tag (<Video k>, <Picture n>, <Audio n> in slot order; a clip counts as used via its <Video k> OR its soundtrack's <Audio n>) - the host refuses reference actions whose prompts skip a staged reference's tag; detailed_description 350-500 words (~250-350 at 5s) re-describing the ENTIRE new scene (references pin identity only - never a delta); ambience in overall_soundscape, score in non_diegetic_music (or N/A, or defer a layer to <Audio N>); dialog per the VIDEO DIALOG RULE, with quoted lines plus described silent action filling the whole duration (15s clips end with an explicit silent tail). Put prompt LAST in the tag. Never use image_to_image on a Movie unless the user explicitly requests one still/current frame and the action has movie_frame="true"; smoothing/FPS -> rife_video; animating a STILL -> image_to_movie.
+summary: Operate on an EXISTING "Movie #N" clip. For a new movie using a supplied video/person as a reference or anchor, DEFAULT to H3 Reference Video To Video with the ORIGINAL Movie in chat_image: retain the full short clip and its available soundtrack, even if extracted stills/photos also exist. Use <Video 1> and, for that speaking person, voice styled like <Audio 1>; stills may supplement via chat_image2+ but NEVER replace the clip. Two modes: (1) VISUAL-ONLY restyle/edit with Bernini-R (keeps its motion; SILENT output); (2) REFERENCE-generate a brand-NEW MiniMax H3 clip that carries the source's subject/motion/style into a new scene or creates/replaces dialogue, voice, music or sound effects: preset `Reference Video To Video (MiniMax H3) 5s.txt` (already turbo; "high quality" -> the 20-step `Reference Video To Video (MiniMax H3 Quality)` variants; no Cache variant exists; the 15s preset for explicit long clips; duration="N" works on every variant for any length); the source is <Video 1>. H3 also takes up to 9 reference photos (chat_image2+ -> <Picture 1>..), a second clip (<Video 2>) and up to 3 AUDIO refs (audio="N" / audio2 / audio3: Audio bubbles or Movies whose SOUND matters -> <Audio N>, clip soundtracks numbered first). Audio refs are STYLE references (voice character / music / ambience nudged toward the sample; the words still come from the quoted lines): write "his voice styled like <Audio 2>" + retention "reference" - copy wording ("matches <Audio 2>", "the voice from", "reuses", fully_copy) makes H3 splice the sample's actual audio into the clip, so it is only for music/ambience the user asked to keep. Same people as the source: keep the original Movie in chat_image, supplement with anchored extract_still close-ups via chat_image2+ (never chain onto a still); describe people ONLY as they appear in the clip/caption, never from film or actor knowledge. The H3 prompt is the official SIX-SECTION reference document (spec in image_to_movie): define <Subject N> from the staged assets in subject_definitions and USE every staged reference by its exact tag (<Video k>, <Picture n>, <Audio n> in slot order; a clip counts as used via its <Video k> OR its soundtrack's <Audio n>) - the host refuses reference actions whose prompts skip a staged reference's tag; detailed_description 350-500 words (~250-350 at 5s) re-describing the ENTIRE new scene (references pin identity only - never a delta); ambience in overall_soundscape, score in non_diegetic_music (or N/A, or defer a layer to <Audio N>); dialog per the VIDEO DIALOG RULE, with quoted lines plus described silent action filling the whole duration (15s clips end with an explicit silent tail). Put prompt LAST in the tag. Never use image_to_image on a Movie unless the user explicitly requests one still/current frame and the action has movie_frame="true"; smoothing/FPS -> rife_video; animating a STILL -> image_to_movie.
 inputs: attachment
 autoload: true
-triggers: video to video, restyle the video, restyle this clip, edit the video, edit the clip, change the video, change the clip, redo the video, redo the clip, make the video, make the clip, the video but, the clip but, same video but, restyle the clip, turn the video, turn the clip, video into, clip into, re-render the video, regenerate the video, based on this video, based on that video, based on the clip, based on this clip, like this video, like the video, like this clip, same character as the video, from this video, from the clip, restyle the movie, edit the movie, change the movie, redo the movie, make the movie, the movie but, same movie but, turn the movie, movie into, re-render the movie, regenerate the movie, based on this movie, based on that movie, based on the movie, like this movie, like the movie, same character as the movie, from this movie, from the movie, use movie, use the movie, use this movie, use that movie, as reference, as a reference, reference video, reference clip, reference movie
-exclude_triggers: animate the image, animate this, make a movie of, make a video of a, turn this image into a video, turn the photo into
-template: <aitools_action skill="video_to_video" preset="{{Video To Video (Bernini).txt}}" chat_image="N" prompt="<visual-only changes + motion to keep, 4-8 sentences (Bernini only)>"/>  # Bernini is SILENT. For new/replaced dialogue, voice, audio, music, or sound effects use preset="{{Reference Video To Video (MiniMax H3) 5s.txt}}" with the six-section H3 reference document as the prompt (subject_definitions defining <Video 1>/<Picture N>/<Audio N> ... non_diegetic_music; detailed_description ~250-350 words at 5s). chat_image="N" = source Movie. Slot-2+ adds references: Bernini takes one still; H3 takes up to 9 photos and/or a second Movie. Same-people H3 regens: emit extract_still per face (anchored) first, stage the stills via chat_image2+, and describe people only as seen in the clip. Never use an image skill on a Movie unless the user explicitly asks for its still/current frame and supplies movie_frame="true".
+triggers: video to video, restyle the video, restyle this clip, edit the video, edit the clip, change the video, change the clip, redo the video, redo the clip, make the video, make the clip, the video but, the clip but, same video but, restyle the clip, turn the video, turn the clip, video into, clip into, re-render the video, regenerate the video, based on this video, based on that video, based on the clip, based on this clip, like this video, like the video, like this clip, same character as the video, from this video, from the clip, restyle the movie, edit the movie, change the movie, redo the movie, make the movie, the movie but, same movie but, turn the movie, movie into, re-render the movie, regenerate the movie, based on this movie, based on that movie, based on the movie, like this movie, like the movie, same character as the movie, from this movie, from the movie, use movie, use the movie, use this movie, use that movie, as reference, as a reference, reference video, reference clip, reference movie, reference to video, reference-to-video, reference to movie
+exclude_triggers: animate the image, turn this image into a video, turn the photo into
+template: <aitools_action skill="video_to_video" preset="{{Reference Video To Video (MiniMax H3) 5s.txt}}" chat_image="N" prompt="subject_definitions: <Subject 1> is the subject from <Video 1>. ... summary: ... retention_analysis: ... detailed_description: [Shot 1] <the entire new scene, actions and exact dialog> ... overall_soundscape: ... non_diegetic_music: ..."/>  # chat_image="N" = ORIGINAL Movie, including its available soundtrack. For a speaking subject bind voice style to <Audio 1> when present. Use the full six-section H3 reference document (~250-350 detailed-description words at 5s). Photos via chat_image2+ SUPPLEMENT the clip; never replace it with a still or chain onto extract_still. Explicit single-frame animation is the exception. For VISUAL-ONLY restyle preserving the source timeline, use Video To Video (Bernini).txt with a 4-8 sentence edit prompt; Bernini output is SILENT.
 ---
 # Video-to-video (Bernini-R / MiniMax H3)
 
 Use this skill when the user wants to work FROM an EXISTING video clip. It has
 two distinct modes - pick by what the user wants:
+
+For "reference to video", "make a movie using this video/person", or "use
+this clip as an anchor", choose H3 reference generation below. Keep the
+ORIGINAL Movie in `chat_image` (or its anchor): the full supplied short clip
+and its available soundtrack are the reference. This applies even when a
+thumbnail, extracted face still, or other photo of the person is also in chat.
+Stills can supplement the clip in `chat_image2+`; never replace it with
+`image_to_movie`, `movie_frame="true"`, or a chain from an extracted still
+unless the user explicitly requests single-frame animation or an exact start
+frame. A fresh scene or different output duration does not change this rule.
 
 1. **VISUAL-ONLY RESTYLE / EDIT (Bernini)** - change the clip's style,
    setting, lighting, or visible content while KEEPING its motion and timeline,
@@ -28,8 +38,12 @@ two distinct modes - pick by what the user wants:
    refer to the source as `<Video 1>`. The source's SOUNDTRACK is a reference
    too: up to 15s of the clip's frames and audio condition the output, so the
    new clip can carry similar music, voices, and ambience - reference the
-   soundtrack as `<Audio 1>` when the user wants that ("same music", "keep the
-   voices/score", "sounds like the clip"). For an explicitly LONG result
+   soundtrack as `<Audio 1>`. When the person is a speaking reference/anchor,
+   use that available voice sample by default: "his voice styled like
+   <Audio 1>", with retention `reference` and the NEW words quoted in the
+   prompt. Do not copy the old dialogue or add `audio` pointing at the same
+   clip again; its soundtrack is already wired. If the user requests a
+   different voice or audio, follow that instruction. For an explicitly LONG result
    ("15 second video like this clip") use
    `{{Reference Video To Video (MiniMax H3) 15s.txt}}` (~3x render time).
    For a specific duration ("10 second video like this clip"), keep the 5s
@@ -114,6 +128,10 @@ The source MUST be a short imported/clipped video. Pick EXACTLY ONE of:
 Freshly dropped `.mov` / `.mp4` / `.avi` files are not image attachments. The host
 imports them as Movie bubbles. If the user requests a specific segment, call
 `clip_video` first, then run this skill with `chain="true"` in the same reply.
+Otherwise pass the whole supplied short clip: a 7s source remains a 7s
+reference for a 5s output. `duration` sets OUTPUT length; it does not require
+trimming the reference to match. For sources over H3's 15s reference limit,
+select a suitable video segment while retaining its audio.
 
 ## Extra references - faces, characters, looks, second clips
 
@@ -148,6 +166,11 @@ The clip alone is a WEAK identity lock: H3 reads it mostly for motion, camera,
 and audio, and faces drift, especially over 10-15s. When the user wants the
 same people/characters to reappear ("more versions with the same actors",
 "keep her looking like the original"):
+
+Keep the ORIGINAL Movie as the primary source throughout this recipe.
+Extracted stills are ADDITIONAL identity references, never a replacement for
+the video's motion and audio. After extraction, explicitly name the original
+Movie in `chat_image`; do not use `chain="true"` (the latest result is a still).
 
 1. Stage photo references. If matching stills already exist in chat (bubbles
    or anchors), put them in `chat_image2+`. If none exist, emit `extract_still`
