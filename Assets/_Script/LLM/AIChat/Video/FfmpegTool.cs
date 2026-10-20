@@ -1354,7 +1354,7 @@ namespace AITools.AIChat.Video
                     {
                         if (cancelToken != null && cancelToken.CancelRequested)
                         {
-                            try { process.Kill(); } catch { }
+                            KillHelperProcessTree(process);
                             result.Success = false;
                             result.ExitCode = -1;
                             result.Error = "Cancelled.";
@@ -1363,7 +1363,7 @@ namespace AITools.AIChat.Video
 
                         if (sw.ElapsedMilliseconds > timeoutMs)
                         {
-                            try { process.Kill(); } catch { }
+                            KillHelperProcessTree(process);
                             result.Success = false;
                             result.ExitCode = -1;
                             result.Error = "Timed out after " + (timeoutMs / 1000) + " seconds.";
@@ -1390,6 +1390,27 @@ namespace AITools.AIChat.Video
             result.Stdout = stdout.ToString();
             result.Stderr = stderr.ToString();
             return result;
+        }
+
+        private static void KillHelperProcessTree(Process process)
+        {
+            try
+            {
+                if (process.HasExited) return;
+                // yt-dlp launches FFmpeg for range downloads. Killing only its parent leaves
+                // the network download running after Stop/timeout. Scope taskkill to this PID.
+                if (Environment.OSVersion.Platform == PlatformID.Win32NT)
+                {
+                    using (var killer = Process.Start(new ProcessStartInfo(
+                        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "taskkill.exe"),
+                        "/PID " + process.Id.ToString(CultureInfo.InvariantCulture) + " /T /F")
+                    { UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden }))
+                        killer?.WaitForExit(5000);
+                }
+                if (!process.HasExited) process.Kill();
+                process.WaitForExit(5000);
+            }
+            catch { try { process.Kill(); } catch { } }
         }
 
         private static ProcessResult RunProcessWithProgress(string exe, string args, int timeoutMs, double durationSeconds, ProgressState progress, CancelToken cancelToken)

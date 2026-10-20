@@ -36,3 +36,16 @@ Endpoints (loopback only): `GET /status` (playing/focused/compiling/driverReady/
 ## The idle flag, async file writes and editor prefs
 
 The `idle` flag ANDs every AI Chat busy gate (streaming, forced-main wait, compact summary, sidecar captions/inspections, auto-resume, the skill-action pump) plus any chat-generated `PicMain` still rendering - so it only reports idle once an image turn has finished rendering on the GPU, not merely when the text stream ends. `/save` and `/screenshot` write files asynchronously (screenshot waits for end-of-frame); poll for the file. Recommended editor pref: **Script Changes While Playing = Stop Playing And Recompile** for deterministic reloads. While the automation driver is attached, `PicMovie` treats the app as focused for movie load/playback/seek logic (`AppFocusedForPlayback()`), so bridge-driven movie tests work with the editor in the background; audio unmuting still requires real OS focus.
+
+## Web media checks (2026-10-20)
+
+- `POST /web_media_validation` runs offline command-builder, VTT, cookie-file
+  validation/redaction and config-writer checks. Requires Play mode; writes only
+  synthetic fixtures beneath ignored `build/web-media-validation-*`, restores
+  temporary in-memory settings, and never writes config.txt or reads browser
+  cookies. `pwsh -File scripts/VerifyWebMedia.ps1` verifies the checkout and reports results.
+- `POST /chat_web_action` accepts exactly one `web_video` or `web_transcript`
+  action tag, while an open AI Chat is idle, through the real parser/executor.
+  It forces `resume="false"` to avoid a main-model continuation. Existing Web/URL
+  gates still apply; clip caption sidecars can run as usual. Poll `/status` and
+  inspect `/chat_web_trace` / `/chat_images`. No desktop input or capture is involved.

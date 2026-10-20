@@ -45,7 +45,7 @@ namespace AITools.AIChat.Web
         public string ResultToken;
         public float StartSeconds = 0f;
         public float DurationSeconds = 5f;
-        public float MaxSourceMinutes = 20f;
+        public float MaxSourceMinutes = 0f;
         public bool IncludeAudio = true;
         public string SafeSearch;
         public string Anchor;
@@ -58,6 +58,14 @@ namespace AITools.AIChat.Web
         /// with dialogue). Checked with ffmpeg + Whisper; music-only / silent cuts are rejected.
         /// </summary>
         public bool RequireSpeech;
+    }
+
+    public sealed class WebTranscriptRequest
+    {
+        public string Url;
+        public string Language = "en";
+        public int Offset;
+        public int MaxChars = 20000;
     }
 
     /// <summary>

@@ -500,6 +500,20 @@ public static class AutomationController
                     break;
                 }
 
+                case "/web_media_validation":
+                {
+                    WriteJson(stream, 200, RunOnMainAndWait(WebMediaValidation.Run,
+                        "{\"ok\":false,\"error\":\"timed out\"}"));
+                    break;
+                }
+
+                case "/chat_web_action":
+                {
+                    WriteJson(stream, 200, RunOnMainAndWait(() => AutomationBridge.ChatWebAction(body),
+                        "{\"ok\":false,\"error\":\"timed out\"}"));
+                    break;
+                }
+
                 case "/chat_web":
                 {
                     // Body: enabled=<true|false>, optional (omitted = report the current value).

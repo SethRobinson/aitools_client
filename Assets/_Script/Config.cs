@@ -164,6 +164,7 @@ public class Config : MonoBehaviour
     string _braveSearchAPIKey;
     string _webSearchSafeSearch;   // "strict" or "off"
     string _ytDlpCookiesBrowser;   // blank = no --cookies-from-browser
+    string _ytDlpCookiesFile;      // local Netscape cookie file, takes precedence over browser
     // Speech-to-text for web_video speech checks: an OpenAI-compatible /v1/audio/transcriptions
     // endpoint (local Whisper server etc.). Blank endpoint = use api.openai.com with the LLM
     // Settings OpenAI key.
@@ -253,6 +254,7 @@ public class Config : MonoBehaviour
     /// <summary>"strict" (default) or "off". Anything else normalizes to strict.</summary>
     public string GetWebSearchSafeSearch() { return NormalizeSafeSearch(_webSearchSafeSearch); }
     public string GetYtDlpCookiesBrowser() { return _ytDlpCookiesBrowser ?? ""; }
+    public string GetYtDlpCookiesFile() { return _ytDlpCookiesFile ?? ""; }
     public string GetSttEndpoint() { return _sttEndpoint ?? ""; }
     public string GetSttAPIKey() { return _sttAPIKey ?? ""; }
     public string GetSttModel() { return string.IsNullOrWhiteSpace(_sttModel) ? "whisper-1" : _sttModel; }
@@ -386,11 +388,13 @@ public class Config : MonoBehaviour
         SetWebSettings(braveSearchAPIKey, safeSearch, ytDlpCookiesBrowser, _sttEndpoint, _sttAPIKey, _sttModel, saveToFile);
     }
 
-    public void SetWebSettings(string braveSearchAPIKey, string safeSearch, string ytDlpCookiesBrowser, string sttEndpoint, string sttAPIKey, string sttModel, bool saveToFile = true)
+    public void SetWebSettings(string braveSearchAPIKey, string safeSearch, string ytDlpCookiesBrowser, string sttEndpoint, string sttAPIKey, string sttModel, bool saveToFile = true, string ytDlpCookiesFile = null)
     {
         _braveSearchAPIKey = CleanConfigField(braveSearchAPIKey);
         _webSearchSafeSearch = NormalizeSafeSearch(safeSearch);
         _ytDlpCookiesBrowser = CleanConfigField(ytDlpCookiesBrowser);
+        if (ytDlpCookiesFile != null)
+            _ytDlpCookiesFile = CleanConfigField(ytDlpCookiesFile).Trim('"');
         _sttEndpoint = CleanConfigField(sttEndpoint);
         _sttAPIKey = CleanConfigField(sttAPIKey);
         _sttModel = CleanConfigField(sttModel);
@@ -565,6 +569,8 @@ public class Config : MonoBehaviour
             sb.Append("set_brave_search_api_key|").Append(CleanConfigField(_braveSearchAPIKey)).AppendLine("|");
         if (!string.IsNullOrEmpty(_ytDlpCookiesBrowser))
             sb.Append("set_ytdlp_cookies_browser|").Append(CleanConfigField(_ytDlpCookiesBrowser)).AppendLine("|");
+        if (!string.IsNullOrWhiteSpace(_ytDlpCookiesFile))
+            sb.Append("set_ytdlp_cookies_file|").Append(CleanConfigField(_ytDlpCookiesFile)).AppendLine("|");
         if (!string.IsNullOrEmpty(_sttEndpoint))
             sb.Append("set_stt_endpoint|").Append(CleanConfigField(_sttEndpoint)).AppendLine("|");
         if (!string.IsNullOrEmpty(_sttAPIKey))
@@ -1366,6 +1372,7 @@ set_default_audio_negative_prompt|music|
         "set_web_search_safesearch", "set_web_search_safe_search",
         "set_brave_search_api_key", "set_brave_api_key",
         "set_ytdlp_cookies_browser", "set_yt_dlp_cookies_browser",
+        "set_ytdlp_cookies_file", "set_yt_dlp_cookies_file",
         "set_stt_endpoint", "set_speech_to_text_endpoint",
         "set_stt_api_key", "set_speech_to_text_api_key",
         "set_stt_model", "set_speech_to_text_model",
@@ -1646,6 +1653,10 @@ set_default_audio_negative_prompt|music|
                 else if (words[0] == "set_ytdlp_cookies_browser" || words[0] == "set_yt_dlp_cookies_browser")
                 {
                     _ytDlpCookiesBrowser = words.Length > 1 ? words[1].Trim() : "";
+                }
+                else if (words[0] == "set_ytdlp_cookies_file" || words[0] == "set_yt_dlp_cookies_file")
+                {
+                    _ytDlpCookiesFile = words.Length > 1 ? words[1].Trim().Trim('"') : "";
                 }
                 else if (words[0] == "set_stt_endpoint" || words[0] == "set_speech_to_text_endpoint")
                 {

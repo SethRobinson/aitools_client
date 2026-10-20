@@ -152,6 +152,11 @@ public static class AutomationBridge
         return AIChatPanel.AutomationSetWebEnabled(enabled, out current);
     }
 
+    public static string ChatWebAction(string body)
+    {
+        return AIChatPanel.AutomationWebAction(body);
+    }
+
     /// <summary>Run AI Chat's Compact feature (mode "summarize" or "truncate").</summary>
     public static bool CompactChat(string mode, int keepExchanges, out string error)
     {

@@ -41,6 +41,7 @@ public class AppSettingsPanel : MonoBehaviour
     private TMP_InputField _braveApiKeyInput;
     private Toggle _webSafeSearchToggle;
     private TMP_InputField _ytDlpCookiesInput;
+    private TMP_InputField _ytDlpCookiesFileInput;
     private TMP_InputField _sttEndpointInput;
     private TMP_InputField _sttApiKeyInput;
     private TMP_InputField _sttModelInput;
@@ -822,7 +823,7 @@ public class AppSettingsPanel : MonoBehaviour
         help.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
 
         CreateSectionHeader(content, "Video download (yt-dlp)");
-        var videoBox = CreateVerticalBox(content, "WebVideoBox", 100f);
+        var videoBox = CreateVerticalBox(content, "WebVideoBox", 178f);
 
         var cookiesRow = CreateRow(videoBox, "YtDlpCookiesRow", 36f);
         CreateLabel(cookiesRow, "Cookies from browser", 150f);
@@ -835,6 +836,17 @@ public class AppSettingsPanel : MonoBehaviour
             "Passed to yt-dlp as --cookies-from-browser. Firefox is the most reliable; Chrome/Brave cookie extraction often fails on Windows because of app-bound cookie encryption.",
             12f, TextMuted, TextAlignmentOptions.TopLeft);
         cookiesHelp.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
+
+        var cookieFileRow = CreateRow(videoBox, "YtDlpCookiesFileRow", 36f);
+        CreateLabel(cookieFileRow, "Cookie file", 150f);
+        _ytDlpCookiesFileInput = CreateInput(cookieFileRow, cfg != null ? cfg.GetYtDlpCookiesFile() : "", 560f);
+        SetInputPlaceholder(_ytDlpCookiesFileInput, "Full path to an exported YouTube cookies.txt file");
+        _ytDlpCookiesFileInput.onEndEdit.AddListener(_ => SaveWebSettingsFromFields());
+        var cookieFileHelpRow = CreateRow(videoBox, "YtDlpCookiesFileHelpRow", 40f);
+        var cookieFileHelp = CreateText("Help", cookieFileHelpRow,
+            "Reuse a Netscape-format cookie file exported from Brave or another browser. Takes precedence over Cookies from browser for clips and transcripts. Re-export when the login expires.",
+            12f, TextMuted, TextAlignmentOptions.TopLeft);
+        cookieFileHelp.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
 
         CreateSectionHeader(content, "Speech-to-text (web_video speech checks)");
         var sttBox = CreateVerticalBox(content, "WebSttBox", 160f);
@@ -898,7 +910,8 @@ public class AppSettingsPanel : MonoBehaviour
         string sttKey = _sttApiKeyInput != null ? _sttApiKeyInput.text : cfg.GetSttAPIKey();
         string sttModel = _sttModelInput != null ? _sttModelInput.text : cfg.GetSttModel();
 
-        cfg.SetWebSettings(key, safeSearch, cookies, sttEndpoint, sttKey, sttModel);
+        cfg.SetWebSettings(key, safeSearch, cookies, sttEndpoint, sttKey, sttModel,
+            ytDlpCookiesFile: _ytDlpCookiesFileInput != null ? _ytDlpCookiesFileInput.text : cfg.GetYtDlpCookiesFile());
         SetWebStatus(BuildWebStatusText());
         SetFooterStatus("Saved Web settings to config.txt.");
     }
@@ -916,6 +929,8 @@ public class AppSettingsPanel : MonoBehaviour
         else
             sb.AppendLine("yt-dlp: NOT FOUND - " + ytDlpError);
         sb.AppendLine(AITools.AIChat.Web.YtDlpTool.DescribeJsRuntime());
+        if (cfg != null && !string.IsNullOrWhiteSpace(cfg.GetYtDlpCookiesFile()))
+            sb.AppendLine(System.IO.File.Exists(cfg.GetYtDlpCookiesFile()) ? "Cookie file: configured (overrides browser)." : "Cookie file: NOT FOUND. Update its path or clear it.");
         sb.AppendLine(AITools.AIChat.Web.SpeechCheck.DescribeSpeechToText());
 
         if (AITools.AIChat.Video.FfmpegTool.TryGetToolPaths(out string ffmpegPath, out _, out string ffmpegError))

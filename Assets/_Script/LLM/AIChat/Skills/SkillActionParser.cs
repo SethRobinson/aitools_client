@@ -677,6 +677,7 @@ namespace AITools.AIChat.Skills
                 case BuiltInSkillIds.WebSearch:
                 case BuiltInSkillIds.WebImage:
                 case BuiltInSkillIds.WebVideo:
+                case BuiltInSkillIds.WebTranscript:
                 case BuiltInSkillIds.WebPage:
                 case BuiltInSkillIds.WebAudio:
                     return false;

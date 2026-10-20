@@ -13,15 +13,15 @@ the MiniMax H3 Reference To Video preset or Qwen Image 2.1 image edits, and refe
 | Brave client | `Assets/_Script/LLM/AIChat/Web/BraveSearchClient.cs` | `GET https://api.search.brave.com/res/v1/{images,videos,web}/search`, header `X-Subscription-Token`, SimpleJSON parse (every field optional), numbered result formatting, ~0.6 s spacing between calls |
 | Downloader | `Web/WebMediaDownloader.cs` | `UnityWebRequest` to memory (images, 25 MB cap) or file (videos, 250 MB cap), browser User-Agent, 30 s timeout, `Abort()` on cap/cancel, magic-byte sniffing, public-host-only URL gate (`IsAllowedPublicHttpUrl`: http/https, no userinfo, no loopback / RFC1918 / link-local / `localhost` with trailing dots normalized, no single-label LAN names such as `gpubox` (hostnames are not DNS-resolved), no raw quote / backslash / whitespace / control characters), redirects followed by hand (`redirectLimit = 0`, max 5 hops, each `Location` re-gated; UnityWebRequest used to follow a public URL's 302 into loopback) |
 | Image normalizer | `WebImageConverter` (same file) | PNG/JPEG decode-check with a throwaway `Texture2D.LoadImage` (real pixel size); webp/gif/avif/bmp/tiff or oversized (>2048 px) originals go through `FfmpegTool.ConvertImageToPng` |
-| yt-dlp wrapper | `Web/YtDlpTool.cs` | resolves `utils/yt-dlp/yt-dlp.exe` (then PATH), auto-detects a JS runtime (deno / node / bun on PATH, passed as `--js-runtimes`), builds the exact command line (URL last, after a `--` end-of-options marker, quoted per Windows CRT rules by `FfmpegTool.QuoteArg`), runs it via `FfmpegTool.RunProcessCancellable`, progress lines drained on the main thread. Downloads the WHOLE video capped at 480p (`--match-filters "duration<?N"`, `--max-filesize 250m`); the host cuts the section locally |
+| yt-dlp wrapper | `Web/YtDlpTool.cs` | resolves `utils/yt-dlp/yt-dlp.exe` (then PATH), auto-detects a JS runtime (deno / node / bun on PATH, passed as `--js-runtimes`), builds the exact command line (URL last, after a `--` end-of-options marker, quoted per Windows CRT rules by `FfmpegTool.QuoteArg`), runs it via `FfmpegTool.RunProcessCancellable`, progress lines drained on the main thread. Downloads only the requested range capped at 480p; the host normalizes the downloaded section from time zero. Also fetches caption tracks without video |
 | Page reader | `Web/WebPageReader.cs` | pure C# (no Unity usings, compiles in a plain dotnet console app): charset decode (BOM > HTTP charset > `<meta charset>` > strict UTF-8 with windows-1252 fallback), single-pass HTML tag scanner -> readable text + candidate image list; see "web_page" below |
 | Trace bubble | `Web/WebTraceBubble.cs` + `AIChatPanel.BeginWebTrace` | the always-visible "Web" bubble, COMPACT since 2026-09-13: a one-line title, `AppendSummaryLine` outcome lines, the throttled status line and the thumbnails; every other line (`AppendLine`) only goes to the FULL trace that the bubble's `[details]` marker opens in the floating `ChatThinkingWindow` (kind `WebTrace`, live while the fetch runs). Plain text (only TMP angle brackets escaped, NO markdown pass); every line mirrored to `llm_aichat_log.json` as `note/web` |
 | Thumbnail strip | `Web/WebThumbStrip.cs` + `WebTraceBubble.AddThumb/SetThumbVerdict/SetThumbPic` | wrapping row of 72 px thumbnails under the Web bubble, one per image the vision check examined (accepted and rejected; see "Thumbnails of everything the vision check saw") |
-| Host | `AIChatPanel.cs` "Web media fetch" region | busy gate (`_webFetchCount`, `_webCaptionInFlight`), epoch-based cancellation, the five coroutines, `AppendWebStillBubble`, caption tracking, search sessions `S1..`, page sessions `P1..` (images + audio links) |
+| Host | `AIChatPanel.cs` "Web media fetch" region | busy gate (`_webFetchCount`, `_webCaptionInFlight`), epoch-based cancellation, the six coroutines, `AppendWebStillBubble`, caption tracking, search sessions `S1..`, page sessions `P1..` (images + audio links) |
 | Executor | `SkillActionExecutor.cs` `ExecuteWebSearch/Image/Video/Page` | argument parsing + aliases, Web-toggle / key / URL pre-flight (`WebPreflight`), defers the pump like `extract_still` |
 | Web toggle | `AIChatPanel.CreateHeader` (`_webToggle`), `GetWebEnabled()` (`aichat_web_enabled`, default on) | header checkbox; see "Web toggle" below |
-| Settings | `AppSettingsPanel` Web tab, `Config.cs` | `set_brave_search_api_key`, `set_web_search_safesearch` (strict/off), `set_ytdlp_cookies_browser` in `config.txt` |
-| Prompts | `aichat/skills/web_image.md`, `web_video.md`, `web_search.md`, `web_page.md`, `main_prompt.txt` | routing, the Seinfeld-style multi-reference recipe, the RESEARCH recipe |
+| Settings | `AppSettingsPanel` Web tab, `Config.cs` | `set_brave_search_api_key`, `set_web_search_safesearch` (strict/off), `set_ytdlp_cookies_browser`, `set_ytdlp_cookies_file` in private `config.txt` |
+| Prompts | `aichat/skills/web_image.md`, `web_video.md`, `web_search.md`, `web_page.md`, `web_transcript.md`, `main_prompt.txt` | routing, the Seinfeld-style multi-reference recipe, the RESEARCH recipe |
 
 Bundled helper: `utils/yt-dlp/yt-dlp.exe` (Unlicense, `utils/yt-dlp/README.txt` has the
 version). Release staging (`scripts/ReleasePackage.ps1`) already copies `utils`, so builds ship it.
@@ -32,8 +32,9 @@ version). Release staging (`scripts/ReleasePackage.ps1`) already copies `utils`,
 |---|---|---|
 | `web_search` | `query`, `kind=images\|videos\|web` (default images), `count` (max 20), `safesearch`, `resume` (default TRUE) | list only; stored as `S1`, `S2`... for `result="S1:3"`; auto-continues with the list |
 | `web_image` | one of `query` / `url` / `result`; `count` (max 4), `anchor` (count>1 -> `name`, `name_2`...), `min_width` (256), `criteria` (extra vision-check requirements), `verify` (default true), `safesearch`, `resume` (default false) | assistant still bubble(s) `#N`, kind `web image`, provenance `web image: "query" -> host/path`, vision-verified and captioned |
-| `web_video` | one of `query` / `url` / `result`; `start`, `duration` (0.5..15, default 5), `max_source_minutes` (20), `criteria`, `verify` (default true), `audio`, `anchor`, `resume` (default TRUE) | `Movie #N` via yt-dlp whole-video download at <=480p (page URLs) or direct file download, then `FfmpegTool.CreateClip` cuts `start`..`start+duration` (soundtrack loudness-normalized to -16 LUFS when the AI Chat "Normalize imported clip audio" setting is on, the default; the trace line shows the `AudioNote`); each cut is vision-checked via a contact sheet, rejects retry +30 s / +90 s in the same source, then the next ranked result (4 sources max) |
+| `web_video` | one of `query` / `url` / `result`; `start`, `duration` (0.5..15, default 5), `max_source_minutes` (0 = no filter), `criteria`, `verify` (search/results or criteria: true; plain URL: false), `audio`, `anchor`, `resume` (default TRUE) | `Movie #N` via yt-dlp range download at <=480p for page/direct video URLs, then `FfmpegTool.CreateClip` normalizes the downloaded section (soundtrack loudness-normalized to -16 LUFS when the AI Chat "Normalize imported clip audio" setting is on, the default; the trace line shows the `AudioNote`); each cut is vision-checked via a contact sheet, rejects retry +30 s / +90 s in the same source, then the next ranked result (4 sources max) |
 | `web_page` | one of `url` / `result` (a `kind="web"` hit) / `query`; `max_chars` (500..20000, default 6000), `images` (default true), `max_images` (1..40, default 12), `safesearch`, `resume` (default TRUE) | no bubble: the page's readable text goes to the model via the info-recap tail, its image candidates are stored as `P1`, `P2`... for `web_image result="P1:3"`, and its bare sound-file links (`<a href="....wav">`, `<audio src>`) as `P1:a1`... for `web_audio result="P1:a2"`; the Web bubble shows the page title, char counts and the image / audio-link COUNTS, its `[details]` trace the URL / HTTP status / bytes and the lists themselves |
+| `web_transcript` | `url`, `language` (en), `offset` (0), `max_chars` (20000, up to 100000), `resume` (true) | caption text in the info recap, no video download; long tracks support cached paging |
 | `web_audio` | one of `url` (a direct sound-file URL) / `result` (`"P1:a2"` page audio link, or an `S` web hit whose URL is itself a sound file); `start`, `duration` (0 = whole file, cap 300 s), `speech` (reject silent/music-only), `anchor`, `resume` (default TRUE) | playable `Audio #N` bubble via the same landing as dropped/generated audio (waveform preview MP4 + lossless `audioPath`); no vision check - ffprobe gate (real audio, no video stream) + the web_video-style SpeechCheck for the caption transcript. No `query=` mode (no audio search engine exists): finding sounds is `web_search kind="web"` -> `web_page` -> `result="P1:aN"` |
 
 Aliases (`NormalizeSkillId`): `search_web`, `image_search`, `brave_search`... -> `web_search`;
@@ -62,32 +63,55 @@ clip; then a `Reference Video To Video` render on the auto-continue turn
 text-described lookalike. No code changed for this; it is all prompt/skill
 text using the existing `count` / `criteria` / `speech` attributes.
 
-## Known YouTube limitations (verified 2026-10-20)
+## Video ranges, transcripts and authentication (2026-10-20)
 
-- `max_source_minutes` limits the WHOLE source, even when `start="0"` and only
-  seven seconds are requested. The default is 20; `max_source_minutes="90"`
-  allows an 82-minute source, and `0` disables the duration filter. The 250 MB
-  download cap still applies. A duration-filter rejection is not evidence of a
-  sign-in or bot check.
-- `WebVideoCoroutine` currently puts specific download errors in the full Web
-  trace, but its final failure recap to the model only says "no usable clip"
-  and offers generic suggestions. The model can consequently invent an
-  authentication explanation. This remains an implementation gap: pass the
-  actual per-source failure reasons into the recap and compact bubble.
-- There is no YouTube subtitle-fetch action. `web_page` extracts static HTML,
-  not YouTube caption tracks; `web_video speech="true"` transcribes only the
-  selected short clip and can reject it for lacking speech. It does not fetch
-  the full video's transcript. The bundled yt-dlp can independently retrieve
-  automatic captions with `--skip-download --write-auto-subs --sub-langs en-orig`.
-- A public long-video check retrieved both English automatic captions and an
-  exact seven-second H.264/AAC clip without cookies. `--download-sections "*0-7"`
-  with `--force-keyframes-at-cuts` completed in about 11 seconds for that source.
-  This is a source-specific result, not evidence that the historical section
-  download throttling is fixed everywhere.
-- Settings > Web > Cookies from browser is already persistent
-  (`set_ytdlp_cookies_browser`); the helper reads that browser's cookies on each
-  invocation. There is no app setting for a Netscape cookie file yet. Brave
-  Search API access is separate from the user's Brave browser session.
+- `web_video` downloads only `start`..`start+duration` using yt-dlp
+  `--download-sections` and `--force-keyframes-at-cuts`. Segmented HLS streams
+  (preferably H.264) are selected first when available to avoid direct DASH seek
+  stalls; direct formats remain a range-only fallback. FFmpeg network reads time
+  out after 20 seconds. Page URLs and direct
+  video URLs share this path. Normalization starts at zero in the downloaded
+  section, while the caption and provenance keep the original source timestamp.
+  Plain explicit URLs default to no suitability filtering; search/result picks
+  and explicit criteria still verify unless overridden.
+  Rejected searched clips fetch separate +30/+90 second ranges. There is no
+  whole-video fallback. `max_source_minutes` now defaults to 0; an explicit
+  positive value still filters source length. The 250 MB limit applies to bytes
+  written for the clip, not the original video's metadata size. Downloads time
+  out after ten minutes; Stop/timeout also terminates yt-dlp's FFmpeg child on Windows.
+- Each failed source/cut contributes its actual error to both the compact Web
+  bubble and the model's info recap. A source-duration rejection, missing
+  captions and authentication failures are distinct. The old generic recap
+  caused models to invent bot-check explanations for duration-filter failures.
+- `web_transcript url="..." language="en"` uses manual subtitles when available,
+  otherwise automatic captions, with `--skip-download`. It needs neither a
+  Brave key nor a speech-to-text service. VTT timestamps/markup and rolling-line
+  duplicates are removed. Decoded action tags are neutralized before delivery as
+  external source text in the info recap. `max_chars` defaults to 20000 (1..100000);
+  the response reports the next character `offset` for longer tracks. Nonzero
+  offsets reuse session-cached text; offset 0 refreshes; Clear removes the cache.
+  A missing language/track is an explicit error, never a fabricated transcript.
+  Subtitle downloads have a two-minute timeout and a 10 MB file limit.
+- Settings > Web > Cookie file persists `set_ytdlp_cookies_file` in private
+  `config.txt` (alias `set_yt_dlp_cookies_file`). It accepts a full path to a
+  Netscape-format YouTube cookie export, including one exported from Brave, and
+  takes precedence over `set_ytdlp_cookies_browser` for BOTH clips and transcripts.
+  Clear the file path to return to browser-cookie extraction. The file is
+  validated without echoing records; its path is redacted in downloader traces.
+  Cookies remain local and are not supplied to the LLM. yt-dlp may update the
+  selected cookie file; an expired login requires a fresh export. Brave Search
+  API access is separate from the user's Brave browser session.
+- `--ignore-config` keeps unrelated machine-level yt-dlp options out of app
+  requests. The model can provide URLs, language and clip parameters, not cookie
+  paths or arbitrary downloader arguments. `web_page` remains a static HTML
+  reader; `web_video speech="true"` still transcribes only the fetched short clip.
+
+Offline regression checks: `pwsh -File scripts/VerifyWebMedia.ps1` against an
+active compiled Play session. It exercises production command builders, VTT
+parsing, cookie validation/redaction and config serialization without network or
+config-file writes. Fixtures remain under ignored `build/web-media-validation-*`.
+`POST /chat_web_action` runs one parsed `web_video` or `web_transcript` action
+through the real executor, with main-turn auto-resume disabled, for live checks.
 
 ## Choosing good images (ranking + vision verification)
 
@@ -388,10 +412,10 @@ A "Web" checkbox in the AI Chat header (between the GPUs/LLMs pill and Settings;
 online feature off at a glance. When it is OFF:
 
 - The model is told every turn: `BuildCurrentStateBlock(..., webEnabled)` writes `WEB ACCESS: ON (...)` or
-  `WEB ACCESS: OFF - ... web_search, web_image, web_video, web_page and web_audio are disabled and will fail; do not emit
+  `WEB ACCESS: OFF - ... web_search, web_image, web_video, web_page, web_audio and web_transcript are disabled and will fail; do not emit
   them ...` right under the CURRENT STATE header (volatile block, so a flip is seen on the next turn without
   touching the cached prefix).
-- The five web skills are left out of the stable SKILLS block (`ChatContextBuilder.Build(keepOldToolCalls,
+- The six web skills are left out of the stable SKILLS block (`ChatContextBuilder.Build(keepOldToolCalls,
   hiddenSkillIds)` -> `SkillManager.BuildSkillSummariesBlock(excludeIds)`) and cannot keyword-autoload
   (`GetAutoloadSkillsForMessage(msg, excludeIds)`); `BuiltInSkillIds.WebSkills` is the set,
   `AIChatPanel.HiddenSkillIdsForPrompt()` the switch. This changes the prompt prefix once per flip (one cache
@@ -497,20 +521,17 @@ Failure lines: `-> HTTP 403 Forbidden; retry via Brave thumbnail https://imgs.se
 `-> HTTP 200 text/html (a web page, not an image), skipped`, `-> timed out after 30s, skipped`,
 `WEBP -> ffmpeg -> PNG 1024x768`.
 
-yt-dlp: the full command line (`"...\utils\yt-dlp\yt-dlp.exe" --no-playlist --newline --restrict-filenames
---no-part --js-runtimes node --match-filters "duration<?1200" --max-filesize 250m
--f "bv*[height<=480][ext=mp4]+ba[ext=m4a]/bv*[height<=480]+ba/b[height<=480]/b" --merge-output-format mp4
---ffmpeg-location "...\utils\ffmpeg\bin" -o "...\tempCache\aichat_web_videos\ytdlp_ab12cd34.%(ext)s"
-[--cookies-from-browser firefox] "URL"`), the live `[download] 63.1% ...` line, `exit 0 in 9.4s ->
-ytdlp_ab12cd34.mp4 (36 MB)`, the last 8 output lines (15 on failure, verbatim, e.g. "Sign in to confirm you're
-not a bot"), then `ffmpeg normalize: 12-17s of source, 832x468, audio, audio normalized -22.4 -> -16 LUFS -> clip_....mp4 (1.2 MB)` and
-`Added as Movie #10 (anchor "clip1"), captioning...`.
-
-Why whole-video: yt-dlp's `--download-sections` hands the stream URL to ffmpeg, and YouTube throttles ffmpeg's
-plain HTTP reads to ~5 KiB/s (a 5 s cut of a 10 min video took 5m24s in testing), while yt-dlp's own chunked
-downloader with a JS runtime runs at 30-58 MiB/s (the same 10 min video at 480p: 9 s). Without a JS runtime
-(deno / node / bun on PATH) YouTube throttles or hides formats; the Settings > Web status line says which
-runtime was detected, and the yt-dlp warning is visible in the trace.
+yt-dlp traces show the range command (`--download-sections "*12-17"`,
+`--force-keyframes-at-cuts`, format selection and FFmpeg path), progress, exit
+status and the reported failure. Cookie-file paths and invalid cookie records are
+redacted. Successful sections are then normalized from local time zero; the
+trace and provenance still identify source seconds 12-17. Earlier tests found
+FFmpeg range downloads could be throttled on some sources; a source-specific
+check on 2026-10-20 fetched seven seconds in about 11 seconds. A 30.5-second
+seek stalled on direct AV1 and H.264 streams, but the HLS selection fetched
+30.5-33.5 seconds in about three seconds after extraction. Slow downloads
+remain cancellable and have a ten-minute timeout, without a whole-source fallback.
+Deno / Node / Bun detection remains visible in Settings > Web.
 
 ## Recap sent to the model
 
@@ -568,8 +589,8 @@ left intact and reported. Offline safety fixtures: `scripts/VerifyDeleteSafety.p
 | model-invented / unsafe URL | rejected before any request (must be public http/https) |
 | yt-dlp missing | trace + injection naming `utils/yt-dlp/yt-dlp.exe` |
 | no JS runtime | yt-dlp warning in the trace; downloads throttled / fewer formats; Settings > Web suggests installing Deno or Node.js |
-| source longer than `max_source_minutes` / over 250 MB | yt-dlp skips it (`does not pass filter` / `max-filesize`), reported as such in the trace |
-| bot check / sign-in | stderr tail verbatim; suggest Settings > Web "cookies from browser" (Firefox most reliable; Chromium app-bound cookie encryption often breaks Chrome/Brave extraction) |
+| explicit source-duration filter / clip over 250 MB | specific failure in both compact Web output and model recap; default has no source-duration filter |
+| bot check / sign-in | actual error, with sensitive diagnostics redacted; suggest Settings > Web Cookie file or Cookies from browser (Firefox most reliable; Chromium app-bound cookie encryption often breaks Chrome/Brave extraction) |
 | web_audio URL is a page / image / video | refused after the sniff with a pointer to web_page / web_image / web_video (a video's soundtrack: fetch with web_video, then set_video_audio) |
 | web_audio URL NAMES a sound file but the server sent HTML | hotlink/scraper decoy (movie-sounds.org serves a 482 B stand-in page for its .mp3 URLs; wavsource builds wav URLs in JS with tokens): the note tells the model the HOST is protected, not to retry its links or web_page the decoy, and to prefer archive.org - the Bugs Bunny session (2026-08-30) burned two attempts on the same decoy URL before this message existed |
 | web_audio file has a video stream (ffprobe) | refused; mp3/flac cover art does NOT count (attached_pic excluded) |

@@ -174,9 +174,9 @@ namespace AITools.AIChat.Context
             // so flipping it mid-chat is seen on the very next turn; when OFF the web_* skills are
             // also left out of the SKILLS block and any web action fails before it starts.
             if (webEnabled)
-                sb.AppendLine("WEB ACCESS: ON (web_search / web_image / web_video / web_page / web_audio are available).");
+                sb.AppendLine("WEB ACCESS: ON (web_search / web_image / web_video / web_page / web_audio / web_transcript are available).");
             else
-                sb.AppendLine("WEB ACCESS: OFF - the user turned off the Web checkbox in the AI Chat header. web_search, web_image, web_video, web_page and web_audio are disabled and will fail; do not emit them. Render real people, places and products from your own knowledge with descriptive prompts instead of fetching references; if the user asks for an online lookup, say web access is off and that the Web checkbox in the AI Chat header turns it on.");
+                sb.AppendLine("WEB ACCESS: OFF - the user turned off the Web checkbox in the AI Chat header. web_search, web_image, web_video, web_page, web_audio and web_transcript are disabled and will fail; do not emit them. Render real people, places and products from your own knowledge with descriptive prompts instead of fetching references; if the user asks for an online lookup, say web access is off and that the Web checkbox in the AI Chat header turns it on.");
 
             sb.Append(GpuSnapshot.BuildBlock());
             sb.AppendLine();

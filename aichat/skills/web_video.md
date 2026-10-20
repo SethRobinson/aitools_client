@@ -1,20 +1,17 @@
 ---
 id: web_video
-summary: Download a SHORT clip (default 5s, max 15s) from the web into chat as a Movie #N bubble - from a page URL (YouTube, Vimeo, etc. via bundled yt-dlp) or a direct media file URL, found via a Brave video search (query=) or given (url=). The host ranks results (scenes/clips up, interviews/podcasts/reactions down), cuts the section, and VISION-CHECKS each cut (talk shows, intros, wrong subject are rejected; a later part of the source, then the next result, is tried). It ALWAYS auto-continues: the clip, its anchor and caption are in CHAT IMAGES on your next turn, so a request like "find a clip of X and make a video" is two steps - fetch now, emit video_to_video on the continue turn. Main use - a motion / appearance / VOICE reference for Reference Video To Video (MiniMax H3) (<Video 1>). H3 styles the generated voice from the clip's AUDIO (a style reference - bind it "styled like <Audio N>", never "matches"/"the voice from", which splice the sample verbatim), so whenever the new video has the character TALKING, set speech="true": the host then also checks the audio (ffmpeg + Whisper) and rejects music-only / silent cuts.
+summary: Download only the requested time range, including from long videos. For a full YouTube transcript use web_transcript separately; speech=true only transcribes the fetched clip. For an exact user-requested range, use verify=false and leave speech=false unless suitability/speech filtering was requested. Download a SHORT clip (default 5s, max 15s) from the web into chat as a Movie #N bubble - from a page URL (YouTube, Vimeo, etc. via bundled yt-dlp) or a direct media file URL, found via a Brave video search (query=) or given (url=). The host ranks results (scenes/clips up, interviews/podcasts/reactions down), cuts the section, and VISION-CHECKS searched clips or explicitly requested suitability checks (talk shows, intros, wrong subject are rejected; a later part of the source, then the next result, is tried). It ALWAYS auto-continues: the clip, its anchor and caption are in CHAT IMAGES on your next turn, so a request like "find a clip of X and make a video" is two steps - fetch now, emit video_to_video on the continue turn. Main use - a motion / appearance / VOICE reference for Reference Video To Video (MiniMax H3) (<Video 1>). H3 styles the generated voice from the clip's AUDIO (a style reference - bind it "styled like <Audio N>", never "matches"/"the voice from", which splice the sample verbatim), so whenever the new video has the character TALKING, set speech="true": the host then also checks the audio (ffmpeg + Whisper) and rejects music-only / silent cuts.
 inputs: none
 autoload: true
 triggers: download a clip, download a video, download the video, download this video, clip from youtube, youtube clip, youtube video, from youtube, grab a clip, grab a video, fetch a video, fetch a clip, get a clip of, get a video of, video from the web, video from the internet, clip from the web, clip from the internet, find a video of, find a clip of, find footage, real footage, actual footage, movie clip of, scene from the movie, scene from the show, reference clip, reference clips, reference video, reference videos, stills and video, stills and videos, vimeo, tiktok, youtu.be, sound correct, sound right, sound like, sounds like, sound like themselves, their voices, real voices, actual voices, voice reference, look and sound, in their own voice
-template: <aitools_action skill="web_video" query="Seinfeld Kramer talking scene" speech="true" duration="5" anchor="clip1"/>  # speech="true" whenever the render will have the character TALK (the clip is the voice reference; music-only cuts are rejected). Or url="https://www.youtube.com/watch?v=..." / url="https://.../file.mp4" / result="S2:1". start/duration are seconds into the SOURCE video (default 0 / 5, max 15). Optional criteria="Kramer bursting through the apartment door" (what the vision check must see), audio="false", max_source_minutes="20", verify="false", resume="false" (it auto-continues by default). Then on the continue turn: video_to_video with {{Reference Video To Video (MiniMax H3) 5s.txt}} chat_image="clip1".
+template: <aitools_action skill="web_video" query="Seinfeld Kramer talking scene" speech="true" duration="5" anchor="clip1"/>  # speech="true" whenever the render will have the character TALK (the clip is the voice reference; music-only cuts are rejected). Or url="https://www.youtube.com/watch?v=..." / url="https://.../file.mp4" / result="S2:1". start/duration are seconds into the SOURCE video (default 0 / 5, max 15). Optional criteria="Kramer bursting through the apartment door" (what the vision check must see), audio="false", max_source_minutes="0", verify="false", resume="false" (it auto-continues by default). Then on the continue turn: video_to_video with {{Reference Video To Video (MiniMax H3) 5s.txt}} chat_image="clip1".
 ---
 # Web video fetch
 
 Fetch a short section of a web-hosted video into chat as a `Movie #N` bubble.
-Page URLs (YouTube, Vimeo, and everything else yt-dlp supports) are downloaded
-with the bundled yt-dlp at up to 480p (whole video, a few seconds for a 10 minute
-source; anything longer than `max_source_minutes` is skipped by yt-dlp itself),
-then the requested section is cut locally; direct media file URLs
-(.mp4/.webm/.mov/.gif) download straight from the app. Either way the
-result is normalized by FFmpeg exactly like a dragged-in video (max 832x480,
+Page URLs (YouTube, Vimeo, and everything else yt-dlp supports) and direct video URLs are downloaded
+with the bundled yt-dlp at up to 480p, fetching only the requested time range,
+then the downloaded section is normalized by FFmpeg exactly like a dragged-in video (max 832x480,
 source fps, audio kept) and captioned.
 
 ## When to use it
@@ -51,10 +48,9 @@ source fps, audio kept) and captioned.
 - `anchor="name"` so a same-reply `video_to_video` can use `chat_image="name"`
   (do not guess the Movie number). `chain="true"` also works for the very next
   action.
-- `audio="false"` for a silent clip. `max_source_minutes` (default 20) skips
-  sources longer than that (search results by their listed length, page URLs by
-  yt-dlp's duration check); raise it for a user-pasted long video when the
-  wanted moment is deep into it.
+- `audio="false"` for a silent clip. `max_source_minutes` defaults to 0 (no source-duration filter).
+  Only the requested range is downloaded, even from a long livestream. Supply
+  a positive limit only when intentionally restricting the source length.
 - `speech="true"` - REQUIRED whenever the video you will generate has this
   character speaking. H3 Reference Video To Video styles the generated voice
   from the reference clip's audio (bind it "styled like <Audio N>" in the
@@ -68,6 +64,9 @@ source fps, audio kept) and captioned.
   rather than "entrance" or "montage". If the summary says the speech check was
   unavailable (no OpenAI key for Whisper), warn the user that the voice may be
   wrong.
+- Plain `url=` fetches default to no suitability filtering, so an intro or talk
+  show is still returned at the requested time. Search/result picks and explicit
+  `criteria` keep verification on by default; `verify` overrides either default.
 - `criteria="..."` tells the vision check what the frames must show ("Kramer
   entering through the apartment door", "a wide shot of the whole car").
 - It auto-continues by default (no `continue` needed): the next turn's CHAT
@@ -121,7 +120,9 @@ its reason, the audio check (`mean volume -21 dB; Whisper: 14 words "..." ->
 speech present`) when `speech="true"`, then the resulting `Movie #N` and its
 caption. Up to 4 sources are tried; failures list the reason for each attempt
 verbatim. If yt-dlp reports a sign-in / bot check, tell the user: Settings > Web
-has a "cookies from browser" option (Firefox is the most reliable). If it warns
+has a persistent "Cookie file" option for a Netscape-format YouTube cookie export,
+or "Cookies from browser" (Firefox is the most reliable). Report only the actual
+failure returned by the host; never guess a sign-in or bot check. If it warns
 that no JavaScript runtime was found, YouTube downloads will be throttled or
 fail: tell the user to install Deno or Node.js (Settings > Web shows which one
 was detected).

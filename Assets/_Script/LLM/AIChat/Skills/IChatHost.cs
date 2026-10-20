@@ -152,6 +152,8 @@ namespace AITools.AIChat.Skills
         /// step, then invoke <paramref name="onDone"/>.
         /// </summary>
         bool StartWebVideoAction(SkillAction action, AITools.AIChat.Web.WebVideoRequest request, Action<bool> onDone);
+        /// <summary>Read caption tracks without downloading video; deliver text through the info recap.</summary>
+        bool StartWebTranscriptAction(SkillAction action, AITools.AIChat.Web.WebTranscriptRequest request, Action<bool> onDone);
 
         /// <summary>
         /// Start a web page read (web_page action): fetch ONE HTML/text page (url=, a

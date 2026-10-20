@@ -225,6 +225,7 @@ namespace AITools.AIChat.Skills
             {
                 case BuiltInSkillIds.WebImage:
                 case BuiltInSkillIds.WebVideo:
+                case BuiltInSkillIds.WebTranscript:
                 case BuiltInSkillIds.WebSearch:
                 case BuiltInSkillIds.WebPage:
                 case BuiltInSkillIds.WebAudio:
@@ -389,6 +390,10 @@ namespace AITools.AIChat.Skills
 
                 case BuiltInSkillIds.WebVideo:
                     ExecuteWebVideo(action);
+                    break;
+
+                case BuiltInSkillIds.WebTranscript:
+                    ExecuteWebTranscript(action);
                     break;
 
                 case BuiltInSkillIds.WebPage:
@@ -894,7 +899,7 @@ namespace AITools.AIChat.Skills
             {
                 _host.AddWebTraceNotice(skillId + "  " + DescribeWebSource(action) + "\nNot started: Web access is OFF (the \"Web\" checkbox in the AI Chat header).");
                 _host.AddSystemInjectionSilent(
-                    "(" + skillId + " is disabled: the user turned Web access off in the AI Chat header, so web_search / web_image / web_video / web_page / web_audio " +
+                    "(" + skillId + " is disabled: the user turned Web access off in the AI Chat header, so web_search / web_image / web_video / web_page / web_audio / web_transcript " +
                     "all fail and nothing was fetched. Do not emit them again until CURRENT STATE says WEB ACCESS: ON. Continue without online data " +
                     "and, if the request needed it, tell the user web access is off and that the Web checkbox in the AI Chat header turns it on.)");
                 _host.RequestContinueTurn();
@@ -1071,6 +1076,29 @@ namespace AITools.AIChat.Skills
             _lastActionDeferred = true;
         }
 
+        private void ExecuteWebTranscript(SkillAction action)
+        {
+            var req = new WebTranscriptRequest
+            {
+                Url = FirstArg(action, "url", "link", "src"),
+                Language = FirstArg(action, "language", "lang") ?? "en",
+                Offset = ParseIntArg(action.GetArg("offset"), 0),
+                MaxChars = ParseIntArg(action.GetArg("max_chars"), 20000)
+            };
+            if (string.IsNullOrWhiteSpace(req.Language)) req.Language = "en";
+            if (string.IsNullOrWhiteSpace(req.Url) || !YtDlpTool.IsTranscriptLanguage(req.Language)
+                || req.Offset < 0 || req.MaxChars < 1 || req.MaxChars > 100000)
+            {
+                _host?.AddSystemInjectionAndBubble("web_transcript needs a public url, a language code such as en or ja, offset >= 0, and max_chars between 1 and 100000.");
+                return;
+            }
+            if (!WebPreflight(action, "web_transcript", req.Url, needsSearch: false)) return;
+            if (ParseBool(action.GetArg("resume"), true)) _host?.RequestAutoResumeAfterWebFetch();
+            bool started = _host != null && _host.StartWebTranscriptAction(action, req, ok => ResumePumpAfterDeferredComplete(action));
+            if (!started) { _host?.AddSystemInjectionAndBubble("web_transcript could not start."); return; }
+            _lastActionDeferred = true;
+        }
+
         private void ExecuteWebVideo(SkillAction action)
         {
             var req = new WebVideoRequest();
@@ -1104,13 +1132,16 @@ namespace AITools.AIChat.Skills
             req.StartSeconds = Mathf.Max(0f, ParseFloat(FirstArg(action, "start", "start_seconds", "time", "at", "offset"), 0f));
             req.DurationSeconds = Mathf.Clamp(ParseFloat(FirstArg(action, "duration", "duration_seconds", "seconds", "length"), FfmpegTool.DefaultClipDurationSeconds),
                 WebRequestLimits.MinClipSeconds, WebRequestLimits.MaxClipSeconds);
-            req.MaxSourceMinutes = Mathf.Max(0f, ParseFloat(FirstArg(action, "max_source_minutes", "max_minutes", "max_source_duration"), 20f));
+            req.MaxSourceMinutes = Mathf.Max(0f, ParseFloat(FirstArg(action, "max_source_minutes", "max_minutes", "max_source_duration"), 0f));
             req.IncludeAudio = ParseBool(FirstArg(action, "include_audio", "audio"), true);
             if (ParseBool(action.GetArg("no_audio"), false)) req.IncludeAudio = false;
             req.SafeSearch = WebRequestLimits.ParseSafeSearch(FirstArg(action, "safesearch", "safe_search", "safe"));
             req.Anchor = string.IsNullOrWhiteSpace(action.AnchorName) ? null : action.AnchorName.Trim();
-            req.Verify = ParseBool(FirstArg(action, "verify", "check", "inspect"), true);
+            // An explicit URL/range is the requested content, including intros and talk shows.
+            // Search results still need the suitability check unless the caller opts out.
             req.Criteria = FirstArg(action, "criteria", "want", "require", "requirements", "must");
+            req.Verify = ParseBool(FirstArg(action, "verify", "check", "inspect"),
+                string.IsNullOrEmpty(req.Url) || !string.IsNullOrWhiteSpace(req.Criteria));
             req.RequireSpeech = ParseBool(FirstArg(action, "speech", "dialog", "dialogue", "needs_speech", "voice", "talking"), false);
             if (!req.RequireSpeech && !string.IsNullOrEmpty(req.Criteria))
             {
@@ -4592,6 +4623,11 @@ namespace AITools.AIChat.Skills
 
                 // web_page: read one page's text + image list. "web_fetch" moved here from
                 // web_image: fetching a URL is a page read now that the page action exists.
+                case "youtube_transcript":
+                case "fetch_transcript":
+                case "video_transcript":
+                    return BuiltInSkillIds.WebTranscript;
+
                 case "webpage":
                 case "read_page":
                 case "fetch_page":
