@@ -140,7 +140,7 @@ namespace AITools.AIChat.Web
             if (string.IsNullOrEmpty(safeSearch))
             {
                 var cfg = Config.Get();
-                safeSearch = cfg != null ? cfg.GetWebSearchSafeSearch() : "strict";
+                safeSearch = cfg != null ? cfg.GetWebSearchSafeSearch() : Config.DefaultWebSearchSafeSearch;
             }
             safeSearch = Config.NormalizeSafeSearch(safeSearch);
 

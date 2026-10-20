@@ -811,7 +811,7 @@ public class AppSettingsPanel : MonoBehaviour
         _braveApiKeyInput.ForceLabelUpdate();
         _braveApiKeyInput.onEndEdit.AddListener(_ => SaveWebSettingsFromFields());
 
-        bool safeStrict = cfg == null || cfg.GetWebSearchSafeSearch() != "off";
+        bool safeStrict = (cfg != null ? cfg.GetWebSearchSafeSearch() : Config.DefaultWebSearchSafeSearch) != "off";
         _webSafeSearchToggle = CreateToggleRow(searchBox, "SafeSearch strict (off = allow adult results)", safeStrict,
             _ => SaveWebSettingsFromFields());
 
@@ -904,7 +904,7 @@ public class AppSettingsPanel : MonoBehaviour
         }
 
         string key = _braveApiKeyInput != null ? _braveApiKeyInput.text : cfg.GetBraveSearchAPIKey();
-        string safeSearch = _webSafeSearchToggle != null && !_webSafeSearchToggle.isOn ? "off" : "strict";
+        string safeSearch = _webSafeSearchToggle != null ? (_webSafeSearchToggle.isOn ? "strict" : "off") : cfg.GetWebSearchSafeSearch();
         string cookies = _ytDlpCookiesInput != null ? _ytDlpCookiesInput.text : cfg.GetYtDlpCookiesBrowser();
         string sttEndpoint = _sttEndpointInput != null ? _sttEndpointInput.text : cfg.GetSttEndpoint();
         string sttKey = _sttApiKeyInput != null ? _sttApiKeyInput.text : cfg.GetSttAPIKey();
@@ -922,7 +922,7 @@ public class AppSettingsPanel : MonoBehaviour
         var sb = new System.Text.StringBuilder();
         bool hasKey = cfg != null && !string.IsNullOrWhiteSpace(cfg.GetBraveSearchAPIKey());
         sb.AppendLine(hasKey ? "Brave Search: key set." : "Brave Search: NO KEY - web_search / web_image / web_video are unavailable until one is entered.");
-        sb.AppendLine("SafeSearch: " + (cfg != null ? cfg.GetWebSearchSafeSearch() : "strict"));
+        sb.AppendLine("SafeSearch: " + (cfg != null ? cfg.GetWebSearchSafeSearch() : Config.DefaultWebSearchSafeSearch));
 
         if (AITools.AIChat.Web.YtDlpTool.TryGetToolPath(out string ytDlpPath, out string ytDlpError))
             sb.AppendLine("yt-dlp: found at " + ytDlpPath);

@@ -251,7 +251,8 @@ public class Config : MonoBehaviour
 
     public string GetElevenLabs_voiceID() { return _elevenLabs_voiceID; }
     public string GetBraveSearchAPIKey() { return _braveSearchAPIKey ?? ""; }
-    /// <summary>"strict" (default) or "off". Anything else normalizes to strict.</summary>
+    public const string DefaultWebSearchSafeSearch = "off";
+    /// <summary>"off" by default; preserves explicit "strict". Invalid nonblank values normalize to strict.</summary>
     public string GetWebSearchSafeSearch() { return NormalizeSafeSearch(_webSearchSafeSearch); }
     public string GetYtDlpCookiesBrowser() { return _ytDlpCookiesBrowser ?? ""; }
     public string GetYtDlpCookiesFile() { return _ytDlpCookiesFile ?? ""; }
@@ -275,6 +276,7 @@ public class Config : MonoBehaviour
 
     public static string NormalizeSafeSearch(string value)
     {
+        if (string.IsNullOrWhiteSpace(value)) return DefaultWebSearchSafeSearch;
         return string.Equals((value ?? "").Trim(), "off", StringComparison.OrdinalIgnoreCase) ? "off" : "strict";
     }
     public List<LLMParm> GetLLMParms() 
@@ -323,7 +325,7 @@ public class Config : MonoBehaviour
         _elevenLabs_APIKey = "";
      _elevenLabs_voiceID = "21m00Tcm4TlvDq8ikWAM";
      _braveSearchAPIKey = "";
-     _webSearchSafeSearch = "strict";
+     _webSearchSafeSearch = DefaultWebSearchSafeSearch;
      _ytDlpCookiesBrowser = "";
      _sttEndpoint = "";
      _sttAPIKey = "";
@@ -1648,7 +1650,7 @@ set_default_audio_negative_prompt|music|
                 }
                 else if (words[0] == "set_web_search_safesearch" || words[0] == "set_web_search_safe_search")
                 {
-                    _webSearchSafeSearch = words.Length > 1 ? NormalizeSafeSearch(words[1]) : "strict";
+                    _webSearchSafeSearch = NormalizeSafeSearch(words.Length > 1 ? words[1] : null);
                 }
                 else if (words[0] == "set_ytdlp_cookies_browser" || words[0] == "set_yt_dlp_cookies_browser")
                 {

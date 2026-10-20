@@ -20,7 +20,7 @@ the MiniMax H3 Reference To Video preset or Qwen Image 2.1 image edits, and refe
 | Host | `AIChatPanel.cs` "Web media fetch" region | busy gate (`_webFetchCount`, `_webCaptionInFlight`), epoch-based cancellation, the six coroutines, `AppendWebStillBubble`, caption tracking, search sessions `S1..`, page sessions `P1..` (images + audio links) |
 | Executor | `SkillActionExecutor.cs` `ExecuteWebSearch/Image/Video/Page` | argument parsing + aliases, Web-toggle / key / URL pre-flight (`WebPreflight`), defers the pump like `extract_still` |
 | Web toggle | `AIChatPanel.CreateHeader` (`_webToggle`), `GetWebEnabled()` (`aichat_web_enabled`, default on) | header checkbox; see "Web toggle" below |
-| Settings | `AppSettingsPanel` Web tab, `Config.cs` | `set_brave_search_api_key`, `set_web_search_safesearch` (strict/off), `set_ytdlp_cookies_browser`, `set_ytdlp_cookies_file` in private `config.txt` |
+| Settings | `AppSettingsPanel` Web tab, `Config.cs` | `set_brave_search_api_key`, `set_web_search_safesearch` (off by default, strict optional), `set_ytdlp_cookies_browser`, `set_ytdlp_cookies_file` in private `config.txt` |
 | Prompts | `aichat/skills/web_image.md`, `web_video.md`, `web_search.md`, `web_page.md`, `web_transcript.md`, `main_prompt.txt` | routing, the Seinfeld-style multi-reference recipe, the RESEARCH recipe |
 
 Bundled helper: `utils/yt-dlp/yt-dlp.exe` (Unlicense, `utils/yt-dlp/README.txt` has the
