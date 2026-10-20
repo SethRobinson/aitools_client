@@ -43,6 +43,7 @@ namespace AITools.ScreenCapture
     {
         public string command;
         public CaptureSettings settings;
+        public DesktopClockSettings clockSettings;
     }
 
     [Serializable]
@@ -54,6 +55,103 @@ namespace AITools.ScreenCapture
         public string path;
         public string sessionId;
         public CaptureSettings settings;
+        public DesktopClockSettings clockSettings;
+    }
+
+    [Serializable]
+    public sealed class DesktopClockSettings
+    {
+        public bool stopwatch;
+        public bool digital = true;
+        public bool sync;
+        public bool locked;
+        public bool positionSaved;
+        public int x, y;
+        public double widthDip = 220;
+
+        public bool IsValid() =>
+            !double.IsNaN(widthDip) && !double.IsInfinity(widthDip) &&
+            widthDip >= 140 && widthDip <= 640 &&
+            x >= -1000000 && x <= 1000000 && y >= -1000000 && y <= 1000000;
+
+        public DesktopClockSettings Copy() => (DesktopClockSettings)MemberwiseClone();
+    }
+
+    // Uses absolute monotonic timestamps. Repaints, hidden windows and Unity's time
+    // scale never advance the timer themselves. Injectable time keeps checks deterministic.
+    public sealed class DesktopClockTimer
+    {
+        private readonly Func<double> _now;
+        private double _accumulated, _started;
+        private string _captureId;
+        private int _attempt;
+        private bool _awaitingCapture;
+        public bool Running { get; private set; }
+        public bool Synchronized { get; private set; }
+        public static double Timestamp => (double)System.Diagnostics.Stopwatch.GetTimestamp() / System.Diagnostics.Stopwatch.Frequency;
+        public DesktopClockTimer(Func<double> now = null) { _now = now ?? (() => Timestamp); }
+        public double Elapsed => _accumulated + (Running ? Math.Max(0, _now() - _started) : 0);
+
+        public void Toggle()
+        {
+            if (Synchronized) return;
+            if (Running) Pause();
+            else { _started = _now(); Running = true; }
+        }
+        private void Pause() { _accumulated = Elapsed; Running = false; }
+        public void Reset()
+        {
+            if (Synchronized) return;
+            Running = false; _accumulated = 0;
+        }
+        public void PrepareCapture(string id, int attempt)
+        {
+            _captureId = id; _attempt = attempt; _awaitingCapture = true;
+        }
+        public void StartCapture(string id, int attempt, bool sync, double startedAt)
+        {
+            if (!_awaitingCapture || id != _captureId || attempt != _attempt) return;
+            _awaitingCapture = false;
+            if (!sync) return;
+            _accumulated = 0; _started = startedAt; Running = Synchronized = true;
+        }
+        public void StopCapture(string id, double? stoppedAt = null)
+        {
+            if (id != _captureId) return;
+            _awaitingCapture = false;
+            if (Synchronized)
+            {
+                _accumulated += Math.Max(0, (stoppedAt ?? _now()) - _started);
+                Running = false;
+            }
+            Synchronized = false;
+        }
+        public static string FormatElapsed(double seconds)
+        {
+            long whole = (long)Math.Max(0, seconds);
+            return (whole / 3600).ToString("00", CultureInfo.InvariantCulture) + ":" +
+                ((whole / 60) % 60).ToString("00", CultureInfo.InvariantCulture) + ":" +
+                (whole % 60).ToString("00", CultureInfo.InvariantCulture);
+        }
+        // Degrees clockwise from twelve, including fractional movement of every hand.
+        public static double SecondAngle(double seconds) => (seconds % 60) * 6;
+        public static double MinuteAngle(double seconds) => (seconds % 3600) / 10;
+        public static double HourAngle(double seconds) => (seconds % 43200) / 120;
+    }
+
+    public static class DesktopClockGeometry
+    {
+        public static double HeightRatio(bool digital) => digital ? 1.23 : 1.0;
+        public static PixelRect Fit(PixelRect work, int x, int y, double widthDip, int dpi, bool digital)
+        {
+            double scale = Math.Max(96, dpi) / 96.0;
+            double requested = Math.Max(140, Math.Min(640, widthDip));
+            int width = Math.Max(1, Math.Min((int)Math.Round(requested * scale),
+                Math.Min(work.Width, (int)Math.Floor(work.Height / HeightRatio(digital)))));
+            int height = Math.Max(1, (int)Math.Round(width * HeightRatio(digital)));
+            return new PixelRect(Math.Max(work.X, Math.Min(work.X + work.Width - width, x)),
+                Math.Max(work.Y, Math.Min(work.Y + work.Height - height, y)), width, height);
+        }
     }
 
     public static class Hotkey

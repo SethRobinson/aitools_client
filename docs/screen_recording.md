@@ -55,6 +55,55 @@ selection and existing 832x480 export bound. Existing export-to-file/chat contro
 audio normalization preference, audio-only/still exports and multiple exports remain
 available. Resizing is deferred to a separate feature.
 
+## Floating clock and stopwatch
+
+**Settings > General > Screen Recording > Show clock**, or **Clock** on the native
+recording toolbar, opens the same borderless, always-on-top Windows clock. It stays
+visible when AI Tools is minimized. The charcoal dial has ivory markings and a
+sweeping orange second hand. Drag the face to move it, or the lower-right grip to
+scale it proportionally (initially 220 logical pixels wide, 140-640 allowed, bounded
+by available monitor space). Placement recovers when a monitor disappears; size
+follows per-monitor DPI.
+
+Hover to reveal mode, Start/Pause, Reset, options and Close controls. They fade away
+after one second outside the window. Tab selects controls, Enter activates the
+selected control, M switches Clock/Stopwatch, Space starts/pauses, R resets and
+pauses, F10 or right-click opens options, and Escape hides the clock. Keyboard
+navigation keeps controls visible while focused. Options include the digital
+readout (initially on), **Sync with recorder** (initially off), layout lock and
+reset position/size. Layout lock still permits using the controls.
+
+Clock mode uses local wall time with a 24-hour digital readout. Stopwatch mode uses
+monotonic timestamps and preserves total hours past 24 hours in its digital
+readout. Changing modes or hiding the window does not reset or pause it. Reset
+returns to zero and pauses. Closing the recorder toolbar does not hide the clock,
+and hiding the clock never stops a recording. Closing AI Tools disposes both.
+
+When sync is enabled, the stopwatch resets/starts on the native Recording callback,
+using the timestamp taken before dispatch to the UI thread. Countdown and encoder
+startup are excluded; Stop or recording failure pauses it before file finalization.
+Canceled starts preserve the previous stopwatch. Stale session/attempt callbacks
+cannot reset it. Manual stopwatch controls are disabled during synchronized capture;
+sync can only be changed between recordings. Sync neither changes the selected
+display mode nor automatically opens a hidden clock.
+
+The clock deliberately has no capture exclusion: place it inside the desktop or
+region being recorded. A capture mode that isolates another app's window may omit
+it. The clock's own controls can appear in footage while hovered. The recorder
+toolbar and selection borders retain their existing capture exclusion.
+
+Implementation: `DesktopClockWindow` and `DesktopClockRenderer` live in the existing
+helper. Cached GDI+ dial artwork and moving hands are presented through the existing
+layered-window path, targeting 30 redraws per second only while visible. Rendering
+reads no desktop pixels. Shared `DesktopClockSettings`, `DesktopClockTimer` and
+`DesktopClockGeometry` are in `ScreenCaptureContract`. JSON commands
+`clock_configure` (with `clockSettings`) and `clock_show` configure/reveal the clock;
+`clock_settings` events persist its settings in Unity and `clock_error` events report
+clock failures without stopping recording. PlayerPrefs `desktop_clock_settings_v1`
+remembers mode, digital visibility, sync, layout lock, logical width and physical
+desktop position. Visibility and elapsed time are session-only: a fresh helper
+starts hidden with a zeroed, paused stopwatch. No new runtime dependencies.
+
 ## Implementation and lifetime
 
 - `tools/ScreenCapture` contains the x64 .NET Framework 4.8 WinForms helper. It uses
@@ -152,6 +201,11 @@ new assets.
 The separate .NET Framework `Checks/Overlay` program renders only synthetic memory
 bitmaps to check transparent interiors, outside dimming, moving holes and negative
 monitor origins. It opens no windows and reads no desktop pixels.
+Clock checks cover monotonic timing, pause/resume/reset, day rollover, delayed UI
+dispatch, canceled/retried/stale synchronization events, settings/protocol round
+trips and geometry at 96/120/144/192 DPI. Synthetic clock PNGs at 140/220/640 pixels,
+with/without digital readout and controls, are retained under
+`build/clock-preview-<guid>`. These also exercise cached artwork and moving hands.
 
 Release builds call BuildScreenCapture after Unity builds and before staging,
 sign AIToolsCapture.exe, and verify four first-party signatures. Vendor DLLs retain
@@ -169,3 +223,9 @@ still need live acceptance. Mixed-DPI UI,
 hardware encoder fallback, device loss and a clean Windows machine remain manual
 acceptance checks. Automated desktop capture or input requires Seth's explicit
 authorization; compile and synthetic checks do not exercise those paths.
+
+Clock validation (2026-10-20): helper and Unity C# compilation passed; 2723 offline
+recorder checks and 73 synthetic artwork checks passed (55 clock checks plus the
+existing 18 selection-overlay checks). Synthetic clock previews were inspected.
+Live clock dragging, DPI transitions, focus/hover behavior, minimize/close behavior,
+and inclusion in normal or accelerated recordings still require manual acceptance.

@@ -99,6 +99,9 @@ namespace AITools.ScreenCapture.Helper
         private readonly CaptureSession _session = new CaptureSession();
         private readonly Stopwatch _clock = new Stopwatch();
         private readonly Stopwatch _shutdownClock = new Stopwatch();
+        private readonly DesktopClockTimer _desktopClock = new DesktopClockTimer();
+        private DesktopClockSettings _clockSettings = new DesktopClockSettings();
+        private DesktopClockWindow _clockWindow;
         private readonly CaptureWorker _worker;
         private CaptureSettings _settings = new CaptureSettings();
         private CaptureSettings _recordSettings;
@@ -127,6 +130,7 @@ namespace AITools.ScreenCapture.Helper
             _toolbar.RecordRequested += RecordOrStop;
             _toolbar.CloseRequested += CloseToolbar;
             _toolbar.CancelRequested += Cancel;
+            _toolbar.ClockRequested += ShowClock;
             _toolbar.SettingsChanged += () =>
             {
                 bool fixedSize = _settings.fixedSize;
@@ -184,6 +188,8 @@ namespace AITools.ScreenCapture.Helper
                     if (_startupWarning != null) Program.Emit(new CaptureEvent { type = "error", message = _startupWarning });
                     EmitSettings(); Refresh(); break;
                 case "show": if (_configured) ShowToolbar(); break;
+                case "clock_configure": ConfigureClock(command.clockSettings); break;
+                case "clock_show": ShowClock(); break;
                 case "stop": Stop(); break;
                 case "shutdown": Shutdown(); break;
                 default: Fail("Unknown screen recorder command."); break;
@@ -191,6 +197,38 @@ namespace AITools.ScreenCapture.Helper
         }
 
         private void EmitSettings() { Program.Emit(new CaptureEvent { type = "settings", settings = _settings }); }
+        private void ClockError(string error) { Program.Emit(new CaptureEvent { type = "clock_error", message = error }); }
+        private void ConfigureClock(DesktopClockSettings settings)
+        {
+            // Clock failures must never pass through Fail(), which stops capture.
+            try
+            {
+                if (settings == null || !settings.IsValid()) { ClockError("Invalid clock settings."); return; }
+                if (_session.Active && settings.sync != _clockSettings.sync)
+                { ClockError("Change clock synchronization between recordings."); return; }
+                _clockSettings = settings.Copy();
+                _clockWindow?.Apply(_clockSettings);
+            }
+            catch (Exception ex) { ClockError("Clock: " + ex.Message); }
+        }
+        private void ShowClock()
+        {
+            if (_shutdown) return;
+            try
+            {
+                if (_clockWindow == null)
+                {
+                    _clockWindow = new DesktopClockWindow(_clockSettings, _desktopClock, () => _session.Active, ClockError);
+                    _clockWindow.SettingsChanged += settings =>
+                    {
+                        _clockSettings = settings;
+                        Program.Emit(new CaptureEvent { type = "clock_settings", clockSettings = settings });
+                    };
+                }
+                _clockWindow.Reveal();
+            }
+            catch (Exception ex) { ClockError("Clock: " + ex.Message); }
+        }
         private void ApplyRegionSettings()
         {
             if (_screen == null) return;
@@ -301,6 +339,7 @@ namespace AITools.ScreenCapture.Helper
             _hardware = hardware;
             int attempt = ++_attempt;
             string id = _session.Id;
+            _desktopClock.PrepareCapture(id, attempt);
             _outputPath = Path.Combine(_cache, "capture_" + Guid.NewGuid().ToString("N") + ".mp4");
             CapturePaths.AssertNoLinks(_outputPath);
             Rectangle bounds = _screen.Bounds;
@@ -331,15 +370,26 @@ namespace AITools.ScreenCapture.Helper
                     {
                         if (e.Status != RecorderStatus.Recording) return;
                         long readyMs = startup.ElapsedMilliseconds;
+                        double recordingTimestamp = DesktopClockTimer.Timestamp;
                         Post(() =>
                         {
                             if (attempt != _attempt || id != _session.Id || _session.Stage != CaptureStage.Starting) return;
                             Program.Emit(new CaptureEvent { type = "diagnostic", message = "Startup " + readyMs + " ms (" + (hardware ? "hardware" : "software") + "): device " + deviceMs + " ms, recorder " + (createMs - deviceMs) + " ms, first frame " + (readyMs - createMs) + " ms." });
                             _session.Recording(id); _clock.Restart(); EmitState();
+                            _desktopClock.StartCapture(id, attempt, _clockSettings.sync, recordingTimestamp);
                         });
                     };
                     _recorder.OnRecordingComplete += (s, e) => Post(() => { if (attempt == _attempt) Complete(id, e.FilePath, null); });
-                    _recorder.OnRecordingFailed += (s, e) => Post(() => { if (attempt == _attempt) EncoderFailed(id, e.FilePath, e.Error); });
+                    _recorder.OnRecordingFailed += (s, e) =>
+                    {
+                        double failedAt = DesktopClockTimer.Timestamp;
+                        Post(() =>
+                        {
+                            if (attempt != _attempt) return;
+                            _desktopClock.StopCapture(id, failedAt);
+                            EncoderFailed(id, e.FilePath, e.Error);
+                        });
+                    };
                     if (cancelled.IsCancellationRequested) { Post(() => Complete(id, null, null, true)); return; }
                     _nativeStarted = true;
                     _recorder.Record(path);
@@ -399,6 +449,7 @@ namespace AITools.ScreenCapture.Helper
         {
             if (_session.Stage == CaptureStage.Countdown) { Cancel(); return; }
             if (!_session.Stop()) return;
+            _desktopClock.StopCapture(_session.Id);
             _startCancellation?.Cancel();
             int attempt = _attempt;
             _worker.Enqueue(() => { if (_nativeAttempt == attempt && _nativeStarted) _recorder?.Stop(); });
@@ -407,6 +458,7 @@ namespace AITools.ScreenCapture.Helper
         private void Complete(string id, string path, string error, bool cancelled = false)
         {
             if (id == null || id != _session.Id || _completionPending == id) return;
+            _desktopClock.StopCapture(id);
             _completionPending = id; ++_attempt;
             _startCancellation?.Cancel();
             _session.Stop(); EmitState();
@@ -494,6 +546,7 @@ namespace AITools.ScreenCapture.Helper
         {
             if (_shutdown) return;
             _shutdown = true; _shutdownClock.Start();
+            _clockWindow?.Hide();
             _hotkey.Dispose(); CloseOverlays(); _toolbar.Hide();
             if (_session.Stage == CaptureStage.Countdown) _session.CancelCountdown();
             if (_session.Active) Stop(); else ExitThread();
@@ -506,6 +559,7 @@ namespace AITools.ScreenCapture.Helper
                 _startCancellation?.Cancel();
                 _worker.Enqueue(DisposeRecorder); _worker.Dispose();
                 _toolbar.AllowClose = true; _toolbar.Dispose(); _dispatcher.Dispose(); _parent.Dispose();
+                _clockWindow?.Dispose();
             }
             base.Dispose(disposing);
         }

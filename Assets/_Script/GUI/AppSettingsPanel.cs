@@ -428,6 +428,9 @@ public class AppSettingsPanel : MonoBehaviour
         var captureStatusRow = CreateRow(content, "ScreenCaptureStatusRow", 46f);
         _screenCaptureStatusText = CreateText("CaptureStatus", captureStatusRow, ScreenCaptureController.StatusText, 12f, TextMuted, TextAlignmentOptions.TopLeft);
         _screenCaptureStatusText.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
+        var clockRow = CreateRow(content, "DesktopClockRow", 34f);
+        CreateButton(clockRow, "ShowDesktopClock", "Show clock", 140f, ScreenCaptureController.ShowClock);
+        CreateLabel(clockRow, "Floating clock / stopwatch for recordings", 330f);
 
         CreateSectionHeader(content, "External Editor");
         var editorRow = CreateRow(content, "ImageEditorRow", 36f);

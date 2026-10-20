@@ -6,13 +6,14 @@ namespace AITools.ScreenCapture.Helper
 {
     internal sealed class CaptureToolbar : Form
     {
-        internal event Action SelectRequested, RecordRequested, CloseRequested, CancelRequested, SettingsChanged;
+        internal event Action SelectRequested, RecordRequested, CloseRequested, CancelRequested, SettingsChanged, ClockRequested;
         private readonly Button _select = new Button { Text = "Select area", AutoSize = true };
         private readonly Button _record = new Button { Text = "Record", AutoSize = true };
         private readonly CheckBox _audio = new CheckBox { Text = "System audio", AutoSize = true };
         private readonly CheckBox _cursor = new CheckBox { Text = "Include cursor", AutoSize = true };
         private readonly ComboBox _fps = new ComboBox { DropDownStyle = ComboBoxStyle.DropDown, Width = 86 };
         private readonly Button _settings = new Button { Text = "Settings", AutoSize = true };
+        private readonly Button _clock = new Button { Text = "Clock", AutoSize = true };
         private readonly ComboBox _sizeMode = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 86 };
         private readonly NumericUpDown _width = DimensionInput(1280), _height = DimensionInput(720);
         private readonly FlowLayoutPanel _dimensions = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = Padding.Empty };
@@ -35,7 +36,7 @@ namespace AITools.ScreenCapture.Helper
             AutoSize = true; AutoSizeMode = AutoSizeMode.GrowAndShrink;
             var layout = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, WrapContents = false, Padding = new Padding(8) };
             var row = new FlowLayoutPanel { AutoSize = true, WrapContents = false };
-            row.Controls.AddRange(new Control[] { _select, _record, _audio, _cursor, Caption("FPS"), _fps, _settings });
+            row.Controls.AddRange(new Control[] { _select, _record, _audio, _cursor, Caption("FPS"), _fps, _settings, _clock });
             var sizeRow = new FlowLayoutPanel { AutoSize = true, WrapContents = false };
             _sizeMode.Items.AddRange(new object[] { "Custom", "Fixed" });
             _dimensions.Controls.AddRange(new Control[] { _width, Caption("x"), _height, Caption("pixels") });
@@ -46,6 +47,7 @@ namespace AITools.ScreenCapture.Helper
             foreach (int rate in CaptureSettings.FrameRates) _fps.Items.Add(rate);
             _select.Click += (s, e) => SelectRequested?.Invoke();
             _record.Click += (s, e) => RecordRequested?.Invoke();
+            _clock.Click += (s, e) => ClockRequested?.Invoke();
             _audio.CheckedChanged += Changed; _cursor.CheckedChanged += Changed; _fps.TextChanged += Changed;
             _sizeMode.SelectedIndexChanged += Changed;
             _aspectRatio.SelectedIndexChanged += Changed;

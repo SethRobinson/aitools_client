@@ -36,6 +36,7 @@ internal static class Program
             string evidence = Path.Combine(root, "build", "capture-checks-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(evidence);
             SettingsAndGeometry();
+            DesktopClockChecks.Run(Check);
             AspectRatios();
             Sessions();
             WorkerLifecycle();

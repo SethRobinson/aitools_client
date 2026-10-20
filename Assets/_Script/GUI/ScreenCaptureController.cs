@@ -14,6 +14,7 @@ using UnityEngine;
 public sealed class ScreenCaptureController : MonoBehaviour
 {
     private const string PreferencesKey = "screen_capture_settings_v1";
+    private const string ClockPreferencesKey = "desktop_clock_settings_v1";
     private static ScreenCaptureController _instance;
     private readonly ConcurrentQueue<KeyValuePair<Process, string>> _events = new ConcurrentQueue<KeyValuePair<Process, string>>();
     private readonly HashSet<string> _completed = new HashSet<string>(StringComparer.Ordinal);
@@ -22,6 +23,7 @@ public sealed class ScreenCaptureController : MonoBehaviour
     private string _status = "Starting screen recorder...";
     private string _lastError;
     private bool _ready, _showWhenReady, _quitting;
+    private bool _showClockWhenReady;
     private ChatVideoClipChooser _chooser;
     private readonly Queue<string> _pendingClips = new Queue<string>();
     private bool _openingClip;
@@ -84,6 +86,36 @@ public sealed class ScreenCaptureController : MonoBehaviour
         }
     }
 
+    private static DesktopClockSettings GetClockSettings()
+    {
+        try
+        {
+            var settings = new DesktopClockSettings();
+            string json = PlayerPrefs.GetString(ClockPreferencesKey, "");
+            if (!string.IsNullOrEmpty(json)) JsonUtility.FromJsonOverwrite(json, settings);
+            if (settings.IsValid()) return settings;
+        }
+        catch (Exception) { }
+        return new DesktopClockSettings();
+    }
+
+    public static void ShowClock()
+    {
+        EnsureCreated();
+        if (_instance == null)
+        {
+            RTQuickMessageManager.Get()?.ShowMessage("The desktop clock is available on Windows.");
+            return;
+        }
+        _instance._showClockWhenReady = true;
+        if (_instance._process == null || _instance._process.HasExited) _instance.StartHelper();
+        if (_instance._ready)
+        {
+            _instance.Send(new CaptureCommand { command = "clock_show" });
+            _instance._showClockWhenReady = false;
+        }
+    }
+
     private void StartHelper()
     {
         if (_quitting) return;
@@ -122,7 +154,7 @@ public sealed class ScreenCaptureController : MonoBehaviour
         try
         {
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-            if (command.command == "show" && _process != null) AllowSetForegroundWindow(_process.Id);
+            if ((command.command == "show" || command.command == "clock_show") && _process != null) AllowSetForegroundWindow(_process.Id);
 #endif
             _process?.StandardInput.WriteLine(JsonUtility.ToJson(command));
         }
@@ -146,10 +178,23 @@ public sealed class ScreenCaptureController : MonoBehaviour
                     case "ready":
                         _ready = true; _status = "Ready. " + GetSettings().hotkey + " opens the recording toolbar.";
                         Send(new CaptureCommand { command = "configure", settings = GetSettings() });
+                        Send(new CaptureCommand { command = "clock_configure", clockSettings = GetClockSettings() });
                         if (_showWhenReady) { Send(new CaptureCommand { command = "show" }); _showWhenReady = false; }
+                        if (_showClockWhenReady) { Send(new CaptureCommand { command = "clock_show" }); _showClockWhenReady = false; }
                         break;
                     case "settings":
                         if (message.settings != null && message.settings.IsValid(out _)) SaveSettings(message.settings);
+                        break;
+                    case "clock_settings":
+                        if (message.clockSettings != null && message.clockSettings.IsValid())
+                        {
+                            PlayerPrefs.SetString(ClockPreferencesKey, JsonUtility.ToJson(message.clockSettings));
+                            PlayerPrefs.Save();
+                        }
+                        break;
+                    case "clock_error":
+                        UnityEngine.Debug.LogWarning(message.message);
+                        RTQuickMessageManager.Get()?.ShowMessage(message.message);
                         break;
                     case "state": _status = "Screen recorder: " + message.state; break;
                     case "error": Error(message.message); break;

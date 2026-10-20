@@ -7,11 +7,11 @@ using AITools.ScreenCapture.Helper;
 // Synthetic bitmap rendering only. No Form, desktop DC, capture, or input is used.
 internal static class OverlayChecks
 {
-    private static int Main()
+    private static int Main(string[] args)
     {
         try
         {
-            int checks = 0;
+            int checks = ClockArtworkChecks.Run(args.Length > 0 ? PathRoot(args[0]) : null);
             foreach (Point origin in new[] { Point.Empty, new Point(-2560, -400), new Point(1920, 0) })
             using (var bitmap = new Bitmap(800, 600, PixelFormat.Format32bppPArgb))
             using (Graphics g = Graphics.FromImage(bitmap))
@@ -41,4 +41,5 @@ internal static class OverlayChecks
         }
         catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }
     }
+    private static string PathRoot(string path) => System.IO.Path.GetFullPath(path);
 }
