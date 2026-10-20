@@ -62,6 +62,33 @@ clip; then a `Reference Video To Video` render on the auto-continue turn
 text-described lookalike. No code changed for this; it is all prompt/skill
 text using the existing `count` / `criteria` / `speech` attributes.
 
+## Known YouTube limitations (verified 2026-10-20)
+
+- `max_source_minutes` limits the WHOLE source, even when `start="0"` and only
+  seven seconds are requested. The default is 20; `max_source_minutes="90"`
+  allows an 82-minute source, and `0` disables the duration filter. The 250 MB
+  download cap still applies. A duration-filter rejection is not evidence of a
+  sign-in or bot check.
+- `WebVideoCoroutine` currently puts specific download errors in the full Web
+  trace, but its final failure recap to the model only says "no usable clip"
+  and offers generic suggestions. The model can consequently invent an
+  authentication explanation. This remains an implementation gap: pass the
+  actual per-source failure reasons into the recap and compact bubble.
+- There is no YouTube subtitle-fetch action. `web_page` extracts static HTML,
+  not YouTube caption tracks; `web_video speech="true"` transcribes only the
+  selected short clip and can reject it for lacking speech. It does not fetch
+  the full video's transcript. The bundled yt-dlp can independently retrieve
+  automatic captions with `--skip-download --write-auto-subs --sub-langs en-orig`.
+- A public long-video check retrieved both English automatic captions and an
+  exact seven-second H.264/AAC clip without cookies. `--download-sections "*0-7"`
+  with `--force-keyframes-at-cuts` completed in about 11 seconds for that source.
+  This is a source-specific result, not evidence that the historical section
+  download throttling is fixed everywhere.
+- Settings > Web > Cookies from browser is already persistent
+  (`set_ytdlp_cookies_browser`); the helper reads that browser's cookies on each
+  invocation. There is no app setting for a Netscape cookie file yet. Brave
+  Search API access is separate from the user's Brave browser session.
+
 ## Choosing good images (ranking + vision verification)
 
 The first version took the first download that decoded, which produced a wall of framed
