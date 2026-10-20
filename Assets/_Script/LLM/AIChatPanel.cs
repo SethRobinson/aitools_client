@@ -11494,7 +11494,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                     _webProcessCancels.Add(cancel);
                     YtDlpTool.Result yt = null;
                     int progressLines = 0;
-                    yield return YtDlpTool.DownloadVideo(cand.Url, maxSourceSeconds, WebRequestLimits.MaxVideoBytes, cancel,
+                    yield return YouTubeLogin.DownloadWithRetry(cand.Url, cancel,
+                        completed => YtDlpTool.DownloadVideo(cand.Url, maxSourceSeconds, WebRequestLimits.MaxVideoBytes, cancel,
                         cmd => trace.AppendLine("yt-dlp: " + cmd),
                         line =>
                         {
@@ -11504,7 +11505,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                             else if (progressLines++ < 40)
                                 trace.AppendLine("  " + line.Trim());
                         },
-                        r => yt = r, requestedStart, req.DurationSeconds);
+                        completed, requestedStart, req.DurationSeconds),
+                        accepted => OfferYouTubeSignIn(trace, cancel, epoch, accepted), r => yt = r);
                     _webProcessCancels.Remove(cancel);
                     if (epoch != _webFetchEpoch) { onDone?.Invoke(false); yield break; }
                     trace.CommitStatus();
@@ -11513,6 +11515,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                     {
                         string err = yt != null ? yt.Error : "no result";
                         RecordFailure("Download " + cand.Url + " at " + requestedStart.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + "s: " + err);
+                        // A declined or failed login retry must not prompt again for every search candidate.
+                        if (yt != null && yt.LoginOffered) ci = candidates.Count;
                         trace.AppendLine("  exit " + (yt != null ? yt.ExitCode : -1) + " in " + FormatSeconds(yt != null ? yt.ElapsedSeconds : 0f) + ": " + err);
                         var tail = YtDlpTool.OutputTail(yt, 15);
                         if (tail.Count > 0)
@@ -11744,10 +11748,12 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             _webProcessCancels.Add(cancel);
             YtDlpTool.Result result = null;
             trace.SetStatus("Fetching captions...");
-            yield return YtDlpTool.DownloadTranscript(req.Url, req.Language, cancel,
+            yield return YouTubeLogin.DownloadWithRetry(req.Url, cancel,
+                completed => YtDlpTool.DownloadTranscript(req.Url, req.Language, cancel,
                 command => trace.AppendLine("yt-dlp: " + command),
                 line => { if (trace.IsAlive) trace.AppendLine(line); },
-                downloaded => result = downloaded);
+                completed),
+                accepted => OfferYouTubeSignIn(trace, cancel, epoch, accepted), downloaded => result = downloaded);
             _webProcessCancels.Remove(cancel);
             if (epoch != _webFetchEpoch) { onDone?.Invoke(false); yield break; }
             trace.ClearStatus();
@@ -11789,6 +11795,23 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         EndWebTrace(trace);
         FinishWebFetch();
         onDone?.Invoke(true);
+    }
+
+    private IEnumerator OfferYouTubeSignIn(WebTraceBubble trace, FfmpegTool.CancelToken cancel, int epoch, Action<bool> done)
+    {
+        if (epoch != _webFetchEpoch || cancel.CancelRequested || !trace.IsAlive) { done(false); yield break; }
+        trace.AppendSummaryLine("YouTube requested sign-in or verification. Use the sign-in dialog to retry, or cancel.");
+        trace.SetStatus("Waiting for YouTube sign-in...");
+        var request = YouTubeLoginDialog.Show(_panelRoot.transform, _font, cancel);
+        while (!request.Completed && !cancel.CancelRequested && epoch == _webFetchEpoch && trace.IsAlive)
+            yield return null;
+        bool retry = request.Completed && request.Retry && !cancel.CancelRequested && epoch == _webFetchEpoch && trace.IsAlive;
+        if (trace.IsAlive && epoch == _webFetchEpoch)
+        {
+            trace.ClearStatus();
+            trace.AppendSummaryLine(retry ? "Retrying with the remembered YouTube session..." : "YouTube sign-in cancelled.");
+        }
+        done(retry);
     }
 
     // ---------- web_audio ----------

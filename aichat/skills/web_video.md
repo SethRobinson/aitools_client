@@ -119,9 +119,13 @@ duration`, then +30 s and +90 s if a cut is rejected), the vision verdict with
 its reason, the audio check (`mean volume -21 dB; Whisper: 14 words "..." ->
 speech present`) when `speech="true"`, then the resulting `Movie #N` and its
 caption. Up to 4 sources are tried; failures list the reason for each attempt
-verbatim. If yt-dlp reports a sign-in / bot check, tell the user: Settings > Web
-has a persistent "Cookie file" option for a Netscape-format YouTube cookie export,
-or "Cookies from browser" (Firefox is the most reliable). Report only the actual
+verbatim. On an actual YouTube sign-in / bot check, the app pauses and offers a
+dedicated Firefox login. The user signs in, closes Firefox, and clicks Done to
+retry the exact clip once. The session is remembered locally. Settings > Web >
+Sign in / change account opens this flow manually; Cookie file and Cookies from
+browser remain alternatives. If sign-in is cancelled or the retry fails, report
+the error and wait for the user instead of retrying in a loop. Never request
+passwords or cookie contents in chat. Report only the actual
 failure returned by the host; never guess a sign-in or bot check. If it warns
 that no JavaScript runtime was found, YouTube downloads will be throttled or
 fail: tell the user to install Deno or Node.js (Settings > Web shows which one

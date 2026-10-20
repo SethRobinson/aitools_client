@@ -39,7 +39,10 @@ The `idle` flag ANDs every AI Chat busy gate (streaming, forced-main wait, compa
 
 ## Web media checks (2026-10-20)
 
-- `POST /web_media_validation` runs offline command-builder, VTT, cookie-file
+- `POST /web_media_validation` also checks dedicated Firefox profile routing,
+  authentication classification, one-retry/cancel/decline lifecycles and an
+  inactive login-dialog fixture. It never launches Firefox or accesses real cookies.
+  It runs offline command-builder, VTT, cookie-file
   validation/redaction and config-writer checks. Requires Play mode; writes only
   synthetic fixtures beneath ignored `build/web-media-validation-*`, restores
   temporary in-memory settings, and never writes config.txt or reads browser

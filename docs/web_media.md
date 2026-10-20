@@ -14,6 +14,7 @@ the MiniMax H3 Reference To Video preset or Qwen Image 2.1 image edits, and refe
 | Downloader | `Web/WebMediaDownloader.cs` | `UnityWebRequest` to memory (images, 25 MB cap) or file (videos, 250 MB cap), browser User-Agent, 30 s timeout, `Abort()` on cap/cancel, magic-byte sniffing, public-host-only URL gate (`IsAllowedPublicHttpUrl`: http/https, no userinfo, no loopback / RFC1918 / link-local / `localhost` with trailing dots normalized, no single-label LAN names such as `gpubox` (hostnames are not DNS-resolved), no raw quote / backslash / whitespace / control characters), redirects followed by hand (`redirectLimit = 0`, max 5 hops, each `Location` re-gated; UnityWebRequest used to follow a public URL's 302 into loopback) |
 | Image normalizer | `WebImageConverter` (same file) | PNG/JPEG decode-check with a throwaway `Texture2D.LoadImage` (real pixel size); webp/gif/avif/bmp/tiff or oversized (>2048 px) originals go through `FfmpegTool.ConvertImageToPng` |
 | yt-dlp wrapper | `Web/YtDlpTool.cs` | resolves `utils/yt-dlp/yt-dlp.exe` (then PATH), auto-detects a JS runtime (deno / node / bun on PATH, passed as `--js-runtimes`), builds the exact command line (URL last, after a `--` end-of-options marker, quoted per Windows CRT rules by `FfmpegTool.QuoteArg`), runs it via `FfmpegTool.RunProcessCancellable`, progress lines drained on the main thread. Downloads only the requested range capped at 480p; the host normalizes the downloaded section from time zero. Also fetches caption tracks without video |
+| YouTube sign-in | `Web/YouTubeLogin.cs`, `Web/YouTubeLoginDialog.cs` | actual authentication errors offer a local Firefox login dialog; dedicated persistent profile, one retry of the same request, cancellation follows the web fetch |
 | Page reader | `Web/WebPageReader.cs` | pure C# (no Unity usings, compiles in a plain dotnet console app): charset decode (BOM > HTTP charset > `<meta charset>` > strict UTF-8 with windows-1252 fallback), single-pass HTML tag scanner -> readable text + candidate image list; see "web_page" below |
 | Trace bubble | `Web/WebTraceBubble.cs` + `AIChatPanel.BeginWebTrace` | the always-visible "Web" bubble, COMPACT since 2026-09-13: a one-line title, `AppendSummaryLine` outcome lines, the throttled status line and the thumbnails; every other line (`AppendLine`) only goes to the FULL trace that the bubble's `[details]` marker opens in the floating `ChatThinkingWindow` (kind `WebTrace`, live while the fetch runs). Plain text (only TMP angle brackets escaped, NO markdown pass); every line mirrored to `llm_aichat_log.json` as `note/web` |
 | Thumbnail strip | `Web/WebThumbStrip.cs` + `WebTraceBubble.AddThumb/SetThumbVerdict/SetThumbPic` | wrapping row of 72 px thumbnails under the Web bubble, one per image the vision check examined (accepted and rejected; see "Thumbnails of everything the vision check saw") |
@@ -95,12 +96,38 @@ text using the existing `count` / `criteria` / `speech` attributes.
 - Settings > Web > Cookie file persists `set_ytdlp_cookies_file` in private
   `config.txt` (alias `set_yt_dlp_cookies_file`). It accepts a full path to a
   Netscape-format YouTube cookie export, including one exported from Brave, and
-  takes precedence over `set_ytdlp_cookies_browser` for BOTH clips and transcripts.
+  takes precedence over `set_ytdlp_cookies_browser` for BOTH clips and transcripts,
+  except when the dedicated YouTube login below is enabled for a YouTube URL.
   Clear the file path to return to browser-cookie extraction. The file is
   validated without echoing records; its path is redacted in downloader traces.
   Cookies remain local and are not supplied to the LLM. yt-dlp may update the
   selected cookie file; an expired login requires a fresh export. Brave Search
   API access is separate from the user's Brave browser session.
+- On a real YouTube sign-in, age-verification, bot-verification or expired-session
+  error, AI Chat pauses the action and offers **Sign in with Firefox** / **Cancel**.
+  Firefox launches only after the user clicks the button, with `-no-remote -profile`
+  pointing to `%LOCALAPPDATA%\SethsAITools\YouTubeFirefox`. Its destination is fixed
+  to `https://www.youtube.com/`, never an error-message or model-supplied login URL.
+  This profile is separate from everyday Firefox and Brave profiles and is outside
+  the checkout, release package and tempCache. Firefox must be installed in a
+  standard location or on PATH; missing Firefox is reported without an automatic install.
+- After signing in, the user closes that Firefox window and clicks **Done, retry**.
+  The dialog checks the profile lock and cookie-database presence, then persists
+  `set_youtube_firefox_login|true|` in private config. The download itself verifies
+  whether the session works. The exact clip URL/range or transcript URL/language
+  is retried once. A second failure is returned to the model with instructions not
+  to retry automatically. Declining also stops further candidate login prompts
+  within that video action. Stop/Clear cancels the dialog and prevents late retries.
+- Enabled sessions use `--cookies-from-browser firefox:<dedicated-profile>` for
+  YouTube only, taking precedence over both other cookie settings. Future app
+  launches reuse the same profile. Profile paths are redacted in traces; no cookie
+  values/passwords enter chat, and no all-browser cookie export is produced.
+  Missing dedicated profiles offer sign-in again. HTTP 403/429, missing captions,
+  filters, missing formats and network failures alone do not imply authentication.
+- Settings > Web provides **Sign in / change account** and **Use remembered
+  YouTube login**. Disabling reuse does not delete the profile; sign out inside
+  its Firefox window to remove the login. The model has no action that can open
+  Firefox or accept a sign-in prompt.
 - `--ignore-config` keeps unrelated machine-level yt-dlp options out of app
   requests. The model can provide URLs, language and clip parameters, not cookie
   paths or arbitrary downloader arguments. `web_page` remains a static HTML
@@ -108,8 +135,9 @@ text using the existing `count` / `criteria` / `speech` attributes.
 
 Offline regression checks: `pwsh -File scripts/VerifyWebMedia.ps1` against an
 active compiled Play session. It exercises production command builders, VTT
-parsing, cookie validation/redaction and config serialization without network or
-config-file writes. Fixtures remain under ignored `build/web-media-validation-*`.
+parsing, cookie validation/redaction, dedicated-profile routing, login retry and
+cancellation, an inactive login-dialog fixture, and config serialization without
+network, browser launches or config-file writes. Fixtures remain under ignored `build/web-media-validation-*`.
 `POST /chat_web_action` runs one parsed `web_video` or `web_transcript` action
 through the real executor, with main-turn auto-resume disabled, for live checks.
 
@@ -590,7 +618,7 @@ left intact and reported. Offline safety fixtures: `scripts/VerifyDeleteSafety.p
 | yt-dlp missing | trace + injection naming `utils/yt-dlp/yt-dlp.exe` |
 | no JS runtime | yt-dlp warning in the trace; downloads throttled / fewer formats; Settings > Web suggests installing Deno or Node.js |
 | explicit source-duration filter / clip over 250 MB | specific failure in both compact Web output and model recap; default has no source-duration filter |
-| bot check / sign-in | actual error, with sensitive diagnostics redacted; suggest Settings > Web Cookie file or Cookies from browser (Firefox most reliable; Chromium app-bound cookie encryption often breaks Chrome/Brave extraction) |
+| YouTube bot check / sign-in | local Firefox sign-in offer, then one retry after user confirmation; actual error reaches the model if cancelled or retry fails |
 | web_audio URL is a page / image / video | refused after the sniff with a pointer to web_page / web_image / web_video (a video's soundtrack: fetch with web_video, then set_video_audio) |
 | web_audio URL NAMES a sound file but the server sent HTML | hotlink/scraper decoy (movie-sounds.org serves a 482 B stand-in page for its .mp3 URLs; wavsource builds wav URLs in JS with tokens): the note tells the model the HOST is protected, not to retry its links or web_page the decoy, and to prefer archive.org - the Bugs Bunny session (2026-08-30) burned two attempts on the same decoy URL before this message existed |
 | web_audio file has a video stream (ffprobe) | refused; mp3/flac cover art does NOT count (attached_pic excluded) |

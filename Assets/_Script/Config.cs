@@ -165,6 +165,7 @@ public class Config : MonoBehaviour
     string _webSearchSafeSearch;   // "strict" or "off"
     string _ytDlpCookiesBrowser;   // blank = no --cookies-from-browser
     string _ytDlpCookiesFile;      // local Netscape cookie file, takes precedence over browser
+    bool _youTubeFirefoxLogin;
     // Speech-to-text for web_video speech checks: an OpenAI-compatible /v1/audio/transcriptions
     // endpoint (local Whisper server etc.). Blank endpoint = use api.openai.com with the LLM
     // Settings OpenAI key.
@@ -256,6 +257,16 @@ public class Config : MonoBehaviour
     public string GetWebSearchSafeSearch() { return NormalizeSafeSearch(_webSearchSafeSearch); }
     public string GetYtDlpCookiesBrowser() { return _ytDlpCookiesBrowser ?? ""; }
     public string GetYtDlpCookiesFile() { return _ytDlpCookiesFile ?? ""; }
+    public bool GetYouTubeFirefoxLogin() { return _youTubeFirefoxLogin; }
+    public void SetYouTubeFirefoxLogin(bool enabled, bool saveToFile = true)
+    {
+        _youTubeFirefoxLogin = enabled;
+        if (saveToFile)
+        {
+            m_configText = BuildModernConfigText(GetModernComfyServerConfigs());
+            SaveConfigToFile();
+        }
+    }
     public string GetSttEndpoint() { return _sttEndpoint ?? ""; }
     public string GetSttAPIKey() { return _sttAPIKey ?? ""; }
     public string GetSttModel() { return string.IsNullOrWhiteSpace(_sttModel) ? "whisper-1" : _sttModel; }
@@ -327,6 +338,7 @@ public class Config : MonoBehaviour
      _braveSearchAPIKey = "";
      _webSearchSafeSearch = DefaultWebSearchSafeSearch;
      _ytDlpCookiesBrowser = "";
+     _youTubeFirefoxLogin = false;
      _sttEndpoint = "";
      _sttAPIKey = "";
      _sttModel = "whisper-1";
@@ -567,6 +579,7 @@ public class Config : MonoBehaviour
         // re-emitted here or Settings Apply silently wipes it (the file is regenerated wholesale).
         sb.AppendLine();
         sb.Append("set_web_search_safesearch|").Append(NormalizeSafeSearch(_webSearchSafeSearch)).AppendLine("|");
+        sb.Append("set_youtube_firefox_login|").Append(_youTubeFirefoxLogin ? "true" : "false").AppendLine("|");
         if (!string.IsNullOrEmpty(_braveSearchAPIKey))
             sb.Append("set_brave_search_api_key|").Append(CleanConfigField(_braveSearchAPIKey)).AppendLine("|");
         if (!string.IsNullOrEmpty(_ytDlpCookiesBrowser))
@@ -1375,6 +1388,7 @@ set_default_audio_negative_prompt|music|
         "set_brave_search_api_key", "set_brave_api_key",
         "set_ytdlp_cookies_browser", "set_yt_dlp_cookies_browser",
         "set_ytdlp_cookies_file", "set_yt_dlp_cookies_file",
+        "set_youtube_firefox_login",
         "set_stt_endpoint", "set_speech_to_text_endpoint",
         "set_stt_api_key", "set_speech_to_text_api_key",
         "set_stt_model", "set_speech_to_text_model",
@@ -1659,6 +1673,10 @@ set_default_audio_negative_prompt|music|
                 else if (words[0] == "set_ytdlp_cookies_file" || words[0] == "set_yt_dlp_cookies_file")
                 {
                     _ytDlpCookiesFile = words.Length > 1 ? words[1].Trim().Trim('"') : "";
+                }
+                else if (words[0] == "set_youtube_firefox_login")
+                {
+                    _youTubeFirefoxLogin = words.Length > 1 && string.Equals(words[1].Trim(), "true", StringComparison.OrdinalIgnoreCase);
                 }
                 else if (words[0] == "set_stt_endpoint" || words[0] == "set_speech_to_text_endpoint")
                 {

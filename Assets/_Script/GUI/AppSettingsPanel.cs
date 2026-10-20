@@ -880,6 +880,28 @@ public class AppSettingsPanel : MonoBehaviour
         help.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
 
         CreateSectionHeader(content, "Video download (yt-dlp)");
+        var loginBox = CreateVerticalBox(content, "YouTubeLoginBox", 154f);
+        Toggle rememberedLogin = null;
+        rememberedLogin = CreateToggleRow(loginBox, "Use remembered YouTube login (dedicated Firefox profile)",
+            cfg != null && cfg.GetYouTubeFirefoxLogin(), enabled =>
+            {
+                Config.Get()?.SetYouTubeFirefoxLogin(enabled);
+                SetWebStatus(BuildWebStatusText());
+            });
+        var loginRow = CreateRow(loginBox, "YouTubeLoginActions", 36f);
+        CreateButton(loginRow, "YouTubeSignIn", "Sign in / change account", 230f, () =>
+            AITools.AIChat.Web.YouTubeLoginDialog.Show(_panelRoot.transform, _font, null, forRetry: false,
+                onReady: () =>
+                {
+                    if (rememberedLogin != null) rememberedLogin.SetIsOnWithoutNotify(true);
+                    SetWebStatus(BuildWebStatusText());
+                }));
+        var loginHelpRow = CreateRow(loginBox, "YouTubeLoginHelp", 55f);
+        var loginHelp = CreateText("Help", loginHelpRow,
+            "AI Chat offers sign-in when YouTube requires it. Sign in in the separate Firefox window, close it, then click Done to retry. "
+            + "The session is kept locally and overrides cookie settings below for YouTube only. Uncheck to stop using it; sign out in Firefox to remove the login.",
+            12f, TextMuted, TextAlignmentOptions.TopLeft);
+        loginHelp.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
         var videoBox = CreateVerticalBox(content, "WebVideoBox", 178f);
 
         var cookiesRow = CreateRow(videoBox, "YtDlpCookiesRow", 36f);
@@ -901,7 +923,7 @@ public class AppSettingsPanel : MonoBehaviour
         _ytDlpCookiesFileInput.onEndEdit.AddListener(_ => SaveWebSettingsFromFields());
         var cookieFileHelpRow = CreateRow(videoBox, "YtDlpCookiesFileHelpRow", 40f);
         var cookieFileHelp = CreateText("Help", cookieFileHelpRow,
-            "Reuse a Netscape-format cookie file exported from Brave or another browser. Takes precedence over Cookies from browser for clips and transcripts. Re-export when the login expires.",
+            "Reuse a Netscape-format cookie file exported from Brave or another browser. Used instead of Cookies from browser when the dedicated YouTube login is not selected. Re-export when the login expires.",
             12f, TextMuted, TextAlignmentOptions.TopLeft);
         cookieFileHelp.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
 
@@ -986,8 +1008,10 @@ public class AppSettingsPanel : MonoBehaviour
         else
             sb.AppendLine("yt-dlp: NOT FOUND - " + ytDlpError);
         sb.AppendLine(AITools.AIChat.Web.YtDlpTool.DescribeJsRuntime());
+        sb.AppendLine("YouTube Firefox login: " + (cfg != null && cfg.GetYouTubeFirefoxLogin() ? "enabled." : "not enabled.")
+            + (AITools.AIChat.Web.YouTubeLogin.TryFindFirefox(out _) ? " Firefox found." : " Install Firefox to use sign-in."));
         if (cfg != null && !string.IsNullOrWhiteSpace(cfg.GetYtDlpCookiesFile()))
-            sb.AppendLine(System.IO.File.Exists(cfg.GetYtDlpCookiesFile()) ? "Cookie file: configured (overrides browser)." : "Cookie file: NOT FOUND. Update its path or clear it.");
+            sb.AppendLine(System.IO.File.Exists(cfg.GetYtDlpCookiesFile()) ? "Cookie file: configured (used when dedicated YouTube login is not selected)." : "Cookie file: NOT FOUND. Update its path or clear it.");
         sb.AppendLine(AITools.AIChat.Web.SpeechCheck.DescribeSpeechToText());
 
         if (AITools.AIChat.Video.FfmpegTool.TryGetToolPaths(out string ffmpegPath, out _, out string ffmpegError))

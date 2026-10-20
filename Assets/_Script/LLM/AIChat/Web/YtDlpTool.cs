@@ -42,6 +42,7 @@ namespace AITools.AIChat.Web
             public float ElapsedSeconds;
             public bool Cancelled;
             public string Transcript;
+            public bool LoginOffered;
         }
 
         private sealed class LineBuffer
@@ -252,6 +253,7 @@ namespace AITools.AIChat.Web
         public static string SanitizeDiagnostic(string text, string cookieFile)
         {
             if (string.IsNullOrEmpty(text)) return text ?? "";
+            text = YouTubeLogin.RedactProfile(text);
             if (!string.IsNullOrWhiteSpace(cookieFile))
             {
                 text = text.Replace(FfmpegTool.QuoteArg(cookieFile), "\"[configured cookie file]\"");
@@ -342,6 +344,14 @@ namespace AITools.AIChat.Web
             var cfg = Config.Get();
             string cookies = cfg != null ? cfg.GetYtDlpCookiesBrowser() : "";
             string cookieFile = cfg != null ? cfg.GetYtDlpCookiesFile() : "";
+            YouTubeLogin.ResolveCookies(url, cfg != null && cfg.GetYouTubeFirefoxLogin(), ref cookies, ref cookieFile);
+            if (cfg != null && cfg.GetYouTubeFirefoxLogin() && YouTubeLogin.IsYouTubeUrl(url)
+                && !File.Exists(Path.Combine(YouTubeLogin.ProfileDirectory, "cookies.sqlite")))
+            {
+                result.Error = "The remembered YouTube session is missing. Sign in again.";
+                onDone?.Invoke(result);
+                yield break;
+            }
             result.Error = ValidateCookieFile(cookieFile);
             if (result.Error != null) { onDone?.Invoke(result); yield break; }
             string jsRuntime, jsPath;

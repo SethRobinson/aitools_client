@@ -26,9 +26,12 @@ captions are used. Captions can contain transcription errors.
 - Missing captions, unavailable languages, network errors and authentication
   failures are different outcomes. Report the error actually returned by the host.
   Do not invent a transcript from the video title, search snippets, or visuals.
-- An actual sign-in error can be addressed with Settings > Web > Cookie file
-  (a local Netscape-format YouTube cookie export) or Cookies from browser.
-  These settings persist and are reused for video and transcript requests.
+- On an actual YouTube sign-in error, the app offers a dedicated Firefox login.
+  The user signs in, closes Firefox, and clicks Done to retry the same request
+  once. The session is remembered locally for future transcripts and clips.
+  Settings > Web > Sign in / change account opens this flow manually. Cookie file
+  and Cookies from browser remain alternatives. If sign-in is cancelled or the
+  retry fails, report the returned error and wait for the user; do not retry in a loop.
   Never ask the user to paste passwords or cookie contents into chat.
 
 The Web checkbox must be enabled. A Brave Search API key and a speech-to-text
