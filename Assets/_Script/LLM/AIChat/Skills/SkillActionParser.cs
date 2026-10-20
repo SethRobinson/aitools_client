@@ -30,8 +30,8 @@ namespace AITools.AIChat.Skills
     /// </list>
     ///
     /// Tags inside a model's <c>&lt;think&gt;...&lt;/think&gt;</c> reasoning are parsed
-    /// but NOT executed (<see cref="OnActionSkipped"/> fires instead of
-    /// <see cref="OnActionParsed"/>); see the reasoning-block notes below.
+    /// but NOT executed by default (<see cref="OnActionSkipped"/> fires instead of
+    /// <see cref="OnActionParsed"/>). Hosts can opt in with <see cref="AllowActionsInThinkBlocks"/>.
     ///
     /// NOT a real XML parser - regex against the buffered text is plenty for the small
     /// allow-listed tag set we care about here. We intentionally never produce false
@@ -48,7 +48,14 @@ namespace AITools.AIChat.Skills
         /// </summary>
         public event Action<SkillAction, string> OnActionSkipped;
 
+        /// <summary>
+        /// Opt in to executing complete action tags inside reasoning, including drafts
+        /// and examples. Set before feeding a turn; Reset preserves this choice.
+        /// </summary>
+        public bool AllowActionsInThinkBlocks { get; set; }
+
         private readonly StringBuilder _buffer = new StringBuilder();
+        private readonly List<KeyValuePair<long, string>> _acceptedActions = new List<KeyValuePair<long, string>>();
 
         // ---- Reasoning-block awareness ----
         // Thinking models draft and quote action tags inside <think>...</think> while
@@ -56,7 +63,7 @@ namespace AITools.AIChat.Skills
         // generate_movie TEMPLATE, prompt "integrated_multimodal_description: ...", into
         // its reasoning to "double-check the format", and the streaming scan rendered a
         // placeholder-prompt clip before the real actions. A tag inside a think span is
-        // therefore never fired (OnActionSkipped instead). Spans are tracked in ABSOLUTE
+        // therefore skipped unless the host opts in. Spans are tracked in ABSOLUTE
         // stream offsets, independent of the display buffer, because
         // ConsumeDisplayText() trims emitted text (the "<think>" opener is long gone from
         // _buffer by the time a tag inside the block completes) and a marker can straddle
@@ -175,6 +182,7 @@ namespace AITools.AIChat.Skills
             _bufferAbsStart = 0;
             _markerTail = "";
             _thinkSpans.Clear();
+            _acceptedActions.Clear();
         }
 
         /// <summary>
@@ -285,15 +293,49 @@ namespace AITools.AIChat.Skills
                 var action = ParseAttributes(m.Groups[1].Value);
                 if (action != null)
                 {
-                    // A tag the model wrote while reasoning is a draft, not a decision:
-                    // skip it (still advancing the watermark so it can't fire later).
-                    if (IsInsideThinkSpan(_bufferAbsStart + m.Index))
+                    long absoluteStart = _bufferAbsStart + m.Index;
+                    bool insideThink = IsInsideThinkSpan(absoluteStart);
+                    if (insideThink && !AllowActionsInThinkBlocks)
                         OnActionSkipped?.Invoke(action, SkipReasonThink);
                     else
+                    {
+                        // Keep the exact accepted XML for history, without the reasoning
+                        // around it. Do this before notifying the host.
+                        // Record outside tags too: close-only reasoning can be recognized
+                        // only after an earlier tag has already fired.
+                        _acceptedActions.Add(new KeyValuePair<long, string>(absoluteStart, m.Value));
                         OnActionParsed?.Invoke(action);
+                    }
                 }
                 _scannedUpTo = m.Index + m.Length;
             }
+        }
+
+        /// <summary>
+        /// Strip tracked reasoning spans from this turn's raw stream, retaining the
+        /// action tags accepted inside them in their original order. Call after Flush
+        /// for final history, or with preserveActions=false for live visible-marker
+        /// details. This never parses or executes anything again.
+        /// </summary>
+        public string RemoveThinkingForHistory(string rawText, bool preserveActions = true)
+        {
+            if (string.IsNullOrEmpty(rawText)) return rawText;
+            var result = new StringBuilder();
+            int position = 0;
+            foreach (var span in _thinkSpans)
+            {
+                int start = (int)Math.Min(span[0], rawText.Length);
+                int end = (int)Math.Min(span[1], rawText.Length);
+                result.Append(rawText, position, start - position);
+                foreach (var action in _acceptedActions)
+                {
+                    if (preserveActions && action.Key >= start && action.Key < end)
+                        result.Append('\n').Append(action.Value).Append('\n');
+                }
+                position = end;
+            }
+            result.Append(rawText, position, rawText.Length - position);
+            return result.ToString();
         }
 
         private static void AddNonOverlappingMatches(List<Match> matches, MatchCollection candidates)

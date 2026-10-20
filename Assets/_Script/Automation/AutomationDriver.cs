@@ -87,6 +87,8 @@ public class AutomationDriver : MonoBehaviour
             tab = AppSettingsTab.Audio;
         else if (key == "web" || key == "brave" || key == "ytdlp" || key == "yt-dlp")
             tab = AppSettingsTab.Web;
+        else if (key == "aichat" || key == "ai chat")
+            tab = AppSettingsTab.AIChat;
         else if (key == "llm" || key == "llms")
             tab = AppSettingsTab.LLM;
 

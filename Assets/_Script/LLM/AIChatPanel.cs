@@ -271,6 +271,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private const string PREFS_KEEP_OLD_TOOL_CALLS_IN_PROMPT = "aichat_keep_old_tool_calls_in_prompt";
     private const string PREFS_AUTO_CAPTION_GENERATED_IMAGES = "aichat_auto_caption_generated_images";
     private const string PREFS_SHOW_DEBUG_STUFF = "aichat_show_debug_stuff";
+    private const string PREFS_ALLOW_ACTIONS_IN_THINK_BLOCKS = "aichat_allow_actions_in_think_blocks";
     private const string PREFS_NORMALIZE_CLIP_AUDIO = "aichat_normalize_clip_audio";
     // Header "Web" checkbox: gates every web_* skill (search / image / video / page). Default on.
     private const string PREFS_WEB_ENABLED = "aichat_web_enabled";
@@ -527,6 +528,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     // Streaming state
     private StringBuilder _streamBuffer = new StringBuilder();
+    private readonly StringBuilder _rawStreamBuffer = new StringBuilder();
     private float _streamLastUpdate = 0f;
     private const float STREAM_UPDATE_INTERVAL = 0.1f;
 
@@ -3210,9 +3212,9 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     private string GetRawReplyForDetails(TMP_InputField field, GTPChatLine interaction)
     {
-        string raw = interaction != null ? interaction._content : null;
+        string raw = interaction != null ? interaction._actionDetailsContent ?? interaction._content : null;
         if (string.IsNullOrEmpty(raw) && ReferenceEquals(field, _streamingAssistantField))
-            raw = _streamBuffer.ToString();   // still streaming: the reply is not in history yet
+            raw = BuildActionDetailsText(_rawStreamBuffer.ToString());
         return raw;
     }
 
@@ -3221,7 +3223,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (interaction != null && !string.IsNullOrEmpty(interaction._thinkingContent))
             return interaction._thinkingContent;
         if (ReferenceEquals(field, _streamingAssistantField))
-            return ExtractThinkingText(_streamBuffer.ToString());   // live: still arriving
+            return ExtractThinkingText(_rawStreamBuffer.ToString());   // live: still arriving
         // Strip-think-tags off keeps the raw reasoning in history; extract from there.
         return interaction != null ? ExtractThinkingText(interaction._content) : "";
     }
@@ -4726,19 +4728,21 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 _streamBuffer.Append(finalDisplay);
         }
 
-        string rawStreamed = _streamBuffer.ToString();
-        string visibleText = BuildVisibleStreamText(rawStreamed);
+        string rawStreamed = _rawStreamBuffer.ToString();
+        string visibleText = BuildVisibleStreamText(_streamBuffer.ToString());
         completedField.text = ConvertMarkdownToTMP(visibleText);
 
         // Nothing streamed in yet -> leave the empty bubble readOnly and don't pollute
         // history with a blank assistant turn.
-        string historyText = PreserveActionTagsForHistory(visibleText);
-        if (string.IsNullOrEmpty(historyText)) return;
+        string historyText = BuildAssistantHistoryText(rawStreamed);
+        if (string.IsNullOrEmpty(historyText) && string.IsNullOrEmpty(visibleText)) return;
 
         AIChatLog.Response("chat", historyText);
         _promptManager.AddInteraction("assistant", historyText);
         var assistantInteraction = _promptManager.GetLastInteraction();
         assistantInteraction?.RememberDisplayContent(visibleText);
+        if (assistantInteraction != null)
+            assistantInteraction._actionDetailsContent = BuildActionDetailsText(rawStreamed);
         // Keep whatever reasoning streamed in before Stop, so the "[thinking...]"
         // marker left in the stopped bubble still expands to something useful.
         string thinkingText = GenerateSettingsPanel.GetStripThinkTags() ? ExtractThinkingText(rawStreamed) : "";
@@ -6262,7 +6266,11 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         }
 
         // Reset the streaming-action parser for this turn (counters + buffer state).
-        _actionParser?.Reset();
+        if (_actionParser != null)
+        {
+            _actionParser.Reset();
+            _actionParser.AllowActionsInThinkBlocks = GetAllowActionsInThinkBlocks();
+        }
 
         LLMInstanceInfo llmInstance = llmInstanceID >= 0 ? instanceMgr?.GetInstance(llmInstanceID) : null;
 
@@ -6306,6 +6314,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _activeProviderInFlight = activeProvider;
         _isStreaming = true;
         _streamBuffer.Clear();
+        _rawStreamBuffer.Clear();
         _streamLastUpdate = 0;
         _streamCharsReceived = 0;
         _streamStartTime = Time.unscaledTime;
@@ -6893,6 +6902,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     private void OnStreamingTextCallback(string text)
     {
         if (string.IsNullOrEmpty(text)) return;
+        _rawStreamBuffer.Append(text);
 
         // Count visible chars for the status line's TPS estimate. Chunk size is the
         // closest cheap proxy for "bytes received" without having to plumb HTTP body
@@ -6944,7 +6954,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         if (_streamingAssistantField == null) return;
         var win = ChatThinkingWindow.Current;
         if (win == null || !win.IsShowing(_streamingAssistantField)) return;
-        string raw = _streamBuffer.ToString();
+        string raw = _rawStreamBuffer.ToString();
         win.SetText(ExtractThinkingText(raw), IsThinkingStillStreaming(raw));
     }
 
@@ -7078,7 +7088,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
 
     /// <summary>
     /// A complete action tag the parser refused to run - it sat inside the model's
-    /// <think> block (a drafted or quoted template, not a decision). Logged so
+    /// <think> block while reasoning actions were disabled. Logged so
     /// llm_aichat_log.json explains why no render appeared for it; never executed.
     /// </summary>
     private void OnSkillActionSkipped(SkillAction action, string reason)
@@ -7116,17 +7126,16 @@ public class AIChatPanel : MonoBehaviour, IChatHost
             catch { /* leave streamedText empty */ }
         }
 
+        // A non-streaming response still needs to go through the same parser once.
+        if (_rawStreamBuffer.Length == 0 && !string.IsNullOrEmpty(streamedText))
+            OnStreamingTextCallback(streamedText);
+
         // Capture the reasoning before it is stripped from the reply: the persistent
         // "[thinking]" marker in the bubble expands it on click (stored per-interaction,
         // display-only - never sent back to the LLM).
         string thinkingText = GenerateSettingsPanel.GetStripThinkTags()
-            ? ExtractThinkingText(streamedText ?? "")
+            ? ExtractThinkingText(_rawStreamBuffer.ToString())
             : "";
-
-        if (GenerateSettingsPanel.GetStripThinkTags())
-            streamedText = OpenAITextCompletionManager.RemoveThinkTagsFromString(streamedText ?? "");
-
-        streamedText = (streamedText ?? "").Trim();
 
         // Final flush of any unparsed text in the action parser (e.g. trailing "<" we
         // were holding back hoping for a tag that never came). The visible bubble stays
@@ -7139,7 +7148,7 @@ public class AIChatPanel : MonoBehaviour, IChatHost
                 _streamBuffer.Append(finalDisplay);
         }
         string visibleText = _streamBuffer.ToString();
-        string historyText = PreserveActionTagsForHistory(streamedText);
+        string historyText = BuildAssistantHistoryText(_rawStreamBuffer.ToString());
         visibleText = BuildVisibleStreamText(visibleText);
 
         // Editor-only: record the raw assistant reply WITH its <aitools_action>
@@ -7157,6 +7166,8 @@ public class AIChatPanel : MonoBehaviour, IChatHost
         _promptManager.AddInteraction("assistant", historyText);
         var assistantInteraction = _promptManager.GetLastInteraction();
         assistantInteraction?.RememberDisplayContent(visibleText);
+        if (assistantInteraction != null)
+            assistantInteraction._actionDetailsContent = BuildActionDetailsText(_rawStreamBuffer.ToString());
         if (assistantInteraction != null && !string.IsNullOrEmpty(thinkingText))
             assistantInteraction._thinkingContent = thinkingText;
         MarkInteractionMediaCheckpoint(assistantInteraction);
@@ -7521,6 +7532,25 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     }
 
     // ---------- Skills system: action history, settings, image bubble ----------
+
+    private string BuildAssistantHistoryText(string rawText)
+    {
+        if (GenerateSettingsPanel.GetStripThinkTags())
+        {
+            rawText = _actionParser != null
+                ? _actionParser.RemoveThinkingForHistory(rawText, _actionParser.AllowActionsInThinkBlocks)
+                : OpenAITextCompletionManager.RemoveThinkTagsFromString(rawText ?? "");
+        }
+        return PreserveActionTagsForHistory(rawText);
+    }
+
+    private string BuildActionDetailsText(string rawText)
+    {
+        if (GenerateSettingsPanel.GetStripThinkTags())
+            return _actionParser?.RemoveThinkingForHistory(rawText, preserveActions: false) ?? rawText;
+        // Reasoning is inline in this mode, so its tool markers count in the display too.
+        return Regex.Replace(rawText ?? "", @"</?think>", "", RegexOptions.IgnoreCase);
+    }
 
     private static string PreserveActionTagsForHistory(string text)
     {
@@ -13375,6 +13405,17 @@ public class AIChatPanel : MonoBehaviour, IChatHost
     public static void SetShowDebugStuff(bool v)
     {
         PlayerPrefs.SetInt(PREFS_SHOW_DEBUG_STUFF, v ? 1 : 0);
+        PlayerPrefs.Save();
+    }
+
+    public static bool GetAllowActionsInThinkBlocks()
+    {
+        return PlayerPrefs.GetInt(PREFS_ALLOW_ACTIONS_IN_THINK_BLOCKS, 0) != 0;
+    }
+
+    public static void SetAllowActionsInThinkBlocks(bool v)
+    {
+        PlayerPrefs.SetInt(PREFS_ALLOW_ACTIONS_IN_THINK_BLOCKS, v ? 1 : 0);
         PlayerPrefs.Save();
     }
 

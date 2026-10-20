@@ -31,6 +31,7 @@ public class GTPChatLine
             clone._promptCacheSourceContent = _promptCacheSourceContent;
             clone._promptCacheSourceLine = _promptCacheSourceLine;
             clone._thinkingContent = _thinkingContent;
+            clone._actionDetailsContent = _actionDetailsContent;
             return clone;
         }
 
@@ -80,6 +81,7 @@ public class GTPChatLine
         {
             _content = content ?? "";
             _displayContent = _content;
+            _actionDetailsContent = null;
             ClearPromptCache();
         }
 
@@ -119,6 +121,9 @@ public class GTPChatLine
         // click-to-expand "[thinking]" marker. Display-only: the strip-think path removes
         // the tags from _content, so this text never reaches an outgoing prompt.
         [NonSerialized] public string _thinkingContent;
+        // Display-only raw source for visible tool markers. History may also contain
+        // actions executed inside collapsed reasoning, which must not shift marker ordinals.
+        [NonSerialized] public string _actionDetailsContent;
         public List<string> _images; // Base64-encoded images for vision LLM
         // Parallel to _images: the global chat_image="N" index of each image, or
         // -1 if not a numbered chat image. Used by serializers to inject explicit

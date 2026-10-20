@@ -51,6 +51,7 @@ namespace AITools.AIChat.UI
         private Toggle _autoCaptionGeneratedImagesToggle;
         private Toggle _showDebugStuffToggle;
         private Toggle _normalizeClipAudioToggle;
+        private Toggle _allowActionsInThinkBlocksToggle;
 
         private const float DEFAULT_WIDTH = 760f;
         private const float DEFAULT_HEIGHT = 686f;
@@ -520,6 +521,14 @@ namespace AITools.AIChat.UI
                 AIChatPanel.GetNormalizeClipAudio(),
                 "When enabled, every video clip AI Chat transcodes (dropped/pasted videos, clip-chooser exports, web_video cuts) gets its soundtrack loudness-normalized to " + AITools.AIChat.Video.FfmpegTool.NormalizeTargetLufs.ToString("0") + " LUFS (two-pass ffmpeg loudnorm, a fixed gain with no compression). Quiet phone recordings used as MiniMax H3 voice/audio references otherwise arrive 10-15 dB under what the model expects. Silent or near-silent clips are left alone.");
 
+            _allowActionsInThinkBlocksToggle = MakeSettingToggle(
+                footer.transform,
+                "Allow controls in think blocks",
+                new Vector2(kSettingsLeftPad + 280f, kMediaRowY),
+                new Vector2(330, 24),
+                AIChatPanel.GetAllowActionsInThinkBlocks(),
+                "Run AI Chat action tags inside the model's <think> blocks. Useful for models that put their tool calls in thinking. Off by default. Also runs draft/example commands there; repeated commands can run again. Applies to the next reply after Save & Close, independently of Strip think tags.");
+
             const float kPostMessageRowY = 150f;
             BuildSettingPair(
                 footer.transform,
@@ -776,6 +785,8 @@ namespace AITools.AIChat.UI
                 _showDebugStuffToggle.isOn = AIChatPanel.GetShowDebugStuff();
             if (_normalizeClipAudioToggle != null)
                 _normalizeClipAudioToggle.isOn = AIChatPanel.GetNormalizeClipAudio();
+            if (_allowActionsInThinkBlocksToggle != null)
+                _allowActionsInThinkBlocksToggle.isOn = AIChatPanel.GetAllowActionsInThinkBlocks();
             if (_mainPanel != null)
                 TMPInputFieldUndo.ResetHistoryInChildren(_mainPanel);
             RebuildSkillRows();
@@ -893,6 +904,8 @@ namespace AITools.AIChat.UI
                 AIChatPanel.SetShowDebugStuff(_showDebugStuffToggle.isOn);
             if (_normalizeClipAudioToggle != null)
                 AIChatPanel.SetNormalizeClipAudio(_normalizeClipAudioToggle.isOn);
+            if (_allowActionsInThinkBlocksToggle != null)
+                AIChatPanel.SetAllowActionsInThinkBlocks(_allowActionsInThinkBlocksToggle.isOn);
 
             // Trigger the host's reload + UI update.
             _staticSkillManager?.Reload();

@@ -14,7 +14,8 @@ public enum AppSettingsTab
     Configuration,
     Audio,
     Web,
-    LLM
+    LLM,
+    AIChat
 }
 
 /// <summary>
@@ -217,8 +218,9 @@ public class AppSettingsPanel : MonoBehaviour
 
         CreateTabButton(strip, AppSettingsTab.General, "General Settings", 185f);
         CreateTabButton(strip, AppSettingsTab.Configuration, "ComfyUI Settings", 190f);
-        CreateTabButton(strip, AppSettingsTab.Audio, "Audio", 110f);
-        CreateTabButton(strip, AppSettingsTab.Web, "Web", 100f);
+        CreateTabButton(strip, AppSettingsTab.Audio, "Audio", 100f);
+        CreateTabButton(strip, AppSettingsTab.Web, "Web", 80f);
+        CreateTabButton(strip, AppSettingsTab.AIChat, "AI Chat", 100f);
         // LLM is a launcher, not a content page: it opens the standalone advanced dialog
         // directly. It is intentionally NOT added to _tabButtons (never highlighted active),
         // and it keeps the inactive-tab color so it never looks like the selected page.
@@ -282,6 +284,8 @@ public class AppSettingsPanel : MonoBehaviour
             BuildAudioTab(content);
         else if (tab == AppSettingsTab.Web)
             BuildWebTab(content);
+        else if (tab == AppSettingsTab.AIChat)
+            BuildAIChatTab(content);
         else
             BuildGeneralTab(content);
 
@@ -793,6 +797,23 @@ public class AppSettingsPanel : MonoBehaviour
                 return i;
         }
         return ElevenLabsTextToSpeechManager.DefaultVoicePresets.Length;
+    }
+
+    private void BuildAIChatTab(RectTransform content)
+    {
+        CreateSectionHeader(content, "AI Chat controls");
+        var toggle = CreateToggleRow(content, "Allow controls in think blocks",
+            AIChatPanel.GetAllowActionsInThinkBlocks(), AIChatPanel.SetAllowActionsInThinkBlocks);
+        toggle.transform.parent.gameObject.AddComponent<RTToolTip>()._text =
+            "Run AI Chat action tags inside the model's thinking. Applies to the next reply and is independent of Strip think tags.";
+        var row = CreateRow(content, "ThinkingControlsHelp", 80f);
+        var text = CreateText("Help", row,
+            "Enable this for models that put their tool calls inside <think> blocks. Off by default.\n" +
+            "Draft/example commands in thinking will also run; repeated commands can run again.\n" +
+            "Saved automatically. Applies to the next AI Chat reply.",
+            BaseFontSize, TextMuted, TextAlignmentOptions.TopLeft);
+        text.richText = false;
+        text.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
     }
 
     // ---------- Web tab (AI Chat web_search / web_image / web_video) ----------
