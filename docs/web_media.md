@@ -128,6 +128,13 @@ text using the existing `count` / `criteria` / `speech` attributes.
   YouTube login**. Disabling reuse does not delete the profile; sign out inside
   its Firefox window to remove the login. The model has no action that can open
   Firefox or accept a sign-in prompt.
+  The adjacent **Test** button probes the private Liked videos playlist through yt-dlp using
+  only the dedicated Firefox profile, with at most one metadata entry and no media
+  download or cookie export. Success requires the private Liked videos playlist ID and a
+  successful process exit; expired-cookie/sign-in errors and inconclusive
+  network/helper failures have separate messages. Raw account output is never
+  displayed or logged. The test times out after 45 seconds and is cancelled when
+  Settings closes or changes tabs. Reuse need not be enabled to test the session.
 - `--ignore-config` keeps unrelated machine-level yt-dlp options out of app
   requests. The model can provide URLs, language and clip parameters, not cookie
   paths or arbitrary downloader arguments. `web_page` remains a static HTML

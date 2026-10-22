@@ -13,6 +13,9 @@ Moved verbatim from AGENTS.md on 2026-09-13 (bullet style kept); update this fil
 
 - Brave API SafeSearch defaults to **off** (Seth, 2026-10-20). Missing/blank config values and settings/API fallbacks use `Config.DefaultWebSearchSafeSearch`; an explicit saved `strict` choice or action override remains respected.
 - Web includes **Sign in / change account** and **Use remembered YouTube login**.
+  **Test** checks the dedicated Firefox session online and displays its result
+  below the buttons. Close that Firefox window before testing. Testing also
+  works with reuse unchecked, with a reminder to enable it for downloads.
   The dedicated Firefox session is kept in `%LOCALAPPDATA%\SethsAITools\YouTubeFirefox`;
   `set_youtube_firefox_login` persists the reuse choice and must survive modern
   config regeneration. When enabled it overrides the cookie file/browser fields

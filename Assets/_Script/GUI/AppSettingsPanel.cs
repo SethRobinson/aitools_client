@@ -48,6 +48,20 @@ public class AppSettingsPanel : MonoBehaviour
     private Toggle _webSafeSearchToggle;
     private TMP_InputField _ytDlpCookiesInput;
     private TMP_InputField _ytDlpCookiesFileInput;
+    private AITools.AIChat.Video.FfmpegTool.CancelToken _youtubeTestCancel;
+    private Button _youtubeTestButton;
+    private TextMeshProUGUI _youtubeTestStatus;
+
+    private void CancelYouTubeTest()
+    {
+        if (_youtubeTestCancel != null && _youtubeTestStatus != null)
+            _youtubeTestStatus.text = "Login test cancelled. Click Test to try again.";
+        _youtubeTestCancel?.Cancel();
+        _youtubeTestCancel = null;
+        if (_youtubeTestButton != null) _youtubeTestButton.interactable = true;
+    }
+
+    private void OnDisable() => CancelYouTubeTest();
     private TMP_InputField _sttEndpointInput;
     private TMP_InputField _sttApiKeyInput;
     private TMP_InputField _sttModelInput;
@@ -320,6 +334,7 @@ public class AppSettingsPanel : MonoBehaviour
 
     private void ClearContent()
     {
+        CancelYouTubeTest();
         _aiChatSettingsPage = null;
         _contentScrollRect = null;
         if (_aiChatFooterActions != null)
@@ -880,7 +895,7 @@ public class AppSettingsPanel : MonoBehaviour
         help.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
 
         CreateSectionHeader(content, "Video download (yt-dlp)");
-        var loginBox = CreateVerticalBox(content, "YouTubeLoginBox", 154f);
+        var loginBox = CreateVerticalBox(content, "YouTubeLoginBox", 196f);
         Toggle rememberedLogin = null;
         rememberedLogin = CreateToggleRow(loginBox, "Use remembered YouTube login (dedicated Firefox profile)",
             cfg != null && cfg.GetYouTubeFirefoxLogin(), enabled =>
@@ -896,6 +911,31 @@ public class AppSettingsPanel : MonoBehaviour
                     if (rememberedLogin != null) rememberedLogin.SetIsOnWithoutNotify(true);
                     SetWebStatus(BuildWebStatusText());
                 }));
+        var testRow = CreateRow(loginBox, "YouTubeLoginTestStatus", 36f);
+        var testStatus = CreateText("Status", testRow, "Click Test to check the remembered Firefox login.",
+            12f, TextMuted, TextAlignmentOptions.TopLeft);
+        testStatus.richText = false;
+        testStatus.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
+        Button testButton = null;
+        testButton = CreateButton(loginRow, "YouTubeTest", "Test", 90f, () =>
+        {
+            if (_youtubeTestCancel != null) return;
+            var cancel = new AITools.AIChat.Video.FfmpegTool.CancelToken();
+            _youtubeTestCancel = cancel;
+            testButton.interactable = false;
+            testStatus.text = "Checking YouTube login...";
+            StartCoroutine(AITools.AIChat.Web.YouTubeLogin.TestSession(cancel, message =>
+            {
+                if (_youtubeTestCancel != cancel) return;
+                _youtubeTestCancel = null;
+                if (testButton != null) testButton.interactable = true;
+                if (testStatus != null) testStatus.text = message
+                    + (rememberedLogin != null && !rememberedLogin.isOn
+                        ? " Enable Use remembered YouTube login to use this session for downloads." : "");
+            }));
+        });
+        _youtubeTestButton = testButton;
+        _youtubeTestStatus = testStatus;
         var loginHelpRow = CreateRow(loginBox, "YouTubeLoginHelp", 55f);
         var loginHelp = CreateText("Help", loginHelpRow,
             "AI Chat offers sign-in when YouTube requires it. Sign in in the separate Firefox window, close it, then click Done to retry. "

@@ -156,6 +156,58 @@ namespace AITools.AIChat.Web
             return error == null;
         }
 
+        public static string BuildTestArguments()
+        {
+            // A public video can succeed while signed out. Probe the private Liked
+            // videos playlist, fetching metadata only and never exporting cookies.
+            return "--ignore-config --no-cache-dir --skip-download --flat-playlist --playlist-end 1"
+                + " --socket-timeout 15 --retries 0 --extractor-retries 0 --dump-single-json"
+                + " --cookies-from-browser " + FfmpegTool.QuoteArg("firefox:" + ProfileDirectory)
+                + " -- https://www.youtube.com/playlist?list=LL";
+        }
+
+        public static string DescribeTestResult(int exitCode, string stdout, string stderr)
+        {
+            string diagnostics = (stderr ?? "").ToLowerInvariant();
+            if (diagnostics.Contains("cookies are no longer valid") || diagnostics.Contains("cookies have expired")
+                || diagnostics.Contains("sign in") || diagnostics.Contains("not logged in")
+                || diagnostics.Contains("login required") || diagnostics.Contains("playlist does not exist"))
+                return "Not signed in, or the login has expired. Click Sign in / change account.";
+            if (exitCode == 0)
+            {
+                try
+                {
+                    var data = SimpleJSON.JSON.Parse(stdout);
+                    if (data != null && data["id"].Value == "LL")
+                        return "Signed in: YouTube accepted the remembered Firefox session.";
+                }
+                catch { }
+            }
+            // Never show raw process output: it can contain account details or paths.
+            return "Could not verify the login. Check your connection and yt-dlp installation, then try again.";
+        }
+
+        public static IEnumerator TestSession(FfmpegTool.CancelToken cancel, Action<string> onDone)
+        {
+            if (!CanRetry(out var error))
+            {
+                onDone(error.Replace("then click Done", "then click Test"));
+                yield break;
+            }
+            if (!YtDlpTool.TryGetToolPath(out var executable, out _))
+            {
+                onDone("Cannot test: yt-dlp is missing. Restore utils/yt-dlp/yt-dlp.exe.");
+                yield break;
+            }
+            string args = BuildTestArguments();
+            var task = System.Threading.Tasks.Task.Run(() =>
+                FfmpegTool.RunProcessCancellable(executable, args, 45000, cancel, null));
+            while (!task.IsCompleted) yield return null;
+            if (cancel.CancelRequested) yield break;
+            onDone(task.IsFaulted ? "Could not start the YouTube login test. Check the yt-dlp installation."
+                : DescribeTestResult(task.Result.ExitCode, task.Result.Stdout, task.Result.Stderr));
+        }
+
         /// <summary>One offer and at most one identical retry. Delegates make the lifecycle testable offline.</summary>
         public static IEnumerator DownloadWithRetry(string url, FfmpegTool.CancelToken cancel,
             Func<Action<YtDlpTool.Result>, IEnumerator> download,

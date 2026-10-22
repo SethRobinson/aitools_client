@@ -90,6 +90,16 @@ internal static class WebMediaValidation
                 "Dedicated profile path never reaches chat diagnostics");
             Check(YouTubeLogin.RedactProfile(YouTubeLogin.ProfileDirectory.Replace("\\", "\\\\"))
                 == "[dedicated YouTube profile]", "Escaped profile paths are also redacted");
+            Check(YouTubeLogin.BuildTestArguments().Contains("--cookies-from-browser")
+                && YouTubeLogin.BuildTestArguments().Contains("--playlist-end 1")
+                && YouTubeLogin.BuildTestArguments().EndsWith("-- https://www.youtube.com/playlist?list=LL"),
+                "Login test uses dedicated profile and account feed without media downloads");
+            Check(YouTubeLogin.DescribeTestResult(0, "{\"id\":\"LL\"}", "").StartsWith("Signed in:")
+                && !YouTubeLogin.DescribeTestResult(0, "{}", "").StartsWith("Signed in:")
+                && !YouTubeLogin.DescribeTestResult(1, "{\"id\":\"LL\"}", "").StartsWith("Signed in:")
+                && YouTubeLogin.DescribeTestResult(0, "{\"id\":\"LL\"}", "cookies are no longer valid").StartsWith("Not signed in")
+                && YouTubeLogin.DescribeTestResult(1, "", "HTTP 429 private details").StartsWith("Could not verify"),
+                "Login test distinguishes accepted, expired and inconclusive sessions without exposing output");
             Check(YouTubeLogin.BuildFirefoxArguments(@"C:\local data\YouTubeFirefox").Contains("-profile \"C:\\local data\\YouTubeFirefox\"")
                 && YouTubeLogin.BuildFirefoxArguments(@"C:\local data\YouTubeFirefox").EndsWith("https://www.youtube.com/"),
                 "Firefox uses quoted dedicated profile and fixed YouTube destination");
