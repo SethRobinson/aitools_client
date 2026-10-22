@@ -16,6 +16,8 @@ Moved verbatim from AGENTS.md on 2026-09-13 (bullet style kept); update this fil
   **Test** checks the dedicated Firefox session online and displays its result
   below the buttons. Close that Firefox window before testing. Testing also
   works with reuse unchecked, with a reminder to enable it for downloads.
+  Changing accounts or toggling reuse cancels any running test and clears the
+  previous result. The enable-reuse reminder appears only after a successful test.
   The dedicated Firefox session is kept in `%LOCALAPPDATA%\SethsAITools\YouTubeFirefox`;
   `set_youtube_firefox_login` persists the reuse choice and must survive modern
   config regeneration. When enabled it overrides the cookie file/browser fields

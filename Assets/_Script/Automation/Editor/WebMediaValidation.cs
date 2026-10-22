@@ -105,6 +105,7 @@ internal static class WebMediaValidation
                 "Firefox uses quoted dedicated profile and fixed YouTube destination");
             VerifyLoginRetry(Check, url);
             VerifyLoginDialog(Check);
+            VerifyLoginSettings(Check);
             var cfg = Config.Get();
             if (cfg != null)
             {
@@ -232,6 +233,73 @@ internal static class WebMediaValidation
             check(request.Completed && !request.Retry, "Web Stop token closes login dialog and prevents retry");
         }
         finally { UnityEngine.Object.DestroyImmediate(root); }
+    }
+
+    private static void VerifyLoginSettings(Action<bool, string> check)
+    {
+        const System.Reflection.BindingFlags fields = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+        const System.Reflection.BindingFlags statics = System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic;
+        var type = typeof(AppSettingsPanel);
+        var instanceField = type.GetField("_instance", statics);
+        var rootField = type.GetField("_panelRoot", statics);
+        var previousInstance = instanceField.GetValue(null);
+        var previousRoot = rootField.GetValue(null);
+        var root = new GameObject("YouTubeSettingsValidation", typeof(RectTransform), typeof(Canvas));
+        root.GetComponent<Canvas>().renderMode = RenderMode.WorldSpace;
+        root.GetComponent<Canvas>().enabled = false;
+        try
+        {
+            var panel = root.AddComponent<AppSettingsPanel>();
+            type.GetField("_font", fields).SetValue(panel, TMPro.TMP_Settings.defaultFontAsset);
+            var content = new GameObject("Content", typeof(RectTransform), typeof(UnityEngine.UI.VerticalLayoutGroup))
+                .GetComponent<RectTransform>();
+            content.SetParent(root.transform, false);
+            content.sizeDelta = new Vector2(840, 1800);
+            var layout = content.GetComponent<UnityEngine.UI.VerticalLayoutGroup>();
+            layout.childForceExpandHeight = false;
+            layout.childControlHeight = true;
+            layout.childControlWidth = true;
+            type.GetField("_contentHost", fields).SetValue(panel, content);
+            type.GetMethod("BuildWebTab", fields).Invoke(panel, new object[] { content });
+            UnityEngine.UI.LayoutRebuilder.ForceRebuildLayoutImmediate(content);
+            Canvas.ForceUpdateCanvases();
+            var button = (UnityEngine.UI.Button)type.GetField("_youtubeTestButton", fields).GetValue(panel);
+            var status = (TMPro.TextMeshProUGUI)type.GetField("_youtubeTestStatus", fields).GetValue(panel);
+            check(button != null && button.interactable && button.GetComponentInChildren<TMPro.TMP_Text>().text == "Test",
+                "Web settings exposes an enabled Test button beside sign-in");
+            var buttonRect = button.GetComponent<RectTransform>();
+            var rowRect = button.transform.parent.GetComponent<RectTransform>();
+            var corners = new Vector3[4];
+            buttonRect.GetWorldCorners(corners);
+            foreach (var corner in corners)
+            {
+                Vector3 point = rowRect.InverseTransformPoint(corner);
+                check(point.x >= rowRect.rect.xMin - 1 && point.x <= rowRect.rect.xMax + 1,
+                    "Login Test button fits its action row");
+            }
+            status.text = "Signed in: YouTube accepted the remembered Firefox session."
+                + " Enable Use remembered YouTube login to use this session for downloads.";
+            status.ForceMeshUpdate();
+            check(status.GetPreferredValues(status.text, status.rectTransform.rect.width, float.PositiveInfinity).y
+                <= status.rectTransform.rect.height + 1, "Login status and reuse reminder fit without truncation");
+            foreach (string lifecycle in new[] { "ResetYouTubeTest", "OnDisable", "ClearContent" })
+            {
+                var cancel = new FfmpegTool.CancelToken();
+                type.GetField("_youtubeTestCancel", fields).SetValue(panel, cancel);
+                button.interactable = false;
+                status.text = "Signed in: previous account";
+                type.GetMethod(lifecycle, fields).Invoke(panel, null);
+                check(cancel.CancelRequested && button.interactable
+                    && type.GetField("_youtubeTestCancel", fields).GetValue(panel) == null
+                    && !status.text.StartsWith("Signed in:"), "Login test cancels and clears stale status on " + lifecycle);
+            }
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(root);
+            instanceField.SetValue(null, previousInstance);
+            rootField.SetValue(null, previousRoot);
+        }
     }
 
     private static void Drain(IEnumerator coroutine)

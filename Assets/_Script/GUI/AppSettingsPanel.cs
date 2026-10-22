@@ -62,6 +62,13 @@ public class AppSettingsPanel : MonoBehaviour
     }
 
     private void OnDisable() => CancelYouTubeTest();
+
+    private void ResetYouTubeTest()
+    {
+        CancelYouTubeTest();
+        if (_youtubeTestStatus != null)
+            _youtubeTestStatus.text = "Click Test to check the remembered Firefox login.";
+    }
     private TMP_InputField _sttEndpointInput;
     private TMP_InputField _sttApiKeyInput;
     private TMP_InputField _sttModelInput;
@@ -900,17 +907,22 @@ public class AppSettingsPanel : MonoBehaviour
         rememberedLogin = CreateToggleRow(loginBox, "Use remembered YouTube login (dedicated Firefox profile)",
             cfg != null && cfg.GetYouTubeFirefoxLogin(), enabled =>
             {
+                ResetYouTubeTest();
                 Config.Get()?.SetYouTubeFirefoxLogin(enabled);
                 SetWebStatus(BuildWebStatusText());
             });
         var loginRow = CreateRow(loginBox, "YouTubeLoginActions", 36f);
         CreateButton(loginRow, "YouTubeSignIn", "Sign in / change account", 230f, () =>
+        {
+            ResetYouTubeTest();
             AITools.AIChat.Web.YouTubeLoginDialog.Show(_panelRoot.transform, _font, null, forRetry: false,
                 onReady: () =>
                 {
+                    ResetYouTubeTest();
                     if (rememberedLogin != null) rememberedLogin.SetIsOnWithoutNotify(true);
                     SetWebStatus(BuildWebStatusText());
-                }));
+                });
+        });
         var testRow = CreateRow(loginBox, "YouTubeLoginTestStatus", 36f);
         var testStatus = CreateText("Status", testRow, "Click Test to check the remembered Firefox login.",
             12f, TextMuted, TextAlignmentOptions.TopLeft);
@@ -930,7 +942,8 @@ public class AppSettingsPanel : MonoBehaviour
                 _youtubeTestCancel = null;
                 if (testButton != null) testButton.interactable = true;
                 if (testStatus != null) testStatus.text = message
-                    + (rememberedLogin != null && !rememberedLogin.isOn
+                    + (message.StartsWith("Signed in:", StringComparison.Ordinal)
+                        && rememberedLogin != null && !rememberedLogin.isOn
                         ? " Enable Use remembered YouTube login to use this session for downloads." : "");
             }));
         });

@@ -145,6 +145,9 @@ active compiled Play session. It exercises production command builders, VTT
 parsing, cookie validation/redaction, dedicated-profile routing, login retry and
 cancellation, an inactive login-dialog fixture, and config serialization without
 network, browser launches or config-file writes. Fixtures remain under ignored `build/web-media-validation-*`.
+The checks also build Web settings under a disabled canvas to verify the Test
+button bounds, status text fit, cancellation and stale-result clearing without
+desktop input or screenshots.
 `POST /chat_web_action` runs one parsed `web_video` or `web_transcript` action
 through the real executor, with main-turn auto-resume disabled, for live checks.
 
