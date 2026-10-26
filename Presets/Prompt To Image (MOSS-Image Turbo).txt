@@ -1,0 +1,13 @@
+COMMAND_START|joblist
+#Generate image using MOSS-Image SFT + lodestones' 8-step DMD distill LoRA (cfg 1, so no negative prompt)
+#Stay near 1 MP: the distill starts to tile at large sizes. Full-quality 25-step variant: Prompt To Image (MOSS-Image)
+%width%="1024"
+%height%="1024"
+%steps%="8"
+
+text_to_img_moss_turbo.json @replace|"width": 1024|"width": %width%| @replace|"height": 1024|"height": %height%| @replace|"steps": 8|"steps": %steps%|
+COMMAND_END
+COMMAND_START|default_negative_prompt
+COMMAND_END
+COMMAND_START|default_pre_prompt
+COMMAND_END

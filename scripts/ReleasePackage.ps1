@@ -79,7 +79,9 @@ foreach ($required in @('utils/RTClip.exe', 'utils/RTClip.dll', 'utils/RTClip.ru
     'utils/ffmpeg/licenses/LICENSE', 'utils/yt-dlp/yt-dlp.exe', 'utils/yt-dlp/LICENSE',
     'cli/aitools_cli.py', 'cli/aitools_cli.bat', 'cli/config.example.txt', 'cli/requirements.txt',
     'ComfyUI/text_to_img_qwen21.json', 'ComfyUI/img_to_img_qwen21_edit.json',
+    'ComfyUI/text_to_img_moss.json', 'ComfyUI/text_to_img_moss_turbo.json',
     'Presets/Prompt To Image (Qwen Image 2.1).txt', 'Presets/Image To Image (Qwen Image 2.1).txt',
+    'Presets/Prompt To Image (MOSS-Image).txt', 'Presets/Prompt To Image (MOSS-Image Turbo).txt',
     'aichat/main_prompt.txt') + $rootFiles) {
     if ($required -notin $runtimeFiles) { throw "Missing required tracked release input: $required" }
 }

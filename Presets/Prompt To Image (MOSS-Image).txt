@@ -1,0 +1,15 @@
+COMMAND_START|joblist
+#Generate image using MOSS-Image SFT (OpenMOSS 5B DiT: strong text rendering, layout and long prompts up to ~4K tokens)
+#Comfy template sampler: 25 steps, cfg 2.5, er_sde (official pipeline uses 50 steps, cfg 3). Best at 1-2 MP, sides multiples of 16
+#Faster 8-step variant: Prompt To Image (MOSS-Image Turbo)
+%width%="1024"
+%height%="1024"
+%steps%="25"
+
+text_to_img_moss.json @replace|"width": 1024|"width": %width%| @replace|"height": 1024|"height": %height%| @replace|"steps": 25|"steps": %steps%|
+COMMAND_END
+COMMAND_START|default_negative_prompt
+worst quality, bad anatomy, watermark, jpeg artifact
+COMMAND_END
+COMMAND_START|default_pre_prompt
+COMMAND_END
