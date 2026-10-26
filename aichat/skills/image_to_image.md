@@ -27,7 +27,7 @@ the drift every turn until the characters stop looking like themselves.
 as a portrait, tag that action with `anchor="Name"`:
 
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" width="832" height="1248" prompt="<full portrait of the clockmaker>" anchor="Elias"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (MOSS-Image).txt}}" width="832" height="1248" prompt="<full portrait of the clockmaker>" anchor="Elias"/>
 ```
 
 From then on, refer to that character by name in any `chat_image` slot -
@@ -258,7 +258,7 @@ itself into the requested scene instead of applying it to the subject.
 Integrated same-reply example:
 
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" width="1248" height="832" prompt="<full visual prompt for a realistic baby dragon, no logo yet>" anchor="Dragon"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (MOSS-Image).txt}}" width="1248" height="832" prompt="<full visual prompt for a realistic baby dragon, no logo yet>" anchor="Dragon"/>
 <aitools_action skill="paste_image" chain="true" source_attachment="1" x="43%" y="45%" width="14%" height="14%" mode="fit" opacity="1"/>
 <aitools_action skill="image_to_image" preset="{{Image To Image (Qwen Image 2.1).txt}}" chain="true" attachment2="1" anchor="Dragon" prompt="Integrate the logo from <image2> into the chest scales of the baby dragon in <image1>, replacing the flat placement guide on its chest with a natural inlaid scale pattern that follows the body curvature, scale texture and forest lighting. Keep the logo's exact geometry and colors from <image2> and keep it readable, not glowing or white. Keep the dragon's pose, body, the background and the lighting of <image1> exactly as they are."/>
 ```
@@ -294,7 +294,7 @@ Single-input edit (no tags, no size):
 
 Same-reply generate then edit (chain):
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" width="1248" height="832" prompt="<full Qwen Image scene>"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (MOSS-Image).txt}}" width="1248" height="832" prompt="<full MOSS-Image scene>"/>
 <aitools_action skill="image_to_image" preset="{{Image To Image (Qwen Image 2.1).txt}}" chain="true" prompt="Change the time of day to dusk: a deep orange sky with long warm light from the left and lit windows. Keep every person, object and the composition exactly as in the image."/>
 ```
 

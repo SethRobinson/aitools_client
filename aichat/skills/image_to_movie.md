@@ -24,7 +24,7 @@ that frame animated or an exact start frame.
 
 If the user asks for a NEW text-described video with no source image or video
 ("make a video of X", "generate a MiniMax video of X"),
-first emit `generate_image` with `{{Prompt To Image (Qwen Image 2.1).txt}}`, then emit
+first emit `generate_image` with `{{Prompt To Image (MOSS-Image).txt}}`, then emit
 this skill with `chain="true"`. Do NOT use direct `generate_movie` /
 text-to-video unless the user explicitly asks for direct text-to-video, "no
 still first", or a named `Prompt To Video ...` preset.
@@ -88,7 +88,7 @@ DEFAULT - stack onto the image you JUST generated in this same reply (chain="tru
 Size BOTH actions to the video canvas (see "Sizing" below), and put `prompt`
 LAST in each tag:
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" width="864" height="480" prompt="<full Qwen Image scene description>"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (MOSS-Image).txt}}" width="864" height="480" prompt="<full MOSS-Image scene description>"/>
 <aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" chain="true" width="864" height="480" prompt="<full three-field H3 document - see format below>"/>
 ```
 This stacks the video onto the SAME Pic as the image you just made, so the
@@ -96,7 +96,7 @@ chat shows ONE bubble that updates from still -> playing video. Do NOT also pass
 attachment / chat_image when you set chain="true" - the prior step's output is
 inherited automatically. chain="true" only works as a follow-up to a generate
 action emitted earlier in the same reply. This is the right form for any
-"<image-model> + <video-model>" combo (e.g. Qwen Image + MiniMax H3).
+"<image-model> + <video-model>" combo (e.g. MOSS-Image + MiniMax H3).
 
 Animate a freshly-pasted image: `attachment="1"`. Animate an image already in
 the chat from earlier: `chat_image="N"`. Same prompt format either way.
@@ -458,7 +458,7 @@ and put the result on both actions:
   `prompt` LAST in the tag.
 - Reference To Video / Reference Video To Video always need at least one
   photo/clip source. A brand-new video with NO source: default recipe is
-  Qwen Image 2.1 still + chained image_to_movie onto the DEFAULT
+  MOSS-Image still + chained image_to_movie onto the DEFAULT
   `{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}`; explicit direct
   text-to-video -> generate_movie with a `Prompt To Video ...` preset.
 - Chained still -> movie: put the SAME `width`/`height` on BOTH actions

@@ -35,7 +35,7 @@ Image pasted this turn:
 Same-reply generated image -> transparent cutout:
 
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" prompt="<full prompt for the subject on a simple clean background>"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (MOSS-Image).txt}}" prompt="<full prompt for the subject on a simple clean background>"/>
 <aitools_action skill="image_to_image" preset="{{Image To Image Mask Subject.txt}}" prompt="Remove the background and keep the foreground subject unchanged as a transparent-background cutout." chain="true"/>
 ```
 

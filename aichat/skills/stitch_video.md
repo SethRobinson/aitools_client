@@ -237,7 +237,7 @@ asked for 10 s clips, so `duration="10"`; without that ask it would be
 
 ```
 Scene 1 - <one line of story text for the user>
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" width="864" height="480" prompt="<full self-contained Qwen Image scene 1: the keeper's complete appearance + outfit + setting>"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (MOSS-Image).txt}}" width="864" height="480" prompt="<full self-contained MOSS-Image scene 1: the keeper's complete appearance + outfit + setting>"/>
 <aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" chain="true" width="864" height="480" duration="10" anchor="scene1" prompt="<the full three-field H3 document (150-250 words): integrated_multimodal_description: [Shot 1] restating the keeper/outfit/setting + actions + one camera move + a prose-quoted line or explicit no-dialog, then overall_soundscape:, then non_diegetic_music: - see image_to_movie>"/>
 
 ... scenes 2-5 the same way ...

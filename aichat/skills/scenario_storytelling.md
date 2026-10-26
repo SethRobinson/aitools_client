@@ -28,7 +28,7 @@ DO:
   (usually 1-3 sentences), then immediately emit the `generate_image` tag for
   that exact moment, then continue with the next beat.
 - Copy preset filenames exactly from the examples, including the parentheses
-  and the dot in `(Qwen Image 2.1)`.
+  and the hyphen in `(MOSS-Image)`.
 - Use ordinary names freely in chat prose, but in EVERY `prompt=` describe
   people by appearance, not by name. The image/video model has no chat memory.
 
@@ -57,10 +57,10 @@ Pattern (two illustrated beats per turn):
 
 ```
 <short prose/dialog beat>
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" width="1248" height="832" prompt="<full self-contained Qwen Image prompt for this exact moment>"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (MOSS-Image).txt}}" width="1248" height="832" prompt="<full self-contained MOSS-Image prompt for this exact moment>"/>
 
 <short prose/dialog beat>
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" width="1248" height="832" prompt="<full self-contained Qwen Image prompt for this exact moment>"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (MOSS-Image).txt}}" width="1248" height="832" prompt="<full self-contained MOSS-Image prompt for this exact moment>"/>
 ```
 
 Every `generate_image` prompt must stand alone: visible identities,
@@ -104,7 +104,7 @@ as a still beat:
 
 ```
 <short prose/dialog beat>
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" width="864" height="480" prompt="<full self-contained Qwen Image scene prompt>"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (MOSS-Image).txt}}" width="864" height="480" prompt="<full self-contained MOSS-Image scene prompt>"/>
 <aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" chain="true" width="864" height="480" prompt="<the full three-field H3 document, 150-250 words (see image_to_movie): integrated_multimodal_description: [Shot 1] the whole scene re-described + actions + one camera move + dialog per the VIDEO DIALOG RULE + overall_soundscape: + non_diegetic_music:>"/>
 ```
 
@@ -125,8 +125,8 @@ When anchors are requested, mint one canonical portrait per character with
 `anchor="Name"`:
 
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" width="832" height="1248" prompt="<full Qwen Image portrait of the swordswoman>" anchor="Reya"/>
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" width="832" height="1248" prompt="<full Qwen Image portrait of the old mage>" anchor="Doran"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (MOSS-Image).txt}}" width="832" height="1248" prompt="<full MOSS-Image portrait of the swordswoman>" anchor="Reya"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (MOSS-Image).txt}}" width="832" height="1248" prompt="<full MOSS-Image portrait of the old mage>" anchor="Doran"/>
 ```
 
 Later anchored scenes use `image_to_image` with `{{Image To Image (Qwen Image 2.1).txt}}`, one slot per

@@ -88,7 +88,7 @@ in the same reply as a literal flat decal. The generated character is the
 canvas, so the paste uses `chain="true"`; the uploaded logo is the source:
 
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" prompt="<clean character portrait without the logo>" anchor="Character"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (MOSS-Image).txt}}" prompt="<clean character portrait without the logo>" anchor="Character"/>
 <aitools_action skill="paste_image" chain="true" source_attachment="1" x="43%" y="45%" width="14%" height="14%" mode="fit" opacity="1" anchor="Character"/>
 ```
 
@@ -102,7 +102,7 @@ Use a paste as an integration guide, not the final output, when the user asks
 for the mark to become part of the material:
 
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" prompt="<clean dragon portrait without logo>" anchor="Dragon"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (MOSS-Image).txt}}" prompt="<clean dragon portrait without logo>" anchor="Dragon"/>
 <aitools_action skill="paste_image" chain="true" source_attachment="1" x="43%" y="45%" width="14%" height="14%" mode="fit" opacity="1"/>
 <aitools_action skill="image_to_image" preset="{{Image To Image (Qwen Image 2.1).txt}}" chain="true" attachment2="1" anchor="Dragon" prompt="Integrate the logo from <image2> into the chest scales of the dragon in <image1>, replacing the flat placement guide with a natural inlaid scale pattern that follows the body curvature, scale texture and lighting. Keep the logo's exact geometry and colors from <image2>, readable and not glowing or white. Keep the dragon's pose, body, the background and the lighting of <image1> exactly as they are."/>
 ```
@@ -111,7 +111,7 @@ Same-reply anchored source - generate the source first, then create the
 canvas and chain the paste without guessing future numeric ids:
 
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" prompt="<full description for panel content>" anchor="panel_a"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (MOSS-Image).txt}}" prompt="<full description for panel content>" anchor="panel_a"/>
 <aitools_action skill="new_canvas" width="2048" height="1152" color="#111111" anchor="layout_canvas"/>
 <aitools_action skill="paste_image" chain="true" source_chat_image="panel_a" x="0" y="50%" width="50%" height="50%" mode="fill"/>
 ```

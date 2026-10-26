@@ -125,7 +125,7 @@ page 1 reads it, so this whole block is a single reply.)
 # anchor portrait - generate_image with NO chain. Becomes Image #A.
 # Never chain border or text onto this bubble - it stays pristine so
 # every page can use it as the input reference.
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" width="1024" height="1024" prompt="The image is a square storybook watercolor illustration of a small russet-orange fox sitting in three-quarter view, set against a soft neutral pine-grove background. <continue the full observer paragraph: fluffy white-tipped tail, large amber eyes, soft black ear tips, a single white chest patch, curious tilted-head expression, dappled gold light, warm watercolor textures, hand-drawn ink linework, a full-body character reference portrait>" anchor="Fen"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (MOSS-Image).txt}}" width="1024" height="1024" prompt="The image is a square storybook watercolor illustration of a small russet-orange fox sitting in three-quarter view, set against a soft neutral pine-grove background. <continue the full observer paragraph: fluffy white-tipped tail, large amber eyes, soft black ear tips, a single white chest patch, curious tilted-head expression, dappled gold light, warm watercolor textures, hand-drawn ink linework, a full-body character reference portrait>" anchor="Fen"/>
 
 # page 1 - image_to_image from the anchor, then chain border + text.
 <aitools_action skill="image_to_image" preset="{{Image To Image (Qwen Image 2.1).txt}}" chat_image="Fen" prompt="Create a warm watercolor storybook illustration of the fox from the image standing on a mossy log at the edge of a sunlit pine forest in early autumn, seen from a low camera angle, with dappled gold light filtering through the trees and hand-drawn ink linework. Keep the fox's face, coat color, markings, eye color and proportions exactly as in the image."/>
@@ -178,7 +178,7 @@ If the user asks for just one book page (no recurring character needed),
 this short form is enough:
 
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" width="832" height="1248" prompt="<illustration scene description>"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (MOSS-Image).txt}}" width="832" height="1248" prompt="<illustration scene description>"/>
 <aitools_action skill="add_border" chain="true" left="6%" right="6%" top="6%" bottom="60%" color="#FBF7EE"/>
 <aitools_action skill="draw_text" chain="true" text="Once upon a time, in a small village at the edge of the forest..." x="10%" y="68%" width="80%" height="28%" font_size="10%" color="#2A1F12" align="left" valign="top" wrap="true"/>
 <aitools_action skill="draw_text" chain="true" text="3" x="92%" y="95%" width="6%" height="4%" font_size="8%" color="#777777" align="right" valign="middle"/>

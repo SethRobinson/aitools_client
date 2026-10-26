@@ -2,7 +2,7 @@
 id: generate_image
 summary: Generate a brand-new still image from a text prompt. Use when the user asks for a picture of a NEW subject. Do NOT use this when the user wants a scene featuring people / things that already exist as numbered chat-image bubbles - that's image_to_image with the Image To Image (Qwen Image 2.1) preset, feeding each existing bubble as a chat_image reference and calling each <image1>, <image2>... in the prompt. generate_image cannot reproduce a specific past face from text alone; it will produce strangers no matter how detailed the description.
 inputs: none
-template: <aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" width="1248" height="832" prompt="one English paragraph describing the finished image as an observer, ~300-500 words"/>
+template: <aitools_action skill="generate_image" preset="{{Prompt To Image (MOSS-Image).txt}}" width="1248" height="832" prompt="one to three English paragraphs describing the finished image as an observer, ~150-300 words"/>
 ---
 # Generate an image
 
@@ -31,24 +31,31 @@ with `paste_image` using the actual uploaded art as the final step. For
 "fit it onto the chest/back/body/object", tattoo, engraving, embroidery,
 painted scales, branded hide, inlaid metal, or any request that says it should
 look physically part of the subject, follow with a placement guide paste and a
-2-input Qwen Image 2.1 integration pass as described in `image_to_image`. Do not try to
+2-input Qwen Image 2.1 integration pass as described in `image_to_image` (Qwen
+stays the edit model; MOSS-Image is text-to-image only). Do not try to
 draw a specific attached logo from text alone.
 
 ## Available presets
 
 Pick the preset whose strengths best match the user's request. If unsure,
-default to `{{Prompt To Image (Qwen Image 2.1).txt}}`.
+default to `{{Prompt To Image (MOSS-Image).txt}}`.
 
-- `{{Prompt To Image (Qwen Image 2.1).txt}}` - DEFAULT. Qwen-Image 2.1: high
-  quality general purpose, strong prompt adherence, and it renders legible
-  text (signs, labels, short headlines) well.
-- `{{Prompt To Transparent Image (Qwen Image 2.1).txt}}` - the same model with a
-  real alpha channel: use it for a transparent-background asset (sprite, icon,
+- `{{Prompt To Image (MOSS-Image).txt}}` - DEFAULT. MOSS-Image: high quality
+  general purpose, strong prompt adherence, and it renders exact quoted text
+  (signs, labels, headlines, poster copy, small print) very well.
+- `{{Prompt To Image (MOSS-Image Turbo).txt}}` - the same model distilled to
+  8 steps, about 4-5x faster with slightly simpler detail. Use it when the
+  user asks for "turbo", "fast", "quick", "draft" or "rough" images. Same
+  prompt rules as the default.
+- `{{Prompt To Image (Qwen Image 2.1).txt}}` - Qwen-Image 2.1, the previous
+  default. Use ONLY when the user names Qwen.
+- `{{Prompt To Transparent Image (Qwen Image 2.1).txt}}` - Qwen-Image 2.1 with a
+  real alpha channel (MOSS-Image has none): use it for a transparent-background asset (sprite, icon,
   sticker, cut-out subject, logo art). Wrap the prompt: `This is an RGBA format
   image with transparency. <description>. The image has an alpha channel and a
   transparent background.` Describe the subject only, no scenery.
-- `{{Prompt To Image (Z-Image).txt}}` - Z-Image Turbo, faster. Use ONLY when
-  the user says "Z-Image" / "zimage" or asks for the fast/old model.
+- `{{Prompt To Image (Z-Image).txt}}` - Z-Image Turbo. Use ONLY when the user
+  says "Z-Image" / "zimage" (plain "fast" requests go to MOSS-Image Turbo).
 - `{{Prompt To Image (Krea 2 Turbo).txt}}` - fast aesthetic-focused image
   generation and strong visual/art-direction variety. Use ONLY when the user
   says "krea", "krea2", or "krea 2" - the `krea` skill auto-loads with
@@ -64,7 +71,7 @@ default to `{{Prompt To Image (Qwen Image 2.1).txt}}`.
 ## Invocation
 
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (Qwen Image 2.1).txt}}" width="1248" height="832" prompt="The image is a wide realistic photograph of ..."/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (MOSS-Image).txt}}" width="1248" height="832" prompt="A wide realistic photograph of ..."/>
 ```
 
 ## Canvas (width / height)
@@ -78,36 +85,40 @@ is a 1024x1024 square):
 - phone screen, tall banner: `width="768" height="1344"` (9:16)
 - square icon, badge, album cover, single centred emblem: `1024x1024`
 
-The user's own size wins ("1080p" -> 1920x1080). The model is native up to
-2048x2048 (e.g. 2048x1360 for 3:2): use that range only for explicit
-"high quality" / "2K" / print / poster-size requests, it is ~3-4x slower.
+The user's own size wins ("1080p" -> 1920x1088; MOSS-Image sides must be
+multiples of 16). MOSS-Image is best at 1-2 MP: for explicit "high quality" /
+"2K" / print / poster-size requests go up to about 2 MP (e.g. 1728x1152 for
+3:2, 1152x1728 for 2:3), which is ~2x slower. Keep the Turbo preset near 1 MP.
 When the still feeds a chained video, use the VIDEO's canvas instead (see
 Stacking below).
 
-## Writing good Qwen Image 2.1 prompts
+## Writing good image prompts
 
-Source: the system prompt of Qwen's official prompt enhancer for this model
-(Qwen-Image-2.1-PE-T2I). You ARE that enhancer here: write its output
-directly, never the user's short request.
+Source: the system prompt of the prompt enhancer in Comfy-Org's official
+MOSS-Image template (the model learned from captions that describe finished
+images), plus Qwen's official enhancer, which asks for the same shape. You ARE
+that enhancer here: write its output directly, never the user's short request.
 
 ### Shape
 
-ONE English paragraph that describes the FINISHED image as if you were
-looking at it: present tense, third person, declarative. About twenty
-sentences, ~300-500 words, the same size whether the user wrote three words
-or three hundred - a thin request means you invent most of the frame.
+One to three English paragraphs of plain prose that describe the FINISHED
+image as if you were looking at it: present tense, third person,
+declarative. About ~150-300 words, the same size whether the user wrote three
+words or three hundred - a thin request means you invent most of the frame.
+Go longer only when there is a lot of text to place. (For an explicitly
+requested Qwen Image 2.1 render, write ~300-500 words in one paragraph.)
 
 1. **Opening sentence** (~20 words): medium, style, subject, background or
-   palette, usually the orientation: `The image is a wide realistic
-   photograph of ..., set against ...`. Name the style once here (realistic,
-   cinematic, watercolour, flat-vector, isometric, 3D-rendered, editorial...).
+   palette, usually the orientation: `A wide realistic photograph of ...,
+   set against ...`. Name the style once here (realistic, cinematic,
+   watercolour, flat-vector, isometric, 3D-rendered, editorial...).
 2. **Walk the frame** in order. For a scene or layout: background and the
    surface things sit on first, then the top band, then left / centre / right,
    then the bottom band. For one subject filling the frame: background and how
    it falls off, pose and placement, head and face, body and each garment,
-   what they hold, the edges. Use 8-14 positional phrases that reach the
-   corners and edges ("In the upper-left corner, ...", "Across the lower
-   third, ..."); about a third of the sentences should open on one.
+   what they hold, the edges. Use 5-10 positional words or phrases that
+   reach the corners and edges ("In the upper-left corner, ...", "Across
+   the lower third, ..."), never coordinates.
 3. **Text**: only if something is meant to be read. Give every string exactly,
    in its own script, in reading order, with where it sits and its weight /
    colour / case / size: `a bold black headline across the top reads
@@ -134,40 +145,38 @@ or three hundred - a thin request means you invent most of the frame.
 - Keep it physically coherent: shadows fall away from the light, scale is
   consistent, reflections match.
 - Never write the ratio or pixel size into the prompt - that is width/height.
-- No negative_prompt content (unused by this preset).
+- Plain prose only: no lists, headings, JSON, Markdown or keyword tags.
+- Leave negative_prompt out: each preset supplies its own default.
 
 ### Example
 
 User asked: "a woman smoking on a rooftop". Ship something like (with
 `width="832" height="1248"`):
 
-> The image is a vertical realistic photograph of a woman in her early thirties
-> smoking at the edge of a Brooklyn rooftop at golden hour, framed against a
-> warm amber skyline. She stands in the centre-right of the frame at a low
-> concrete parapet, weight on her right leg, her left forearm resting on the
-> rough grey ledge. She has a slim athletic build, sun-warmed olive skin with a
-> faint dusting of freckles across her cheekbones, and dark brown almond eyes
-> gazing just above the camera with a faint smirk. Her chest-length espresso
-> brown bob is swept across her forehead by the wind, a few strands caught on
-> her cheek. She wears an oversized faded black band t-shirt tucked loosely into
-> high-waisted light-wash jeans, a worn indigo denim jacket draped over her
-> shoulders, and scuffed black leather boots. Her right hand holds a thin
-> cigarette near her mouth, and a pale coil of smoke drifts toward the upper
-> left of the frame. Behind her, across the upper half of the frame, the
-> Manhattan skyline is rendered as soft out-of-focus towers in muted gold and
-> blue-grey, and a squat wooden water tower sits on a neighbouring roof on the
-> far left. In the lower-left corner, the parapet recedes toward a rusted
-> metal vent and a folded canvas chair. Along the bottom edge, the tar-paper
-> roof surface shows scuffs and a few scattered bottle caps. The lighting is a
-> low warm sun behind her acting as a rim light along her hair and shoulders,
-> with warm-grey fill bounced from the concrete and deep cool shadows under
-> her jaw. The overall composition is an intimate off-centre editorial
-> portrait with a warm honey palette, shallow depth of field and a relaxed,
-> slightly defiant mood.
+> A vertical realistic photograph of a woman in her early thirties smoking at
+> the edge of a Brooklyn rooftop at golden hour, framed against a warm amber
+> skyline. She stands in the centre-right of the frame at a low concrete
+> parapet, weight on her right leg, her left forearm resting on the rough grey
+> ledge. She has a slim athletic build, sun-warmed olive skin with faint
+> freckles across her cheekbones, and dark brown almond eyes gazing just above
+> the camera with a faint smirk. Her chest-length espresso brown bob is swept
+> across her forehead by the wind. She wears an oversized faded black band
+> t-shirt tucked loosely into high-waisted light-wash jeans, a worn indigo
+> denim jacket draped over her shoulders, and scuffed black leather boots. Her
+> right hand holds a thin cigarette near her mouth, and a pale coil of smoke
+> drifts toward the upper left of the frame. Behind her, across the upper half
+> of the frame, the Manhattan skyline is soft out-of-focus towers in muted gold
+> and blue-grey, and a squat wooden water tower sits on a neighbouring roof on
+> the far left. Along the bottom edge, the tar-paper roof shows scuffs and a
+> few scattered bottle caps. The lighting is a low warm sun behind her acting
+> as a rim light along her hair and shoulders, with warm-grey fill bounced from
+> the concrete and deep cool shadows under her jaw. The overall composition is
+> an intimate off-centre editorial portrait with a warm honey palette and
+> shallow depth of field.
 
 ## Stacking with a follow-up step (chain="true")
 
-If the user asks for something like "make a movie with Qwen Image and MiniMax H3" or
+If the user asks for something like "make a picture and animate it with MiniMax H3" or
 "image-to-image change the weather, then animate it" - emit `generate_image`
 first, then a follow-up action with `chain="true"` (image_to_movie /
 image_to_image) IN THE SAME REPLY. Both steps run on the SAME Pic, so the
