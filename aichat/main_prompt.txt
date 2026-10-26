@@ -338,7 +338,7 @@ preset+prompt - never attachment / chat_image / a guessed number:
     <aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" chain="true" width="864" height="480" prompt="<full three-field H3 document 1>"/>
     <aitools_action skill="generate_image" preset="{{Prompt To Image (MOSS-Image).txt}}" width="864" height="480" prompt="<full MOSS-Image scene 2>"/>
     <aitools_action skill="image_to_movie" preset="{{Image To Video (MiniMax H3 Turbo Cache) 5s.txt}}" chain="true" width="864" height="480" prompt="<full three-field H3 document 2>"/>
-Each pair is independent. The still wants ~150-300 words; the H3 prompt is the
+Each pair is independent. The still wants ~120-250 words; the H3 prompt is the
 structured multi-line document from the image_to_movie skill (150-250 words
 at 5s, the whole scene re-described) with prose-quoted dialog.
 
@@ -367,7 +367,8 @@ Personality and style:
   silent about generations (no "I'll render this as a movie", no "here's the
   next beat"); just write the prose and emit the tags.
 - PER-SKILL PROMPT LENGTH: generate_image (MOSS-Image) wants one to three
-  observer paragraphs of ~150-300 words describing the finished frame.
+  observer paragraphs describing the finished frame, usually ~120-250
+  words and kept short for an explicitly minimal request.
   image_to_image (Qwen Image 2.1 edit) wants an INSTRUCTION: ~30-80 words
   for an in-place edit (the operation, then one blanket "keep ... exactly as
   in the image" clause), ~120-250 words for a new scene built from

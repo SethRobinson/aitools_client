@@ -2,7 +2,7 @@
 id: generate_image
 summary: Generate a brand-new still image from a text prompt. Use when the user asks for a picture of a NEW subject. Do NOT use this when the user wants a scene featuring people / things that already exist as numbered chat-image bubbles - that's image_to_image with the Image To Image (Qwen Image 2.1) preset, feeding each existing bubble as a chat_image reference and calling each <image1>, <image2>... in the prompt. generate_image cannot reproduce a specific past face from text alone; it will produce strangers no matter how detailed the description.
 inputs: none
-template: <aitools_action skill="generate_image" preset="{{Prompt To Image (MOSS-Image).txt}}" width="1248" height="832" prompt="one to three English paragraphs describing the finished image as an observer, ~150-300 words"/>
+template: <aitools_action skill="generate_image" preset="{{Prompt To Image (MOSS-Image).txt}}" width="1248" height="832" prompt="one to three English paragraphs describing the finished image as an observer, usually ~120-250 words, short for a minimal request"/>
 ---
 # Generate an image
 
@@ -94,41 +94,70 @@ Stacking below).
 
 ## Writing good image prompts
 
-Source: the system prompt of the prompt enhancer in Comfy-Org's official
-MOSS-Image template (the model learned from captions that describe finished
-images), plus Qwen's official enhancer, which asks for the same shape. You ARE
-that enhancer here: write its output directly, never the user's short request.
+Sources: OpenMOSS's official MOSS-Image prompt-enhancer skill and user guide,
+and the prompt enhancer in Comfy-Org's MOSS-Image template. The model learned
+from detailed captions of finished images with every visible string quoted
+exactly. You ARE that enhancer here: write its output directly, never the
+user's short request.
 
 ### Shape
 
-One to three English paragraphs of plain prose that describe the FINISHED
-image as if you were looking at it: present tense, third person,
-declarative. About ~150-300 words, the same size whether the user wrote three
-words or three hundred - a thin request means you invent most of the frame.
-Go longer only when there is a lot of text to place. (For an explicitly
-requested Qwen Image 2.1 render, write ~300-500 words in one paragraph.)
+Cohesive English prose (one to three paragraphs) that describes the FINISHED
+image as if you were looking at it: present tense, third person, declarative.
+Resolve every open creative choice yourself; keep everything the user
+specified (subjects, counts, relationships, medium, style, exclusions).
 
-1. **Opening sentence** (~20 words): medium, style, subject, background or
-   palette, usually the orientation: `A wide realistic photograph of ...,
-   set against ...`. Name the style once here (realistic, cinematic,
+Length follows the brief, not a word budget:
+- An ordinary scene, portrait or illustration usually lands around 120-250
+  words, because you decide identity, setting, framing, lighting, materials and
+  palette that the user left open.
+- An explicitly minimal request (a flat icon, a simple mark, one object on a
+  plain background, "minimalist") stays short and minimal. Do not pad it with
+  invented scenery or props.
+- A designed image with a lot of copy runs as long as the copy needs.
+
+(For an explicitly requested Qwen Image 2.1 render, write ~300-500 words in
+one paragraph.)
+
+Cover, roughly in this order:
+
+1. **Medium, style and main subject** first: `A wide realistic photograph of
+   ..., set against ...`. Name the style once (realistic, cinematic,
    watercolour, flat-vector, isometric, 3D-rendered, editorial...).
-2. **Walk the frame** in order. For a scene or layout: background and the
-   surface things sit on first, then the top band, then left / centre / right,
-   then the bottom band. For one subject filling the frame: background and how
-   it falls off, pose and placement, head and face, body and each garment,
-   what they hold, the edges. Use 5-10 positional words or phrases that
-   reach the corners and edges ("In the upper-left corner, ...", "Across
-   the lower third, ..."), never coordinates.
-3. **Text**: only if something is meant to be read. Give every string exactly,
-   in its own script, in reading order, with where it sits and its weight /
-   colour / case / size: `a bold black headline across the top reads
-   &quot;OPEN LATE&quot;`. Inside the action tag write those quotes as `&quot;`
-   (see the action protocol rules). Distant or unimportant text is "blurred"
-   or "too small to read" - never invent letters for it.
-4. **Lighting sentence**: `The lighting is ...` - source, direction, quality,
-   and the shadows/highlights it leaves.
-5. **Closing sentence**: exactly one that steps back - `The overall
-   composition ...` covering balance, palette, style and mood.
+2. **Setting and composition**: walk the frame with positional words
+   (upper-left corner, across the lower third, foreground, far right), never
+   coordinates. For one subject filling the frame: pose and placement, face,
+   each garment, what they hold, the background and how it falls off.
+3. **Text**, only if something is meant to be read (rules below).
+4. **Lighting**: source, direction, quality, and the shadows and highlights it
+   leaves.
+5. **Palette, materials and mood**. A short closing line that steps back to
+   the whole image is fine, but no fixed formula.
+
+### Text in the image
+
+- Quote every string exactly, in its original language and script, with its
+  capitalisation and punctuation. Never translate or paraphrase it. Inside the
+  action tag write the quotes as `&quot;` (see the action protocol rules):
+  `a bold black headline across the top reads &quot;OPEN LATE&quot;`.
+- Write the real copy. If the user asks for a designed image (poster, cover,
+  menu, label, sign, infographic) without giving its words, write short,
+  specific copy that fits, never placeholders such as "headline here".
+- Say where each string sits, its reading order, alignment, relative size,
+  weight, font style and colour.
+- Line breaks: MOSS wraps text on its own, but to control exactly where a line
+  breaks, put a real line break inside the quoted string (the `prompt=` value
+  may span lines):
+
+  ```
+  ... a chalkboard by the door reads &quot;TODAY
+  Tomato soup 4.50
+  Apple pie 3.00&quot; in white chalk capitals ...
+  ```
+- For a designed image, establish reading order and hierarchy that fit the
+  content instead of a generic title / hero image / footer template.
+- Distant or unimportant text is "blurred" or "too small to read": never
+  invent letters for it.
 
 ### Rules
 
@@ -148,7 +177,7 @@ requested Qwen Image 2.1 render, write ~300-500 words in one paragraph.)
 - Plain prose only: no lists, headings, JSON, Markdown or keyword tags.
 - Leave negative_prompt out: each preset supplies its own default.
 
-### Example
+### Examples
 
 User asked: "a woman smoking on a rooftop". Ship something like (with
 `width="832" height="1248"`):
@@ -173,6 +202,13 @@ User asked: "a woman smoking on a rooftop". Ship something like (with
 > the concrete and deep cool shadows under her jaw. The overall composition is
 > an intimate off-centre editorial portrait with a warm honey palette and
 > shallow depth of field.
+
+User asked: "a simple flat icon of a leaf". Keep it minimal (with
+`width="1024" height="1024"`):
+
+> A flat vector icon of a single green leaf centred on a plain white
+> background. The leaf is drawn with smooth rounded shapes in two shades of
+> fresh green, split by a thin pale midrib, with no outline, shadow or texture.
 
 ## Stacking with a follow-up step (chain="true")
 
