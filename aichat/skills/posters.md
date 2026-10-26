@@ -1,6 +1,6 @@
 ---
 id: posters
-summary: Recipes for single-page posters built by chaining (motivational poster, magazine cover, quote card, info card, meme). Each is one bubble - generate_image -> add_border -> draw_text. Auto-loaded for poster-class requests.
+summary: Recipes for single-page posters (motivational poster, magazine cover, quote card, info card, meme). New posters and covers are ONE generate_image with the MOSS-Image preset rendering the text itself (every string quoted exactly in the prompt); draw_text overlay chains are for existing images, memes, pure-typography cards, and non-MOSS presets. Auto-loaded for poster-class requests.
 inputs: none
 autoload: true
 triggers: poster, posters, motivational poster, motivational posters, meme, memes, funny text, magazine cover, quote card, quote cards, info card, info cards, tweet card, infographic, infographics, captioned image
@@ -9,9 +9,13 @@ template: <aitools_action skill="read_skill" id="posters"/>
 # Posters and single-page layouts
 
 Single-bubble deliverables: motivational posters, magazine covers, quote
-cards, info cards, memes. Each is built by chaining `generate_image` (or
-starting from an existing chat image) with `add_border`, `draw_shape`,
-`draw_text`. Result: ONE final bubble per poster.
+cards, info cards, memes. A NEW poster or cover is one `generate_image` with
+`{{Prompt To Image (MOSS-Image).txt}}`: MOSS-Image renders exact quoted text
+(titles, body lines, mastheads, small print) cleanly, so the layout and text
+go straight into the prompt. Overlay chains (`add_border`, `draw_shape`,
+`draw_text`) are for adding text to an EXISTING image, memes, pure-typography
+cards, and requests that name a different image model. Result: ONE final
+bubble per poster.
 
 ## Mental model
 
@@ -24,6 +28,11 @@ starting from an existing chat image) with `add_border`, `draw_shape`,
    layouts survive different canvas sizes.
 4. **Re-describe characters in every `generate_image` prompt.** Image
    models have no memory of chat.
+5. **Text in a MOSS-Image prompt is quoted exactly** with its position,
+   size, weight, colour and case (see `generate_image` "Writing good image
+   prompts"). Inside the action tag write the quotes as `&quot;`. Keep each
+   string short (a title plus a sentence or two); for a long paragraph of
+   body text use the overlay variant.
 
 ---
 
@@ -32,14 +41,27 @@ starting from an existing chat image) with `add_border`, `draw_shape`,
 User says: "make a motivational poster about dogs", "Star Wars
 motivational posters".
 
-Steps per poster:
-1. `generate_image` - the illustration
-2. `add_border` - thin sides + top, large bottom band for readable text
-3. `draw_text` - title (top of bottom band, bold, big)
-4. `draw_text` - body sentence (below the title, smaller, wrapped)
+One `generate_image` per poster. The prompt describes the whole poster:
+the framed illustration, the border, and every line of text with its exact
+wording and placement.
 
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (MOSS-Image).txt}}" width="832" height="1248" prompt="<full MOSS-Image scene description - the ILLUSTRATION ONLY. Do NOT ask the image model to render the poster's title/caption/quote text; that text is drawn cleanly by draw_text below. Baked-in diffusion text comes out garbled/overlapping.>"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (MOSS-Image).txt}}" width="832" height="1248" prompt="A vertical classic motivational poster on a solid black background. A thin white rule frames a photograph that fills the upper three quarters: a muddy golden retriever in its prime climbing a steep rocky trail at dawn, ears back, eyes fixed on the ridge above, mist in the valley behind it. Centred in the black band below the photograph, a large white serif title in widely spaced capitals reads &quot;PERSEVERANCE&quot;. Directly beneath it, a smaller white serif line reads &quot;The only way through is through.&quot; The lighting in the photograph is low warm sunrise light from the upper right with long cool shadows across the rocks. The overall composition is a clean, symmetrical 1990s office poster with a black, white and honey-gold palette."/>
+```
+
+For five posters in one reply, emit five of these tags, each a complete
+self-contained prompt. For a printable feel, describe a cream paper border
+instead of the black band.
+
+### Overlay variant (draw_text)
+
+Use it when the user wants the text set as a separate clean layer, names a
+different image model (Qwen, Krea, Z-Image), or the body text is long:
+`generate_image` the illustration ONLY (no text in the prompt), then chain
+`add_border` and two `draw_text` steps.
+
+```
+<aitools_action skill="generate_image" preset="{{Prompt To Image (MOSS-Image).txt}}" width="832" height="1248" prompt="<full MOSS-Image scene description - the ILLUSTRATION ONLY, no text>"/>
 <aitools_action skill="add_border" chain="true" left="6%" right="6%" top="6%" bottom="25%" color="#FFFFFF"/>
 <aitools_action skill="draw_text" chain="true" text="PERSEVERANCE" x="10%" y="82%" width="80%" height="8%" font_size="12%" color="#000000" bold="true" align="center" valign="middle"/>
 <aitools_action skill="draw_text" chain="true" text="The only way through is through." x="10%" y="91%" width="80%" height="7%" font_size="9%" color="#222222" align="center" valign="middle"/>
@@ -53,12 +75,8 @@ cap a little above each box's own `height=` (here the title and body bands).
 You do NOT need `min_font_size` - it's a soft hint now (the box wins regardless).
 Want a bigger title? Give it a taller band (bigger `height=`), not a bigger cap.
 
-For five posters in one reply, repeat the 4-step pattern five times.
 Each `generate_image` starts a fresh non-chained Pic; each chained step
 stacks onto its own root.
-
-For a printable feel, swap the white border for `color="#F5F2E8"` (cream
-paper).
 
 ### Existing-image variant
 
@@ -80,16 +98,20 @@ chain. Do not add 1 to the listed image number.
 
 User says: "magazine cover for my band", "Vogue cover for my dog".
 
-Steps:
-1. `generate_image` - cover photo (portrait aspect)
-2. `draw_shape` - semi-transparent panel for the masthead area so the
-   title is legible over the photo
-3. `draw_text` - magazine title (huge, top of cover)
-4. `draw_text` - issue date / catchline (small, near the title)
-5. `draw_text` - 2-3 cover lines lower down
+One `generate_image` with MOSS-Image: describe the cover photo, then the
+masthead, issue line and two or three cover lines, each quoted exactly with
+its position, size and colour (e.g. `a huge white condensed masthead across
+the top reads &quot;HOWL&quot;, partly tucked behind the dog's ears`). MOSS
+layers type and subject like a real cover.
 
 ```
-<aitools_action skill="generate_image" preset="{{Prompt To Image (MOSS-Image).txt}}" width="832" height="1248" prompt="<full portrait subject description, magazine cover style>"/>
+<aitools_action skill="generate_image" preset="{{Prompt To Image (MOSS-Image).txt}}" width="832" height="1248" prompt="<full magazine cover: photo subject and setting, then the masthead, issue line and cover lines quoted exactly with placement and styling>"/>
+```
+
+Overlay variant (cover text as a separate layer, or an existing photo):
+
+```
+<aitools_action skill="generate_image" preset="{{Prompt To Image (MOSS-Image).txt}}" width="832" height="1248" prompt="<full portrait subject description, magazine cover style, no text>"/>
 <aitools_action skill="draw_shape" chain="true" shape="rect" x="0" y="0" width="100%" height="22%" fill_color="#00000080"/>
 <aitools_action skill="draw_text" chain="true" text="HOWL" x="0" y="2%" width="100%" height="16%" font_size="220" color="#FFFFFF" bold="true" align="center" valign="middle"/>
 <aitools_action skill="draw_text" chain="true" text="WINTER 2026  -  NO. 47" x="0" y="18%" width="100%" height="3%" font_size="28" color="#EAEAEA" align="center" valign="middle"/>
