@@ -68,9 +68,10 @@ public class UpdateChecker : MonoBehaviour
                 String message = dict["message"].ToString();
                 float version;
 
-                System.Single.TryParse(dict["latest_version"].ToString(), NumberStyles.Any, CultureInfo.CurrentCulture, out version);
+                //the JSON number always uses '.', so parse/print invariant or comma-decimal locales read 3.08 as 308
+                System.Single.TryParse(dict["latest_version"].ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out version);
 
-               message =  message.Replace("{VERSION_STRING}", "V"+version.ToString());
+               message =  message.Replace("{VERSION_STRING}", "V"+version.ToString(CultureInfo.InvariantCulture));
 
                 if (Config.Get().GetVersion() < version)
                 {
@@ -84,7 +85,7 @@ public class UpdateChecker : MonoBehaviour
                     // GameLogic.Get().ShowConsole(true);
                 } else
                 {
-                    RTConsole.Log("Checking github for update: We're good, " + version.ToString() + " is still the latest reported version.");
+                    RTConsole.Log("Checking github for update: We're good, " + version.ToString(CultureInfo.InvariantCulture) + " is still the latest reported version.");
                 }
 
             }

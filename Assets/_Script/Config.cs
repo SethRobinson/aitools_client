@@ -309,7 +309,7 @@ public class Config : MonoBehaviour
   
     float m_version = 3.08f;
     string m_imageEditorPathAndExe = "none set";
-    public string GetVersionString() { return m_version.ToString("0.00"); }
+    public string GetVersionString() { return m_version.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture); }
     public float GetVersion() { return m_version; }
     public float GetRequiredServerVersion() { return m_requiredServerVersion; }
     public string GetDefaultSampler() { return m_defaultSampler; }
