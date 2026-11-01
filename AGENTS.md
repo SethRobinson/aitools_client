@@ -88,7 +88,15 @@ When the user says "bump the version", update ALL of these in the same task (do 
 3. This file's "App version in code/version metadata" line above.
 4. `README.md` - the `# Download` line (version number, date, and the zip size in MB) AND add a new `### V<x.yz> (<date>)` entry at the top of `## Recent changes` summarizing what changed since the last release (derive it from `git log <last-version-bump>..HEAD`).
 
-Use the current date for README date strings. The download zip size changes per build; check the freshly built `SethsAIToolsWindows.zip` size and match it.
+Use the current date for README date strings. The download zip size changes per build; check the freshly built `SethsAIToolsWindows.zip` size and match it. README MB is decimal (bytes / 1,000,000, one decimal place).
+
+### Releasing (upload + push)
+
+Only when Seth asks to upload/release. Order matters: `UpdateChecker.cs` reads `latest_version_checker.json` from GitHub `main`, and its Download button opens the fixed `https://www.rtsoft.com/files/SethsAIToolsWindows.zip`, so upload the zip BEFORE pushing a version bump (otherwise users are prompted to download the old build).
+1. Build with `BuildWin64.bat` (see Essential Commands) and confirm it ends with the fresh-ZIP smoke PASS. The build rewrites the tracked, unsigned `utils/ScreenCapture/AIToolsCapture.exe` with header-only nondeterministic bytes when its source is unchanged: `git checkout --` it rather than committing noise (the zip holds a separately signed copy).
+2. Upload: `scp -o BatchMode=yes SethsAIToolsWindows.zip rtsoft@rtsoft.com:www/files/SethsAIToolsWindows.zip` (passwordless from Seth's PC). `UpdateFilesRemotely.bat` does the same via `%RT_PROJECTS%\UploadFileToRTsoftSSH.bat` but needs `base_setup.bat` env and ends in `pause`, so use the direct `scp` from a tool shell.
+3. Verify: `curl -sI https://www.rtsoft.com/files/SethsAIToolsWindows.zip` Content-Length equals the local zip's bytes.
+4. `git push origin main`, then confirm the raw GitHub `latest_version_checker.json` shows the new number.
 
 ## Hard Rules
 
