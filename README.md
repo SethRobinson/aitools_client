@@ -4,7 +4,7 @@ License:  BSD style attribution, see LICENSE.md
 
 # Download
 
-Download the latest: V3.07 (Oct 8th, 2026) [AI Tools Client (Windows, 158.9 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) (codesigned by me)
+Download the latest: V3.08 (Nov 1st, 2026) [AI Tools Client (Windows, 160.0 MB)](https://www.rtsoft.com/files/SethsAIToolsWindows.zip) (codesigned by me)
 
 ## Features
 
@@ -20,6 +20,16 @@ Download the latest: V3.07 (Oct 8th, 2026) [AI Tools Client (Windows, 158.9 MB)]
 - Privacy respected - does not phone home or collect any statistics, purely local usage. (it does check a single file on github.com to check for newer versions, but that's it)
 
 ## Recent changes
+
+### V3.08 (Nov 1st, 2026)
+
+* MOSS-Image is now AI Chat's default text-to-image model (normal and fast 8-step turbo presets), including poster and magazine cover text
+* Built-in Windows screen region recording with system audio, HDR tone mapping, aspect locks, custom FPS, countdowns and trim export, plus a floating desktop clock/stopwatch
+* YouTube downloads can use a remembered Firefox login (with a test button in Settings > Web) and retry automatically; fixed video ranges and transcripts
+* AI Chat settings now live in the main Settings window; optional controls in thinking blocks; per-instance vision reasoning level for captions and image checks
+* Added GPT-6 and Claude 5.5 / Fable 5.1 models; many LLM streaming, Ollama, Gemini and Anthropic request fixes
+* Lots of reliability fixes: ComfyUI cancel/failure reporting, texture leaks, undo after external edits, clipboard paste, AI Chat action handling and the CLI surviving network drops
+* Release builds are now smoke-tested from a freshly extracted ZIP
 
 ### V3.07 (Oct 8th, 2026)
 
