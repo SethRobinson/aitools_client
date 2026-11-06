@@ -1,8 +1,6 @@
 # Media import: clipboard, FFmpeg helpers, movie playback and the clip chooser
 
-Deep-dive for `utils/RTClip.*`, `Assets/RT/RTClipboardFileList.cs`, `Assets/_Script/LLM/AIChat/Video/FfmpegTool.cs`, `ChatVideoClipChooser.cs` and `Assets/_Script/Pic/PicMovie.cs` (Media Foundation playback rules). yt-dlp's role in `web_video` is covered in `web_media.md`; clip audio normalization and the AI Chat import flow are here.
-
-Moved verbatim from AGENTS.md on 2026-09-13 (bullet style kept); update this file when the feature changes and keep the AGENTS.md index entry to one or two lines.
+Deep-dive for `utils/RTClip.*`, `Assets/RT/RTClipboardFileList.cs`, `Assets/_Script/LLM/AIChat/Video/FfmpegTool.cs`, `ChatVideoClipChooser.cs` and `Assets/_Script/Pic/PicMovie.cs` (Media Foundation playback rules). yt-dlp's role in `web_video` is covered in `web_video.md`; clip audio normalization and the AI Chat import flow are here.
 
 ## Clipboard helper and paste
 

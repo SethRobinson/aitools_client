@@ -211,21 +211,4 @@ Release builds call BuildScreenCapture after Unity builds and before staging,
 sign AIToolsCapture.exe, and verify four first-party signatures. Vendor DLLs retain
 their licenses; the VC runtime retains its original bytes. See `release_packaging.md`.
 
-Validation (2026-10-18): helper/native and Unity C# compilation and
-2404 offline recorder checks and 18 synthetic overlay checks passed, including all aspect-ratio choices, all four
-drag/resize directions, monitor-edge clamping, stable pixel rounding, preference
-round trips, custom FPS validation/export, fixed-size bounds, movement and zero/fractional countdowns.
-523 synthetic GPU checks cover HDR highlights,
-SDR white normalization, RGB channel order, native sizes, SDR passthrough and renderer
-state preservation. Seth confirmed the original live recording works; the new HDR
-path, flash prevention, startup responsiveness and interactive rectangle controls
-still need live acceptance. Mixed-DPI UI,
-hardware encoder fallback, device loss and a clean Windows machine remain manual
-acceptance checks. Automated desktop capture or input requires Seth's explicit
-authorization; compile and synthetic checks do not exercise those paths.
-
-Clock validation (2026-10-20): helper and Unity C# compilation passed; 2723 offline
-recorder checks and 73 synthetic artwork checks passed (55 clock checks plus the
-existing 18 selection-overlay checks). Synthetic clock previews were inspected.
-Live clock dragging, DPI transitions, focus/hover behavior, minimize/close behavior,
-and inclusion in normal or accelerated recordings still require manual acceptance.
+Still needing live acceptance (automated desktop capture/input requires Seth's explicit authorization; compile and synthetic checks do not exercise these): the HDR path, flash prevention, startup responsiveness, interactive rectangle controls, mixed-DPI UI, hardware encoder fallback, device loss, a clean Windows machine, and the clock's dragging, DPI transitions, focus/hover, minimize/close and inclusion in recordings.

@@ -2,8 +2,6 @@
 
 Deep-dive for `Assets/_Script/GUI/AppSettingsPanel.cs` (the unified Settings window and the `config.txt` keys it writes) and `MainToolPanelModeController.cs`. The round-trip rule (every parsed key must be re-emitted by `Config.BuildModernConfigText`) is in `AGENTS.md`.
 
-Moved verbatim from AGENTS.md on 2026-09-13 (bullet style kept); update this file when the feature changes and keep the AGENTS.md index entry to one or two lines.
-
 ## AppSettingsPanel
 
 - **AI Chat** contains the entire former AI Chat Settings dialog: main prompt editor, scrollable loaded skills, media/thinking/debug/context options, session post-message text, Compact controls, attachment size, preset prefix and media-on-Clear count. The chat's Settings button opens `AppSettingsPanel.Show(AppSettingsTab.AIChat)`. `AIChatSettingsPanel` now builds embedded content and uses the main window's footer for Reload skills, Open aichat folder and Save & Close; it never creates another canvas/window. The tab also works before AI Chat has been opened. Main Settings sorts above AI Chat and below advanced LLM Settings.

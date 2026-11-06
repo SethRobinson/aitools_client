@@ -4,306 +4,211 @@ Project operating instructions for AI assistants working in this repository.
 
 ## Shared Project Memory
 
-- At the start of each new task or thread involving this repository, read this file before inspecting files, running commands, making a plan, or taking any other project action.
-- Treat follow-up replies in the same continuous task as part of that task. Do not reread this file unless the repository or working directory changes, this file is modified, or its instructions are no longer available in context.
-- Treat this file as the shared project memory for AI assistants.
-- Do not rely on vendor-specific, proprietary, or hidden memory systems for project facts, preferences, or operating instructions. (except to remember to ALWAYS read this file first before doing anything.  Remember that.)
-- Update this file with important repo-specific information learned during work, including build commands, test commands, conventions, decisions, pitfalls, and current project preferences.
-- Keep this file accurate and current. Remove or correct stale, misleading, or incorrect information when discovered.
-- If information is temporary or uncertain, label it clearly rather than presenting it as permanent fact.
+- Read this file at the start of every new task in this repo, before any other action. Follow-up replies in the same task do not need a reread unless this file changed or is no longer in context.
+- This file is the shared memory for every AI tool (Claude, Codex, Cursor, ...). Do not keep project facts in vendor-specific or hidden memory systems.
+- Also read `agents_local.md` if it exists: per-checkout/developer notes (machines, ssh targets). It is never checked in.
+- Record durable repo knowledge here or in the linked doc: build/test commands, conventions, decisions, pitfalls, Seth's preferences. Fix or delete stale information when you find it, and label temporary or uncertain notes as such.
 
-Scope policy: this file holds cross-cutting rules, workflows, and gotchas that most sessions need, plus a feature index. Keep it around 30 KB. Feature deep-dives live in `docs/<topic>.md`: before working on a feature listed in the index, read its doc; when finishing feature work, update that doc and keep the index entry here to one or two lines (where it lives + the non-obvious constraint). Cross-cutting rules and new gotchas still land here directly. When a change makes anything stale, here or in a linked doc, update it in the same change.
+### Keeping docs current
 
-Also open and read agents_local.md (if it exists) - this should be used for useful info that pertains to this specific checkout/developer, like info on which systems it can ssh into and use for building or whatever.  This should not be checked in to git.
-
-## Testing
-
-- When possible, design automated tests for new features and bug fixes.
-- Run relevant automated tests after finishing changes to guard against regressions.
-- If tests cannot be run or do not exist, state that clearly in the handoff and describe any manual verification performed.
-
-## Security
-
-- Never commit sensitive data, including credentials, tokens, passwords, private keys, cookies, customer data, personal data, or machine-specific authentication material.
-- If an AI assistant needs authentication data or other secrets for local work, use `agents_secret.md` for those notes.
-- `agents_secret.md` must stay ignored by git and must not be committed.
-- Do not put secrets in commit messages, logs, issue text, pull request descriptions, generated docs, or other tracked files.
-- Before committing, review staged changes for accidental secrets.
-
-## Safety
-
-**Destructive deletes: fail closed.** This applies to scripts, application code, remote commands, and commands run by agents, including `deltree`, `rmdir /s`, `rd /s`, `del` wildcards, `rm -rf`, `Remove-Item -Recurse`, `Directory.Delete(..., true)`, and loops that delete wildcard matches.
-
-- Never assume the current working directory and never pass only an unchecked path variable. Anchor cleanup to the script location or the application's absolute root. Check every contributing variable for unset, empty, or whitespace-only values BEFORE constructing or normalizing paths; reject relative paths, filesystem roots, variable-supplied traversal, and unexpected destinations.
-- Keep a literal directory or filename component at the destructive call whenever possible, such as `build\win`, `tempCache`, or `${HOME:?}/www/${web_sub_dir:?}/Build`. Checking that a variable is nonblank is necessary but is not enough: validate the final absolute target belongs to the intended directory. Quote paths, use literal-path APIs, and keep shell options separate from path arguments.
-- Check ancestors and recursive contents for symlinks/junctions before bulk deletion. Refuse unsafe paths instead of following links. Wildcard cleanup must use a fixed, validated directory and a narrow pattern; validate any variable part of the pattern, enumerate only inside that directory, and delete the checked individual files with literal APIs.
-- A failed validation or directory change must stop the operation. Never continue to cleanup, packaging, or upload after a failed guard. Agent-issued recursive deletes must spell out a checked full literal target.
-- Windows build cleanup is centralized in `scripts/CleanBuildOutput.ps1` (`Reset` / `Package`); remote WebGL cleanup is in `scripts/CleanWebGL.sh`, preceded by `scripts/ValidateWebGLUpload.ps1`. Runtime bulk cleanup uses `Assets/RT/RTSafeFileSystem.cs` for the fixed `tempCache` tree and validated `ytdlp_<8 hex digits>.*` files. Offline checks: `pwsh -File scripts/VerifyDeleteSafety.ps1` (Windows, PowerShell 7) and `sh scripts/VerifyWebGLCleanup.sh` (Linux/WSL). Both retain disposable fixtures and do not upload anything.
-
-## Computer Control
-- MCP server operations within the user's requested task do not require an
-  additional permission question, including using an application's MCP to
-  inspect, create, edit, validate, or export its content.
-- Taking screenshots of the desktop or controlling the desktop still requires
-  express permission in the current request. This includes Computer Use,
-  desktop UI automation, SendInput, clicking, and typing. Using MCP as a wrapper
-  for those desktop actions does not bypass this requirement.
-- Permission to complete a task, inspect an app, compare behavior, or proceed
-  autonomously does not imply permission for desktop screenshots or control.
-- Driving applications through their own scripting interfaces (for example Adobe
-  Photoshop via COM `DoJavaScript`) is always allowed; it does not see or control
-  the desktop. Only desktop screenshots and desktop input control need permission.
-
-## Git
-
-- Never add OpenAI/Codex/Claude etc as a co-author on git commits.
-- Committing locally is allowed and expected (Seth, 2026-09-13): commit each self-contained change once it compiles, one logical change per commit with a descriptive message, instead of one big mixed commit that is hard to follow. Never commit secrets or the ignored local files (see Security).
-- NEVER `git push` (and do not `git pull`) unless explicitly told to. "Commit" means commit
-  locally only; committing is never permission to push.
-
-## Keeping this file current
-
-Update this file when a change touches any of:
-- Build/run commands, build scripts, or what they copy/produce (the "Essential Commands" section).
-- App version, Unity version, main scene, or other "Current local facts".
-- Architecture: renamed/added/removed core scripts, renderers (`RTRendererType`), LLM providers (`LLMProvider`), job-script directives/placeholders, AI Chat flow, automation control endpoints, or experiment folders.
-- Hard rules, directory layout, or CLI capabilities/limits.
-
-## Project Overview
-
-Seth's AI Tools is a Unity 6 Windows application that provides a native front-end for ComfyUI workflows, image/video generation, LLM-assisted workflows, AI chat, and several interactive experiments.
-
-Current local facts:
-- Unity editor version: `6000.6.0f1` (`ProjectSettings/ProjectVersion.txt`)
-- App version in code/version metadata: `3.08`
-- Main scene: `Assets/Main.unity`
-- Rendering: URP 17.6.0, Forward/Render Graph, Gamma; Windows Ultra retains 8x MSAA. Configuration and validation: `docs/rendering.md`.
-- Primary platform: Windows desktop; a limited Python CLI (Windows + Linux) also exists under `cli/`
-
-### Bumping the app version
-
-When the user says "bump the version", update ALL of these in the same task (do not stop after the code change):
-1. `Assets/_Script/Config.cs` - `m_version` float (e.g. `3.02f`).
-2. `latest_version_checker.json` (repo root) - `latest_version` number.
-3. This file's "App version in code/version metadata" line above.
-4. `README.md` - the `# Download` line (version number, date, and the zip size in MB) AND add a new `### V<x.yz> (<date>)` entry at the top of `## Recent changes` summarizing what changed since the last release (derive it from `git log <last-version-bump>..HEAD`).
-
-Use the current date for README date strings. The download zip size changes per build; check the freshly built `SethsAIToolsWindows.zip` size and match it. README MB is decimal (bytes / 1,000,000, one decimal place).
-
-### Releasing (upload + push)
-
-Only when Seth asks to upload/release. Order matters: `UpdateChecker.cs` reads `latest_version_checker.json` from GitHub `main`, and its Download button opens the fixed `https://www.rtsoft.com/files/SethsAIToolsWindows.zip`, so upload the zip BEFORE pushing a version bump (otherwise users are prompted to download the old build).
-1. Build with `BuildWin64.bat` (see Essential Commands) and confirm it ends with the fresh-ZIP smoke PASS. The build rewrites the tracked, unsigned `utils/ScreenCapture/AIToolsCapture.exe` with header-only nondeterministic bytes when its source is unchanged: `git checkout --` it rather than committing noise (the zip holds a separately signed copy).
-2. Upload: `scp -o BatchMode=yes SethsAIToolsWindows.zip rtsoft@rtsoft.com:www/files/SethsAIToolsWindows.zip` (passwordless from Seth's PC). `UpdateFilesRemotely.bat` does the same via `%RT_PROJECTS%\UploadFileToRTsoftSSH.bat` but needs `base_setup.bat` env and ends in `pause`, so use the direct `scp` from a tool shell.
-3. Verify: `curl -sI https://www.rtsoft.com/files/SethsAIToolsWindows.zip` Content-Length equals the local zip's bytes.
-4. `git push origin main`, then confirm the raw GitHub `latest_version_checker.json` shows the new number.
+- Scope: this file holds cross-cutting rules, workflows, gotchas and a feature index. Feature deep-dives live in `docs/<topic>.md` (index below).
+- Before working on a feature, read its doc. When finishing, update that doc in the same change and keep the index entry here to one or two lines (where it lives + the non-obvious constraint).
+- Size limit: no doc (this file included) over 25 KB; keep this file around 20 KB. When a doc grows past that, trim history first, then split by topic.
+- Write current behavior and rules, not changelogs. Drop "until 2026-xx we did X" stories once they stop guiding work; git history keeps them.
+- Update this file when a change touches build/run commands or what they produce, app/Unity version or main scene, core scripts / renderers (`RTRendererType`) / LLM providers (`LLMProvider`) / job-script directives / AI Chat flow / automation endpoints / experiment folders, hard rules, directory layout, or CLI capabilities.
 
 ## Hard Rules
 
-- Never push to or pull from git without explicit user directions. Local commits are allowed and expected (see "Git").
-- Do not read or edit files starting with `test_`, `Test_`, or `TEST_` unless the user explicitly names them or asks to work with test files.
-- Treat ignored config and debug files as local/private unless the user explicitly asks for them. This includes `config.txt`, `config_llm.txt`, `config_preferences.txt`, `log.txt`, generated `*_json_*` files, `comfyui_workflow_to_send_api.json`, and cached ComfyUI API files.
-- Do not revert unrelated work. This repo may already contain user edits in many files.
-- Writing style: no em-dashes or en-dashes used as em-dashes in any prose (this file, docs, skill/prompt text, commit messages, chat replies). Use a colon, a comma, parentheses, a spaced hyphen (the house style here), or two sentences. Seth's standing rule; the prose files were swept clean on 2026-08-31.
-- Keep this file current: if a change you make invalidates anything documented here, update AGENTS.md in the same task (see "Keeping this file current").
+- Never `git push` or `git pull` unless explicitly told to. "Commit" means commit locally only.
+- Committing locally is allowed and expected (Seth, 2026-09-13): commit each self-contained change once it compiles, one logical change per commit with a descriptive message.
+- Never add OpenAI/Codex/Claude or any AI as a co-author, and no AI-attribution lines in commits or PRs.
+- Do not read or edit files starting with `test_`, `Test_` or `TEST_` unless the user names them or asks to work with test files.
+- Treat ignored config and debug files as private unless asked: `config.txt`, `config_llm.txt`, `config_preferences.txt`, `log.txt`, generated `*_json_*` files, `comfyui_workflow_to_send_api.json`, cached ComfyUI API files.
+- Do not revert unrelated work; the tree may contain user edits in many files.
+- Writing style: no em-dashes or en-dashes used as dashes in any prose (docs, skill/prompt text, commits, chat replies). Use a colon, comma, parentheses, a spaced hyphen (house style) or two sentences.
+
+## Testing
+
+- Design automated tests for new features and bug fixes when possible, and run the relevant ones after changes.
+- If tests cannot be run or do not exist, say so in the handoff and describe the manual verification done.
+- C# compile check without the editor: `dotnet build Assembly-CSharp.csproj --nologo -v:q` (needs Unity-generated root `.csproj` files; does not validate assets, scenes or runtime).
+- When the editor bridge is enabled, prefer it for compile and runtime validation (see "Automation Control Server").
+- There is no app-wide test command. Existing suites: Input System EditMode tests (`docs/input.md`), offline scripts in `scripts/Verify*.ps1` (delete safety, release package, release smoke, screen capture, AI Chat actions/settings, web media), and the opt-in rendering fixture (`docs/rendering.md`).
+
+## Security
+
+- Never commit secrets: credentials, tokens, passwords, private keys, cookies, customer or personal data, machine-specific auth material. Not in commits, logs, issues, PRs or generated docs either.
+- Local secrets and machine-specific notes for agents go in `agents_secret.md`, which must stay gitignored.
+- Review staged changes for accidental secrets before committing.
+
+## Safety
+
+**Destructive deletes: fail closed.** Applies to scripts, app code, remote commands and agent commands (`rm -rf`, `Remove-Item -Recurse`, `rd /s`, `del` wildcards, `Directory.Delete(..., true)`, delete loops over wildcard matches).
+
+- Never assume the working directory or pass an unchecked path variable. Anchor to the script location or the app's absolute root. Reject unset/empty/whitespace variables BEFORE building paths, and reject relative paths, roots, variable-supplied traversal and unexpected destinations.
+- Keep a literal component at the delete call (`build\win`, `tempCache`, `${HOME:?}/www/${web_sub_dir:?}/Build`) and validate that the final absolute target is inside the intended directory. Quote paths and use literal-path APIs.
+- Check ancestors and contents for symlinks/junctions before bulk deletes; refuse instead of following links. Wildcard cleanup uses a fixed validated directory and a narrow pattern, deleting checked individual files.
+- A failed validation or directory change stops the operation: never continue to cleanup, packaging or upload. Agent-issued recursive deletes spell out a checked full literal target.
+- Existing guarded helpers: `scripts/CleanBuildOutput.ps1` (`Reset` / `Package`), `scripts/CleanWebGL.sh` after `scripts/ValidateWebGLUpload.ps1`, and `Assets/RT/RTSafeFileSystem.cs` at runtime (fixed `tempCache` tree, `ytdlp_<8 hex>.*` files). Checks: `pwsh -File scripts/VerifyDeleteSafety.ps1` and `sh scripts/VerifyWebGLCleanup.sh` (Linux/WSL).
+
+## Computer Control
+
+- MCP operations within the requested task need no extra permission question (inspecting, creating, editing, validating or exporting an app's content through its MCP).
+- Desktop screenshots and desktop control (Computer Use, UI automation, SendInput, clicking, typing) need express permission in the current request, including when wrapped by an MCP. Permission to "finish the task" or "proceed autonomously" does not imply it.
+- Driving an app through its own scripting interface (for example Photoshop COM `DoJavaScript`) is always allowed.
+
+## Project Overview
+
+Seth's AI Tools is a Unity 6 Windows app: a native front-end for ComfyUI workflows, image/video generation, LLM-assisted workflows, AI chat, and several interactive experiments.
+
+Current facts:
+- Unity editor: `6000.6.8f1` (`ProjectSettings/ProjectVersion.txt`)
+- App version: `3.08` (`Config.cs` `m_version`)
+- Main scene: `Assets/Main.unity` (open it and enter Play mode for editor development)
+- Rendering: URP 17.6.0, Forward/Render Graph, Gamma; Windows Ultra keeps 8x MSAA (`docs/rendering.md`)
+- Platform: Windows desktop; a limited Python CLI (Windows + Linux) lives in `cli/`
+
+### Bumping the app version
+
+When asked to "bump the version", update ALL of these in the same task:
+1. `Assets/_Script/Config.cs` `m_version` (e.g. `3.02f`).
+2. `latest_version_checker.json` `latest_version`.
+3. The "App version" line above.
+4. `README.md`: the `# Download` line (version, current date, zip size in decimal MB with one decimal, from the freshly built `SethsAIToolsWindows.zip`) AND a new `### V<x.yz> (<date>)` entry at the top of `## Recent changes`, summarized from `git log <last-version-bump>..HEAD`.
+
+### Releasing (upload + push)
+
+Only when Seth asks. `UpdateChecker.cs` reads `latest_version_checker.json` from GitHub `main` and its Download button opens the fixed `https://www.rtsoft.com/files/SethsAIToolsWindows.zip`, so upload BEFORE pushing a version bump.
+1. Build with `BuildWin64.bat` and confirm the fresh-ZIP smoke PASS. Revert the rebuilt `utils/ScreenCapture/AIToolsCapture.exe` with `git checkout --` (see `docs/release_packaging.md`).
+2. Upload: `scp -o BatchMode=yes SethsAIToolsWindows.zip rtsoft@rtsoft.com:www/files/SethsAIToolsWindows.zip` (passwordless from Seth's PC). Avoid `UpdateFilesRemotely.bat` from a tool shell: it needs `base_setup.bat` env and ends in `pause`.
+3. Verify `curl -sI https://www.rtsoft.com/files/SethsAIToolsWindows.zip` Content-Length equals the local zip size.
+4. `git push origin main`, then confirm raw GitHub `latest_version_checker.json` shows the new number.
 
 ## Essential Commands
 
-```bat
-BuildWin64.bat
-```
-
-Builds the Windows release from its own script directory. It calls `app_info_setup.bat`, uses `scripts/CleanBuildOutput.ps1 -Phase Reset` to validate and recreate `build/win`, invokes Unity with `Win64Builder.BuildRelease` and `Assets/Settings/Build Profiles/ReleaseBuildProfile.asset`, builds/checks the recorder with `scripts/BuildScreenCapture.ps1 -Check`, stages tracked runtime files with `scripts/ReleasePackage.ps1 -Phase Stage`, prunes development output with `-Phase Package`, signs binaries, and creates `SethsAIToolsWindows.zip`. Copy, Unity/helper build-result, cleanup, signing, content and archive validation failures stop packaging. Packaging rules, retired presets and offline checks: `docs/release_packaging.md`.
-
-With the editor already open, use `BuildWin64.bat --editor` (current bridge enabled, ReleaseBuildProfile active, Play stopped, scenes saved). It builds through `POST /windows_release_build` instead of starting a second editor, then runs the same packaging steps. Both build paths pass RT_RELEASE as a per-build extra define, without rewriting profile assets. Every build ends with `scripts/SmokeReleaseZip.ps1`: fresh extraction, headless Unity `-package-smoke-check`, native-recorder dependency load and synthetic FFmpeg encode/probe/decode. Run the smoke script alone to recheck an existing ZIP; evidence is retained under `build/package-smoke-<guid>`. This checks startup/dependencies without desktop capture/input; it is not a clean-OS or interactive rendering test. Details: `docs/release_packaging.md`.
-
-Build timestamps are stamped automatically by `Assets/RT/Editor/BuildTimestampWriter.cs` (`IPreprocessBuildWithReport`), which writes `Assets/Resources/build_date.txt` (gitignored, folder auto-created) at the start of every player build regardless of build path (editor Build menu, Build Profiles window, batchmode). `RTBuildInfo.Timestamp` loads it at runtime and falls back to the current time in the editor. There is no `GenerateBuildDate.bat` anymore.
-
-```bat
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\ReleasePackage.ps1 -Phase Stage
-```
-
-Release staging copies only tracked release inputs: runtime folders, the Python CLI (without its environment/config or unrelated imagegen wrapper), model data, public `config_cam.txt`, README and LICENSE. Private configs, cached APIs, test/local files, README screenshots (`Media/`), RTClip source archive and four retired presets are excluded before copying. README images use online links. Requires Git. `utils` includes RTClip and FFmpeg/ffprobe/yt-dlp plus their license files; third-party helpers are not signed by the build scripts. ScreenRecorderLib is a pinned source build with our HDR patch; other vendor binaries retain their original bytes.
-
-`UpdateBuildDirConfigFiles.bat` (repo root) is a GITIGNORED local dev helper, not part of release packaging (Seth, 2026-10-08): it xcopies the runtime folders plus the private `config*.txt` and test/local files into `build\win` so a test build matches the checkout. Never commit it, never make `BuildWin64.bat` depend on it, and do not "fix" it to exclude private files.
-
-AI-harness note for running `BuildWin64.bat` from a tool shell: the script anchors itself to its own directory and calls its helper scripts by absolute path. Set `NO_PAUSE=1` so a background run cannot hang at `pause`. The build needs the parent-folder `..\base_setup.bat`, registry queries to find Unity, and the `%RT_UTIL%` / `%RT_PROJECTS%` tool folders (local specifics live in `agents_secret.md`). Working invocation from PowerShell in the repo root: `$env:NO_PAUSE='1'; cmd /c .\BuildWin64.bat` (append `--editor` when the editor bridge is active). Check the exit code as well as `build\win\aitools_client.exe`; setup, cleanup, or Unity failures stop packaging. The ordinary batch mode must not run against an open editor project.
-
-There is no current root `BuildWebGL.bat`. WebGL build support is present in `Assets/RT/Editor/WebGLBuilder.cs`, and upload scripts exist (`UploadWebGLRSync*.bat`), but do not document or call a missing WebGL build script unless it is reintroduced.
-
-For editor development, open `Assets/Main.unity` in Unity and enter Play mode.
-
-For the Python CLI subset:
-
-```bash
-python cli/aitools_cli.py "<prompt>" output.png -p "Prompt To Image (Qwen Image 2.1)"
-```
-
-On Windows, use `cli\aitools_cli.bat` instead - the first run creates `cli\venv\` and installs dependencies automatically.
-
-The CLI uses `cli/config.txt`, `../ComfyUI`, and `../Presets`. Dependencies are `requests`, `websocket-client`, and `Pillow` (`cli/requirements.txt`). See `cli/README.md` before changing CLI behavior.
-
-AI agents (Claude, Codex, etc.) can and should use this CLI themselves - on Windows or Linux - to generate images and verify workflow/preset changes end-to-end against the user's ComfyUI servers, e.g.:
-
-```bat
-cli\aitools_cli.bat "a cat" out.png -p "Prompt To Image (Qwen Image 2.1)" -v
-cli\aitools_cli.bat "make the sky red" out.png -p "Image To Image (Qwen Image 2.1)" -i input.png
-cli\aitools_cli.bat "put the woman from <image2> into <image1>" out.png -p "Image To Image (Qwen Image 2.1)" -i scene.png -i person.png
-cli\aitools_cli.bat "she waves and says hi" out.mp4 -p "Image To Video (MiniMax H3) 5s" -i start.png --duration 8
-cli\aitools_cli.bat "<Picture 1> dances like <Video 1>" out.mp4 -p "Reference Video To Video (MiniMax H3) 5s" --video clip.mp4 -i face.png
-cli\aitools_cli.bat "test" out.mp4 -p "Prompt To Video (MiniMax H3) 5s" --width 1152 --height 640 --dry-run
-```
-
-Text-to-image, single-step image presets, and all four MiniMax H3 movie modes work (t2v / i2v start frame / reference photos / reference video+photos). Repeatable `-i`/`--video`/`--audio` reference inputs, `--width`/`--height`/`--duration` (H3 grid-snapped, unclamped), start-frame aspect auto-fit, ffprobe silent-clip pruning, `@upload|...|optional|` slot pruning, per-run `AITOOLS_UNIQUE_ID` substitution, `--dry-run` (writes `<output>.api.json` with zero server contact: use it to validate preset/workflow changes offline) and the `--alpha-key`/`--alpha-from-luma`/`--sprite-sheet` VFX post-processing are all documented in `cli/README.md` ("Generating movies (MiniMax H3)", "Transparent-background movies", "Preset support"). Multi-step chains and LLM presets error out by design.
-
-## Current Architecture
-
-### Core Unity App
-
-- `Assets/_Script/GameLogic.cs` is the central UI/state coordinator. It owns prompts, negative prompts, generation parameters, selected renderer, preset/job-list text, temp image slots, global variables, and normal vs experiment mode.
-- `Assets/_Script/Config.cs` loads `config.txt` and `config_cam.txt`, manages `GPUInfo` server entries, renderer selection, server busy state, per-server overrides, and the generated top-right server status rows.
-- `Assets/_Script/ImageGenerator.cs` owns the global generation loop, GPU event queues, server selection, continuous generation, and throttling when job scripts start with LLM work before GPU work.
-- `Assets/_Script/GUI/AppSettingsPanel.cs` is the unified Settings window (General, ComfyUI Settings = `AppSettingsTab.Configuration`, Audio, Web, AI Chat; the "LLM Settings" tab is a launcher that opens the standalone `LLMSettingsPanel` dialog). Its tabs write the modern subset of `config.txt` through `Config.BuildModernConfigText`, which REGENERATES the whole file: every parsed `set_*` / `add_server` key must be re-emitted there or Settings Apply wipes it (the Brave, STT and audio-gateway keys included). Brave API SafeSearch defaults to off. The AI Chat tab embeds the full chat settings page; the chat Settings button opens this tab, and leaving it saves edits without reconnecting. Tabs, keys, server priority order, forced reconnect and the compact/manual Tools panel controller: `docs/settings.md`.
-- `Assets/_Script/PresetManager.cs` reads and writes `Presets/*.txt` files using `COMMAND_START|...COMMAND_END` blocks and `COMMAND_SET|...` lines.
-- `Assets/_Script/VariableManager.cs` implements `%variable%` substitution for job scripts. Variables are local to a `PicMain` unless prefixed with `global_`.
-
-### Rendering
-
-- Active app rendering uses the assets in `Assets/Settings/Rendering/`; all quality levels explicitly select URP. Keep image/movie surfaces unlit and post-processing off. `RTUtil.RenderTextToTexture2D` uses synchronous URP `SingleCameraRequest` and must preserve immediate RGBA output. Migration scope, excluded legacy experiments, bridge validation/build commands and rollback: `docs/rendering.md`.
-
-### Input
-
-- Input System 1.20.0 is an explicit dependency; project settings AND both build profiles use `activeInputHandler: 1` (new system only). `Assets/RT/Input/` is the `RT.Input` assembly: `RTInput` provides null-safe polling while retaining serialized `KeyCode` bindings, and `RTInputManager` keeps four logical gamepad players. Do not add legacy `UnityEngine.Input` reads. Input System 1.20 already normalizes wheel ticks, so do not divide wheel values by 120. Architecture, virtual-device tests, restart requirement and smoke checks: `docs/input.md`.
-
-### Per-Image Pipeline
-
-- `Assets/_Script/Pic/PicMain.cs` is the main per-image controller. It stores textures, masks, temp images, job queues, job history, undo state, LLM manager references, and the job-script interpreter.
-- `Assets/_Script/Pic/PicTextToImage.cs` loads ComfyUI workflow JSON, calls the ComfyUI workflow-to-API converter when needed, writes cached API JSON, applies `@replace` and placeholder substitution, sends `/prompt`, tracks progress, and writes debug JSON on errors.
-- Every post-submit failure path in `PicTextToImage` must end in `FinishUpEverything(false)` and go through `PicMain.ReportRenderFailure` (frees the GPU, clears `m_waitingForPicJob`, tells the AI Chat model); while `/history` is empty the poll probes `/queue` and gives up on a lost job; a multi-input job line pins its ComfyUI server (`m_uploadPinnedServerID`) from the first upload through `run_workflow`. Details and history: `docs/workflows.md`.
-- `Assets/_Script/Pic/PicGenerator.cs` handles continuous img2img/inpaint generation from an existing pic.
-- Other `Pic/*` components are focused tools: mask editing, inpaint, upscale, interrogation, movie display, text-to-image status, info panels, size/menu nav, and target rectangles. Info-panel reference previews are captured per upload slot, including `video2`; stage its own frame with `SetPendingVideoUpload2` (see `docs/workflows.md`).
-
-### Renderers and Servers
-
-`RTRendererType` currently includes:
-- `ComfyUI`
-- legacy/compatibility values: `Any_Local`, `A1111`, `AI_Tools`, `AI_Tools_or_A1111`
-
-The renderer dropdown currently exposes only `ComfyUI`. The legacy API image renderer path was removed; OpenAI LLM support is separate and still lives under the LLM provider stack. A1111 and AI Tools server support are legacy compatibility paths, not active primary targets.
-
-ComfyUI servers must be reachable over HTTP and should be started with `--listen` or equivalent network binding. Current workflows are normal ComfyUI workflows in `ComfyUI/`; API-format cached files are generated beside them as `*_cached_api_version.json`.
-
-### Runtime Helpers
-
-- Windows region recording: `ScreenCaptureController` connects the Tools panel's Record screen button/global Ctrl+Alt+F9 to the net48/x64 helper in `tools/ScreenCapture`, shipped under `utils/ScreenCapture`. HDR conversion, Custom/Fixed regions with aspect locks, editable whole-number FPS, fractional countdowns, native-size trim exports and lifecycle/build details: `docs/screen_recording.md`. Offline build/check: `pwsh -File scripts/VerifyScreenCapture.ps1`; live desktop capture still requires explicit authorization.
-
-- Floating clock: Settings > General > Screen Recording > Show clock and the recorder toolbar's Clock button share one desktop window in the recorder helper. Clock/Stopwatch, optional native-start sync, DPI scaling and preferences: `docs/screen_recording.md`; the clock must remain capture-enabled.
-
-- Bundled helpers, copied with `utils` by release staging (`scripts/ReleasePackage.ps1`); first-party RTClip and AIToolsCapture are signed; vendor binaries below retain their original bytes: `utils/RTClip.*` (clipboard image/file helper; source in `utils/RTClip.zip`, with `Assets/RT/RTClipboardFileList.cs` reading real clipboard file lists in-process), `utils/yt-dlp/yt-dlp.exe` (behind `web_video`, `docs/web_media.md`) and `utils/ffmpeg/bin/ffmpeg.exe` + `ffprobe.exe` (GPL v3 with libx264: keep `utils/ffmpeg/NOTICE.txt` and `licenses/` beside them). Clipboard paste (Ctrl+V in the workspace and in AI Chat) accepts files and videos, not just bitmaps. `FfmpegTool`, `PicMovie` and the Media Foundation seek/playback rules (verify with `POST /movie_state`, never screenshots), preview proxies, clip import and the clip chooser: `docs/media_import.md`.
-
-### Workflows, Presets, and Job Scripts
-
-- `ComfyUI/*.json` contains the workflow files used by the app. There is no current `ComfyUI/FullWorkflowVersions/` folder.
-- `Presets/*.txt` contains job scripts and default prompt settings. AutoPic presets are named `AutoPic*.txt` and are used by Adventure/AI-assisted flows.
-- Placeholders `<AITOOLS_PROMPT>`, `<AITOOLS_NEGATIVE_PROMPT>`, `<AITOOLS_AUDIO_PROMPT>`, `<AITOOLS_SEGMENTATION_PROMPT>`, `<AITOOLS_INPUT_1..14>` (`PicJob.MAX_INPUT_SLOTS`), `<AITOOLS_PROMPT_1..8>` and the per-render `AITOOLS_UNIQUE_ID` token (put it in save-node `filename_prefix`es so concurrent renders can't collide); directives `@replace`, `@upload` (sources `image`/`image1..image10`, `temp1..3`, `video`/`video1`, `video2`, `audio1..3`, trailing `|optional|` prunes the loader when the source is missing), `@resize`, `@resize_if_larger`, `@copy`, `@add`, `@set`, `@setimage`, `@clear`, `@fill_mask_if_blank`, `@invert_alpha`, `@no_undo`, `@stopjob`, `@lock_gpu`, `@llm_*`, `@llm_add_image`, `@parse_llm_prompts`, `@prune_input`; `@start`/`@end` blocks; built-in variables such as `%video_fps%` / `%rife_output_fps%`. Full reference: `docs/workflows.md` and `cli/README.md` ("Preset support", the most complete human-facing list; the root `README.md` no longer documents directives). Verify against `PicMain.cs` when behavior matters.
-- Two pitfalls every preset author must know (mechanism and history in `docs/workflows.md`): job-script variables are per-PicMain and SHARED by chained presets, so any preset that can be chained after another needs uniquely prefixed variables (`%vid_width%`, never `%width%`, which `Prompt To Image (Z-Image).txt` sets to 1024); and host dimension/frame-count overrides target the preset `@replace`'s REPLACEMENT half (raw `%var%="N"` or the compiled `command @set|%var%|N|` form), so PREFER a preset default equal to the workflow literal. Range-clamping model-supplied numbers is a forbidden gate (see AI Chat).
-- MOSS-Image (since 2026-10-26) is AI Chat's default text-to-image model: `Prompt To Image (MOSS-Image)` for `generate_image`, `Prompt To Image (MOSS-Image Turbo)` (8-step DMD LoRA) for turbo/fast/draft requests. It is text-to-image only (no image input). Workflows use the bf16 UNET because int8_convrot measured ~2x slower. Details and timings: `docs/workflows.md`.
-- Qwen-Image 2.1 (since 2026-09-24) is the default edit model and the main GUI fallback still preset: `Prompt To Image (Qwen Image 2.1)` for text-to-image (main GUI fallback; in AI Chat only when named) and `Image To Image (Qwen Image 2.1)` for AI Chat `image_to_image` (edits AND new scenes from existing people, 1-10 inputs, `<imageN>` prompt tags); Z-Image / Klein / Bernini / H3 Reference To Image run only when named. Non-obvious: its VAE decodes a slightly noisy alpha, so the default workflows output RGB (the `Prompt To Transparent Image` preset keeps alpha); autogrow slots are 1-based and the pruner keeps each group's base index; a preset declaring `%custom_canvas%="false"` is flipped to true by the host on an explicit width/height. Details: `docs/workflows.md`.
-- Model-specific workflow notes (Bernini-R image/video edit, `Video Remove Background (BiRefNet)`, WAN/RIFE interpolation and the `rife_video` utility preset): `docs/workflows.md`. MiniMax H3 (AI Chat's default video route, FL2VA vs Ref2VA reference presets, turbo/cache variants, 9 photo + 2 clip + 3 audio reference slots, the official prompt format minus the `<d>` dialog markup, costs): `docs/minimax_h3.md`. Non-obvious constraints: the executor keys H3 reference behavior on preset-name substrings ("Reference Video To Video", "Reference To Video", "Reference To Image"), H3 has no negative-prompt path, `duration="N"` is UNCLAMPED on every H3 preset (nearest 17k+5 grid), and H3 models may be installed on only some servers (`agents_secret.md`).
-
-### LLM Systems
-
-- `Assets/_Script/LLM/LLMSettingsData.cs`, `LLMSettingsManager.cs`, and `LLMInstanceManager.cs` manage `config_llm.txt`, active providers, multiple LLM instances, replicas, model lists, context limits, and sampling/reasoning settings.
-- Per-instance job routing is two orthogonal axes: `jobMode` (text-job size only: `Any`/`BigJobsOnly`/`SmallJobsOnly`) plus `supportsVision` (can accept image jobs) and `visionOnly` (reserve for vision - no text). Vision jobs route to `visionOnly` instances first, then any `supportsVision` instance. New OpenAI/Anthropic/Gemini instances default `supportsVision` on; new llama.cpp/Ollama/OpenAI-compatible instances default it off because local text servers often reject image input unless a real vision model/mmproj is loaded. `config_llm.txt` carries a `schemaVersion`; pre-decoupling configs (where vision was encoded in `jobMode` via the legacy `VisionJobsOnly`/`NonVisionOnly` values) are migrated once on load by `LLMInstanceManager.MigrateJobModes()`. The AI Chat caption sidecar warns in-chat when an image needs vision but no active instance has `supportsVision`, and surfaces backend failure details when a marked-vision instance rejects the request.
-- Each instance has a separate "Vision reasoning" level (`LLMProviderSettings.visionReasoningEffort`, default "Same as text") used only by AI Chat vision sidecars (captions, web media checks, `inspect_image`) via `DispatchOneShot(..., visionJob: true)`; thinking models can burn 10k+ reasoning tokens per caption, so No-think there is the fast option. Details: `docs/llm_providers.md`.
-- LLM requests do not impose an optional output-token budget: OpenAI/OpenAI-compatible, llama.cpp, Ollama, and Gemini requests omit their output-limit field, including AI Chat sidecars, PicMain `call_llm`, Adventure, and AI Guide. Legacy llama.cpp/Ollama `max_tokens`, `max_new_tokens`, `max_output_tokens`, `max_completion_tokens`, `n_predict`, and `num_predict` provider parameters are ignored. Anthropic's Messages API requires `max_tokens`, so it receives the known per-model maximum. Model context/output ceilings and server-side generation configuration still apply.
-- AI Chat main turns send `temperature` ONLY when the instance's sampling override is ticked (LLM Settings sampling section); otherwise the field is omitted so the server's model default applies, on every provider (Anthropic/Gemini builders take `includeTemperature`, the OpenAI/OpenAI-compatible builder already had it, llama.cpp/Ollama only ever read the `temperature` parm). Until 2026-09-05 AI Chat borrowed `AdventureLogic.GetExtractor().Temperature`, which is 0 (greedy) until an Adventure config is parsed in the session - so every AI Chat turn ran at temperature 0 unless Adventure had been opened. DeepSeek keeps its model-card values when not overridden; sidecars/one-shots keep their fixed 0.4. AI Guide, Adventure, and PicMain `call_llm` keep their own explicit temperature sources (their config files / job script).
-- `LLMProvider` currently supports `OpenAI`, `Anthropic`, `LlamaCpp`, `Ollama`, `Gemini`, and `OpenAICompatible`.
-- Request URL building (`LLMModelNotFound.BuildChatCompletionsUrl` / `JoinApiPath`: never append `/v1/chat/completions` to a base that already ends in a version segment), the stale-model auto-switch (`LLMModelAutoSwitch`, OpenAI Compatible only), the streaming download handlers (stateful UTF-8 decoder, newline-terminated SSE parsing) and the per-family reasoning/thinking wiring (DeepSeek-V4, GLM-5.3, Qwen Flash-Next, the Z.ai / DeepSeek hosted shapes): `docs/llm_providers.md`. Rules that hold everywhere: resolve thinking through `LLMRequestProfile.ResolveCompatReasoning`, never hand-roll per-site ternaries; adding a family = extend `IsXxxModel` + `HasConfigurableReasoningEffort` + the wire mapping in `LLMRequestProfile`, the branch in `OpenAITextCompletionManager.BuildChatCompleteJSON` (and `TexGenWebUITextCompletionManager` for llama.cpp), and `LLMProviderUI.RebuildReasoningEffortOptions`; `LLMReasoningEffort` is Off/Low/Medium/High/Max ("xhigh" parses to High) and a NEW OpenAI Compatible / llama.cpp instance starts at Off (GLM-5.3 clamps that to Low).
-- `model_data.json` supplies shipped cloud model lists and default endpoints; mirror every change in `LLMModelData.CreateDefault` (models[0] is the default for NEW instances; existing instances keep their selection and get the shipped list merged in). Shipping a new model family also means updating the name-substring branches: `OpenAIRequestProfileResolver.Resolve` (endpoint / reasoning / temperature; an unknown name falls back to Chat Completions + temperature), `AnthropicAITextCompletionManager.ModelRejectsSamplingParams` (400 risk) and `LLMRequestProfile.GetAnthropicMaxOutputTokens` (an unknown name gets the 8K legacy cap). As of 2026-10-13: OpenAI `gpt-6-astra` / `gpt-6.1-sol` / `gpt-6-luna` (Responses API, reasoning, no temperature), Anthropic `claude-opus-5-5` / `claude-fable-5-1` / `claude-sonnet-5-5` / `claude-haiku-5-5` (128K output, no sampling params).
-- `Assets/RT/AI/` contains provider/runtime managers: OpenAI text, Anthropic text, Gemini text, generic OpenAI-compatible/TextGen WebUI, ComfyUI file upload, speech-to-text, TTS, streaming download handlers, and main-thread dispatch.
-
-### AI Chat
-
-- `Assets/_Script/LLM/AIChatPanel.cs` builds the programmatic chat UI and routes chat requests through the same LLM instance/provider stack.
-- Deep-dive: `docs/aichat.md` (attachments and drops, clip import, Main LLM override, Compact, skill autoload delivery, parser tolerance and deferral, thinking window and opt-in controls in think blocks (default off, independent of think stripping), extract_still / rife_video / stitch_video, prompt-cache preservation, inspect_image, context menus, the `gpu=` soft hint, debugging log). Imported image filenames persist as `source_filename` in message metadata and CHAT IMAGES (basename only; bitmap-only pastes have none). Related: `docs/web_media.md` (the six web_* skills, requested-range downloads and paged YouTube transcripts), `docs/audio_generation.md` (generate_* and set_video_audio), `docs/minimax_h3.md` (video routing and prompting), `docs/media_import.md` (clip chooser, playback).
-- **Debugging AI Chat:** read `llm_aichat_log.json` (working dir; one chronological JSON array of `request` / `response` / `action` / `note` events, truncated per play session) FIRST when a chat output is wrong: it shows exactly which Pic each action targeted and what the model emitted. Provider-agnostic last request/response/error files are split by job size (`llm_last_request_sent_big.json` for AI Chat / AI Guide / Adventure, `..._small.json` for sidecars and `call_llm`). Details: `docs/aichat.md` "Debugging".
-- Prompt-cache invariant: the stable prefix (pre/main/post prompt + skill summaries) must not change mid-conversation and NOTHING may `AddInteraction("system")` mid-chat; `BuildPromptChat` folds system-role lines into the FRONT message, which invalidates the server-side prompt cache for the whole history (a ~40 s re-prefill on long llama.cpp chats). Volatile state goes in the per-turn CURRENT STATE tail; runtime notes, autoloaded skill bodies and full captions travel in the info-recap tail of the next user message (`IChatHost.AddSystemInjectionAndBubble`); the only mid-conversation system line is the tagged compact summary. The exact text last sent per history line is cached on `GTPChatLine` and only a real user edit invalidates it.
-- Error visibility: real backend/LLM failures on the main turn render as an always-visible red `Error` bubble (`AddErrorBubble` in `AIChatPanel.cs`) and cloud dispatch never silently substitutes a default model; sidecar failures and local notices are debug-gated `Info` bubbles ("Show debug stuff"). Every web fetch renders an always-visible "Web" bubble by design, COMPACT since 2026-09-13: title + `AppendSummaryLine` outcome lines + status + thumbnails; everything else is the full trace behind the bubble's `[details]` marker (opens in the floating `ChatThinkingWindow`, live). New trace lines default to details-only; use `AppendSummaryLine` for outcomes the user must see (`docs/web_media.md` "Trace bubble format").
-- Stop: `ShouldStopBeInteractable()` in `AIChatPanel.cs` is the single Stop-enable rule (streaming, forced-main wait, inspections and a pending inspect resume, pending auto-resumes, web work, audio generation, a running Compact, parked `stitch_video` / `set_video_audio` source waits); `SetBusyUI` must never compute its own, and every state listed has a cancel path in `OnStopClicked`. Continue turns requested by waits that outlive the reply (stitch, set_video_audio, audio generation) are dropped when a newer turn is current. Known gap: the video-import gate (`_videoImportCount`: clip imports, `set_video_audio`) blocks Send but has no Stop path.
-- Web rules: model `url=` values must pass `WebMediaDownloader.IsAllowedPublicHttpUrl` (public http/https only; redirects followed by hand and re-gated; no raw quote/backslash/whitespace because the URL reaches yt-dlp's command line, which gets it after a `--` terminator); the Brave key and yt-dlp browser/cookie-file settings live in private `config.txt` and MUST stay emitted by `Config.BuildModernConfigText`; the header "Web" checkbox gates all six web skills. YouTube authentication errors offer a dedicated Firefox login and one exact-request retry; `set_youtube_firefox_login` persists reuse, and the profile stays under LocalAppData outside the checkout (`docs/web_media.md`). Real people and named characters go through `web_image` + anchors, never rendered from memory; a voice sample in chat is used via the H3 `audio=` reference and `ref_voice` cloning is never offered as an alternative.
-- Audio: an Audio bubble IS a Movie bubble (`IsChatImageMovie` is true for it; code that must tell video from sound checks `IChatHost.IsChatImageAudio`); the three `generate_*` skills are hidden from the prompt until a gateway URL is configured.
-- Anchors and refs: a `chat_image*` / `source_chat_image` anchor name that doesn't resolve aborts the action immediately; chained actions carrying `anchor=` re-point the registry to the chained Pic; correction notes must name `chat_image` numbers, never attachment indexes; Movie-targeted `image_to_image` / `image_to_movie` requires explicit `movie_frame="true"`. A supplied video used as a reference stays the original clip plus available audio through H3 Reference Video To Video; extracted stills only supplement it (`docs/minimax_h3.md`).
-- `Assets/_Script/LLM/AIChat/Skills/SkillManager.cs` loads `aichat/skills/*.md` plus prompt files in `aichat/`.
-- Do NOT add new deterministic executor gates that block actions over PROMPT-QUALITY judgments (missing quoted dialog, style rules, etc.) - Seth's explicit rule (2026-08-30): "they just cause pain later". Put such rules in skill text/frontmatter instead. The existing structural gates (reference tag mismatch, movie_frame, web preflight) stay; the bar for new ones is a structural/wiring error, not a prompt-writing one. Range-CLAMPING model-supplied numeric parameters counts as a forbidden gate too (2026-08-31: the H3 duration 124..362 clamp silently blocked 1s clips that render fine); pass values through with only structural math like grid snapping, and beware substring preset-name gates going stale when preset variants are added (the exact-"(MiniMax H3)" match missed the Quality/Turbo Cache names).
-- Skill autoload keyword triggers miss real phrasings easily, so routing-critical rules must ALSO appear in each skill's `summary:`/`template:` frontmatter. `video_to_video` additionally has media-aware autoload: when the newest live chat medium is a Movie, deictic scene-edit and speech/audio-edit phrasing loads its full body even without the words video/clip/movie. Movie-targeted `image_to_image` / `image_to_movie` requires explicit `movie_frame="true"`; otherwise the executor blocks and auto-continues. Bernini v2v is silent, so generated/replaced dialogue/audio/sound is likewise blocked and redirected to H3 Ref2VA. When AI Chat's preset prefix is active (for example `test_`), unprefixed requested preset names first try the prefixed file and fall back to the bare production file only if no prefixed preset exists. Preset names then resolve case-insensitively, then by unique punctuation/spacing-only canonicalization, before the conservative fuzzy fallback emits a correction bubble.
-- `ChatPicMirror.cs` mirrors generated pics into chat image bubbles so later actions can reference `chat_image="N"`.
-
-### Automation Control Server (editor testing harness)
-
-A loopback HTTP control server lets external tools (AI agents, scripts) drive the editor and AI Chat for automated end-to-end testing. It survives C# domain reloads and play stop/start, so an external loop can edit code, recompile, and re-test without anyone clicking Play.
-
-**Prefer this automation bridge for Unity/editor validation whenever it is enabled.** Before launching a separate Unity batch/editor process, check `GET /status`; if the bridge is ready, use it to compile (`/rebuild`), drive the app (`/play`, `/stop`, `/settings`, `/llm_settings`, `/open_chat`, `/chat`, `/chat_import_video`, `/click`, `/scroll`, `/pic_cancel`, ...) and capture evidence (`/screenshot`, `/save`, `/chat_images`, `/movie_state`, `/chat_thinking`, `/chat_web_trace`). For UI/AI Chat work, verify with screenshots whenever possible rather than relying only on code inspection. Do not start a second Unity editor/batchmode instance against this project while the editor lockfile/server is active unless the bridge is unavailable or the task specifically requires batchmode.
-
-If a change cannot be validated because the bridge lacks a needed command, add a narrow loopback-only automation endpoint or driver capability in the same task when practical, then document the new endpoint in `docs/automation_bridge.md` (and keep the one-line pointer here current). Keep new automation commands deterministic, local-only, and scoped to testing/inspection; avoid broad privileged operations.
-
-- Files: `Assets/_Script/Automation/AutomationBridge.cs` (runtime seam shared by editor and play-mode driver), `AutomationDriver.cs` (runtime MonoBehaviour; self-spawns in standalone builds with `-enable_automation`), `Editor/AutomationController.cs` (`[InitializeOnLoad]`, raw `TcpListener` on `http://127.0.0.1:8772/`, rebuild state machine persisted in `SessionState`). OFF by default: enable with **Tools > RT Automation > Enable Control Server** (EditorPrefs-persisted). Requests carrying an `Origin` header, or a `Host` that is not loopback, get 403 (browser / cross-site protection); side-effect endpoints answer only POST (GET is limited to `/status` and `/chat_images`, others return 405). The full endpoint catalogue with body keys, the `idle` semantics (it ANDs every AI Chat busy gate plus any chat-generated `PicMain` still rendering) and the async file-write notes: `docs/automation_bridge.md`. Recommended editor pref: **Script Changes While Playing = Stop Playing And Recompile**.
-
-### Experiments
-
-Experiment code lives in `Assets/Experiments/`:
-- `Adventure/` - interactive story, quiz, Twine/HTML export, AutoPic flows
-- `ShootingGallery/` - paintball/gallery target experiment
-- `Pizza/` - pizza generator experiment
-- `Breakout/` - Breakout experiment
-- `CrazyCam/` - older camera/photobooth code; README notes CrazyCam is currently disabled/replaced in practice by SpookyCam-style presets
-
-Prompt/template text for higher-level modes also exists in root `Adventure/` and `AIGuide/`.
+- Windows release: `BuildWin64.bat` (from a tool shell: `$env:NO_PAUSE='1'; cmd /c .\BuildWin64.bat`). With the editor already open and the bridge enabled (ReleaseBuildProfile active, Play stopped, scenes saved) use `BuildWin64.bat --editor`, which builds through `POST /windows_release_build` instead of a second editor. Every build ends with the fresh-ZIP smoke check (`scripts/SmokeReleaseZip.ps1`, rerunnable alone). Flow, staging rules, retired presets, smoke details and gotchas: `docs/release_packaging.md`.
+- Release staging alone: `powershell -NoProfile -ExecutionPolicy Bypass -File scripts\ReleasePackage.ps1 -Phase Stage`. It copies only git-tracked release inputs (new runtime files must be `git add`ed first); private configs, caches, test/local files and `Media/` are excluded.
+- `UpdateBuildDirConfigFiles.bat` is a gitignored local dev helper that intentionally copies private configs into `build\win`. Never commit it, never make the build depend on it, do not "fix" it.
+- There is no root `BuildWebGL.bat`; do not call one.
+- Release checks (offline, disposable fixtures, never upload): `pwsh -File scripts/VerifyDeleteSafety.ps1`, `pwsh -File scripts/VerifyReleasePackage.ps1`, `pwsh -File scripts/VerifyReleaseSmoke.ps1`, `scripts/ReleasePackage.ps1 -Phase VerifyArchive`, and `wsl -d Ubuntu-24.04 -- sh /mnt/f/Unity/aitools_client/scripts/VerifyWebGLCleanup.sh`.
 
 ### Python CLI
 
-The `cli/` folder is a separate Python command-line front-end for ComfyUI generation (Windows + Linux). It intentionally implements only a subset of the Unity app:
-- `aitools_cli.py` - argparse entry point
-- `aitools_cli.bat` - Windows launcher (auto-creates `cli/venv/`, installs `requirements.txt`)
-- `config.py` - `cli/config.txt` parser
-- `presets.py` - subset parser for `Presets/*.txt`
-- `workflow.py` - workflow load/convert/cache, replacements, placeholders, seed override
-- `servers.py`, `comfy_api.py`, `progress.py`, `images.py`, `util.py` - server probing, ComfyUI HTTP/WebSocket calls, image/video upload, image resizing, output save
+AI agents can and should use the CLI (Windows or Linux) to generate images and verify workflow/preset changes end-to-end against the ComfyUI servers. On Windows use `cli\aitools_cli.bat` (first run creates `cli\venv\`); elsewhere `python cli/aitools_cli.py`.
 
-Do not assume every Unity job-script feature works in the CLI. Multi-step chains, temp slots, most LLM commands, and many Unity-only image operations deliberately error or are unsupported there. Movie generation (all four MiniMax H3 modes), repeatable `-i`/`--video`/`--audio` reference inputs, `--width`/`--height`/`--duration` overrides, start-frame aspect auto-fit, ffprobe silent-clip auto-pruning, per-run `AITOOLS_UNIQUE_ID` substitution, `--dry-run` offline validation, and a WS-drop `/history`-polling fallback for long renders are supported; `cli/README.md` "Generating movies (MiniMax H3)" is the reference.
+```bat
+cli\aitools_cli.bat "a cat" out.png -p "Prompt To Image (Qwen Image 2.1)" -v
+cli\aitools_cli.bat "put the woman from <image2> into <image1>" out.png -p "Image To Image (Qwen Image 2.1)" -i scene.png -i person.png
+cli\aitools_cli.bat "she waves and says hi" out.mp4 -p "Image To Video (MiniMax H3) 5s" -i start.png --duration 8
+cli\aitools_cli.bat "test" out.mp4 -p "Prompt To Video (MiniMax H3) 5s" --width 1152 --height 640 --dry-run
+```
+
+- `--dry-run` writes `<output>.api.json` with zero server contact: use it to validate preset/workflow changes offline.
+- Supported: text-to-image, single-step image presets, all four MiniMax H3 movie modes, repeatable `-i` / `--video` / `--audio`, `--width` / `--height` / `--duration`, VFX alpha post-processing. Multi-step chains, temp slots and most LLM commands error out by design.
+- Uses `cli/config.txt`, `../ComfyUI`, `../Presets`. Read `cli/README.md` before changing CLI behavior ("Preset support", "Generating movies (MiniMax H3)", "Transparent-background movies").
+
+## Current Architecture
+
+### Core app
+
+- `Assets/_Script/GameLogic.cs`: central UI/state coordinator (prompts, generation parameters, renderer, preset/job-list text, temp image slots, global variables, normal vs experiment mode).
+- `Assets/_Script/Config.cs`: loads `config.txt` / `config_cam.txt`, `GPUInfo` server entries, server busy state and per-server overrides, top-right server status rows.
+- `Assets/_Script/ImageGenerator.cs`: global generation loop, GPU event queues, server selection, continuous generation, LLM-before-GPU throttling.
+- `Assets/_Script/GUI/AppSettingsPanel.cs`: unified Settings window. **`Config.BuildModernConfigText` REGENERATES the whole `config.txt`**: every parsed `set_*` / `add_server` key (Brave, STT, audio gateway, yt-dlp cookies included) must be re-emitted there or Settings Apply wipes it. Tabs, keys, server order, Tools panel modes: `docs/settings.md`.
+- `Assets/_Script/PresetManager.cs`: `Presets/*.txt` with `COMMAND_START|...COMMAND_END` blocks and `COMMAND_SET|...` lines. `VariableManager.cs`: `%variable%` substitution (per-PicMain unless prefixed `global_`).
+- Rendering: assets in `Assets/Settings/Rendering/`, all quality levels select URP; keep image/movie surfaces unlit and post-processing off. `RTUtil.RenderTextToTexture2D` must stay synchronous (`SingleCameraRequest`). `docs/rendering.md`.
+- Input: Input System 1.20.1 only (`activeInputHandler: 1` in project settings AND both build profiles). Use `RTInput` / `RTInputManager` (`Assets/RT/Input/`, `RT.Input` assembly); no legacy `UnityEngine.Input` reads; do not divide wheel values by 120. `docs/input.md`.
+
+### Per-image pipeline
+
+- `Assets/_Script/Pic/PicMain.cs`: per-image controller (textures, masks, temp images, job queue/history, undo, LLM refs, job-script interpreter).
+- `PicTextToImage.cs`: loads workflow JSON, converts to API format when needed (cached as `*_cached_api_version.json`), applies `@replace`/placeholders, submits `/prompt`, tracks progress. Every post-submit failure must end in `FinishUpEverything(false)` via `PicMain.ReportRenderFailure`; multi-input jobs pin their server from first upload through `run_workflow`. `docs/workflows.md`.
+- `PicGenerator.cs`: continuous img2img/inpaint. Other `Pic/*` components are focused tools (mask, inpaint, upscale, interrogation, movie display, info panels).
+
+### Renderers and servers
+
+- `RTRendererType`: `ComfyUI` is the only one exposed; `Any_Local`, `A1111`, `AI_Tools`, `AI_Tools_or_A1111` are legacy compatibility values.
+- ComfyUI servers must be reachable over HTTP (start with `--listen`). Server and machine specifics: `agents_secret.md`.
+
+### Workflows, presets and job scripts
+
+- `ComfyUI/*.json` are normal workflows (source of truth); cached API JSON is generated, do not hand-edit. `Presets/*.txt` are job scripts; `AutoPic*.txt` serve Adventure/AI flows.
+- Placeholders (`<AITOOLS_PROMPT>`, `<AITOOLS_INPUT_1..14>`, `AITOOLS_UNIQUE_ID` for save-node prefixes, ...) and directives (`@replace`, `@upload` with `|optional|`, `@llm_*`, `@start`/`@end`, ...): `docs/workflows.md` and `cli/README.md` "Preset support". Verify against `PicMain.cs` when behavior matters.
+- Preset pitfalls: job-script variables are per-PicMain and SHARED by chained presets, so chainable presets need uniquely prefixed variables (`%vid_width%`, never `%width%`); host dimension/frame overrides target the `@replace` REPLACEMENT half, so prefer preset defaults equal to the workflow literal.
+- Default models: MOSS-Image is AI Chat's text-to-image default (`Prompt To Image (MOSS-Image)`, Turbo for fast/draft; no image input). Qwen-Image 2.1 is the edit default (`Image To Image (Qwen Image 2.1)`, 1-10 inputs, `<imageN>` tags) and the main GUI text-to-image fallback. Others run only when named. `docs/workflows.md`.
+- MiniMax H3 is AI Chat's default video route: `docs/minimax_h3.md`. H3 reference behavior is keyed on preset-name substrings, it has no negative prompt, `duration` is unclamped, and its models may exist on only some servers.
+
+### LLM systems
+
+- Settings/instances: `Assets/_Script/LLM/` (`LLMSettingsData.cs`, `LLMSettingsManager.cs`, `LLMInstanceManager.cs`), providers in `Assets/RT/AI/`. `LLMProvider`: `OpenAI`, `Anthropic`, `LlamaCpp`, `Ollama`, `Gemini`, `OpenAICompatible`.
+- Rules: no optional output-token budget is ever sent (Anthropic gets the per-model max); AI Chat sends `temperature` only when the instance override is ticked; resolve thinking through `LLMRequestProfile.ResolveCompatReasoning`; mirror `model_data.json` changes in `LLMModelData.CreateDefault`. Routing axes, URL building, model auto-switch, per-family reasoning wiring, adding a model family: `docs/llm_providers.md`.
+
+### AI Chat
+
+`Assets/_Script/LLM/AIChatPanel.cs` (UI + turn flow), `AIChat/Skills/SkillManager.cs` (loads `aichat/skills/*.md` and prompt files in `aichat/`), `ChatPicMirror.cs` (mirrors pics into `chat_image="N"` bubbles). Deep-dive: `docs/aichat.md` and the docs it indexes. Rules every AI Chat change must respect:
+
+- **Debug from the log first:** `llm_aichat_log.json` (working dir, chronological `request` / `response` / `action` / `note` events per play session) shows which Pic each action targeted and what the model emitted.
+- **Prompt-cache invariant:** the stable prefix never changes mid-conversation and nothing may `AddInteraction("system")` mid-chat. Volatile state goes in the per-turn CURRENT STATE tail; runtime notes travel in the next user message (`IChatHost.AddSystemInjectionAndBubble`).
+- **No new prompt-quality gates** (Seth, 2026-08-30): do not add executor checks that block actions over prompt-writing judgments, and do not range-clamp model-supplied numbers (structural math like grid snapping is fine). Put such guidance in skill text/frontmatter. Structural/wiring gates are allowed.
+- **Skill routing:** autoload keywords miss phrasings, so routing-critical rules must also be in each skill's `summary:` / `template:` frontmatter.
+- **Stop:** `ShouldStopBeInteractable()` is the single Stop-enable rule; every busy state it lists needs a cancel path in `OnStopClicked`.
+- **Errors:** real main-turn failures show an always-visible red Error bubble, and cloud dispatch never silently substitutes a model.
+- **Web:** model URLs must pass `WebMediaDownloader.IsAllowedPublicHttpUrl`; the header "Web" checkbox gates all web skills; real people and named characters go through `web_image` + anchors. `docs/web_media.md`.
+- **Video:** MiniMax H3 is the default video route; a supplied reference video stays the original clip plus audio via Reference Video To Video (stills only supplement it). `docs/aichat_media.md`, `docs/minimax_h3.md`.
+
+### Automation Control Server (editor testing harness)
+
+Loopback HTTP server on `http://127.0.0.1:8772/` that drives the editor and AI Chat for end-to-end testing; it survives domain reloads and play stop/start. OFF by default: **Tools > RT Automation > Enable Control Server**. Standalone builds enable it with `-enable_automation`.
+
+- **Prefer it for Unity validation whenever enabled.** Check `GET /status` first; then compile (`/rebuild`), drive (`/play`, `/stop`, `/settings`, `/open_chat`, `/chat`, `/click`, ...) and capture evidence (`/screenshot`, `/chat_images`, `/movie_state`, ...). Verify UI/AI Chat work with screenshots when possible. Do not start a second Unity instance against the project while the bridge is up unless the task requires batchmode.
+- If validation needs a missing command, add a narrow loopback-only, deterministic endpoint in the same task and document it in `docs/automation_bridge.md` (full endpoint catalogue, `idle` semantics, security rules).
+- Recommended editor pref: Script Changes While Playing = Stop Playing And Recompile.
+
+### Runtime helpers
+
+- Bundled in `utils/`: `RTClip.*` (clipboard helper, signed), `ffmpeg/bin/ffmpeg.exe` + `ffprobe.exe` (GPL v3: keep `NOTICE.txt` and `licenses/` beside them), `yt-dlp/yt-dlp.exe`, `ScreenCapture/` (signed AIToolsCapture). Vendor binaries keep their original bytes.
+- Screen recording and the floating clock: `ScreenCaptureController` + the helper in `tools/ScreenCapture` (`docs/screen_recording.md`). Live desktop capture needs explicit authorization; offline check: `pwsh -File scripts/VerifyScreenCapture.ps1`.
+- Clipboard paste, FFmpeg/`PicMovie` playback (verify with `POST /movie_state`, never screenshots), clip import: `docs/media_import.md`.
+
+### Experiments
+
+`Assets/Experiments/`: `Adventure/` (story, quiz, Twine/HTML export, AutoPic), `ShootingGallery/`, `Pizza/`, `Breakout/`, `CrazyCam/` (older, effectively replaced by SpookyCam-style presets). Prompt/template text for these modes also lives in root `Adventure/` and `AIGuide/`.
+
+## Doc Index (`docs/`)
+
+| Doc | Covers |
+|---|---|
+| `aichat.md` | AI Chat core rules, attachments, parser, bubbles, Compact, skills, prompt cache, debugging |
+| `aichat_media.md` | AI Chat model/video routing, execution order, `gpu` hint, extract_still / rife_video / stitch_video, inspect_image |
+| `web_media.md` | web_* skills index, hard rules (URL gate), image ranking, trace bubble format |
+| `web_video.md` | yt-dlp, range downloads, video verification, speech check, transcripts, cookies / YouTube Firefox login |
+| `web_page.md` | web_page reader and web_audio |
+| `minimax_h3.md` | H3 models, presets, reference slots, executor wiring, troubleshooting |
+| `minimax_h3_prompting.md` | H3 prompt format, dialog rules, voice references |
+| `audio_generation.md` | generate_* audio skills, Audio bubbles, set_video_audio |
+| `workflows.md` | placeholders, directives, preset pitfalls, per-model workflow notes |
+| `llm_providers.md` | LLM routing, request params, URL building, reasoning families, streaming |
+| `settings.md` | Settings window tabs/keys, Tools panel modes |
+| `media_import.md` | clipboard, FFmpeg, movie playback, clip chooser |
+| `automation_bridge.md` | control server endpoints and checks |
+| `screen_recording.md` | recorder helper, HDR, floating clock |
+| `release_packaging.md` | build flow, staging, smoke check, release gotchas |
+| `rendering.md` | URP config, text capture, render validation |
+| `input.md` | Input System architecture and tests |
 
 ## Directory Map
 
-- `Assets/_Script/` - main app logic
-- `Assets/_Script/Pic/` - per-image workflow, image editing, job execution
-- `Assets/_Script/GUI/` - app UI panels and controls
-- `Assets/_Script/LLM/` - LLM settings, AI Chat, chat skills, model fetchers
-- `Assets/RT/` - reusable runtime toolkit, editor builders, third-party utilities
-- `Assets/RT/AI/` - API/service integration managers
-- `Assets/Experiments/` - Adventure, ShootingGallery, Pizza, Breakout, CrazyCam
-- `Assets/Settings/Build Profiles/` - Unity build profiles
-- `ComfyUI/` - source workflows plus generated cached API workflow files
-- `Presets/` - preset/job scripts
-- `docs/` - feature deep-dives referenced from this file (`aichat.md`, `automation_bridge.md`, `llm_providers.md`, `media_import.md`, `settings.md`, `workflows.md`, `minimax_h3.md`, `web_media.md`, `audio_generation.md`)
-- `aichat/` - editable AI Chat prompts and skill markdown files
-- `cli/` - Python CLI subset (Windows + Linux)
-- `tools/ScreenCapture/` - Windows recorder helper source and offline checks; built runtime files live under `utils/ScreenCapture/`
-- `web/`, `utils/`, `Packaging/` - runtime/package support files, including bundled helper EXEs under `utils` (`RTClip`, `ffmpeg/bin`, `yt-dlp`)
-- `Media/` - README screenshots and media
-
-Generated or local-only folders include `Library/`, `Temp/`, `Logs/`, `build/`, `output/`, `UserSettings/`, `Images/`, `OldVersions/`, and `TestFiles/`.
+- `Assets/_Script/` main app (`Pic/` per-image pipeline, `GUI/` panels, `LLM/` LLM + AI Chat, `Automation/` control server)
+- `Assets/RT/` reusable toolkit, editor builders, `AI/` provider managers
+- `Assets/Experiments/` experiment modes; `Assets/Settings/Build Profiles/` build profiles
+- `ComfyUI/` workflows (+ generated API caches); `Presets/` job scripts; `aichat/` AI Chat prompts and skill markdown (runtime content, shipped)
+- `cli/` Python CLI; `tools/ScreenCapture/` recorder source; `utils/`, `web/`, `Packaging/` runtime/package support; `scripts/` build and verify scripts; `docs/` deep-dives; `Media/` README images
+- Generated/local only: `Library/`, `Temp/`, `Logs/`, `build/`, `output/`, `UserSettings/`, `Images/`, `OldVersions/`, `TestFiles/`
 
 ## Development Notes
 
-- Prefer existing Unity/C# patterns in the repo: MonoBehaviours, TextMeshPro UI, `UnityWebRequest`, `SimpleJSON`, and the existing RT utility classes.
-- Unity 6000.6 / uGUI 2.6 treats `TMP_Text.enableWordWrapping` as a compile error (CS0619). Use `textWrappingMode = TextWrappingModes.Normal` or `TextWrappingModes.NoWrap`; do not retain legacy setters alongside the modern property.
-- Programmatic UI is common in the LLM panels and AI Chat. Match the local style when extending those panels.
-- Runtime-built `TMP_InputField`s (e.g. via `TMP_DefaultControls.CreateInputField`) run `OnEnable` before `textComponent` is wired, so TMP never creates the caret/selection renderer: typing works but the caret, mouse highlight, and wheel-scroll forwarding are dead. Call `TMPInputFieldCaretFix.Apply(input)` (`Assets/RT/TMPInputFieldCaretFix.cs`) after the field is fully wired AND parented; AI Chat's own `AIChatCaretFixer` already handles its fields.
-- When adding or moving Unity assets, keep `.meta` files with them.
-- Normal ComfyUI workflow files are the source of truth; cached API JSON files are generated artifacts and should generally not be hand-edited.
-- Build scripts and packaging scripts are Windows-oriented and may delete/recreate build output directories.
-- Release checks: `pwsh -File scripts/VerifyDeleteSafety.ps1`, `pwsh -File scripts/VerifyReleasePackage.ps1`, and `wsl -d Ubuntu-24.04 -- sh /mnt/f/Unity/aitools_client/scripts/VerifyWebGLCleanup.sh` (or `sh scripts/VerifyWebGLCleanup.sh` on Linux). These use disposable fixtures and never upload. `scripts/ReleasePackage.ps1 -Phase VerifyArchive` checks the signed package and every archived file against staging.
-- Release shells can inherit a module search path that hides PowerShell's `Get-FileHash` function. Hash release/helper files with .NET SHA256 (as the packaging and recorder scripts do), and explicitly import Windows signature modules where needed. Fresh-ZIP checks: `pwsh -File scripts/SmokeReleaseZip.ps1`; archive path-guard fixtures: `pwsh -File scripts/VerifyReleaseSmoke.ps1`.
-- Input migration has isolated virtual-device EditMode tests in `RT.Input.EditorTests`; commands and coverage are in `docs/input.md`. No general app-wide automated test command is established. Otherwise prefer focused C# compile/build checks or targeted Unity editor validation requested by the user.
-- With Unity-generated root `.csproj` files present, `dotnet build Assembly-CSharp.csproj --nologo -v:q` provides a C# compile check without driving the editor. It does not validate Unity asset import, scenes, or runtime behavior.
-- Opt-in rendering regression fixtures: bridge `POST /render_validation`, or player `-render-validation`; use a fresh disposable session and the local video fixture described in `docs/automation_bridge.md`. Reports and game-view captures stay under ignored `build/render-validation/`.
+- Follow existing patterns: MonoBehaviours, TextMeshPro UI, `UnityWebRequest`, `SimpleJSON`, RT utility classes. Programmatic UI is common in LLM panels and AI Chat; match local style.
+- Unity 6000.6 / uGUI 2.6: `TMP_Text.enableWordWrapping` is a compile error (CS0619). Use `textWrappingMode = TextWrappingModes.Normal` / `NoWrap`.
+- Runtime-built `TMP_InputField`s get no caret/selection/wheel forwarding because `OnEnable` runs before `textComponent` is wired: call `TMPInputFieldCaretFix.Apply(input)` after the field is wired and parented (AI Chat's `AIChatCaretFixer` already does this).
+- Keep `.meta` files with added or moved assets.
+- Build and packaging scripts are Windows-oriented and recreate build output directories.

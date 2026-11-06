@@ -1,663 +1,262 @@
-# AI Chat web media: Brave search + image / video download
+# AI Chat web media: search, images, video, pages, audio
 
-AI Chat can search the web for images and short video clips and pull them into chat
-as ordinary `#N` / `Movie #N` bubbles, so the model can use real reference photos
-(people, characters, places, products, logos) as `chat_image2..9` photo references for
-the MiniMax H3 Reference To Video preset or Qwen Image 2.1 image edits, and reference clips as
-`<Video 1>` for Reference Video To Video.
+AI Chat can search the web and pull images, short clips and sound files into chat as ordinary `#N` /
+`Movie #N` / `Audio #N` bubbles, so real references (people, characters, places, products) can feed H3
+reference presets or Qwen Image 2.1 edits, and reads pages and transcripts as text for research.
+
+Docs:
+- this file: pieces, actions, rules, image fetching, flow/cancellation, trace bubble, recap, edge cases, tests
+- `docs/web_video.md`: `web_video` range downloads, yt-dlp, speech check, `web_transcript`, cookies and the
+  YouTube Firefox sign-in
+- `docs/web_page.md`: `web_page` reader (`WebPageReader`) and `web_audio`
 
 ## Pieces
 
 | piece | where | role |
 |---|---|---|
-| Brave client | `Assets/_Script/LLM/AIChat/Web/BraveSearchClient.cs` | `GET https://api.search.brave.com/res/v1/{images,videos,web}/search`, header `X-Subscription-Token`, SimpleJSON parse (every field optional), numbered result formatting, ~0.6 s spacing between calls |
-| Downloader | `Web/WebMediaDownloader.cs` | `UnityWebRequest` to memory (images, 25 MB cap) or file (videos, 250 MB cap), browser User-Agent, 30 s timeout, `Abort()` on cap/cancel, magic-byte sniffing, public-host-only URL gate (`IsAllowedPublicHttpUrl`: http/https, no userinfo, no loopback / RFC1918 / link-local / `localhost` with trailing dots normalized, no single-label LAN names such as `gpubox` (hostnames are not DNS-resolved), no raw quote / backslash / whitespace / control characters), redirects followed by hand (`redirectLimit = 0`, max 5 hops, each `Location` re-gated; UnityWebRequest used to follow a public URL's 302 into loopback) |
-| Image normalizer | `WebImageConverter` (same file) | PNG/JPEG decode-check with a throwaway `Texture2D.LoadImage` (real pixel size); webp/gif/avif/bmp/tiff or oversized (>2048 px) originals go through `FfmpegTool.ConvertImageToPng` |
-| yt-dlp wrapper | `Web/YtDlpTool.cs` | resolves `utils/yt-dlp/yt-dlp.exe` (then PATH), auto-detects a JS runtime (deno / node / bun on PATH, passed as `--js-runtimes`), builds the exact command line (URL last, after a `--` end-of-options marker, quoted per Windows CRT rules by `FfmpegTool.QuoteArg`), runs it via `FfmpegTool.RunProcessCancellable`, progress lines drained on the main thread. Downloads only the requested range capped at 480p; the host normalizes the downloaded section from time zero. Also fetches caption tracks without video |
-| YouTube sign-in | `Web/YouTubeLogin.cs`, `Web/YouTubeLoginDialog.cs` | actual authentication errors offer a local Firefox login dialog; dedicated persistent profile, one retry of the same request, cancellation follows the web fetch |
-| Page reader | `Web/WebPageReader.cs` | pure C# (no Unity usings, compiles in a plain dotnet console app): charset decode (BOM > HTTP charset > `<meta charset>` > strict UTF-8 with windows-1252 fallback), single-pass HTML tag scanner -> readable text + candidate image list; see "web_page" below |
-| Trace bubble | `Web/WebTraceBubble.cs` + `AIChatPanel.BeginWebTrace` | the always-visible "Web" bubble, COMPACT since 2026-09-13: a one-line title, `AppendSummaryLine` outcome lines, the throttled status line and the thumbnails; every other line (`AppendLine`) only goes to the FULL trace that the bubble's `[details]` marker opens in the floating `ChatThinkingWindow` (kind `WebTrace`, live while the fetch runs). Plain text (only TMP angle brackets escaped, NO markdown pass); every line mirrored to `llm_aichat_log.json` as `note/web` |
-| Thumbnail strip | `Web/WebThumbStrip.cs` + `WebTraceBubble.AddThumb/SetThumbVerdict/SetThumbPic` | wrapping row of 72 px thumbnails under the Web bubble, one per image the vision check examined (accepted and rejected; see "Thumbnails of everything the vision check saw") |
-| Host | `AIChatPanel.cs` "Web media fetch" region | busy gate (`_webFetchCount`, `_webCaptionInFlight`), epoch-based cancellation, the six coroutines, `AppendWebStillBubble`, caption tracking, search sessions `S1..`, page sessions `P1..` (images + audio links) |
-| Executor | `SkillActionExecutor.cs` `ExecuteWebSearch/Image/Video/Page` | argument parsing + aliases, Web-toggle / key / URL pre-flight (`WebPreflight`), defers the pump like `extract_still` |
-| Web toggle | `AIChatPanel.CreateHeader` (`_webToggle`), `GetWebEnabled()` (`aichat_web_enabled`, default on) | header checkbox; see "Web toggle" below |
-| Settings | `AppSettingsPanel` Web tab, `Config.cs` | `set_brave_search_api_key`, `set_web_search_safesearch` (off by default, strict optional), `set_ytdlp_cookies_browser`, `set_ytdlp_cookies_file` in private `config.txt` |
-| Prompts | `aichat/skills/web_image.md`, `web_video.md`, `web_search.md`, `web_page.md`, `web_transcript.md`, `main_prompt.txt` | routing, the Seinfeld-style multi-reference recipe, the RESEARCH recipe |
+| Brave client | `Assets/_Script/LLM/AIChat/Web/BraveSearchClient.cs` | `GET https://api.search.brave.com/res/v1/{images,videos,web}/search`, header `X-Subscription-Token`, SimpleJSON (every field optional), ~0.6 s spacing between calls |
+| Downloader | `Web/WebMediaDownloader.cs` | `UnityWebRequest` to memory (images, 25 MB) or file (videos, 250 MB), browser UA, 30 s timeout, `Abort()` on cap/cancel, magic-byte sniffing, the URL gate below, hand-followed redirects |
+| Image normalizer | `WebImageConverter` (same file) | PNG/JPEG decode-check via throwaway `Texture2D.LoadImage`; webp/gif/avif/bmp/tiff or >2048 px go through `FfmpegTool.ConvertImageToPng` |
+| yt-dlp wrapper | `Web/YtDlpTool.cs` | see `docs/web_video.md` |
+| YouTube sign-in | `Web/YouTubeLogin.cs`, `Web/YouTubeLoginDialog.cs` | see `docs/web_video.md` |
+| Speech check | `Web/SpeechCheck.cs` | see `docs/web_video.md` |
+| Page reader | `Web/WebPageReader.cs` | see `docs/web_page.md` |
+| Trace bubble | `Web/WebTraceBubble.cs` + `AIChatPanel.BeginWebTrace` | the always-visible compact "Web" bubble (below) |
+| Thumbnail strip | `Web/WebThumbStrip.cs` | 72 px thumbnails of every image / contact sheet the vision check saw |
+| Host | `AIChatPanel.cs` "Web media fetch" region | busy gate (`_webFetchCount`, `_webCaptionInFlight`), epoch cancellation, the coroutines, search sessions `S1..`, page sessions `P1..` |
+| Executor | `SkillActionExecutor.cs` `ExecuteWebSearch/Image/Video/Page/...` | argument parsing + aliases, `WebPreflight` (toggle / key / URL), deferred like `extract_still` |
+| Settings | `AppSettingsPanel` Web tab, `Config.cs` | `set_brave_search_api_key`, `set_web_search_safesearch` (off by default, strict optional), `set_ytdlp_cookies_browser`, `set_ytdlp_cookies_file`, STT keys, in private `config.txt` |
+| Prompts | `aichat/skills/web_image.md`, `web_video.md`, `web_search.md`, `web_page.md`, `web_transcript.md`, `web_audio.md`, `main_prompt.txt` | routing, cast recipe, research recipe |
 
-Bundled helper: `utils/yt-dlp/yt-dlp.exe` (Unlicense, `utils/yt-dlp/README.txt` has the
-version). Release staging (`scripts/ReleasePackage.ps1`) already copies `utils`, so builds ship it.
+## Hard rules
+
+- **URL gate**: every model `url=` (and every redirect hop) must pass
+  `WebMediaDownloader.IsAllowedPublicHttpUrl`: http/https only, no userinfo, no loopback / RFC1918 /
+  link-local / `localhost` (trailing dots normalized), no single-label LAN names (hostnames are not
+  DNS-resolved), no raw quote / backslash / whitespace / control characters (the URL reaches yt-dlp's
+  command line, where it follows a `--` terminator). Redirects are followed by hand (`redirectLimit = 0`,
+  max 5 hops, each `Location` re-gated), because UnityWebRequest would follow a public 302 into loopback.
+- **Settings persistence**: the Brave key, SafeSearch, yt-dlp browser/cookie-file, YouTube-login and STT keys
+  live in private `config.txt` and MUST stay emitted by `Config.BuildModernConfigText` (Settings Apply
+  regenerates the whole file).
+- **Web toggle**: the AI Chat header "Web" checkbox gates all six web skills (below).
+- **Real people and named characters** are fetched with `web_image` (+ `web_video` for speakers) and used as
+  anchors, never rendered from memory or as a text-described lookalike. A voice sample in chat is used via
+  the H3 `audio=` reference; `ref_voice` cloning is never offered as an alternative.
 
 ## Model-facing actions
 
 | skill | attributes | result |
 |---|---|---|
-| `web_search` | `query`, `kind=images\|videos\|web` (default images), `count` (max 20), `safesearch`, `resume` (default TRUE) | list only; stored as `S1`, `S2`... for `result="S1:3"`; auto-continues with the list |
-| `web_image` | one of `query` / `url` / `result`; `count` (max 4), `anchor` (count>1 -> `name`, `name_2`...), `min_width` (256), `criteria` (extra vision-check requirements), `verify` (default true), `safesearch`, `resume` (default false) | assistant still bubble(s) `#N`, kind `web image`, provenance `web image: "query" -> host/path`, vision-verified and captioned |
-| `web_video` | one of `query` / `url` / `result`; `start`, `duration` (0.5..15, default 5), `max_source_minutes` (0 = no filter), `criteria`, `verify` (search/results or criteria: true; plain URL: false), `audio`, `anchor`, `resume` (default TRUE) | `Movie #N` via yt-dlp range download at <=480p for page/direct video URLs, then `FfmpegTool.CreateClip` normalizes the downloaded section (soundtrack loudness-normalized to -16 LUFS when the AI Chat "Normalize imported clip audio" setting is on, the default; the trace line shows the `AudioNote`); each cut is vision-checked via a contact sheet, rejects retry +30 s / +90 s in the same source, then the next ranked result (4 sources max) |
-| `web_page` | one of `url` / `result` (a `kind="web"` hit) / `query`; `max_chars` (500..20000, default 6000), `images` (default true), `max_images` (1..40, default 12), `safesearch`, `resume` (default TRUE) | no bubble: the page's readable text goes to the model via the info-recap tail, its image candidates are stored as `P1`, `P2`... for `web_image result="P1:3"`, and its bare sound-file links (`<a href="....wav">`, `<audio src>`) as `P1:a1`... for `web_audio result="P1:a2"`; the Web bubble shows the page title, char counts and the image / audio-link COUNTS, its `[details]` trace the URL / HTTP status / bytes and the lists themselves |
-| `web_transcript` | `url`, `language` (en), `offset` (0), `max_chars` (20000, up to 100000), `resume` (true) | caption text in the info recap, no video download; long tracks support cached paging |
-| `web_audio` | one of `url` (a direct sound-file URL) / `result` (`"P1:a2"` page audio link, or an `S` web hit whose URL is itself a sound file); `start`, `duration` (0 = whole file, cap 300 s), `speech` (reject silent/music-only), `anchor`, `resume` (default TRUE) | playable `Audio #N` bubble via the same landing as dropped/generated audio (waveform preview MP4 + lossless `audioPath`); no vision check - ffprobe gate (real audio, no video stream) + the web_video-style SpeechCheck for the caption transcript. No `query=` mode (no audio search engine exists): finding sounds is `web_search kind="web"` -> `web_page` -> `result="P1:aN"` |
+| `web_search` | `query`, `kind=images\|videos\|web` (default images), `count` (max 20), `safesearch`, `resume` (default TRUE) | list only; stored as `S1`, `S2`... for `result="S1:3"` |
+| `web_image` | one of `query` / `url` / `result`; `count` (max 4), `anchor` (count>1 -> `name`, `name_2`...), `min_width` (256), `criteria`, `verify` (default true), `safesearch`, `resume` (default false) | still bubble(s) `#N`, provenance `web image: "query" -> host/path`, vision-verified and captioned |
+| `web_video` | one of `query` / `url` / `result`; `start`, `duration` (0.5..15, default 5), `max_source_minutes` (0 = no filter), `criteria`, `verify`, `speech`, `audio`, `anchor`, `resume` (default TRUE) | `Movie #N` from a <=480p range download (`docs/web_video.md`) |
+| `web_page` | one of `url` / `result` (a `kind="web"` hit) / `query`; `max_chars` (500..20000, default 6000), `images`, `max_images` (1..40, default 12), `safesearch`, `resume` (default TRUE) | text in the info recap, images as `P1:N`, audio links as `P1:aN` (`docs/web_page.md`) |
+| `web_transcript` | `url`, `language` (en), `offset` (0), `max_chars` (20000, up to 100000), `resume` (true) | caption text in the info recap, no download (`docs/web_video.md`) |
+| `web_audio` | one of `url` / `result` (`P1:a2` or an S hit that is a sound file); `start`, `duration` (0 = whole, cap 300 s), `speech`, `anchor`, `resume` (default TRUE) | `Audio #N` bubble; no `query=` mode (`docs/web_page.md`) |
 
 Aliases (`NormalizeSkillId`): `search_web`, `image_search`, `brave_search`... -> `web_search`;
-`find_image`, `fetch_image`, `download_image`... -> `web_image`;
-`download_video`, `fetch_video`, `youtube`, `web_clip`... -> `web_video`;
-`read_page`, `fetch_page`, `open_url`, `read_url`, `browse`, `visit`, `web_fetch` (moved here from `web_image`)... -> `web_page`;
-`download_audio`, `fetch_audio`, `find_sound`, `download_wav`, `web_sound`... -> `web_audio`.
+`find_image`, `fetch_image`, `download_image`... -> `web_image`; `download_video`, `fetch_video`, `youtube`,
+`web_clip`... -> `web_video`; `read_page`, `fetch_page`, `open_url`, `read_url`, `browse`, `visit`,
+`web_fetch`... -> `web_page`; `download_audio`, `fetch_audio`, `find_sound`, `download_wav`, `web_sound`...
+-> `web_audio`.
 
-**Default cast recipe (Seth, 2026-08-31).** When the user asks for a new
-video of a named show/film cast (or any real person) and the Web toggle is
-ON, the prompt text (`main_prompt.txt` real-people bullet, `web_image.md`
-"Recipe: a video starring a real cast", `web_video.md`, `stitch_video.md`,
-`generate_movie.md`) makes reference fetching the DEFAULT - the user should
-never have to say "use references from the web": per person ONE `web_image`
-with `count="2"` (two in-character stills, anchors `name` + `name_2`, defined
-as ONE `<Subject N>`), query `"<show> <character> scene still"`, and
-`criteria="in-character scene frame from the show itself, in costume on set -
-not an interview, talk show, premiere, red carpet, award show, photoshoot, or
-headshot"` (press/interview photos give the wrong look and wardrobe - the old
-`portrait photo face` queries pulled exactly those); per SPEAKING character
-ONE `web_video query="<show> <character> talking scene" speech="true"`
-clip; then a `Reference Video To Video` render on the auto-continue turn
-(first two speakers' clips in the clip slots, further speakers via
-`audio="name_clip"` standalone refs, stills after the clips), voices bound
-"styled like <Audio N>". Web OFF: use chat references or ask, never a
-text-described lookalike. No code changed for this; it is all prompt/skill
-text using the existing `count` / `criteria` / `speech` attributes.
-
-## Video ranges, transcripts and authentication (2026-10-20)
-
-- `web_video` downloads only `start`..`start+duration` using yt-dlp
-  `--download-sections` and `--force-keyframes-at-cuts`. Segmented HLS streams
-  (preferably H.264) are selected first when available to avoid direct DASH seek
-  stalls; direct formats remain a range-only fallback. FFmpeg network reads time
-  out after 20 seconds. Page URLs and direct
-  video URLs share this path. Normalization starts at zero in the downloaded
-  section, while the caption and provenance keep the original source timestamp.
-  Plain explicit URLs default to no suitability filtering; search/result picks
-  and explicit criteria still verify unless overridden.
-  Rejected searched clips fetch separate +30/+90 second ranges. There is no
-  whole-video fallback. `max_source_minutes` now defaults to 0; an explicit
-  positive value still filters source length. The 250 MB limit applies to bytes
-  written for the clip, not the original video's metadata size. Downloads time
-  out after ten minutes; Stop/timeout also terminates yt-dlp's FFmpeg child on Windows.
-- Each failed source/cut contributes its actual error to both the compact Web
-  bubble and the model's info recap. A source-duration rejection, missing
-  captions and authentication failures are distinct. The old generic recap
-  caused models to invent bot-check explanations for duration-filter failures.
-- `web_transcript url="..." language="en"` uses manual subtitles when available,
-  otherwise automatic captions, with `--skip-download`. It needs neither a
-  Brave key nor a speech-to-text service. VTT timestamps/markup and rolling-line
-  duplicates are removed. Decoded action tags are neutralized before delivery as
-  external source text in the info recap. `max_chars` defaults to 20000 (1..100000);
-  the response reports the next character `offset` for longer tracks. Nonzero
-  offsets reuse session-cached text; offset 0 refreshes; Clear removes the cache.
-  A missing language/track is an explicit error, never a fabricated transcript.
-  Subtitle downloads have a two-minute timeout and a 10 MB file limit.
-- Settings > Web > Cookie file persists `set_ytdlp_cookies_file` in private
-  `config.txt` (alias `set_yt_dlp_cookies_file`). It accepts a full path to a
-  Netscape-format YouTube cookie export, including one exported from Brave, and
-  takes precedence over `set_ytdlp_cookies_browser` for BOTH clips and transcripts,
-  except when the dedicated YouTube login below is enabled for a YouTube URL.
-  Clear the file path to return to browser-cookie extraction. The file is
-  validated without echoing records; its path is redacted in downloader traces.
-  Cookies remain local and are not supplied to the LLM. yt-dlp may update the
-  selected cookie file; an expired login requires a fresh export. Brave Search
-  API access is separate from the user's Brave browser session.
-- On a real YouTube sign-in, age-verification, bot-verification or expired-session
-  error, AI Chat pauses the action and offers **Sign in with Firefox** / **Cancel**.
-  Firefox launches only after the user clicks the button, with `-no-remote -profile`
-  pointing to `%LOCALAPPDATA%\SethsAITools\YouTubeFirefox`. Its destination is fixed
-  to `https://www.youtube.com/`, never an error-message or model-supplied login URL.
-  This profile is separate from everyday Firefox and Brave profiles and is outside
-  the checkout, release package and tempCache. Firefox must be installed in a
-  standard location or on PATH; missing Firefox is reported without an automatic install.
-- After signing in, the user closes that Firefox window and clicks **Done, retry**.
-  The dialog checks the profile lock and cookie-database presence, then persists
-  `set_youtube_firefox_login|true|` in private config. The download itself verifies
-  whether the session works. The exact clip URL/range or transcript URL/language
-  is retried once. A second failure is returned to the model with instructions not
-  to retry automatically. Declining also stops further candidate login prompts
-  within that video action. Stop/Clear cancels the dialog and prevents late retries.
-- Enabled sessions use `--cookies-from-browser firefox:<dedicated-profile>` for
-  YouTube only, taking precedence over both other cookie settings. Future app
-  launches reuse the same profile. Profile paths are redacted in traces; no cookie
-  values/passwords enter chat, and no all-browser cookie export is produced.
-  Missing dedicated profiles offer sign-in again. HTTP 403/429, missing captions,
-  filters, missing formats and network failures alone do not imply authentication.
-- Settings > Web provides **Sign in / change account** and **Use remembered
-  YouTube login**. Disabling reuse does not delete the profile; sign out inside
-  its Firefox window to remove the login. The model has no action that can open
-  Firefox or accept a sign-in prompt.
-  The adjacent **Test** button probes the private Liked videos playlist through yt-dlp using
-  only the dedicated Firefox profile, with at most one metadata entry and no media
-  download or cookie export. Success requires the private Liked videos playlist ID and a
-  successful process exit; expired-cookie/sign-in errors and inconclusive
-  network/helper failures have separate messages. Raw account output is never
-  displayed or logged. The test times out after 45 seconds and is cancelled when
-  Settings closes or changes tabs. Reuse need not be enabled to test the session.
-- `--ignore-config` keeps unrelated machine-level yt-dlp options out of app
-  requests. The model can provide URLs, language and clip parameters, not cookie
-  paths or arbitrary downloader arguments. `web_page` remains a static HTML
-  reader; `web_video speech="true"` still transcribes only the fetched short clip.
-
-Offline regression checks: `pwsh -File scripts/VerifyWebMedia.ps1` against an
-active compiled Play session. It exercises production command builders, VTT
-parsing, cookie validation/redaction, dedicated-profile routing, login retry and
-cancellation, an inactive login-dialog fixture, and config serialization without
-network, browser launches or config-file writes. Fixtures remain under ignored `build/web-media-validation-*`.
-The checks also build Web settings under a disabled canvas to verify the Test
-button bounds, status text fit, cancellation and stale-result clearing without
-desktop input or screenshots.
-`POST /chat_web_action` runs one parsed `web_video` or `web_transcript` action
-through the real executor, with main-turn auto-resume disabled, for live checks.
-
-## Choosing good images (ranking + vision verification)
-
-The first version took the first download that decoded, which produced a wall of framed
-portraits, a photo of a screen and an AI caricature for "Donald Trump portrait photo" while
-the Wikimedia close-up sat at result 5. Two layers fix that:
-
-1. **Metadata ranking** (`RankWebImageCandidates`): every Brave result gets a score before
-   anything is downloaded. Wikimedia/Wikipedia +5, .gov/.edu/Britannica +3; AI-art, clipart,
-   PNG-cutout, wallpaper, stock (watermarks), merch, Pinterest and meme hosts -4
-   (`WebImageJunkHosts`); tell-tale title words (clipart, caricature, painting, wallpaper,
-   poster, funko, "comment image"...) -3; "official portrait"/"headshot"/"press photo" +1;
-   >=600 px +1, <300 px -1, banner aspect -2. Stable sort, ties keep Brave order. The trace
-   prints `Download order by source quality: 5 (+6), 1 (+2), ...`. Results whose claimed
-   width is already under `min_width` are skipped without downloading.
-2. **Vision verification** (`VerifyWebImageCoroutine`, one call per download): the decoded
-   image goes to the vision LLM with `BuildWebImageVerifyPrompt` (query + optional
-   `criteria`), which answers `VERDICT: SUITABLE|UNSUITABLE`, `REASON: ...`, then the normal
-   `SHORT:`/`LONG:` caption lines (the caption prompt is appended verbatim, and the existing
-   `ParseCaptionResponse` ignores the leading VERDICT/REASON lines). UNSUITABLE -> the file is
-   deleted, `-> vision check: UNSUITABLE - <reason>, skipped` is traced and the next candidate
-   is tried (up to `MaxImageCandidates` = 12 downloads). SUITABLE -> the bubble is added and
-   the caption from the same call is applied (`ApplyCaptionResultToPic`), so no second
-   caption sidecar runs. No verdict (timeout / model ignored the format) -> accepted as
-   unverified with the normal caption path. The check is skipped (and said so in the trace)
-   when no active LLM accepts vision jobs or the action passed `verify="false"`.
-   `TryCaptionBytes` grew an `onRawText` callback for this; the verify prompt deliberately
-   allows scene stills / event photos where the subject is the clear main subject, and
-   rejects reproductions (photo of a screen / framed picture), art, wrong subject, crowds.
-
-Measured: "Donald Trump portrait photo face" now picks the Wikimedia close-up first, verified
-and captioned in 6.5 s; "Cosmo Kramer ... portrait photo" count=2 rejected four painted /
-scene-with-portrait stills before accepting a real publicity still.
-
-Video gets the same treatment (`RankWebVideoCandidates` + `VerifyWebVideoClipCoroutine`): the
-first version cut seconds 5-10 of the top result for "Cosmo Kramer ... entrance scene", which
-was a Rich Eisen talk-show interview (host intro), and accepted it blind. Now titles with
-interview / podcast / reaction / explained / news words rank down, scene / clip / best-of /
-compilation titles and query-word matches rank up, and every cut is contact-sheeted and judged
-(`BuildWebVideoVerifyPrompt`: "people talking ABOUT the subject, title cards, intros, wrong
-subject -> UNSUITABLE"). An UNSUITABLE cut from a searched source retries at +30 s and +90 s
-(`WebRequestLimits.VideoRetryOffsets`) before the next source; a SUITABLE cut's caption comes
-from the same call (`AppendVideoClipBubble(..., autoCaption:false)` + `ApplyCaptionResultToPic`).
-`web_video` now auto-continues by default (resume="false" opts out) because the log also showed
-the model ending its turn after "I'll find a clip first, then make the video" with no follow-up.
-
-Unfinished-plan safety net (`SkillActionExecutor.TurnHadOnlyPreparatoryActions`, checked in
-`AIChatPanel.FinalizeAssistantTurn`): actions are tallied at ENQUEUE time as preparatory
-(`web_image`, `web_video`, `web_search`, `extract_still`, `clip_video`) or other. A reply whose
-actions were all preparatory and that registered no resume/continue of its own gets one
-`RegisterGenericContinueRequest` plus a silent note ("your previous reply only prepared media...
-emit the render NOW or say it is complete"). This exists because the log showed "First, let me
-extract a frame, then generate the video" followed by nothing, twice. The generic scheduler waits
-for the fetch/extract to finish (sidecar work) before firing, and the consecutive-continue cap
-still bounds it; a reply that only wanted the clip costs one short "done" turn. Measured: "find a
-clip of Kramer and make a 5 s movie of him talking about Zelda" now goes web_video (ranked,
-verified) -> auto-continue -> `video_to_video` with the H3 reference preset in 18 s, render lands ~5
-min later.
-
-Speech check (`Web/SpeechCheck.cs`, `web_video speech="true"`): vision sidecars only see frames, so a
-music-only clip passed the verdict and H3 Ref2VA (which clones the reference clip's audio) produced a
-garbled voice. With `speech="true"` (also implied by criteria words like talk/speak/dialog/voice) each
-accepted cut is audio-checked before it enters chat: `FfmpegTool.ExtractAudioWav` (16 kHz mono),
-`FfmpegTool.MeasureMeanVolume` (volumedetect; below -50 dB = silent = definite no-speech), then
-OpenAI Whisper `whisper-1` with `response_format=verbose_json`; speech is present when >= 5 real
-words came back (clips under 4 s: >= 2 words - the flat 5-word rule falsely rejected the 3-word
-"What's up, Doc?" catchphrase wav; callers pass the clip duration to `SpeechCheck.Run`), the
-average segment `no_speech_prob` is <= 0.6 and the text is not a `[Music]` / `♪` marker. No-speech cuts retry +30/+90 s then the next source; an accepted clip's LONG caption gets
-`Audio transcript: "..."` and the recap says it is usable as a voice reference. The transcription
-endpoint is Settings > Web "Speech-to-text": any OpenAI-compatible `/v1/audio/transcriptions` URL
-(`set_stt_endpoint`, optional `set_stt_api_key`, `set_stt_model`, e.g. a local faster-whisper /
-Speaches / LocalAI / vLLM whisper server), falling back to api.openai.com with the LLM Settings OpenAI
-key. With neither, only silent cuts can be rejected and the trace + recap say the check was
-unavailable. A pure signal heuristic (envelope modulation, spectral flatness, pause ratio) was
-prototyped on real clips and rejected: the Seinfeld bass theme scored like speech. A bigger vision
-model would not help either; vision never hears the track.
-
-Trace compaction (same change): the trace shows `Searched Brave images for "...": 20 hits (0.9s)`
-instead of the GET line + HTTP status + the full numbered list; the list and the ranking order go
-to `llm_aichat_log.json` as `web_results` / `web_ranking` notes. Only the list-only `web_search`
-skill still puts the numbered results in its trace (and shows the hit-count line in the bubble).
-Since 2026-09-13 the bubble itself is compact and the hit line, download attempts and verdicts
-live behind its `[details]` marker (see "Trace bubble format").
-
-## Thumbnails of everything the vision check saw (since 2026-09-06)
-
-Rejected downloads used to be deleted silently, so the user only ever saw the accepted
-`#N` bubbles and could not tell what the model had looked at or rescue a wrongly rejected
-photo. Now every decoded `web_image` download and every `web_video` contact sheet is shown as
-a thumbnail under its Web bubble:
-
-- `WebTraceBubble.AddThumb(pngBytes, filePath, label, title)` lazily creates a
-  `WebThumbStrip` (`Web/WebThumbStrip.cs`) as the last child of the bubble: a
-  `GridLayoutGroup` (flexible constraint, wraps at the bubble width) of 72 px cells plus a
-  hint line. List-only bubbles (`web_search`, `web_page`) never get a strip. Thumbnails are
-  downscaled copies (max 128 px, `RenderTexture` blit) owned by the strip and destroyed with
-  the bubble (Clear / Rewind / Compact rebuilds).
-- Badges: green check = SUITABLE, red X = rejected (vision UNSUITABLE, narrower than
-  `min_width`, failed audio check, could not load), amber ? = accepted unverified, grey - =
-  still checking. Hovering a cell writes `#<download ordinal> VERDICT - reason (WxH)` plus the
-  title/URL into the hint line. The cell label is the download ordinal for images and the cut
-  range (`5-10s`) for video contact sheets.
-- Click (`AIChatPanel.OnWebThumbClicked`): accepted media already lives in a world Pic (the
-  chat bubble's), so the camera pans to it via the shared
-  `ChatPicMirror.FocusCameraOnPic`; a rejected candidate (or a contact sheet) is loaded from its
-  kept file into a NEW `PicMain` with `ImageGenerator.AddImageByFileName`, stored on the entry
-  as `SpawnedPic` so later clicks focus it instead of duplicating. The new Pic is a plain
-  canvas image, not a chat image (`chat_image` numbering is unaffected).
-- Consequence: rejected image files stay in `tempCache/aichat_web_images` and contact sheets
-  in `tempCache/aichat_video_captions` for the session (a sheet is still deleted when no
-  thumbnail could be made from it). Clip files of rejected cuts are deleted as before.
-
-Verified 2026-09-06 through the bridge: an Eiffel Tower `count="2"` fetch showed three
-thumbnails (check / X / check), and `POST /click` on the X cell
-(`.../Bubble_Web/WebThumbs/Grid/Thumb_2`) put the rejected bridge photo on the canvas and
-panned to it. The web_video contact-sheet path shares the same code but was not exercised live.
-
-## web_page: reading a page (text + image list)
-
-`web_search kind="web"` only returns Brave titles + snippets, and every HTML response used to be
-sniffed as `MediaKind.Html` and rejected, so the model could not read an article or see which
-pictures it contained. `web_page` (since 2026-08-24) fetches ONE page and:
-
-1. **Fetch** (`AIChatPanel.WebPageCoroutine` -> `DownloadPageWithTrace`): `WebMediaDownloader.DownloadToMemory`
-   with the new optional `accept` parameter (`HtmlAccept`; image downloads keep `ImageAccept`), browser UA, 30 s,
-   5 MB cap (`WebRequestLimits.MaxPageBytes`), the `Handle` registered for Stop/Clear. `DownloadResult.Charset`
-   now carries the `charset=` parameter that `NormalizeContentType` strips. Content gate: `text/html`,
-   `application/xhtml+xml`, `text/plain`, `text/xml`, `application/xml`, `application/json`, or an empty /
-   `application/octet-stream` type whose bytes sniff as `Html`. Anything else -> `-> HTTP 200 JPEG 184,233 bytes:
-   not a readable page; use web_image url="..." for it` (video -> web_video, `application/pdf` -> "PDFs cannot be
-   read") plus a silent note. `text/plain` / json skip the HTML extractor (verbatim, truncated).
-2. **Sources**: `url=` (one fetch); `result="S1:3"` (must be a `kind="web"` session, otherwise "is a images
-   result, not a page"); `query=` runs a Brave web search (stored as an S-session too, so `result="S2:N"` can read a
-   different hit), ranks with `RankWebPageResults` (wikipedia/wikimedia +5; `.edu`/`.gov`/britannica/archive.org +3;
-   reddit/quora/pinterest/facebook/x/twitter/instagram/tiktok/youtube/linkedin/tumblr -4; amazon/ebay/etsy/... -3;
-   `.pdf` path -5; "top 10 / best / review / buy / cheap / coupon / deal / price / vs" titles -2; every query word in
-   title+snippet +1; stable) and tries up to `MaxPageSearchAttempts` (3) hits until one yields readable text. That is
-   a SEARCH fallback only: links inside a fetched page are never followed (one page per action, no crawling).
-   Order goes to the log as `web_page_ranking`.
-3. **Extract** (`WebPageReader`, run inside `Task.Run` because it is pure C#; the coroutine polls `IsCompleted`
-   with epoch checks): `DecodeHtml` (BOM > HTTP charset > `<meta charset>` in the first 4 KB > strict UTF-8, and
-   invalid UTF-8 falls back to windows-1252 / Latin-1; every `Encoding.GetEncoding` is guarded for stripped
-   players), then `Extract`, a single-pass tag scanner with a frame stack (no DOM, no regex over the document,
-   ~60 ms for the 676 KB Atari 2600 article, ~220 ms for a synthetic 2.5 MB page):
-   - raw-skipped: `script style textarea template svg iframe math object canvas audio video`; `<title>` captured.
-   - junk (text AND images dropped): `nav footer aside button select dialog menu`, `header` outside the main
-     region, `hidden` / `aria-hidden` / `display:none` / navigation-type `role`s, `sup.reference`, and id/class
-     TOKENS (never substrings, so `unavailable` is not `nav`) such as `navbox toc sidebar breadcrumb cookie
-     comments share social related ads promo newsletter popup modal hatnote mw-editsection reflist references
-     catlinks printfooter noprint portal-bar authority-control shortdescription metadata` plus prefixes
-     (`vector- mw-jump navbox- share- comment- ...`) and id prefixes (`p- mw-navigation vector- footer catlinks`).
-     `AllowTokens` protects Wikipedia's article wrappers (`vector-body`, `mw-body-header`, ...) from the prefix
-     rules, which is how the `<h1>` inside `header.mw-body-header.vector-page-titlebar` survives.
-   - `<noscript>` suppresses text but keeps `<img>` (lazy-load fallbacks).
-   - main region: `main`, `article`, `[role=main]`, `[itemprop=articleBody]` or id/class hints (`mw-content-text
-     mw-parser-output bodyContent content(id) main-content entry-content article-body ...`) record a (start, end)
-     range in the one text buffer; the LONGEST region is used if it is >= 200 chars and >= 25% of the body, else
-     the whole body (`Scope` = main | article | content | body | text). A content hint opening inside an
-     unclosed junk element closes that junk element first.
-   - rendering: `h1` `# `, `h2` `## `, `h3` `### `, `h4-6` `#### `; `li` -> indent + `- ` / `N. `; `br` newline;
-     `hr` `---`; table cells ` | ` and infobox (`table.infobox`) `th` + `td` -> `Label: value`; `figcaption` /
-     `.thumbcaption` -> `[caption] ...` (also used as the alt fallback of the figure's first image); `pre` verbatim;
-     whitespace / entities / U+00A0 collapsed; at most one blank line; headings with no body (e.g. "References"
-     after the list was dropped) removed; `<aitools_action` neutralised to `[aitools_action`.
-   - implicit closes for unclosed `p li dt dd td th tr option`; unknown close tags ignored; uppercase tags and
-     unquoted attribute values accepted; an unterminated tag stops the scan.
-   - images (`wantImages`): `og:image` / `og:image:secure_url` / `twitter:image` / `link rel=image_src` first
-     (with `og:image:width/height/alt`), then `<img>` in document order using the largest `srcset` entry
-     (`w`, else `x`), a larger non-SVG `<picture><source>`, else `data-src` / `data-lazy-src` / `data-original` /
-     `src`; resolved against `<base href>` / the page URL (protocol-relative `//` works), http(s) only, fragment
-     stripped, deduped case-insensitively. Rejected: `data:` URIs, `.svg` / `.ico` paths, both `width`+`height`
-     (or `data-file-width/height`) present and either < 100 px, `IconWords` in alt/class/id/URL (`icon avatar
-     sprite tracking badge button emoji spinner loading blank 1x1 spacer arrow bullet oojs favicon wordmark
-     gravatar captcha /static/ centralautologin placeholder transparent smiley`), `logo` in alt/class/id always
-     and in the URL when the declared width is < 150 or unknown. Wikimedia: the `?utm_source=` query is dropped
-     and `TryRewriteWikimediaThumb` turns `/wikipedia/<proj>/thumb/a/ab/Name.jpg/250px-Name.jpg` into the
-     original `/wikipedia/<proj>/a/ab/Name.jpg` (dims from `data-file-width/height`; svg/tif/pdf/djvu/webm/ogv/
-     gif/xcf originals keep the largest thumb instead, "vector/document original, largest thumb kept").
-   - truncation: `TruncateAtBoundary` cuts at the last newline at or before `max_chars` (never before 60% of
-     it), else the last space, else hard, and appends `[truncated, N more chars]`.
-4. **Deliver**: page session `P<n>` (`WebPageSession { Id, Url, Title, Images }`, `_webPageSessions`, cleared on
-   Clear like `S<n>`), trace lines, `AIChatLog.Note("web_page_text", ...)` with the full sent text, and ONE
-   info-recap injection (`_infoMessages`, i.e. the same channel as `read_skill`; never a system-role line, which
-   would rewrite the cached prompt prefix):
-   ```
-   [Web page: Atari 2600 - Wikipedia (en.wikipedia.org)] https://en.wikipedia.org/wiki/Atari_2600
-   # Atari 2600
-   Manufacturer: Atari, Inc.
-   ...
-   (Only the first 5863 of 39249 chars were sent; re-run web_page with max_chars up to 20000 to read more.)
-
-   [Page images P1 - NOT downloaded yet; fetch one with web_image result="P1:N" anchor="name" (vision-checked and captioned like any web_image)]
-   P1:1 https://upload.wikimedia.org/wikipedia/commons/0/02/Atari-2600-Wood-4Sw-Set.png (wikimedia thumb -> original)
-   P1:4 https://upload.wikimedia.org/wikipedia/commons/4/4a/Atari-2600-Woody-FL.jpg (alt: "Starting in 1980, ...", 5850x3180, largest srcset, wikimedia thumb -> original (thumb 250x136))
-   (This page was fetched once; links inside it were NOT followed. Quote or summarize from the text above only. Page ids expire on Clear.)
-   ```
-   `resume` defaults to true (`RequestAutoResumeAfterWebFetch`), so the text is in the very next turn.
-5. **`web_image result="P1:3"`**: `WebImageCoroutine`'s result branch recognises a `P`+digit token
-   (`TryResolveWebPageToken`) and builds one `WebImageCandidate` from the page list; `queryForProvenance` (the
-   vision-check subject) becomes `<page title> - <alt>`; `Width` is deliberately left 0 so the claimed-width
-   pre-skip never rejects a rewritten original whose `<img width>` said 250. Everything downstream (dedupe,
-   ffmpeg normalize, `min_width` on decoded pixels, verify, caption, anchor, `alwaysIncludeCaption`) is shared.
-   `ExecuteWebImage` no longer demands a Brave key for `result=` tokens (`needsSearch` is false for both S and P
-   tokens). An S-token that points at a `kind="web"` hit now says "read it with web_page result=... first".
-
-Full trace (behind the bubble's `[details]` marker; the bubble itself shows the title, the
-`Title:` / `Extracted` / `Images:` count lines and `Done`):
-```
-web_page  url="https://en.wikipedia.org/wiki/Atari_2600"  max_chars=6000  images=true  max_images=12
-GET https://en.wikipedia.org/wiki/Atari_2600
-  -> HTTP 200 text/html 676,548 bytes in 0.5s (utf-8)
-Title: Atari 2600 - Wikipedia
-Extracted 39,249 chars from <main>; sending 5,863 (truncated, 33,416 more)
-Images (12 of 14 candidates; fetch one with web_image result="P1:N"):
-  P1:1 https://upload.wikimedia.org/wikipedia/commons/0/02/Atari-2600-Wood-4Sw-Set.png (wikimedia thumb -> original)
-  ...
-Done in 0.7s.
-```
-query= adds `Searched Brave web for "...": N hits`, `Stored as S2 (...)`, `Fetch order by source quality: 3 (+6), 1 (+1)...`
-and `GET <url>  (<title>)` per attempt. Failures: `-> HTTP 403 Forbidden; trying the next result`, `-> no readable
-text (12 chars; the page is probably rendered by JavaScript or is an anti-bot page)`, `Result S1:2 is a images
-result, not a page`, `Skip <url>: private / loopback ... not allowed`. Every failure path injects a note and, when
-`resume="false"`, one bounded continue; cancel paths (Stop / Clear bump `_webFetchEpoch`) exit silently like the
-other fetches. `web_page` counts as a preparatory action for the unfinished-plan safety net and as web work for
-`HasPendingSidecarWork()` (Send / `/status idle` / auto-resume wait for it).
-
-Measured (2026-08-24, Qwen 27B main LLM): "Research the Atari 2600 from its Wikipedia article: read the page, tell
-me 3 facts, fetch two photos from that page as anchors, render the console on a shag carpet" -> `web_page url=`
-(0.7 s), auto-continue with three facts quoted from the fetched text, `web_image result="P1:1"` (accepted),
-`result="P1:4"` (vision check: "digital product mockup", rejected), `result="P1:3"` (accepted), then
-`image_to_image` Klein 2-input with both anchors. Start to render submit: ~1 min.
-
-Offline regression harness (not in the repo because `utils/` ships with builds): a dotnet console project that
-`<Compile Include="...\Web\WebPageReader.cs">` and runs fixtures (unclosed p/li, uppercase unquoted attrs,
-srcset/picture/figcaption, nested navbox, main-vs-body fallback, script containing `</div>`, noscript img,
-sup.reference, infobox `th: td`, Wikimedia rewrites, `<aitools_action` neutralised, truncation rules, BOM/meta/http
-charset precedence, invalid UTF-8) plus `--fetch <url> <file>` / `<file> <url>` to print title, scope, char counts
-and the `P1:N` list for a saved page. Register `CodePagesEncodingProvider` in the harness (Unity's Mono has the
-code pages built in; .NET 10 needs the provider for windows-1252).
-
-## web_audio: bare sound files (since 2026-08-30)
-
-Web fetch originally had no audio concept at all: `MediaKind` knew no audio containers (a
-`.wav` is `RIFF....WAVE`, which failed the `WEBP` check and sniffed `Unknown`), and
-`web_video`'s pipeline needs frames to cut and vision-check, so a bare `.wav` URL could
-never land no matter which skill the model picked (the Seinfeld-.wav session that exposed
-this ended with "no usable clip" on every drodd.com link). `web_audio` fixes that end to
-end:
-
-- **Sniffing**: `SniffMagic` now knows Wav (RIFF+WAVE), Mp3 (ID3 or raw FF Ex/Fx frame
-  sync, checked after JPEG/containers), Flac, Ogg, M4a (ftyp m4a/m4b); `IsAudioKind`.
-- **Sources**: `url=` (direct file URL; `YtDlpTool.LooksLikeDirectAudioUrl` extension
-  check), `result="P1:a2"` (a page audio link, below), or an `S` web hit whose URL is
-  itself a sound file. NO `query=` mode: Brave has no audio vertical, so the executor
-  refuses it with the search->page->result recipe. `web_video url=` pointing at an audio
-  extension is silently rerouted to `web_audio` (`ExecuteWebVideo` redirect) with a note.
-- **Gate**: no vision check (a waveform shows a vision model nothing). Accept =
-  `FfmpegTool.ProbeAudio` finds a real audio stream and NO video stream (mp3 cover art
-  already excluded by the `attached_pic` check); html/image/video sniffs are refused with
-  a pointer to the right skill. `SpeechCheck` then ALWAYS runs (volumedetect + Whisper
-  when STT is configured): the transcript goes into the caption and the completion recap;
-  with `speech="true"` a silent or music-only file is REJECTED (voice-reference case),
-  without it any sound passes.
-- **Trim**: `start`/`duration` cut via `ExtractAudioWavSection` (full-quality WAV); a
-  source over `MaxAudioSeconds` (300 s) is auto-trimmed from `start` with a trace note.
-  Byte cap `MaxAudioBytes` 50 MB.
-- **Landing**: the same `AppendAudioBubble` seam as dropped/generated audio (teal
-  `AudioColorWeb` waveform preview, lossless `audioPath`, `alwaysIncludeCaption`,
-  synthesized caption - never a vision call), provenance `web audio: "label" host/path`,
-  dedupe via `_webFetchedUrlToPic`, anchors, epoch cancellation, `FinishWebFetch` pokes.
-  The recap tells the model its uses: `set_video_audio`, and the H3 standalone `audio=`
-  reference (STYLE conditioning) as THE voice path - per Seth's rule (2026-08-30) the
-  model must assume the H3 reference and never ask about / offer `generate_speech
-  ref_voice` cloning as an alternative.
-
-**web_page audio links**: `WebPageReader` also collects `<a href>` targets whose path ends
-in an audio extension (plus `<audio src>` from the open tag; `<source>` children are
-raw-skipped with the element) - deduped, capped at 30, labeled with the collapsed link
-text (else the file name), junk-gated like images. They are listed in the trace and the
-recap as `P<n>:a<i>` (`FormatAudioLine`), stored on the `WebPageSession`, and resolved by
-`TryResolveWebPageAudioToken` (which also accepts a bare `P1:3` since web_audio only ever
-means the audio list). This is the discovery path: soundboard/quotes pages are indexed by
-Brave web search, their .wav links are not.
-
-Measured (2026-08-30, live editor): `web_audio url=` on a direct MP3 landed as `Audio #1`
-in 1.6 s (speech check correctly said music-only); a dead .wav host then made the model
-self-recover exactly as the skill teaches - `web_search kind="web"` -> `web_page` on an
-archive.org item (3 audio links listed) -> `web_audio result="P1:a3"` -> 351 s MP3
-auto-trimmed to 300 s WAV, landed as `Audio #2` with its anchor, 9.4 s total. Known
-wrinkle: Whisper hallucinates subtitle-credit text on some music, which can pass the
-speech heuristic and put a bogus "transcript" in the caption (same limits as web_video's
-check; harmless without `speech="true"`).
+**Default cast recipe (Seth, 2026-08-31, prompt text only).** For a new video of a named show/film cast or any
+real person with Web ON, reference fetching is the DEFAULT (the user never has to ask): per person ONE
+`web_image count="2"` (anchors `name` + `name_2`, one `<Subject N>`), query `"<show> <character> scene
+still"`, criteria rejecting interviews / talk shows / premieres / red carpet / photoshoots / headshots
+(press photos give the wrong look and wardrobe); per SPEAKING character ONE
+`web_video query="<show> <character> talking scene" speech="true"`; then a `Reference Video To Video` render
+on the auto-continue turn (first two speakers' clips in clip slots, further speakers via `audio="name_clip"`,
+stills after the clips), voices bound "styled like <Audio N>". Web OFF: use chat references or ask. Lives in
+`main_prompt.txt`, `web_image.md`, `web_video.md`, `stitch_video.md`, `generate_movie.md`.
 
 ## Web toggle (AI Chat header)
 
-A "Web" checkbox in the AI Chat header (between the GPUs/LLMs pill and Settings; `_webToggle`, PlayerPrefs
-`aichat_web_enabled`, default on; `AIChatPanel.GetWebEnabled()` / `SetWebEnabled()`) lets the user turn every
-online feature off at a glance. When it is OFF:
+`_webToggle`, PlayerPrefs `aichat_web_enabled` (default on), `AIChatPanel.GetWebEnabled()` / `SetWebEnabled()`.
+When OFF:
 
-- The model is told every turn: `BuildCurrentStateBlock(..., webEnabled)` writes `WEB ACCESS: ON (...)` or
-  `WEB ACCESS: OFF - ... web_search, web_image, web_video, web_page, web_audio and web_transcript are disabled and will fail; do not emit
-  them ...` right under the CURRENT STATE header (volatile block, so a flip is seen on the next turn without
-  touching the cached prefix).
-- The six web skills are left out of the stable SKILLS block (`ChatContextBuilder.Build(keepOldToolCalls,
-  hiddenSkillIds)` -> `SkillManager.BuildSkillSummariesBlock(excludeIds)`) and cannot keyword-autoload
-  (`GetAutoloadSkillsForMessage(msg, excludeIds)`); `BuiltInSkillIds.WebSkills` is the set,
-  `AIChatPanel.HiddenSkillIdsForPrompt()` the switch. This changes the prompt prefix once per flip (one cache
-  miss), never per turn. `main_prompt.txt`'s REAL-people / RESEARCH rules say to obey the CURRENT STATE line.
-- Every web action fails before any request: `SkillActionExecutor.WebPreflight` checks
-  `IChatHost.IsWebAccessEnabled()` FIRST (before the Brave-key branch, so bare `url=` fetches are refused too),
-  writes `Not started: Web access is OFF (the "Web" checkbox in the AI Chat header).` into a Web bubble, injects a
-  silent note telling the model not to retry until CURRENT STATE says ON, and requests one bounded continue.
-- Automation: `POST /chat_web` with `enabled=<true|false>` (omit the body to read) -> `{"ok":true,"webEnabled":...}`;
-  it sets the pref AND the checkbox (`AutomationSetWebEnabled`, `SetIsOnWithoutNotify`). Restore the prior value
-  after tests, it persists like the checkbox.
+- `BuildCurrentStateBlock(..., webEnabled)` writes `WEB ACCESS: OFF - ... disabled ...` (or `ON`) under the
+  CURRENT STATE header (volatile tail, no prefix change per turn).
+- The six skills (`BuiltInSkillIds.WebSkills`) are left out of the stable SKILLS block and keyword autoload
+  (`AIChatPanel.HiddenSkillIdsForPrompt()` -> `ChatContextBuilder.Build(..., hiddenSkillIds)` /
+  `GetAutoloadSkillsForMessage(msg, excludeIds)`): one cache miss per flip, never per turn.
+- `SkillActionExecutor.WebPreflight` checks `IChatHost.IsWebAccessEnabled()` FIRST (so bare `url=` fetches are
+  refused too), writes `Not started: Web access is OFF ...` into a Web bubble, injects a silent "do not retry
+  until CURRENT STATE says ON" note and requests one bounded continue.
+- Bridge: `POST /chat_web` `enabled=<true|false>` (omit to read) sets the pref AND checkbox
+  (`AutomationSetWebEnabled`). It persists: restore the prior value after tests.
 
-## Flow and gating (the non-obvious parts)
+## web_image: ranking and vision verification
 
-- Each action is a DEFERRED executor action (`_lastActionDeferred`), so later actions in
-  the same reply wait for the download. That is what makes `web_image anchor="jerry"`
-  followed by `image_to_movie chat_image2="jerry"` in one reply work with no extra turn.
-- `HasPendingSidecarWork()` includes `_webFetchCount > 0 || _webCaptionInFlight.Count > 0`,
-  so Send, `AutomationSendMessage`, `/status idle`, and every auto-resume scheduler wait
-  for fetches AND the captions of what they spawned.
-- `resume="true"` (default for `web_search`) reuses the inspect auto-resume slot
-  (`RegisterInspectAutoResumeRequest`). Because captions count as sidecar work, the
-  synthetic `(continue)` turn's CHAT IMAGES block already contains the captions.
-- `FinishWebFetch` / web caption completion call `PokeAutoResumeSchedulers()`
-  (inspect / skill-load / generic continue). The same poke was added to
-  `FinishVideoImport` / `FinishVideoCaption`, which previously never re-poked them.
-- `ChatImageRecord.alwaysIncludeCaption`: captions of non-attachment bubbles are only
-  described in CHAT IMAGES when "Auto-caption generated images" is on; web images (and
-  extracted stills) set this flag so the model always sees what arrived.
-- Cancellation: `_webFetchEpoch` is bumped on BOTH Stop and Clear (`CancelAllWebFetches`),
-  in-flight `UnityWebRequest`s are aborted, yt-dlp is killed via its `CancelToken`,
-  coroutines check the epoch after every yield and exit silently, active trace bubbles
-  get a "Cancelled." line. The video-import epoch, by contrast, is only bumped on Clear.
-  The footer Stop button stays ENABLED for the whole fetch (fixed 2026-09-06): the button
-  is toggled only via `interactable`, `ShouldStopBeInteractable()` is the one rule
-  (streaming / forced-main wait / inspections / pending auto-resumes / web work / audio
-  generation), and `SetBusyUI` must not compute its own version - it used to, without the
-  web term, so `FinalizeAssistantTurn` greyed Stop the moment the reply text ended while a
-  fetch that had started mid-stream was still running (Send was blocked too, so the only
-  way out was Clear). A Stop pressed after the stream ended also calls
-  `ResetPerTurnExecutionState()` before `SetBusyUI`: the cancelled coroutine reports
-  `onDone(false)` on its next epoch check and `ResumePumpAfterDeferredComplete` would
-  otherwise run the REST of the reply's queued actions (the render waiting on the fetch).
-  The vision suitability checks (`VerifyWebImageCoroutine`, `VerifyWebVideoClipCoroutine`)
-  take the caller's epoch, end their capacity wait / result wait on a bump, and register
-  their `CaptionJob` in `_webVerifyJobs` so `CancelAllWebFetches` can `CancelCaptionJob`
-  it (LLM busy slot freed at once, the late HTTP result is dropped; the request itself
-  cannot be aborted). `CaptionWebStillBubble` skips its trace lines after a bump so
-  nothing is appended under "Cancelled.". Verified through the bridge: yt-dlp at 12% ->
-  Stop -> "Cancelled.", process gone, `/status` idle within a second, no Movie bubble, no
-  follow-up render; and Stop during a `WebImageVerify` request -> `stopped:true`, the
-  response logged later with no effect, no render.
-- Dedupe: a URL fetched earlier this session is reused (`_webFetchedUrlToPic`, Pic
-  reference because chat numbers shift on trim); the anchor is re-bound.
-- Search sessions and the dedupe map are cleared on Clear.
-- `SkillActionParser.MakeSentinel` lists the web ids (and `extract_still`) so no
-  `[skill: web_image]` marker leaks into the transcript.
+1. **Metadata ranking** (`RankWebImageCandidates`, before any download): Wikimedia/Wikipedia +5,
+   .gov/.edu/Britannica +3; AI-art, clipart, cutout, wallpaper, stock, merch, Pinterest, meme hosts -4
+   (`WebImageJunkHosts`); title words (clipart, caricature, painting, wallpaper, poster, funko...) -3;
+   "official portrait" / "headshot" / "press photo" +1; >=600 px +1, <300 px -1, banner aspect -2. Stable sort.
+   Claimed width under `min_width` is skipped without downloading.
+2. **Vision verification** (`VerifyWebImageCoroutine`, one call per download, `BuildWebImageVerifyPrompt` with
+   query + `criteria`): answers `VERDICT: SUITABLE|UNSUITABLE`, `REASON:`, then `SHORT:` / `LONG:` caption
+   lines (`ParseCaptionResponse` skips the verdict lines). UNSUITABLE -> next candidate (up to
+   `MaxImageCandidates` = 12 downloads). SUITABLE -> bubble added and the same call's caption applied
+   (`ApplyCaptionResultToPic`), no second caption sidecar. No verdict -> accepted unverified with the normal
+   caption path. Skipped (and traced) when no active LLM accepts vision or `verify="false"`. The prompt allows
+   scene stills where the subject is clearly the main subject; rejects reproductions (screens, framed
+   pictures), art, wrong subject, crowds. Both image and video verify prompts forbid naming people from
+   general knowledge (only the query's subject, only for the person who visibly matches).
+3. **Hotlink fallback**: 403 / timeout / non-image original -> retry via the Brave `thumbnail.src` (500 px proxy),
+   then the next result.
+4. **Dedupe**: `_webFetchedUrlToPic` reuses a URL fetched earlier in the session (Pic reference, since chat
+   numbers shift) and re-binds the anchor. `_webFetchedUrlToQuery` records which query accepted each URL: a
+   query-driven fetch skips a candidate accepted for a DIFFERENT query (trace `Skip <url>: already in chat as
+   #N from a different search`, no attempt consumed), so one castmate's photo is never handed to another.
+   Explicit `url=` / `result=` always reuse. Video/audio dedupe is URL-only.
+
+### Thumbnails of everything the vision check saw
+
+- `WebTraceBubble.AddThumb(pngBytes, filePath, label, title)` lazily creates a `WebThumbStrip` (wrapping
+  `GridLayoutGroup` of 72 px cells + a hint line) for every decoded `web_image` download and every `web_video`
+  contact sheet. List-only bubbles (`web_search`, `web_page`) have none. Thumbnails are downscaled copies
+  (max 128 px) owned by the strip and destroyed with the bubble.
+- Badges (`SetThumbVerdict`): green check = SUITABLE, red X = rejected (vision, `min_width`, audio check, load
+  failure), amber ? = accepted unverified, grey - = checking. Hover writes the verdict, reason, size and URL
+  into the hint line. Labels: download ordinal (images) or cut range (`5-10s`, video).
+- Click (`AIChatPanel.OnWebThumbClicked`): accepted media pans to its Pic (`ChatPicMirror.FocusCameraOnPic`);
+  a rejected candidate or contact sheet is loaded into a NEW plain canvas `PicMain`
+  (`ImageGenerator.AddImageByFileName`, stored as `SpawnedPic` so later clicks focus it; `chat_image`
+  numbering unaffected).
+- So rejected image files stay in `tempCache/aichat_web_images` and contact sheets in
+  `tempCache/aichat_video_captions` for the session; rejected clip files are deleted.
+
+## Flow and gating
+
+- Every web action is DEFERRED (`_lastActionDeferred`): later actions in the same reply wait for the download,
+  so `web_image anchor="jerry"` followed by `image_to_movie chat_image2="jerry"` works in one reply.
+- `HasPendingSidecarWork()` includes `_webFetchCount > 0 || _webCaptionInFlight.Count > 0`, so Send,
+  `AutomationSendMessage`, `/status idle` and every auto-resume scheduler wait for fetches AND their captions.
+- `resume="true"` reuses the inspect auto-resume slot (`RegisterInspectAutoResumeRequest`); since captions
+  are sidecar work, the `(continue)` turn's CHAT IMAGES already contains them. `FinishWebFetch` and web
+  caption completion call `PokeAutoResumeSchedulers()`.
+- `ChatImageRecord.alwaysIncludeCaption` is set on web images (and extracted stills) so CHAT IMAGES always
+  describes them even when "Auto-caption generated images" is off.
+- Unfinished-plan safety net (`SkillActionExecutor.TurnHadOnlyPreparatoryActions`, checked in
+  `FinalizeAssistantTurn`): actions are tallied at enqueue as preparatory (`web_image`, `web_video`,
+  `web_search`, `web_page`, `extract_still`, `clip_video`) or other. A reply with only preparatory actions and
+  no resume of its own gets one `RegisterGenericContinueRequest` plus a silent "emit the render NOW or say it
+  is complete" note. Bounded by the consecutive-continue cap.
+- `SkillActionParser.MakeSentinel` lists the web ids (and `extract_still`) so no `[skill: web_image]` marker
+  leaks into the transcript.
+- Search sessions, page sessions and the dedupe maps are cleared on Clear.
+
+### Cancellation
+
+- `_webFetchEpoch` is bumped on BOTH Stop and Clear (`CancelAllWebFetches`): in-flight requests aborted,
+  yt-dlp killed via its `CancelToken`, coroutines check the epoch after every yield and exit silently, active
+  trace bubbles get "Cancelled.". (The video-import epoch is only bumped on Clear.)
+- Stop stays enabled for the whole fetch through the single rule `ShouldStopBeInteractable()`; `SetBusyUI`
+  must never compute its own. A Stop after the stream ended also calls `ResetPerTurnExecutionState()` before
+  `SetBusyUI`, otherwise `ResumePumpAfterDeferredComplete` would run the rest of the reply's queued actions
+  when the cancelled coroutine reports `onDone(false)`.
+- The vision checks take the caller's epoch, end their waits on a bump, and register their `CaptionJob` in
+  `_webVerifyJobs` so `CancelAllWebFetches` can `CancelCaptionJob` it (LLM slot freed at once; the late result
+  is dropped). `CaptionWebStillBubble` skips trace lines after a bump.
 
 ## Trace bubble format
 
-Since 2026-09-13 the Web bubble is COMPACT (Seth: "just show the images it looks at"). It renders
-only: a one-line title built per skill (`web_image "Seinfeld Cosmo Kramer scene still"  x2  anchor
-"kramer"`, `web_video "..."  5s  anchor "clip1"`, `web_page en.wikipedia.org/wiki/Atari_2600`,
-`web_search images "..."`, `web_audio host/path`; `WebCompactSource` = host/path of a `url=`,
-`result S1:3`, or the quoted query), a clickable `[details]` marker at the end of that line (TMP link
-id `webtrace`, shown as soon as the full trace holds a line the bubble hides), the OUTCOME lines
-written with `WebTraceBubble.AppendSummaryLine` (`Done: 2 of 2 images added (#3, #4) in 12.3s.`,
-`No usable image in N attempts (...)`, `Added as Movie #10 (anchor "clip1")`, `Added as Audio #N`,
-`Title:` / `Extracted N chars` / `Images: 12 of 40 candidates listed` for web_page, the hit-count line
-for list-only `web_search`, `Result lookup failed`, `No vision-capable LLM is active`, the
-speech-check-unavailable warning, a failed Brave search, `yt-dlp: <tool error>`, `Cancelled.`), the
-throttled status line (`downloading 63%`, `checking suitability with the vision LLM...`) and the
-thumbnail strip. Everything else (`AppendLine`: the raw action line with every attribute, the
-`Searched Brave ... N hits` line for image/video fetches, `Skip` / `Download N/M` / HTTP lines, vision
-verdicts, captions, the yt-dlp command line + output, the web_page image/audio lists) is in the
-FULL trace only. Clicking `[details]` opens the full trace in the floating `ChatThinkingWindow`
-(kind `WebTrace`, teal header, title `Web trace (working...)` until `EndWebTrace` / cancel calls
-`WebTraceBubble.Finish()`); `WebTraceBubble`'s change hook (`AIChatPanel.RefreshOpenWebTraceWindow`)
-pushes every new line into the window while it shows that bubble, so it streams like reasoning.
-The trace is found through a `WebTraceHolder` component on the bubble root (destroyed with the
-bubble). One-line notices (`AddWebTraceNotice`, e.g. Web access OFF) have no hidden lines and no
-marker. `AppendSummaryLine` is the ONLY way to put text in the bubble: when adding a trace line,
-decide whether it is an outcome the user must see without clicking. `llm_aichat_log.json` and the
-`web_trace` note still get the full text. Bridge: `POST /chat_web_trace action=open|close|toggle|status`
-(the latest Web bubble; reports `compact`, `lines`, `summaryLines`, `thumbs`, `finished`).
+The Web bubble is COMPACT (Seth, 2026-09-13: "just show the images it looks at"). It renders only:
 
-The FULL trace (what `[details]` shows):
+- a one-line title per skill (`web_image "<query>"  x2  anchor "kramer"`, `web_video "..."  5s`,
+  `web_page en.wikipedia.org/wiki/...`, `web_search images "..."`, `web_audio host/path`; `WebCompactSource`
+  = host/path of a `url=`, `result S1:3`, or the quoted query) with a clickable `[details]` marker (TMP link
+  `webtrace`) once the full trace holds a hidden line;
+- OUTCOME lines written with `WebTraceBubble.AppendSummaryLine` (`Done: 2 of 2 images added (#3, #4) in 12.3s.`,
+  `No usable image in N attempts (...)`, `Added as Movie #10`, `Added as Audio #N`, web_page `Title:` /
+  `Extracted` / `Images:` counts, the hit-count line for list-only `web_search`, `Result lookup failed`,
+  `No vision-capable LLM is active`, the speech-check-unavailable warning, Brave failures, `yt-dlp: <error>`,
+  `Cancelled.`);
+- the throttled status line (`downloading 63%`, `checking suitability with the vision LLM...`) and the
+  thumbnail strip.
 
-```
-web_image  query="Jerry Seinfeld portrait photo"  count=1  min_width=256  safesearch=strict  anchor="jerry"
-Search: Brave images  GET /images/search?q=Jerry%20Seinfeld%20portrait%20photo&count=10&safesearch=strict&spellcheck=1
-  -> HTTP 200 in 0.6s (3.4 KB)
-Results (10):
- 1. Jerry Seinfeld - Wikipedia | 1200x1600 | en.wikipedia.org | https://upload.wikimedia.org/...jpg
- 2. ...
-Download 1/10: https://upload.wikimedia.org/...jpg  (claimed 1200x1600)
-  -> HTTP 200 image/jpeg 184,233 bytes in 0.4s, JPEG 1200x1600, saved web_3f9a12.jpg
-  -> added as #7 (anchor "jerry"), captioning...
-Done: 1 of 1 image added (#7) in 1.3s.
-#7 caption: "Middle-aged man in a dark blazer smiling..."
-```
-Failure lines: `-> HTTP 403 Forbidden; retry via Brave thumbnail https://imgs.search.brave.com/...`,
+Everything else (`AppendLine`: the raw action line, Brave result/ranking lines, `Skip` / `Download N/M` /
+HTTP lines, verdicts, captions, yt-dlp command + output, page image/audio lists) is in the FULL trace only.
+`[details]` opens it in the floating `ChatThinkingWindow` (kind `WebTrace`, live via
+`AIChatPanel.RefreshOpenWebTraceWindow` until `WebTraceBubble.Finish()`), found through the `WebTraceHolder`
+component on the bubble root. Plain text (only TMP angle brackets escaped, no markdown pass).
+
+Rule: `AppendSummaryLine` is the ONLY way to put text in the bubble; when adding a trace line, decide whether
+it is an outcome the user must see without clicking. New lines default to details-only. One-line notices
+(`AddWebTraceNotice`, e.g. Web OFF) have no marker. Every line is mirrored to `llm_aichat_log.json` as
+`note/web`; full Brave lists and ranking go there as `web_results` / `web_ranking`.
+
+Bridge: `POST /chat_web_trace action=open|close|toggle|status` (latest Web bubble; reports `compact`, `lines`,
+`summaryLines`, `thumbs`, `finished`).
+
+Typical full-trace failure lines: `-> HTTP 403 Forbidden; retry via Brave thumbnail ...`,
 `-> HTTP 200 text/html (a web page, not an image), skipped`, `-> timed out after 30s, skipped`,
 `WEBP -> ffmpeg -> PNG 1024x768`.
-
-yt-dlp traces show the range command (`--download-sections "*12-17"`,
-`--force-keyframes-at-cuts`, format selection and FFmpeg path), progress, exit
-status and the reported failure. Cookie-file paths and invalid cookie records are
-redacted. Successful sections are then normalized from local time zero; the
-trace and provenance still identify source seconds 12-17. Earlier tests found
-FFmpeg range downloads could be throttled on some sources; a source-specific
-check on 2026-10-20 fetched seven seconds in about 11 seconds. A 30.5-second
-seek stalled on direct AV1 and H.264 streams, but the HLS selection fetched
-30.5-33.5 seconds in about three seconds after extraction. Slow downloads
-remain cancellable and have a ten-minute timeout, without a whole-source fallback.
-Deno / Node / Bun detection remains visible in Settings > Web.
 
 ## Recap sent to the model
 
 - `[web_search S1 images "..." -> 10 results]` + one line per result + how to use `result="S1:N"`.
-- `(web_image "<query>" added #7 (1200x1600, upload.wikimedia.org, anchor "jerry"). The vision check judged it a suitable reference: <reason>.)` followed by a separate `(Full description of #7 (web image) anchor="jerry" - describe it from this, not from outside knowledge: <LONG caption>)` note. That second note comes from `AIChatPanel.ForwardFullDescriptionOnce`, called by `ApplyCaptionResultToPic` for EVERY captioned chat image or movie (generated, extracted, imported/cut clips, web fetches; pasted attachments already carry theirs in the paste header), deduped per Pic + text: the full description is paid for once in cached history, while the per-turn CHAT IMAGES list keeps only the SHORT caption. web_video's transcript is appended to the LONG caption, so it arrives the same way. Both verify prompts forbid naming people from general knowledge (only the query's subject name, only for the person who visibly matches); a session log showed the sidecar calling Kramer "Jerry Seinfeld in a white lab coat" in the LONG caption while its own VERDICT said Kramer.
-- `(web_image "<query>": no usable image in N attempts (download failed x3 not an image x2 ...). Try a different query, a lower min_width, or a direct url=.)`
-- When chat holds any Audio bubble, the web_image recap ALSO appends "If the render has this character SPEAKING and Audio #K is their voice sample, ALSO stage it on the SAME reference action: audio=\"K\"...". The Bugs Bunny test (2026-08-30) showed the model following the photo-slot recipe verbatim on the render turn while the voice sample fetched one action earlier sat unused - the freshest concrete recipe wins, so the pairing reminder must ride it. The same rule now leads `generate_movie.md` ("First: check chat for existing references") and hardens `image_to_movie.md`'s audio-ref bullet plus the CHAT IMAGES audio legend (staging an existing voice sample is MANDATORY when its character speaks).
+- `(web_image "<query>" added #7 (1200x1600, host, anchor "jerry"). The vision check judged it suitable: <reason>.)`
+  then a separate `(Full description of #7 ... : <LONG caption>)` note from `AIChatPanel.ForwardFullDescriptionOnce`.
+  That helper runs for EVERY captioned chat image or movie via `ApplyCaptionResultToPic`, deduped per Pic +
+  text: the full description is paid once in cached history while per-turn CHAT IMAGES keeps only the SHORT
+  caption. web_video transcripts ride the LONG caption.
+- `(web_image "<query>": no usable image in N attempts (...). Try a different query, a lower min_width, or a direct url=.)`
+- When chat holds any Audio bubble, the web_image recap also says to stage the speaking character's voice
+  sample on the SAME reference action (`audio="K"`): the freshest concrete recipe wins, so the pairing reminder
+  must ride it.
 - `(web_video added Movie #10: "<title>" youtube.com 12s for 5s. Reference it via chat_image="10" ...)`
-- No key / rejected key / quota: red Error bubble for the user naming Settings > Web (plus the HTTP error) and a note telling the model to relay it and not retry.
+- No key / rejected key / quota: red Error bubble naming Settings > Web plus a note telling the model to relay
+  it and not retry.
 
 ## Temp files
 
-`tempCache/aichat_web_images/web_<id>.png|jpg` (plus transient `src_*` inputs for ffmpeg conversion),
-`tempCache/aichat_web_videos/ytdlp_<id>.mp4` (whole source at <=480p) / `direct_<id>.<ext>` (deleted after the clip is cut), the
-normalized clip in `tempCache/aichat_video_clips/` (auto-deleted with the Pic), and web_audio's
-`tempCache/aichat_audio/web_<id>.<ext>` / `web_cut_<id>.wav` (the bubble's lossless `audioPath`) with its waveform
-preview in `tempCache/aichat_audio_previews/`. `tempCache` is wiped on quit; save a bubble to keep it.
-A Movie bubble's S exports a persistent `output/video_<guid>.<original extension>` copy;
-the working clip keeps its temporary cleanup policy. An Audio bubble's S also saves
-the sound file next to the preview movie. See `media_import.md` "Saving movies".
-
-Bulk cleanup uses `RTSafeFileSystem`: quit cleanup resolves the fixed `tempCache` child from
-`Application.dataPath`, never the process working directory, and skips deletion with a warning
-if the root or cache tree contains a symlink/junction. yt-dlp failure cleanup accepts only
-`ytdlp_<8 lowercase hex digits>.*` in that application's `tempCache/aichat_web_videos`, so a blank
-or malformed stem cannot widen the sweep. Missing directories are harmless; unsafe paths are
-left intact and reported. Offline safety fixtures: `scripts/VerifyDeleteSafety.ps1`.
+- `tempCache/aichat_web_images/web_<id>.png|jpg` (plus transient `src_*` ffmpeg inputs).
+- `tempCache/aichat_web_videos/ytdlp_<id>.*` / `direct_<id>.<ext>` (downloaded section, deleted after the cut);
+  the normalized clip in `tempCache/aichat_video_clips/` (deleted with the Pic).
+- web_audio: `tempCache/aichat_audio/web_<id>.<ext>` / `web_cut_<id>.wav`, preview in
+  `tempCache/aichat_audio_previews/`.
+- `tempCache` is wiped on quit; a bubble's S saves a persistent copy (`docs/media_import.md` "Saving movies").
+- Bulk cleanup uses `RTSafeFileSystem`: the fixed `tempCache` child resolved from `Application.dataPath` (never
+  the working directory), skipped with a warning on any symlink/junction; yt-dlp failure cleanup only accepts
+  `ytdlp_<8 lowercase hex digits>.*` in `tempCache/aichat_web_videos`. Fixtures: `scripts/VerifyDeleteSafety.ps1`.
 
 ## Edge cases
-
-- **Same URL, different subject (fixed 2026-08-31).** `_webFetchedUrlToPic`
-  dedupes by URL across the session; the image path used to REUSE a cached URL
-  for any later fetch, skipping the vision check, so with the default cast
-  recipe (`count="2"` per castmate of one show) a Reddit diptych accepted for
-  "Seinfeld Jerry ... scene still" was silently handed to the next fetch as
-  `kramer_2`. `AIChatPanel` now also keeps `_webFetchedUrlToQuery` (URL -> the
-  query whose vision check accepted it, empty for url=/result= fetches);
-  a query-driven fetch skips a candidate whose recorded query differs (trace:
-  `Skip <url>: already in chat as #N from a different search (...)`, no
-  attempt consumed) and only reuses for the same query or an explicit
-  url=/result=. Video/audio dedupe is unchanged (clips are per-character
-  queries; no collision observed).
 
 | case | behavior |
 |---|---|
 | no Brave key | Error bubble naming Settings > Web; `url=` fetches still work |
-| Brave 401/403 (bad key) | trace line + an always-visible red Error bubble (`ReportWebSearchFailure`) telling the user to enter a valid key in Settings > Web; the model is told to stop using web skills until the user confirms |
-| Brave 429 / quota | same Error bubble shape, pointing at the Brave dashboard / credit; model told not to retry this turn |
-| other Brave failures | trace line + Error bubble with the HTTP error; recap says do not retry blindly |
-| hotlink 403 / timeout / non-image original | fall back to `thumbnail.src` (500 px Brave proxy), then the next result |
-| HTML / JSON body | magic sniff -> "a web page, not an image", skipped |
+| Brave 401/403 | red Error bubble (`ReportWebSearchFailure`): enter a valid key; model told to stop using web skills until the user confirms |
+| Brave 429 / quota | same shape, pointing at the Brave dashboard; no retry this turn |
+| other Brave failures | Error bubble with the HTTP error; recap says do not retry blindly |
+| HTML / JSON body for an image | sniffed as "a web page, not an image", skipped |
 | over the byte cap | aborted mid-stream, "skipped (over 25 MB)" |
 | webp/gif/avif/bmp/tiff | ffmpeg -> PNG (GIF frame 1); animated GIF as a clip only via `web_video url=` |
 | decoded width < `min_width` | skipped with the real size shown |
-| model-invented / unsafe URL | rejected before any request (must be public http/https) |
+| unsafe / invented URL | rejected before any request |
 | yt-dlp missing | trace + injection naming `utils/yt-dlp/yt-dlp.exe` |
-| no JS runtime | yt-dlp warning in the trace; downloads throttled / fewer formats; Settings > Web suggests installing Deno or Node.js |
-| explicit source-duration filter / clip over 250 MB | specific failure in both compact Web output and model recap; default has no source-duration filter |
-| YouTube bot check / sign-in | local Firefox sign-in offer, then one retry after user confirmation; actual error reaches the model if cancelled or retry fails |
-| web_audio URL is a page / image / video | refused after the sniff with a pointer to web_page / web_image / web_video (a video's soundtrack: fetch with web_video, then set_video_audio) |
-| web_audio URL NAMES a sound file but the server sent HTML | hotlink/scraper decoy (movie-sounds.org serves a 482 B stand-in page for its .mp3 URLs; wavsource builds wav URLs in JS with tokens): the note tells the model the HOST is protected, not to retry its links or web_page the decoy, and to prefer archive.org - the Bugs Bunny session (2026-08-30) burned two attempts on the same decoy URL before this message existed |
-| web_audio file has a video stream (ffprobe) | refused; mp3/flac cover art does NOT count (attached_pic excluded) |
-| web_audio speech="true" on silent / music-only audio | file deleted, recap says it would make a wrong voice reference; without the flag any sound passes |
-| web_video url= ends in .wav/.mp3/... | executor reroutes the action to web_audio with a silent note |
-| Stop / Clear mid-fetch | requests aborted, processes killed, "Cancelled." in the bubble, partial files left in tempCache |
+| source-duration filter / clip over 250 MB | specific failure in bubble and recap |
+| YouTube bot check / sign-in | Firefox sign-in offer, one retry (`docs/web_video.md`) |
+| Stop / Clear mid-fetch | requests aborted, processes killed, "Cancelled.", partial files left in tempCache |
+
+web_audio-specific cases are in `docs/web_page.md`.
 
 ## Testing recipe (automation bridge)
 
 1. No key: blank the key in Settings > Web, `POST /chat` "find a photo of a golden retriever and add it to chat"
    -> red Error bubble, `/chat_images` unchanged, `/status` idle.
-2. Happy path with a key: same message -> Web bubble with results + download lines + `#N` + caption line;
-   `/chat_images` shows the new still with `captionShort`.
+2. With a key: same message -> Web bubble with outcome + thumbnails, `#N` with `captionShort` in `/chat_images`.
 3. `url=` to a `.webp` -> "WEBP -> ffmpeg -> PNG"; `url="http://127.0.0.1:8188/x.png"` -> rejected.
-4. yt-dlp: "grab 5 seconds starting at 30s from <YouTube URL> as a clip" -> command line, progress, `Movie #N`.
-   Stop mid-download: watch `llm_aichat_log.json` for the `yt-dlp:` note, then `POST /chat_stop` -> "Cancelled." line, process killed, `/status` idle.
-5. Resume: "find a photo of the Eiffel Tower and then tell me what is in it" -> `(continue)` arrives after the
-   caption line and the answer matches it.
-6. Settings round-trip: Apply on the ComfyUI tab, reopen Web tab, the key survived (`BuildModernConfigText` emits it).
-7. Full run: "make a Seinfeld episode where they play retro games" -> 4 anchored `web_image` + one `image_to_movie`
-   with `Reference To Video (MiniMax H3) 5s.txt` and `<Picture 1>..<Picture 4>`.
-8. web_page: "Research the Atari 2600 from its Wikipedia article: read the page, tell me 3 facts, fetch two good
-   photos of the console from that page as anchors and render it on a shag carpet" -> Web bubble with
-   `GET` / `HTTP 200 text/html 676,548 bytes` / `Title:` / `Extracted ... from <main>` / the `P1:N` list;
-   `llm_aichat_log.json` gets a `web_page_text` note and the next `request` carries `[Web page: Atari 2600 -
-   Wikipedia (en.wikipedia.org)]` + `[Page images P1 ...]`; then `web_image result="P1:N"` actions and a render
-   from the anchors. `query=` mode: "look up the history of the Sega Genesis online" -> `Searched Brave web`,
-   `Fetch order by source quality: 1 (+6)...`, Wikipedia read. Non-page URL: force
-   `web_page url="<a .png>"` -> `not a readable page; use web_image url=...`.
-9. Web toggle: `POST /chat_web` body `enabled=false`, then `/chat` "find a photo of the Eiffel Tower" -> no
-   action, no Web bubble, the reply says the Web checkbox is off; the outgoing request has `WEB ACCESS: OFF` and
-   no `- web_image:` / `- web_page:` summary lines. `enabled=true` restores both on the next turn.
+4. yt-dlp: "grab 5 seconds starting at 30s from <YouTube URL> as a clip" -> `Movie #N`. Stop mid-download
+   (`POST /chat_stop`) -> "Cancelled.", process gone, `/status` idle, no follow-up render.
+5. Resume: "find a photo of the Eiffel Tower and then tell me what is in it" -> `(continue)` after the caption.
+6. Settings round-trip: Apply on the ComfyUI tab, reopen Web tab, the key survived.
+7. Full run: "make a Seinfeld episode where they play retro games" -> anchored `web_image`s + one H3 reference
+   render.
+8. web_page: "Research the Atari 2600 from its Wikipedia article ... fetch two photos from that page as anchors
+   and render it" -> `web_page_text` log note, `[Web page: ...]` + `[Page images P1 ...]` in the next request,
+   `web_image result="P1:N"`, render. Non-page URL -> `not a readable page; use web_image url=...`.
+9. Toggle: `POST /chat_web enabled=false`, then "find a photo of the Eiffel Tower" -> no action, request has
+   `WEB ACCESS: OFF` and no web skill summaries. Restore with `enabled=true`.
+10. Offline: `pwsh -File scripts/VerifyWebMedia.ps1` (`docs/web_video.md` "Checks").

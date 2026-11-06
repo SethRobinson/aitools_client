@@ -2,7 +2,7 @@
 
 ## Configuration
 
-The active app uses the editor-bundled Universal Render Pipeline 17.6.0 with Unity 6000.6.0f1. Shader Graph and render-pipeline core remain at 17.6.0. App version is tracked in `AGENTS.md` and `Assets/_Script/Config.cs`.
+The active app uses the editor-bundled Universal Render Pipeline 17.6.0 with Unity 6000.6.8f1. Shader Graph and render-pipeline core remain at 17.6.0. App version is tracked in `AGENTS.md` and `Assets/_Script/Config.cs`.
 
 `Assets/Settings/Rendering/ForwardRenderer.asset` uses the Universal Renderer's Forward path with Render Graph. There are no renderer features or post-processing effects. Gamma color space, camera framing, transparent sorting and render scale 1 are retained. URP 17.6 runs Render Graph without the old compatibility-mode switch.
 
@@ -55,14 +55,6 @@ This launches only the fixed validation executable with `-render-validation`; no
 
 Compare `saved-opaque.png`, `saved-alpha.png`, `text-left.png`, `text-auto.png`, `image-label.png` and `thumbnail.png` against the Built-In baseline using decoded RGBA pixels, including dimensions. Screenshots need visual/RGB comparison: URP fills the game-view background alpha differently from Built-In, while image-save alpha is preserved. Animated movie screenshots can capture different frames; verify progression and seeking from report telemetry as well.
 
-## Migration evidence and rollback
+## Migration history
 
-Migration branch: `migrate-active-features-urp`. Starting commit: `bfb439fb8efea9c6fc79f8f1bc8ebfe1167c01c0`. Commit `3fe5069` added the initial fixture harness while still using Built-In. Local baseline artifacts are under `build/render-validation/builtin/`; they are not shipped or committed.
-
-Validation completed on 2026-10-04 against migration commit `6c78111`. Both the editor and the visible Windows player passed all 54 checks on Direct3D 11/Gamma at 1587x738. The player exited successfully with code 0. All six saved-output comparisons above were exactly equal to the Built-In baseline in both environments, including text rasterization and alpha. Game-view captures were reviewed for workspace editing, masks, checkerboards, overlap, video, audio, chat clipping and fallback text, settings, Adventure and AI Guide. Playback/pause/seek/resume also passed the telemetry checks. The unsigned Windows build succeeded with zero errors and three warnings; the final player log contained no shader errors, unsupported-shader messages or exceptions.
-
-Local evidence: `build/render-validation/urp/report.json`, `build/render-validation/comparison.json`, `build/urp-validation/build/render-validation/player/report.json`, `build/render-validation/player-comparison.json`, and `build/urp-validation/player-validation.log`. Game-view captures are beside each fixture report. The earlier hidden-window run was invalid because its game-view captures were black; the successful visible-window run replaces it as the player acceptance evidence.
-
-The latest editor sample averaged 3.79 ms/frame versus the Built-In baseline's 2.72 ms/frame over 90 frames of the same three-picture workspace. Allocated editor memory was 1.59 GB versus 1.10 GB, after several imports/builds in the URP session. The successful visible Windows player averaged 8.20 ms/frame with approximately 379 MB allocated. These are coarse observations, not a controlled benchmark: editor/package caches and background activity affect the editor comparison, and a fresh-process Built-In player comparison is still needed to establish runtime performance and memory parity. Timing from the invalid hidden-window run is excluded.
-
-Rollback must revert the complete migration commit set, newest first, including package manifest/lock, graphics/quality settings, pipeline assets, materials, prefab references, text helper and validation tooling. Review `git log --oneline bfb439fb..migrate-active-features-urp` to identify those commits before later work is added. Stop Play, preserve unrelated changes, revert only those migration commits, let Unity reimport, and rerun the relevant checks. Clearing only the Graphics pipeline reference is insufficient because quality overrides and URP materials remain active. Do not copy or commit generated Library data.
+The app moved from Built-In to URP on branch `migrate-active-features-urp` (validated 2026-10-04: all 54 fixture checks passed in editor and player, saved outputs pixel-identical to the Built-In baseline). Built-In baseline artifacts, if still present, are under ignored `build/render-validation/builtin/`. Reverting would need the whole migration commit set (package manifest/lock, graphics/quality settings, pipeline assets, materials, prefab references, text helper); clearing only the Graphics pipeline reference is not enough.

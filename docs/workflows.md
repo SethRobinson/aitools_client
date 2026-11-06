@@ -1,8 +1,6 @@
 # Workflows, presets and job scripts
 
-Deep-dive for `Assets/_Script/Pic/PicMain.cs` (job-script interpreter), `PicTextToImage.cs` (workflow submit / poll / fetch), `Presets/*.txt` and `ComfyUI/*.json`. The directive list and the two preset-author pitfalls are summarized in `AGENTS.md` ("Workflows, Presets, and Job Scripts"); MiniMax H3 has its own deep-dive in `minimax_h3.md`.
-
-Moved verbatim from AGENTS.md on 2026-09-13 (bullet style kept); update this file when the feature changes and keep the AGENTS.md index entry to one or two lines.
+Deep-dive for `Assets/_Script/Pic/PicMain.cs` (job-script interpreter), `PicTextToImage.cs` (workflow submit / poll / fetch), `Presets/*.txt` and `ComfyUI/*.json`. The directive list and the two preset-author pitfalls are summarized in `AGENTS.md` ("Workflows, presets and job scripts"); MiniMax H3 has its own deep-dive in `minimax_h3.md`.
 
 ## Placeholders, unique output names, directives and built-in variables
 

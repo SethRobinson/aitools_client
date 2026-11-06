@@ -15,7 +15,7 @@ a door shutting sound effect", "narrate movie 2 in a Scottish voice".
 | piece | where | role |
 |---|---|---|
 | Gateway client | `Assets/_Script/LLM/AIChat/Audio/AudioGenClient.cs` | `POST {base}/audio` (music, sfx) / `POST {base}/tts` (speech) as multipart, optional `Authorization: Bearer`, saves the returned file under `tempCache/aichat_audio/`, surfaces JSON `detail` errors, `Handle.Cancel()` for Stop |
-| FFmpeg audio helpers | `Assets/_Script/LLM/AIChat/Video/FfmpegToolAudio.cs` (`partial class FfmpegTool`) | `ProbeAudio`, `CreateAudioWaveformPreview` (showwaves -> 640x160 H.264 + AAC), `ExtractAudioSection` (voice-clone sample, mono 24k), `ExtractAudioWavSection` (full-quality native-rate WAV for the clip chooser's `Export audio clip`), `MuxAudioIntoVideo` + `BuildMuxAudioArgs` (mix / replace graph), `IsSupportedAudioExtension`; the clip loudness normalization lives in `FfmpegTool.cs` itself (`MeasureLoudness` two-pass `loudnorm`, `CreateClip(normalizeAudio:)`, see AGENTS.md "Clip audio normalization") |
+| FFmpeg audio helpers | `Assets/_Script/LLM/AIChat/Video/FfmpegToolAudio.cs` (`partial class FfmpegTool`) | `ProbeAudio`, `CreateAudioWaveformPreview` (showwaves -> 640x160 H.264 + AAC), `ExtractAudioSection` (voice-clone sample, mono 24k), `ExtractAudioWavSection` (full-quality native-rate WAV for the clip chooser's `Export audio clip`), `MuxAudioIntoVideo` + `BuildMuxAudioArgs` (mix / replace graph), `IsSupportedAudioExtension`; the clip loudness normalization lives in `FfmpegTool.cs` itself (`MeasureLoudness` two-pass `loudnorm`, `CreateClip(normalizeAudio:)`, see `media_import.md` "Clip audio normalization") |
 | Executor | `SkillActionExecutor.cs` `ExecuteGenerateAudio` / `ExecuteSetVideoAudio` | attribute parsing + aliases, clamps (music 10-360 s: the music model rejects shorter with a 422, sfx 0.1-11 s), `ref_voice` resolution, defers the pump like clip_video |
 | Host | `AIChatPanel.cs` "Audio generation" region | `GenerateAudioActionCoroutine`, `SetVideoAudioActionCoroutine`, `AppendAudioBubble`, `HandleDroppedAudioFile`, `CancelAllAudioGeneration`, `ChatImageRecord.isAudio/audioPath/durationSeconds` |
 | Prompt | `ChatContextBuilder.cs` (`ChatImageState.IsAudio`, the "Audio #N" legend), `aichat/skills/set_video_audio.md` (tracked), `aichat/skills/local_generate_music.md` / `local_generate_sfx.md` / `local_generate_speech.md` (gitignored, machine-local) | routing + the model-facing parameter docs |
@@ -128,10 +128,6 @@ fields, `set_video_audio`, and this doc; they can write their own `local_*.md` f
 whatever server they point the URL at (the skill ids must stay `generate_music`,
 `generate_sfx`, `generate_speech` because the executor dispatches on them).
 
-## Verification notes (2026-08-24)
+## Debugging
 
-Measured against the reference gateway: sfx 1.5 s in ~1 s, tts line in ~4 s (24 kHz mono
-wav), 12 s music (`format=wav`) in ~14 s; the mix and replace+loop graphs were validated
-with the bundled ffmpeg before the C# was written. Debug: `llm_aichat_log.json` gets
-`generate_*` notes with the exact fields posted and `set_video_audio` notes with the ffmpeg
-command line.
+`llm_aichat_log.json` gets `generate_*` notes with the exact fields posted and `set_video_audio` notes with the ffmpeg command line.

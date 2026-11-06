@@ -265,9 +265,16 @@ the CLI errors before submit if more would be wired. Each `--audio` file is
 ffprobe-checked for an audio stream.
 
 ```
-aitools_cli.py "<Picture 1> stands on a cliff and speaks with the voice and words from <Audio 1>. Wind ambience; no music." out.mp4 \
-    -p "Reference To Video (MiniMax H3) 5s" -i face.png --audio line.wav
+aitools_cli.py "<Picture 1> stands on a cliff and says 'We hold this line until dawn.' in English, voice styled like <Audio 1>. Wind ambience; no music." out.mp4 \
+    -p "Reference To Video (MiniMax H3) 5s" -i face.png --audio voice.wav
 ```
+
+Audio refs carry voice timbre / music / ambience style only: H3 never takes
+WORDS from them, so always quote the exact line to speak (with no quoted
+words it invents dialog, often in a random language). Phrasing like "the
+voice from <Audio 1>" or "matches <Audio 1>" can make H3 splice the sample's
+actual audio into the clip; use "styled like <Audio N>" for voices. The full
+prompt guide is `docs/minimax_h3_prompting.md` in the repo.
 
 ### Quality
 
@@ -280,6 +287,9 @@ pick the `Quality` preset variants:
 - `Image To Video (MiniMax H3 Quality) 5s` / `15s`
 - `Reference To Video (MiniMax H3 Quality) 5s`
 - `Reference Video To Video (MiniMax H3 Quality) 5s` / `15s`
+
+The `(MiniMax H3 Turbo Cache) 5s` t2v/i2v presets add a step cache on top
+of turbo (~50s per 5s clip, what AI Chat uses by default).
 
 Rough wall-clock for a 5s clip, uncontended: turbo t2v/i2v ~70s, Quality
 t2v/i2v ~163s, 20-step single-clip reference video ~4min (the turbo
@@ -440,88 +450,32 @@ Inside the preset's `joblist` block these are supported:
     want (e.g. you want to keep the background, not the subject). Any slot
     arg is ignored - it always acts on the saved output.
 
-In short: single-step presets work for text-to-image, image-in workflows
-(img2img, mask, inpaint, etc.), and all four MiniMax H3 movie modes (up to
-9 reference photos + 2 reference clips + 3 standalone audio refs). Multi-step
-chains, LLM calls, and presets that pull from `temp1`/`temp2`/`temp3` slots
-still error out with a clear explanation.
-
 ## Missing features (vs. the Unity app)
 
-The Unity app supports a much wider preset/script vocabulary. The CLI
-deliberately implements only the text-to-image subset. Each item below will
-either error out clearly when encountered, or (for the silently-ignored
-blocks) is parsed and discarded.
+The CLI runs one workflow job at a time, so anything that chains jobs or
+talks to an LLM errors out clearly when encountered:
 
-### Block types - silently ignored
-These are LLM/Adventure-mode features and don't affect text-to-image, so
-their presence in a preset is harmless:
-- `summarize_prompt` - summarization prompt for the LLM (Adventure mode)
-- `recent_interactions` - integer controlling LLM history depth
+- **Multi-step orchestration**: more than one workflow line in a `joblist`,
+  `command ...` lines, multiline `@end`-terminated arguments, `@stopjob`,
+  `@no_undo`, `@lock_gpu`.
+- **Temp slots and image variables**: `@upload|temp1..temp3|...|` (multi-step
+  presets that pass intermediate results between jobs), `@setimage`,
+  `@fill_mask_if_blank`.
+- **Variable mutation across steps**: `@copy`, `@add`, `@set`, `@clear`.
+- **LLM integration**: `call_llm`, the `@llm_prompt_*` family,
+  `@llm_add_image`, `@parse_llm_prompts`.
 
-### Multi-step orchestration - error
-- More than one workflow line in a single `joblist` (chained workflows)
-- `command ...` lines (built-in command sequences)
-- Multiline `@end`-terminated arguments
-- Mid-job control flow: `@stopjob`, `@no_undo`, `@lock_gpu`
+Silently ignored (LLM/Adventure-mode blocks that don't affect generation):
+`summarize_prompt`, `recent_interactions`.
 
-### Image / input-slot features
-- `@upload|image1..image10|inputN|` - **supported** (repeatable `-i`, or
-  numbered `-i2`..`-i10` for exact slots). Two-input presets
-  (e.g. `Image To Image Klein Edit 2 Input`) take `-i` + `-i2`.
-- `@upload|video|inputN|` / `@upload|video2|inputN|` - **supported**
-  (repeatable `--video`, or `--video2` for the second clip).
-- `@upload|audio1..audio3|inputN|` - **supported** (repeatable `--audio`, or
-  `--audio2`/`--audio3` for exact slots; H3 standalone audio references).
-- `@upload|...|optional|` - **supported** (unfilled slots prune their loader
-  nodes from the graph).
-- `@prune_input|name|` - **supported** (also via `--prune-input`).
-- `@resize|...|` and `@resize_if_larger|...|` - **supported** (no-slot form;
-  always applied to `image1`. Other images upload as-is.)
+Built-in variables: only `%prompt%` and `%negative_prompt%` are populated.
+Other Unity built-ins (`%audio_prompt%`, `%segmentation_prompt%`,
+`%llm_reply%`, `%prompt_1%`..`%prompt_8%`, `%global_prompt%`,
+`%temp_text1%`.., etc.) are left as-is, matching the C# behavior for unknown
+tokens, so they never resolve to anything useful here.
 
-Still missing:
-- `@upload|temp1|...|`, `@upload|temp2|...|`, `@upload|temp3|...|` - multi-step
-  presets that pass intermediate results between jobs (Qwen Edit From
-  Temp1+Temp2, etc.) - the CLI only runs a single job at a time
-- `@setimage|%var%|src|` - copy an image into a named variable
-- `@fill_mask_if_blank` - auto-fill an empty inpaint mask
-
-### Variable mutation across steps - error
-These exist to pass values between sequential jobs in a chain, which the
-CLI doesn't run:
-- `@copy|src|dst|` - copy a variable's value
-- `@add|src|dst|` - append a variable's value
-- `@set|%var%|value|` - set a custom text variable
-- `@clear|%var%|` - clear a variable
-
-### LLM integration - error
-- `call_llm` - invoke the configured LLM with the current prompt state
-- `@llm_prompt_reset` - clear LLM conversation history
-- `@llm_prompt_set_base_prompt|text|` - set the LLM system prompt
-- `@llm_prompt_pop_first` - drop the oldest LLM interaction
-- `@llm_prompt_add_from_user|text|` - append a user-side message
-- `@llm_prompt_add_from_assistant|text|` - append an assistant-side message
-- `@llm_prompt_add_to_last_interaction|text|` - extend the last LLM message
-- `@llm_add_image|slot|` - attach an image to the next LLM message (vision)
-- `@parse_llm_prompts` - parse `SET_PROMPT1:`..`SET_PROMPT8:` tags from the
-  LLM reply into per-job prompt slots
-
-### Built-in variables not exposed
-Only `%prompt%` and `%negative_prompt%` are pre-populated. The Unity app
-also exposes the following - they are *not* errors when referenced (unknown
-`%var%` tokens are left as-is, matching the C# behavior), but they will
-never resolve to anything useful here:
-- `%audio_prompt%`, `%audio_negative_prompt%`, `%segmentation_prompt%`
-- `%llm_prompt%`, `%llm_reply%`
-- `%prompt_1%` … `%prompt_8%` (extended prompt slots for multi-segment work)
-- `%global_prompt%`, `%prepend_prompt%`, `%append_prompt%`
-- `%temp_text1%` … `%temp_text4%`, `%requirements%`
-
-### Other niceties not ported
-- No undo/history of previous generations
-- No Unity-side image post-processing (mask edits, alpha tricks)
-- No batch / queue management beyond submitting one job at a time
-- No GPU locking / reservation across multiple submissions
+Also not ported: undo/history, Unity-side image post-processing (mask edits),
+queue management and GPU locking across submissions.
 
 ## File layout
 
@@ -536,6 +490,7 @@ cli/
   workflow.py         # load/convert/cache + @replace + placeholders + seed
   alpha.py            # transparency post-processing (chroma key / luma -> webm alpha, sprite sheets)
   vid2alpha.py        # standalone converter: existing video -> transparent webm / sprite sheet
+  images.py           # image size/resize helpers for uploads
   servers.py          # /queue probe + selection
   comfy_api.py        # /prompt, /history, /view, cleanup
   progress.py         # WebSocket loop + status display

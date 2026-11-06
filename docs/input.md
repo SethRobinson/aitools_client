@@ -39,5 +39,3 @@ These checks are performed manually unless computer control is explicitly author
 3. Exercise paste and undo/redo with and without a focused text field; verify typing, caret movement, selection, IME, Escape, console shortcuts and movie controls.
 4. In AI Chat and Adventure, check Enter, keypad Enter, Shift+Enter and held keys without duplicate submits/newlines. Check prompt history and Ctrl+wheel font sizing without conversation scrolling or camera zoom.
 5. Open both color-picker demos and verify pointer interaction, keyboard navigation and scrolling. Check the Development and Release profiles remain on the new backend.
-
-Migration validation on 2026-10-03: C# compilation passed for the input runtime, tests, color-picker, app runtime with editor/player defines, and app editor code, with the legacy-input define removed. Existing unrelated compiler warnings remain. Automatic approval review blocked launching the isolated Unity test process, so virtual-device execution, Unity player build and post-restart live checks were not completed in that session.
